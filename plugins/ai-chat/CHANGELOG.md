@@ -1,5 +1,112 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.15.0
+
+### Minor Changes
+
+- d4ea92f: Move the AI chat frontend to `ai@7` and the assistant-ui 0.15 line, so the
+  whole AI chat stack is on one generation of the Vercel AI SDK.
+
+  - Bump `ai` → `^7.0.101`, `@assistant-ui/react` → `^0.15.22`,
+    `@assistant-ui/react-ai-sdk` → `^1.4.13`, `@assistant-ui/react-markdown` →
+    `^0.14.17`, `@assistant-ui/react-devtools` → `^1.2.21`, and
+    `@assistant-ui/tap` → `^0.9.19`.
+  - Drop the root `resolutions` that held the frontend on the `ai@6` line
+    (`@assistant-ui/tap`, `@assistant-ui/core`, `assistant-stream`, the scoped
+    `.../ai-chat-backend/ai` override, and the `@ai-sdk/provider-utils@4.0.41`
+    pin) and the `.yarnrc.yml` `zustand` package extension for
+    `@assistant-ui/core`, which `@assistant-ui/core@0.3` no longer needs.
+  - The `@assistant-ui/tap` "Maximum update depth exceeded" freeze that kept tap
+    pinned to 0.9.12 does not occur on the 0.15 line
+    (assistant-ui/assistant-ui#6133).
+  - Lift the Renovate version holds on the assistant-ui packages. The
+    `ai`/`@ai-sdk/*` major-hold stays: the frontend's `ai` must match the `ai`
+    peer of `@assistant-ui/react-ai-sdk`, and no test checks that pairing.
+
+- ba553f1: Read the muster, ai-chat, agent-platform and flux frontend config from the
+  signed-in config (`GET /api/gs/config`) instead of the public `index.html`.
+
+  `muster.serverName` and `muster.installations[].name/authProvider` (the
+  fleet's codenames), `aiChat.welcome.*`, `aiChat.mcp[].name/authProvider`,
+  `aiChat.contextWindow`, `agentPlatform.skills.repositories` and
+  `flux.gitRepositoryPatterns` keep the default (backend) visibility and reach
+  the browser after sign-in through `@giantswarm/backstage-plugin-gs-react`.
+  The plans, platform-capabilities, repositories and roadmap backends drop the
+  `@visibility frontend` markers no frontend read, so the public config no
+  longer names their muster installation, repositories, board or teams. No
+  `@visibility frontend` is left in these plugins.
+
+### Patch Changes
+
+- b30a7fc: Support the Claude 5 model family in the AI chat.
+
+  `claude-sonnet-5`, `claude-opus-5` and `claude-fable-5`/`-5-1` use adaptive thinking plus `output_config.effort`; the legacy `thinking: { type: 'enabled', budgetTokens }` shape they were previously sent is rejected with a 400, as are `temperature`, `topP` and `topK`. Adding them to `ADAPTIVE_THINKING_MODEL_PREFIXES` fixes both, because the same predicate also gates the sampling-parameter strip.
+
+  Adaptive-thinking models now also ask for `thinking.display: summarized`. That default is not stable across model generations — Opus 4.6 and Sonnet 4.6 default to `summarized`, Opus 4.7+ and the Claude 5 family to `omitted` — so the reasoning pane rendered empty blocks on the newer models. Thinking is billed the same either way.
+
+  The frontend context-usage display learns their context windows (1M each) and prices, along with the `claude-opus-4-7`, `claude-opus-4-8` and `claude-haiku-4-5` entries that were missing — those models showed no context bar and no cost estimate at all.
+
+- 408bdfe: A failed chat reply says why, instead of "An error occurred.": an error from the model provider shows its reason and whether it was already retried ("The model provider reports an error: Overloaded. The request was already tried 3 times. Please try again in a moment."), and any other failure a generic message without internal details. The error box has a "Try again" button that retries the last message, so nothing needs retyping.
+- 9c0ba49: Report meaningful portal actions through Backstage's analytics API: a new
+  `analytics-react` library with the typed event list and `useTrackedMutation`.
+  Creating an agent (`AgentPlatform.agentCreated`), starting a session
+  (`AgentPlatform.sessionStarted`) and registering an MCP server
+  (`Muster.mcpServerAdded`) are tracked; every other write opts out explicitly.
+- Updated dependencies [6c096fb]
+- Updated dependencies [5859267]
+- Updated dependencies [e62dd24]
+- Updated dependencies [2494c9a]
+- Updated dependencies [c5b9c46]
+- Updated dependencies [d6bec76]
+- Updated dependencies [c4f3eca]
+- Updated dependencies [fedd5d8]
+- Updated dependencies [9c0ba49]
+- Updated dependencies [281d787]
+- Updated dependencies [ef01d42]
+- Updated dependencies [9602074]
+- Updated dependencies [464f5ad]
+- Updated dependencies [9e00143]
+- Updated dependencies [86eec55]
+- Updated dependencies [23bfca0]
+- Updated dependencies [66ac70b]
+- Updated dependencies [b431a04]
+- Updated dependencies [5c82125]
+- Updated dependencies [4f6d765]
+- Updated dependencies [94a61cb]
+- Updated dependencies [6b3ac77]
+- Updated dependencies [4aa60ba]
+- Updated dependencies [b8afa37]
+- Updated dependencies [398c4b1]
+- Updated dependencies [fd7799f]
+- Updated dependencies [582faca]
+- Updated dependencies [ce9e155]
+- Updated dependencies [b9aff1b]
+- Updated dependencies [eb337fb]
+- Updated dependencies [14e878c]
+- Updated dependencies [14e878c]
+- Updated dependencies [1893681]
+- Updated dependencies [0bed874]
+- Updated dependencies [e807fa6]
+- Updated dependencies [b097034]
+- Updated dependencies [2e425c5]
+- Updated dependencies [6e0bd9d]
+- Updated dependencies [b9433d4]
+- Updated dependencies [322e58c]
+- Updated dependencies [b990251]
+- Updated dependencies [9e57736]
+- Updated dependencies [d95e52d]
+- Updated dependencies [ff8b3f1]
+- Updated dependencies [a8bb5a6]
+- Updated dependencies [1ec7387]
+- Updated dependencies [d63665c]
+- Updated dependencies [6ce4a71]
+- Updated dependencies [600a4c3]
+- Updated dependencies [e6ced92]
+  - @giantswarm/backstage-plugin-ui-react@0.9.0
+  - @giantswarm/backstage-plugin-analytics-react@0.2.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.0
+  - @giantswarm/backstage-plugin-gs-react@0.1.0
+
 ## 0.14.0
 
 ### Minor Changes

@@ -1,5 +1,24 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.22.0
+
+### Minor Changes
+
+- 21ae39b: Export `ReleaseReadinessFlags` and `releaseReadinessFlagNames` — the release
+  blockers `AppReadinessProcessor` writes into `giantswarm.io/readiness-flags`.
+
+  That annotation has two authors: `backstage-catalog-importer` merges its enforced
+  chart-metadata gaps into the same list. Consumers have to tell the two apart to
+  attribute each flag to the verdict it came from, and they do so by recognising
+  these names, so they belong in one shared place rather than being duplicated on
+  each side of the package boundary.
+
+- 103014c: The Version History card and tab list only stable releases by default. A "Show all" switch brings back release candidates and dev builds. Stable means a semantic version without a pre-release part (`isStableVersion` in `gs-common`).
+
+  The backend parses and compares versions with `@giantswarm/semver-ts` instead of npm `semver`, so tags are read the way Flux reads them (Masterminds/semver): `sortVersions` in `gs-node` now also drops tags that are no version, and accepts incomplete ones such as `1.2`. GitHub release tags in the app readiness check are still parsed strictly, so a date-named release is not mistaken for a version.
+
+  `ContainerRegistryService.getTags` without a `limit` now follows the registry's pagination (`Link: rel="next"`), so the version history lists every tag instead of the 100 most recent ones ACR returns on its first page. With a `limit` it stops once it holds that many tags, which for the catalog processors' limit of 500 is a single request. The OCI path now honours `limit` and asks for pages of 1000 tags, as the ACR path asks for 999.
+
 ## 0.21.1
 
 ### Patch Changes

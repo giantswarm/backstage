@@ -1,5 +1,0 @@
----
-'@giantswarm/backstage-plugin-bot-prs': minor
----
-
-Add the bot-prs frontend plugin: a `/bot-prs` page behind a disabled-by-default `page:bot-prs` extension, the same gating as the repositories plugin, that lists the open bot PRs of the person's teams or of every team as marge classifies them and runs the sweep's own steps through marge's MCP tools over muster as the signed-in person. Scopes _My team_ and _All teams_ in the URL, tiles per classification, bot and age, filters per team, repository, classification, bot and dependency, a sortable table whose rows expand to the engine's record and the two per-PR actions. The table is marge's stored classification; **Refresh classification** is the one live read and only a click. **Preview sweep** shows the engine's per-PR outcome with the steps as checkboxes, **Apply** runs exactly the previewed PRs, ticked one by one under a `per-pr` policy; **Sweep this PR** is the same dialog on one PR and **Mark blocked** writes marge's marker. A refusal is shown with the engine's reason and nothing offers a way around it. A person without a GitHub grant gets the muster plugin's per-server Sign in.
