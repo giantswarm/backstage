@@ -7,6 +7,7 @@ import { Skeleton, Text } from '@backstage/ui';
 import { UseQueryResult, useQueries } from '@tanstack/react-query';
 import {
   Cluster,
+  isNotFoundError,
   k8sResponseError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -145,8 +146,10 @@ export function useManagementClusterVersions(): Record<
             ? { state: 'known', version: releaseVersion }
             : NO_RELEASE;
         } else if (listError) {
+          // No CAPI on the installation (the API is not served, or not in
+          // a version the plugin reads) means no release, not a failure.
           release =
-            listError.type === 'incompatibility'
+            listError.type === 'incompatibility' || isNotFoundError(listError)
               ? NO_RELEASE
               : failed(listError.error);
         } else {

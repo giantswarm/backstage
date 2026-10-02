@@ -49,6 +49,8 @@ type Fleet = Record<
     version: string | number | 'pending';
     /** The release label of the management cluster's own Cluster; none without. */
     release?: string;
+    /** The installation serves no CAPI: the Cluster API is not found. */
+    noCapi?: boolean;
   }
 >;
 
@@ -64,6 +66,9 @@ function fleetProxy(fleet: Fleet) {
         return typeof mc.version === 'number'
           ? status(mc.version)
           : ok({ gitVersion: mc.version });
+      }
+      if (mc.noCapi && path.startsWith(`/apis/${GROUP}`)) {
+        return status(404);
       }
       if (path === `/apis/${GROUP}`) {
         return ok({
@@ -198,9 +203,18 @@ describe('useManagementClusterVersionColumns', () => {
     await renderProbe(
       {
         bare: { version: 'v1.33.2' },
+        plain: { version: 'v1.34.0', noCapi: true },
         locked: { version: 403 },
       },
-      ['bare', 'locked', 'elsewhere'],
+      ['bare', 'plain', 'locked', 'elsewhere'],
+    );
+
+    expect(
+      await screen.findByTestId('version-kubernetes-plain'),
+    ).toHaveTextContent('1.34.0');
+    expect(await screen.findByTestId('version-release-plain')).toHaveAttribute(
+      'title',
+      'The management cluster carries no Giant Swarm release',
     );
 
     const noRelease = await screen.findByTestId('version-release-bare');
