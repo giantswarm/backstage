@@ -74,12 +74,15 @@ describe('componentForTab', () => {
     expect(componentForTab('agents')).toBe('kagent');
     expect(componentForTab('sessions/gazelle/abc')).toBe('kagent');
     expect(componentForTab('models/configs')).toBe('kagent');
-    expect(componentForTab('/muster/dashboard')).toBe('muster');
+    expect(componentForTab('/mcp-servers/kubernetes')).toBe('muster');
+    expect(componentForTab('workflows/deploy')).toBe('muster');
   });
 
   it('knows no component for the section index or an unknown tab', () => {
     expect(componentForTab('')).toBeUndefined();
     expect(componentForTab('clusters')).toBeUndefined();
+    // muster's old section path is no tab any more.
+    expect(componentForTab('muster/servers')).toBeUndefined();
   });
 });
 
@@ -91,7 +94,7 @@ describe('InstallationScopeHeaderControl', () => {
   });
 
   it('tells the selector which component the current tab reads', async () => {
-    await renderAt('/agent-platform/muster/servers');
+    await renderAt('/agent-platform/mcp-servers');
 
     expect(screen.getByTestId('select')).toHaveTextContent('muster');
   });
@@ -107,7 +110,7 @@ describe('InstallationScopeHeaderControl', () => {
 
   it('says nothing about kagent reachability on the MCP Servers tab', async () => {
     mockNotReachable = ['golem'];
-    await renderAt('/agent-platform/muster');
+    await renderAt('/agent-platform/mcp-servers');
 
     const { describe } = mockSelect.mock.calls.at(-1)![0];
     expect(describe(entry('golem'))).toBeUndefined();
@@ -115,11 +118,19 @@ describe('InstallationScopeHeaderControl', () => {
 
   it('marks installations whose muster the portal cannot reach, on the MCP Servers tab only', async () => {
     mockMusterNotReachable = ['wombat'];
-    await renderAt('/agent-platform/muster/dashboard');
+    await renderAt('/agent-platform/mcp-servers');
 
     const { describe } = mockSelect.mock.calls.at(-1)![0];
     expect(describe(entry('wombat'))).toBe('not reachable from this portal');
     expect(describe(entry('golem'))).toBeUndefined();
+  });
+
+  it('marks installations whose muster the portal cannot reach on the Workflows tab too', async () => {
+    mockMusterNotReachable = ['wombat'];
+    await renderAt('/agent-platform/workflows/deploy');
+
+    const { describe } = mockSelect.mock.calls.at(-1)![0];
+    expect(describe(entry('wombat'))).toBe('not reachable from this portal');
   });
 
   it('says nothing about muster reachability on the kagent tabs', async () => {

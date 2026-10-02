@@ -5,8 +5,12 @@ import { AzureClusterLocation } from './AzureClusterLocation';
 export const ProviderClusterLocation = () => {
   return (
     <ClusterSwitch
-      renderAWS={() => <AWSClusterLocation />}
-      renderAzure={() => <AzureClusterLocation />}
+      renderAWS={infrastructureRef => (
+        <AWSClusterLocation infrastructureRef={infrastructureRef} />
+      )}
+      renderAzure={infrastructureRef => (
+        <AzureClusterLocation infrastructureRef={infrastructureRef} />
+      )}
       renderVSphere={() => null}
       renderVCD={() => null}
     />

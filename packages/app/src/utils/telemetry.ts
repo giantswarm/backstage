@@ -126,15 +126,58 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    case pathname === '/agent-platform/muster':
-      payload = { page: 'Muster index' };
+    // muster's two Agent Platform tabs, above the generic agent-platform cases
+    // below, which would report them as the Agents page.
+    case pathname === '/agent-platform/mcp-servers':
+      payload = { page: 'MCP Servers' };
       break;
 
-    case pathname.startsWith('/agent-platform/muster'): {
+    case /^\/agent-platform\/mcp-servers\/new(\/|$)/.test(pathname): {
       const parts = pathname.split('/');
       payload = {
-        page: 'Muster',
-        view: parts[3],
+        page: 'MCP server registration',
+        // The wizard's first step is its index.
+        view: parts[4] || 'server',
+      };
+      break;
+    }
+
+    // A tool's page beneath its server, and a server's page with its tab as
+    // the view.
+    case /^\/agent-platform\/mcp-servers\/[^/]+\/tools\/[^/]+/.test(pathname):
+      payload = { page: 'MCP tool' };
+      break;
+
+    case pathname.startsWith('/agent-platform/mcp-servers/'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'MCP server',
+        // Tools is the server page's index.
+        view: parts[4] || 'tools',
+      };
+      break;
+    }
+
+    case pathname === '/agent-platform/workflows':
+      payload = { page: 'Workflows' };
+      break;
+
+    // The muster section's old home: no longer a tab, and not redirected
+    // (the page renders its tab row over an empty body). One name for every
+    // such path, so a stale bookmark neither counts as the Agents page nor
+    // brings its server and tool names along as views.
+    case pathname === '/agent-platform/muster' ||
+      pathname.startsWith('/agent-platform/muster/'):
+      payload = { page: 'Muster (removed)' };
+      break;
+
+    // A workflow's page, with its tab as the view (never its name).
+    case pathname.startsWith('/agent-platform/workflows/'): {
+      const parts = pathname.split('/');
+      payload = {
+        page: 'Workflow',
+        // Overview is the workflow page's index.
+        view: parts[4] || 'overview',
       };
       break;
     }
@@ -159,8 +202,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`),
     // `new`, and the `configs` paths an older release's links still carry. Only
-    // the first segment, as the Muster case does, so anything deeper collapses
-    // to what it belongs to instead of opening the dimension up.
+    // the first segment, so anything deeper collapses to what it belongs to
+    // instead of opening the dimension up.
     case pathname.startsWith('/agent-platform/models'): {
       const parts = pathname.split('/');
       payload = {
@@ -245,7 +288,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // `mcp`), reported the same way the Muster section's are. The bare path
+    // `mcp`), with the view as its one segment. The bare path
     // above keeps its existing name rather than becoming 'Usage index': it now
     // only ever redirects here, and renaming it would break continuity in
     // TelemetryDeck for nothing.

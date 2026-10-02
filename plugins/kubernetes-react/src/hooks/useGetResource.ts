@@ -2,6 +2,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQuery } from '@tanstack/react-query';
 import { getK8sGetPath } from './utils/k8sPath';
+import { k8sResponseError } from './utils/k8sResponseError';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { QueryOptions } from './types';
 
@@ -37,13 +38,10 @@ export function useGetResource<T>(
       });
 
       if (!response.ok) {
-        const error = new Error(
-          `Failed to fetch resources from ${cluster} at ${path}. Reason: ${response.statusText}.`,
+        throw await k8sResponseError(
+          response,
+          `Failed to fetch resources from ${cluster} at ${path}`,
         );
-        error.name = response.status === 403 ? 'ForbiddenError' : error.name;
-        error.name = response.status === 404 ? 'NotFoundError' : error.name;
-
-        throw error;
       }
 
       const app: T = await response.json();

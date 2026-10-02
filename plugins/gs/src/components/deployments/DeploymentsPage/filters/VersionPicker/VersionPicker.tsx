@@ -9,17 +9,26 @@ import {
   useDeploymentsData,
 } from '../../../DeploymentsDataProvider';
 import uniqBy from 'lodash/uniqBy';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 
 const TITLE = 'Version';
+
+/**
+ * Reads the first version in a value, as `semver.coerce` does: `2.2.0` from
+ * `2.2.0_fa483d226565`, `1.10.0` from `chart-1.10.0`.
+ */
+function parseFirstVersion(value: string): Version | null {
+  const first = value.match(/(?:^|\D)(\d+(?:\.\d+){0,2})/)?.[1];
+  return first ? Version.tryParse(first) : null;
+}
 
 export function compareVersionOptions(
   itemA: MultiplePickerOption,
   itemB: MultiplePickerOption,
 ): number {
-  const a = semver.valid(semver.coerce(itemA.value));
-  const b = semver.valid(semver.coerce(itemB.value));
-  if (a && b) return semver.compare(a, b);
+  const a = parseFirstVersion(itemA.value);
+  const b = parseFirstVersion(itemB.value);
+  if (a && b) return a.compare(b);
   if (a) return -1;
   if (b) return 1;
   return itemA.value.localeCompare(itemB.value);

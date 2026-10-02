@@ -101,4 +101,31 @@ describe('useListResources', () => {
 
     expect(proxy).toHaveBeenCalledTimes(1);
   });
+
+  it('says why a list failed when the response has no reason phrase', async () => {
+    const proxy = jest.fn(
+      async () => ({ ok: false, status: 404, statusText: '' }) as Response,
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kubernetesApiRef, { proxy } as any]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+
+    const { result } = renderHook(
+      () => useListResources([CLUSTER], { [CLUSTER]: gvk }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.errors).toHaveLength(1));
+
+    const { error } = result.current.errors[0];
+    expect(error.name).toBe('NotFoundError');
+    expect(error.message).toMatch(/Reason: HTTP 404\.$/);
+  });
 });

@@ -211,14 +211,11 @@ export async function createRouter(
     res.json({
       installations: [...installations.values()].map(installation => ({
         name: installation.name,
-        // The aggregator endpoint (mono-rendered on the dashboard identity
-        // card). Per-MC domain isn't derivable from the name, so it comes from
-        // config rather than being fabricated frontend-side.
+        // The aggregator endpoint (shown atop the Servers view). Per-MC
+        // domain isn't derivable from the name, so it comes from config rather
+        // than being fabricated frontend-side.
         endpoint: installation.url,
         requiresAuth: musterInstallationRequiresAuth(installation),
-        // Whether the endpoint was derived from the installation's base
-        // domain or listed in `muster.installations`.
-        source: installation.source ?? 'configured',
         ...reachabilityFields(
           reachability.get(musterProbeUrl(installation.url)),
         ),

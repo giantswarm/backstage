@@ -22,6 +22,14 @@ import {
 export interface UsePreferredVersionsOptions {
   /** Enable API version discovery. Defaults to true. */
   enableDiscovery?: boolean;
+  /**
+   * Whether the caller's own query is enabled. Defaults to true. When false,
+   * no discovery requests are sent and nothing counts as discovering, but a
+   * discovery result already in the cache still resolves — so a query that is
+   * disabled for a moment keeps its discovered version, and with it its
+   * query key and cached data.
+   */
+  enabled?: boolean;
   /** Explicit API version to use, bypasses discovery. */
   explicitVersion?: string;
   /** Fall back to static version on discovery error. Defaults to true. */
@@ -58,6 +66,7 @@ export function usePreferredVersions(
 ): UsePreferredVersionsResult {
   const {
     enableDiscovery = true,
+    enabled = true,
     explicitVersion,
     fallbackToStatic = true,
   } = options;
@@ -73,7 +82,7 @@ export function usePreferredVersions(
   const groupQueries = useQueries({
     queries: clusters.map(cluster => ({
       ...apiGroupQueryOptions(kubernetesApi, cluster, gvk.group),
-      enabled: shouldDiscover,
+      enabled: shouldDiscover && enabled,
     })),
   });
 
@@ -108,7 +117,7 @@ export function usePreferredVersions(
           version,
           gvk.plural,
         ),
-        enabled: shouldDiscover && versions.length > 0,
+        enabled: shouldDiscover && enabled && versions.length > 0,
       }));
     }),
   });
@@ -269,6 +278,7 @@ export function usePreferredVersions(
   // counts as discovering — see the note on `settled` above.
   const isDiscovering =
     shouldDiscover &&
+    enabled &&
     clusters.some(cluster => !clusterDiscoveryComplete[cluster]);
 
   // Don't report incompatibilities while discovery is still in progress —

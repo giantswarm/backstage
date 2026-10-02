@@ -49,6 +49,13 @@ export type ModelConfigsContextValue = {
    * dropped so an empty result is distinguishable from a failed one.
    */
   unreachableInstallations: string[];
+  /**
+   * Installations in scope never queried because whether they run kagent is
+   * unknown: their cluster access isn't healthy (degraded, session expired,
+   * signed out) or their inventory probe failed. Leaves out muted ones, ones
+   * still connecting and ones known not to run kagent.
+   */
+  inaccessibleInstallations: string[];
   /** ModelConfigs found on a given installation. */
   modelConfigsFor: (installation: string) => ModelConfig[];
 };
@@ -81,6 +88,20 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     scope,
   );
   const isProbing = inventory.isLoading || inventory.isProbing;
+  // Not while the inventory is loading: until the cluster-access status set is
+  // seeded, every installation reads as absent from it.
+  const inaccessibleInstallations = applyInstallationScope(
+    (inventory.isLoading ? [] : inventory.entries)
+      .filter(
+        entry =>
+          !entry.muted &&
+          entry.accessState !== 'connecting' &&
+          (entry.accessState !== 'healthy' || entry.probe === 'failed') &&
+          !(entry.probe === 'answered' && !entry.components.kagent),
+      )
+      .map(entry => entry.installation),
+    scope,
+  );
 
   // Installations that have answered at least once (rows, an empty list, or a
   // failure) since this provider mounted. `useResources` only reports on the
@@ -130,6 +151,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
 
   const allInstallationsKey = allInstallations.join(',');
   const scopedInstallationsKey = scopedInstallations.join(',');
+  const inaccessibleInstallationsKey = inaccessibleInstallations.join(',');
 
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
@@ -161,10 +183,12 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
         withModels.has(name),
       ),
       unreachableInstallations,
+      inaccessibleInstallations,
       modelConfigsFor: (installation: string) =>
         resources.filter(mc => mc.cluster === installation),
     };
-    // allInstallations/scopedInstallations are derived fresh each render;
+    // allInstallations/scopedInstallations/inaccessibleInstallations are
+    // derived fresh each render;
     // key on their contents (…Key) rather than identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -179,6 +203,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
     home,
     allInstallationsKey,
     scopedInstallationsKey,
+    inaccessibleInstallationsKey,
   ]);
 
   return (

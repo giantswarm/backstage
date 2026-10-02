@@ -14,6 +14,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
+import { orderTabs } from './lib/tabOrder';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -30,7 +31,8 @@ import {
   installationsExternalRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
-  musterToolExplorerExternalRouteRef,
+  musterServersExternalRouteRef,
+  musterServerToolExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
@@ -45,20 +47,31 @@ import {
 
 // The Agent Platform section is a tabbed page: with no loader of its own,
 // PageBlueprint renders the attached sub-pages as tabs in the bui PluginHeader
-// (the same pattern as the flux/muster sections). The "MCP Servers" tab is
-// contributed by the muster plugin (a SubPageBlueprint attached to this page);
-// the "Agents" tab is defined below.
+// (the same pattern as the flux section). The "MCP Servers" and "Workflows"
+// tabs are contributed by the muster plugin (SubPageBlueprints attached to this
+// page).
 //
 // Disabled by default and enabled per-installation via app-config
 // (`app.extensions: [page:agent-platform, nav-item:agent-platform]`) while the
 // agent platform is still internal-only.
-const agentPlatformPage = PageBlueprint.make({
+//
+// The page sorts its tabs by `AGENT_PLATFORM_TAB_ORDER` (lib/tabOrder.ts):
+// Sessions · Agents · Models · MCP Servers · Workflows · Usage. Attach order
+// alone cannot interleave two plugins' tabs, and an extension a deployment
+// names in its own `app.extensions` attaches first. The first tab is also
+// where a bare `/agent-platform` lands.
+const agentPlatformPage = PageBlueprint.makeWithOverrides({
   disabled: true,
-  params: {
-    title: 'Agent Platform',
-    icon: <AndroidIcon />,
-    path: '/agent-platform',
-    routeRef: rootRouteRef,
+  factory(originalFactory, { inputs }) {
+    return originalFactory(
+      {
+        title: 'Agent Platform',
+        icon: <AndroidIcon />,
+        path: '/agent-platform',
+        routeRef: rootRouteRef,
+      },
+      { inputs: { pages: orderTabs(inputs.pages, page => page.node.spec.id) } },
+    );
   },
 });
 
@@ -96,10 +109,9 @@ const agentsSubPage = SubPageBlueprint.make({
 // The "Sessions" tab. Read-only list of the signed-in user's kagent chat
 // sessions across the fleet, via the agent-platform-backend kagent proxy.
 //
-// First of this plugin's tabs, because tab order follows the `extensions` array
-// and the first tab is what a bare `/agent-platform` lands on: the section is
-// opened to pick a conversation back up far more often than to look at the
-// fleet's agents. Moving it also moves that landing page, so
+// The first tab (see `agentPlatformPage`), and the first tab is what a bare
+// `/agent-platform` lands on: the section is opened to pick a conversation
+// back up far more often than to look at the fleet's agents. Moving it also moves that landing page, so
 // `getTelemetryPageViewPayload` names the bare path "Sessions index".
 const sessionsSubPage = SubPageBlueprint.make({
   name: 'sessions',
@@ -127,12 +139,8 @@ const sessionsSubPage = SubPageBlueprint.make({
 // installation (every caller, from muster's Prometheus metrics) contributed by
 // the muster plugin through the `sections` input below.
 //
-// Declared last, so it is the last of this plugin's own tabs. It cannot be the
-// last tab in the row: muster's "MCP Servers" tab is attached from another
-// plugin and lands after every tab declared here, because the page gathers its
-// `pages` input in feature-registration order (see App.tsx). Putting Usage
-// after it would mean registering muster first, which moves MCP Servers to the
-// front of the row and changes the tab a bare `/agent-platform` lands on.
+// The last tab of the row, after muster's MCP Servers and Workflows (see
+// `agentPlatformPage`).
 //
 // `makeWithOverrides` + `createExtensionInput` — the same shape as the flux
 // list/tree filter inputs — so muster can attach its section by node id
@@ -272,7 +280,8 @@ export const agentPlatformPlugin = createFrontendPlugin({
   // and are simply unbound when the target plugin is disabled. Every call site
   // must handle `useRouteRef` returning undefined.
   externalRoutes: {
-    musterToolExplorer: musterToolExplorerExternalRouteRef,
+    musterServers: musterServersExternalRouteRef,
+    musterServerTool: musterServerToolExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,
     installations: installationsExternalRouteRef,
   },

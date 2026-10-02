@@ -1,6 +1,7 @@
 app:
   title: Dev Portal
   baseUrl: http://localhost:3000
+  releaseVersion: ${VERSION}
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener
@@ -393,7 +394,7 @@ aiChat:
 # the installations whose inventory (one `GET /apis` per installation) has the
 # `muster.giantswarm.io` API group and whose endpoint the backend can target.
 #
-# The MCP proxy (tool explorer, workflow runs, live aggregator/auth state)
+# The MCP proxy (tool pages, workflow runs, live aggregator/auth state)
 # derives one endpoint per `gs.installations` entry with a `baseDomain`, at
 # `https://muster.<baseDomain>/mcp`; nothing has to be listed for an
 # installation that adopts muster. `installations` holds OVERRIDES of that

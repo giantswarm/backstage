@@ -8,10 +8,14 @@ import {
 } from '@backstage/frontend-test-utils';
 
 import { musterApiRef, type McpServerRuntime } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
+import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
 const retry = jest.fn();
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
+let mockMcpServersUpdatedAt: number | undefined;
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -25,7 +29,9 @@ jest.mock('../MusterInstanceProvider', () => ({
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
-    mcpServers: [],
+    mcpServers: mockMcpServers,
+    mcpServersUpdatedAt: mockMcpServersUpdatedAt,
+    isLoading: false,
     retry,
   }),
   useMusterSession: () => ({
@@ -67,7 +73,7 @@ function renderWizard(path: string) {
       <QueryClientProvider client={queryClient}>
         <Routes>
           <Route
-            path="/agent-platform/muster/servers/*"
+            path="/agent-platform/mcp-servers/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -75,7 +81,7 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
@@ -83,7 +89,7 @@ function renderWizard(path: string) {
 /** Walks the real flow to a registered server so the verify step has one. */
 async function renderVerifyStep() {
   callTool.mockResolvedValue({});
-  const result = await renderWizard('/agent-platform/muster/servers/new');
+  const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -106,6 +112,8 @@ function runtime(overrides: Partial<McpServerRuntime>): McpServerRuntime {
 
 describe('NewMcpServerVerifyPage', () => {
   beforeEach(() => {
+    mockMcpServers = [];
+    mockMcpServersUpdatedAt = undefined;
     jest.clearAllMocks();
     listServers.mockResolvedValue({ mcpServers: [] });
     getAuthStatus.mockResolvedValue({ servers: [] });
@@ -118,7 +126,7 @@ describe('NewMcpServerVerifyPage', () => {
   });
 
   it('sends a deep link with nothing registered back to step 1', async () => {
-    await renderWizard('/agent-platform/muster/servers/new/verify');
+    await renderWizard('/agent-platform/mcp-servers/new/verify');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(screen.queryByText('Step 4 of 4: Verify')).not.toBeInTheDocument();
@@ -155,7 +163,7 @@ describe('NewMcpServerVerifyPage', () => {
 
     try {
       callTool.mockResolvedValue({});
-      await renderWizard('/agent-platform/muster/servers/new');
+      await renderWizard('/agent-platform/mcp-servers/new');
       fireEvent.change(screen.getByLabelText(/^Name/), {
         target: { value: 'Weather' },
       });
@@ -338,5 +346,98 @@ describe('NewMcpServerVerifyPage', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'Done' })[0]);
 
     expect(await screen.findByText('servers-list')).toBeInTheDocument();
+  });
+
+  describe('after an edit', () => {
+    function edited(generation: number, observedGeneration: number) {
+      return new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'weather', generation },
+          spec: { type: 'streamable-http', url: 'https://w.example.com/mcp' },
+          status: {
+            state: 'Connected',
+            conditions: [
+              {
+                type: 'Ready',
+                status: 'True',
+                reason: 'Connected',
+                observedGeneration,
+              },
+            ],
+          },
+        } as never,
+        'gazelle',
+      );
+    }
+
+    it('holds a "Connected" back until muster has reconciled the new spec', async () => {
+      mockMcpServers = [edited(3, 2)];
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
+
+      expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    /** Registers weather, then saves it again from "Edit details". */
+    async function saveAnUpdate() {
+      await renderVerifyStep();
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Edit details' })[0],
+      );
+      await screen.findByText('Step 1 of 4: Details');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Continue' })[0],
+      );
+      await screen.findByText('Step 2 of 4: Authentication');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Continue' })[0],
+      );
+      await screen.findByText('Step 3 of 4: Review & save');
+      await userEvent.click(
+        screen.getAllByRole('button', { name: 'Save changes' })[0],
+      );
+      await screen.findByText('Step 4 of 4: Verify');
+    }
+
+    it('holds the verdict back until the server list has been read after the save', async () => {
+      // The CR in hand predates the update, so its generations still agree.
+      mockMcpServers = [edited(3, 3)];
+      mockMcpServersUpdatedAt = 1;
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await saveAnUpdate();
+
+      expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    it('reports the state from a server list read after the save', async () => {
+      mockMcpServers = [edited(3, 3)];
+      mockMcpServersUpdatedAt = Number.MAX_SAFE_INTEGER;
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await saveAnUpdate();
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();
+    });
+
+    it('reports the state once the Ready condition caught up', async () => {
+      mockMcpServers = [edited(3, 3)];
+      listServers.mockResolvedValue({
+        mcpServers: [runtime({ state: 'Connected' })],
+      });
+      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();
+    });
   });
 });

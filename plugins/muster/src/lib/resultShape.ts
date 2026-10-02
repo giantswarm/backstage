@@ -1,7 +1,7 @@
 /**
  * Detects the one result shape worth a richer renderer than the JSON viewer: a
  * list of like-shaped objects (a k8s `List`, or a bare array of resources). The
- * tool explorer renders these as a compact table; everything else stays JSON.
+ * tool page renders these as a compact table; everything else stays JSON.
  *
  * ponytail: only the list-of-objects shape is special-cased (the most common
  * `*_list` result). Text/markdown and single-object shapes still render as JSON.

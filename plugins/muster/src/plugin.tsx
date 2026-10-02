@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import {
   ApiBlueprint,
   configApiRef,
@@ -19,33 +20,65 @@ import {
 } from './apis';
 import { mcpUsageSection } from './mcpUsageSection';
 import {
-  agentPlatformUsageExternalRouteRef,
+  mcpServerRouteRef,
   mcpServersRouteRef,
+  mcpServerToolRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
-  rootRouteRef,
-  toolExplorerRouteRef,
   workflowDetailRouteRef,
   workflowsRouteRef,
 } from './routes';
 
-// Muster is a section embedded under the Agent Platform page: this SubPageBlueprint
-// attaches to `page:agent-platform` as its "MCP Servers" tab (mounted at
-// `/agent-platform/muster`). `rootRouteRef` is carried here so muster's route refs
-// resolve relative to `/agent-platform/muster`, keeping every `useRouteRef` link
-// working. The four muster views (Dashboard, MCP servers, Workflows, Tool explorer)
-// render as a second-level tab row inside MusterSection.
-const musterSubPage = SubPageBlueprint.make({
+/**
+ * The loader of one muster tab: its router inside the shared muster providers
+ * and the inventory-failure gate (`MusterSubPage`).
+ */
+function musterTab(context: string, loadRouter: () => Promise<ComponentType>) {
+  return async () => {
+    const [{ MusterSubPage }, Router] = await Promise.all([
+      import('./components/MusterSubPage'),
+      loadRouter(),
+    ]);
+    return (
+      <MusterSubPage context={context}>
+        <Router />
+      </MusterSubPage>
+    );
+  };
+}
+
+// muster contributes two of the Agent Platform page's level-1 tabs: "MCP
+// Servers" (`/agent-platform/mcp-servers`) and "Workflows"
+// (`/agent-platform/workflows`). Each carries its own root route ref, so
+// muster's links resolve under the tab they belong to. Their place among the
+// Agent Platform's tabs is the page's own (agent-platform's
+// `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids.
+const mcpServersSubPage = SubPageBlueprint.make({
   name: 'mcp-servers',
   attachTo: { id: 'page:agent-platform', input: 'pages' },
   params: {
-    path: 'muster',
+    path: 'mcp-servers',
     title: 'MCP Servers',
-    routeRef: rootRouteRef,
-    loader: async () => {
-      const { MusterSection } = await import('./components/MusterSection');
-      return <MusterSection />;
-    },
+    routeRef: mcpServersRouteRef,
+    loader: musterTab(
+      'The MCP servers of an installation are read through its Kubernetes API.',
+      () =>
+        import('./components/McpServersRouter').then(m => m.McpServersRouter),
+    ),
+  },
+});
+
+const workflowsSubPage = SubPageBlueprint.make({
+  name: 'workflows',
+  attachTo: { id: 'page:agent-platform', input: 'pages' },
+  params: {
+    path: 'workflows',
+    title: 'Workflows',
+    routeRef: workflowsRouteRef,
+    loader: musterTab(
+      'The workflows of an installation are read through its Kubernetes API.',
+      () => import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
+    ),
   },
 });
 
@@ -86,25 +119,19 @@ const musterAuthProvidersApi = ApiBlueprint.make({
 export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
   extensions: [
-    musterSubPage,
+    mcpServersSubPage,
+    workflowsSubPage,
     mcpUsageSection,
     musterApi,
     musterAuthProvidersApi,
   ],
   routes: {
-    root: rootRouteRef,
     mcpServers: mcpServersRouteRef,
+    mcpServer: mcpServerRouteRef,
+    mcpServerTool: mcpServerToolRouteRef,
     newMcpServer: newMcpServerRouteRef,
     newMcpServerAuth: newMcpServerAuthRouteRef,
     workflows: workflowsRouteRef,
-    toolExplorer: toolExplorerRouteRef,
     workflowDetail: workflowDetailRouteRef,
-  },
-  // Points at the Agent Platform's Usage tab, where the MCP usage view now
-  // lives. `defaultTarget` resolves it without an app-config binding and leaves
-  // it simply unbound when that plugin is disabled, so every `useRouteRef` call
-  // site must handle `undefined`.
-  externalRoutes: {
-    agentPlatformUsage: agentPlatformUsageExternalRouteRef,
   },
 });

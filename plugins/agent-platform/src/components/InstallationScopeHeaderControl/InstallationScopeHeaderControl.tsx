@@ -12,8 +12,8 @@ import { QueryClientProvider } from '../QueryClientProvider';
 /**
  * Which platform component each level-1 tab reads, by the first segment of its
  * path under `/agent-platform`. Agents, Sessions and Models are kagent's;
- * "MCP Servers" is the muster plugin's tab, mounted at `muster` (see
- * `plugins/muster/src/plugin.tsx`). An unknown segment (the section index, a
+ * "MCP Servers" (`mcp-servers`) and "Workflows" (`workflows`) are the muster
+ * plugin's tabs (see `plugins/muster/src/plugin.tsx`). An unknown segment (the section index, a
  * future tab) gets no component: every platform installation is then offered
  * without a per-tab remark.
  */
@@ -24,13 +24,14 @@ const TAB_COMPONENTS: Record<string, PlatformComponent> = {
   // is a single value driving the selector's per-option remark, and the
   // personal kagent section is the page's primary content — the one whose
   // emptiness a reader will want explained. muster reports its own
-  // reachability inside its section, the same division of labour the `muster`
-  // row below relies on. An installation running muster but not kagent is
+  // reachability inside its section, the same division of labour the muster
+  // rows below rely on. An installation running muster but not kagent is
   // absent from the backend's kagent list, so it gets no misleading remark
   // either.
   usage: 'kagent',
   models: 'kagent',
-  muster: 'muster',
+  'mcp-servers': 'muster',
+  workflows: 'muster',
 };
 
 /** Exported for tests: the component a splat path under the page reads. */

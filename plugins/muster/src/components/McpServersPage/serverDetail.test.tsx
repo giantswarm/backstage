@@ -5,7 +5,7 @@ import {
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
   AuthChain,
@@ -95,7 +95,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use “Activate” in the actions below/),
+      screen.getByText(/Use “Activate” in the server’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -169,6 +169,57 @@ describe('AuthChain', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    [
+      'a forwarded token',
+      { forwardToken: true, requiredAudiences: ['k'] },
+      'oauth (implied by the forwarded token)',
+    ],
+    [
+      'token exchange',
+      {
+        forwardToken: true,
+        tokenExchange: { enabled: true, connectorId: 'giantswarm' },
+      },
+      'oauth (implied by token exchange)',
+    ],
+    [
+      'token exchange and no forwarded token',
+      { tokenExchange: { enabled: true, connectorId: 'giantswarm' } },
+      'oauth (implied by token exchange)',
+    ],
+  ])('shows the chain of a server with %s', async (_, auth, type) => {
+    // Without `type`, as the wizard writes it, and with the `type: none` and
+    // `forwardToken: false` defaults the cluster returns it with.
+    for (const stored of [
+      auth,
+      { type: 'none', forwardToken: false, ...auth },
+    ]) {
+      const { unmount } = await renderInTestApp(
+        <AuthChain
+          server={makeServer({ type: 'streamable-http', auth: stored })}
+        />,
+      );
+
+      expect(
+        screen.queryByText(/No authentication configured/),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(type)).toBeInTheDocument();
+      expect(screen.getByText('Forward token')).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('says a server without an auth block is anonymous', async () => {
+    await renderInTestApp(
+      <AuthChain server={makeServer({ type: 'streamable-http' })} />,
+    );
+
+    expect(
+      screen.getByText(/No authentication configured/),
+    ).toBeInTheDocument();
+  });
+
   it('leaves the OAuth chain untouched', async () => {
     await renderInTestApp(
       <AuthChain
@@ -202,27 +253,32 @@ async function renderTools(
         <ServerTools server={server} />
       </QueryClientProvider>
     </TestApiProvider>,
-    // ServerTools links each tool into the explorer, so the route the link
-    // resolves against has to be mounted.
-    { mountedRoutes: { '/agent-platform/muster': rootRouteRef } },
+    // ServerTools links each tool to its page, so the route the link resolves
+    // against has to be mounted.
+    { mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef } },
   );
 }
 
 describe('ServerTools', () => {
-  it('links each tool into the explorer, scoped to this server', async () => {
-    // The tags are the way from a server to its tools; an unscoped link would
-    // drop the reader into the whole aggregated catalogue.
+  it('links each tool to its page beneath this server', async () => {
+    // The tags are the way from a server to its tools; each opens the tool
+    // under the server offering it, on the same installation.
     await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
       total: 1,
       tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
     });
 
     const link = await screen.findByRole('link', { name: 'list_buckets' });
-    const href = link.getAttribute('href')!;
-    const params = new URLSearchParams(href.slice(href.indexOf('?')));
-    expect(params.get('installation')).toBe('gazelle');
-    expect(params.get('server')).toBe('aws-root');
-    expect(params.get('tool')).toBe('x_aws-root_list_buckets');
+    expect(link).toHaveAttribute(
+      'href',
+      '/agent-platform/mcp-servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Open the server’s tools' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/mcp-servers/aws-root?installation=gazelle',
+    );
   });
 });
 
@@ -245,7 +301,7 @@ describe('ServerTools with no tools to show', () => {
       await screen.findByText(/the server may be down or unreachable/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Use “Sign in” in the actions below/),
+      screen.queryByText(/Use “Sign in” in the server’s actions/),
     ).not.toBeInTheDocument();
   });
 
@@ -253,7 +309,7 @@ describe('ServerTools with no tools to show', () => {
     await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
 
     expect(
-      await screen.findByText(/Use “Sign in” in the actions below/),
+      await screen.findByText(/Use “Sign in” in the server’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -302,7 +358,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        'No tools exposed — this server is deactivated. Use “Activate” in the actions below.',
+        'No tools exposed — this server is deactivated. Use “Activate” in the server’s actions.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();

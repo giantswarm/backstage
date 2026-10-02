@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   renderInTestApp,
@@ -8,14 +8,18 @@ import {
 } from '@backstage/frontend-test-utils';
 
 import { musterApiRef } from '../../apis';
-import { rootRouteRef } from '../../routes';
+import { MCPServer } from '../../lib/k8s';
+import { mcpServersRouteRef } from '../../routes';
 import { McpServersRouter } from '../McpServersRouter';
 
 const connect = jest.fn();
 
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
+
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
-    installations: ['gazelle'],
+    installations: ['gazelle', 'golem'],
     isLoadingInstallations: false,
     installationInfos: [],
     activeInstallation: 'gazelle',
@@ -25,7 +29,8 @@ jest.mock('../MusterInstanceProvider', () => ({
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
-    mcpServers: [],
+    mcpServers: mockMcpServers,
+    isLoading: false,
     retry: jest.fn(),
   }),
   useMusterSession: () => ({
@@ -58,6 +63,16 @@ const musterApi = {
   filterTools,
 } as unknown as jest.Mocked<import('../../apis').MusterApi>;
 
+/** The browser's Back button. */
+function BrowserBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      browser back
+    </button>
+  );
+}
+
 function renderWizard(path: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -65,9 +80,10 @@ function renderWizard(path: string) {
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
+        <BrowserBack />
         <Routes>
           <Route
-            path="/agent-platform/muster/servers/*"
+            path="/agent-platform/mcp-servers/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -75,14 +91,14 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
 
 /** Walks the real flow: details → auth → review. */
 async function renderReviewStep() {
-  const result = await renderWizard('/agent-platform/muster/servers/new');
+  const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -97,6 +113,7 @@ async function renderReviewStep() {
 
 describe('NewMcpServerReviewPage', () => {
   beforeEach(() => {
+    mockMcpServers = [];
     callTool.mockReset();
     listServers.mockReset();
     getAuthStatus.mockReset();
@@ -112,7 +129,7 @@ describe('NewMcpServerReviewPage', () => {
   });
 
   it('sends a deep link back to step 1 while the form is incomplete', async () => {
-    await renderWizard('/agent-platform/muster/servers/new/review');
+    await renderWizard('/agent-platform/mcp-servers/new/review');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(
@@ -197,9 +214,14 @@ describe('NewMcpServerReviewPage', () => {
       screen.getAllByRole('button', { name: 'Edit details' })[0],
     );
     await screen.findByText('Step 1 of 4: Details');
-    expect(screen.getByLabelText(/^Name/)).toHaveValue('Weather');
-    // …with the technical name locked to the registered CR.
+    expect(screen.getByText('Edit MCP server: weather')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^URL/)).toHaveValue(
+      'https://weather.example.com/mcp',
+    );
+    // …with the technical name locked to the registered CR, and no display
+    // name to ask for: it only ever derived the technical name.
     expect(screen.getByLabelText(/Technical name/)).toBeDisabled();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
 
     // Walk forward again: the save is an update to the same name.
     callTool.mockClear();
@@ -210,7 +232,7 @@ describe('NewMcpServerReviewPage', () => {
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Continue' })[0],
     );
-    await screen.findByText('Step 3 of 4: Review & register');
+    await screen.findByText('Step 3 of 4: Review & save');
 
     await userEvent.click(
       screen.getAllByRole('button', { name: 'Save changes' })[0],
@@ -220,5 +242,94 @@ describe('NewMcpServerReviewPage', () => {
       'core_mcpserver_validate',
       'core_mcpserver_update',
     ]);
+  });
+
+  it('keeps the run as an edit of the new server when Back leaves verify after a create', async () => {
+    callTool.mockResolvedValue({});
+    await renderReviewStep();
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Register server' })[0],
+    );
+    await screen.findByText('Step 4 of 4: Verify');
+
+    // The registration's review step had no ?edit; Back must not empty the
+    // wizard into a registration that would fail with "already exists".
+    await userEvent.click(screen.getByRole('button', { name: 'browser back' }));
+
+    expect(
+      await screen.findByText('Step 3 of 4: Review & save'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'Save changes' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByText('Register an MCP server'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('saves an edit as validate then update, keeping what the wizard does not model', async () => {
+    mockMcpServers = [
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'miro' },
+          spec: {
+            type: 'streamable-http',
+            url: 'https://mcp.miro.com/',
+            autoStart: true,
+            headers: { 'X-Team': 'bumblebee' },
+            suspended: true,
+          },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    callTool.mockResolvedValue({});
+    await renderWizard('/agent-platform/mcp-servers/new?edit=miro');
+
+    expect(
+      await screen.findByText('Edit MCP server: miro'),
+    ).toBeInTheDocument();
+    const url = screen.getByLabelText(/^URL/);
+    await userEvent.clear(url);
+    await userEvent.type(url, 'https://mcp.miro.com/v2');
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Continue' })[0],
+    );
+    await screen.findByText('Step 2 of 4: Authentication');
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Continue' })[0],
+    );
+    await screen.findByText('Step 3 of 4: Review & save');
+    expect(screen.getByText('Manage via GitOps instead')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Save changes' })[0],
+    );
+
+    expect(await screen.findByText(/Changes saved\./)).toBeInTheDocument();
+    expect(callTool.mock.calls.map(c => c[0])).toEqual([
+      'core_mcpserver_validate',
+      'core_mcpserver_update',
+    ]);
+    for (const [, definition, installation] of callTool.mock.calls) {
+      expect(definition).toEqual({
+        name: 'miro',
+        type: 'streamable-http',
+        url: 'https://mcp.miro.com/v2',
+        autoStart: true,
+        headers: { 'X-Team': 'bumblebee' },
+      });
+      // The edited server's installation.
+      expect(installation).toBe('gazelle');
+    }
+  });
+
+  it('says so when the server to edit does not exist', async () => {
+    await renderWizard('/agent-platform/mcp-servers/new?edit=nope');
+
+    expect(await screen.findByText('Server not found')).toBeInTheDocument();
+    expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
   });
 });

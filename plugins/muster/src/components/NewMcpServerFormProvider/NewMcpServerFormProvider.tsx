@@ -1,16 +1,25 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
+import type { MCPServer } from '../../lib/k8s';
+import { toMcpServerDefinition } from '../../lib/gitops';
 import {
+  authAnswerOf,
   authFieldAvailability,
   composeMcpServerDefinition,
   deriveSlug,
+  emptyAuthAnswer,
   emptyFormState,
+  formStateFromServer,
+  hasUserInput,
+  mergeOntoExisting,
   sigv4Advisories,
   validateMcpServerAuth,
   validateMcpServerDetails,
@@ -39,13 +48,47 @@ export type NewMcpServerFormContextValue = {
   setSigv4RoleArn: (roleArn: string) => void;
   setMeta: (meta: McpServerMetaEntry[]) => void;
   /**
-   * The CR name this wizard run has already registered, set by the review
-   * step's successful create. While set, saving again is an update to that CR
-   * (never a delete-and-recreate) and the technical name is locked — a rename
-   * would target a different CR and orphan the registered one.
+   * The CR name this wizard run edits: the server an Edit started from, or the
+   * one the review step's successful create registered. While set, saving is
+   * an update to that CR (never a delete-and-recreate) and the technical name
+   * is locked — a rename would target a different CR and orphan this one.
    */
   registeredName: string | undefined;
-  setRegisteredName: (name: string | undefined) => void;
+  /**
+   * The installation the registered server lives on, set together with
+   * {@link registeredName}. The form's installation stays pinned to it: an
+   * update must reach this server, not whichever installation the header
+   * selector shows by now.
+   */
+  registeredInstallation: string | undefined;
+  /**
+   * How this run last wrote the server: `create` after registering it,
+   * `update` after saving changes to it. Undefined until the first save.
+   */
+  lastSave: 'create' | 'update' | undefined;
+  /**
+   * Epoch-ms of that last save. A server list read before it still shows the
+   * server as it was, so the verify step waits for a newer read.
+   */
+  lastSaveAt: number | undefined;
+  /**
+   * Records a successful create or update of `definition`: the server is now
+   * registered under its name on the form's installation, and later saves
+   * (the verify step's "Edit details" loop) are updates laid over exactly what
+   * was saved — not over the server as it was when the edit started.
+   */
+  markSaved: (definition: McpServerDefinition) => void;
+  /**
+   * Seeds the wizard from an already-registered server, so its "Edit" opens
+   * the registration form pre-filled. Saving is then an update to that server
+   * that keeps every field the wizard does not model. An unfinished new
+   * registration is set aside, and {@link reset} brings it back.
+   */
+  startEdit: (server: MCPServer) => void;
+  /**
+   * Ends this run: back to the registration draft an edit set aside, or to an
+   * empty form.
+   */
   reset: () => void;
   /** True when the form has no validation errors. */
   isComplete: boolean;
@@ -77,13 +120,22 @@ export type NewMcpServerFormContextValue = {
    * Continue.
    */
   authAdvisories: string[];
-  /** The definition passed to muster's validate/create tools. */
+  /** The definition passed to muster's validate/create/update tools. */
   definition: McpServerDefinition;
 };
 
 const NewMcpServerFormContext = createContext<
   NewMcpServerFormContextValue | undefined
 >(undefined);
+
+/** The registered server a run edits, and the form state it reads back as. */
+type EditBase = {
+  definition: Record<string, unknown>;
+  form: NewMcpServerFormState;
+};
+
+/** An unfinished registration an edit set aside. */
+type Draft = { state: NewMcpServerFormState; slugEdited: boolean };
 
 /**
  * Shared form state for the MCP server registration wizard (details → auth →
@@ -104,9 +156,70 @@ export function NewMcpServerFormProvider({
   // it by hand (same rule as agent creation).
   const [slugEdited, setSlugEdited] = useState(false);
   const [registeredName, setRegisteredName] = useState<string | undefined>();
+  const [registeredInstallation, setRegisteredInstallation] = useState<
+    string | undefined
+  >();
+  const [lastSave, setLastSave] = useState<'create' | 'update'>();
+  const [lastSaveAt, setLastSaveAt] = useState<number>();
+  // The registered server as last read or saved: the base the wizard's
+  // definition is laid over, so an update keeps what it cannot show.
+  const [base, setBase] = useState<EditBase>();
+
+  // The run-level actions below are stable (the servers page memoizes its
+  // header actions on them), so they read the current values from here.
+  const latest = useRef({ state, slugEdited, registeredName });
+  latest.current = { state, slugEdited, registeredName };
+  const draft = useRef<Draft>();
+
+  const markSaved = useCallback((saved: McpServerDefinition) => {
+    const current = latest.current;
+    setLastSave(current.registeredName ? 'update' : 'create');
+    setLastSaveAt(Date.now());
+    setRegisteredName(saved.name);
+    setRegisteredInstallation(current.state.installation);
+    setBase({ definition: saved, form: current.state });
+  }, []);
+
+  const startEdit = useCallback((server: MCPServer) => {
+    const current = latest.current;
+    // Only a registration in progress is a draft; an edit replaced by another
+    // edit has nothing to come back to.
+    if (!current.registeredName && hasUserInput(current.state)) {
+      draft.current = {
+        state: current.state,
+        slugEdited: current.slugEdited,
+      };
+    }
+    const form = formStateFromServer(server);
+    setSlugEdited(true);
+    setRegisteredName(server.getName());
+    setRegisteredInstallation(server.cluster);
+    setLastSave(undefined);
+    setLastSaveAt(undefined);
+    setBase({ definition: toMcpServerDefinition(server), form });
+    setState(form);
+  }, []);
+
+  const reset = useCallback(() => {
+    const restored = draft.current;
+    draft.current = undefined;
+    setSlugEdited(restored?.slugEdited ?? false);
+    setRegisteredName(undefined);
+    setRegisteredInstallation(undefined);
+    setLastSave(undefined);
+    setLastSaveAt(undefined);
+    setBase(undefined);
+    setState(restored?.state ?? emptyFormState);
+  }, []);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
-    const detailsErrors = validateMcpServerDetails(state);
+    // The display name only derives the technical name, which an edit locks —
+    // so the Details step hides it then, and it must not block the edit.
+    const detailsErrors = validateMcpServerDetails(
+      registeredName && !state.name.trim()
+        ? { ...state, name: registeredName }
+        : state,
+    );
     const validationErrors = [
       ...detailsErrors,
       ...validateMcpServerAuth(state),
@@ -133,18 +246,21 @@ export function NewMcpServerFormProvider({
       setTransport: transport => setState(prev => ({ ...prev, transport })),
       // Switching auth mode drops the other mode's fields: they are mutually
       // exclusive in the CRD, so keeping them would let a stale issuer or
-      // audience list ride along into the composed definition.
+      // audience list ride along into the composed definition. Re-picking the
+      // current mode (a click on the already-selected card) is no switch and
+      // keeps what is filled in; switching back to the registered server's own
+      // mode brings its values back rather than an empty answer.
       setAuthMode: authMode =>
-        setState(prev => ({
-          ...prev,
-          authMode,
-          issuer: '',
-          scopes: '',
-          requiredAudiences: [],
-          sigv4Region: '',
-          sigv4Service: '',
-          sigv4RoleArn: '',
-        })),
+        setState(prev => {
+          if (prev.authMode === authMode) {
+            return prev;
+          }
+          const answer =
+            base && base.form.authMode === authMode
+              ? authAnswerOf(base.form)
+              : emptyAuthAnswer;
+          return { ...prev, authMode, ...answer };
+        }),
       setIssuer: issuer => setState(prev => ({ ...prev, issuer })),
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
       setRequiredAudiences: requiredAudiences =>
@@ -157,20 +273,33 @@ export function NewMcpServerFormProvider({
         setState(prev => ({ ...prev, sigv4RoleArn })),
       setMeta: meta => setState(prev => ({ ...prev, meta })),
       registeredName,
-      setRegisteredName,
-      reset: () => {
-        setSlugEdited(false);
-        setRegisteredName(undefined);
-        setState(emptyFormState);
-      },
+      registeredInstallation,
+      lastSave,
+      lastSaveAt,
+      markSaved,
+      startEdit,
+      reset,
       isComplete: validationErrors.length === 0,
       validationErrors,
       detailsErrors,
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
-      definition: composeMcpServerDefinition(state),
+      definition: base
+        ? mergeOntoExisting(base.definition, composeMcpServerDefinition(state))
+        : composeMcpServerDefinition(state),
     };
-  }, [state, slugEdited, registeredName]);
+  }, [
+    state,
+    slugEdited,
+    registeredName,
+    registeredInstallation,
+    lastSave,
+    lastSaveAt,
+    base,
+    markSaved,
+    startEdit,
+    reset,
+  ]);
 
   return (
     <NewMcpServerFormContext.Provider value={value}>

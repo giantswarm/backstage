@@ -186,8 +186,7 @@ export function WorkflowStatsPanel({
   if (!data || data.runs === 0) {
     return (
       <Typography variant="body2" color="textSecondary">
-        No engine- or agent-driven executions recorded for this workflow yet.
-        Runs launched from the tool explorer are not recorded here.
+        No runs of this workflow recorded yet.
       </Typography>
     );
   }

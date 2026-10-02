@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDisabledInstallations, useInstallationsInfo } from '../../hooks';
 import { Grid, TextField } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
@@ -36,8 +36,10 @@ const InstallationPickerField = ({
   widget = 'radio',
   onInstallationSelect,
 }: InstallationFieldProps) => {
-  const { disabledInstallations } = useDisabledInstallations();
-  const { installationsInfo } = useInstallationsInfo();
+  const { isLoading: isLoadingDisabledInstallations, disabledInstallations } =
+    useDisabledInstallations();
+  const { installationsInfo, isLoading: isLoadingInstallations } =
+    useInstallationsInfo();
   const { installations, installationLabels } = useMemo(() => {
     let filteredInstallations = installationsInfo;
     const labels: string[] = [];
@@ -92,19 +94,77 @@ const InstallationPickerField = ({
   const activeInstallations = installations.filter(
     installation => !disabledInstallations.includes(installation),
   );
-  const defaultValue =
-    autoSelectFirstValue && activeInstallations.length > 0
+  // Which installations can be picked is only known once the list has loaded
+  // and the health checks are in: an installation with a `backendUrl` override
+  // counts as disabled until its check answers.
+  const isSettled = !isLoadingInstallations && !isLoadingDisabledInstallations;
+  // A single selectable installation is not a choice, whether it is the only
+  // allowed one or the others are disabled: select it for the person, even
+  // with `autoSelectFirstValue: false`.
+  const soleActiveInstallation =
+    isSettled && activeInstallations.length === 1
       ? activeInstallations[0]
       : undefined;
+  const defaultValue =
+    soleActiveInstallation ??
+    (autoSelectFirstValue && activeInstallations.length > 0
+      ? activeInstallations[0]
+      : undefined);
   const [selectedInstallation, setSelectedInstallation] = useState<
     string | undefined
   >(installationNameValue ?? defaultValue);
+  // The value the sole-option rule picked (rather than the person or
+  // `autoSelectFirstValue`), withdrawn again once there is a real choice.
+  const soleAutoPick = useRef<string | undefined>(
+    installationNameValue === undefined ? soleActiveInstallation : undefined,
+  );
 
   useEffect(() => {
-    if (selectedInstallation && !installations.includes(selectedInstallation)) {
+    const isSelectedDisabled =
+      !isLoadingDisabledInstallations &&
+      selectedInstallation !== undefined &&
+      disabledInstallations.includes(selectedInstallation);
+    // Not while the list is loading: it is empty then, and a restored value
+    // would be dropped before it could be matched.
+    const isSelectedGone =
+      !isLoadingInstallations &&
+      selectedInstallation !== undefined &&
+      !installations.includes(selectedInstallation);
+    if (selectedInstallation && isSelectedGone) {
+      soleAutoPick.current = soleActiveInstallation;
       setSelectedInstallation(defaultValue);
+    } else if (selectedInstallation && isSelectedDisabled) {
+      // A pick the health check has just marked disabled (a single slow answer
+      // is enough) is withdrawn, but never swapped for a different
+      // installation the person didn't choose: only the sole active one may
+      // take its place, otherwise the required field is left empty.
+      soleAutoPick.current = soleActiveInstallation;
+      setSelectedInstallation(soleActiveInstallation);
+    } else if (!selectedInstallation && soleActiveInstallation) {
+      soleAutoPick.current = soleActiveInstallation;
+      setSelectedInstallation(soleActiveInstallation);
+    } else if (
+      isSettled &&
+      !soleActiveInstallation &&
+      soleAutoPick.current !== undefined &&
+      selectedInstallation === soleAutoPick.current
+    ) {
+      soleAutoPick.current = undefined;
+      if (!autoSelectFirstValue) {
+        setSelectedInstallation(undefined);
+      }
     }
-  }, [activeInstallations, defaultValue, installations, selectedInstallation]);
+  }, [
+    autoSelectFirstValue,
+    defaultValue,
+    disabledInstallations,
+    installations,
+    isLoadingDisabledInstallations,
+    isLoadingInstallations,
+    isSettled,
+    selectedInstallation,
+    soleActiveInstallation,
+  ]);
 
   useEffect(() => {
     const selectedInstallationInfo = installationsInfo.find(
@@ -119,8 +179,28 @@ const InstallationPickerField = ({
   }, [installationsInfo, onInstallationSelect, selectedInstallation]);
 
   const handleChange = (selectedItem: string) => {
+    soleAutoPick.current = undefined;
     setSelectedInstallation(selectedItem);
   };
+
+  // Only one allowed installation, selected for the person: nothing to show.
+  // Stay hidden while that is still being worked out (the list loading, its
+  // health check pending) rather than flashing a disabled option first. Once
+  // the field has been on screen it stays, so the form doesn't shift under the
+  // person; a disabled option then explains why there is no choice.
+  const wasShown = useRef(false);
+  const isHidden =
+    !wasShown.current &&
+    (isLoadingInstallations ||
+      (installations.length === 1 &&
+        (isLoadingDisabledInstallations ||
+          soleActiveInstallation !== undefined)));
+  if (!isHidden) {
+    wasShown.current = true;
+  }
+  if (isHidden) {
+    return null;
+  }
 
   return (
     <Grid container spacing={3} direction="column">

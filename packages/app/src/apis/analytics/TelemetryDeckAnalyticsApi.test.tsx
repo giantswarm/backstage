@@ -18,6 +18,7 @@ const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
 describe('TelemetryDeckAnalyticsApi', () => {
   const configApi = {
     getOptionalConfig: jest.fn().mockReturnValue(undefined),
+    getOptionalString: jest.fn().mockReturnValue(undefined),
   } as unknown as ConfigApi;
 
   const identityApi = {
@@ -58,6 +59,7 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {
@@ -102,6 +104,23 @@ describe('TelemetryDeckAnalyticsApi', () => {
     expect(mockSignal).toHaveBeenCalledWith('pageview', {
       page: 'Clusters index',
       path: '/clusters',
+    });
+  });
+
+  it('adds the release version to the pageview signal when configured', async () => {
+    jest
+      .mocked(configApi.getOptionalString)
+      .mockImplementation(key =>
+        key === 'app.releaseVersion' ? '2.81.5' : undefined,
+      );
+
+    navigateInTestApp('/clusters', { registerRoute: true });
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledWith('pageview', {
+      page: 'Clusters index',
+      path: '/clusters',
+      'TelemetryDeck.AppInfo.version': '2.81.5',
     });
   });
 

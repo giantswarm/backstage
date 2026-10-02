@@ -227,55 +227,60 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  it('should return correct payload for muster index page', () => {
-    const result = getTelemetryPageViewPayload('/agent-platform/muster');
-    expect(result).toEqual({
-      page: 'Muster index',
-      path: '/agent-platform/muster',
-    });
-  });
-
-  it('should return correct payload for muster servers view', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/servers',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'servers',
-      path: '/agent-platform/muster/servers',
-    });
-  });
-
-  it('should return correct payload for muster workflows view', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/workflows',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'workflows',
-      path: '/agent-platform/muster/workflows',
-    });
-  });
-
-  it('should return correct payload for a muster workflow detail sub-route', () => {
-    const result = getTelemetryPageViewPayload(
-      '/agent-platform/muster/workflows/my-workflow',
-    );
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'workflows',
-      path: '/agent-platform/muster/workflows/my-workflow',
-    });
-  });
-
-  it('should return correct payload for muster tools view', () => {
-    const result = getTelemetryPageViewPayload('/agent-platform/muster/tools');
-    expect(result).toEqual({
-      page: 'Muster',
-      view: 'tools',
-      path: '/agent-platform/muster/tools',
-    });
-  });
+  it.each([
+    ['/agent-platform/mcp-servers', { page: 'MCP Servers' }],
+    [
+      '/agent-platform/mcp-servers/new',
+      { page: 'MCP server registration', view: 'server' },
+    ],
+    [
+      '/agent-platform/mcp-servers/new/auth',
+      { page: 'MCP server registration', view: 'auth' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes',
+      { page: 'MCP server', view: 'tools' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/details',
+      { page: 'MCP server', view: 'details' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/instances',
+      { page: 'MCP server', view: 'instances' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'MCP tool' },
+    ],
+    // A server named like a wizard step is not one: only `new` is.
+    [
+      '/agent-platform/mcp-servers/newsroom',
+      { page: 'MCP server', view: 'tools' },
+    ],
+    ['/agent-platform/workflows', { page: 'Workflows' }],
+    [
+      '/agent-platform/workflows/my-workflow',
+      { page: 'Workflow', view: 'overview' },
+    ],
+    [
+      '/agent-platform/workflows/my-workflow/run',
+      { page: 'Workflow', view: 'run' },
+    ],
+    // The old section's paths, one name and no view, not the Agents page.
+    ['/agent-platform/muster', { page: 'Muster (removed)' }],
+    [
+      '/agent-platform/muster/servers/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'Muster (removed)' },
+    ],
+    // Not the old section: only `muster` itself is.
+    ['/agent-platform/musterish', { page: 'Agents', view: 'musterish' }],
+  ])(
+    'should report muster tab path %s under its own page name',
+    (path, payload) => {
+      expect(getTelemetryPageViewPayload(path)).toEqual({ ...payload, path });
+    },
+  );
 
   it('should return correct payload for the sessions tab', () => {
     // Reported as its own page rather than falling through to the generic
@@ -488,13 +493,15 @@ describe('getTelemetryPageViewPayload', () => {
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
-      '/agent-platform/muster',
-      '/agent-platform/muster/dashboard',
-      '/agent-platform/muster/servers',
-      '/agent-platform/muster/workflows',
-      '/agent-platform/muster/workflows/my-workflow',
-      '/agent-platform/muster/workflows/my-workflow/run',
-      '/agent-platform/muster/tools',
+      '/agent-platform/mcp-servers',
+      '/agent-platform/mcp-servers/new',
+      '/agent-platform/mcp-servers/new/verify',
+      '/agent-platform/mcp-servers/kubernetes',
+      '/agent-platform/mcp-servers/kubernetes/details',
+      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
+      '/agent-platform/workflows',
+      '/agent-platform/workflows/my-workflow',
+      '/agent-platform/workflows/my-workflow/run',
       '/agent-platform',
       '/agent-platform/agents/new',
       '/agent-platform/agents/new/skills',

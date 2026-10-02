@@ -13,6 +13,17 @@ type DetailsPaneOptions = {
   prefix?: string;
 };
 
+/** The query parameters a pane is described by, before any prefix. */
+const PANE_KEYS = [
+  'pane',
+  'cluster',
+  'clusterName',
+  'apiVersion',
+  'kind',
+  'namespace',
+  'name',
+] as const;
+
 function prefixKey(key: string, prefix?: string): string {
   return prefix ? `${prefix}-${key}` : key;
 }
@@ -26,6 +37,13 @@ export function useDetailsPane(paneId: string, options?: DetailsPaneOptions) {
 
   return {
     isOpen: pane === paneId,
+    /**
+     * The link that opens this pane over `baseRoute`. With `keepSearch` the
+     * current query string is kept (minus any pane parameters it carries
+     * already), for a link that opens the pane over the page it is on
+     * without dropping that page's own parameters -- an `?installation=`
+     * scope, a filter.
+     */
     getRoute(
       baseRoute: string,
       {
@@ -36,13 +54,16 @@ export function useDetailsPane(paneId: string, options?: DetailsPaneOptions) {
         namespace,
         name,
       }: DetailsPaneParams,
+      { keepSearch = false }: { keepSearch?: boolean } = {},
     ) {
-      const params = new URLSearchParams({
-        [prefixKey('pane', prefix)]: paneId,
-        [prefixKey('cluster', prefix)]: cluster,
-        [prefixKey('kind', prefix)]: kind,
-        [prefixKey('name', prefix)]: name,
-      });
+      const params = new URLSearchParams(keepSearch ? searchParams : undefined);
+      for (const key of PANE_KEYS) {
+        params.delete(prefixKey(key, prefix));
+      }
+      params.set(prefixKey('pane', prefix), paneId);
+      params.set(prefixKey('cluster', prefix), cluster);
+      params.set(prefixKey('kind', prefix), kind);
+      params.set(prefixKey('name', prefix), name);
       if (clusterName) {
         params.set(prefixKey('clusterName', prefix), clusterName);
       }

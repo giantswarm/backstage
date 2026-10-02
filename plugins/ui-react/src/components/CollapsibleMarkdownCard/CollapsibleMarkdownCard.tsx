@@ -18,6 +18,8 @@ const useStyles = makeStyles({
 export type CollapsibleMarkdownCardProps = {
   title: string;
   content: string | undefined | null;
+  /** URL the markdown was loaded from; relative links resolve against it. */
+  sourceUrl?: string;
   isLoading: boolean;
   error?: Error | null;
   emptyMessage: string;
@@ -34,6 +36,7 @@ export type CollapsibleMarkdownCardProps = {
 export const CollapsibleMarkdownCard = ({
   title,
   content,
+  sourceUrl,
   isLoading,
   error,
   emptyMessage,
@@ -60,7 +63,11 @@ export const CollapsibleMarkdownCard = ({
     }
 
     return (
-      <CollapsibleMarkdown content={content} toggleLabels={toggleLabels} />
+      <CollapsibleMarkdown
+        content={content}
+        sourceUrl={sourceUrl}
+        toggleLabels={toggleLabels}
+      />
     );
   };
 

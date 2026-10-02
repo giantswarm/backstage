@@ -18,6 +18,18 @@ In our case, this is expected to provide the URL of the source code repository o
 
 See [upstream documentation](https://backstage.io/docs/features/software-catalog/well-known-annotations/#backstageiotechdocs-ref).
 
+### giantswarm.io/app-test-suite-version-source
+
+Where the version in the `giantswarm.io/app-test-suite-version` label comes from: `repo` when the repository passes its own `app-test-suite_container_tag` to `run-tests-with-ats`, `orb-default` when it relies on the default of the architect orb release it uses. Only set together with that label.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
+### giantswarm.io/architect-orb-ref
+
+The raw architect orb reference of a component whose CircleCI configuration uses a non-release ref, such as `dev:<sha>` or `volatile`. Such a ref is not a valid label value, so it is published here instead of in `giantswarm.io/architect-orb-version`, and `giantswarm.io/architect-orb-status` is `non-release`.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
 ### giantswarm.io/base
 
 Base domain of a Giant Swarm installation.
@@ -80,9 +92,51 @@ This annotation is needed to enable several features linked to the GitHub reposi
 
 ## Labels
 
+### giantswarm.io/app-build-suite-version
+
+The app-build-suite version that builds the component's charts, e.g. `2.5.1`. It is not chosen by the repository: the architect orb's `push-to-app-catalog` job runs on the orb's `app-build-suite` executor, so the version follows from the orb release in `giantswarm.io/architect-orb-version`. Only set for components that run `push-to-app-catalog`.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
+### giantswarm.io/app-build-suite-status
+
+Why a component that runs, or may run, `push-to-app-catalog` has no `giantswarm.io/app-build-suite-version` label. The only value is `unknown`: the orb ref is not a release, the orb source could not be read, or the CircleCI configuration could not be read in full, so whether the job runs is not known.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
 ### giantswarm.io/app-deployment-action
 
 Used on Template entities to identify scaffolder templates for app deployment actions. The portal discovers these templates by label instead of by name, so template names and namespaces can vary across environments. Supported values are `create` (for creating new app deployments) and `edit` (for editing existing ones).
+
+### giantswarm.io/app-test-suite-version
+
+The app-test-suite version the component's `run-tests-with-ats` job uses, e.g. `1.0.3`. `giantswarm.io/app-test-suite-version-source` says whether the repository sets it or relies on the architect orb's default. Only set for components that run `run-tests-with-ats`.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
+### giantswarm.io/app-test-suite-status
+
+Why a component that runs, or may run, `run-tests-with-ats` has no `giantswarm.io/app-test-suite-version` label:
+
+- `conflict`: the component would run more than one app-test-suite version, for example two jobs with different container tags, or one with a tag next to one on the orb default.
+- `unknown`: the version could not be determined. The tag is a CircleCI template expression such as `<< parameters.ats_version >>`; or the repository relies on the orb default, but the orb ref is not a release or the orb release defines no default (releases before v5) or could not be read; or the CircleCI configuration could not be read in full, so whether the job runs is not known.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
+
+### giantswarm.io/architect-orb-version
+
+The release of the `giantswarm/architect` CircleCI orb the component's CircleCI configuration uses, e.g. `10.11.1` (a leading `v` in the reference is dropped). Read from `.circleci/config.yml`, and for devctl-generated dynamic configuration also from `.circleci/workflows.yml` and `.circleci/custom.yml`. Only set for a release reference.
+
+Set by the catalog importer on component entities in Giant Swarm's internal developer portal only. This label and the other build toolchain metadata (`giantswarm.io/app-build-suite-*`, `giantswarm.io/app-test-suite-*`, `giantswarm.io/architect-orb-*`) say what the repository's default branch declares it builds with, not what the last build ran: an orb bump after the last green build changes the label, not history. Versions are labels so the catalog can filter on them; each `*-status` label is set only where the tool is used, or may be used, but its version label could not be set.
+
+### giantswarm.io/architect-orb-status
+
+Why a component has no `giantswarm.io/architect-orb-version` label although it uses, or may use, the architect orb:
+
+- `non-release`: the orb is referenced by a non-release ref, published in the `giantswarm.io/architect-orb-ref` annotation.
+- `unknown`: the CircleCI configuration could not be read in full, for example a setup workflow that generates its continuation at pipeline time.
+
+Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
 
 ### giantswarm.io/customer
 

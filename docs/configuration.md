@@ -9,16 +9,16 @@ unauthenticated `index.html`: every path a `config.d.ts` marks
 `@visibility frontend`, served to anyone who can reach the portal, signed in or
 not. It is kept to what the sign-in page needs before anyone is signed in:
 
-| Path                                                                          | Why it is public                                                                             |
-| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `app.*` (title, baseUrl, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
-| `backend.baseUrl`                                                             | where the sign-in flow and every request go                                                  |
-| `auth.environment`, `auth.providers.*`                                        | which providers exist (their secrets are `@visibility secret`)                               |
-| `gs.authProvider`                                                             | the provider the sign-in page initiates                                                      |
-| `gs.auth.scopes`, `gs.auth.extraScopes`                                       | the scopes the sign-in requests                                                              |
-| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                          | the two sign-in cards                                                                        |
-| `gs.github.brokerAudience`                                                    | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
-| `organization.name`, `permission.enabled`                                     | Backstage core                                                                               |
+| Path                                                                                           | Why it is public                                                                             |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `app.*` (title, baseUrl, release version, extensions, routes, branding, Sentry, TelemetryDeck) | the app shell and the sign-in page render from it                                            |
+| `backend.baseUrl`                                                                              | where the sign-in flow and every request go                                                  |
+| `auth.environment`, `auth.providers.*`                                                         | which providers exist (their secrets are `@visibility secret`)                               |
+| `gs.authProvider`                                                                              | the provider the sign-in page initiates                                                      |
+| `gs.auth.scopes`, `gs.auth.extraScopes`                                                        | the scopes the sign-in requests                                                              |
+| `gs.signInProvider.*`, `gs.signInFallbackProvider.*`                                           | the two sign-in cards                                                                        |
+| `gs.github.brokerAudience`                                                                     | picks the GitHub auth API when the app constructs its APIs, before sign-in; an audience name |
+| `organization.name`, `permission.enabled`                                                      | Backstage core                                                                               |
 
 The **signed-in config** is served by the authenticated `GET /api/gs/config`,
 once, after the main sign-in, in app-config shape. Everything else a Giant
@@ -418,6 +418,34 @@ The following optional features are available:
 - `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
+
+## Egress through an HTTP proxy
+
+Where the backend has to reach the internet through a forward proxy, set the
+`GLOBAL_AGENT_*` variables in the chart's `backstage.extraEnvVars`:
+
+```yaml
+backstage:
+  extraEnvVars:
+    - name: GLOBAL_AGENT_HTTP_PROXY
+      value: http://proxy.example.com:3128
+    - name: GLOBAL_AGENT_NO_PROXY
+      value: 127.0.0.1,localhost,.svc,.cluster.local,.example.com
+```
+
+They cover both HTTP stacks of the backend: `global-agent` routes the
+`http`/`https` modules, and the backend gives Node's native `fetch` (the
+catalog, the scaffolder and most plugins read URLs with it) a proxy dispatcher
+from the same values. `GLOBAL_AGENT_HTTP_PROXY` also serves HTTPS unless
+`GLOBAL_AGENT_HTTPS_PROXY` is set. Only `GLOBAL_AGENT_NO_PROXY` exempts hosts; a
+`NO_PROXY` injected into the pod does not apply. Write domain suffixes with a
+leading dot or `*.` (`.example.com`, `*.example.com`): both stacks read them
+as the domain's subdomains.
+
+`NODE_USE_ENV_PROXY=1` instead hands the proxy to Node itself (`HTTP_PROXY`,
+`HTTPS_PROXY`, `NO_PROXY`); the backend then leaves `fetch` to Node. Node's
+`http` module reads a bare `example.com` in `NO_PROXY` as that one host only,
+so domain suffixes need the leading dot there.
 
 ## Grafana dashboards card
 

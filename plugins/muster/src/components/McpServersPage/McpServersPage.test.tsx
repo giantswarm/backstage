@@ -1,40 +1,35 @@
-import { screen, within } from '@testing-library/react';
+import { ReactNode } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { rootRouteRef } from '../../routes';
+import { musterApiRef } from '../../apis';
+import { mcpServersRouteRef } from '../../routes';
 import {
   MANAGEMENT_CLUSTER_LABEL,
   MCPServer,
-  TOOL_GROUP_LABEL,
-  ToolGroup,
+  MCPServerState,
 } from '../../lib/k8s';
+import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { McpServersPage } from './McpServersPage';
 
-// The page under test is the partition into sections; the rows themselves
-// (per-cluster pills, runtime counts, mutation actions) have their own tests
-// and pull in the muster API, so they are stubbed to a marker each.
-jest.mock('./StandardServerDisclosure', () => ({
-  StandardServerDisclosure: ({
-    family,
-    servers,
-  }: {
-    family: string;
-    servers: MCPServer[];
-  }) => (
-    <div data-testid="server-row">
-      family:{family} ({servers.length})
-    </div>
-  ),
+let mockHeaderActions: ReactNode = null;
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  useProvidePageHeaderActions: (element: ReactNode) => {
+    mockHeaderActions = element;
+  },
 }));
-jest.mock('./IntegrationServerDisclosure', () => ({
-  IntegrationServerDisclosure: ({ server }: { server: MCPServer }) => (
-    <div data-testid="server-row">server:{server.getName()}</div>
-  ),
-}));
-jest.mock('./ServerMutationActions', () => ({
-  AddAdHocServerButton: () => <button type="button">Add ad-hoc server</button>,
+
+// The endpoint summary reads the session and the runtime list itself; it has
+// its own tests.
+jest.mock('./MusterSummary', () => ({
+  MusterSummary: () => <div data-testid="muster-summary" />,
 }));
 
 let mcpServers: MCPServer[] = [];
+let mockAuthenticated = true;
 // What the provider says, so a test can put the page in its loading or
 // no-muster state without a real inventory behind it.
 let instanceOverrides: Record<string, unknown> = {};
@@ -56,24 +51,29 @@ jest.mock('../MusterInstanceProvider', () => ({
     mcpServers,
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: Date.now(),
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...instanceOverrides,
   }),
-  // Unauthenticated: the core row shows its gate instead of loading the core
-  // families, which keeps the page free of muster API calls here.
   useMusterSession: () => ({
-    authenticated: false,
+    authenticated: mockAuthenticated,
+    pending: false,
     connecting: false,
     connect: jest.fn(),
   }),
 }));
 
+const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
+
 function makeServer(
   name: string,
-  options: { family?: string; mc?: string; toolGroup?: ToolGroup } = {},
+  options: {
+    family?: string;
+    mc?: string;
+    state?: MCPServerState;
+    labels?: Record<string, string>;
+    auth?: Record<string, unknown>;
+  } = {},
 ): MCPServer {
   return new MCPServer(
     {
@@ -83,202 +83,321 @@ function makeServer(
         name,
         labels: {
           ...(options.mc ? { [MANAGEMENT_CLUSTER_LABEL]: options.mc } : {}),
-          ...(options.toolGroup
-            ? { [TOOL_GROUP_LABEL]: options.toolGroup }
-            : {}),
+          ...options.labels,
         },
       },
       spec: {
         type: 'streamable-http',
-        ...(options.family ? { family: { name: options.family } } : {}),
+        url: `https://${name}.example.test/mcp`,
+        ...(options.family
+          ? {
+              family: {
+                name: options.family,
+                instanceArg: 'management_cluster',
+              },
+            }
+          : {}),
+        ...(options.auth ? { auth: options.auth } : {}),
       },
-      status: { state: 'Connected' },
+      status: { state: options.state ?? 'Connected' },
     } as never,
     'gazelle',
   );
 }
 
-async function renderPage(
-  servers: MCPServer[],
-  overrides: Record<string, unknown> = {},
-) {
-  mcpServers = servers;
-  instanceOverrides = overrides;
-  return renderInTestApp(<McpServersPage />, {
-    mountedRoutes: { '/agent-platform/muster': rootRouteRef },
-  });
-}
+const fleet = () => [
+  makeServer('walrus-mcp-kubernetes', {
+    family: 'kubernetes',
+    mc: 'walrus',
+    labels: HELM,
+    auth: { type: 'oauth', forwardToken: true },
+  }),
+  makeServer('gazelle-mcp-kubernetes', {
+    family: 'kubernetes',
+    mc: 'gazelle',
+    state: 'Failed',
+    labels: HELM,
+    auth: { type: 'oauth', forwardToken: true },
+  }),
+  makeServer('github', { labels: HELM, auth: { type: 'oauth' } }),
+  makeServer('aws-root', { auth: { type: 'sigv4', sigv4: { region: 'x' } } }),
+];
 
-/** The section (aria-labelled by its tool-group title) and its row markers. */
-function section(title: string) {
-  const region = screen.getByRole('region', { name: title });
+const withMiro = () => [
+  ...fleet(),
+  makeServer('miro', { state: 'Auth Required', auth: { type: 'oauth' } }),
+];
+
+const TOOLS = [
+  { name: 'x_kubernetes_get_pods', description: 'List pods' },
+  { name: 'x_kubernetes_logs', description: 'Pod logs' },
+  { name: 'x_github_list_pulls', description: 'List pull requests' },
+  { name: 'x_github_get_pod_template', description: 'Pod issue templates' },
+  { name: 'x_aws-root_list_buckets', description: 'List buckets' },
+  { name: 'core_workflow_list', description: 'List workflows' },
+];
+
+function makeApi() {
   return {
-    region,
-    rows: within(region)
-      .queryAllByTestId('server-row')
-      .map(el => el.textContent),
+    filterTools: jest.fn(async () => ({
+      total: TOOLS.length,
+      filtered_count: TOOLS.length,
+      truncated: false,
+      tools: TOOLS,
+    })),
   };
 }
 
-/** Asserts the elements appear in the document in the given order. */
-function expectDocumentOrder(...elements: HTMLElement[]) {
-  for (let i = 1; i < elements.length; i += 1) {
-    // eslint-disable-next-line no-bitwise
-    const precedes = Boolean(
-      elements[i - 1].compareDocumentPosition(elements[i]) &
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    expect(precedes).toBe(true);
-  }
+function CurrentPath() {
+  const { pathname, search } = useLocation();
+  return <div data-testid="path">{`${pathname}${search}`}</div>;
 }
 
+const BASE = '/agent-platform/mcp-servers';
+
+async function renderPage(
+  servers: MCPServer[],
+  {
+    path = `${BASE}?installation=gazelle`,
+    overrides = {},
+    api = makeApi(),
+  }: {
+    path?: string;
+    overrides?: Record<string, unknown>;
+    api?: ReturnType<typeof makeApi>;
+  } = {},
+) {
+  mcpServers = servers;
+  instanceOverrides = overrides;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  await renderInTestApp(
+    <QueryClientProvider client={queryClient}>
+      <Routes>
+        <Route
+          path={`${BASE}/*`}
+          element={
+            <NewMcpServerFormProvider>
+              <McpServersPage />
+              <CurrentPath />
+            </NewMcpServerFormProvider>
+          }
+        />
+      </Routes>
+    </QueryClientProvider>,
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      apis: [[musterApiRef, api as never]],
+    },
+  );
+  return api;
+}
+
+/** The table's rows below the header, as their cells' text. */
+function rows() {
+  return screen
+    .getAllByRole('row')
+    .slice(1)
+    .map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent));
+}
+
+beforeEach(() => {
+  mockAuthenticated = true;
+  mockHeaderActions = null;
+  instanceOverrides = {};
+});
+
 describe('McpServersPage', () => {
-  afterEach(() => {
-    instanceOverrides = {};
+  it('lists one row per family, singular server and muster, sorted by name', async () => {
+    await renderPage(fleet());
+
+    await waitFor(() => expect(rows()[0][2]).toBe('1'));
+    expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(
+      ['Server', 'Status', 'Tools', 'Auth', 'Source'],
+    );
+    expect(rows()).toEqual([
+      [
+        'aws-root',
+        'Connected',
+        '1',
+        'AWS SigV4 (machine identity)',
+        'User-registered server',
+      ],
+      [
+        'github',
+        'Connected',
+        '2',
+        'Own account (OAuth sign-in)',
+        'Fleet server',
+      ],
+      [
+        'kubernetesFamily',
+        '1 of 2 instances healthy',
+        '2',
+        'Platform SSO (forwarded token)',
+        'Fleet server',
+      ],
+      ['musterCore', '—', '1', 'Muster session', 'muster'],
+    ]);
   });
 
-  // The lab's fake fleet once its charts carry the label: the two managers
-  // declare agent-platform, the federated families infrastructure, and the
-  // installation's own registrations nothing.
-  const labelled = () => [
-    makeServer('pro'),
-    makeServer('model-manager', { toolGroup: 'agent-platform' }),
-    makeServer('kubernetes-beta', {
-      family: 'kubernetes',
-      mc: 'beta',
-      toolGroup: 'infrastructure',
-    }),
-    makeServer('kubernetes-alpha', {
-      family: 'kubernetes',
-      mc: 'alpha',
-      toolGroup: 'infrastructure',
-    }),
-    makeServer('prometheus-alpha', {
-      family: 'prometheus',
-      mc: 'alpha',
-      toolGroup: 'infrastructure',
-    }),
-    makeServer('agent-manager', { toolGroup: 'agent-platform' }),
-    makeServer('lab-oauth-fixture'),
-  ];
+  it.each([
+    // Most tools first; muster's single tool and aws-root's tie, by name.
+    ['Tools', 'descending', ['github', 'kubernetes', 'aws-root', 'muster']],
+    // By the status as it reads: "1 of 2 instances healthy", then the two
+    // "Connected" by name, then muster's "—".
+    ['Status', 'ascending', ['kubernetes', 'aws-root', 'github', 'muster']],
+    // Reversed, but muster's "—" stays last and ties stay in name order.
+    ['Status', 'descending', ['aws-root', 'github', 'kubernetes', 'muster']],
+    ['Source', 'ascending', ['github', 'kubernetes', 'muster', 'aws-root']],
+  ])('sorts by %s', async (column, direction, expected) => {
+    await renderPage(fleet());
+    await waitFor(() => expect(rows()[0][2]).toBe('1'));
 
-  it('renders the three tool groups in order with the labelled membership, muster core last under Agent Platform', async () => {
-    await renderPage(labelled());
+    const header = screen.getByRole('columnheader', { name: column });
+    await userEvent.click(header);
+    if (direction === 'descending') {
+      await userEvent.click(header);
+    }
 
-    const agentPlatform = section('Agent Platform');
-    const infrastructure = section('Infrastructure');
-    const registered = section('Registered servers');
-    expectDocumentOrder(
-      agentPlatform.region,
-      infrastructure.region,
-      registered.region,
+    expect(rows().map(row => row[0]!.replace(/(Family|Core)$/, ''))).toEqual(
+      expected,
     );
+  });
 
-    expect(agentPlatform.rows).toEqual([
-      'server:agent-manager',
-      'server:model-manager',
-    ]);
-    // muster core closes the Agent Platform group, after the managers.
-    const core = within(agentPlatform.region).getByText('core / control plane');
-    expectDocumentOrder(
-      within(agentPlatform.region).getByText('server:model-manager'),
-      core,
+  it('links each row to its server page on the same installation', async () => {
+    await renderPage(fleet());
+
+    expect(
+      await screen.findByRole('link', { name: /^kubernetes/ }),
+    ).toHaveAttribute('href', `${BASE}/kubernetes?installation=gazelle`);
+    expect(screen.getByRole('link', { name: /^muster/ })).toHaveAttribute(
+      'href',
+      `${BASE}/muster?installation=gazelle`,
     );
+  });
 
-    expect(infrastructure.rows).toEqual([
-      'family:kubernetes (2)',
-      'family:prometheus (1)',
-    ]);
-    expect(
-      within(infrastructure.region).getByText('2 families across 2 clusters.'),
-    ).toBeInTheDocument();
+  it('says a server waiting on a sign-in needs one, rather than that it has no tools', async () => {
+    await renderPage(withMiro());
 
-    expect(registered.rows).toEqual(['server:lab-oauth-fixture', 'server:pro']);
-    // The ad-hoc registration action sits with the servers it creates.
-    expect(
-      within(registered.region).getByRole('button', {
-        name: 'Add ad-hoc server',
+    await waitFor(() =>
+      expect(rows().find(row => row[0]?.startsWith('miro'))?.[2]).toBe(
+        'Sign-in needed',
+      ),
+    );
+  });
+
+  it('keeps servers matched by name, as a name match', async () => {
+    // Every aws-root tool is `x_aws-root_…`: a name match must not read as
+    // all of its tools matching, nor open them filtered.
+    await renderPage(fleet(), { path: `${BASE}?installation=gazelle&q=aws` });
+
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(rows()[0][0]).toMatch(/^aws-root/);
+    expect(rows()[0][2]).toBe('1');
+    expect(screen.getByRole('link', { name: /^aws-root/ })).toHaveAttribute(
+      'href',
+      `${BASE}/aws-root?installation=gazelle`,
+    );
+  });
+
+  it('keeps servers matched by a tool, says how many match and opens them filtered', async () => {
+    await renderPage(fleet(), { path: `${BASE}?installation=gazelle&q=pod` });
+
+    await waitFor(() =>
+      expect(rows().map(row => [row[0], row[2]])).toEqual([
+        ['github', '1 of 2 match'],
+        ['kubernetesFamily', '2 of 2 match'],
+      ]),
+    );
+    expect(screen.getByRole('link', { name: /^kubernetes/ })).toHaveAttribute(
+      'href',
+      `${BASE}/kubernetes?installation=gazelle&q=pod`,
+    );
+  });
+
+  it('keeps the search in the URL', async () => {
+    await renderPage(fleet());
+
+    await userEvent.type(
+      await screen.findByRole('searchbox', {
+        name: 'Search servers and tools',
       }),
-    ).toBeInTheDocument();
-    expect(
-      within(agentPlatform.region).queryByRole('button', {
-        name: 'Add ad-hoc server',
-      }),
-    ).not.toBeInTheDocument();
-
-    // Each section explains its tier in one line.
-    expect(
-      within(agentPlatform.region).getByText(
-        /platform's own management surface/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(infrastructure.region).getByText(
-        /infrastructure the platform runs on/,
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(registered.region).getByText(
-        /this installation or its users registered/,
-      ),
-    ).toBeInTheDocument();
-
-    // The old topology vocabulary is gone.
-    expect(screen.queryByText(/Standard servers/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Integration servers/)).not.toBeInTheDocument();
-  });
-
-  it('lists every server under Registered servers when no CR carries the label, and says why the other groups are empty', async () => {
-    // An installation whose charts have not rolled the label yet -- one long
-    // list, never an empty or broken page.
-    await renderPage([
-      makeServer('mcp-prometheus', { mc: 'agentlab' }),
-      makeServer('agent-manager'),
-      makeServer('kubernetes-alpha', { family: 'kubernetes', mc: 'alpha' }),
-      makeServer('model-manager'),
-    ]);
-
-    const agentPlatform = section('Agent Platform');
-    const infrastructure = section('Infrastructure');
-    const registered = section('Registered servers');
-    expectDocumentOrder(
-      agentPlatform.region,
-      infrastructure.region,
-      registered.region,
+      'bucket',
     );
 
-    // Agent Platform still carries muster core; it is never empty.
-    expect(agentPlatform.rows).toEqual([]);
-    expect(
-      within(agentPlatform.region).getByText('core / control plane'),
-    ).toBeInTheDocument();
-
-    expect(infrastructure.rows).toEqual([]);
-    expect(
-      within(infrastructure.region).getByText(
-        /No servers declare the Infrastructure tool group in this installation\. Servers whose charts do not carry the tool-group label yet are listed under Registered servers\./,
+    await waitFor(() =>
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        `${BASE}?installation=gazelle&q=bucket`,
       ),
-    ).toBeInTheDocument();
-
-    expect(registered.rows).toEqual([
-      'family:kubernetes (1)',
-      'server:agent-manager',
-      'server:mcp-prometheus',
-      'server:model-manager',
-    ]);
+    );
+    expect(rows()).toHaveLength(1);
   });
 
-  it('shows the empty state rather than sections when the installation has no MCPServer CRs', async () => {
+  it('says so when nothing matches', async () => {
+    await renderPage(fleet(), { path: `${BASE}?installation=gazelle&q=zzz` });
+
+    expect(
+      await screen.findByText('No server or tool matches “zzz”.'),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the servers from the CRDs without a muster session, and says what needs one', async () => {
+    mockAuthenticated = false;
+    const api = await renderPage(fleet(), {
+      path: `${BASE}?installation=gazelle&q=pod`,
+    });
+
+    expect(
+      await screen.findByRole('button', { name: 'Connect to muster' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/searching by tool name -- need an authenticated/),
+    ).toBeInTheDocument();
+    // Only names are searched; no server is named after pods.
+    expect(
+      screen.getByText(
+        'No server name matches “pod”. Tool names are searched once connected to muster.',
+      ),
+    ).toBeInTheDocument();
+    expect(api.filterTools).not.toHaveBeenCalled();
+  });
+
+  it('shows no tool counts without a muster session', async () => {
+    mockAuthenticated = false;
+    await renderPage(fleet());
+
+    await screen.findByRole('link', { name: /^kubernetes/ });
+    expect(rows().map(row => row[2])).toEqual(['—', '—', '—', '—']);
+  });
+
+  it('offers Register server in the page header', async () => {
+    await renderPage(fleet());
+    await screen.findByRole('link', { name: /^kubernetes/ });
+
+    await renderInTestApp(<>{mockHeaderActions}</>);
+    expect(
+      screen.getByRole('button', { name: 'Register server' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the empty state, with the way to muster’s own tools, without MCPServer CRs', async () => {
     await renderPage([]);
 
     expect(screen.getByText('No MCP servers')).toBeInTheDocument();
     expect(
-      screen.queryByRole('region', { name: 'Agent Platform' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('link', { name: "Open muster's own tools" }),
+    ).toHaveAttribute('href', `${BASE}/muster?installation=gazelle`);
+    // muster itself is still there to connect to.
+    expect(screen.getByTestId('muster-summary')).toBeInTheDocument();
   });
 
   it('loads rather than claiming there is no muster while the fleet is still answering', async () => {
-    await renderPage([], { isLoading: true, activeInstallation: undefined });
+    await renderPage([], {
+      overrides: { isLoading: true, activeInstallation: undefined },
+    });
 
     // The indicator holds itself back 250ms, so a warm cache flashes nothing.
     expect(
@@ -293,11 +412,96 @@ describe('McpServersPage', () => {
   });
 
   it('says there is no muster once the fleet has answered with none', async () => {
-    await renderPage([], { isLoading: false, activeInstallation: undefined });
+    await renderPage([], {
+      overrides: { isLoading: false, activeInstallation: undefined },
+    });
 
     expect(screen.getByText('No muster installation')).toBeInTheDocument();
-    // Not `queryByRole('progressbar')`: the bar carries that role only after
-    // its 250ms delay, so it is absent in the loading branch too.
-    expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('muster-summary')).not.toBeInTheDocument();
+  });
+
+  it('keeps the rows without a tool count last when sorting by Tools', async () => {
+    await renderPage(withMiro());
+    await waitFor(() => expect(rows()[0][2]).toBe('1'));
+
+    await userEvent.click(screen.getByRole('columnheader', { name: 'Tools' }));
+
+    expect(rows().map(row => row[2])).toEqual([
+      '1',
+      '1',
+      '2',
+      '2',
+      'Sign-in needed',
+    ]);
+  });
+
+  it('says when the installation’s tools could not be read, and offers a retry', async () => {
+    const api = makeApi();
+    api.filterTools.mockRejectedValue(new Error('upstream timeout'));
+    await renderPage(fleet(), {
+      path: `${BASE}?installation=gazelle&q=pod`,
+      api,
+    });
+
+    expect(
+      await screen.findByText("Could not read the installation's tools"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/upstream timeout/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No server name matches “pod”. Tool names could not be searched: the installation's tools failed to load.",
+      ),
+    ).toBeInTheDocument();
+
+    api.filterTools.mockResolvedValue({
+      total: TOOLS.length,
+      filtered_count: TOOLS.length,
+      truncated: false,
+      tools: TOOLS,
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(rows()).toHaveLength(2));
+  });
+
+  it('says a family whose instances all wait on a sign-in needs one', async () => {
+    await renderPage([
+      makeServer('walrus-slack', {
+        family: 'slack',
+        state: 'Auth Required',
+        auth: { type: 'oauth' },
+      }),
+    ]);
+
+    await waitFor(() =>
+      expect(rows().find(row => row[0]?.startsWith('slack'))?.[2]).toBe(
+        'Sign-in needed',
+      ),
+    );
+  });
+
+  it('lists a server a family of the same name shadows, without a link to a page it has not got', async () => {
+    await renderPage([...fleet(), makeServer('kubernetes')]);
+
+    await waitFor(() =>
+      expect(
+        rows().filter(row => row[0]?.startsWith('kubernetes')),
+      ).toHaveLength(2),
+    );
+    expect(screen.getAllByRole('link', { name: 'kubernetes' })).toHaveLength(1);
+    expect(
+      screen.getByTitle(/A server family \(or muster\) of the same name takes/),
+    ).toHaveTextContent('kubernetes');
+  });
+
+  it('finds a tool by its full name', async () => {
+    await renderPage(fleet(), {
+      path: `${BASE}?installation=gazelle&q=x_github_list_pulls`,
+    });
+
+    await waitFor(() =>
+      expect(rows().map(row => [row[0], row[2]])).toEqual([
+        ['github', '1 of 2 match'],
+      ]),
+    );
   });
 });

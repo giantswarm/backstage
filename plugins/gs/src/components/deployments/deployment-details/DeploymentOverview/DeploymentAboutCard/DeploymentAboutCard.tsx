@@ -38,6 +38,7 @@ import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
 import {
   deriveAutoUpgradeMode,
   getAutoUpgradeLabel,
+  versionFromRevision,
 } from '../../../utils/getAutoUpgradeSettings';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -117,7 +118,10 @@ export function DeploymentAboutCard() {
   );
 
   const autoUpgradeMode = needsOciRepository
-    ? deriveAutoUpgradeMode(ociRepository?.getReference())
+    ? deriveAutoUpgradeMode(
+        ociRepository?.getReference(),
+        versionFromRevision(ociRepository?.getRevision()),
+      )
     : undefined;
 
   return (

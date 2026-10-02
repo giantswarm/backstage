@@ -8,6 +8,15 @@ import { podListPath, usePodLists } from './usePodLists';
 function createKubernetesApi() {
   const proxy = jest.fn(
     async ({ clusterName, path }: { clusterName: string; path: string }) => {
+      if (clusterName === 'unauthorized') {
+        // HTTP/2: no reason phrase, only the apiserver's Status body.
+        return {
+          ok: false,
+          status: 401,
+          statusText: '',
+          json: async () => ({ kind: 'Status', message: 'Unauthorized' }),
+        } as unknown as Response;
+      }
       if (clusterName === 'forbidden') {
         return {
           ok: false,
@@ -101,6 +110,18 @@ describe('usePodLists', () => {
 
     expect(result.current.results[0].pods).toBeUndefined();
     expect(result.current.results[0].error?.name).toBe('ForbiddenError');
+  });
+
+  it('names a rejected token and quotes the Status message', async () => {
+    const { result } = renderWith([{ installation: 'unauthorized' }]);
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const error = result.current.results[0].error;
+    expect(error?.name).toBe('UnauthorizedError');
+    expect(error?.message).toBe(
+      'Failed to list pods on unauthorized at /api/v1/pods. Reason: Unauthorized.',
+    );
   });
 
   it('is idle with no requests', () => {

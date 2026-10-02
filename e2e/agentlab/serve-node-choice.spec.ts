@@ -5,18 +5,24 @@ import { expect, open, test } from './fixtures';
  * The Serve dialog's Node field against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
- * - "Any node that fits" is preselected, and the verdict then names the
- *   nodes the model may land on — never one node the request does not pin;
- * - each node is offered with its free budget; choosing one turns the
+ * - no node ticked, and the verdict then names the nodes the model may land
+ *   on — never one node the request does not pin;
+ * - each node is offered with its free budget; ticking one turns the
  *   verdict into "will be placed on <node>", and Serve sends it as `node`
  *   (the LLMInferenceService carries the hostname pin — checked with kubectl
- *   outside this spec).
+ *   outside this spec);
+ * - ticking two ("All 2 nodes that fit") asks one `check_fit` with
+ *   `placement: copies` and both `nodes`, and its verdict is the dialog's:
+ *   the lab's model-manager refuses the second node, which does not exist,
+ *   so Serve stays disabled.
  *
  * model-manager's `list_nodes` reports accelerator nodes only, and the kind
  * node has none: the spec adds the kind node (`AGENTLAB_KIND_NODE`, default
- * `agentlab-control-plane`) to the kserve inventory the page reads, without
- * figures. Everything after it is the lab's own: `check_fit` pinned to the
- * node, `load_model` with `node`, the pin model-manager writes.
+ * `agentlab-control-plane`) and a phantom second node to the kserve
+ * inventory the page reads, without figures. The phantom's own `check_fit`
+ * is answered with the kind node's, so it is offered like a node that fits.
+ * Everything else is the lab's own: `check_fit` pinned to the node, the
+ * copies `check_fit`, `load_model` with `node`, the pin model-manager writes.
  *
  * Stops the lab preset first when it serves; leaves it served. Skipped
  * without the serving slice.
@@ -26,8 +32,13 @@ const PRESET = 'qwen2-5-0-5b-cpu';
 const PRESET_LABEL = /Qwen2\.5 0\.5B Instruct \(CPU\)/;
 const TARGET = /· KServe$/;
 const KIND_NODE = process.env.AGENTLAB_KIND_NODE ?? 'agentlab-control-plane';
+const PHANTOM_NODE = 'agentlab-phantom';
 
-/** Adds the kind node to every `nodes` list of a muster answer, JSON text included. */
+function inventoryNode(name: string) {
+  return { name, backend: 'kserve', ready: true, eligible: true, gpuCount: 1 };
+}
+
+/** Adds the kind and the phantom node to every `nodes` list of a muster answer, JSON text included. */
 function withKindNode(value: unknown): unknown {
   if (typeof value === 'string') {
     try {
@@ -47,16 +58,7 @@ function withKindNode(value: unknown): unknown {
     for (const [key, item] of Object.entries(value)) {
       out[key] =
         key === 'nodes' && Array.isArray(item)
-          ? [
-              ...item,
-              {
-                name: KIND_NODE,
-                backend: 'kserve',
-                ready: true,
-                eligible: true,
-                gpuCount: 1,
-              },
-            ]
+          ? [...item, inventoryNode(KIND_NODE), inventoryNode(PHANTOM_NODE)]
           : withKindNode(item);
     }
     return out;
@@ -64,9 +66,28 @@ function withKindNode(value: unknown): unknown {
   return value;
 }
 
-async function addKindNodeToInventory(page: Page) {
+async function addNodesToInventory(page: Page) {
   await page.route('**/api/muster/call**', async route => {
-    if (!route.request().postData()?.includes('x_model-manager_list_nodes')) {
+    const call = route.request().postDataJSON() as
+      { name?: string; arguments?: Record<string, unknown> } | undefined;
+    if (
+      call?.name === 'x_model-manager_check_fit' &&
+      call.arguments?.node === PHANTOM_NODE
+    ) {
+      // The phantom fits like the kind node: its verdict, renamed.
+      const response = await route.fetch({
+        postData: JSON.stringify({
+          ...call,
+          arguments: { ...call.arguments, node: KIND_NODE },
+        }),
+      });
+      await route.fulfill({
+        response,
+        body: (await response.text()).replaceAll(KIND_NODE, PHANTOM_NODE),
+      });
+      return;
+    }
+    if (call?.name !== 'x_model-manager_list_nodes') {
       await route.fallback();
       return;
     }
@@ -122,16 +143,16 @@ async function openServeDialog(page: Page) {
   return dialog;
 }
 
-test.describe.serial('Serve on a chosen node', () => {
+test.describe.serial('Serve on the ticked nodes', () => {
   test.setTimeout(10 * 60_000);
 
   test.beforeEach(async ({ admin }) => {
-    await addKindNodeToInventory(admin);
+    await addNodesToInventory(admin);
     await open(admin, '/agent-platform/models/serving');
     await expect(admin.getByRole('article').first()).toBeVisible();
   });
 
-  test('the Node field offers any node and each node; the pick is the verdict and the pin', async ({
+  test('the Nodes checklist: two ticks are one copies verdict, one tick the pin', async ({
     admin,
   }) => {
     // A served preset cannot be served again: stop it first. The KServe
@@ -165,19 +186,37 @@ test.describe.serial('Serve on a chosen node', () => {
     );
     await expect(verdict).not.toContainText('will be placed');
 
-    const nodeField = dialog.getByRole('button', { name: /Node/ });
-    await expect(nodeField).toContainText('Any node that fits');
-    await nodeField.click();
-    await expect(
-      admin.getByRole('option', { name: /Any node that fits/ }),
-    ).toBeVisible();
-    const nodeOption = admin.getByRole('option', {
+    const nodes = dialog.getByTestId('serve-nodes');
+    const nodeBox = nodes.getByRole('checkbox', {
       name: new RegExp(KIND_NODE),
     });
-    await expect(nodeOption).toBeEnabled();
-    await snapshot(admin, 'serve-node-options', admin.getByRole('listbox'));
+    const phantomBox = nodes.getByRole('checkbox', {
+      name: new RegExp(PHANTOM_NODE),
+    });
+    await expect(nodeBox).not.toBeChecked();
+    await expect(nodeBox).toBeEnabled({ timeout: 60_000 });
+    await expect(phantomBox).toBeEnabled({ timeout: 60_000 });
+
+    // Two ticks: one copy on each, judged together by the lab.
+    await nodes.getByRole('button', { name: 'All 2 nodes that fit' }).click();
+    await expect(nodeBox).toBeChecked();
+    await expect(phantomBox).toBeChecked();
+    await expect(
+      verdict,
+      'the copies check_fit, refusing the phantom',
+    ).toContainText(PHANTOM_NODE, { timeout: 60_000 });
+    await expect(verdict).toContainText('cannot host a copy');
+    await snapshot(admin, 'serve-node-copies', dialog);
+    await expect(
+      dialog.getByRole('button', { name: 'Serve', exact: true }),
+    ).toBeDisabled();
+
+    // One tick: the pin.
+    // The label, as a person clicks it: the input itself is visually hidden.
+    await nodes.getByText(PHANTOM_NODE, { exact: true }).click();
+    await expect(phantomBox).not.toBeChecked();
+    await snapshot(admin, 'serve-node-options', nodes);
     const node = KIND_NODE;
-    await nodeOption.click();
 
     await expect(verdict).toContainText(`Fits — will be placed on ${node}`, {
       timeout: 60_000,
