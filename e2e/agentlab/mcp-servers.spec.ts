@@ -111,6 +111,11 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
     signOut,
     'the server page now offers Sign out for this session',
   ).toBeVisible({ timeout: 60_000 });
+
+  // Leave the fixture as the lab ships it: `agentlab platform-test` expects
+  // it among the servers that require a sign-in.
+  await signOut.click();
+  await expect(signIn).toBeVisible({ timeout: 60_000 });
 });
 
 test("a row opens its server page, with the server's tabs", async ({

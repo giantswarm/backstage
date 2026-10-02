@@ -75,9 +75,35 @@ const preferBuiMessage =
   'the cases where a legacy import is still correct: docs/ui.md, ' +
   '"What to reach for instead of MUI".';
 
+const trackedMutationMessage =
+  'Use useTrackedMutation from @giantswarm/backstage-plugin-analytics-react: ' +
+  'it reports the write as a portal action, or takes `event: null` with an ' +
+  '`untrackedReason`. docs/telemetry.md, "For developers".';
+
 module.exports = {
   root: true,
+  plugins: ['giantswarm'],
   overrides: [
+    {
+      // An error, unlike the MUI rule below: a write in a plugin is a tracked
+      // portal action or a deliberate opt-out, never forgotten.
+      files: ['plugins/*/src/**/*.ts?(x)'],
+      excludedFiles: ['plugins/analytics-react/**'],
+      rules: {
+        'giantswarm/no-restricted-imports': [
+          'error',
+          {
+            paths: [
+              {
+                name: '@tanstack/react-query',
+                importNames: ['useMutation'],
+                message: trackedMutationMessage,
+              },
+            ],
+          },
+        ],
+      },
+    },
     {
       files: ['**/*.ts?(x)'],
       rules: {

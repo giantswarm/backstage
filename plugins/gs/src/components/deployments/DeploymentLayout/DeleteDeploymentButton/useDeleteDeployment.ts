@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   CustomResourceMatcher,
   deleteResource,
@@ -92,7 +93,9 @@ export function useDeleteDeployment(
     );
   };
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Deployment deletion is not a tracked portal action yet.',
     mutationFn: async () => {
       if (!deployment || !name) {
         throw new Error(

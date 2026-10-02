@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation } from '@tanstack/react-query';
 import { kagentApiRef } from '../apis';
 import { useStreamedTurn } from './useStreamedTurn';
 
@@ -53,7 +53,10 @@ export function useAnswerConfirmation(
   const [failed, setFailed] = useState<PendingAnswer | null>(null);
 
   const { run, clear } = turn;
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'A turn inside a running session; sessionStarted measures sessions.',
     mutationFn: async (answer: PendingAnswer) => {
       if (!agent) {
         throw new Error(
