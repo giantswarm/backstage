@@ -1125,6 +1125,25 @@ describe('AgentDetailPage', () => {
       ).toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('marks the Model row even when the template names no ModelConfig', async () => {
+      const { jsonData } = unresolvedModelAgent();
+      stubResources({
+        resource: new Agent(
+          {
+            ...jsonData,
+            spec: { ...jsonData.spec, modelConfig: undefined },
+          } as AgentInterface,
+          'gazelle',
+        ),
+      });
+
+      await renderPage();
+
+      expect(
+        screen.getByText('Model').closest('dt')?.nextElementSibling,
+      ).toHaveTextContent('Cannot be resolved');
+    });
+
     it('offers Edit agent beside the cause to whoever may edit the agent', async () => {
       withAgentManager();
       stubResources({ resource: unresolvedModelAgent() });
@@ -1134,6 +1153,32 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByRole('button', { name: 'Edit agent' }),
       ).toBeInTheDocument();
+    });
+
+    it('says where a failed agent applied from git is fixed', async () => {
+      withAgentManager('gitops');
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /deployed from a GitOps repository, so it is fixed there/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    // The Harness is named, but no claim that sessions run on it.
+    it('names the Harness of a failed agent without saying sessions run there', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText(/^Admitted by/)).toHaveTextContent(
+        'Admitted by kagent',
+      );
+      expect(screen.queryByText(/Sessions run on/)).toBeNull();
     });
 
     it('offers no fix to a viewer who cannot edit the agent', async () => {
@@ -1176,7 +1221,9 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expect(
-        screen.getByText(/a platform admin has to fix it/),
+        screen.getByText(
+          'WorkerPool "kagent/default" not found. This is a problem with the platform, not with the agent: a platform admin has to fix it.',
+        ),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
       expect(screen.queryByText('Cannot be resolved')).toBeNull();
@@ -1340,6 +1387,23 @@ describe('AgentDetailPage', () => {
         `${AGENT_PATH}/tools`,
       );
       expect(screen.queryByText('RemoteMCPServer pr-reviewer')).toBeNull();
+    });
+
+    // The read answered and the carrier is not there: not a permission problem.
+    it('says the gateway server is missing when the read finds none', async () => {
+      mockUseAgentToolset.mockReturnValue({
+        declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+        isReading: false,
+        isUnreadable: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
+      expect(
+        screen.getByText('pr-reviewer does not exist'),
+      ).toBeInTheDocument();
     });
 
     it('waits for the toolset read instead of guessing', async () => {
@@ -1633,7 +1697,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText("You haven't started a session with this agent yet."),
+        screen.getByText('You have no sessions with this agent.'),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Start a session' }),
@@ -1667,7 +1731,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText("You haven't started a session with this agent yet."),
+        screen.getByText('You have no sessions with this agent.'),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Start a session' }),

@@ -60,7 +60,7 @@ function ModelValue({
   isFailing: boolean;
 }) {
   if (!modelConfigName) {
-    return <NotAvailable />;
+    return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
 
   const modelLine = [modelConfig?.getModel(), modelConfig?.getProvider()]
@@ -135,8 +135,18 @@ function GatewayToolsetSummary({
   agent: Agent;
   toolsHref?: string;
 }) {
-  const { declared, isReading } = useAgentToolset(agent);
-  const { summary, detail } = describeToolset(declared);
+  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  // The read answered and the carrier is not in it: the binding reaches
+  // nothing, which describeToolset — written for a list cell that cannot tell
+  // the two apart — would call "not readable".
+  const isCarrierMissing =
+    !isReading && !isUnreadable && declared.state === 'unresolved';
+  const { summary, detail } = isCarrierMissing
+    ? {
+        summary: 'Gateway server missing',
+        detail: `${declared.carrier} does not exist`,
+      }
+    : describeToolset(declared);
 
   return (
     <Flex direction="column" gap="1">

@@ -685,7 +685,6 @@ describe('Agent', () => {
     it.each([
       ['resolve ModelConfig "qwen3-4b-instruct": not found', 'model'],
       ['resolve ModelConfig "opus": provider secret missing', 'model'],
-      ['resolve memory ModelConfig "embed": not found', 'model'],
       ['resolve RemoteMCPServer "factory-analyst": not found', 'tools'],
       ['resolve MCPServer "github": not found', 'tools'],
       ['resolve AgentTemplate "helper": not found', 'tools'],
@@ -705,6 +704,8 @@ describe('Agent', () => {
       [''],
       ['Dedicated sub-agents are not supported by this Harness'],
       ['blocked by ResolvedRefs'],
+      // The memory model is not the Model row's ModelConfig.
+      ['resolve memory ModelConfig "embed": not found'],
     ])('names no field for %j', message => {
       expect(failureFieldOf(message)).toBeUndefined();
     });

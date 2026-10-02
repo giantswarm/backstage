@@ -78,7 +78,8 @@ const ICON_URL_ANNOTATION = 'ui.giantswarm.io/icon-url';
 /**
  * Condition types a Harness sets in its entry of `status.harnesses[]`:
  * `Accepted` (the Harness admits the template), `ResolvedRefs` (the model
- * config, servers and skills resolve), `Compatible` (the resolved configuration
+ * config, the MCP servers, the agents called as tools and the prompt sources
+ * resolve), `Compatible` (the resolved configuration
  * fits the Harness) and `Ready` (the current revision is compiled and its
  * golden snapshot exists). Compile downgrades are the entry's `warnings`, not a
  * condition. Every condition is positive-polarity.
@@ -130,7 +131,9 @@ export function failureFieldOf(
   if (!message) {
     return undefined;
   }
-  if (/^resolve (memory )?ModelConfig\b/.test(message)) {
+  // Only the agent's own model: a memory ModelConfig is not on the page, and
+  // marking the Model row for it would point at the wrong ModelConfig.
+  if (/^resolve ModelConfig\b/.test(message)) {
     return 'model';
   }
   if (/^resolve (RemoteMCPServer|MCPServer|AgentTemplate)\b/.test(message)) {

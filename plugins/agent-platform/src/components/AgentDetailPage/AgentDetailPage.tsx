@@ -677,6 +677,7 @@ function AgentDetailPageContent() {
         <AgentSessionBlocker
           agent={agent}
           onEdit={canWriteAgent ? openEdit : undefined}
+          isGitOpsOwned={agentManagerGate.isGitOpsOwned}
         />
 
         <AgentDetailTabs />

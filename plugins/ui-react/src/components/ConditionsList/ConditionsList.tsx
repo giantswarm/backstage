@@ -44,8 +44,10 @@ export type ConditionsListProps = {
    * Condition types in the order the controller evaluates them. When given,
    * the list follows it instead of sorting by transition time, so the first
    * failing condition — the one that starts expanded — is the earliest stage
-   * that failed: the root cause rather than a later stage it blocks. Types not
-   * listed follow, in the default order.
+   * that failed: the root cause rather than a later stage it blocks. A stage
+   * still `Unknown` explains nothing, so an outright failure later in the
+   * order is expanded ahead of it. Types not listed follow, in the default
+   * order.
    */
   order?: readonly string[];
   /** Shown instead of the list when there are no conditions at all. */
@@ -139,7 +141,10 @@ export const ConditionsList = ({
   }
 
   const sorted = sortConditions(conditions, order);
-  const firstFailing = sorted.find(condition => isFailing(condition));
+  const failures = sorted.filter(condition => isFailing(condition));
+  const firstFailing =
+    (order && failures.find(condition => condition.status !== 'Unknown')) ||
+    failures[0];
 
   return (
     <Flex direction="column" gap="1">

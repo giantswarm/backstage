@@ -114,6 +114,27 @@ describe('ConditionsList', () => {
       expect(triggers()[2]).toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('expands an outright failure ahead of an earlier stage still Unknown', () => {
+      render(
+        <ConditionsList
+          conditions={[
+            { type: 'Accepted', status: 'True', lastTransitionTime: AT },
+            { type: 'ResolvedRefs', status: 'Unknown', lastTransitionTime: AT },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'UnsupportedConfiguration',
+              lastTransitionTime: AT,
+            },
+          ]}
+          order={order}
+        />,
+      );
+
+      expect(triggers()[1]).toHaveAttribute('aria-expanded', 'false');
+      expect(triggers()[2]).toHaveAttribute('aria-expanded', 'true');
+    });
+
     it('puts types the order does not list after it, most recent first', () => {
       render(
         <ConditionsList

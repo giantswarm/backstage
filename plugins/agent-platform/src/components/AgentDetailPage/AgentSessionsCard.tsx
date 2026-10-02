@@ -52,9 +52,11 @@ export function AgentSessionsCard({
       <InfoCard title="Sessions">
         <Flex direction="column" gap="3" align="start">
           <Text variant="body-medium" color="secondary">
+            {/* "No sessions", not "none started": a runtime upgrade or kagent's
+                retention can remove sessions people did have. */}
             {isNotUserScoped
-              ? 'No one has started a session with this agent yet.'
-              : "You haven't started a session with this agent yet."}
+              ? 'There are no sessions with this agent.'
+              : 'You have no sessions with this agent.'}
           </Text>
           {onStartSession && (
             <Button variant="primary" onPress={onStartSession}>

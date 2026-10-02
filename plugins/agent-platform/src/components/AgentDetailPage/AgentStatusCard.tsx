@@ -68,23 +68,27 @@ function CompilingRevision({ harness }: { harness: AgentHarness }) {
 
 /**
  * The Harnesses that admit the template. One — the usual case — is a sentence
- * naming where sessions run; the page header already carries its verdict.
+ * naming it, where sessions run once the agent is ready; the page header
+ * already carries its verdict.
  * Several each show their own verdict, since only the deciding one's is the
  * header's.
  */
 function Harnesses({
   harnesses,
   deciding,
+  isReady,
 }: {
   harnesses: AgentHarness[];
   deciding?: AgentHarness;
+  isReady: boolean;
 }) {
   if (harnesses.length === 1) {
     const [harness] = harnesses;
     return (
       <Flex direction="column" gap="1">
         <Text variant="body-medium">
-          Sessions run on <span style={MONO}>{harness.name}</span>
+          {isReady ? 'Sessions run on ' : 'Admitted by '}
+          <span style={MONO}>{harness.name}</span>
         </Text>
         <CompilingRevision harness={harness} />
       </Flex>
@@ -161,7 +165,11 @@ export function AgentStatusCard({ agent }: { agent: Agent }) {
     <InfoCard title="Status">
       <Flex direction="column" gap="4">
         {harnesses.length > 0 && (
-          <Harnesses harnesses={harnesses} deciding={deciding} />
+          <Harnesses
+            harnesses={harnesses}
+            deciding={deciding}
+            isReady={isReady}
+          />
         )}
 
         {/* The one explanation the conditions cannot give on their own: they
