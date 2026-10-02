@@ -1,1 +1,2 @@
-export { ClusterGateways } from './ClusterGateways';
+export { ClusterGateways, ClusterGatewaysContent } from './ClusterGateways';
+export type { ClusterGatewaysContentProps } from './ClusterGateways';

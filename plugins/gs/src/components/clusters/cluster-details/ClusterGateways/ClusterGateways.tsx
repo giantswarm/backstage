@@ -44,29 +44,39 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   );
 }
 
+/**
+ * True when any route condition can't be shown. A single unreported route must
+ * not hide the explanation for all the others that are not available.
+ */
 function conditionsUnavailable(routes: HttpRoute[]): boolean {
-  const parents = routes.flatMap(route => route.parents);
-  return (
-    parents.length > 0 &&
-    parents.every(
+  return routes.some(route =>
+    route.parents.some(
       parent =>
-        parent.accepted.status === 'not-available' &&
+        parent.accepted.status === 'not-available' ||
         parent.resolvedRefs.status === 'not-available',
-    )
+    ),
   );
 }
 
-export const ClusterGateways = () => {
-  const { installationName, cluster } = useCurrentCluster();
-  const clusterName = cluster.getName();
+export type ClusterGatewaysContentProps = {
+  clusterName: string;
+  gateways: Gateway[];
+  routes: HttpRoute[];
+  isLoading: boolean;
+  error?: unknown;
+  /** `false` when the installation has no Mimir; `undefined` while unknown. */
+  mimirAvailable: boolean | undefined;
+};
 
-  const { gateways, routes, isLoading, error } = useMimirGatewayTopology({
-    installationName,
-    clusterName,
-    refetchInterval: 30_000,
-  });
-  const mimirAvailable = useMimirAvailable(installationName);
-
+/** Renders a cluster's Gateway API topology. Data loading lives in `ClusterGateways`. */
+export const ClusterGatewaysContent = ({
+  clusterName,
+  gateways,
+  routes,
+  isLoading,
+  error,
+  mimirAvailable,
+}: ClusterGatewaysContentProps) => {
   const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
 
@@ -111,7 +121,7 @@ export const ClusterGateways = () => {
           <Alert
             status="info"
             icon
-            title="Route conditions are not available on this cluster."
+            title="Some route conditions are not available on this cluster."
             description="Either they could not be loaded, or the cluster runs an observability-bundle that doesn't export them yet. Routes are listed without their Accepted and ResolvedRefs status."
           />
         ) : null}
@@ -128,5 +138,28 @@ export const ClusterGateways = () => {
         />
       </InfoCard>
     </Flex>
+  );
+};
+
+export const ClusterGateways = () => {
+  const { installationName, cluster } = useCurrentCluster();
+  const clusterName = cluster.getName();
+
+  const { gateways, routes, isLoading, error } = useMimirGatewayTopology({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
+  const mimirAvailable = useMimirAvailable(installationName);
+
+  return (
+    <ClusterGatewaysContent
+      clusterName={clusterName}
+      gateways={gateways}
+      routes={routes}
+      isLoading={isLoading}
+      error={error}
+      mimirAvailable={mimirAvailable}
+    />
   );
 };
