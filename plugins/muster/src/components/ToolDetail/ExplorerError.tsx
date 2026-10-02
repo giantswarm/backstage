@@ -1,7 +1,8 @@
 import { Alert, Button } from '@backstage/ui';
 import { ResponseErrorPanel } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../apis';
 
 /**
@@ -36,7 +37,9 @@ export function ExplorerError({ error, installation }: ExplorerErrorProps) {
   const musterApi = useApi(musterApiRef);
   const queryClient = useQueryClient();
 
-  const signIn = useMutation({
+  const signIn = useTrackedMutation({
+    event: null,
+    untrackedReason: 'An authentication step, not a portal action.',
     mutationFn: () => musterApi.signIn(installation),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['muster'] });

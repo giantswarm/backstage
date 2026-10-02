@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { kagentApiRef } from '../apis';
 import { sessionsQueryKey } from '../lib/queryKeys';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
@@ -21,7 +22,10 @@ export function useDeleteSession(installation: string, sessionId: string) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Housekeeping on a session; sessionStarted measures sessions.',
     mutationFn: async () => {
       await kagentApi.deleteSession(installation, sessionId);
 

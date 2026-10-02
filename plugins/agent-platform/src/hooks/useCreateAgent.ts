@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
   AgentManagerError,
@@ -79,12 +80,20 @@ export function useCreateAgent(
     });
   }, [queryClient, installation]);
 
-  const deployMutation = useMutation({
+  const deployMutation = useTrackedMutation({
     mutationFn: (spec: AgentSpec) => requireClient().createAgent(spec),
+    event: () => ({
+      name: 'AgentPlatform.agentCreated',
+      attributes: { mode: 'deploy' },
+    }),
     onSuccess: () => invalidateKagentReads(),
   });
-  const commitMutation = useMutation({
+  const commitMutation = useTrackedMutation({
     mutationFn: (spec: AgentSpec) => requireClient().commitAgent(spec),
+    event: () => ({
+      name: 'AgentPlatform.agentCreated',
+      attributes: { mode: 'commit' },
+    }),
   });
 
   const { mutateAsync: deploy, reset: resetDeploy } = deployMutation;

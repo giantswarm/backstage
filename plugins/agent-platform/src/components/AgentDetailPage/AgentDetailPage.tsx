@@ -363,7 +363,7 @@ function AgentDetailPageContent() {
   // up there can only flip this flag — the same split the session detail page's
   // rename dialog makes.
   const [isNewSessionOpen, setNewSessionOpen] = useState(false);
-  const creation = useCreateSession();
+  const creation = useCreateSession('agentDetail');
   const { reset: resetCreation } = creation;
   const openNewSession = useCallback(() => {
     // Clear a previous attempt's error, so the dialog does not open still showing

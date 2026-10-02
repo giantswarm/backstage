@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
   AgentManagerNotConnectedError,
@@ -75,11 +76,17 @@ export function useAgentDeletion(
     ).then(() => undefined);
   }, [queryClient, installation]);
 
-  const deletion = useMutation({
+  const deletion = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Agent deletion is not a tracked portal action yet; agentCreated measures adoption.',
     mutationFn: () => requireClient().deleteAgent(namespace, name),
     onSuccess: () => invalidateReads(),
   });
-  const commitMutation = useMutation({
+  const commitMutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Agent deletion is not a tracked portal action yet; agentCreated measures adoption.',
     mutationFn: () => requireClient().commitDeleteAgent(namespace, name),
   });
 

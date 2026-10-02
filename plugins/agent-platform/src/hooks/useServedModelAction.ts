@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   LLMInferenceService,
   ModelConfig,
@@ -115,7 +116,10 @@ export function useServedModelAction(installation: string) {
   const modelManagerApi = useApi(modelManagerApiRef);
   const invalidate = useInvalidateModelManagerReads(installation);
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
     mutationFn: async (action: ServedModelAction) => {
       const scope = action.backend ? { backend: action.backend } : {};
       switch (action.type) {

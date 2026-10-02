@@ -43,6 +43,7 @@
     "@backstage/theme": "backstage:^",
     "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^",
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs-react": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",

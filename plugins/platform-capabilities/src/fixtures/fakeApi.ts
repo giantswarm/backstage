@@ -282,6 +282,14 @@ export const DRIFTED: Installation = withState('elm', {
   lastAction: { name: 'reconcile-agent-platform-elm-3', result: 'drifted' },
 });
 
+/** A test installation's action needs no Team review: its actor merges. */
+export const READY_TO_MERGE: Installation = withState('ash', {
+  name: 'agent-platform',
+  state: 'ready to merge',
+  enabled: true,
+  lastAction: { name: 'enable-agent-platform-ash-1', result: 'ready to merge' },
+});
+
 /** The pull requests are merged and the rollout runs. */
 export const ROLLING_OUT: Installation = withState('fir', {
   name: 'agent-platform',
@@ -387,6 +395,18 @@ export const ACTION: Action = {
       },
     ],
     approval: { channel: '#platform', decision: 'pending' },
+  },
+};
+
+/** On a test installation: no Team review, the actor merges once the checks are green. */
+export const READY_TO_MERGE_ACTION: Action = {
+  ...ACTION,
+  name: 'enable-agent-platform-ash-1',
+  spec: { ...ACTION.spec, installations: ['ash'] },
+  status: {
+    ...ACTION.status,
+    state: 'ready to merge',
+    approval: { decision: 'not required' },
   },
 };
 

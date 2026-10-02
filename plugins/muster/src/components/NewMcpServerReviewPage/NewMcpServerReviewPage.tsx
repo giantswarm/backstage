@@ -1,14 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
-import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { musterApiRef } from '../../apis';
 import {
   newMcpServerRouteRef,
   newMcpServerAuthRouteRef,
@@ -24,6 +21,7 @@ import { useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SessionGate } from '../shared';
 import { withEditParam } from '../NewMcpServerEditGate';
+import { useRegisterMcpServer } from './useRegisterMcpServer';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -107,18 +105,13 @@ function SummaryItem({
 /**
  * Step 3 (Review & register) of the MCP server registration wizard: summary
  * strip, the full generated server definition, a collapsed manual fallback
- * (manifest + CLI command), then registration through muster's existing
- * validate + create core tools over the per-user MCP session — the same live
- * write path the raw-JSON dialog and the CLI use. Validate runs as a dry-run
- * before anything is written. When this wizard run already registered the CR
- * (the verify step's "Edit details" loop), saving is an update to that same CR
- * — never a delete-and-recreate.
+ * (manifest + CLI command), then registration through `useRegisterMcpServer`.
+ * When this wizard run already registered the CR (the verify step's "Edit
+ * details" loop), saving is an update to that same CR.
  */
 export function NewMcpServerReviewPage() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const musterApi = useApi(musterApiRef);
-  const queryClient = useQueryClient();
   const detailsLink = useRouteRef(newMcpServerRouteRef);
   const authLink = useRouteRef(newMcpServerAuthRouteRef);
   const verifyLink = useRouteRef(newMcpServerVerifyRouteRef);
@@ -128,45 +121,38 @@ export function NewMcpServerReviewPage() {
   const { authenticated } = session;
 
   const isEdit = Boolean(registeredName);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const registration = useRegisterMcpServer();
+  const { mutate: register } = registration;
+  const busy = registration.isPending;
+  const error = registration.error
+    ? mutationErrorMessage(registration.error)
+    : undefined;
 
-  const onRegister = useCallback(async () => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      // Dry-run first: muster's own validation, so the definition is checked by
-      // the same authority that will apply it.
-      await musterApi.callTool(
-        'core_mcpserver_validate',
+  const onRegister = useCallback(() => {
+    register(
+      {
         definition,
-        state.installation,
-      );
-      await musterApi.callTool(
-        isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create',
-        definition,
-        state.installation,
-      );
-      // What was just written is the base of any further save in this run.
-      markSaved(definition);
-      // The CR exists now — refresh every muster read (server lists, tools) so
-      // the verify step opens on live data.
-      queryClient.invalidateQueries({ queryKey: ['muster'] });
-      if (verifyLink) {
-        navigate(withEditParam(verifyLink(), definition.name));
-      }
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+        installation: state.installation,
+        authMode: state.authMode,
+        isEdit,
+      },
+      {
+        onSuccess: () => {
+          // What was just written is the base of any further save in this run.
+          markSaved(definition);
+          if (verifyLink) {
+            navigate(withEditParam(verifyLink(), definition.name));
+          }
+        },
+      },
+    );
   }, [
-    musterApi,
+    register,
     definition,
     state.installation,
+    state.authMode,
     isEdit,
     markSaved,
-    queryClient,
     verifyLink,
     navigate,
   ]);

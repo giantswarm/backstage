@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   FluxObject,
   RECONCILE_REQUESTED_AT_ANNOTATION,
@@ -80,7 +81,10 @@ export function useFluxResourceActions(
       patch: body,
     });
 
-  const reconciliationMutation = useMutation({
+  const reconciliationMutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Flux reconcile and suspend are operations, not a tracked portal action yet.',
     mutationFn: () =>
       patch({
         metadata: {
@@ -92,7 +96,10 @@ export function useFluxResourceActions(
     onSuccess: invalidateReads,
   });
 
-  const suspensionMutation = useMutation({
+  const suspensionMutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Flux reconcile and suspend are operations, not a tracked portal action yet.',
     mutationFn: (suspend: boolean) => patch({ spec: { suspend } }),
     onSuccess: invalidateReads,
   });
