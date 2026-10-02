@@ -15,7 +15,7 @@ import {
 } from '../../lib/clusterManager';
 import type { ServedModel } from '../../lib/serving';
 import { servingRouteRef } from '../../routes';
-import { CommitOutcome } from '../CommitOutcome';
+import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
 
@@ -307,7 +307,9 @@ export function RemoveGpuNodePoolDialog({
                 {isBusy ? 'Committing…' : 'Commit'}
               </Button>
             </div>
-            {committed && <CommitOutcome result={committed} />}
+            {committed?.commit && (
+              <ClusterManagerCommitOutcome commit={committed.commit} />
+            )}
           </Flex>
         )}
       </Flex>

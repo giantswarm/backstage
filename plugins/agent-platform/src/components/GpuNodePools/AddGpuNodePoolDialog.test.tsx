@@ -443,6 +443,21 @@ function makeMusterApi(scenario: Scenario = {}) {
           return {
             ...applied(args.mode, Boolean(scenario.partial) && applies === 1),
             ...placement,
+            ...(args.mode === 'commit'
+              ? {
+                  commit: {
+                    repository: 'acme/fleet',
+                    base: 'main',
+                    directory: 'clusters/wc1/cluster-manager',
+                    kustomization: 'flux-giantswarm/wc1',
+                    prune: true,
+                    branch: 'cluster-manager/wc1-gpu-l4',
+                    files: [],
+                    pullRequest: 'https://github.com/acme/fleet/pull/3',
+                    number: 3,
+                  },
+                }
+              : {}),
           };
         }
         default:
@@ -669,6 +684,10 @@ describe('AddGpuNodePoolDialog', () => {
         'inst-1',
       ),
     );
+    // cluster-manager answers the pull request in `commit`, not agent-manager's `pullRequestUrl`.
+    expect(
+      await screen.findByRole('link', { name: /Open the pull request/ }),
+    ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/3');
   });
 
   it('offers the muster connect step when the session is not connected', async () => {
