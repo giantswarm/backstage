@@ -42,6 +42,8 @@ const useStyles = makeStyles(theme => ({
 type CollapsibleMarkdownCardProps = {
   title: string;
   content: string | undefined | null;
+  /** URL the markdown was loaded from; relative links resolve against it. */
+  sourceUrl?: string;
   isLoading: boolean;
   error?: Error | null;
   emptyMessage: string;
@@ -54,6 +56,7 @@ type CollapsibleMarkdownCardProps = {
 export const CollapsibleMarkdownCard = ({
   title,
   content,
+  sourceUrl,
   isLoading,
   error,
   emptyMessage,
@@ -156,7 +159,7 @@ export const CollapsibleMarkdownCard = ({
             collapsedSize={collapsedSize}
           >
             <div ref={contentRef}>
-              <GSMarkdownContent content={content} />
+              <GSMarkdownContent content={content} sourceUrl={sourceUrl} />
             </div>
           </Collapse>
           {needsExpansion && !expanded && (

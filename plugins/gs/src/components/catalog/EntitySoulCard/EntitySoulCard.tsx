@@ -13,6 +13,7 @@ const SoulCardContent = () => {
     <CollapsibleMarkdownCard
       title="Soul"
       content={soul}
+      sourceUrl={soulUrl}
       isLoading={isLoading}
       error={error}
       emptyMessage="No SOUL.md available."
