@@ -19,7 +19,9 @@ other branches' builds are set aside. `passing` needs positive evidence: a
 context still running, cancelled or pending on the default branch, a red that
 cannot be resolved, or a rollup whose every context was set aside is `unknown`,
 never `failing` and never `passing`; a skipped or neutral check is not evidence
-either. When a lookup fails (GitHub 5xx, CircleCI rate limit) the last known
+either, and where CircleCI reports to the commit only a green CircleCI build of
+the default branch is (a green pre-commit or scorecard workflow says nothing
+about whether the build runs). When a lookup fails (GitHub 5xx, CircleCI rate limit) the last known
 verdict is kept for up to a day with its original `build-status-checked`, rather than every
 affected component flipping to `unknown` for a pass. A repository GitHub cannot find writes
 nothing, and a missing GitHub token is warned about once per owner rather than

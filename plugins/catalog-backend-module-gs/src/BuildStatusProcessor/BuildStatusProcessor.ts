@@ -54,6 +54,13 @@ const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 // and a failure past the page boundary must not read as a green branch.
 const CONTEXTS_PAGE_SIZE = 100;
 
+/**
+ * Any CircleCI link: a v1.1 build URL in a status, or an app.circleci.com
+ * pipeline link in a CircleCI check run's `detailsUrl`. Marks a context as
+ * coming from the build rather than from a lint or scorecard workflow.
+ */
+const CIRCLE_ANY = /^https:\/\/(app\.)?circleci\.com\//;
+
 /** A CircleCI build URL as GitHub stores it in a status `targetUrl`. */
 const CIRCLE_BUILD = /circleci\.com\/(gh|bb)\/([^/]+)\/([^/]+)\/(\d+)/;
 
@@ -570,7 +577,12 @@ function unsettled(rollup: Rollup): Unsettled[] {
  * `undefined`, could not be resolved and stays unproven.
  *
  * `passing` needs positive evidence: every context in view settled green and
- * at least one of them speaks for the default branch. A context still running,
+ * at least one of them speaks for the default branch. Where CircleCI reports
+ * to the commit at all, that one must be CircleCI's: a green pre-commit or
+ * scorecard workflow says nothing about whether the build runs, and with
+ * `ignore: main` in the CircleCI config it would otherwise read `passing` for
+ * a branch CircleCI never built. Those other contexts can still fail the
+ * branch or leave it unproven. Repos without CircleCI take any green check. A context still running,
  * cancelled or otherwise without a verdict leaves the branch unproven, and so
  * does a rollup whose every context was set aside as another branch's or a
  * tag's — that branch may never have been built at all. A green legacy status
@@ -591,6 +603,12 @@ export function verdict(
   const failing = new Set<string>();
   let unproven = 0;
   let evidence = 0;
+  let buildEvidence = 0;
+  const hasCircle = rollup.contexts.some(ctx =>
+    CIRCLE_ANY.test(
+      (ctx.kind === 'check' ? ctx.detailsUrl : ctx.targetUrl) ?? '',
+    ),
+  );
 
   for (const ctx of rollup.contexts) {
     let attribution: Attribution;
@@ -645,6 +663,10 @@ export function verdict(
       unproven += 1;
     } else if (attribution === 'green') {
       evidence += 1;
+      const url = ctx.kind === 'check' ? ctx.detailsUrl : ctx.targetUrl;
+      if (CIRCLE_ANY.test(url ?? '')) {
+        buildEvidence += 1;
+      }
     }
   }
 
@@ -654,7 +676,7 @@ export function verdict(
   // A failure past the page boundary would otherwise read as a green branch.
   if (
     unproven > 0 ||
-    evidence === 0 ||
+    (hasCircle ? buildEvidence : evidence) === 0 ||
     rollup.totalCount > rollup.contexts.length
   ) {
     return { status: BUILD_UNKNOWN, failingChecks: [] };

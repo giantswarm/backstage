@@ -30,8 +30,9 @@ export const BUILD_STATUS_MEANINGS: Record<string, string> = {
   failing:
     'A check on the default branch is failing, confirmed to have run on that branch.',
   unknown:
-    'Could not be determined — a failing status whose build could not be traced to a branch, a private CircleCI project, or more checks than fit in one page.',
-  passing: 'Every check reporting to the default branch is green.',
+    'Could not be determined — a build still running or cancelled, a failing status whose build could not be traced to a branch, no build of the default branch at all, a private CircleCI project, or more checks than fit in one page.',
+  passing:
+    'Every check reporting to the default branch is green, and the build itself — CircleCI, where the repo uses it — is among them.',
 };
 
 export function buildStatusLabel(status: string): string {

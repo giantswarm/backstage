@@ -14,6 +14,13 @@ import {
 
 const MAIN = 'main';
 const CIRCLE_URL = 'https://circleci.com/gh/giantswarm/my-app/1234';
+/** A green CircleCI build of main, as evidence that the build runs. */
+const CIRCLE_MAIN_GREEN: RollupContext = {
+  kind: 'status',
+  context: 'ci/circleci: main',
+  state: 'SUCCESS',
+  targetUrl: 'https://circleci.com/gh/giantswarm/my-app/1200',
+};
 
 function check(
   name: string,
@@ -82,10 +89,7 @@ describe('verdict', () => {
   it('does not count a failing status whose build ran elsewhere', () => {
     expect(
       verdict(
-        rollup([
-          status('ci/circleci: build', 'FAILURE'),
-          check('lint', 'SUCCESS', MAIN),
-        ]),
+        rollup([status('ci/circleci: build', 'FAILURE'), CIRCLE_MAIN_GREEN]),
         builds({
           [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'failed' },
         }),
@@ -112,6 +116,49 @@ describe('verdict', () => {
     ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
   });
 
+  it('does not take an unrelated green check as evidence when CircleCI reports', () => {
+    // `ignore: main` in the CircleCI config: CircleCI's only red is a
+    // feature-branch build, set aside, and the green pre-commit workflow on
+    // main says nothing about whether the build runs.
+    expect(
+      verdict(
+        rollup([
+          status('ci/circleci: build', 'FAILURE'),
+          check('zz_generated.pre-commit', 'SUCCESS', MAIN),
+        ]),
+        builds({
+          [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'failed' },
+        }),
+      ),
+    ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+  });
+
+  it('takes a green CircleCI check run on the default branch as evidence', () => {
+    expect(
+      verdict(
+        rollup([
+          check(
+            'build',
+            'SUCCESS',
+            MAIN,
+            'https://app.circleci.com/pipelines/github/giantswarm/my-app/9',
+          ),
+          check('zz_generated.pre-commit', 'SUCCESS', MAIN),
+        ]),
+        builds({}),
+      ),
+    ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
+  });
+
+  it('still lets a non-build check fail the branch when CircleCI is green', () => {
+    expect(
+      verdict(
+        rollup([CIRCLE_MAIN_GREEN, check('lint', 'FAILURE', MAIN)]),
+        builds({}),
+      ),
+    ).toEqual({ status: BUILD_FAILING, failingChecks: ['lint'] });
+  });
+
   it.each(['canceled', 'running', 'queued', 'not_run'])(
     'reports unknown, not passing, for a %s build on the default branch',
     outcome => {
@@ -130,10 +177,7 @@ describe('verdict', () => {
   it('sets aside a canceled build on another branch', () => {
     expect(
       verdict(
-        rollup([
-          status('ci/circleci: build', 'ERROR'),
-          check('lint', 'SUCCESS', MAIN),
-        ]),
+        rollup([status('ci/circleci: build', 'ERROR'), CIRCLE_MAIN_GREEN]),
         builds({
           [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'canceled' },
         }),
@@ -146,10 +190,7 @@ describe('verdict', () => {
     // reports a tag build with no branch.
     expect(
       verdict(
-        rollup([
-          status('ci/circleci: release', 'FAILURE'),
-          check('lint', 'SUCCESS', MAIN),
-        ]),
+        rollup([status('ci/circleci: release', 'FAILURE'), CIRCLE_MAIN_GREEN]),
         builds({
           [CIRCLE_URL]: { branch: null, tag: 'v1.2.3', outcome: 'failed' },
         }),
@@ -191,10 +232,7 @@ describe('verdict', () => {
   it('sets aside a pending status whose build runs on another branch', () => {
     expect(
       verdict(
-        rollup([
-          status('ci/circleci: build', 'PENDING'),
-          check('lint', 'SUCCESS', MAIN),
-        ]),
+        rollup([status('ci/circleci: build', 'PENDING'), CIRCLE_MAIN_GREEN]),
         builds({
           [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'running' },
         }),
