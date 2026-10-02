@@ -11,6 +11,10 @@ import { lab } from './lab';
  * own installation to the catalog's answer: the row is the fixture, the
  * cells are the lab's. The kind cluster's API server answers `/version`; it
  * runs no Giant Swarm management cluster, so its release is "—".
+ *
+ * The standalone agent-platform chart turns the Installations page off; the
+ * suite is skipped with the reason until AGENTLAB_INSTALLATIONS_PAGE=1 says
+ * the lab's Backstage names `page:gs/installations` in `app.extensions`.
  */
 const INSTALLATION_ENTITY = {
   apiVersion: 'backstage.io/v1alpha1',
@@ -23,29 +27,45 @@ const INSTALLATION_ENTITY = {
   spec: { type: 'installation', owner: 'group:default/platform-admins' },
 };
 
+const ENTITIES = '**/api/catalog/entities?*';
+const TYPE_FACET = '**/api/catalog/entity-facets?facet=spec.type*';
+
 test.describe('installations: management cluster versions', () => {
+  test.skip(
+    !process.env.AGENTLAB_INSTALLATIONS_PAGE,
+    'needs a lab whose Backstage enables page:gs/installations (the standalone chart turns it off); set AGENTLAB_INSTALLATIONS_PAGE=1',
+  );
+
   test.beforeEach(async ({ admin }) => {
-    await admin.route('**/api/catalog/entities/by-query**', async route => {
+    // The page's hidden type picker keeps `spec.type=installation` only
+    // where the facet offers it; the table then lists the resources.
+    await admin.route(TYPE_FACET, async route => {
+      const response = await route.fetch();
+      const body = await response.json();
+      const facet = body.facets['spec.type'];
+      if (!facet.some((f: { value: string }) => f.value === 'installation')) {
+        facet.push({ value: 'installation', count: 1 });
+      }
+      await route.fulfill({ response, json: body });
+    });
+    await admin.route(ENTITIES, async route => {
       const url = decodeURIComponent(route.request().url());
-      if (!url.includes('spec.type=installation')) {
+      if (!url.includes('kind=resource')) {
         await route.fallback();
         return;
       }
       const response = await route.fetch();
-      const body = await response.json();
-      const names = body.items.map(
-        (entity: { metadata: { name: string } }) => entity.metadata.name,
-      );
-      if (!names.includes(lab.installation)) {
-        body.items.push(INSTALLATION_ENTITY);
-        body.totalItems = body.items.length;
+      const entities: { metadata: { name: string } }[] = await response.json();
+      if (!entities.some(e => e.metadata.name === lab.installation)) {
+        entities.push(INSTALLATION_ENTITY);
       }
-      await route.fulfill({ response, json: body });
+      await route.fulfill({ response, json: entities });
     });
   });
 
   test.afterEach(async ({ admin }) => {
-    await admin.unroute('**/api/catalog/entities/by-query**');
+    await admin.unroute(TYPE_FACET);
+    await admin.unroute(ENTITIES);
   });
 
   test('shows the Kubernetes version and the release of the installation', async ({
