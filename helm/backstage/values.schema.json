@@ -2948,7 +2948,9 @@
         "nodeSelector": {
             "type": "object",
             "description": "Node selector labels to constrain pod scheduling to specific nodes. Merged with `architecture`. Pinning to arm64 here rather than through `architecture` also adds the arm64 taint toleration, so either route is safe. A value that contradicts `architecture` fails the render.",
-            "additionalProperties": true
+            "additionalProperties": {
+                "type": "string"
+            }
         },
         "observability": {
             "type": "object",

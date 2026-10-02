@@ -309,6 +309,10 @@ render arch-merged --set architecture=arm64 --set-string 'nodeSelector.topology\
 expect_scheduling arch-merged "[{\"kubernetes.io/arch\":\"arm64\",\"topology.kubernetes.io/zone\":\"eu-central-1a\"},[{\"key\":\"dedicated\",\"operator\":\"Exists\"},${arm64_toleration}]]"
 render arch-covered --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists'
 expect_scheduling arch-covered '[{"kubernetes.io/arch":"arm64"},[{"key":"kubernetes.io/arch","operator":"Exists"}]]'
+render arch-covered-equal --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].value=arm64' --set 'tolerations[0].effect=NoSchedule'
+expect_scheduling arch-covered-equal '[{"kubernetes.io/arch":"arm64"},[{"effect":"NoSchedule","key":"kubernetes.io/arch","value":"arm64"}]]'
+render arch-noexecute --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists' --set 'tolerations[0].effect=NoExecute'
+expect_scheduling arch-noexecute "[{\"kubernetes.io/arch\":\"arm64\"},[{\"effect\":\"NoExecute\",\"key\":\"kubernetes.io/arch\",\"operator\":\"Exists\"},${arm64_toleration}]]"
 render_fails arch-conflict 'architecture=arm64 conflicts with nodeSelector' --set architecture=arm64 --set-string 'nodeSelector.kubernetes\.io/arch=amd64'
 
 if [ "${failed}" -ne 0 ]; then
