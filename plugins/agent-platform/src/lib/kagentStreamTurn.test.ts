@@ -5,6 +5,7 @@ import {
   isStreamTurnOver,
   readStreamFrame,
   StreamTurn,
+  streamEventCarriesFile,
 } from './kagentStreamTurn';
 import { TimelineItem } from './kagentTimeline';
 
@@ -1011,5 +1012,47 @@ describe('isStreamTurnOver', () => {
         fold({ kind: 'task', id: 't1', status: { state: 'completed' } }),
       ),
     ).toBe(true);
+  });
+});
+
+describe('streamEventCarriesFile', () => {
+  const file = { kind: 'file', file: { name: 'chart.png', bytes: 'AAAA' } };
+
+  it.each([
+    [
+      'a status-update message',
+      {
+        kind: 'status-update',
+        status: {
+          state: 'working',
+          message: {
+            kind: 'message',
+            messageId: 'm',
+            role: 'agent',
+            parts: [file],
+          },
+        },
+      },
+    ],
+    [
+      'an artifact-update',
+      { kind: 'artifact-update', artifact: { artifactId: 'a', parts: [file] } },
+    ],
+    [
+      'a bare message',
+      { kind: 'message', messageId: 'm', role: 'agent', parts: [file] },
+    ],
+  ])('sees a file on %s', (_name, event) => {
+    expect(streamEventCarriesFile(event)).toBe(true);
+  });
+
+  it('ignores an event with text and calls only', () => {
+    expect(
+      streamEventCarriesFile({
+        kind: 'artifact-update',
+        artifact: { artifactId: 'a', parts: [{ kind: 'text', text: 'hi' }] },
+      }),
+    ).toBe(false);
+    expect(streamEventCarriesFile('not an event')).toBe(false);
   });
 });

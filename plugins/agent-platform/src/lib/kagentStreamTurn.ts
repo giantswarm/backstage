@@ -18,6 +18,7 @@ import {
   readKagentMetadata,
   readKagentMetadataString,
   readMessageText,
+  readAttachment,
   readPartText,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -149,6 +150,33 @@ export function isStreamTurnOver(turn: StreamTurn): boolean {
   }
   const state = describeSessionState(turn.stateKey);
   return state !== undefined && !state.isActive;
+}
+
+/**
+ * Whether a stream event carries a file.
+ *
+ * The live preview renders text and calls only, so a file part is left to the
+ * polled conversation — and this is how the caller knows to re-read it now
+ * rather than on the next poll.
+ */
+export function streamEventCarriesFile(data: unknown): boolean {
+  const parsed = a2aStreamEventWireSchema.safeParse(normalizeStreamEvent(data));
+  if (!parsed.success) {
+    return false;
+  }
+  const event = parsed.data;
+  const statusMessage = a2aMessageWireSchema.safeParse(event.status?.message);
+  const parts = [
+    ...(event.parts ?? []),
+    ...(event.artifact?.parts ?? []),
+    ...(statusMessage.success && Array.isArray(statusMessage.data.parts)
+      ? statusMessage.data.parts
+      : []),
+  ];
+  return parts.some(rawPart => {
+    const part = parsePart(rawPart);
+    return part !== undefined && readAttachment(part) !== undefined;
+  });
 }
 
 /**

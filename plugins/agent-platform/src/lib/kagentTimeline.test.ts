@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
+  attachmentPngV2,
   tasksAdkPrefixed as adkPrefixed,
   tasksApproval as approval,
   tasksAskUserPending as askUserPending,
@@ -1138,3 +1139,117 @@ function withDecision(fixture: typeof approval, decision: object) {
   (message as { parts: unknown[] }).parts = [{ kind: 'data', data: decision }];
   return copy;
 }
+
+describe('buildTimeline — attachments', () => {
+  // A real 1×1 PNG: the preview reads its header for the dimensions.
+  const PNG_BYTES = (attachmentPngV2.part as { file: { bytes: string } }).file
+    .bytes;
+
+  function taskWithAttachment(file: Record<string, unknown>): A2aTaskWire[] {
+    return [
+      {
+        id: 'task-1',
+        status: { state: 'completed', timestamp: '2026-09-15T10:00:00Z' },
+        history: [
+          {
+            kind: 'message',
+            messageId: 'message-1',
+            role: 'user',
+            parts: [
+              { kind: 'text', text: 'Look at this' },
+              { kind: 'file', file },
+            ],
+          },
+        ],
+      },
+    ] as unknown as A2aTaskWire[];
+  }
+
+  it('renders an attached image instead of dropping it', () => {
+    const { items } = buildTimeline(
+      taskWithAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    expect(kinds(items)).toEqual(['user-message', 'attachment']);
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      name: 'shot.png',
+      declaredType: 'image/png',
+      isUser: true,
+      preview: { kind: 'image', type: 'image/png' },
+    });
+  });
+
+  it('keeps the message that came with it, in order', () => {
+    // The attachment follows the words it was sent with rather than replacing
+    // them or jumping ahead of them.
+    const { items } = buildTimeline(taskWithAttachment({ bytes: PNG_BYTES }));
+
+    expect(items[0]).toMatchObject({
+      kind: 'user-message',
+      text: 'Look at this',
+    });
+  });
+
+  it('reports a file it cannot show rather than hiding it', () => {
+    const { items } = buildTimeline(
+      taskWithAttachment({
+        name: 'notes.pdf',
+        mimeType: 'application/pdf',
+        bytes: Buffer.from('%PDF-1.7 and then some').toString('base64'),
+      }),
+    );
+
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      name: 'notes.pdf',
+      preview: { kind: 'none', reason: 'not-previewable' },
+    });
+  });
+
+  it('states no size for a payload that is not readable base64', () => {
+    // A number derived from a string that is not base64 would be invented.
+    const { items } = buildTimeline(
+      taskWithAttachment({ name: 'shot.png', bytes: 'not base64!' }),
+    );
+
+    expect(items[1]).toMatchObject({
+      kind: 'attachment',
+      preview: { kind: 'none', reason: 'undecodable' },
+    });
+    expect((items[1] as { preview: object }).preview).not.toHaveProperty(
+      'byteSize',
+    );
+  });
+
+  it('counts the attachment once when kagent repeats the message', () => {
+    // The `messageId` dedupe covers attachments too: kagent stores the user's
+    // message on every turn, so the file crosses the wire more than once.
+    const [task] = taskWithAttachment({ bytes: PNG_BYTES });
+    const repeated = [
+      task,
+      { ...task, id: 'task-2' },
+    ] as unknown as A2aTaskWire[];
+
+    const { items } = buildTimeline(repeated);
+
+    expect(items.filter(item => item.kind === 'attachment')).toHaveLength(1);
+  });
+
+  it('decides a preview once for a part that did not change between polls', () => {
+    // react-query keeps the identity of unchanged parts, so the rebuilt timeline
+    // hands the same preview back rather than a fresh copy of the payload.
+    const tasks = taskWithAttachment({ name: 'shot.png', bytes: PNG_BYTES });
+
+    const first = buildTimeline(tasks).items[1];
+    const second = buildTimeline(tasks).items[1];
+
+    expect((second as { preview: object }).preview).toBe(
+      (first as { preview: object }).preview,
+    );
+  });
+});

@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { buildTimeline } from '../../lib/kagentTimeline';
@@ -7,6 +7,7 @@ import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-c
 import { SessionTimeline } from './SessionTimeline';
 
 import {
+  attachmentPngV2,
   tasksApproval,
   tasksAskUser,
   tasksAskUserPending,
@@ -821,5 +822,209 @@ describe('SessionTimeline — a turn the person canceled', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
 
     expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
+  });
+});
+
+describe('SessionTimeline — an attached file', () => {
+  // A real 1×1 PNG: the preview reads its header for the dimensions.
+  const PNG_BYTES = (attachmentPngV2.part as { file: { bytes: string } }).file
+    .bytes;
+
+  function withAttachment(file: Record<string, unknown>) {
+    return {
+      data: [
+        {
+          id: 'task-1',
+          status: { state: 'completed', timestamp: '2026-09-15T10:00:00Z' },
+          history: [
+            {
+              kind: 'message',
+              messageId: 'message-1',
+              role: 'user',
+              parts: [
+                { kind: 'text', text: 'Look at this' },
+                { kind: 'file', file },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  it('shows an image the bytes say is one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const image = screen.getByRole('img', { name: 'shot.png' });
+    expect(image).toHaveAttribute('src', `data:image/png;base64,${PNG_BYTES}`);
+  });
+
+  it('never renders an SVG as an image, even when it claims to be a PNG', async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/only PNG, JPEG, GIF and WebP images are shown/),
+    ).toBeInTheDocument();
+  });
+
+  it('says what it cannot show, rather than dropping it silently', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'image/png',
+        bytes: 'not base64!',
+      }),
+    );
+
+    expect(screen.getByText('shot.png')).toBeInTheDocument();
+    expect(screen.getByText(/contents could not be read/)).toBeInTheDocument();
+    // Nothing to click: an untrusted file is not offered for download.
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('is conversation, so Hidden does not remove it', async () => {
+    // The file someone attached is part of what was said, not part of the
+    // agent's working.
+    const conversation = timelineFor(tasksV099);
+    const attachment = timelineFor(
+      withAttachment({ name: 'shot.png', bytes: PNG_BYTES }),
+    );
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={{
+          ...conversation,
+          items: [...conversation.items, ...attachment.items],
+        }}
+        agentName="Issue tracker"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Hidden' }));
+
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('captions an image with the type its bytes carry, not the declared one', async () => {
+    await render(
+      withAttachment({
+        name: 'shot.png',
+        mimeType: 'application/octet-stream',
+        bytes: PNG_BYTES,
+      }),
+    );
+
+    const caption = screen.getByTestId('timeline-attachment');
+    expect(caption).toHaveTextContent('image/png');
+    expect(caption).not.toHaveTextContent('application/octet-stream');
+  });
+
+  it("marks the type on a file with no preview as the sender's claim", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+
+    await render(
+      withAttachment({
+        name: 'harmless.png',
+        mimeType: 'image/png',
+        bytes: svg.toString('base64'),
+      }),
+    );
+
+    expect(screen.getByText(/declared as image\/png/)).toBeInTheDocument();
+  });
+
+  it("keeps the user's file on the user's side and the agent's name on its reply", async () => {
+    const fixture = withAttachment({ name: 'shot.png', bytes: PNG_BYTES });
+    fixture.data[0].history.push({
+      kind: 'message',
+      messageId: 'message-2',
+      role: 'agent',
+      parts: [{ kind: 'text', text: 'That is a screenshot.' }],
+    } as never);
+
+    await render(fixture);
+
+    const order = [
+      ...document.querySelectorAll(
+        '[data-testid^="timeline-"], [class*="authorHeader"]',
+      ),
+    ].map(el => el.getAttribute('data-testid') ?? 'agent-header');
+    expect(order).toEqual([
+      'timeline-user-message',
+      'timeline-attachment',
+      'agent-header',
+      'timeline-agent-message',
+    ]);
+  });
+
+  it('shows a file sent with an ask_user reply that has no text part', async () => {
+    const structuredOnly = structuredClone(tasksAskUser) as typeof tasksAskUser;
+    const decision = structuredOnly.data[0].history.find(
+      item => item.messageId === 'm-decision-1',
+    ) as { parts: unknown[] };
+    decision.parts = [
+      ...decision.parts.filter(
+        part => (part as { kind?: string }).kind !== 'text',
+      ),
+      { kind: 'file', file: { name: 'shot.png', bytes: PNG_BYTES } },
+    ];
+
+    await render(structuredOnly, 'SRE Agent');
+
+    expect(
+      screen.getByText(/Still no reply to messages with image/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
+  });
+
+  it('enlarges an image in the page and returns focus to it on close', async () => {
+    await render(withAttachment({ name: 'shot.png', bytes: PNG_BYTES }));
+
+    const enlarge = screen.getByRole('button', { name: 'Enlarge shot.png' });
+    await userEvent.click(enlarge);
+
+    const dialog = await screen.findByRole('dialog');
+    const fullSize = within(dialog).getByRole('img', { name: 'shot.png' });
+    expect(fullSize).toHaveAttribute(
+      'src',
+      `data:image/png;base64,${PNG_BYTES}`,
+    );
+    // Nothing leaves the page: no new tab, no download.
+    expect(within(dialog).queryByRole('link')).not.toBeInTheDocument();
+    // Focus stays inside while it is open.
+    await userEvent.tab();
+    await userEvent.tab();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
+
+    await userEvent.click(enlarge);
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Close',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(enlarge).toHaveFocus();
   });
 });

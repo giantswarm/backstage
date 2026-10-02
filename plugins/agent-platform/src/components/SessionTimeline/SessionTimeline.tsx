@@ -18,6 +18,7 @@ import {
   groupIntoTurns,
   hasExpandableDetail,
   isActivityItem,
+  isUserItem,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -357,7 +358,7 @@ export function SessionTimeline({
         const entries: ReactNode[] = [];
         let needsHeader = true;
         for (const item of visible) {
-          if (item.kind === 'user-message') {
+          if (isUserItem(item)) {
             needsHeader = true;
           } else if (needsHeader) {
             entries.push(
@@ -373,8 +374,11 @@ export function SessionTimeline({
             <TimelineEntry
               // Keyed on the detail setting as well as the item: an entry's
               // expanded state is only read on mount, so the global control
-              // takes effect by remounting the entries.
-              key={`${item.id}:${detail}`}
+              // takes effect by remounting the entries. An attachment has no
+              // expanded state, and remounting it would decode its image again.
+              key={
+                item.kind === 'attachment' ? item.id : `${item.id}:${detail}`
+              }
               item={item}
               defaultExpanded={detail === 'expanded'}
               isAgentWorking={isAgentWorking}

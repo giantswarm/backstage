@@ -11,6 +11,7 @@ import {
   readKagentSubagentUsage,
 } from './kagentMetadata';
 import { asRecord } from './record';
+import { asNonEmptyString } from './values';
 
 /**
  * Primitives for reading A2A message parts the way kagent writes them.
@@ -333,10 +334,6 @@ export function addTokenUsage(
     completion: left.completion + right.completion,
     ...(costUsd !== undefined && { costUsd }),
   };
-}
-
-function asNonEmptyString(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 function asFiniteNonNegative(value: unknown): number | undefined {
