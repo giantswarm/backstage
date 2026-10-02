@@ -34,6 +34,9 @@ spec:
         app.kubernetes.io/instance: {{ .Chart.Name }}
         {{- include "labels.backstage" $ | nindent 8 }}
     spec:
+      {{- with include "backstage.podScheduling" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -317,7 +320,3 @@ spec:
             secretName: {{ $.Values.name }}-plugin-key-{{ .keyId }}-secret
         {{- end }}
         {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}

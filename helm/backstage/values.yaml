@@ -262,14 +262,22 @@ observability:
     # -- Port the Prometheus exporter listens on (OTEL_EXPORTER_PROMETHEUS_PORT), also the `metrics` container port and Service port.
     port: 9464
 
-# @schema type:object;additionalProperties:true
-# -- Node selector labels to constrain pod scheduling to specific nodes
+# @schema type:string;enum:["",amd64,arm64]
+# -- Target CPU architecture for this workload. Empty imposes no constraint. `arm64` pins the pod to arm64 nodes, adding both the `kubernetes.io/arch` node selector and the toleration for the `kubernetes.io/arch=arm64:NoSchedule` taint that Giant Swarm arm64 node pools carry. Both are required, so this single value sets both. Requires a multi-arch container image; an amd64-only image will crash-loop with `exec format error` on an arm64 node. Applies to the Backstage pod only; the CNPG instances are placed by `database.postgresql.affinity`.
+architecture: ''
+
+# @schema type:object;additionalProperties:{"type":"string"}
+# -- Node selector labels to constrain pod scheduling to specific nodes. Merged with `architecture`. Pinning to arm64 here rather than through `architecture` also adds the arm64 taint toleration, so either route is safe. A value that contradicts `architecture` fails the render.
 nodeSelector: {}
 
 # The k8s schema refs in this file pin a released version on purpose. The
 # `master` directory is the Kubernetes dev branch and upstream regenerates it,
 # which redrafts values.schema.json under us and reddens the pre-commit hook on
 # every branch at once.
+# @schema itemRef:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/v1.35.1/_definitions.json#/definitions/io.k8s.api.core.v1.Toleration
+# -- Tolerations for pod scheduling. Merged with the toleration that `architecture: arm64` adds.
+tolerations: []
+
 # @schema $ref:https://raw.githubusercontent.com/yannh/kubernetes-json-schema/refs/heads/master/v1.35.1/_definitions.json#/definitions/io.k8s.api.apps.v1.DeploymentStrategy;additionalProperties:true
 # -- Deployment update strategy. When empty, the Kubernetes default (RollingUpdate) is used. Set to `{type: Recreate}` when backing the pod with a ReadWriteOnce PVC (e.g. file-backed SQLite) so upgrades don't deadlock on the volume.
 strategy: {}
