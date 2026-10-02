@@ -6,6 +6,7 @@ import { inputFacts, stateDetailOf, verbOf } from '../lib/actions';
 import { linkify, repositoriesOf } from '../lib/links';
 import { fieldsOf, formOf } from '../lib/schemaForm';
 import { ActionStateTag } from './ActionStateTag';
+import { READY_TO_MERGE_STEP } from './StateTag';
 
 const LIST_STYLE: CSSProperties = { margin: 0, paddingLeft: 16 };
 
@@ -110,7 +111,8 @@ function Block({
 
 /**
  * The record of an action under its line: what was asked, as the choices
- * the person made; the pull requests with their state; the approval and its
+ * the person made; the actor's next step where the action is ready to
+ * merge; the pull requests with their state; the approval and its
  * thread; the rollout per installation; and the manager's last word on it,
  * with every repository and file it names linked. `installation` gives the
  * repositories a message may name, `definition` the labels of the choices.
@@ -144,6 +146,11 @@ export function ActionDetails({
         <Block title="Asked for" testId="action-inputs">
           <FactList facts={asked} maxWidth={null} />
         </Block>
+      )}
+      {status?.state === 'ready to merge' && (
+        <Text variant="body-small" data-testid="action-next-step">
+          {READY_TO_MERGE_STEP}
+        </Text>
       )}
       {!!status?.pullRequests?.length && (
         <Block title="Pull requests" testId="action-pull-requests">

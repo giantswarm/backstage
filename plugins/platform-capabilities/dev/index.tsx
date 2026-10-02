@@ -33,6 +33,7 @@ import {
   FakeApi,
   installation,
   NOT_ENABLED,
+  READY_TO_MERGE,
   ROLLING_OUT,
 } from '../src/fixtures/fakeApi';
 import { platformCapabilitiesPlugin } from '../src/plugin';
@@ -47,6 +48,7 @@ const INSTALLATIONS = [
   ENABLED,
   ENABLED_BY_HAND,
   DRIFTED,
+  READY_TO_MERGE,
   ROLLING_OUT,
   FAILED,
   installation(),
