@@ -2419,8 +2419,8 @@ portal and the tool agree:
 The **deciding** entry is the platform Harness named by the admission label when it
 reports, else the readiest of the others — sessions started from the portal run on
 the platform Harness, so another Harness being ready does not make the agent ready.
-Its verdict is the agent's: `ready`, `notReady` (progressing), `notAccepted`
-(failed), `pending`. Two more rules complete the picture:
+Its verdict is the agent's: `ready`, `notReady` (progressing), `failed`,
+`pending`. Two more rules complete the picture:
 
 - **Not admitted** — `status.harnesses[]` is empty while `status.observedGeneration`
   equals `metadata.generation`: the controller has seen the current spec and no

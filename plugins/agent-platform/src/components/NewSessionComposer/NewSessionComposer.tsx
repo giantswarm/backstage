@@ -118,7 +118,7 @@ export type NewSessionComposerProps = {
 /**
  * Longest description a picker option will carry.
  *
- * A bound is needed, not cosmetic. `readinessMessage` for a `notAccepted` agent is
+ * A bound is needed, not cosmetic. `readinessMessage` for a `failed` agent is
  * the controller's raw reconcile error, and a real one on an internal installation
  * is a 400-character
  * multi-line Postgres dial failure repeated twice — which turns one option into a

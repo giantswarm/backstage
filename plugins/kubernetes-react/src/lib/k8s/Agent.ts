@@ -91,6 +91,61 @@ export const AgentConditionType = {
 } as const;
 
 /**
+ * The order the controller evaluates the conditions in. A failing stage marks
+ * every later one `False` with the reason `Blocked`, so the first failure in
+ * this order that is not `Blocked` is the root cause.
+ */
+export const AGENT_CONDITION_STAGE_ORDER: readonly string[] = [
+  AgentConditionType.Accepted,
+  AgentConditionType.ResolvedRefs,
+  AgentConditionType.Compatible,
+  AgentConditionType.Ready,
+];
+
+const BLOCKED_REASON = 'Blocked';
+
+/**
+ * Which part of the agent a failure is about: the model, the tools (an MCP
+ * server or another agent called as a tool), the system prompt, or the
+ * platform (something the agent's author cannot fix).
+ */
+export type AgentFailureField = 'model' | 'tools' | 'systemPrompt' | 'platform';
+
+/** The condition that makes an agent `failed`, and what it is about. */
+export type AgentFailure = {
+  condition: string;
+  message?: string;
+  /** `undefined` when the message names nothing this page can point to. */
+  field?: AgentFailureField;
+};
+
+/**
+ * The part of the agent a controller message is about, read from the prefixes
+ * kagent's compiler writes (`resolve ModelConfig "x": not found`, `resolve
+ * RemoteMCPServer "x": …`, `WorkerPool "x" not found`).
+ */
+export function failureFieldOf(
+  message: string | undefined,
+): AgentFailureField | undefined {
+  if (!message) {
+    return undefined;
+  }
+  if (/^resolve (memory )?ModelConfig\b/.test(message)) {
+    return 'model';
+  }
+  if (/^resolve (RemoteMCPServer|MCPServer|AgentTemplate)\b/.test(message)) {
+    return 'tools';
+  }
+  if (/^resolve (systemPromptFrom|prompt sources?)\b/.test(message)) {
+    return 'systemPrompt';
+  }
+  if (/^WorkerPool "[^"]*" not found/.test(message)) {
+    return 'platform';
+  }
+  return undefined;
+}
+
+/**
  * What one admitting Harness reports for the template — the same rules
  * agent-manager's `get_agent_status` applies, so the portal and the tool agree:
  *
@@ -108,7 +163,10 @@ export type HarnessReadiness = 'ready' | 'progressing' | 'failed' | 'pending';
  * - `ready` — the deciding Harness reports the template ready: sessions can start.
  * - `notReady` — admitted and accepted, but the revision is still compiling
  *   (`progressing`).
- * - `notAccepted` — the deciding Harness rejected the template (`failed`).
+ * - `failed` — the deciding Harness cannot run the template (`failed`): on
+ *   API v2 a reference did not resolve or the configuration does not fit the
+ *   Harness. Admission itself is `notAdmitted`; an admitted pair always
+ *   reads `Accepted=True`.
  * - `notAdmitted` — no Harness admits the template although the controller has
  *   seen the current spec: the admission label is missing or selects nothing.
  *   Nothing changes without a spec edit, so it is its own not-ready state with
@@ -118,7 +176,7 @@ export type HarnessReadiness = 'ready' | 'progressing' | 'failed' | 'pending';
  *   `notReady`: it means "not known yet", not "broken".
  */
 export type AgentReadiness =
-  'ready' | 'notReady' | 'notAccepted' | 'notAdmitted' | 'pending';
+  'ready' | 'notReady' | 'failed' | 'notAdmitted' | 'pending';
 
 /** One admitting Harness, as the pages present it. */
 export type AgentHarness = {
@@ -276,7 +334,7 @@ export function deriveAgentReadiness(json: AgentInterface): AgentReadiness {
     case 'ready':
       return 'ready';
     case 'failed':
-      return 'notAccepted';
+      return 'failed';
     case 'progressing':
       return 'notReady';
     default:
@@ -520,7 +578,7 @@ export class Agent extends KubeObject<AgentInterface> {
       // reads "blocked by ResolvedRefs" defers to the reference that did not
       // resolve. Only False, though -- an Unknown one explains nothing, and the
       // real rejection is Compatible's.
-      case 'notAccepted': {
+      case 'failed': {
         const resolvedRefs = this.getCondition(AgentConditionType.ResolvedRefs);
         return (
           this.firstFailingMessage([AgentConditionType.Accepted]) ??
@@ -539,6 +597,32 @@ export class Agent extends KubeObject<AgentInterface> {
       default:
         return undefined;
     }
+  }
+
+  /**
+   * The root cause of a `failed` agent: the deciding Harness's first `False`
+   * condition in {@link AGENT_CONDITION_STAGE_ORDER} that is not merely
+   * `Blocked` by an earlier one. `undefined` unless the agent is `failed`.
+   */
+  getFailure(): AgentFailure | undefined {
+    if (this.getReadiness() !== 'failed') {
+      return undefined;
+    }
+    const failing = AGENT_CONDITION_STAGE_ORDER.map(type =>
+      this.getCondition(type),
+    ).filter(condition => condition?.status === 'False');
+    const rootCause =
+      failing.find(condition => condition?.reason !== BLOCKED_REASON) ??
+      failing[0];
+    if (!rootCause) {
+      return undefined;
+    }
+    const message = rootCause.message || undefined;
+    return {
+      condition: rootCause.type,
+      message,
+      field: failureFieldOf(message),
+    };
   }
 
   /**

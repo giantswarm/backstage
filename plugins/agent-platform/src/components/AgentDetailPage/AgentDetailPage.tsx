@@ -29,7 +29,6 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  DateComponent,
   StatusLabel,
   useProvidePageHeaderActions,
   useSplatBasePath,
@@ -76,6 +75,7 @@ import { AgentActionsMenu } from './AgentActionsMenu';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
 import { AgentDetailTabs } from './AgentDetailTabs';
 import { AgentOverviewTab } from './AgentOverviewTab';
+import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
@@ -100,10 +100,10 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 };
 
 /**
- * The page header: avatar, name, the derived readiness, where the agent runs,
- * and — once the template exists — when it was created and what it is for.
- * It also names the agent in the document title; `GSPageLayout` appends the
- * app title.
+ * The page header: avatar, name, the derived readiness, the installation it
+ * runs on, its `namespace/name` and — once the template exists — what it is
+ * for. Everything else about the agent is in the Overview, once. It also names
+ * the agent in the document title; `GSPageLayout` appends the app title.
  */
 function AgentHeader({
   displayName,
@@ -112,7 +112,6 @@ function AgentHeader({
   name,
   installation,
   namespace,
-  created,
   description,
 }: {
   displayName: string;
@@ -121,7 +120,6 @@ function AgentHeader({
   name: string;
   installation: string;
   namespace: string;
-  created?: string;
   description?: string;
 }) {
   return (
@@ -156,13 +154,14 @@ function AgentHeader({
             <InstallationChip installation={installation} />
           </Flex>
 
-          <Text variant="body-small" color="secondary">
-            <span style={{ fontFamily: 'monospace' }}>{name}</span>
-            {' · '}
-            {installation}
-            {namespace ? ` / ${namespace}` : ''}
-            {created ? ' · created ' : ''}
-            {created ? <DateComponent value={created} relative /> : null}
+          {/* The identifier to retype into `kubectl`; the installation is the
+              chip beside the name. */}
+          <Text
+            variant="body-small"
+            color="secondary"
+            style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
+          >
+            {namespace ? `${namespace}/${name}` : name}
           </Text>
         </Flex>
       </Flex>
@@ -521,8 +520,8 @@ function AgentDetailPageContent() {
   // re-registering (and re-rendering) on every poll.
   //
   // The button is withheld for an agent that is not ready: kagent would accept the
-  // session and the turn would then fail at the first message, with the readiness
-  // this very page already explains as the reason.
+  // session and the turn would then fail at the first message. AgentSessionBlocker
+  // says why in its place.
   const actions = useMemo(
     () =>
       agent ? (
@@ -666,7 +665,6 @@ function AgentDetailPageContent() {
           name={name}
           installation={installation}
           namespace={namespace}
-          created={agent.getCreatedTimestamp()}
           description={agent.getDescription()}
         />
 
@@ -674,6 +672,11 @@ function AgentDetailPageContent() {
           installation={installation}
           namespace={namespace}
           name={name}
+        />
+
+        <AgentSessionBlocker
+          agent={agent}
+          onEdit={canWriteAgent ? openEdit : undefined}
         />
 
         <AgentDetailTabs />
@@ -697,6 +700,7 @@ function AgentDetailPageContent() {
                 installation={installation}
                 modelConfig={modelConfig}
                 modelServing={agentRow?.modelServing}
+                toolsHref={`${basePath}/tools${location.search}`}
               />
             }
           />
@@ -707,12 +711,21 @@ function AgentDetailPageContent() {
               <AgentSkillsCard
                 agent={agent}
                 onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
+                onAddSkills={canWriteAgent ? openEdit : undefined}
+                isGitOpsOwned={agentManagerGate.isGitOpsOwned}
               />
             }
           />
           <Route
             path="sessions"
-            element={<AgentSessionsCard sessions={sessions} />}
+            element={
+              <AgentSessionsCard
+                sessions={sessions}
+                onStartSession={
+                  agentRow?.readiness === 'ready' ? openNewSession : undefined
+                }
+              />
+            }
           />
           {/* A mistyped or retired tab is not a missing agent: send it to
               Overview rather than render an empty page under a header that

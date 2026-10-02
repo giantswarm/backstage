@@ -1,4 +1,4 @@
-import { Flex, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
@@ -17,11 +17,17 @@ import { SessionsTable } from '../SessionsTable';
  * rows it showed while it was one section of a scrolling page were a teaser for
  * a page that does not exist — the section's Sessions tab lists every agent's,
  * not this agent's, so it is not the "rest" of this list and is not linked here.
+ *
+ * With no sessions there is nothing to search, sort or page, so the table gives
+ * way to the one thing to do next: start one, when the agent is ready.
  */
 export function AgentSessionsCard({
   sessions,
+  onStartSession,
 }: {
   sessions: AgentSessionsView;
+  /** Opens the new-session dialog. Absent while the agent is not ready. */
+  onStartSession?: () => void;
 }) {
   const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
     sessions;
@@ -30,6 +36,35 @@ export function AgentSessionsCard({
   const sessionStates = useFleetSessionStates(
     rows.length ? [installation] : [],
   );
+
+  if (isUnavailable) {
+    return (
+      <InfoCard title="Sessions">
+        <Text variant="body-medium" color="secondary">
+          Sessions could not be read from this installation.
+        </Text>
+      </InfoCard>
+    );
+  }
+
+  if (!isLoading && rows.length === 0) {
+    return (
+      <InfoCard title="Sessions">
+        <Flex direction="column" gap="3" align="start">
+          <Text variant="body-medium" color="secondary">
+            {isNotUserScoped
+              ? 'No one has started a session with this agent yet.'
+              : "You haven't started a session with this agent yet."}
+          </Text>
+          {onStartSession && (
+            <Button variant="primary" onPress={onStartSession}>
+              Start a session
+            </Button>
+          )}
+        </Flex>
+      </InfoCard>
+    );
+  }
 
   return (
     <InfoCard title="Sessions">
@@ -43,19 +78,12 @@ export function AgentSessionsCard({
             : 'Your own sessions with this agent. kagent only lets you read sessions you started, so this is not a usage total.'}
         </Text>
 
-        {isUnavailable ? (
-          <Text variant="body-medium" color="secondary">
-            Sessions could not be read from this installation.
-          </Text>
-        ) : (
-          <SessionsTable
-            rows={rows}
-            sessionStates={sessionStates}
-            isLoading={isLoading}
-            hideColumns={['agentName', 'installation']}
-            emptyMessage="No sessions with this agent yet. Sessions from before this installation's agent runtime was upgraded are no longer available."
-          />
-        )}
+        <SessionsTable
+          rows={rows}
+          sessionStates={sessionStates}
+          isLoading={isLoading}
+          hideColumns={['agentName', 'installation']}
+        />
       </Flex>
     </InfoCard>
   );
