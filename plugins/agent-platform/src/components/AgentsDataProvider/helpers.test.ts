@@ -524,7 +524,7 @@ describe('sortAgentsBy', () => {
     const rows = [
       row('ready-one', { readiness: 'ready' }),
       row('pending-one', { readiness: 'pending' }),
-      row('rejected-one', { readiness: 'notAccepted' }),
+      row('rejected-one', { readiness: 'failed' }),
       row('orphan-one', { readiness: 'notAdmitted' }),
       row('down-one', { readiness: 'notReady' }),
     ];
@@ -544,7 +544,7 @@ describe('sortAgentsBy', () => {
 
   it('reverses the status order when descending', () => {
     const rows = [
-      row('rejected-one', { readiness: 'notAccepted' }),
+      row('rejected-one', { readiness: 'failed' }),
       row('ready-one', { readiness: 'ready' }),
     ];
 
