@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Grid, TextField } from '@material-ui/core';
 import Autocomplete from '@material-ui/lab/Autocomplete';
 import { ClusterPickerProps } from './schema';
@@ -22,6 +22,7 @@ type ClusterPickerFieldProps = {
   error?: boolean;
   clusterNameValue?: string;
   installationName?: string;
+  excludeManagementClusters?: boolean;
   onClusterSelect: (selectedCluster: Cluster | undefined) => void;
 };
 
@@ -33,10 +34,23 @@ const ClusterPickerField = ({
   error,
   clusterNameValue,
   installationName,
+  excludeManagementClusters = false,
   onClusterSelect,
 }: ClusterPickerFieldProps) => {
   const installations = installationName ? [installationName] : [];
-  const { resources, isLoading, errors } = useResources(installations, Cluster);
+  const {
+    resources: allClusters,
+    isLoading,
+    errors,
+  } = useResources(installations, Cluster);
+
+  const resources = useMemo(
+    () =>
+      excludeManagementClusters
+        ? allClusters.filter(cluster => !isManagementCluster(cluster))
+        : allClusters,
+    [allClusters, excludeManagementClusters],
+  );
 
   useShowErrors(errors, {
     message: 'Failed to load clusters',
@@ -50,6 +64,18 @@ const ClusterPickerField = ({
   });
 
   const disabled = isLoading || !Boolean(installationName) || errors.length > 0;
+
+  let fieldHelperText = helperText;
+  if (isLoading) {
+    fieldHelperText = 'Loading clusters...';
+  } else if (
+    excludeManagementClusters &&
+    installationName &&
+    errors.length === 0 &&
+    resources.length === 0
+  ) {
+    fieldHelperText = 'No workload clusters on this installation';
+  }
 
   return (
     <Grid container spacing={3} direction="column">
@@ -67,7 +93,7 @@ const ClusterPickerField = ({
             <TextField
               {...params}
               label={label}
-              helperText={isLoading ? 'Loading clusters...' : helperText}
+              helperText={fieldHelperText}
               required={required}
               error={error}
               disabled={disabled}
@@ -98,6 +124,7 @@ export const ClusterPicker = ({
     installationName: installationNameOption,
     installationNameField: installationNameFieldOption,
     disabledWhenField: disabledWhenFieldOption,
+    excludeManagementClusters,
   } = uiSchema?.['ui:options'] ?? {};
 
   const installationName = useValueFromOptions(
@@ -153,6 +180,7 @@ export const ClusterPicker = ({
       error={rawErrors?.length > 0 && !formData}
       clusterNameValue={clusterName}
       installationName={installationName}
+      excludeManagementClusters={excludeManagementClusters}
       onClusterSelect={handleClusterSelect}
     />
   );
