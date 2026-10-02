@@ -16,7 +16,7 @@ catalog.
   orders by semver rather than by a fixed option list, so `EntityCheckboxesPicker`
   gains an optional `compareOptions` comparator for open-ended value sets.
 - **Readiness card gains a "Build" section** — the verdict, the failing checks and
-  the toolchain, worded as _declared on `<default branch>`_: it is read from the
+  the toolchain, shown for a declared toolchain alone too, worded as _declared on `<default branch>`_: it is read from the
   CircleCI config, not from the last build, so an orb bump that landed after the
   last successful build is already reflected there.
 

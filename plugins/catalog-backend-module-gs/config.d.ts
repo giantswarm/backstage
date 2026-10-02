@@ -73,7 +73,7 @@ export interface Config {
          * entities carrying `github.com/project-slug` with whether their
          * default branch builds. Sets the `giantswarm.io/build-status` label
          * to `passing`, `failing` or `unknown`, names the failing checks in
-         * `giantswarm.io/build-failing-checks`, and merges `BUILD-RED` into
+         * `giantswarm.io/build-failing-checks` (a JSON array), and merges `BUILD-RED` into
          * `giantswarm.io/readiness-flags` when failing. Never changes the
          * release verdict in `giantswarm.io/readiness`.
          *

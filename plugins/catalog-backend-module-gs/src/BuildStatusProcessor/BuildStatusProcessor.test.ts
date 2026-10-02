@@ -58,7 +58,10 @@ describe('verdict', () => {
     // branch. Not main's failure.
     expect(
       verdict(
-        rollup([check('lint', 'FAILURE', 'gh-readonly-queue/main/pr-1')]),
+        rollup([
+          check('lint', 'FAILURE', 'gh-readonly-queue/main/pr-1'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
         builds({}),
       ),
     ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
@@ -79,7 +82,10 @@ describe('verdict', () => {
   it('does not count a failing status whose build ran elsewhere', () => {
     expect(
       verdict(
-        rollup([status('ci/circleci: build', 'FAILURE')]),
+        rollup([
+          status('ci/circleci: build', 'FAILURE'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
         builds({
           [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'failed' },
         }),
@@ -87,11 +93,111 @@ describe('verdict', () => {
     ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
   });
 
-  it('treats a canceled build as superseded, not as a failure', () => {
+  it('reports unknown when every context was set aside', () => {
+    // CircleCI config with `ignore: main`: the only status on main's HEAD is a
+    // red from a feature-branch build. Main may never have been built.
     expect(
       verdict(
-        rollup([status('ci/circleci: build', 'ERROR')]),
-        builds({ [CIRCLE_URL]: { branch: MAIN, outcome: 'canceled' } }),
+        rollup([status('ci/circleci: build', 'FAILURE')]),
+        builds({
+          [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'failed' },
+        }),
+      ),
+    ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+    expect(
+      verdict(
+        rollup([check('lint', 'FAILURE', 'gh-readonly-queue/main/pr-1')]),
+        builds({}),
+      ),
+    ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+  });
+
+  it.each(['canceled', 'running', 'queued', 'not_run'])(
+    'reports unknown, not passing, for a %s build on the default branch',
+    outcome => {
+      expect(
+        verdict(
+          rollup([
+            status('ci/circleci: build', 'ERROR'),
+            check('lint', 'SUCCESS', MAIN),
+          ]),
+          builds({ [CIRCLE_URL]: { branch: MAIN, outcome } }),
+        ),
+      ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+    },
+  );
+
+  it('sets aside a canceled build on another branch', () => {
+    expect(
+      verdict(
+        rollup([
+          status('ci/circleci: build', 'ERROR'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
+        builds({
+          [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'canceled' },
+        }),
+      ),
+    ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
+  });
+
+  it('sets aside a failing tag build on the same SHA', () => {
+    // The release commit is main's HEAD and the tag pipeline failed. CircleCI
+    // reports a tag build with no branch.
+    expect(
+      verdict(
+        rollup([
+          status('ci/circleci: release', 'FAILURE'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
+        builds({
+          [CIRCLE_URL]: { branch: null, tag: 'v1.2.3', outcome: 'failed' },
+        }),
+      ),
+    ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
+  });
+
+  it.each([null, 'CANCELLED', 'STALE', 'ACTION_REQUIRED'])(
+    'reports unknown, not passing, for a %s check run on the default branch',
+    conclusion => {
+      expect(
+        verdict(
+          rollup([
+            check('build', conclusion, MAIN),
+            check('lint', 'SUCCESS', MAIN),
+          ]),
+          builds({}),
+        ),
+      ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+    },
+  );
+
+  it.each(['PENDING', 'EXPECTED'])(
+    'reports unknown, not passing, for a %s status',
+    state => {
+      // Merged to main, the CircleCI build on HEAD has not finished.
+      expect(
+        verdict(
+          rollup([
+            status('ci/circleci: build', state),
+            check('lint', 'SUCCESS', MAIN),
+          ]),
+          builds({ [CIRCLE_URL]: { branch: MAIN, outcome: 'running' } }),
+        ),
+      ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+    },
+  );
+
+  it('sets aside a pending status whose build runs on another branch', () => {
+    expect(
+      verdict(
+        rollup([
+          status('ci/circleci: build', 'PENDING'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
+        builds({
+          [CIRCLE_URL]: { branch: 'renovate/deps', outcome: 'running' },
+        }),
       ),
     ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
   });
@@ -125,12 +231,34 @@ describe('verdict', () => {
         rollup([
           check('lint', 'SUCCESS', MAIN),
           check('skipped', 'SKIPPED', MAIN),
+          check('neutral', 'NEUTRAL', MAIN),
           status('ci/circleci: build', 'SUCCESS'),
-          status('pending', 'PENDING'),
         ]),
         builds({}),
       ),
     ).toEqual({ status: BUILD_PASSING, failingChecks: [] });
+  });
+
+  it('does not take a skipped or neutral check as evidence', () => {
+    // A path-filtered or `if:`-skipped job verified nothing.
+    expect(
+      verdict(
+        rollup([check('docs', 'SKIPPED', MAIN), check('n', 'NEUTRAL', MAIN)]),
+        builds({}),
+      ),
+    ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
+  });
+
+  it('does not take a build with no outcome as a verdict', () => {
+    expect(
+      verdict(
+        rollup([
+          status('ci/circleci: build', 'FAILURE'),
+          check('lint', 'SUCCESS', MAIN),
+        ]),
+        builds({ [CIRCLE_URL]: { branch: MAIN, outcome: '' } }),
+      ),
+    ).toEqual({ status: BUILD_UNKNOWN, failingChecks: [] });
   });
 
   it('reports unknown when the contexts page is truncated', () => {
@@ -163,6 +291,18 @@ describe('verdict', () => {
       status: BUILD_FAILING,
       failingChecks: ['ci/circleci: test', 'lint'],
     });
+  });
+
+  it('names a check failing in two workflows once', () => {
+    expect(
+      verdict(
+        rollup([
+          check('build', 'FAILURE', MAIN),
+          check('build', 'FAILURE', MAIN),
+        ]),
+        builds({}),
+      ),
+    ).toEqual({ status: BUILD_FAILING, failingChecks: ['build'] });
   });
 });
 
@@ -303,8 +443,10 @@ describe('BuildStatusProcessor', () => {
     graphql?: unknown;
     graphqlStatus?: number;
     circle?: Record<string, { branch: string; status: string }>;
+    /** Overrides the HTTP status of every CircleCI answer. */
+    circleStatus?: number;
   }) {
-    const { graphql, graphqlStatus = 200, circle = {} } = options;
+    const { graphql, graphqlStatus = 200, circle = {}, circleStatus } = options;
     return jest.fn(async (url: string) => {
       if (url === 'https://api.github.com/graphql') {
         return {
@@ -319,19 +461,26 @@ describe('BuildStatusProcessor', () => {
         ? `https://circleci.com/gh/${match[1]}/${match[2]}/${match[3]}`
         : '';
       const build = circle[key];
+      const httpStatus = circleStatus ?? (build ? 200 : 404);
       return {
-        ok: Boolean(build),
-        status: build ? 200 : 404,
+        ok: httpStatus === 200,
+        status: httpStatus,
         statusText: 'stubbed',
         json: async () => build,
       };
     });
   }
 
-  function makeProcessor(fetchImpl: jest.Mock) {
+  function makeProcessor(
+    fetchImpl: jest.Mock,
+    options: {
+      logger?: ReturnType<typeof mockServices.logger.mock>;
+      credentials?: typeof credentialsProvider;
+    } = {},
+  ) {
     return new BuildStatusProcessor({
-      logger: mockServices.logger.mock(),
-      credentialsProvider,
+      logger: options.logger ?? mockServices.logger.mock(),
+      credentialsProvider: options.credentials ?? credentialsProvider,
       integrations,
       cacheTtlMs: 60_000,
       fetchImpl: fetchImpl as unknown as typeof fetch,
@@ -390,7 +539,7 @@ describe('BuildStatusProcessor', () => {
     );
     expect(
       result.metadata.annotations?.['giantswarm.io/build-failing-checks'],
-    ).toBe('ci/circleci: build');
+    ).toBe('["ci/circleci: build"]');
     expect(result.metadata.annotations?.['giantswarm.io/default-branch']).toBe(
       'main',
     );
@@ -479,6 +628,181 @@ describe('BuildStatusProcessor', () => {
     expect(
       result.metadata.annotations?.['giantswarm.io/readiness-flags'],
     ).toBeUndefined();
+  });
+
+  it('keeps commas inside a failing check name', async () => {
+    const processor = makeProcessor(
+      fakeFetch({
+        graphql: graphqlBody([
+          {
+            __typename: 'CheckRun',
+            name: 'test (ubuntu-latest, 20)',
+            conclusion: 'FAILURE',
+            checkSuite: { branch: { name: 'main' } },
+          },
+        ]),
+      }),
+    );
+
+    const result = await run(processor, component(slug));
+
+    expect(
+      JSON.parse(
+        result.metadata.annotations?.['giantswarm.io/build-failing-checks'] ??
+          '',
+      ),
+    ).toEqual(['test (ubuntu-latest, 20)']);
+  });
+
+  it('leaves the entity alone, at debug, for a repository GitHub cannot find', async () => {
+    const logger = mockServices.logger.mock();
+    const fetchImpl = fakeFetch({
+      graphql: {
+        data: { repository: null },
+        errors: [{ type: 'NOT_FOUND', message: 'Could not resolve' }],
+      },
+    });
+    const processor = makeProcessor(fetchImpl, { logger });
+    const entity = component(slug);
+
+    expect(await run(processor, entity)).toEqual(entity);
+    await run(processor, entity);
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    // A stale slug is cached like any other answer, not asked every pass.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the entity alone and warns once per owner without a token', async () => {
+    const logger = mockServices.logger.mock();
+    const processor = makeProcessor(fakeFetch({}), {
+      logger,
+      credentials: {
+        getCredentials: jest.fn().mockResolvedValue({ token: undefined }),
+      } as any,
+    });
+    const entity = component(slug);
+    const sibling = component({
+      'github.com/project-slug': 'giantswarm/other',
+    });
+
+    expect(await run(processor, entity)).toEqual(entity);
+    expect(await run(processor, sibling)).toEqual(sibling);
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a lookup CircleCI rate-limited', async () => {
+    const fetchImpl = fakeFetch({
+      graphql: graphqlBody([
+        {
+          __typename: 'StatusContext',
+          context: 'ci/circleci: build',
+          state: 'FAILURE',
+          targetUrl: CIRCLE_URL,
+        },
+      ]),
+      circleStatus: 429,
+    });
+    const processor = makeProcessor(fetchImpl);
+
+    await run(processor, component(slug));
+    await run(processor, component(slug));
+
+    // GraphQL and CircleCI asked on both passes.
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps the last known verdict when a later lookup fails', async () => {
+    let graphqlStatus = 200;
+    const passing = fakeFetch({
+      graphql: graphqlBody([
+        {
+          __typename: 'CheckRun',
+          name: 'lint',
+          conclusion: 'SUCCESS',
+          checkSuite: { branch: { name: 'main' } },
+        },
+      ]),
+    });
+    const fetchImpl = jest.fn(async (url: string) =>
+      graphqlStatus === 200
+        ? passing(url)
+        : {
+            ok: false,
+            status: 502,
+            statusText: 'stubbed',
+            json: async () => ({}),
+          },
+    );
+    const processor = new BuildStatusProcessor({
+      logger: mockServices.logger.mock(),
+      credentialsProvider,
+      integrations,
+      cacheTtlMs: 0,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    const first = await run(processor, component(slug));
+    graphqlStatus = 502;
+    const second = await run(processor, component(slug));
+
+    // A GitHub 5xx says nothing about the build: no fleet-wide flip to
+    // unknown, and the original checkedAt shows how old the verdict is.
+    expect(second.metadata.labels?.['giantswarm.io/build-status']).toBe(
+      BUILD_PASSING,
+    );
+    expect(
+      second.metadata.annotations?.['giantswarm.io/build-status-checked'],
+    ).toBe(first.metadata.annotations?.['giantswarm.io/build-status-checked']);
+  });
+
+  it('stops serving the last known verdict after a day', async () => {
+    let graphqlStatus = 200;
+    const passing = fakeFetch({
+      graphql: graphqlBody([
+        {
+          __typename: 'CheckRun',
+          name: 'lint',
+          conclusion: 'SUCCESS',
+          checkSuite: { branch: { name: 'main' } },
+        },
+      ]),
+    });
+    const fetchImpl = jest.fn(async (url: string) =>
+      graphqlStatus === 200
+        ? passing(url)
+        : {
+            ok: false,
+            status: 401,
+            statusText: 'stubbed',
+            json: async () => ({}),
+          },
+    );
+    const processor = new BuildStatusProcessor({
+      logger: mockServices.logger.mock(),
+      credentialsProvider,
+      integrations,
+      cacheTtlMs: 0,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const now = jest.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(0);
+      const first = await run(processor, component(slug));
+      expect(first.metadata.labels?.['giantswarm.io/build-status']).toBe(
+        BUILD_PASSING,
+      );
+      graphqlStatus = 401;
+      now.mockReturnValue(25 * 60 * 60 * 1000);
+      const later = await run(processor, component(slug));
+
+      expect(later.metadata.labels?.['giantswarm.io/build-status']).toBe(
+        BUILD_UNKNOWN,
+      );
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('skips entities that are not components or have no slug', async () => {

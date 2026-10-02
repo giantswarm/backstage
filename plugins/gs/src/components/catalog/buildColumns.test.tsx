@@ -29,7 +29,12 @@ describe('build column', () => {
       columnFactories.createBuildStatusColumn(),
       component(
         { 'giantswarm.io/build-status': 'failing' },
-        { 'giantswarm.io/build-failing-checks': 'ci/circleci: build,lint' },
+        {
+          'giantswarm.io/build-failing-checks': JSON.stringify([
+            'ci/circleci: build',
+            'lint',
+          ]),
+        },
       ),
     );
 

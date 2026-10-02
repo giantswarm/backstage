@@ -1,6 +1,7 @@
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';
+import { Text } from '@backstage/ui';
 import {
   getBuildFailingChecksFromEntity,
   getBuildStatusFromEntity,
@@ -281,13 +282,13 @@ export const columnFactories = Object.freeze({
         }
 
         return (
-          <Typography
-            variant="body2"
-            component="span"
+          <Text
+            as="span"
+            variant="body-medium"
             title={toolchainTitle(toolchain)}
           >
             {text}
-          </Typography>
+          </Text>
         );
       },
     };

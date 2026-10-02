@@ -132,7 +132,9 @@ describe('<EntityAppReadinessCard />', () => {
       },
       {
         'giantswarm.io/readiness-flags': 'BUILD-RED',
-        'giantswarm.io/build-failing-checks': 'ci/circleci: build',
+        'giantswarm.io/build-failing-checks': JSON.stringify([
+          'ci/circleci: build',
+        ]),
         'giantswarm.io/default-branch': 'main',
       },
     );
@@ -186,5 +188,8 @@ describe('<EntityAppReadinessCard />', () => {
     expect(screen.getByText('Build on main')).toBeInTheDocument();
     expect(screen.getByText('Passing')).toBeInTheDocument();
     expect(screen.queryByText('Chart metadata')).not.toBeInTheDocument();
+    // A build verdict is not a release verdict.
+    expect(screen.getByText('Readiness')).toBeInTheDocument();
+    expect(screen.queryByText('Release readiness')).not.toBeInTheDocument();
   });
 });

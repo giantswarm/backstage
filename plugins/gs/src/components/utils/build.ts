@@ -1,5 +1,7 @@
-import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
-import semver from 'semver';
+import {
+  semverCompareSort,
+  type StatusLabelIntent,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { BuildToolchain } from './entity';
 
 /**
@@ -85,17 +87,10 @@ export function toolchainTitle(toolchain: BuildToolchain): string {
  * in name order. For the sidebar picker, where a version list that reads
  * 10.1.0, 10.10.0, 10.2.0 is worse than no order at all.
  */
+const newestFirst = semverCompareSort<string>(version => version, {
+  descending: true,
+});
+
 export function compareOrbVersionsDesc(a: string, b: string): number {
-  const va = semver.valid(a);
-  const vb = semver.valid(b);
-  if (va && vb) {
-    return semver.rcompare(va, vb);
-  }
-  if (va) {
-    return -1;
-  }
-  if (vb) {
-    return 1;
-  }
-  return a.localeCompare(b);
+  return newestFirst(a, b) || a.localeCompare(b);
 }

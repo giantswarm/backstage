@@ -58,21 +58,45 @@ describe('build entity helpers', () => {
     ).toBe(true);
   });
 
+  it('shows the readiness card for a declared toolchain alone', () => {
+    // A repo with no chart, so no readiness-standards label, and the
+    // processor off: the importer's orb labels are all there is.
+    expect(
+      isEntityReadinessAvailable(
+        entity({ 'giantswarm.io/architect-orb-version': '10.3.0' }),
+      ),
+    ).toBe(true);
+    expect(
+      isEntityReadinessAvailable(
+        entity({}, { 'giantswarm.io/architect-orb-ref': 'volatile' }),
+      ),
+    ).toBe(true);
+  });
+
   it('reads the verdict, the failing checks and the branch', () => {
     const e = entity(
       { 'giantswarm.io/build-status': 'failing' },
       {
-        'giantswarm.io/build-failing-checks': 'ci/circleci: build, lint',
+        'giantswarm.io/build-failing-checks': JSON.stringify([
+          'ci/circleci: build',
+          'test (ubuntu-latest, 20)',
+        ]),
         'giantswarm.io/default-branch': 'main',
       },
     );
     expect(getBuildStatusFromEntity(e)).toBe('failing');
     expect(getBuildFailingChecksFromEntity(e)).toEqual([
       'ci/circleci: build',
-      'lint',
+      'test (ubuntu-latest, 20)',
     ]);
     expect(getDefaultBranchFromEntity(e)).toBe('main');
     expect(getBuildFailingChecksFromEntity(entity())).toEqual([]);
+    // Not a JSON array: no checks rather than garbled ones.
+    expect(
+      getBuildFailingChecksFromEntity(
+        entity({}, { 'giantswarm.io/build-failing-checks': 'build,lint' }),
+      ),
+    ).toEqual([]);
   });
 
   it('assembles the toolchain from the importer labels and annotations', () => {

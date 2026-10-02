@@ -100,7 +100,11 @@ export const isEntityReadinessAvailable = (entity: Entity) =>
     // other label is set.
     entity.metadata.labels?.[GS_READINESS] ||
     entity.metadata.labels?.[GS_READINESS_STANDARDS] ||
-    entity.metadata.labels?.[GS_BUILD_STATUS],
+    entity.metadata.labels?.[GS_BUILD_STATUS] ||
+    // The importer's declared toolchain, which the card's Build section
+    // renders whether or not BuildStatusProcessor runs.
+    entity.metadata.labels?.[GS_ARCHITECT_ORB_VERSION] ||
+    entity.metadata.annotations?.[GS_ARCHITECT_ORB_REF],
   );
 
 export const getReadinessFromEntity = (entity: Entity) =>
@@ -147,9 +151,27 @@ export const isEntityBuildStatusAvailable = (entity: Entity) =>
 export const getBuildStatusFromEntity = (entity: Entity) =>
   entity.metadata.labels?.[GS_BUILD_STATUS];
 
-/** The checks confirmed failing on the default branch. Empty unless failing. */
-export const getBuildFailingChecksFromEntity = (entity: Entity) =>
-  splitFlags(entity.metadata.annotations?.[GS_BUILD_FAILING_CHECKS]);
+/**
+ * The checks confirmed failing on the default branch. Empty unless failing.
+ *
+ * A JSON array, not a comma list like the flags: check names contain commas,
+ * as in a matrix job's `test (ubuntu-latest, 20)`. Anything that is not an
+ * array of strings reads as no checks rather than as garbled ones.
+ */
+export const getBuildFailingChecksFromEntity = (entity: Entity): string[] => {
+  const raw = entity.metadata.annotations?.[GS_BUILD_FAILING_CHECKS];
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((name): name is string => typeof name === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+};
 
 export const getBuildStatusCheckedFromEntity = (entity: Entity) =>
   entity.metadata.annotations?.[GS_BUILD_STATUS_CHECKED];

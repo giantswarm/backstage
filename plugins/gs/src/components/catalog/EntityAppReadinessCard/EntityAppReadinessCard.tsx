@@ -125,14 +125,14 @@ export function EntityAppReadinessCard() {
   const metadataStyle = getChartMetadataStyleFromEntity(entity);
 
   return (
-    // The card is shown wherever there is readiness data from either source, so
+    // The card is shown wherever there is readiness data from any source, so
     // on an importer-only component it holds chart-metadata verdicts and
-    // nothing about releases. Since AppReadinessProcessor ships disabled, that
-    // is every component today — titling it "Release readiness" there would
-    // name something the card does not contain.
-    <InfoCard
-      title={readiness || buildStatus ? 'Release readiness' : 'Readiness'}
-    >
+    // nothing about releases, and with BuildStatusProcessor alone it holds a
+    // build verdict, which is not a release verdict either. Since
+    // AppReadinessProcessor ships disabled, that is every component today —
+    // titling it "Release readiness" there would name something the card does
+    // not contain.
+    <InfoCard title={readiness ? 'Release readiness' : 'Readiness'}>
       <Flex direction="column" gap="5">
         <Flex gap="5" style={{ flexWrap: 'wrap' }}>
           {readiness && (

@@ -43,6 +43,12 @@ export const BUILD_FAILING = 'failing';
 export const BUILD_UNKNOWN = 'unknown';
 
 const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
+/**
+ * How long a verdict is served while lookups fail. Past this, a lost GitHub
+ * App grant or a long outage reads as `unknown` rather than as an old
+ * `passing` that nothing verifies any more.
+ */
+const LAST_KNOWN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 // GitHub caps `contexts(first:)` at 100. Anything past it is invisible to us,
 // and a failure past the page boundary must not read as a green branch.
@@ -52,8 +58,9 @@ const CONTEXTS_PAGE_SIZE = 100;
 const CIRCLE_BUILD = /circleci\.com\/(gh|bb)\/([^/]+)\/([^/]+)\/(\d+)/;
 
 /**
- * CircleCI build outcomes that are not a verdict on the code. A canceled build
- * is one superseded by a newer commit, not a failure.
+ * CircleCI build outcomes that are not a verdict on the code yet: still
+ * running, superseded, never run. On the default branch that leaves the branch
+ * unproven — it is not a failure, and it is not a pass either.
  */
 const CIRCLE_NON_VERDICT = new Set([
   'canceled',
@@ -63,10 +70,27 @@ const CIRCLE_NON_VERDICT = new Set([
   'running',
   'retried',
   'not_running',
+  'scheduled',
+  'on_hold',
+  // No status or outcome in the answer at all: nothing to call a verdict.
+  '',
 ]);
 
 const CHECK_RUN_FAILURES = new Set(['FAILURE', 'TIMED_OUT', 'STARTUP_FAILURE']);
+/**
+ * Check run conclusions that are not a failure and need no verdict: `SUCCESS`
+ * is evidence the branch builds; `NEUTRAL` and `SKIPPED` (a path filter, an
+ * `if:`) are neither evidence nor unproven. Anything else that is not a
+ * failure — still running (`null`), `CANCELLED`, `STALE`, `ACTION_REQUIRED` —
+ * has not reached a verdict, and on the default branch leaves it unproven.
+ */
+const CHECK_RUN_GREEN = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
+const CHECK_RUN_EVIDENCE = 'SUCCESS';
 const STATUS_FAILURES = new Set(['FAILURE', 'ERROR']);
+const STATUS_GREEN = 'SUCCESS';
+
+/** CircleCI answers that are worth asking again next pass, not caching. */
+const CIRCLE_TRANSIENT = (status: number) => status === 429 || status >= 500;
 
 /**
  * One entry of the default branch HEAD's `statusCheckRollup`, as GitHub returns
@@ -102,12 +126,17 @@ export type Rollup = {
 /** What CircleCI's v1.1 build endpoint tells us about one build. */
 export type CircleBuild = {
   branch: string | null;
+  /** Set for a tag build, which has no branch. */
+  tag?: string | null;
   /** `status` or `outcome`, lowercased. */
   outcome: string;
 };
 
-/** A red that could not be counted against the default branch on GitHub's evidence alone. */
-type Unproven = { name: string; url: string | null };
+/**
+ * A context that is not green and that GitHub alone cannot pin to the default
+ * branch, so CircleCI is asked about it.
+ */
+type Unsettled = { name: string; url: string | null };
 
 export type Verdict = {
   status: string;
@@ -121,6 +150,13 @@ type BuildLookup = {
 };
 
 type FetchFn = typeof fetch;
+
+/**
+ * No GitHub token resolves for this repo's owner. A configuration gap, not a
+ * fact about the build: the entity is left alone, and the gap is warned about
+ * once per owner rather than once per entity per pass.
+ */
+class NoGithubTokenError extends Error {}
 
 const ROLLUP_QUERY = `
 query BuildStatus($owner: String!, $name: String!, $first: Int!) {
@@ -186,11 +222,14 @@ export class BuildStatusProcessor implements CatalogProcessor {
   /** The whole lookup — rollup, attribution and verdict — keyed `owner/repo`. */
   private readonly lookupCache: TtlCache<BuildLookup>;
   /**
-   * CircleCI builds keyed by URL. A finished build's branch and outcome never
-   * change, but a running one becomes a verdict later, so this expires like
-   * everything else rather than living forever.
+   * The last lookup that succeeded per `owner/repo`, served when a lookup
+   * fails: a GitHub 5xx or a CircleCI rate limit says nothing about the build,
+   * and writing `unknown` for it would flip every affected component for a
+   * pass. Its `checkedAt` shows how old it is. Bounded by the fleet's size.
    */
-  private readonly circleCache: TtlCache<CircleBuild | undefined>;
+  private readonly lastKnown = new Map<string, Cached<BuildLookup>>();
+  /** Owners already warned about for having no GitHub token. */
+  private readonly ownersWithoutToken = new Set<string>();
 
   static fromConfig(options: {
     config: RootConfigService;
@@ -234,7 +273,6 @@ export class BuildStatusProcessor implements CatalogProcessor {
     this.fetchImpl = options.fetchImpl ?? fetch;
     const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
     this.lookupCache = new TtlCache(cacheTtlMs);
-    this.circleCache = new TtlCache(cacheTtlMs);
   }
 
   getProcessorName(): string {
@@ -259,23 +297,42 @@ export class BuildStatusProcessor implements CatalogProcessor {
       return entity;
     }
 
+    const key = `${slug.owner}/${slug.repo}`;
     let lookup: Cached<BuildLookup>;
     try {
-      lookup = await this.lookupCache.get(`${slug.owner}/${slug.repo}`, () =>
-        this.lookup(slug),
-      );
+      lookup = await this.lookupCache.get(key, () => this.lookup(slug));
+      this.lastKnown.set(key, lookup);
     } catch (error) {
-      // GitHub could not be asked. Static message, identifiers in metadata: a
-      // rate-limit episode hits every repo at once, and Sentry fingerprints on
-      // the message.
+      if (error instanceof NoGithubTokenError) {
+        // Writing `unknown` here would turn the Build column to Unknown for
+        // every repo of an owner the GitHub App cannot see.
+        if (!this.ownersWithoutToken.has(slug.owner)) {
+          this.ownersWithoutToken.add(slug.owner);
+          this.logger.warn('BuildStatusProcessor: no GitHub token for owner', {
+            owner: slug.owner,
+          });
+        }
+        return entity;
+      }
+      // GitHub or CircleCI could not be asked. A rejected lookup is not
+      // cached, so this is retried next pass. Static message, identifiers in
+      // metadata: a rate-limit episode hits every repo at once, and Sentry
+      // fingerprints on the message.
       this.logger.warn('BuildStatusProcessor: status lookup failed', {
         owner: slug.owner,
         repo: slug.repo,
         error: String(error),
       });
-      return withBuildStatus(entity, {
-        verdict: { status: BUILD_UNKNOWN, failingChecks: [] },
-      });
+      const previous = this.lastKnown.get(key);
+      if (
+        !previous ||
+        Date.now() - previous.fetchedAt > LAST_KNOWN_MAX_AGE_MS
+      ) {
+        return withBuildStatus(entity, {
+          verdict: { status: BUILD_UNKNOWN, failingChecks: [] },
+        });
+      }
+      lookup = previous;
     }
 
     if (!lookup.value.verdict) {
@@ -300,7 +357,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
       return { verdict: undefined, defaultBranch: undefined };
     }
 
-    const urls = unprovenReds(rollup)
+    const urls = unsettled(rollup)
       .map(item => item.url)
       .filter((url): url is string => Boolean(url && CIRCLE_BUILD.test(url)));
     const builds = new Map<string, CircleBuild | undefined>();
@@ -331,7 +388,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
       // GraphQL has no anonymous mode. Unlike the REST-backed processors there
       // is no degraded path here, so this is a configuration gap worth a
       // warning rather than a per-entity debug line.
-      throw new Error('no GitHub token available for GraphQL');
+      throw new NoGithubTokenError('no GitHub token available for GraphQL');
     }
 
     const response = await this.fetchImpl(GITHUB_GRAPHQL_URL, {
@@ -356,6 +413,15 @@ export class BuildStatusProcessor implements CatalogProcessor {
       );
     }
     const body = (await response.json()) as GraphqlResponse;
+    if (body.errors?.some(e => e.type === 'NOT_FOUND')) {
+      // Renamed, archived away, or invisible to the GitHub App: a stale slug,
+      // not a fault. Resolves (and so is cached) as "nothing to say".
+      this.logger.debug('BuildStatusProcessor: repository not found', {
+        owner: slug.owner,
+        repo: slug.repo,
+      });
+      return undefined;
+    }
     if (body.errors?.length) {
       throw new Error(
         `GitHub GraphQL errors: ${body.errors.map(e => e.message).join('; ')}`,
@@ -364,18 +430,12 @@ export class BuildStatusProcessor implements CatalogProcessor {
     return parseRollup(body);
   }
 
+  /**
+   * Not cached on its own: it only runs inside a lookup, which is. A 429 or a
+   * 5xx throws so the whole lookup is rejected, not cached, and retried next
+   * pass — resolving it would pin the component at `unknown` for a whole TTL.
+   */
   private async resolveCircleBuild(
-    url: string,
-  ): Promise<CircleBuild | undefined> {
-    // A rejected fill is not cached, so a CircleCI hiccup is retried next pass
-    // instead of pinning the component at unknown for a whole TTL.
-    const cached = await this.circleCache
-      .get(url, () => this.fetchCircleBuild(url))
-      .catch(() => undefined);
-    return cached?.value;
-  }
-
-  private async fetchCircleBuild(
     url: string,
   ): Promise<CircleBuild | undefined> {
     const match = CIRCLE_BUILD.exec(url);
@@ -389,9 +449,12 @@ export class BuildStatusProcessor implements CatalogProcessor {
       headers['Circle-Token'] = this.circleciToken;
     }
     const response = await this.fetchImpl(api, { headers });
+    if (CIRCLE_TRANSIENT(response.status)) {
+      throw new Error(`CircleCI returned ${response.status}`);
+    }
     if (!response.ok) {
-      // Private project without a token, a deleted build, a 5xx: we cannot
-      // attribute this red. It stays unproven.
+      // Private project without a token, a deleted build: we cannot attribute
+      // this context. It stays unproven, and asking again will not change that.
       this.logger.debug('BuildStatusProcessor: CircleCI build not readable', {
         url: api,
         status: response.status,
@@ -400,11 +463,13 @@ export class BuildStatusProcessor implements CatalogProcessor {
     }
     const body = (await response.json()) as {
       branch?: string | null;
+      vcs_tag?: string | null;
       status?: string | null;
       outcome?: string | null;
     };
     return {
       branch: body.branch ?? null,
+      tag: body.vcs_tag ?? null,
       outcome: (body.status ?? body.outcome ?? '').toLowerCase(),
     };
   }
@@ -426,7 +491,7 @@ type GraphqlResponse = {
       } | null;
     } | null;
   };
-  errors?: Array<{ message: string }>;
+  errors?: Array<{ message: string; type?: string }>;
 };
 
 export function parseRollup(body: GraphqlResponse): Rollup | undefined {
@@ -466,21 +531,22 @@ export function parseRollup(body: GraphqlResponse): Rollup | undefined {
 }
 
 /**
- * Reds that GitHub alone cannot pin to the default branch: every failing legacy
- * status, and every failing check run whose suite has no branch.
+ * Contexts that are not green and that GitHub alone cannot pin to the default
+ * branch: every legacy status that is not `SUCCESS`, and every check run whose
+ * suite has no branch and has not passed. These are the ones CircleCI is asked
+ * about.
  */
-function unprovenReds(rollup: Rollup): Unproven[] {
-  const out: Unproven[] = [];
+function unsettled(rollup: Rollup): Unsettled[] {
+  const out: Unsettled[] = [];
   for (const ctx of rollup.contexts) {
     if (ctx.kind === 'check') {
       if (
-        ctx.conclusion &&
-        CHECK_RUN_FAILURES.has(ctx.conclusion) &&
-        ctx.suiteBranch === null
+        ctx.suiteBranch === null &&
+        !(ctx.conclusion && CHECK_RUN_GREEN.has(ctx.conclusion))
       ) {
         out.push({ name: ctx.name, url: ctx.detailsUrl });
       }
-    } else if (STATUS_FAILURES.has(ctx.state)) {
+    } else if (ctx.state !== STATUS_GREEN) {
       out.push({ name: ctx.context, url: ctx.targetUrl });
     }
   }
@@ -489,10 +555,18 @@ function unprovenReds(rollup: Rollup): Unproven[] {
 
 /**
  * Decides the verdict from the default branch HEAD's rollup and whatever
- * CircleCI told us about the builds behind the unproven reds.
+ * CircleCI told us about the builds behind the unsettled contexts.
  *
  * `builds` is keyed by the status URL. A URL absent from the map, or mapped to
  * `undefined`, could not be resolved and stays unproven.
+ *
+ * `passing` needs positive evidence: every context in view settled green and
+ * at least one of them speaks for the default branch. A context still running,
+ * cancelled or otherwise without a verdict leaves the branch unproven, and so
+ * does a rollup whose every context was set aside as another branch's or a
+ * tag's — that branch may never have been built at all. A green legacy status
+ * counts as evidence without asking CircleCI: whichever branch it ran on, it
+ * built this very SHA.
  *
  * Returns `undefined` when no CI reports to this branch at all — there is
  * nothing to write, not an unknown to report.
@@ -505,57 +579,92 @@ export function verdict(
     return undefined;
   }
 
-  const failing: string[] = [];
+  const failing = new Set<string>();
   let unproven = 0;
+  let evidence = 0;
 
   for (const ctx of rollup.contexts) {
+    let attribution: Attribution;
+    let name: string;
     if (ctx.kind === 'check') {
-      if (!ctx.conclusion || !CHECK_RUN_FAILURES.has(ctx.conclusion)) {
-        continue;
-      }
+      name = ctx.name;
+      const green = Boolean(
+        ctx.conclusion && CHECK_RUN_GREEN.has(ctx.conclusion),
+      );
       if (ctx.suiteBranch === rollup.defaultBranch) {
-        failing.push(ctx.name);
+        if (green) {
+          attribution =
+            ctx.conclusion === CHECK_RUN_EVIDENCE ? 'green' : 'elsewhere';
+        } else if (ctx.conclusion && CHECK_RUN_FAILURES.has(ctx.conclusion)) {
+          attribution = 'failing';
+        } else {
+          attribution = 'unproven';
+        }
       } else if (ctx.suiteBranch === null) {
-        // A tag-triggered or fork run on the same SHA. Route it through
-        // attribution like a legacy status; most have no CircleCI URL and stay
-        // unproven.
-        unproven += attribute(ctx.detailsUrl, rollup.defaultBranch, builds)
-          ? (failing.push(ctx.name), 0)
-          : 1;
+        // A tag-triggered or fork run on the same SHA. A green one says
+        // nothing about the default branch; anything else is routed through
+        // attribution like a legacy status, and most have no CircleCI URL and
+        // stay unproven.
+        attribution = green
+          ? 'elsewhere'
+          : attributeContext(
+              ctx.detailsUrl,
+              Boolean(ctx.conclusion && CHECK_RUN_FAILURES.has(ctx.conclusion)),
+              rollup.defaultBranch,
+              builds,
+            );
+      } else {
+        // A suite on another branch is not this branch's result either way.
+        attribution = 'elsewhere';
       }
-      // A failing suite on another branch is not this branch's failure.
-      continue;
+    } else {
+      name = ctx.context;
+      attribution =
+        ctx.state === STATUS_GREEN
+          ? 'green'
+          : attributeContext(
+              ctx.targetUrl,
+              STATUS_FAILURES.has(ctx.state),
+              rollup.defaultBranch,
+              builds,
+            );
     }
 
-    if (!STATUS_FAILURES.has(ctx.state)) {
-      continue;
-    }
-    const resolved = attributeStatus(
-      ctx.targetUrl,
-      rollup.defaultBranch,
-      builds,
-    );
-    if (resolved === 'failing') {
-      failing.push(ctx.context);
-    } else if (resolved === 'unproven') {
+    if (attribution === 'failing') {
+      failing.add(name);
+    } else if (attribution === 'unproven') {
       unproven += 1;
+    } else if (attribution === 'green') {
+      evidence += 1;
     }
   }
 
-  if (failing.length > 0) {
-    return { status: BUILD_FAILING, failingChecks: failing.sort() };
+  if (failing.size > 0) {
+    return { status: BUILD_FAILING, failingChecks: Array.from(failing).sort() };
   }
   // A failure past the page boundary would otherwise read as a green branch.
-  if (unproven > 0 || rollup.totalCount > rollup.contexts.length) {
+  if (
+    unproven > 0 ||
+    evidence === 0 ||
+    rollup.totalCount > rollup.contexts.length
+  ) {
     return { status: BUILD_UNKNOWN, failingChecks: [] };
   }
   return { status: BUILD_PASSING, failingChecks: [] };
 }
 
-type Attribution = 'failing' | 'elsewhere' | 'unproven';
+type Attribution = 'green' | 'failing' | 'elsewhere' | 'unproven';
 
-function attributeStatus(
+/**
+ * Attributes a context GitHub could not pin to a branch, on CircleCI's word.
+ * Only a build CircleCI confirms ran on the default branch can fail it; a tag
+ * build or another branch's build is set aside; anything else — no build
+ * behind the URL, no branch, a build that has not reached a verdict — is
+ * unproven.
+ */
+function attributeContext(
   url: string | null,
+  failed: boolean,
   defaultBranch: string,
   builds: ReadonlyMap<string, CircleBuild | undefined>,
 ): Attribution {
@@ -563,26 +672,22 @@ function attributeStatus(
   if (!build) {
     return 'unproven';
   }
-  if (CIRCLE_NON_VERDICT.has(build.outcome)) {
-    // Superseded, still running, never ran: no verdict on the code.
+  if (build.tag) {
     return 'elsewhere';
   }
   if (build.branch && build.branch !== defaultBranch) {
     return 'elsewhere';
   }
-  if (build.branch === defaultBranch) {
-    return 'failing';
+  if (build.branch !== defaultBranch) {
+    return 'unproven';
   }
-  return 'unproven';
-}
-
-/** True only when CircleCI confirms the build failed on the default branch. */
-function attribute(
-  url: string | null,
-  defaultBranch: string,
-  builds: ReadonlyMap<string, CircleBuild | undefined>,
-): boolean {
-  return attributeStatus(url, defaultBranch, builds) === 'failing';
+  // On the default branch: only a finished build that GitHub also reports as
+  // failed is a failure. A pending status, or one whose build is still
+  // running or was cancelled, has no verdict yet.
+  if (CIRCLE_NON_VERDICT.has(build.outcome) || !failed) {
+    return 'unproven';
+  }
+  return 'failing';
 }
 
 /**
@@ -636,8 +741,11 @@ function withBuildStatus(
     annotations[DEFAULT_BRANCH_ANNOTATION] = defaultBranch;
   }
   if (result.failingChecks.length > 0) {
-    annotations[BUILD_FAILING_CHECKS_ANNOTATION] =
-      result.failingChecks.join(',');
+    // A JSON array, not a comma list: check names contain commas, as in a
+    // matrix job's `test (ubuntu-latest, 20)`.
+    annotations[BUILD_FAILING_CHECKS_ANNOTATION] = JSON.stringify(
+      result.failingChecks,
+    );
   }
 
   if (result.status === BUILD_FAILING) {
