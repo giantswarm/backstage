@@ -4,18 +4,20 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
 import {
   CLUSTER_MANAGER_SERVER,
-  ClusterManagerError,
-  ClusterManagerNotConnectedError,
+  classifyNodePoolWriteFailure,
   clusterApiNote,
   isManagedPool,
   offersTool,
   poolNameOf,
   type ClusterManagerTool,
   type ClusterManagerInfo,
+  type ClusterWriteResult,
+  type CreateClusterInput,
   type CreateNodePoolInput,
+  type DeleteClusterInput,
   type DeleteNodePoolInput,
   type RemoveModelCacheInput,
-  type Refusal,
+  type NodePoolWriteFailure,
   type CacheClaim,
   type ManagedCluster,
   type NodePool,
@@ -27,6 +29,7 @@ import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
   musterCreateNodePoolSchemaQueryKey,
   musterClusterManagerInfoQueryKey,
+  musterClusterReleasesQueryKey,
   musterClustersQueryKey,
 } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
@@ -280,26 +283,10 @@ export function useInstallationsOffering(
   return useMemo(() => signature.split('|').filter(Boolean), [signature]);
 }
 
-export type NodePoolWriteFailure = {
-  kind: 'refused' | 'not-connected' | 'error';
-  message: string;
-  /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
-  refused?: Refusal;
-};
-
-export function classifyNodePoolWriteFailure(
-  error: unknown,
-): NodePoolWriteFailure {
-  const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof ClusterManagerNotConnectedError) {
-    return { kind: 'not-connected', message };
-  }
-  return {
-    kind: 'refused',
-    message,
-    refused: error instanceof ClusterManagerError ? error.refused : undefined,
-  };
-}
+export {
+  classifyNodePoolWriteFailure,
+  type NodePoolWriteFailure,
+} from '../lib/clusterManager';
 
 export type NodePoolWriteState = {
   /** `create_node_pool` with `dryRun`: the manifests, nothing written. */
@@ -325,24 +312,22 @@ export type NodePoolWriteState = {
 };
 
 /**
- * The writes of the node-pool dialogs, through cluster-manager over muster as
- * the signed-in person. A refusal is kept in cluster-manager's words; a
- * "not connected" answer from muster becomes the connect step; a successful
- * write invalidates the cluster and pool reads.
+ * One write through cluster-manager as the person: busy while it runs, its
+ * refusal kept in cluster-manager's words, a "not connected" answer from
+ * muster as the connect step; `invalidate` re-reads the installation's
+ * clusters after a write that changed them.
  */
-export function useNodePoolWrite(
-  installation: string | undefined,
-): NodePoolWriteState {
+function useClusterManagerWriteRunner(installation: string | undefined) {
   const client = useClusterManagerClient(installation);
   const queryClient = useQueryClient();
   const [isBusy, setBusy] = useState(false);
   const [failure, setFailure] = useState<NodePoolWriteFailure>();
 
   const run = useCallback(
-    async (
-      write: (c: ClusterManagerClient) => Promise<NodePoolWriteResult>,
+    async <T>(
+      write: (c: ClusterManagerClient) => Promise<T>,
       invalidate: boolean,
-    ) => {
+    ): Promise<T> => {
       if (!client) {
         throw new Error(
           'cluster-manager is not reachable: muster is not installed',
@@ -367,6 +352,22 @@ export function useNodePoolWrite(
     },
     [client, queryClient],
   );
+
+  const reset = useCallback(() => setFailure(undefined), []);
+  return { run, isBusy, failure, reset };
+}
+
+/**
+ * The writes of the node-pool dialogs, through cluster-manager over muster as
+ * the signed-in person. A refusal is kept in cluster-manager's words; a
+ * "not connected" answer from muster becomes the connect step; a successful
+ * write invalidates the cluster and pool reads.
+ */
+export function useNodePoolWrite(
+  installation: string | undefined,
+): NodePoolWriteState {
+  const { run, isBusy, failure, reset } =
+    useClusterManagerWriteRunner(installation);
 
   const dryRun = useCallback(
     (input: CreateNodePoolInput) =>
@@ -400,6 +401,69 @@ export function useNodePoolWrite(
     removeCache,
     isBusy,
     failure,
-    reset: () => setFailure(undefined),
+    reset,
   };
+}
+
+/** `list_releases` on one installation: what the Create cluster dialog offers. */
+export function useClusterReleases(installation: string | undefined) {
+  const client = useClusterManagerClient(installation);
+  const { data, isLoading, error } = useQuery({
+    queryKey: musterClusterReleasesQueryKey(installation ?? ''),
+    enabled: Boolean(client),
+    queryFn: () => client!.listReleases(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  return {
+    providers: data?.providers ?? [],
+    releases: data?.releases ?? [],
+    isLoading: Boolean(client) && isLoading,
+    error: (error as Error) ?? null,
+  };
+}
+
+export type ClusterWriteState = {
+  /** `create_cluster` as the person; `dryRun` writes nothing. */
+  create: (
+    input: CreateClusterInput,
+    options: { mode: WriteMode; dryRun?: boolean },
+  ) => Promise<ClusterWriteResult>;
+  /** `delete_cluster` as the person; `dryRun` lists what would go, or the refusal. */
+  remove: (
+    input: DeleteClusterInput,
+    options: { mode: WriteMode; dryRun?: boolean },
+  ) => Promise<ClusterWriteResult>;
+  isBusy: boolean;
+  failure: NodePoolWriteFailure | undefined;
+  reset: () => void;
+};
+
+/**
+ * The writes of the Create cluster and Delete cluster dialogs, through
+ * cluster-manager over muster as the signed-in person — the same handling as
+ * the node-pool writes.
+ */
+export function useClusterWrite(
+  installation: string | undefined,
+): ClusterWriteState {
+  const { run, isBusy, failure, reset } =
+    useClusterManagerWriteRunner(installation);
+
+  const create = useCallback(
+    (
+      input: CreateClusterInput,
+      options: { mode: WriteMode; dryRun?: boolean },
+    ) => run(c => c.createCluster(input, options), !options.dryRun),
+    [run],
+  );
+  const remove = useCallback(
+    (
+      input: DeleteClusterInput,
+      options: { mode: WriteMode; dryRun?: boolean },
+    ) => run(c => c.deleteCluster(input, options), !options.dryRun),
+    [run],
+  );
+
+  return { create, remove, isBusy, failure, reset };
 }

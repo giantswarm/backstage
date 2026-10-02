@@ -1,8 +1,10 @@
 import {
   ApiBlueprint,
   coreExtensionData,
+  createExtension,
   createExtensionInput,
   createFrontendPlugin,
+  ExtensionBoundary,
   discoveryApiRef,
   fetchApiRef,
   PageBlueprint,
@@ -247,6 +249,53 @@ const modelManagerApi = ApiBlueprint.make({
     }),
 });
 
+// Create cluster and Delete on the gs plugin's Clusters pages, through
+// cluster-manager over muster as the signed-in person (giantswarm/backstage#2624).
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `page:gs/clusters`, its inputs `listActions` (beside the list's header) and
+// `clusterActions` (beside a cluster's header, reading the cluster with gs's
+// `useClusterPageTarget`), declared there with `PageBlueprint.makeWithOverrides`
+// + `createExtensionInput([coreExtensionData.reactElement])`. Both ends carry
+// this comment; changing either without the other makes the actions silently
+// vanish. Each renders nothing where no installation's cluster-manager offers
+// its tool.
+const createClusterAction = createExtension({
+  kind: 'clusters-action',
+  name: 'create-cluster',
+  attachTo: { id: 'page:gs/clusters', input: 'listActions' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { CreateClusterAction } =
+            await import('./components/ClusterActions');
+          return <CreateClusterAction />;
+        }),
+      ),
+    ];
+  },
+});
+
+const deleteClusterAction = createExtension({
+  kind: 'clusters-action',
+  name: 'delete-cluster',
+  attachTo: { id: 'page:gs/clusters', input: 'clusterActions' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { DeleteClusterAction } =
+            await import('./components/ClusterActions');
+          return <DeleteClusterAction />;
+        }),
+      ),
+    ];
+  },
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
@@ -256,6 +305,8 @@ export const agentPlatformPlugin = createFrontendPlugin({
     modelsSubPage,
     usageSubPage,
     installationScopeHeaderAction,
+    createClusterAction,
+    deleteClusterAction,
     kagentApi,
     modelManagerApi,
   ],

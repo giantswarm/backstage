@@ -297,6 +297,15 @@ export function musterClusterManagerInfoQueryKey(installation: string) {
   ] as const;
 }
 
+export function musterClusterReleasesQueryKey(installation: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'cluster-releases',
+    installation,
+  ] as const;
+}
+
 export function musterClustersQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'clusters', installation] as const;
 }
