@@ -89,6 +89,9 @@ const CHECK_RUN_EVIDENCE = 'SUCCESS';
 const STATUS_FAILURES = new Set(['FAILURE', 'ERROR']);
 const STATUS_GREEN = 'SUCCESS';
 
+/** GraphQL error types that mean this repo cannot be read, not that GitHub failed. */
+const UNREADABLE_REPO = new Set(['NOT_FOUND', 'FORBIDDEN']);
+
 /** CircleCI answers that are worth asking again next pass, not caching. */
 const CIRCLE_TRANSIENT = (status: number) => status === 429 || status >= 500;
 
@@ -413,12 +416,18 @@ export class BuildStatusProcessor implements CatalogProcessor {
       );
     }
     const body = (await response.json()) as GraphqlResponse;
-    if (body.errors?.some(e => e.type === 'NOT_FOUND')) {
-      // Renamed, archived away, or invisible to the GitHub App: a stale slug,
-      // not a fault. Resolves (and so is cached) as "nothing to say".
-      this.logger.debug('BuildStatusProcessor: repository not found', {
+    const unreadable = body.errors?.find(e =>
+      UNREADABLE_REPO.has(e.type ?? ''),
+    );
+    if (unreadable) {
+      // Renamed, archived away, or outside the GitHub App's installation
+      // (`FORBIDDEN`, "Resource not accessible by integration"): a stale slug
+      // or a deliberate scope, not a fault. Resolves (and so is cached) as
+      // "nothing to say".
+      this.logger.debug('BuildStatusProcessor: repository not readable', {
         owner: slug.owner,
         repo: slug.repo,
+        type: unreadable.type,
       });
       return undefined;
     }

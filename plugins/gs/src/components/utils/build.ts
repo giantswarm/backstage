@@ -82,15 +82,15 @@ export function toolchainTitle(toolchain: BuildToolchain): string {
   return lines.join('\n');
 }
 
+const newestFirst = semverCompareSort<string>(version => version, {
+  descending: true,
+});
+
 /**
  * Newest orb first, releases before non-release pins, and two non-release pins
  * in name order. For the sidebar picker, where a version list that reads
  * 10.1.0, 10.10.0, 10.2.0 is worse than no order at all.
  */
-const newestFirst = semverCompareSort<string>(version => version, {
-  descending: true,
-});
-
 export function compareOrbVersionsDesc(a: string, b: string): number {
   return newestFirst(a, b) || a.localeCompare(b);
 }

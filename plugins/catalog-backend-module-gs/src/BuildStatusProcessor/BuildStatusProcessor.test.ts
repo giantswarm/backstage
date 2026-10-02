@@ -673,6 +673,28 @@ describe('BuildStatusProcessor', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('leaves the entity alone, at debug, for a repository outside the app installation', async () => {
+    const logger = mockServices.logger.mock();
+    const processor = makeProcessor(
+      fakeFetch({
+        graphql: {
+          data: { repository: null },
+          errors: [
+            {
+              type: 'FORBIDDEN',
+              message: 'Resource not accessible by integration',
+            },
+          ],
+        },
+      }),
+      { logger },
+    );
+    const entity = component(slug);
+
+    expect(await run(processor, entity)).toEqual(entity);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
   it('leaves the entity alone and warns once per owner without a token', async () => {
     const logger = mockServices.logger.mock();
     const processor = makeProcessor(fakeFetch({}), {
