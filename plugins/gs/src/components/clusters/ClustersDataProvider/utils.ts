@@ -12,9 +12,9 @@ import {
   findProviderClusterAppVersion,
 } from '../utils';
 import {
+  AnyControlPlane,
   AWSClusterRoleIdentity,
   Cluster,
-  ControlPlane,
   ProviderCluster,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -49,7 +49,7 @@ export function collectClusterData({
 }: {
   installationName: string;
   cluster: Cluster;
-  controlPlane?: ControlPlane | null;
+  controlPlane?: AnyControlPlane | null;
   providerCluster?: ProviderCluster | null;
   awsClusterRoleIdentity?: AWSClusterRoleIdentity | null;
 }): ClusterData {
