@@ -4,6 +4,9 @@ import { Alert, Flex, Table, Text } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { useMimirAvailable } from '../../../hooks/useMimirAvailable';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
+import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
+import { GatewayPolicy } from '../../../hooks/gatewayPolicies';
+import { PoliciesTable } from './PoliciesTable';
 import {
   Gateway,
   HttpRoute,
@@ -66,6 +69,9 @@ export type ClusterGatewaysContentProps = {
   error?: unknown;
   /** `false` when the installation has no Mimir; `undefined` while unknown. */
   mimirAvailable: boolean | undefined;
+  policies: GatewayPolicy[];
+  policiesLoading: boolean;
+  policiesError?: unknown;
 };
 
 /** Renders a cluster's Gateway API topology. Data loading lives in `ClusterGateways`. */
@@ -76,6 +82,9 @@ export const ClusterGatewaysContent = ({
   isLoading,
   error,
   mimirAvailable,
+  policies,
+  policiesLoading,
+  policiesError,
 }: ClusterGatewaysContentProps) => {
   const listenerRows = useMemo(() => toListenerRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
@@ -137,6 +146,14 @@ export const ClusterGatewaysContent = ({
           }
         />
       </InfoCard>
+      <InfoCard title="Envoy Gateway policies">
+        <PoliciesTable
+          clusterName={clusterName}
+          policies={policies}
+          isLoading={policiesLoading}
+          error={policiesError}
+        />
+      </InfoCard>
     </Flex>
   );
 };
@@ -146,6 +163,15 @@ export const ClusterGateways = () => {
   const clusterName = cluster.getName();
 
   const { gateways, routes, isLoading, error } = useMimirGatewayTopology({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
+  const {
+    policies,
+    isLoading: policiesLoading,
+    error: policiesError,
+  } = useMimirGatewayPolicies({
     installationName,
     clusterName,
     refetchInterval: 30_000,
@@ -160,6 +186,9 @@ export const ClusterGateways = () => {
       isLoading={isLoading}
       error={error}
       mimirAvailable={mimirAvailable}
+      policies={policies}
+      policiesLoading={policiesLoading}
+      policiesError={policiesError}
     />
   );
 };
