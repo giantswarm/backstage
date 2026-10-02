@@ -1861,6 +1861,33 @@
                         }
                     }
                 },
+                "io.k8s.api.core.v1.Toleration": {
+                    "type": "object",
+                    "description": "The pod this Toleration is attached to tolerates any taint that matches the triple <key,value,effect> using the matching operator <operator>.",
+                    "properties": {
+                        "effect": {
+                            "type": "string",
+                            "description": "Effect indicates the taint effect to match. Empty means match all taint effects. When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute."
+                        },
+                        "key": {
+                            "type": "string",
+                            "description": "Key is the taint key that the toleration applies to. Empty means match all taint keys. If the key is empty, operator must be Exists; this combination means to match all values and all keys."
+                        },
+                        "operator": {
+                            "type": "string",
+                            "description": "Operator represents a key's relationship to the value. Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal. Exists is equivalent to wildcard for value, so that a pod can tolerate all taints of a particular category. Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators)."
+                        },
+                        "tolerationSeconds": {
+                            "type": "integer",
+                            "description": "TolerationSeconds represents the period of time the toleration (which must be of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default, it is not set, which means tolerate the taint forever (do not evict). Zero and negative values will be treated as 0 (evict immediately) by the system.",
+                            "format": "int64"
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": "Value is the taint value the toleration matches to. If the operator is Exists, the value should be empty, otherwise just a regular string."
+                        }
+                    }
+                },
                 "io.k8s.api.core.v1.TypedLocalObjectReference": {
                     "type": "object",
                     "description": "TypedLocalObjectReference contains enough information to let you locate the typed referenced object inside the same namespace.",
@@ -2439,6 +2466,15 @@
                 }
             }
         },
+        "architecture": {
+            "type": "string",
+            "description": "Target CPU architecture for this workload. Empty imposes no constraint. `arm64` pins the pod to arm64 nodes, adding both the `kubernetes.io/arch` node selector and the toleration for the `kubernetes.io/arch=arm64:NoSchedule` taint that Giant Swarm arm64 node pools carry. Both are required, so this single value sets both. Requires a multi-arch container image; an amd64-only image will crash-loop with `exec format error` on an arm64 node. Applies to the Backstage pod only; the CNPG instances are placed by `database.postgresql.affinity`.",
+            "enum": [
+                "",
+                "amd64",
+                "arm64"
+            ]
+        },
         "authSessionSecret": {
             "type": "string",
             "description": "Secret used for signing authentication sessions (exposed as AUTH_SESSION_SECRET env var). Base64-encoded: the chart writes it into the Secret's `data` as is"
@@ -2911,7 +2947,7 @@
         },
         "nodeSelector": {
             "type": "object",
-            "description": "Node selector labels to constrain pod scheduling to specific nodes",
+            "description": "Node selector labels to constrain pod scheduling to specific nodes. Merged with `architecture`. Pinning to arm64 here rather than through `architecture` also adds the arm64 taint toleration, so either route is safe. A value that contradicts `architecture` fails the render.",
             "additionalProperties": true
         },
         "observability": {
@@ -3433,6 +3469,13 @@
                     "type": "string",
                     "description": "TelemetryDeck salt for hashing user identifiers (exposed as TELEMETRYDECK_SALT env var). Public by design, not a credential; see the note in templates/secrets.yaml. Base64-encoded: the chart writes it into the Secret's `data` as is"
                 }
+            }
+        },
+        "tolerations": {
+            "type": "array",
+            "description": "Tolerations for pod scheduling. Merged with the toleration that `architecture: arm64` adds.",
+            "items": {
+                "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Toleration"
             }
         },
         "userID": {
