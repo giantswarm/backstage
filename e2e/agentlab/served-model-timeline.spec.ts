@@ -454,11 +454,17 @@ test.describe('serving: the served model’s step timeline', () => {
         staged.reads.slice(0, 3),
         'the inventory was read once per stage: the page polled at 10 s while the model was on its way',
       ).toEqual(['downloading', 'loading', 'ready']);
+      // The verdict's check, then one pinned to each node of the lab's
+      // inventory for the dialog's Node field.
+      const [verdict, ...perNode] = staged.callsOf('check_fit');
+      expect(verdict.arguments, 'the verdict judged the preset').toEqual({
+        model: 'qwen3-4b-instruct',
+      });
       expect(
-        [...staged.callsOf('check_fit'), ...staged.callsOf('load_model')].map(
-          call => call.name,
-        ),
-      ).toEqual(['x_model-manager_check_fit', 'x_model-manager_load_model']);
+        perNode.map(call => call.arguments.node),
+        'every further check is pinned to a node',
+      ).not.toContain(undefined);
+      expect(staged.callsOf('load_model'), 'Serve loads once').toHaveLength(1);
       expect(
         staged.tries,
         'the try named the installation, the model id the ModelConfig sends (not the serving object) and the endpoint model-manager reported',

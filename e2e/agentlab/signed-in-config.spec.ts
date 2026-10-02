@@ -22,8 +22,12 @@ function pathsOf(value: unknown, prefix = ''): string[] {
   return [prefix];
 }
 
-/** The config the app-backend injected into the page, as the browser reads it. */
-function publicConfigOf(html: string): Record<string, unknown> {
+/**
+ * The leaf paths of the config the app-backend injected into the page, as the
+ * browser reads it: every context it ships (the app's config files, and an
+ * `env` context for the `APP_CONFIG_*` variables the chart sets), together.
+ */
+function publicConfigPathsOf(html: string): string[] {
   const match = html.match(
     /type="backstage.io\/config"[^>]*>([\s\S]*?)<\/script>/,
   );
@@ -34,8 +38,8 @@ function publicConfigOf(html: string): Record<string, unknown> {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
-  const [first] = JSON.parse(decoded) as { data: Record<string, unknown> }[];
-  return first.data;
+  const contexts = JSON.parse(decoded) as { data: Record<string, unknown> }[];
+  return [...new Set(contexts.flatMap(({ data }) => pathsOf(data)))];
 }
 
 /** The gs plugin's keys the sign-in page reads before anyone is signed in. */
@@ -50,7 +54,7 @@ test('the unauthenticated page carries only the sign-in config', async ({
   request,
 }) => {
   const html = await (await request.get('/')).text();
-  const paths = pathsOf(publicConfigOf(html));
+  const paths = publicConfigPathsOf(html);
 
   expect(paths, 'the sign-in page has what it needs').toEqual(
     expect.arrayContaining([
