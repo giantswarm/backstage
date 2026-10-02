@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
   AgentManagerNotConnectedError,
@@ -99,7 +100,10 @@ export function useUpdateAgent(
     [queryClient, installation],
   );
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Agent edits are not a tracked portal action yet; agentCreated measures adoption.',
     mutationFn: async (update: AgentUpdate): Promise<AgentUpdateOutcome> => {
       const agentManager = requireClient();
       // Strictly before the write, so a generation past it can only be one the
@@ -121,7 +125,10 @@ export function useUpdateAgent(
     },
     onSuccess: (_result, update) => invalidateReads(update),
   });
-  const commitMutation = useMutation({
+  const commitMutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Agent edits are not a tracked portal action yet; agentCreated measures adoption.',
     mutationFn: (update: AgentUpdate) =>
       requireClient().commitUpdateAgent(update),
   });

@@ -4,7 +4,8 @@ import RefreshIcon from '@material-ui/icons/Refresh';
 import { Alert, Text } from '@backstage/ui';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Fact,
   FactList,
@@ -184,7 +185,9 @@ export function RepositoryDetails({ repository }: { repository: string }) {
         : false,
   });
 
-  const refresh = useMutation({
+  const refresh = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A refresh of the inventory record, not a change.',
     mutationFn: () => api.refreshRepository(repository),
     onSuccess: (record: InventoryRecord) => {
       queryClient.setQueryData(queryKey, record);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Accordion,
   AccordionPanel,
@@ -9,7 +10,6 @@ import {
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation } from '@tanstack/react-query';
 import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
@@ -111,7 +111,10 @@ export function ToolDetailPanel({
     });
   }, [fields]);
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'A tool call from the explorer; its arguments are free text and stay out.',
     mutationFn: async (args: Record<string, unknown>) => {
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation);

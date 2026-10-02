@@ -8590,6 +8590,22 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-analytics-react@workspace:^, @giantswarm/backstage-plugin-analytics-react@workspace:plugins/analytics-react":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-analytics-react@workspace:plugins/analytics-react"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^7.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-auth-backend-module-gs@npm:^0.15.0, @giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-auth-backend-module-gs@workspace:plugins/auth-backend-module-gs"
@@ -22584,6 +22600,7 @@ __metadata:
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-bot-prs": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
@@ -27741,6 +27758,12 @@ __metadata:
   checksum: 10c0/4d8b46dcd525d71276f9be9ffac1d2be61c9d54cc53c992e6333cf957840dee09381842b1acbbb15fc6b255ebab99cd481c5007ab438e5455a14abe1a0468558
   languageName: node
   linkType: hard
+
+"eslint-plugin-giantswarm@link:./scripts/eslint-plugin-giantswarm::locator=root%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "eslint-plugin-giantswarm@link:./scripts/eslint-plugin-giantswarm::locator=root%40workspace%3A."
+  languageName: node
+  linkType: soft
 
 "eslint-plugin-import@npm:^2.31.0":
   version: 2.31.0
@@ -41332,6 +41355,7 @@ __metadata:
     "@types/react-dom": "npm:^18"
     concurrently: "npm:^10.0.0"
     env-cmd: "npm:^11.0.0"
+    eslint-plugin-giantswarm: "link:./scripts/eslint-plugin-giantswarm"
     husky: "npm:^9.1.7"
     jest: "npm:^30.2.0"
     jsdom: "npm:^30.0.0"

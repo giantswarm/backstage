@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   createResource,
   CustomResourceMatcher,
@@ -58,7 +59,9 @@ export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Model configuration is not a tracked portal action yet.',
     mutationFn: async ({
       installation,
       values,

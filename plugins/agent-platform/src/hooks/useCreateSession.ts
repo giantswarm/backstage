@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  useTrackedMutation,
+  type PortalEventAttributes,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { kagentApiRef } from '../apis';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey } from '../lib/queryKeys';
@@ -22,6 +26,10 @@ export type NewSession = {
  */
 type NewSessionRequest = NewSession & { requestId: string };
 
+/** Where the person started the session from, as the analytics event says. */
+export type SessionEntryPoint =
+  PortalEventAttributes<'AgentPlatform.sessionStarted'>['entryPoint'];
+
 /**
  * Start a session with an agent: create its AgentInstance.
  *
@@ -35,14 +43,19 @@ type NewSessionRequest = NewSession & { requestId: string };
  * installation/namespace/name, so picking the agent picks the installation, and
  * taking both would let them disagree.
  *
- * The title is derived here rather than by the caller so both entry points — the
- * sessions list and the agent detail page — produce the same one.
+ * The title is derived here rather than by the caller so every entry point —
+ * the sessions list, the agent detail page and the session detail page —
+ * produces the same one; `entryPoint` only says which one it was.
  */
-export function useCreateSession() {
+export function useCreateSession(entryPoint: SessionEntryPoint) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: () => ({
+      name: 'AgentPlatform.sessionStarted',
+      attributes: { entryPoint },
+    }),
     mutationFn: async ({ agent, prompt, requestId }: NewSessionRequest) => {
       const { sessionId } = await kagentApi.createSession(
         agent.installation,

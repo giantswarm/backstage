@@ -232,6 +232,9 @@ All plugins live under `plugins/` and are published under the
 
 - **`error-reporter-react`** (web) - Error reporting components
 
+- **`analytics-react`** (web) - The portal's tracked actions: the typed event
+  list (`portalEvents`) and `useTrackedMutation`
+
 - **`gs-common`** (common) - Shared constants/utilities for frontend and backend
 
 - **`gs-node`** (node) - Shared backend-only (node) utilities
@@ -318,6 +321,26 @@ listed route resolves to a named page, so a missing mapping fails CI instead of
 silently flooding Sentry. Update
 `packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.test.tsx` too if the
 routing/reporting behaviour changes.
+
+#### Analytics / Telemetry — keep in sync when adding actions
+
+A write a person completes in a GS plugin goes through `useTrackedMutation`
+from `@giantswarm/backstage-plugin-analytics-react`, never a plain
+`useMutation` (ESLint fails `plugins/*/src` on one: the
+`giantswarm/no-restricted-imports` rule in the root `.eslintrc.js`). It takes
+`event` — the event the success reports, from the typed list `portalEvents` in
+`plugins/analytics-react/src/events.ts` — or `event: null` with an
+`untrackedReason`. Report from the hook every entry point shares, never from a
+page component. A write that is not a react-query mutation moves into a hook.
+
+**When you add a tracked action**: add it to `portalEvents` (TelemetryDeck's
+naming: capitalized prefixes, a past-tense last part, at most three levels;
+every attribute a closed set of values, never free text), add the row to the
+table in `docs/telemetry.md` (a test compares them), and assert the event in the
+hook's test with `mockApis.analytics.mock()` (a test fails when no plugin test
+names the event). The TelemetryDeck connector forwards only listed events with
+valid attributes; anything else named like ours goes to Sentry as
+`Untracked action: <name>`.
 
 ### Scaffolder Field Extensions
 

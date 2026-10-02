@@ -1,7 +1,8 @@
 {
-  "name": "@giantswarm/backstage-plugin-roadmap",
-  "version": "0.0.0",
+  "name": "@giantswarm/backstage-plugin-analytics-react",
+  "version": "0.1.0",
   "license": "Apache-2.0",
+  "description": "Web library for the portal's tracked actions: the typed event list and useTrackedMutation",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "publishConfig": {
@@ -10,11 +11,10 @@
     "types": "dist/index.d.ts"
   },
   "backstage": {
-    "role": "frontend-plugin",
-    "pluginId": "roadmap",
+    "role": "web-library",
+    "pluginId": "analytics",
     "pluginPackages": [
-      "@giantswarm/backstage-plugin-roadmap",
-      "@giantswarm/backstage-plugin-roadmap-backend"
+      "@giantswarm/backstage-plugin-analytics-react"
     ]
   },
   "sideEffects": false,
@@ -28,26 +28,17 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@backstage/core-components": "backstage:^",
     "@backstage/core-plugin-api": "backstage:^",
-    "@backstage/frontend-plugin-api": "backstage:^",
-    "@giantswarm/backstage-plugin-analytics-react": "workspace:^",
-    "@giantswarm/backstage-plugin-ui-react": "workspace:^",
-    "@material-ui/core": "^4.12.4",
-    "@material-ui/icons": "^4.11.3",
-    "@material-ui/lab": "^4.0.0-alpha.61",
     "@tanstack/react-query": "^5.82.0"
   },
   "peerDependencies": {
-    "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
-    "react-router-dom": "*"
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^",
     "@backstage/test-utils": "backstage:^",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.0.0",
-    "@testing-library/user-event": "^14.0.0",
     "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
   },
   "files": [

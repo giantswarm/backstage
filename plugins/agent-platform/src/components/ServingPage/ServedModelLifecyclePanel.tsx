@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import CloseIcon from '@material-ui/icons/Close';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
-import { useMutation } from '@tanstack/react-query';
 
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatSeconds } from '../../lib/lifecycle';
@@ -181,7 +181,10 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
     (row.usedBy[0]
       ? { name: row.usedBy[0].name, namespace: row.usedBy[0].namespace }
       : undefined);
-  const attempt = useMutation({
+  const attempt = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'A trial prompt against a served model, not a change to the platform.',
     mutationFn: () =>
       modelManagerApi.tryModel(row.installation, {
         model: requestModelOf(row),
