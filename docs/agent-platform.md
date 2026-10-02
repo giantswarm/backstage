@@ -365,15 +365,44 @@ agent-manager's own resolution is not what pins: what the person picked is what
 runs, until they update it explicitly on the agent's page. Repo-root skills omit
 `path`; agents with no skills selected omit `skills` entirely. There is no
 per-skill credential in the request (private skill repositories are a separate
-piece of platform work) and no runtime field.
+piece of platform work).
+
+### The runtime is a Harness
+
+Below the model, the details step lists the **Harnesses of the chosen model's
+namespace** (`HarnessPicker`, `harnesses.kagent.dev` read through the
+Kubernetes proxy with the person's own RBAC, the same rights as reading
+AgentTemplates and ModelConfigs) as runtime cards. A card is titled by the
+Harness's `ui.giantswarm.io/display-name` when an admin set one, else by its
+runtime family (the one of `spec.kagent`, `spec.claude`, `spec.codex` and
+`spec.byo` that is set), with the Harness's name and image beneath: two Claude
+Code Harnesses with different toolchains read apart only by those, or by a
+display name. Only a Harness whose
+`allowedAgentTemplates` selector matches on
+`agent-platform.giantswarm.io/harness` is offered, and the pick is that label
+value, which is what agent-manager's `harness` argument names (`lib/harnesses.ts`).
+
+The platform Harness (`get_info`'s `harness.name`) comes first and is the
+default. Picking it is no pick: the request leaves `harness` out and
+agent-manager composes its own, exactly as before. Any other pick is sent as
+`harness` to `validate_agent` and `create_agent`. A namespace holding one
+Harness, which is every installation without coding Harnesses, shows it as a
+read-only card, so the person still sees what will run the agent; the request
+is unchanged there. A namespace listing none shows no section. A list that could
+not be read (forbidden, or failed) shows a warning instead, since a choice may
+have been missed. Changing the installation, or picking a model in another
+namespace, drops the pick, since a Harness admits templates of its own namespace
+only, and a status notice says so until the person picks a runtime again. The
+Harness is fixed at create: the edit page has no runtime field.
 
 ### The review page is agent-manager's dry run
 
 Nothing in the portal composes a manifest. The review page turns the form into
 agent-manager's create contract (`lib/agentSpec.ts` → `AgentSpec`: `namespace`
 = the ModelConfig's, `name` = the slug, `displayName`, `description`,
-`systemMessage`, `modelConfig`, `iconUrl` from the avatar rule, `skills` pinned
-to commits, `toolset` exactly as the Tools step composed it) and asks
+`systemMessage`, `modelConfig`, `harness` when one other than the platform
+Harness was picked, `iconUrl` from the avatar rule, `skills` pinned to commits,
+`toolset` exactly as the Tools step composed it) and asks
 agent-manager to validate it (`useValidateAgent` → `x_agent-manager_validate_agent`).
 The answer is rendered verbatim:
 
@@ -390,7 +419,8 @@ The answer is rendered verbatim:
 
 `get_info` (`useAgentManagerInfo`) supplies what used to be config or a
 registry read: the chart's OCI URL and range, the newest published version, the
-platform Harness's name (`harness.name`) the copy names, the muster MCP URL
+platform Harness's name (`harness.name`) the review names when no other
+Harness was picked, the muster MCP URL
 agent-manager composes (`muster.url`), the Flux ServiceAccount, and the
 capability flags. The portal has no chart knowledge of its own: no version
 resolution, no default-prompt read (an empty system prompt is sent as absent
@@ -2678,7 +2708,8 @@ description, system prompt, the model (offered from
 `x_agent-manager_list_model_configs` for the agent's namespace, read through
 agent-manager rather than the admin-only fleet-wide ModelConfigs list), the
 toolset selectors, and the skills with the commit or digest each is pinned to.
-There is **no runtime field**: every agent runs on the platform Harness (D5).
+There is **no runtime field**: the Harness is fixed at create, and agent-manager
+keeps it on an update.
 
 **The review is agent-manager's dry run.** The form keeps a baseline (agent-
 manager's reading) and the edit; `lib/agentEdit.ts` derives from the two the

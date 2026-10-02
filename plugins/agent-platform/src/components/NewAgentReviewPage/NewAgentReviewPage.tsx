@@ -35,6 +35,7 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
+import { harnessTitle } from '../../lib/harnesses';
 import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
@@ -511,7 +512,9 @@ export function NewAgentReviewPage() {
   }
 
   const chart = info?.chart;
-  const harnessName = info?.harness?.name;
+  // The Harness the person picked, else the platform Harness agent-manager
+  // composes when the request names none.
+  const harnessName = state.harness?.name ?? info?.harness?.name;
   const valuesYaml = dryRun ? dump(dryRun.manifests.values, YAML_OPTS) : '';
 
   return (
@@ -546,7 +549,7 @@ export function NewAgentReviewPage() {
           shared <span className={classes.code}>OCIRepository</span> that
           sources the chart. Deploying applies them to{' '}
           <strong>{state.installation}</strong> as you, and the agent runs on
-          the platform Harness
+          {state.harness ? ' the Harness' : ' the platform Harness'}
           {harnessName ? (
             <>
               {' '}
@@ -584,7 +587,7 @@ export function NewAgentReviewPage() {
               </Text>
             )}
           </SummaryItem>
-          <SummaryItem label="Harness">
+          <SummaryItem label="Runtime (Harness)">
             {harnessName ? (
               <span className={classes.code}>{harnessName}</span>
             ) : (
@@ -592,6 +595,9 @@ export function NewAgentReviewPage() {
                 The platform Harness
               </Text>
             )}
+            <Text variant="body-x-small" color="secondary">
+              {state.harness ? harnessTitle(state.harness) : 'Platform default'}
+            </Text>
           </SummaryItem>
           <SummaryItem label="Tools">
             <Text variant="body-small">
@@ -738,7 +744,7 @@ export function NewAgentReviewPage() {
                 <span className={classes.code}>{state.installation}</span>{' '}
                 through agent-manager, as you — the release names you as its
                 author and your own cluster access decides. The agent's page
-                then shows it becoming ready on the platform Harness.
+                then shows it becoming ready on its Harness.
               </>
             }
           />

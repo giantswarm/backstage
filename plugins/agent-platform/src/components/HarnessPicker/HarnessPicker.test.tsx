@@ -1,0 +1,273 @@
+import { useEffect } from 'react';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
+import { HarnessPicker } from './HarnessPicker';
+
+const mockUseResources = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+  useResources: (...args: unknown[]) => mockUseResources(...args),
+}));
+
+jest.mock('../../hooks/useAgentManager', () => ({
+  useAgentManagerInfo: () => ({
+    info: { harness: { name: 'kagent' } },
+    isLoading: false,
+    error: null,
+  }),
+}));
+
+function harness(
+  name: string,
+  runtime: 'kagent' | 'claude',
+  {
+    namespace = 'kagent',
+    displayName = undefined as string | undefined,
+    admits = name,
+  } = {},
+): Harness {
+  return new Harness(
+    {
+      apiVersion: 'kagent.dev/v1alpha3',
+      kind: 'Harness',
+      metadata: {
+        name,
+        namespace,
+        ...(displayName && {
+          annotations: { 'ui.giantswarm.io/display-name': displayName },
+        }),
+      },
+      spec: {
+        allowedAgentTemplates: {
+          selector: {
+            matchLabels: { 'agent-platform.giantswarm.io/harness': admits },
+          },
+        },
+        [runtime]: {},
+        workload: { image: `registry.example/${name}-harness@sha256:0123` },
+      },
+    } as never,
+    'gazelle',
+  );
+}
+
+let formHarness: string | undefined;
+
+function Probe() {
+  const { state, setInstallation, selectModelConfig } = useNewAgentForm();
+  useEffect(() => {
+    setInstallation('gazelle');
+    selectModelConfig('opus', 'kagent');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  formHarness = state.harness?.admits;
+  return (
+    <button type="button" onClick={() => selectModelConfig('sonnet', 'demo')}>
+      Pick a model in demo
+    </button>
+  );
+}
+
+function listing(
+  resources: Harness[],
+  errors: unknown[] = [],
+  isLoading = false,
+) {
+  return { resources, isLoading, errors };
+}
+
+async function render() {
+  await renderInTestApp(
+    <NewAgentFormProvider>
+      <Probe />
+      <HarnessPicker />
+    </NewAgentFormProvider>,
+  );
+}
+
+beforeEach(() => {
+  formHarness = undefined;
+  mockUseResources.mockReset();
+});
+
+describe('HarnessPicker', () => {
+  it('shows the only Harness of the namespace read-only, with nothing to pick', async () => {
+    mockUseResources.mockReturnValue(listing([harness('kagent', 'kagent')]));
+    await render();
+
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    const card = screen.getByRole('listitem');
+    expect(card).toHaveTextContent('Declarative (Go ADK)');
+    expect(card).toHaveTextContent('Platform default');
+    expect(card).toHaveTextContent('Harness kagent');
+    expect(
+      screen.getByText(
+        'What runs the agent: the only Harness in kagent on gazelle.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows no section while the namespace lists no Harness at all', async () => {
+    mockUseResources.mockReturnValue(listing([]));
+    await render();
+
+    expect(screen.queryByText('Runtime')).not.toBeInTheDocument();
+  });
+
+  it("says so when the namespace's Harnesses could not be read", async () => {
+    mockUseResources.mockReturnValue(
+      listing([], [{ cluster: 'gazelle', error: new Error('Forbidden') }]),
+    );
+    await render();
+
+    expect(screen.getByText("Couldn't read the runtimes")).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
+  it("titles a card by the Harness's display name when an admin set one", async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('go', 'claude', { displayName: 'Claude Code with Go' }),
+      ]),
+    );
+    await render();
+
+    expect(
+      screen.getByRole('radio', {
+        name: 'Claude Code with Go, Harness go',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('tells the person when a model in another namespace drops their pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([harness('claude', 'claude'), harness('kagent', 'kagent')]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
+    expect(formHarness).toBe('claude');
+
+    mockUseResources.mockReturnValue(
+      listing([harness('kagent', 'kagent', { namespace: 'demo' })]),
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Pick a model in demo' }),
+    );
+
+    expect(formHarness).toBeUndefined();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "The Harness claude you picked doesn't serve this model's namespace",
+    );
+  });
+
+  it("lists the model's namespace's Harnesses, the platform one picked, and records another pick", async () => {
+    mockUseResources.mockReturnValue(
+      listing([harness('claude', 'claude'), harness('kagent', 'kagent')]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    expect(mockUseResources).toHaveBeenLastCalledWith(
+      ['gazelle'],
+      Harness,
+      { gazelle: { namespace: 'kagent' } },
+      expect.objectContaining({ enabled: true }),
+    );
+    const cards = screen.getAllByRole('radio');
+    expect(cards.map(card => card.getAttribute('aria-label'))).toEqual([
+      'Declarative (Go ADK), Harness kagent, platform default',
+      'Claude Code, Harness claude',
+    ]);
+    expect(cards[0]).toHaveAttribute('aria-checked', 'true');
+    expect(cards[0]).toHaveTextContent('Platform default');
+
+    await user.click(cards[1]);
+    expect(formHarness).toBe('claude');
+    expect(
+      screen.getByRole('radio', { name: /Harness claude/ }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(cards[1]).toHaveTextContent('Claude Code');
+
+    // Back to the platform Harness is no pick at all.
+    await user.click(screen.getByRole('radio', { name: /Harness kagent/ }));
+    expect(formHarness).toBeUndefined();
+  });
+
+  it('says the runtimes are loading while the list is being read', async () => {
+    mockUseResources.mockReturnValue(listing([], [], true));
+    await render();
+
+    expect(screen.getByText('Loading runtimes…')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
+  });
+
+  it('selects only the clicked card when two Harnesses admit the same value', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude-go', 'claude', { admits: 'claude' }),
+        harness('claude-rust', 'claude', { admits: 'claude' }),
+      ]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude-go/ }));
+    expect(formHarness).toBe('claude');
+    expect(
+      screen.getByRole('radio', { name: /Harness claude-go/ }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByRole('radio', { name: /Harness claude-rust/ }),
+    ).toHaveAttribute('aria-checked', 'false');
+    expect(
+      screen.getByRole('radio', { name: /Harness claude-go/ }),
+    ).toHaveAccessibleDescription(
+      'Admits the same agents as claude-rust: the agent runs on both.',
+    );
+  });
+
+  it('treats a second Harness admitting the platform value as its own pick', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('kagent-canary', 'kagent', { admits: 'kagent' }),
+      ]),
+    );
+    const user = userEvent.setup();
+    await render();
+
+    const canary = screen.getByRole('radio', { name: /Harness kagent-canary/ });
+    await user.click(canary);
+    expect(formHarness).toBe('kagent');
+    expect(canary).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByRole('radio', { name: /Harness kagent,/ }),
+    ).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('warns that the list may be incomplete when part of it could not be read', async () => {
+    mockUseResources.mockReturnValue(
+      listing(
+        [harness('kagent', 'kagent'), harness('claude', 'claude')],
+        [{ cluster: 'gazelle', error: new Error('Forbidden') }],
+      ),
+    );
+    await render();
+
+    expect(
+      screen.getByText(
+        "Some runtimes couldn't be loaded; the list may be incomplete.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+});

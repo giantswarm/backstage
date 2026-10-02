@@ -556,7 +556,7 @@ function EditAgentForm({
                 <Text variant="body-small" color="secondary">
                   Updates the release's values through agent-manager, as you.
                   The agent's page then shows the new revision becoming ready on
-                  the platform Harness.
+                  its Harness.
                 </Text>
               </Flex>
               {actions}
