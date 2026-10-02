@@ -56,6 +56,8 @@ function render(routes: HttpRoute[]) {
       gateways={[]}
       routes={routes}
       isLoading={false}
+      policies={[]}
+      policiesLoading={false}
       mimirAvailable
     />,
   );
@@ -142,6 +144,8 @@ describe('<ClusterGatewaysContent />', () => {
         gateways={[]}
         routes={[]}
         isLoading={false}
+        policies={[]}
+        policiesLoading={false}
         mimirAvailable={false}
       />,
     );
