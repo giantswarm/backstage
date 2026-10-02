@@ -12,7 +12,16 @@ import { expect, open, test } from './fixtures';
  * The lab's catalogue groups are Dex fixtures without the `team-` prefix, so
  * the page names no team of its own there; `?team=` on All teams is how the
  * suite reaches a real queue.
+ *
+ * A default lab has neither: its Backstage leaves `page:bot-prs` out of
+ * `app.extensions` and its muster serves no marge, so the suite is skipped
+ * with the reason until AGENTLAB_BOT_PRS=1 says the lab has both.
  */
+
+test.skip(
+  !process.env.AGENTLAB_BOT_PRS,
+  'needs a lab whose muster serves marge and whose Backstage enables page:bot-prs; set AGENTLAB_BOT_PRS=1',
+);
 
 test('the page offers the two scopes and lands on All teams for a lab user', async ({
   admin,
