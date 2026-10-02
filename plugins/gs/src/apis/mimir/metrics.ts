@@ -238,6 +238,59 @@ export const GatewayApiGatewayListenerInfo = {
   source: 'gateway-api-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const GatewayApiGatewayInfo = {
+  name: 'gatewayapi_gateway_info',
+  description:
+    'Info series (value is always 1) with one time series per Gateway API Gateway. `name`/`namespace` identify the Gateway; `gatewayclass_name` is its GatewayClass.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatus = {
+  name: 'gatewayapi_gateway_status',
+  description:
+    'One series per status condition of a Gateway API Gateway (`type`, e.g. `Accepted`, `Programmed`). Value 1 when the condition is True, 0 when False or Unknown.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiGatewayStatusListenerAttachedRoutes = {
+  name: 'gatewayapi_gateway_status_listener_attached_routes',
+  description:
+    'Number of routes attached to a Gateway listener, as reported in the Gateway status. `name`/`namespace` identify the Gateway; `listener_name` is the listener.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentInfo = {
+  name: 'gatewayapi_httproute_status_parent_info',
+  description:
+    'Info series (value is always 1) with one time series per entry in `status.parents` of an HTTPRoute, i.e. per parent the controller has written status for. `parent_name`/`parent_namespace`/`parent_section_name` identify the parent.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
+ * Route conditions per parent, added after observability-bundle 3.5.0
+ * (giantswarm/observability-bundle#467). Clusters on an older bundle export no
+ * series at all, so an absent condition means "not available", never "healthy".
+ */
+export const GatewayApiHttprouteStatusParentAccepted = {
+  name: 'gatewayapi_httproute_status_parent_accepted',
+  description:
+    'Accepted condition of an HTTPRoute, one series per parent (`parent_name`/`parent_namespace`/`parent_section_name`), with the condition `reason` as label. Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiHttprouteStatusParentResolvedRefs = {
+  name: 'gatewayapi_httproute_status_parent_resolved_refs',
+  description:
+    'ResolvedRefs condition of an HTTPRoute, one series per parent, with the condition `reason` as label (e.g. `RefNotPermitted`, `BackendNotFound`). Value 1 when True, 0 when False or Unknown, no series when not reported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
 export const CertmanagerCertificateExpirationTimestampSeconds = {
   name: 'certmanager_certificate_expiration_timestamp_seconds',
   description:
@@ -387,6 +440,12 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   GatewayApiHttprouteHostnameInfo,
   GatewayApiHttprouteParentInfo,
   GatewayApiGatewayListenerInfo,
+  GatewayApiGatewayInfo,
+  GatewayApiGatewayStatus,
+  GatewayApiGatewayStatusListenerAttachedRoutes,
+  GatewayApiHttprouteStatusParentInfo,
+  GatewayApiHttprouteStatusParentAccepted,
+  GatewayApiHttprouteStatusParentResolvedRefs,
   CertmanagerCertificateExpirationTimestampSeconds,
   CertmanagerCertificateReadyStatus,
   KarpenterNodesAllocatable,
