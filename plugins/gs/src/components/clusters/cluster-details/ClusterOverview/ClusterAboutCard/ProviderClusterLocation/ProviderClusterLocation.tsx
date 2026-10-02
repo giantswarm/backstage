@@ -1,15 +1,31 @@
+import {
+  AWSCluster,
+  AzureASOManagedCluster,
+  AzureCluster,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ClusterSwitch } from '../../../ClusterSwitch';
-import { AWSClusterLocation } from './AWSClusterLocation';
-import { AzureClusterLocation } from './AzureClusterLocation';
+import { ProviderClusterLocationValue } from './ProviderClusterLocationValue';
 
 export const ProviderClusterLocation = () => {
   return (
     <ClusterSwitch
       renderAWS={infrastructureRef => (
-        <AWSClusterLocation infrastructureRef={infrastructureRef} />
+        <ProviderClusterLocationValue
+          model={AWSCluster}
+          infrastructureRef={infrastructureRef}
+        />
       )}
       renderAzure={infrastructureRef => (
-        <AzureClusterLocation infrastructureRef={infrastructureRef} />
+        <ProviderClusterLocationValue
+          model={AzureCluster}
+          infrastructureRef={infrastructureRef}
+        />
+      )}
+      renderAzureManaged={infrastructureRef => (
+        <ProviderClusterLocationValue
+          model={AzureASOManagedCluster}
+          infrastructureRef={infrastructureRef}
+        />
       )}
       renderVSphere={() => null}
       renderVCD={() => null}

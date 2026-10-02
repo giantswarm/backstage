@@ -12,9 +12,9 @@ import {
   findProviderClusterAppVersion,
 } from '../utils';
 import {
+  AnyControlPlane,
   AWSClusterRoleIdentity,
   Cluster,
-  ControlPlane,
   ErrorInfoUnion,
   isNotFoundError,
   ProviderCluster,
@@ -51,7 +51,7 @@ export function collectClusterData({
 }: {
   installationName: string;
   cluster: Cluster;
-  controlPlane?: ControlPlane | null;
+  controlPlane?: AnyControlPlane | null;
   providerCluster?: ProviderCluster | null;
   awsClusterRoleIdentity?: AWSClusterRoleIdentity | null;
 }): ClusterData {
