@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import {
   InvalidateQueryFilters,
   QueryClient,
@@ -28,6 +29,8 @@ const agent: AgentRow = {
   readiness: 'ready',
 };
 
+const analyticsApi = mockApis.analytics.mock();
+
 function renderWith() {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -35,13 +38,18 @@ function renderWith() {
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+    <TestApiProvider
+      apis={[
+        [kagentApiRef, kagentApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
 
   return {
-    ...renderHook(() => useCreateSession(), { wrapper }),
+    ...renderHook(() => useCreateSession('agentDetail'), { wrapper }),
     invalidateQueries,
   };
 }
@@ -58,6 +66,7 @@ function invalidationFor(
 }
 
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   createSession.mockReset();
   createSession.mockResolvedValue({ sessionId: 'new-session-id' });
 });
@@ -81,6 +90,22 @@ describe('useCreateSession', () => {
       'Why is the ingress failing?',
       // One idempotency key per submission, so a retried create is the same create.
       expect.stringMatching(/^[0-9a-f-]{36}$/),
+    );
+  });
+
+  it('reports the started session with its entry point', async () => {
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'agentDetail' },
+      }),
     );
   });
 
@@ -149,6 +174,7 @@ describe('useCreateSession', () => {
         'kagent did not accept the agent',
       );
     });
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('keeps a stable identity across re-renders', async () => {

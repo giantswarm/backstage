@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   roadmapApiRef,
   RoadmapItemFilters,
@@ -33,7 +34,9 @@ export function useItems(filters: RoadmapItemFilters, enabled = true) {
 export function useUpdateItemField() {
   const roadmapApi = useApi(roadmapApiRef);
   const queryClient = useQueryClient();
-  return useMutation({
+  return useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal roadmap tooling, not a customer portal action.',
     mutationFn: (variables: { itemId: string; name: string; value: string }) =>
       roadmapApi.updateItemField(
         variables.itemId,

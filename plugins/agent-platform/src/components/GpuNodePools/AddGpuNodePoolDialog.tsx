@@ -12,7 +12,6 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dump } from 'js-yaml';
 
 import {
   useClusterManagerInfo,
@@ -31,7 +30,6 @@ import {
   describeReleaseGroup,
   groupManifestsByRelease,
   isValidPoolName,
-  manifestFilename,
   offersArgument,
   presetFitOf,
   presetLabel,
@@ -40,10 +38,10 @@ import {
   type NodePoolWriteResult,
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
-import { CodeBlock } from '../CodeBlock';
-import { CommitOutcome } from '../CommitOutcome';
+import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
+import { ManifestList } from '../ManifestList';
 import { NodeSizePicker } from './NodeSizePicker';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
 import { PoolFitReview } from './PoolFitReview';
@@ -342,7 +340,7 @@ export function AddGpuNodePoolDialog({
   const canCommit = info?.modes.commit === true;
   const notConnected = write.failure?.kind === 'not-connected';
   const isBusy = write.isBusy && !judging;
-  const done = Boolean(applied || committed?.pullRequestUrl);
+  const done = Boolean(applied || committed?.commit?.pullRequest);
   const blocker = deployBlocker(review, preset);
   const canReview = Boolean(formInput) && !isBusy && !judging && !zonesMissing;
   const canWrite =
@@ -606,37 +604,7 @@ export function AddGpuNodePoolDialog({
                     <Text variant="body-medium">
                       {describeReleaseGroup(group)}
                     </Text>
-                    {group.manifests.map(manifest => {
-                      const filename = manifestFilename(manifest);
-                      const content = dump(manifest, { noRefs: true });
-                      return (
-                        <Flex key={filename} direction="column" gap="1">
-                          <CodeBlock
-                            filename={filename}
-                            content={content}
-                            language="yaml"
-                          />
-                          <Flex gap="2">
-                            <Button
-                              size="small"
-                              variant="tertiary"
-                              onPress={() =>
-                                navigator.clipboard?.writeText(content)
-                              }
-                            >
-                              Copy
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="tertiary"
-                              onPress={() => downloadText(filename, content)}
-                            >
-                              Download
-                            </Button>
-                          </Flex>
-                        </Flex>
-                      );
-                    })}
+                    <ManifestList manifests={group.manifests} />
                   </Flex>
                 ))}
                 {!canCommit && (
@@ -692,7 +660,9 @@ export function AddGpuNodePoolDialog({
                   .join(' · ')}
               />
             )}
-            {committed && <CommitOutcome result={committed} />}
+            {committed?.commit && (
+              <ClusterManagerCommitOutcome commit={committed.commit} />
+            )}
           </Flex>
         </DialogBody>
         <DialogFooter>
@@ -755,13 +725,4 @@ function clusterPlaceholder(loading: boolean, count: number): string {
     return 'Reading clusters…';
   }
   return count === 0 ? 'No clusters' : 'Pick a cluster';
-}
-
-function downloadText(filename: string, content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: 'text/yaml' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

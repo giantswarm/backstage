@@ -1,4 +1,13 @@
-import { SyncMark, SyncMarkLabel } from '@giantswarm/backstage-plugin-ui-react';
+import { ComponentType, CSSProperties } from 'react';
+import Tooltip from '@material-ui/core/Tooltip';
+import { SvgIconProps } from '@material-ui/core/SvgIcon';
+import CallMergeIcon from '@material-ui/icons/CallMerge';
+import {
+  StatusLabel,
+  StatusLabelIntent,
+  SyncMark,
+  SyncMarkLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   CapabilityState,
   CapabilityStateName,
@@ -17,6 +26,7 @@ import {
 export const STATE_WORDS: Record<CapabilityStateName, string> = {
   'not enabled': 'Not installed',
   'pending approval': 'Pending approval',
+  'ready to merge': 'Ready to merge',
   'rolling out': 'Rolling out',
   'waiting for the customer': 'Waiting for the customer',
   enabled: 'Installed',
@@ -85,6 +95,7 @@ export function markOf(
     case 'drifted':
       return 'not in sync';
     case 'pending approval':
+    case 'ready to merge':
     case 'rolling out':
     case 'waiting for the customer':
       // An action still in flight, so "as defined" cannot be claimed yet.
@@ -98,6 +109,61 @@ export function markOf(
       // The installation's repositories could not be read as the person.
       return 'unknown';
   }
+}
+
+/**
+ * The next step of an action in *ready to merge*: it needs no Team review,
+ * so its actor merges, where *pending approval* waits for the review.
+ */
+export const READY_TO_MERGE_STEP =
+  'No Team review needed: merge the pull requests once their checks are green.';
+
+/**
+ * A state with a look of its own rather than one of the six marks: a tone
+ * and a glyph, with what the state means on the tooltip. *ready to merge*
+ * is green with the merge glyph, the actor's turn, where *pending
+ * approval* is the sync mark of an action waiting on others.
+ */
+export interface Look {
+  intent: StatusLabelIntent;
+  icon: ComponentType<SvgIconProps>;
+}
+
+const LOOKS: Partial<Record<CapabilityStateName, Look>> = {
+  'ready to merge': { intent: 'positive', icon: CallMergeIcon },
+};
+
+const INLINE: CSSProperties = { display: 'inline-flex' };
+
+/**
+ * Words next to a look's glyph in its tone, what they mean on the
+ * tooltip; `data-state` keeps the manager's state for tests.
+ */
+export function LookLabel({
+  look,
+  words,
+  gloss,
+  state,
+  testId,
+}: {
+  look: Look;
+  words: string;
+  gloss: string;
+  state: string;
+  testId?: string;
+}) {
+  return (
+    <Tooltip title={gloss} placement="top" arrow>
+      <span data-testid={testId} data-state={state} style={INLINE}>
+        <StatusLabel
+          label={words}
+          intent={look.intent}
+          icon={look.icon}
+          inline
+        />
+      </span>
+    </Tooltip>
+  );
 }
 
 /** What the page says about a capability, the mark it says it under, and what the mark means here. */
@@ -137,6 +203,13 @@ function notCompared(
   };
 }
 
+/** The phase of an action in flight: a reconcile applies, an enable enables. */
+function verbOf(capability: Pick<CapabilityState, 'lastAction'>): string {
+  return capability.lastAction?.name.startsWith('reconcile')
+    ? 'Applying'
+    : 'Enabling';
+}
+
 /**
  * The header line of a capability: its phase and, after the middle dot or
  * the colon, what the comparison found -- the differences and the planned
@@ -171,12 +244,14 @@ export function statusOf(
       );
     }
     case 'pending approval':
-    case 'rolling out': {
-      const verb = capability.lastAction?.name.startsWith('reconcile')
-        ? 'Applying'
-        : 'Enabling';
-      return under(`${verb} · ${state}`, 'not reconciled');
-    }
+    case 'rolling out':
+      return under(`${verbOf(capability)} · ${state}`, 'not reconciled');
+    case 'ready to merge':
+      return {
+        words: `${verbOf(capability)} · ${state}`,
+        mark: 'not reconciled',
+        gloss: READY_TO_MERGE_STEP,
+      };
     case 'waiting for the customer': {
       const action = comparison?.customerActions?.[0]?.action;
       return under(
@@ -204,7 +279,8 @@ export function statusOf(
  * A capability's state in the page's words next to its mark's glyph, the
  * mark's gloss on the tooltip -- the legend's line, with why the comparison
  * did not run where it did not; `data-state` keeps the manager's state for
- * tests. With a `status` the tag carries the header line the comparison
+ * tests. A state with a look of its own (*ready to merge*) shows its tone
+ * and glyph, its next step on the tooltip. With a `status` the tag carries the header line the comparison
  * produced instead.
  */
 export function StateTag({
@@ -216,6 +292,18 @@ export function StateTag({
   status?: Status;
   testId?: string;
 }) {
+  const look = LOOKS[state];
+  if (look) {
+    return (
+      <LookLabel
+        look={look}
+        words={status.words}
+        gloss={status.gloss}
+        state={state}
+        testId={testId}
+      />
+    );
+  }
   return (
     <SyncMarkLabel
       mark={status.mark}

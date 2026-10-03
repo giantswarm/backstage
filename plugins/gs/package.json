@@ -51,6 +51,7 @@
     "@backstage/types": "backstage:^",
     "@backstage/ui": "backstage:^",
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^",
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^",
     "@giantswarm/backstage-plugin-flux": "workspace:^",
     "@giantswarm/backstage-plugin-flux-react": "^0.14.2",
     "@giantswarm/backstage-plugin-gs-common": "^0.21.1",

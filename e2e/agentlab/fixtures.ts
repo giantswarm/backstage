@@ -212,3 +212,139 @@ export async function connectToMuster(page: Page, ready: Locator) {
     )
     .toBe('connected');
 }
+
+/**
+ * Creates an agent in the New agent wizard the way a person does, as the
+ * page's user: Details (no skills, no tools, the lab's default ModelConfig),
+ * agent-manager's dry run on Review, then Deploy. Resolves on the agent's
+ * detail page and returns its path; from then on the agent exists and the
+ * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
+ */
+export async function createAgentInWizard(
+  page: Page,
+  agentName: string,
+  agentSlug: string,
+): Promise<string> {
+  // --- Step 1: Details -----------------------------------------------------
+  await open(page, '/agent-platform/agents/new');
+  await expect(page.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expect(
+    page.getByText('No installations with models'),
+    `the wizard sees no reachable installation with a ModelConfig — the lab's kagent route may be unreachable from Backstage, or the backend cached an unreachable probe after a pod roll (5 min TTL)`,
+  ).toBeHidden();
+  await page.getByRole('textbox', { name: 'Name' }).fill(agentName);
+  await expect(page.getByRole('textbox', { name: 'Slug' })).toHaveValue(
+    agentSlug,
+  );
+  await page
+    .getByRole('textbox', { name: 'Description' })
+    .fill('Throwaway agent of the Playwright suite; deleted by the same run.');
+  await page
+    .getByRole('textbox', { name: 'System prompt' })
+    .fill('You are a test agent. Answer with exactly what you are asked for.');
+  await page
+    .getByRole('radiogroup', { name: 'Model' })
+    .getByRole('radio', { name: /default-model-config/ })
+    .check();
+  await page.getByRole('button', { name: 'Continue' }).first().click();
+
+  // --- Step 2: Skills (none) -----------------------------------------------
+  await expect(page.getByText('Step 2 of 4: Skills')).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).first().click();
+
+  // --- Step 3: Tools (none) ------------------------------------------------
+  await expect(page.getByText('Step 3 of 4: Tools')).toBeVisible();
+  await expect(
+    page.getByLabel('Selected so far').getByText('No tools'),
+    'nothing selected is the empty toolset, and the step says so',
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).first().click();
+
+  // --- Step 4: Review = agent-manager's dry run, then Deploy ---------------
+  await expect(page.getByText('Step 4 of 4: Review')).toBeVisible();
+  await expect(page.getByText(agentSlug).first()).toBeVisible();
+  const deploy = page.getByRole('button', { name: 'Deploy agent' }).first();
+  await expect(
+    deploy,
+    'the dry run through agent-manager completed and Deploy is offered',
+  ).toBeEnabled({ timeout: 90_000 });
+  await deploy.click();
+
+  // The review page hands the agent to its detail page, which reports the
+  // verdict agent-manager polls for it. From here on the agent exists and the
+  // run deletes it again, whatever happens in between.
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/agent-platform/agents/${lab.installation}/[^/]+/${agentSlug}$`,
+    ),
+    { timeout: 60_000 },
+  );
+  return new URL(page.url()).pathname;
+}
+
+/** Deletes the agent through its actions menu — the portal's own path. */
+export async function deleteAgentInPortal(
+  page: Page,
+  detailPath: string,
+  agentSlug: string,
+): Promise<void> {
+  await open(page, detailPath);
+  await page.getByRole('button', { name: 'Agent actions' }).click();
+  await page.getByRole('menuitem', { name: /Delete agent/ }).click();
+  const dialog = page.getByRole('dialog', { name: /Delete agent/ });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Delete agent' }).click();
+  await expect(page).toHaveURL(/\/agent-platform\/agents$/, {
+    timeout: 60_000,
+  });
+  await expect(
+    page.getByRole('link', { name: agentSlug }),
+    'the roster no longer lists the agent',
+  ).toBeHidden({ timeout: 60_000 });
+}
+
+/**
+ * On an agent's detail page: waits for the agent to become ready on the
+ * platform Harness, then starts a session with `prompt` from the page and
+ * resolves on the new session's page.
+ */
+export async function startSessionOnReadyAgent(
+  page: Page,
+  prompt: string,
+): Promise<void> {
+  // The Status card's verdict — the page's own derivation from the
+  // template's harness status, `Pending` until the golden boot is done.
+  // `.last()`: the page's own article wraps the cards, so the filter also
+  // matches it — the card is the innermost match.
+  const statusCard = page
+    .getByRole('article')
+    .filter({
+      has: page.getByRole('heading', { level: 3, name: 'Status' }),
+    })
+    .last();
+  await expect(statusCard).toBeVisible();
+  await expect(
+    statusCard.getByText('Ready', { exact: true }).first(),
+    'the agent becomes ready on the platform Harness (golden boot) — a Pending that never ends means the lab Harness is not admitting: `kubectl -n kagent get harness,workerpools` and the kagent-controller log',
+  ).toBeVisible({ timeout: 6 * 60_000 });
+
+  // --- Start a session from the agent's page and get an answer -----------
+  // The button follows the roster's own read of the agent (`readiness`),
+  // polled apart from the Status card's harness status above, so it can
+  // trail the card's Ready by more than an action timeout.
+  const startSession = page.getByRole('button', { name: 'Start a session' });
+  await expect(
+    startSession,
+    'the page offers a session once the roster reads the agent ready',
+  ).toBeVisible({ timeout: 60_000 });
+  await startSession.click();
+  const promptBox = page.getByRole('textbox', { name: 'Prompt' });
+  await expect(promptBox).toBeVisible();
+  await promptBox.fill(prompt);
+  // Exact: the page header's "Start a session" is a button too.
+  await page.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
+    { timeout: 60_000 },
+  );
+}

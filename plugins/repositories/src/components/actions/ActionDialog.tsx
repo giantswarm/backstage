@@ -1,4 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Button,
   Dialog,
@@ -8,7 +9,6 @@ import {
   Flex,
   Text,
 } from '@backstage/ui';
-import { useMutation } from '@tanstack/react-query';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
@@ -70,7 +70,9 @@ export function ActionDialog<TPlan, TDone>({
   const [plan, setPlan] = useState<TPlan>();
   const [done, setDone] = useState<TDone>();
 
-  const review = useMutation({
+  const review = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A review (dry run) that writes nothing.',
     mutationFn: async () => {
       if (!dryRun) {
         throw new Error('no dry run');
@@ -79,7 +81,9 @@ export function ActionDialog<TPlan, TDone>({
     },
     onSuccess: setPlan,
   });
-  const write = useMutation({
+  const write = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Repository actions are not a tracked portal action yet.',
     mutationFn: commit,
     onSuccess: result => {
       setDone(result);

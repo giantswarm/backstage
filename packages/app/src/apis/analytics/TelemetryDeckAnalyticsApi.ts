@@ -6,6 +6,10 @@ import {
   getTelemetryPageViewPayload,
 } from '../../utils/telemetry';
 import { ErrorReporterApi } from '@giantswarm/backstage-plugin-error-reporter-react';
+import {
+  isPortalEventShaped,
+  toPortalEvent,
+} from '@giantswarm/backstage-plugin-analytics-react';
 
 export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly configApi: ConfigApi;
@@ -104,7 +108,46 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   }
 
   captureEvent(event: AnalyticsEvent): void {
-    if (event.action !== 'navigate' || !event.subject) {
+    if (event.action === 'navigate') {
+      this.capturePageView(event);
+      return;
+    }
+    this.captureAction(event);
+  }
+
+  /**
+   * A tracked action from our plugins (`portalEvents`), forwarded as a signal
+   * named after it. One named like ours but not on the list, or carrying an
+   * attribute outside its set, is a plugin bug: dropped, so no free text can
+   * leave the portal, and reported to Sentry. Backstage's built-in actions
+   * (`click`, `create`, `search`, `discover`) are dropped silently.
+   */
+  private captureAction(event: AnalyticsEvent): void {
+    const portalEvent = toPortalEvent(event.action, event.attributes);
+    if (!portalEvent) {
+      if (isPortalEventShaped(event.action)) {
+        this.errorReporterApi?.notify(`Untracked action: ${event.action}`, {
+          level: 'warning',
+          type: 'untracked_action',
+          action: event.action,
+          pluginId: event.context.pluginId,
+        });
+      }
+      return;
+    }
+
+    this.getOrCreateInstance()
+      .then(td =>
+        td.signal(portalEvent.name, {
+          ...portalEvent.attributes,
+          ...this.versionPayload,
+        }),
+      )
+      .catch(() => {});
+  }
+
+  private capturePageView(event: AnalyticsEvent): void {
+    if (!event.subject) {
       return;
     }
 

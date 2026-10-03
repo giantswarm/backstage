@@ -5,6 +5,7 @@ import {
   AgentTemplateInterface,
   decidingHarnessStatus,
   deriveHarnessReadiness,
+  failureFieldOf,
   getAgentStatusChangedAt,
   HARNESS_LABEL,
   isAgentTransitional,
@@ -436,7 +437,7 @@ describe('Agent', () => {
       );
     });
 
-    it('is notAccepted when the platform Harness rejects the template, with the reason', () => {
+    it('is failed when the platform Harness cannot run the template, with the reason', () => {
       const agent = withHarnesses([
         harness('kagent', [
           accepted(),
@@ -449,7 +450,7 @@ describe('Agent', () => {
         ]),
       ]);
 
-      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadiness()).toBe('failed');
       expect(agent.getReadinessMessage()).toBe(
         'Dedicated sub-agents are not supported by this Harness',
       );
@@ -474,7 +475,7 @@ describe('Agent', () => {
         ]),
       ]);
 
-      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadiness()).toBe('failed');
       expect(agent.getReadinessMessage()).toBe(
         'resolve ModelConfig "qwen3-4b-instruct": not found',
       );
@@ -494,7 +495,7 @@ describe('Agent', () => {
         ]),
       ]);
 
-      expect(agent.getReadiness()).toBe('notAccepted');
+      expect(agent.getReadiness()).toBe('failed');
       expect(agent.getReadinessMessage()).toBe(
         'Dedicated sub-agents are not supported by this Harness',
       );
@@ -674,9 +675,114 @@ describe('Agent', () => {
     it('treats every non-ready state as transitional', () => {
       expect(isAgentTransitional('ready')).toBe(false);
       expect(isAgentTransitional('notReady')).toBe(true);
-      expect(isAgentTransitional('notAccepted')).toBe(true);
+      expect(isAgentTransitional('failed')).toBe(true);
       expect(isAgentTransitional('notAdmitted')).toBe(true);
       expect(isAgentTransitional('pending')).toBe(true);
+    });
+  });
+
+  describe('failureFieldOf', () => {
+    it.each([
+      ['resolve ModelConfig "qwen3-4b-instruct": not found', 'model'],
+      ['resolve ModelConfig "opus": provider secret missing', 'model'],
+      ['resolve RemoteMCPServer "factory-analyst": not found', 'tools'],
+      ['resolve MCPServer "github": not found', 'tools'],
+      ['resolve AgentTemplate "helper": not found', 'tools'],
+      [
+        'resolve systemPromptFrom: ConfigMap "prompt" not found',
+        'systemPrompt',
+      ],
+      ['resolve prompt source "rules": ConfigMap not found', 'systemPrompt'],
+      ['resolve prompt sources: boom', 'systemPrompt'],
+      ['WorkerPool "kagent/default" not found', 'platform'],
+    ])('reads %j as %s', (message, field) => {
+      expect(failureFieldOf(message)).toBe(field);
+    });
+
+    it.each([
+      [undefined],
+      [''],
+      ['Dedicated sub-agents are not supported by this Harness'],
+      ['blocked by ResolvedRefs'],
+      // The memory model is not the Model row's ModelConfig.
+      ['resolve memory ModelConfig "embed": not found'],
+    ])('names no field for %j', message => {
+      expect(failureFieldOf(message)).toBeUndefined();
+    });
+  });
+
+  describe('getFailure', () => {
+    // What kagent writes when a reference does not resolve: Accepted stays
+    // True, every later stage is Blocked, and all share one timestamp.
+    const unresolvedModel = () =>
+      withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition(
+            'Compatible',
+            'False',
+            'Blocked',
+            'blocked by ResolvedRefs',
+          ),
+          condition('Ready', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+          condition(
+            'ResolvedRefs',
+            'False',
+            'ReferenceResolutionFailed',
+            'resolve ModelConfig "qwen3-4b-instruct": not found',
+          ),
+        ]),
+      ]);
+
+    it('names the unresolved reference as the root cause, not the stages it blocks', () => {
+      expect(unresolvedModel().getFailure()).toEqual({
+        condition: 'ResolvedRefs',
+        message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+        field: 'model',
+      });
+    });
+
+    it('names an incompatible configuration without a field', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          resolved(),
+          condition(
+            'Compatible',
+            'False',
+            'UnsupportedConfiguration',
+            'Dedicated sub-agents are not supported by this Harness',
+          ),
+          condition('Ready', 'False', 'Blocked', 'blocked by Compatible'),
+        ]),
+      ]);
+
+      expect(agent.getFailure()).toEqual({
+        condition: 'Compatible',
+        message: 'Dedicated sub-agents are not supported by this Harness',
+        field: undefined,
+      });
+    });
+
+    it('falls back to the first failing stage when every failure reads Blocked', () => {
+      const agent = withHarnesses([
+        harness('kagent', [
+          accepted(),
+          condition(
+            'Compatible',
+            'False',
+            'Blocked',
+            'blocked by ResolvedRefs',
+          ),
+        ]),
+      ]);
+
+      expect(agent.getFailure()?.condition).toBe('Compatible');
+    });
+
+    it('is undefined for an agent that is not failed', () => {
+      expect(withHarnesses([readyHarness()]).getFailure()).toBeUndefined();
+      expect(withHarnesses([], { label: null }).getFailure()).toBeUndefined();
     });
   });
 });

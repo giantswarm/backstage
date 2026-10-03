@@ -8466,6 +8466,7 @@ __metadata:
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-agent-platform-common": "workspace:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-gs-react": "workspace:^"
@@ -8564,6 +8565,7 @@ __metadata:
     "@backstage/theme": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -8587,6 +8589,22 @@ __metadata:
   peerDependencies:
     react: ^16.13.1 || ^17.0.0 || ^18.0.0
     react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
+"@giantswarm/backstage-plugin-analytics-react@workspace:^, @giantswarm/backstage-plugin-analytics-react@workspace:plugins/analytics-react":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-analytics-react@workspace:plugins/analytics-react"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^7.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
   languageName: unknown
   linkType: soft
 
@@ -8626,6 +8644,7 @@ __metadata:
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-muster": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
@@ -8839,6 +8858,7 @@ __metadata:
     "@backstage/types": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "npm:^0.14.2"
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
@@ -8901,6 +8921,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-test-utils": "backstage:^"
     "@backstage/plugin-kubernetes-react": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@giantswarm/k8s-types": "github:giantswarm/k8s-typescript-types#v0.8.0"
@@ -8961,6 +8982,7 @@ __metadata:
     "@backstage/plugin-kubernetes-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
     "@giantswarm/backstage-plugin-gs-react": "workspace:^"
@@ -9018,6 +9040,7 @@ __metadata:
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
@@ -9071,6 +9094,7 @@ __metadata:
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
@@ -9120,6 +9144,7 @@ __metadata:
     "@backstage/plugin-app-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
@@ -9166,6 +9191,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/test-utils": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"
@@ -22584,6 +22610,7 @@ __metadata:
     "@giantswarm/backstage-plugin-agent-platform": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat": "workspace:^"
     "@giantswarm/backstage-plugin-ai-chat-react": "workspace:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-bot-prs": "workspace:^"
     "@giantswarm/backstage-plugin-error-reporter-react": "workspace:^"
     "@giantswarm/backstage-plugin-flux": "workspace:^"
@@ -27741,6 +27768,12 @@ __metadata:
   checksum: 10c0/4d8b46dcd525d71276f9be9ffac1d2be61c9d54cc53c992e6333cf957840dee09381842b1acbbb15fc6b255ebab99cd481c5007ab438e5455a14abe1a0468558
   languageName: node
   linkType: hard
+
+"eslint-plugin-giantswarm@link:./scripts/eslint-plugin-giantswarm::locator=root%40workspace%3A.":
+  version: 0.0.0-use.local
+  resolution: "eslint-plugin-giantswarm@link:./scripts/eslint-plugin-giantswarm::locator=root%40workspace%3A."
+  languageName: node
+  linkType: soft
 
 "eslint-plugin-import@npm:^2.31.0":
   version: 2.31.0
@@ -41332,6 +41365,7 @@ __metadata:
     "@types/react-dom": "npm:^18"
     concurrently: "npm:^10.0.0"
     env-cmd: "npm:^11.0.0"
+    eslint-plugin-giantswarm: "link:./scripts/eslint-plugin-giantswarm"
     husky: "npm:^9.1.7"
     jest: "npm:^30.2.0"
     jsdom: "npm:^30.0.0"

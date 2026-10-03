@@ -27,6 +27,8 @@ import {
   hiddenColumn,
   noWrapColumn,
 } from '../columns';
+import { QueryClientProvider } from '../../QueryClientProvider';
+import { useManagementClusterVersionColumns } from './useManagementClusterVersionColumns';
 
 const baseColumns: CatalogTableColumnsFunc = () => {
   return [
@@ -48,6 +50,16 @@ export interface InstallationsPageProps {
 }
 
 export function InstallationsPage(props: InstallationsPageProps) {
+  // The version columns read the installations through the plugin's
+  // Kubernetes queries, which need its query client.
+  return (
+    <QueryClientProvider>
+      <InstallationsPageContent {...props} />
+    </QueryClientProvider>
+  );
+}
+
+function InstallationsPageContent(props: InstallationsPageProps) {
   const {
     tableOptions = {
       padding: 'dense',
@@ -62,9 +74,16 @@ export function InstallationsPage(props: InstallationsPageProps) {
   // none where the platform-capabilities api is not enabled (a customer
   // portal). The Capabilities tab of an installation holds the actions.
   const capabilities = useInstallationCapabilityColumns();
+  // Each management cluster's Kubernetes version and release, read live
+  // from the installation: the catalog entities carry no version.
+  const versionColumns = useManagementClusterVersionColumns();
   const columnsFunc: CatalogTableColumnsFunc = useCallback(
-    context => [...baseColumns(context), ...capabilities.columns],
-    [capabilities.columns],
+    context => [
+      ...baseColumns(context),
+      ...versionColumns,
+      ...capabilities.columns,
+    ],
+    [versionColumns, capabilities.columns],
   );
 
   return (

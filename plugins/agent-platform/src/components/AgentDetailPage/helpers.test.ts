@@ -58,34 +58,22 @@ describe('describeToolScope', () => {
   // An absent allowlist means "everything", which is worth stating rather than
   // leaving to be inferred from a missing value.
   it('says all tools when no allowlist is set', () => {
-    expect(describeToolScope(binding('grafana'), false)).toBe(
+    expect(describeToolScope(binding('grafana'))).toBe(
       'All tools from this server',
     );
-    expect(describeToolScope(binding('grafana', []), false)).toBe(
+    expect(describeToolScope(binding('grafana', []))).toBe(
       'All tools from this server',
     );
-  });
-
-  // Against the gateway an allowlist only ever names muster's meta-tools and
-  // narrows nothing; the agent's tool access is its toolset, shown in its own
-  // card — so the row says so instead of claiming "all tools".
-  it('points the gateway entry at the toolset card', () => {
-    expect(describeToolScope(binding('pr-reviewer'), true)).toMatch(
-      /^The gateway; which of its tools .* see the Tools tab$/,
-    );
-    expect(
-      describeToolScope(binding('pr-reviewer', ['list_tools']), true),
-    ).toMatch(/1 meta-tool \(list_tools\).*see the Tools tab/);
   });
 
   it('lists an allowlist and counts it', () => {
-    expect(
-      describeToolScope(binding('grafana', ['query', 'dashboards']), false),
-    ).toBe('2 tools: query, dashboards');
+    expect(describeToolScope(binding('grafana', ['query', 'dashboards']))).toBe(
+      '2 tools: query, dashboards',
+    );
   });
 
   it('keeps the count singular for one tool', () => {
-    expect(describeToolScope(binding('grafana', ['query']), false)).toBe(
+    expect(describeToolScope(binding('grafana', ['query']))).toBe(
       '1 tool: query',
     );
   });

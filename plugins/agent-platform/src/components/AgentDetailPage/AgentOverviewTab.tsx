@@ -23,12 +23,16 @@ export function AgentOverviewTab({
   installation,
   modelConfig,
   modelServing,
+  toolsHref,
 }: {
   agent: Agent;
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
+  toolsHref?: string;
 }) {
+  const failure = agent.getFailure();
+
   return (
     <>
       {/* A cheap pre-check only: no Flux or Helm marker at all means there is
@@ -66,6 +70,8 @@ export function AgentOverviewTab({
             agent={agent}
             modelConfig={modelConfig}
             modelServing={modelServing}
+            failure={failure}
+            toolsHref={toolsHref}
           />
         </Grid.Item>
         <Grid.Item colSpan="1">
@@ -73,7 +79,10 @@ export function AgentOverviewTab({
         </Grid.Item>
       </Grid.Root>
 
-      <AgentSystemPromptCard agent={agent} />
+      <AgentSystemPromptCard
+        agent={agent}
+        isFailing={failure?.field === 'systemPrompt'}
+      />
     </>
   );
 }

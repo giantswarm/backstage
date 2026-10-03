@@ -1,4 +1,4 @@
-import { Button, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import {
   Agent,
   AgentSkill,
@@ -73,6 +73,8 @@ function SkillCard({ skill }: { skill: AgentSkill }) {
 export function AgentSkillsCard({
   agent,
   onUpdateSkills,
+  onAddSkills,
+  isGitOpsOwned = false,
 }: {
   agent: Agent;
   /**
@@ -81,6 +83,14 @@ export function AgentSkillsCard({
    * dry run. Absent when the page cannot reach agent-manager.
    */
   onUpdateSkills?: () => void;
+  /**
+   * Opens the edit page, whose skill picker is where skills are added —
+   * Update skills only moves the pins of skills already mounted. Absent when
+   * the viewer cannot write the agent.
+   */
+  onAddSkills?: () => void;
+  /** The agent's HelmRelease is applied from git, so its skills are set there. */
+  isGitOpsOwned?: boolean;
 }) {
   const skills = agent.getSkills();
 
@@ -96,10 +106,24 @@ export function AgentSkillsCard({
       }
     >
       {skills.length === 0 ? (
-        <Text variant="body-medium" color="secondary">
-          No skills mounted. The agent works from its system prompt and tools
-          alone.
-        </Text>
+        <Flex direction="column" gap="3" align="start">
+          <Text variant="body-medium" color="secondary">
+            No skills yet. The agent works from its system prompt and tools
+            alone; a skill adds reference material and procedures it can draw
+            on.
+          </Text>
+          {isGitOpsOwned && (
+            <Text variant="body-small" color="secondary">
+              This agent is deployed from a GitOps repository, so its skills are
+              added there.
+            </Text>
+          )}
+          {onAddSkills && (
+            <Button variant="secondary" onPress={onAddSkills}>
+              Add skills
+            </Button>
+          )}
+        </Flex>
       ) : (
         <SelectableCardGrid
           role="list"

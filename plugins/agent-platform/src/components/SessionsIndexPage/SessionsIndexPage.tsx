@@ -54,7 +54,7 @@ function StartNewSession({ firstRun }: { firstRun: boolean }) {
     unreachableInstallations,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
-  const creation = useCreateSession();
+  const creation = useCreateSession('sessionsList');
 
   const { createSession } = creation;
   const onStart = useCallback(

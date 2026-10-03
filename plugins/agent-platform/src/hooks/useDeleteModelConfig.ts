@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Agent,
   CustomResourceMatcher,
@@ -85,7 +86,9 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     );
   };
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Model configuration is not a tracked portal action yet.',
     mutationFn: async () => {
       if (!modelConfig || !name) {
         throw new Error(

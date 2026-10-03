@@ -268,7 +268,7 @@ describe('SessionsIndexPage', () => {
             readiness: 'notReady',
             readinessMessage: '0/1 pods ready',
           }),
-          agentRow({ id: 'gazelle/kagent/other', readiness: 'notAccepted' }),
+          agentRow({ id: 'gazelle/kagent/other', readiness: 'failed' }),
         ],
       });
       await render();

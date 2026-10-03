@@ -9,16 +9,20 @@ export * from './resourceRef';
 
 export {
   Agent,
+  AGENT_CONDITION_STAGE_ORDER,
   AgentConditionType,
   decidingHarnessStatus,
   deriveAgentReadiness,
   deriveHarnessReadiness,
+  failureFieldOf,
   getAgentStatusChangedAt,
   HARNESS_LABEL,
   isAgentStatusStale,
   isAgentTransitional,
 } from './Agent';
 export type {
+  AgentFailure,
+  AgentFailureField,
   AgentHarness,
   AgentHarnessCondition,
   AgentHarnessStatus,
