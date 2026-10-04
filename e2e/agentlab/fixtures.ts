@@ -312,26 +312,18 @@ export async function startSessionOnReadyAgent(
   page: Page,
   prompt: string,
 ): Promise<void> {
-  // The Status card's verdict — the page's own derivation from the
-  // template's harness status, `Pending` until the golden boot is done.
-  // `.last()`: the page's own article wraps the cards, so the filter also
-  // matches it — the card is the innermost match.
-  const statusCard = page
-    .getByRole('article')
-    .filter({
-      has: page.getByRole('heading', { level: 3, name: 'Status' }),
-    })
-    .last();
-  await expect(statusCard).toBeVisible();
+  // The header's verdict — the page's own derivation from the template's
+  // harness status, `Pending` until the golden boot is done. Tagged, since
+  // the Status card's conditions list carries a `Ready` condition too.
   await expect(
-    statusCard.getByText('Ready', { exact: true }).first(),
+    page.getByTestId('agent-readiness').getByText('Ready', { exact: true }),
     'the agent becomes ready on the platform Harness (golden boot) — a Pending that never ends means the lab Harness is not admitting: `kubectl -n kagent get harness,workerpools` and the kagent-controller log',
   ).toBeVisible({ timeout: 6 * 60_000 });
 
   // --- Start a session from the agent's page and get an answer -----------
   // The button follows the roster's own read of the agent (`readiness`),
-  // polled apart from the Status card's harness status above, so it can
-  // trail the card's Ready by more than an action timeout.
+  // polled apart from the header's harness status above, so it can trail
+  // the header's Ready by more than an action timeout.
   const startSession = page.getByRole('button', { name: 'Start a session' });
   await expect(
     startSession,

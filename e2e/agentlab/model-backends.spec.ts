@@ -5,51 +5,32 @@ import { lab } from './lab';
 /**
  * Add model backend and Remove backend on the Serving page: model-manager's
  * `add_backend` / `remove_backend` reached through muster as the signed-in
- * person. The lab runs model-manager with no backend of its own, so the
- * lab's Ollama is registered from the portal and removed again, and a KServe
- * that serves nothing yet (the lab has no InferenceService API) gets a card
- * of its own and is removed from it. Serial: both tests write the same
- * model-manager's backend documents.
+ * person. A default lab's model-manager serves the host's Ollama and Lemonade
+ * and the lab's KServe as backends of its own, so the dialog offers only the
+ * kind left — LM Studio — which the suite registers at an endpoint nothing
+ * serves, finds on a card of its own and removes again. Serial: both tests
+ * read the same model-manager's backend documents.
  */
 test.describe.serial('model backends', () => {
-  test('Add model backend registers the lab Ollama as a Serving group, Remove backend removes it', async ({
+  test('Add model backend offers no kind the installation already serves', async ({
     admin,
   }) => {
-    test.setTimeout(180_000);
     await open(admin, '/agent-platform/models/serving');
+    await expect(
+      admin.getByRole('heading', { level: 3, name: /^Ollama/ }),
+      "the lab's own Ollama is a Serving group",
+    ).toBeVisible({ timeout: 60_000 });
 
     const dialog = await openAddDialog(admin);
-    await pickKind(admin, dialog, 'Ollama');
-    await dialog
-      .getByRole('textbox', { name: 'Endpoint', exact: true })
-      .fill(lab.ollamaEndpoint);
-    await dialog.getByRole('button', { name: 'Review' }).click();
+    await dialog.getByRole('button', { name: /Kind$/ }).click();
+    const kinds = admin.getByRole('listbox', { name: 'Kind' });
     await expect(
-      dialog.getByText('model-backend-ollama.yaml', { exact: true }),
-      'the dry run shows the backend document named after its ConfigMap',
-    ).toBeVisible({ timeout: 30_000 });
-
-    await dialog.getByRole('button', { name: 'Deploy' }).click();
+      kinds.getByRole('option', { name: 'LM Studio' }),
+    ).toBeVisible();
     await expect(
-      dialog.getByText('Registered model-backend-ollama as you'),
-      'Deploy registered the backend as the person',
-    ).toBeVisible({ timeout: 30_000 });
-    await dialog.getByRole('button', { name: 'Close' }).first().click();
-
-    const group = admin.getByRole('heading', { level: 3, name: /^Ollama/ });
-    await expect(
-      group,
-      'the registered Ollama appears as a Serving group without a chart change',
-    ).toBeVisible({ timeout: 60_000 });
-    await expect(admin.getByText('Registered from the portal')).toBeVisible();
-    await expect(
-      admin.getByRole('grid').getByRole('row').nth(1),
-      "the group lists the host's models",
-    ).toBeVisible({ timeout: 60_000 });
-
-    await removeBackend(admin, 'Ollama', 'ollama');
-    await expect(group, 'the group is gone').toBeHidden({ timeout: 60_000 });
-    await expect(admin.getByText('Registered from the portal')).toBeHidden();
+      kinds.getByRole('option', { name: 'Ollama', exact: true }),
+      'one backend per kind: the served Ollama is not offered again',
+    ).toBeHidden();
   });
 
   test('a registered backend without models gets a card of its own and is removed from it', async ({
@@ -59,22 +40,24 @@ test.describe.serial('model backends', () => {
     await open(admin, '/agent-platform/models/serving');
 
     const dialog = await openAddDialog(admin);
-    await pickKind(admin, dialog, 'KServe');
+    await pickKind(admin, dialog, 'LM Studio');
     await dialog
-      .getByRole('textbox', { name: 'Serving namespace' })
-      .fill('model-serving');
+      .getByRole('textbox', { name: 'Endpoint', exact: true })
+      .fill(UNSERVED_ENDPOINT);
     await dialog.getByRole('button', { name: 'Review' }).click();
     await expect(
-      dialog.getByText('model-backend-kserve.yaml', { exact: true }),
+      dialog.getByText('model-backend-lmstudio.yaml', { exact: true }),
+      'the dry run shows the backend document named after its ConfigMap',
     ).toBeVisible({ timeout: 30_000 });
     await dialog.getByRole('button', { name: 'Deploy' }).click();
     await expect(
-      dialog.getByText('Registered model-backend-kserve as you'),
+      dialog.getByText('Registered model-backend-lmstudio as you'),
+      'Deploy registered the backend as the person',
     ).toBeVisible({ timeout: 30_000 });
     await dialog.getByRole('button', { name: 'Close' }).first().click();
 
     const card = admin.getByTestId(
-      `served-models-group-${lab.installation}/kserve`,
+      `served-models-group-${lab.installation}/lmstudio`,
     );
     await expect(
       card,
@@ -82,10 +65,16 @@ test.describe.serial('model backends', () => {
     ).toBeVisible({ timeout: 60_000 });
     await expect(card.getByText('Registered from the portal')).toBeVisible();
 
-    await removeBackend(card, 'KServe', 'kserve', admin);
+    await removeBackend(card, 'LM Studio', 'lmstudio', admin);
     await expect(card, 'the card is gone').toBeHidden({ timeout: 60_000 });
   });
 });
+
+/**
+ * An LM Studio endpoint nothing listens on — the discard port of the host
+ * that serves the lab's Ollama — so the backend registers and lists no models.
+ */
+const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
 
 async function openAddDialog(page: Page): Promise<Locator> {
   await page.getByRole('button', { name: 'Add model backend' }).first().click();
