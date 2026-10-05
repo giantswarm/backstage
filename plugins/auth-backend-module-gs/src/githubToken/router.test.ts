@@ -6,7 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
-import { SUBJECT_TOKEN_HEADER } from '../clusterToken/router';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { createGithubTokenRouter } from './router';
 
 const logger = {

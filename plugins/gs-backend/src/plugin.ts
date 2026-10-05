@@ -62,6 +62,7 @@ export const gsPlugin = createBackendPlugin({
               config,
               auth,
               discovery,
+              logger,
             }),
           }),
         );

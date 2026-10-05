@@ -7,7 +7,7 @@ import {
 } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
 import { MusterServerGateway } from '@giantswarm/backstage-plugin-gs-node';
-import { SUBJECT_TOKEN_HEADER } from '../clusterToken/router';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
 const TOKEN_EXCHANGE_GRANT_TYPE =
   'urn:ietf:params:oauth:grant-type:token-exchange';
