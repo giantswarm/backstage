@@ -1,25 +1,22 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
+import {
+  discoveryApiRef,
+  fetchApiRef,
+  useApi,
+} from '@backstage/core-plugin-api';
 import { TableColumn } from '@backstage/core-components';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { Skeleton, Text } from '@backstage/ui';
-import { UseQueryResult, useQueries } from '@tanstack/react-query';
-import {
-  Cluster,
-  isNotFoundError,
-  k8sResponseError,
-  useResources,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useQuery } from '@tanstack/react-query';
 import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
+import { gsAuthProvidersApiRef } from '../../../apis/auth';
 import { useInstallations } from '../../../apis/installations';
 import { describeClusterError } from '../../clusters/ClustersDataProvider/utils';
-import { getClusterReleaseVersion } from '../../clusters/utils';
 import { formatVersion } from '../../utils/helpers';
 import { KubernetesVersion, Version } from '../../UI';
 
-/** Where a management cluster's own `Cluster` resource lives. */
-const MANAGEMENT_CLUSTER_NAMESPACE = 'org-giantswarm';
+/** The header the backend reads the main Dex ID token from. */
+const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
 
 /** A version cell's state for one installation. */
 export type VersionCell =
@@ -37,130 +34,77 @@ const NOT_CONNECTED: VersionCell = {
   state: 'absent',
   reason: 'This portal is not connected to the installation',
 };
-const NO_RELEASE: VersionCell = {
-  state: 'absent',
-  reason: 'The management cluster carries no Giant Swarm release',
+const LOADING: ManagementClusterVersions = {
+  kubernetes: { state: 'loading' },
+  release: { state: 'loading' },
 };
-const LOADING: VersionCell = { state: 'loading' };
-
-function failed(error: Error): VersionCell {
-  return {
-    state: 'failed',
-    reason:
-      error.name === 'RejectedError'
-        ? 'Not signed in to the installation'
-        : describeClusterError(error),
-  };
-}
-
-/** A `/version` query's cell; a stable `combine`, so it reruns only when a query changes. */
-function serverVersionCells(
-  queries: UseQueryResult<string, Error>[],
-): VersionCell[] {
-  return queries.map(query => {
-    if (query.isSuccess) {
-      return { state: 'known', version: query.data };
-    }
-    return query.isError ? failed(query.error) : LOADING;
-  });
-}
 
 function versionOf(cell: VersionCell | undefined) {
   return cell?.state === 'known' ? cell.version : undefined;
 }
 
 /**
- * Each management cluster's versions, read live from the installation: the
- * Kubernetes version its API server serves (`/version`, so every
- * installation the portal is connected to has one) and the Giant Swarm
- * release on its own `Cluster` resource where it carries one. One request
- * per installation and kind; one slow or unreachable installation leaves
- * the others' cells alone.
+ * Each management cluster's versions, read live from the installations as
+ * the signed-in person in one request (`GET /api/gs/installations/versions`):
+ * the Kubernetes version its API server serves and the Giant Swarm release
+ * on its own `Cluster` resource where it carries one. The backend asks every
+ * installation at once and keeps each answer for a few minutes; the last
+ * answer is kept in the browser too, so a revisit shows it at once and
+ * refreshes it in the background.
  */
 export function useManagementClusterVersions(): Record<
   string,
   ManagementClusterVersions
 > {
-  const kubernetesApi = useApi(kubernetesApiRef);
+  const discoveryApi = useApi(discoveryApiRef);
+  const fetchApi = useApi(fetchApiRef);
+  const gsAuthProvidersApi = useApi(gsAuthProvidersApiRef);
   const { installations } = useInstallations();
-  const names = useMemo(
-    () => installations.map(installation => installation.name),
-    [installations],
-  );
 
-  const serverVersions = useQueries({
-    queries: names.map(name => ({
-      queryKey: ['cluster', name, 'version'],
-      queryFn: async (): Promise<string> => {
-        const response = await kubernetesApi.proxy({
-          clusterName: name,
-          path: '/version',
-        });
-        if (!response.ok) {
-          throw await k8sResponseError(
-            response,
-            `Failed to fetch the Kubernetes version from ${name}`,
-          );
+  const query = useQuery({
+    queryKey: ['installations', 'management-cluster-versions'],
+    queryFn: async (): Promise<Record<string, ManagementClusterVersions>> => {
+      const [idToken, baseUrl] = await Promise.all([
+        gsAuthProvidersApi.getMainAuthApi().getIdToken(),
+        discoveryApi.getBaseUrl('gs'),
+      ]);
+      const response = await fetchApi.fetch(
+        `${baseUrl}/installations/versions`,
+        { headers: { [SUBJECT_TOKEN_HEADER]: idToken } },
+      );
+      if (!response.ok) {
+        const error = new Error(
+          `Failed to read the management cluster versions (HTTP ${response.status})`,
+        );
+        if (response.status === 403) {
+          error.name = 'ForbiddenError';
         }
-        const { gitVersion } = await response.json();
-        return gitVersion;
-      },
-    })),
-    combine: serverVersionCells,
+        throw error;
+      }
+      return (await response.json()).installations;
+    },
   });
-
-  const namespaces = useMemo(
-    () =>
-      Object.fromEntries(
-        names.map(name => [name, { namespace: MANAGEMENT_CLUSTER_NAMESPACE }]),
-      ),
-    [names],
-  );
-  const { resources, clustersData, errors } = useResources(
-    names,
-    Cluster,
-    namespaces,
-  );
 
   return useMemo(() => {
     const result: Record<string, ManagementClusterVersions> = {};
-    names.forEach((name, idx) => {
-      const kubernetes = serverVersions[idx];
-
-      // The release follows the API server: an installation that cannot be
-      // reached says so once, in both cells, whatever its Cluster list did.
-      let release: VersionCell;
-      if (kubernetes.state === 'failed') {
-        release = kubernetes;
-      } else {
-        const listed = clustersData.some(({ cluster }) => cluster === name);
-        const listError = errors.find(({ cluster }) => cluster === name);
-        if (listed) {
-          const cluster = resources.find(
-            item => item.cluster === name && item.getName() === name,
-          );
-          const releaseVersion = cluster
-            ? getClusterReleaseVersion(cluster)
-            : undefined;
-          release = releaseVersion
-            ? { state: 'known', version: releaseVersion }
-            : NO_RELEASE;
-        } else if (listError) {
-          // No CAPI on the installation (the API is not served, or not in
-          // a version the plugin reads) means no release, not a failure.
-          release =
-            listError.type === 'incompatibility' || isNotFoundError(listError)
-              ? NO_RELEASE
-              : failed(listError.error);
-        } else {
-          release = LOADING;
+    for (const { name } of installations) {
+      if (query.data) {
+        const versions = query.data[name];
+        if (versions) {
+          result[name] = versions;
         }
+      } else if (query.isError) {
+        const cell: VersionCell = {
+          state: 'failed',
+          reason: describeClusterError(query.error),
+        };
+        result[name] = { kubernetes: cell, release: cell };
+      } else {
+        result[name] = LOADING;
       }
-
-      result[name] = { kubernetes, release };
-    });
+    }
     return result;
-  }, [names, serverVersions, resources, clustersData, errors]);
+  }, [installations, query.data, query.isError, query.error]);
 }
 
 function CellState({
