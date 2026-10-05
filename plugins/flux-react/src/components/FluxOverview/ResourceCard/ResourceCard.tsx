@@ -1,14 +1,10 @@
 import { CSSProperties, ReactNode, useMemo } from 'react';
 import {
   GitRepository,
-  HelmRelease,
   HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../utils/fluxResources';
 import {
   DateComponent,
   NotAvailable,
@@ -142,15 +138,7 @@ type ResourceCardProps = {
   kind: string;
   cluster: string;
   targetCluster?: string;
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource?: FluxResource;
   source?: GitRepository | OCIRepository | HelmRepository;
   highlighted?: boolean;
   error?: boolean;

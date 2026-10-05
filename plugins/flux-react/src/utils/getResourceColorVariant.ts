@@ -27,6 +27,18 @@ export function getResourceColorVariant(kind: string) {
     case 'ImageUpdateAutomation':
       variant = 'brown';
       break;
+    case 'FluxInstance':
+      variant = 'indigo';
+      break;
+    case 'ResourceSet':
+      variant = 'cyan';
+      break;
+    case 'ResourceSetInputProvider':
+      variant = 'lime';
+      break;
+    case 'FluxReport':
+      variant = 'slate';
+      break;
 
     default:
       variant = 'gray';

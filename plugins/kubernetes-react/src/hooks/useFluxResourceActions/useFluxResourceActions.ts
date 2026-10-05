@@ -1,4 +1,4 @@
-import { useApi } from '@backstage/core-plugin-api';
+import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
@@ -21,6 +21,7 @@ export function useFluxResourceActions(
   options: { enabled?: boolean } = {},
 ) {
   const kubernetesApi = useApi(kubernetesApiRef);
+  const identityApi = useApi(identityApiRef);
   const queryClient = useQueryClient();
 
   const cluster = resource.cluster;
@@ -100,7 +101,10 @@ export function useFluxResourceActions(
     event: null,
     untrackedReason:
       'Flux reconcile and suspend are operations, not a tracked portal action yet.',
-    mutationFn: (suspend: boolean) => patch({ spec: { suspend } }),
+    mutationFn: async (suspend: boolean) => {
+      const { email } = await identityApi.getProfileInfo();
+      return patch(resource.getSuspendPatch(suspend, email));
+    },
     onSuccess: invalidateReads,
   });
 

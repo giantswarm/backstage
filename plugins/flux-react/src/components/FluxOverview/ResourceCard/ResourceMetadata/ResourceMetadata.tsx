@@ -8,6 +8,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../../utils/fluxResources';
 import {
   ConditionMessage,
   DateComponent,
@@ -18,46 +19,8 @@ import {
 import { Box } from '@backstage/ui';
 import { findHelmReleaseChartName } from '../../../../utils/findHelmReleaseChartName';
 import { useGitSourceLink } from '../../../../hooks/useGitSourceLink';
-import { ReactNode } from 'react';
-
-type Metadata = { [key: string]: ReactNode };
-
-type ReadyCondition = {
-  status: string;
-  lastTransitionTime?: string;
-  message?: string;
-};
-
-function buildStatusMetadata(
-  readyCondition: ReadyCondition | undefined,
-): Metadata {
-  const metadata: Metadata = {};
-
-  if (readyCondition) {
-    if (readyCondition.status === 'False') {
-      metadata.Status = (
-        <>
-          Last reconciliation failed{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    } else {
-      metadata.Status = (
-        <>
-          Last reconciled{' '}
-          <DateComponent value={readyCondition.lastTransitionTime} relative />
-        </>
-      );
-    }
-    metadata.Message = (
-      <ConditionMessage message={readyCondition.message ?? ''} />
-    );
-  } else {
-    metadata.Status = 'Unknown';
-  }
-
-  return metadata;
-}
+import { buildStatusMetadata, Metadata } from './buildStatusMetadata';
+import { getFluxOperatorSpecAndStatus } from './fluxOperatorMetadata';
 
 type StatusCondition = {
   type: string;
@@ -591,20 +554,12 @@ function getSpecAndStatus(
         ),
       };
     default:
-      return { spec: {}, status: {} };
+      return getFluxOperatorSpecAndStatus(resource) ?? { spec: {}, status: {} };
   }
 }
 
 type ResourceMetadataProps = {
-  resource:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource: FluxResource;
   source?: GitRepository | OCIRepository | HelmRepository;
   fixedKeyColumnWidth?: string;
 };

@@ -3,7 +3,7 @@
  * Based on the Go implementation in fluxcd/cli-utils
  */
 
-import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 export interface ObjectMetadata {
   group: string;
@@ -92,13 +92,15 @@ export function parseObjectMetadata(inventoryId: string): ObjectMetadata {
 }
 
 /**
- * Parses all inventory entries from a Kustomization status
+ * Parses all inventory entries from the status of an object that applies others
+ * (a Kustomization, ResourceSet or FluxInstance), leaving out the object itself
  *
- * @param inventoryEntries Array of inventory entries from kustomization.status.inventory.entries
+ * @param owner The object the inventory belongs to
+ * @param inventoryEntries Array of inventory entries from owner.status.inventory.entries
  * @returns Array of parsed ObjectMetadata
  */
 export function parseInventoryEntries(
-  kustomization: Kustomization,
+  owner: KubeObject,
   inventoryEntries: InventoryEntry[],
 ): ObjectMetadata[] {
   if (!inventoryEntries || inventoryEntries.length === 0) {
@@ -110,10 +112,10 @@ export function parseInventoryEntries(
     .filter(
       ({ group, kind, namespace, name }) =>
         !(
-          kustomization.getGroup() === group &&
-          kustomization.getKind() === kind &&
-          kustomization.getNamespace() === namespace &&
-          kustomization.getName() === name
+          owner.getGroup() === group &&
+          owner.getKind() === kind &&
+          owner.getNamespace() === namespace &&
+          owner.getName() === name
         ),
     );
 }
