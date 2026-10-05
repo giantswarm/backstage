@@ -238,7 +238,14 @@ test.describe('product magazine', () => {
   test('History: three windows, shareable in the URL', async ({ admin }) => {
     await open(admin, '/product?tab=history');
     await expect(admin.getByText('Digest of the days window.')).toBeVisible();
-    await expect(admin.getByText('Shipped in days')).toBeVisible();
+    // The entry is listed under its group and linked again from Highlights.
+    for (const section of ['What moved', 'Highlights']) {
+      await expect(
+        admin
+          .getByRole('region', { name: section })
+          .getByRole('link', { name: 'Shipped in days' }),
+      ).toBeVisible();
+    }
 
     for (const [label, window] of [
       ['3 weeks', 'weeks'],
