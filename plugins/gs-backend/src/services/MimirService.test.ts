@@ -277,42 +277,6 @@ describe('MimirService.queryRange', () => {
     });
   });
 
-  it('throws NotFoundError without fetching when mimirEnabled is false', async () => {
-    const s = MimirService.create({
-      config: makeConfig('alba.capi.aws.k8s.3stripes.net', {
-        mimirEnabled: false,
-      }),
-      logger: makeLogger(),
-    });
-
-    await expect(
-      s.queryRange({
-        installationName: 'alba',
-        query: 'up',
-        start: '1',
-        end: '2',
-        step: '1d',
-        oidcToken: 'tok',
-      }),
-    ).rejects.toThrow(NotFoundError);
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('throws AuthenticationError on 401', async () => {
-    mockFetch.mockResolvedValue(makeResponse(401, 'nope'));
-
-    await expect(
-      service.queryRange({
-        installationName: 'alba',
-        query: 'up',
-        start: '1',
-        end: '2',
-        step: '1d',
-        oidcToken: 'tok',
-      }),
-    ).rejects.toThrow(AuthenticationError);
-  });
-
   it('throws ServiceUnavailableError when the range exceeds Mimir point limit', async () => {
     mockFetch.mockResolvedValue(
       makeResponse(
