@@ -15,24 +15,30 @@ export const createOciTagExistsAction = (
     id: 'gs:oci:tagExists',
     description:
       'Checks whether a tag exists in an OCI registry repository, e.g. whether a Helm chart version is published.',
+    supportsDryRun: true,
     schema: {
       input: {
         registry: z =>
-          z.string().describe('The registry host, e.g. gsoci.azurecr.io'),
+          z
+            .string()
+            .min(1)
+            .describe('The registry host, e.g. gsoci.azurecr.io'),
         repository: z =>
           z
             .string()
+            .min(1)
             .describe(
               'The repository path, e.g. charts/giantswarm/release-aws',
             ),
-        tag: z => z.string().describe('The tag to look for, e.g. 35.0.1'),
+        tag: z =>
+          z.string().min(1).describe('The tag to look for, e.g. 35.0.1'),
       },
       output: {
         exists: z =>
           z
             .boolean()
             .describe(
-              'Whether the tag exists. A missing repository counts as a missing tag.',
+              'Whether the tag exists. A registry 404 (which gsoci also returns for a missing repository) means false; any other registry error fails the step.',
             ),
       },
     },

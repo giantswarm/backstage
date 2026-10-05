@@ -254,8 +254,9 @@ export class OciRegistryClient {
   }
 
   /**
-   * Checks whether a tag exists in a repository. A missing repository counts
-   * as a missing tag; any other registry error is thrown.
+   * Checks whether a tag exists in a repository. A 404 means it does not;
+   * registries that answer 404 for a missing repository (gsoci does) report
+   * that as a missing tag too. Any other registry error is thrown.
    *
    * @param registry - The registry host (e.g., ghcr.io, docker.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)

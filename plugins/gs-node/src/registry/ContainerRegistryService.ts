@@ -148,7 +148,7 @@ export class ContainerRegistryService {
    * @param registry - The registry host (e.g., ghcr.io, docker.io)
    * @param repository - The repository path (e.g., giantswarm/my-app)
    * @param tag - The tag to look for (e.g., 1.0.0)
-   * @returns Whether the tag exists; a missing repository counts as a missing tag
+   * @returns Whether the tag exists; a registry 404 means false, other errors are thrown
    */
   async tagExists(
     registry: string,
