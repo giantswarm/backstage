@@ -199,7 +199,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
   private readonly logger: LoggerService;
   private readonly containerRegistry: Pick<
     ContainerRegistryService,
-    'getTags' | 'getTagManifest'
+    'getTags' | 'tagExists'
   >;
   private readonly credentialsProvider: GithubCredentialsProvider;
   private readonly integrations: ScmIntegrationRegistry;
@@ -248,10 +248,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
 
   constructor(options: {
     logger: LoggerService;
-    containerRegistry: Pick<
-      ContainerRegistryService,
-      'getTags' | 'getTagManifest'
-    >;
+    containerRegistry: Pick<ContainerRegistryService, 'getTags' | 'tagExists'>;
     credentialsProvider: GithubCredentialsProvider;
     integrations: ScmIntegrationRegistry;
     cacheTtlMs?: number;
@@ -405,16 +402,13 @@ export class AppReadinessProcessor implements CatalogProcessor {
 
   private async fetchTag(ref: ChartRef, tag: string): Promise<TagLookup> {
     try {
-      await this.containerRegistry.getTagManifest(
+      const exists = await this.containerRegistry.tagExists(
         ref.registry,
         ref.repository,
         tag,
       );
-      return 'present';
+      return exists ? 'present' : 'absent';
     } catch (error) {
-      if (error instanceof NotFoundError) {
-        return 'absent';
-      }
       this.logger.debug(
         'AppReadinessProcessor: manifest lookup could not be answered',
         {

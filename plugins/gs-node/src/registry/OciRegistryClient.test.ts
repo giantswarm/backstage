@@ -55,3 +55,52 @@ describe('OciRegistryClient.getTags', () => {
     expect(tags.map(t => t.tag)).toEqual(['1.1.0', '1.0.0']);
   });
 });
+
+function manifestResponse(status: number) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: async () => ({
+      mediaType: 'application/vnd.oci.image.manifest.v1+json',
+    }),
+    text: async () => '',
+  };
+}
+
+describe('OciRegistryClient.tagExists', () => {
+  function clientReturning(status: number) {
+    const fetch = jest.fn().mockResolvedValue(manifestResponse(status));
+    const client = new OciRegistryClient(mockServices.logger.mock(), {
+      fetch,
+    } as unknown as RegistryAuthClient);
+    return { client, fetch };
+  }
+
+  it('is true when the tag manifest is found', async () => {
+    const { client, fetch } = clientReturning(200);
+
+    await expect(
+      client.tagExists('gsoci.azurecr.io', 'charts/org/app', '1.0.0'),
+    ).resolves.toBe(true);
+    expect(fetch.mock.calls[0][0]).toBe(
+      'https://gsoci.azurecr.io/v2/charts/org/app/manifests/1.0.0',
+    );
+  });
+
+  it('is false when the registry answers 404', async () => {
+    const { client } = clientReturning(404);
+
+    await expect(
+      client.tagExists('gsoci.azurecr.io', 'charts/org/app', '1.0.0'),
+    ).resolves.toBe(false);
+  });
+
+  it('throws on other registry errors', async () => {
+    const { client } = clientReturning(503);
+
+    await expect(
+      client.tagExists('gsoci.azurecr.io', 'charts/org/app', '1.0.0'),
+    ).rejects.toThrow(/Status: 503/);
+  });
+});
