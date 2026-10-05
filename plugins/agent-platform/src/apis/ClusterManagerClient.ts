@@ -11,6 +11,10 @@ import {
   type DeleteNodePoolInput,
   type RemoveModelCacheInput,
   type ClusterApiStatus,
+  type ClusterReleasesResult,
+  type ClusterWriteResult,
+  type CreateClusterInput,
+  type DeleteClusterInput,
   type ManagedCluster,
   type ManagedClustersResult,
   type NodePoolWriteResult,
@@ -81,6 +85,53 @@ export class ClusterManagerClient {
       clusterApi?: ClusterApiStatus;
     }>(CLUSTER_MANAGER_TOOLS.listClusters, {});
     return { clusters: result.clusters ?? [], clusterApi: result.clusterApi };
+  }
+
+  /**
+   * `list_releases`: the installation's releases newest first per provider
+   * line, `offered` where `create_cluster` creates a cluster of one, and the
+   * provider lines it offers.
+   */
+  async listReleases(): Promise<ClusterReleasesResult> {
+    const result = await this.call<Partial<ClusterReleasesResult>>(
+      CLUSTER_MANAGER_TOOLS.listReleases,
+      {},
+    );
+    return {
+      providers: result.providers ?? [],
+      releases: result.releases ?? [],
+    };
+  }
+
+  /**
+   * `create_cluster`: with `dryRun` the rendered manifests (and, in mode
+   * `commit`, the files and the repository) and nothing written; with
+   * `mode: apply` the cluster's objects landed as the person; with
+   * `mode: commit` a pull request as the person.
+   */
+  createCluster(
+    input: CreateClusterInput,
+    options: WriteOptions = {},
+  ): Promise<ClusterWriteResult> {
+    return this.call<ClusterWriteResult>(CLUSTER_MANAGER_TOOLS.createCluster, {
+      ...compact(input),
+      ...writeArgs(options),
+    });
+  }
+
+  /**
+   * `delete_cluster`: the same call twice — the first removes the cluster's
+   * release, the second, once the cluster is gone, what its uninstall left;
+   * `dryRun` lists what would go, or the refusal.
+   */
+  deleteCluster(
+    input: DeleteClusterInput,
+    options: WriteOptions = {},
+  ): Promise<ClusterWriteResult> {
+    return this.call<ClusterWriteResult>(CLUSTER_MANAGER_TOOLS.deleteCluster, {
+      ...compact(input),
+      ...writeArgs(options),
+    });
   }
 
   /** The MachinePools of one cluster, with both Kubernetes versions. */

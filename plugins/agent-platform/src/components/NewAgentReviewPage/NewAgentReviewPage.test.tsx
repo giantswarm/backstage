@@ -153,6 +153,8 @@ type Scenario = {
   info?: Partial<AgentManagerInfo>;
   /** Violations the dry run reports instead of a clean result. */
   violations?: string[];
+  /** Checks a clean dry run could not make. */
+  notes?: string[];
   /** What create_agent does: succeed, or throw this error. */
   createError?: Error;
   /** The dry run itself is refused (thrown), e.g. a not-connected session. */
@@ -173,9 +175,10 @@ function makeMusterApi(scenario: Scenario = {}) {
             throw scenario.validateError;
           }
           const result = dryRunOf(args as AgentSpec);
-          return scenario.violations
-            ? { ...result, valid: false, errors: scenario.violations }
-            : result;
+          if (scenario.violations) {
+            return { ...result, valid: false, errors: scenario.violations };
+          }
+          return scenario.notes ? { ...result, notes: scenario.notes } : result;
         }
         case 'x_agent-manager_create_agent': {
           if (scenario.createError) {
@@ -415,6 +418,32 @@ describe('NewAgentReviewPage', () => {
       screen.getByText('agent-manager refuses this configuration'),
     ).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();
+  });
+
+  it("shows the dry run's notes beside a valid result and keeps Deploy", async () => {
+    await renderReview({
+      notes: [
+        'the name "go-service-reviewer" could not be checked for a clash: forbidden',
+      ],
+    });
+
+    const list = await screen.findByRole('list', { name: 'Notes' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('could not be checked for a clash');
+    expect(
+      screen.queryByRole('list', { name: 'Violations' }),
+    ).not.toBeInTheDocument();
+    expect(deployButton()).toBeEnabled();
+  });
+
+  it('shows no notes when the dry run reports none', async () => {
+    await renderReview();
+
+    await screen.findByTestId('code-agent.yaml');
+    expect(
+      screen.queryByRole('list', { name: 'Notes' }),
+    ).not.toBeInTheDocument();
+    expect(deployButton()).toBeEnabled();
   });
 
   it('deploys through create_agent as given and lands on the detail page with the create handed over', async () => {

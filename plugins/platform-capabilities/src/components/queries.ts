@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   ListInstallationsFilters,
   platformCapabilitiesApiRef,
@@ -89,7 +90,9 @@ export function useRefreshComparison(installation: string, capability: string) {
 export function useLiveVerify(installation: string, capability: string) {
   const api = useApi(platformCapabilitiesApiRef);
   const queryClient = useQueryClient();
-  return useMutation({
+  return useTrackedMutation({
+    event: null,
+    untrackedReason: 'A live verification that writes nothing.',
     mutationFn: async (comparison: VerifyResult) => {
       const live = await api.verifyInstallation(installation, capability, {
         inputs: comparison.inputs,

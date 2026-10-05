@@ -6,11 +6,16 @@ import {
   getTelemetryPageViewPayload,
 } from '../../utils/telemetry';
 import { ErrorReporterApi } from '@giantswarm/backstage-plugin-error-reporter-react';
+import {
+  isPortalEventShaped,
+  toPortalEvent,
+} from '@giantswarm/backstage-plugin-analytics-react';
 
 export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly configApi: ConfigApi;
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
+  private readonly versionPayload: Record<string, string>;
   private td: TelemetryDeck | undefined;
   private initPromise: Promise<TelemetryDeck> | undefined;
 
@@ -22,6 +27,13 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     this.configApi = options.configApi;
     this.identityApi = options.identityApi;
     this.errorReporterApi = options.errorReporterApi;
+    // TelemetryDeck's default parameter for the app version; the JS SDK
+    // does not set it.
+    const releaseVersion =
+      options.configApi.getOptionalString('app.releaseVersion');
+    this.versionPayload = releaseVersion
+      ? { 'TelemetryDeck.AppInfo.version': releaseVersion }
+      : {};
   }
 
   static fromConfig(options: {
@@ -96,7 +108,46 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   }
 
   captureEvent(event: AnalyticsEvent): void {
-    if (event.action !== 'navigate' || !event.subject) {
+    if (event.action === 'navigate') {
+      this.capturePageView(event);
+      return;
+    }
+    this.captureAction(event);
+  }
+
+  /**
+   * A tracked action from our plugins (`portalEvents`), forwarded as a signal
+   * named after it. One named like ours but not on the list, or carrying an
+   * attribute outside its set, is a plugin bug: dropped, so no free text can
+   * leave the portal, and reported to Sentry. Backstage's built-in actions
+   * (`click`, `create`, `search`, `discover`) are dropped silently.
+   */
+  private captureAction(event: AnalyticsEvent): void {
+    const portalEvent = toPortalEvent(event.action, event.attributes);
+    if (!portalEvent) {
+      if (isPortalEventShaped(event.action)) {
+        this.errorReporterApi?.notify(`Untracked action: ${event.action}`, {
+          level: 'warning',
+          type: 'untracked_action',
+          action: event.action,
+          pluginId: event.context.pluginId,
+        });
+      }
+      return;
+    }
+
+    this.getOrCreateInstance()
+      .then(td =>
+        td.signal(portalEvent.name, {
+          ...portalEvent.attributes,
+          ...this.versionPayload,
+        }),
+      )
+      .catch(() => {});
+  }
+
+  private capturePageView(event: AnalyticsEvent): void {
+    if (!event.subject) {
       return;
     }
 
@@ -118,7 +169,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     }
 
     this.getOrCreateInstance()
-      .then(td => td.signal('pageview', payload))
+      .then(td => td.signal('pageview', { ...payload, ...this.versionPayload }))
       .catch(() => {});
   }
 }

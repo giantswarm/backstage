@@ -110,6 +110,15 @@ acknowledgement should not have to be dismissed by hand. Failures usually want
 **no** toast at all: if the user is still looking at the dialog they pressed the
 button in, show the message there instead.
 
+## Red buttons: only for what cannot be undone
+
+The destructive treatment (`destructive` on a bui `Button`, `ConfirmDialog` or
+a `MenuItem`'s `color="danger"`) is reserved for actions that cannot be taken
+back: deleting something. An action another action reverses is not
+destructive, even when it interrupts something: saving an edit (edit again),
+deactivating or stopping (activate or serve again), cancelling a download
+(retry). Those get a plain `primary` confirm button.
+
 ## Page headers and tabs (New Frontend System)
 
 Every NFS page header is rendered by a **custom `PageLayout` swappable
@@ -141,6 +150,28 @@ Guidelines when building pages:
   header and just renders the content — otherwise you get a double header.
 - Do **not** reintroduce a classic `<Page>`/`<Header>` scaffold on an NFS page;
   it causes a double scrollbar and duplicate header under the app shell.
+
+## Scroll position on navigation
+
+react-router keeps the window's scroll position across client-side navigation,
+so a link from far down a list opens the next page scrolled down by the same
+amount. **A page opened by a link starts at its top.** Every router of a
+section whose pages link to each other — a list and its detail pages, a
+wizard's steps — calls `useScrollToTopOnNavigation()` from
+`@giantswarm/backstage-plugin-ui-react` once, at its top:
+
+```tsx
+export const WorkflowsRouter = () => {
+  useScrollToTopOnNavigation();
+  return <Routes>…</Routes>;
+};
+```
+
+It scrolls on a change of pathname, so a route-driven tab switch starts at the
+top too, and leaves the position alone when only the query string changes (a
+filter, a drawer) and on Back or Forward, where the browser restores it. `McpServersRouter`, `WorkflowsRouter` (muster) and
+`AgentsRouter` (agent-platform) use it; a new section router does the same
+rather than writing its own `window.scrollTo` effect.
 
 ## Full-height sidebars and scroll containment
 

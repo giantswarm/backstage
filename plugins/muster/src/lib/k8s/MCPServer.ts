@@ -6,7 +6,7 @@ import {
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
  * management cluster the server talks to. Drives the per-cluster pills on the
- * MCP servers page and the dashboard's fleet coverage.
+ * MCP servers page.
  */
 export const MANAGEMENT_CLUSTER_LABEL =
   'muster.giantswarm.io/management-cluster';
@@ -40,7 +40,7 @@ export interface ToolGroupInfo {
 
 /**
  * The tool groups with their display names and one-line descriptions -- the
- * one vocabulary for the MCP servers page, the dashboard, the agent
+ * one vocabulary for the MCP servers page, the agent
  * creation Tools step and the agent detail page. Render them in
  * {@link TOOL_GROUP_ORDER}.
  */
@@ -90,7 +90,7 @@ export function parseToolGroup(
 
 /**
  * How every surface names a server with `spec.suspended: true` -- the
- * dashboard's inventory count, the list rows, the detail blocks. "Deactivated"
+ * list rows and the detail blocks. "Deactivated"
  * rather than "suspended" because it pairs with the Activate / Deactivate
  * lifecycle buttons that flip the flag ({@link MCPServer.getSuspended}).
  */
@@ -234,6 +234,22 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
   }
 
   /**
+   * Whether muster has yet to reconcile the latest spec change: its `Ready`
+   * condition was written for an older `metadata.generation`, so the status
+   * (and a "Connected" in it) still describes the previous configuration.
+   * False when there is no such condition to tell by (muster before 5.28).
+   */
+  isReconcilePending(): boolean {
+    const observed = this.getReadyCondition()?.observedGeneration;
+    const generation = this.jsonData.metadata.generation;
+    return (
+      observed !== undefined &&
+      generation !== undefined &&
+      observed < generation
+    );
+  }
+
+  /**
    * The explanation behind `.status.state`, for a tooltip next to the state
    * badge: the `Ready` condition's message, or nothing on a muster that does
    * not write conditions yet.
@@ -256,6 +272,16 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getFamily() {
     return this.jsonData.spec?.family?.name;
+  }
+
+  /**
+   * The argument a caller of a family-grouped tool names the instance with
+   * (`spec.family.instanceArg`, e.g. `management_cluster`). muster injects it
+   * into each grouped tool as a required parameter whose values are the
+   * instances' MCPServer names.
+   */
+  getInstanceArg() {
+    return this.jsonData.spec?.family?.instanceArg;
   }
 
   getManagementCluster() {
@@ -388,13 +414,13 @@ export type MCPServerSeverity = 'ok' | 'warning' | 'error' | 'unknown';
 
 /**
  * Maps an MCPServer infrastructure state to a coarse severity used for the
- * dashboard health colouring.
+ * health colouring.
  *
  * `Auth Required` and `Awaiting Session` are deliberately treated as healthy,
  * not a warning: the first means the server needs a person's sign-in, the
  * second that it is used with each caller's own identity and no session is
  * connected right now -- both are the steady state of a server that works.
- * The real per-user auth gap (if any) surfaces through the tool explorer's
+ * The real per-user auth gap (if any) surfaces through a tool page's
  * `servers_requiring_auth` affordance, so rendering either as amber here
  * would be a false degraded signal. A per-session server whose token exchange
  * is broken reads `Failed` in muster and lands on `error` like any other.
@@ -436,14 +462,14 @@ export function worstSeverity(
 }
 
 /**
- * Fraction of aggregated servers that must be unhealthy before the dashboard
- * "Servers healthy" stat flips to amber.
+ * Fraction of aggregated servers that must be unhealthy before the Servers
+ * view's healthy count flips to amber.
  *
  * muster federates ~26 management clusters, so at least one remote backend is
  * almost always degraded (DNS failures on a few remote installations across
  * trials).
- * Colouring the stat amber on `healthy != total` made it near-permanently amber
- * and therefore useless as a signal (dashboard review F1). Warn only when a
+ * Colouring the count amber on `healthy != total` would make it near-permanently
+ * amber and therefore useless as a signal. Warn only when a
  * meaningful fraction is unhealthy so the colour means "act on this".
  *
  * ponytail: fixed 10% threshold (5/55 stays green, 6/55 warns). The orthogonal
@@ -455,26 +481,33 @@ export const SERVERS_HEALTH_WARNING_FRACTION = 0.1;
 
 export interface ServersHealthSummary {
   healthy: number;
+  /** The servers the health is measured over: every one not deactivated. */
   total: number;
+  /** Servers left out of `total` because they are deactivated on purpose. */
+  deactivated: number;
   tone: 'ok' | 'warning';
 }
 
 /**
  * Counts how many aggregated servers are healthy (severity `ok`, which includes
- * `Auth Required`) and decides the dashboard stat tone via
- * {@link SERVERS_HEALTH_WARNING_FRACTION}.
+ * `Auth Required`) and decides the Servers view's count tone via
+ * {@link SERVERS_HEALTH_WARNING_FRACTION}. Deactivated servers
+ * (`spec.suspended`) read `Disconnected` by design, so they are counted apart
+ * rather than as unhealthy.
  */
 export function serversHealthSummary(
-  servers: Pick<MCPServer, 'getState'>[],
+  servers: Pick<MCPServer, 'getState' | 'getSuspended'>[],
 ): ServersHealthSummary {
-  const total = servers.length;
-  const healthy = servers.filter(
+  const active = servers.filter(s => !s.getSuspended());
+  const total = active.length;
+  const healthy = active.filter(
     s => mcpServerStateSeverity(s.getState()) === 'ok',
   ).length;
   const unhealthyFraction = total === 0 ? 0 : (total - healthy) / total;
   return {
     healthy,
     total,
+    deactivated: servers.length - total,
     tone:
       unhealthyFraction > SERVERS_HEALTH_WARNING_FRACTION ? 'warning' : 'ok',
   };

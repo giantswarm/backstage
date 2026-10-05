@@ -371,6 +371,8 @@ export type ServedModel = {
   nodeSource?: 'pod' | 'spec';
   /** KServe: the nodes a model split across a fast link runs on, in rank order; `undefined` for a copy. */
   splitNodes?: string[];
+  /** KServe: the nodes a model served as copies on several nodes runs on, one copy each; `undefined` for one copy. */
+  copyNodes?: string[];
   /** GPUs requested. `undefined` when the backend reports none. */
   gpuCount?: number;
   /** URL in-cluster clients (a kagent ModelConfig) use. */

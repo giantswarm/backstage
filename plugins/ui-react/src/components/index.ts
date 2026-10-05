@@ -1,6 +1,7 @@
 export * from './display/ConditionMessage';
 export * from './display/FiltersLayout';
 export * from './AsyncValue';
+export * from './Breadcrumbs';
 export * from './Autocomplete';
 export * from './CodeBlock';
 export * from './CollapsibleMarkdown';
@@ -29,6 +30,7 @@ export * from './MultiplePicker';
 export * from './MultipleSelect';
 export * from './NotAvailable';
 export * from './PageHeaderActions';
+export * from './RouteTabs';
 export * from './SectionHeader';
 export * from './SimpleAccordion';
 export * from './SingleSelect';

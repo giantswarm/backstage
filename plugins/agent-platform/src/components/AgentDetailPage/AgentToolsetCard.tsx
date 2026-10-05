@@ -3,7 +3,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import {
+  serverPageResolver,
+  ServerSignIn,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   InfoCard,
   LoadingIndicator,
@@ -22,7 +25,10 @@ import {
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import { musterToolExplorerExternalRouteRef } from '../../routes';
+import {
+  musterServerToolExternalRouteRef,
+  musterServersExternalRouteRef,
+} from '../../routes';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -132,7 +138,11 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
 
   const musterApi = useMusterPluginApi();
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers } = useMusterServers(installation);
+  const {
+    servers,
+    resources: serverResources,
+    isLoading: isLoadingServers,
+  } = useMusterServers(installation);
   // `preset:none` is exactly "no tools"; asking muster what it resolves to
   // would only ever answer nothing.
   const resolution = useToolsetResolution(
@@ -152,13 +162,34 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     [selectors, catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
 
-  const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
-  const toolHref = toolExplorerRoute
-    ? (name: string) =>
-        `${toolExplorerRoute()}?installation=${encodeURIComponent(
-          installation,
-        )}&tool=${encodeURIComponent(name)}`
-    : undefined;
+  // Each tool links to its page beneath the server offering it, by muster's
+  // own rule, so the page lists the tool; a tool nothing attributes lands on
+  // the servers list, searched for its name. No links until the servers are
+  // read, so none change under the pointer.
+  const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const toolRoute = useRouteRef(musterServerToolExternalRouteRef);
+  const toolHref = useMemo(() => {
+    if (isLoadingServers) {
+      return undefined;
+    }
+    const pageOfTool = serverPageResolver(serverResources);
+    const scope = `?installation=${encodeURIComponent(installation)}`;
+    return (name: string): string | undefined => {
+      const server = pageOfTool(name);
+      if (server && toolRoute) {
+        return `${toolRoute({ server, tool: name })}${scope}`;
+      }
+      return serversRoute
+        ? `${serversRoute()}${scope}&q=${encodeURIComponent(name)}`
+        : undefined;
+    };
+  }, [
+    isLoadingServers,
+    serverResources,
+    installation,
+    toolRoute,
+    serversRoute,
+  ]);
 
   let body: React.ReactNode;
   if (declared.state === 'no-gateway') {

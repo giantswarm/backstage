@@ -12,7 +12,8 @@ import {
   VisuallyHidden,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   CapabilityState,
   Committed,
@@ -128,7 +129,9 @@ export function CapabilityDialog({
   // Why the person makes the change: the manager requires it on a commit.
   const [why, setWhy] = useState('');
 
-  const review = useMutation({
+  const review = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A review (dry run) that writes nothing.',
     mutationFn: () =>
       api.verifyCapability(installation.name, capability.name, {
         inputs: values,
@@ -136,7 +139,9 @@ export function CapabilityDialog({
       }),
     onSuccess: setReviewed,
   });
-  const commit = useMutation({
+  const commit = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Capability changes are not a tracked portal action yet.',
     mutationFn: () =>
       kind === 'enable'
         ? api.enableCapability(

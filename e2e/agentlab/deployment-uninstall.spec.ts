@@ -6,12 +6,13 @@ import { lab } from './lab';
 const run = promisify(execFile);
 
 /**
- * The lab's kind context. The suite's other specs reach the platform only
+ * The lab's admin kubeconfig, its `state/kubeconfig` (agentlab merges nothing
+ * into `~/.kube/config`). The suite's other specs reach the platform only
  * through the portal; this one also needs `kubectl`, because the portal has no
  * create flow for a plain HelmRelease — the deploy template that would make one
  * lives outside this repo and is not installed in the lab.
  */
-const CONTEXT = process.env.AGENTLAB_KUBE_CONTEXT ?? 'kind-agentlab';
+const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
 const NAMESPACE = 'agent-platform';
 const NAME = 'uninstall-test';
 
@@ -50,7 +51,7 @@ spec:
 `;
 
 async function kubectl(args: string[], input?: string) {
-  const child = run('kubectl', ['--context', CONTEXT, ...args], {
+  const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
     encoding: 'utf8',
   });
   if (input !== undefined) {
@@ -73,6 +74,11 @@ function deploymentPath(namespace: string, name: string) {
 }
 
 test.describe('uninstalling an app deployment', () => {
+  test.skip(
+    !KUBECONFIG,
+    "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
+  );
+
   test.beforeEach(async () => {
     await kubectl(['apply', '-f', '-'], FIXTURE);
   });

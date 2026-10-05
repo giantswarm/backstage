@@ -69,7 +69,7 @@ const meta = {
         component: [
           'The house list of tools: a borderless table of name, markers and description, without a header row.',
           '',
-          '**When to use it:** wherever tools are listed — the Tool Explorer, an agent’s resolved toolset, the toolset pickers. One component behind all of them, so they cannot drift apart. What changes between surfaces is the row’s `mode` (shown, linked, selectable, checkable), not its typography.',
+          '**When to use it:** wherever tools are listed — a server’s Tools tab, an agent’s resolved toolset, the toolset pickers. One component behind all of them, so they cannot drift apart. What changes between surfaces is the row’s `mode` (shown, linked, selectable, checkable), not its typography.',
           '',
           '⚠️ **Migration status: mixed.** A bui (`@backstage/ui`) `Text` inside MUI v4 (`@material-ui/core`) `makeStyles`. The styling is a candidate for migration once bui exposes the tokens.',
           '',
@@ -108,14 +108,14 @@ export const WithoutMarkers: Story = {
   },
 };
 
-/** Names link into the Tool Explorer — an agent's toolset card. */
+/** Names link to each tool's page — a server's Tools tab, an agent's toolset card. */
 export const Links: Story = {
   args: {
     items: TOOLS.map(tool =>
       toolTableItem(tool, {
         mode: {
           kind: 'link',
-          href: `/agent-platform/muster/tools?tool=${tool.name}`,
+          href: `/agent-platform/mcp-servers/kubernetes/tools/${tool.name}`,
         },
       }),
     ),
@@ -176,15 +176,15 @@ export const LongNames: Story = {
 };
 
 /**
- * The Tool Explorer's browse list: the whole row selects the tool, a search
- * score rides beside the markers, and the favourite star sits outside the
+ * A browse list beside a detail panel: the whole row selects the tool, a
+ * search score rides beside the markers, and a favourite star sits outside the
  * row's own hit area (a button cannot nest inside a button).
  *
  * `core_service_list` is selected — currently open in the detail panel — and
  * `x_kubernetes_list_pods` is *active*: keyboard-highlighted, what ↵ would
  * open. The two states are deliberately distinct.
  */
-export const ExplorerRows: Story = {
+export const BrowseRows: Story = {
   render: function Render(args) {
     const [selected, setSelected] = useState('core_service_list');
     const [favourites, setFavourites] = useState<string[]>([

@@ -1,10 +1,12 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
-import { Alert, Card, CardBody, Flex, Select, Text } from '@backstage/ui';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
+import { musterServersExternalRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -50,6 +52,86 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
   );
 }
 
+/**
+ * Why an installation with models is not offered although it may have
+ * agent-manager: its muster's server list couldn't be read (no muster session
+ * there, or the read failed), so there is no answer either way. Links to
+ * muster's MCP Servers tab scoped to the installation, whose session gate is
+ * where one signs in to that installation's muster.
+ */
+function AgentManagerUnknownNote({
+  installations,
+}: {
+  installations: string[];
+}) {
+  const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const signInHref = serversRoute
+    ? (installation: string) =>
+        `${serversRoute()}?installation=${encodeURIComponent(installation)}`
+    : undefined;
+  if (installations.length === 0) {
+    return null;
+  }
+  const list = installations.join(', ');
+  // `info`, not `warning`: not being signed in to some installations' muster
+  // is an expected state, not something broken.
+  return (
+    <Alert
+      status="info"
+      title={
+        installations.length === 1
+          ? `Couldn't check ${list} for agent-manager`
+          : "Couldn't check some installations for agent-manager"
+      }
+      description={
+        <Flex direction="column" gap="1">
+          <Text variant="body-small">
+            Sign in to muster on {list} to check whether agents can be created
+            there.
+          </Text>
+          {signInHref && (
+            <Flex gap="3">
+              {installations.map(installation => (
+                <Link key={installation} href={signInHref(installation)}>
+                  {installations.length === 1
+                    ? 'Sign in to muster'
+                    : `Sign in to muster on ${installation}`}
+                </Link>
+              ))}
+            </Flex>
+          )}
+        </Flex>
+      }
+    />
+  );
+}
+
+/**
+ * Installations never asked for models: their cluster access isn't healthy, so
+ * the fleet query skips them and nothing else would mention them.
+ */
+function InaccessibleInstallationsNote({
+  installations,
+}: {
+  installations: string[];
+}) {
+  if (installations.length === 0) {
+    return null;
+  }
+  const list = installations.join(', ');
+  return (
+    <Alert
+      status="warning"
+      title={
+        installations.length === 1
+          ? `Couldn't check ${list}`
+          : `Couldn't check ${installations.length} installations`
+      }
+      description={`Cluster access to ${list} isn't healthy (session expired, unreachable, or not signed in), so whether agents can be created there is unknown. The Cluster access status in the sidebar shows why.`}
+    />
+  );
+}
+
 export function InstallationSelect() {
   const { state, setInstallation } = useNewAgentForm();
   const { installations, isLoading: isLoadingInstallations } =
@@ -59,6 +141,7 @@ export function InstallationSelect() {
     hasInstallations,
     availableInstallations,
     unreachableInstallations,
+    inaccessibleInstallations,
   } = useModelConfigs();
 
   // Feature detection: an installation is offered only when its muster
@@ -74,15 +157,47 @@ export function InstallationSelect() {
     [availableInstallations, agentManager],
   );
   const withoutAgentManager = agentManager.missing;
+  // Installations whose server list read failed: no answer either way, so they
+  // are neither offered nor covered by the no-agent-manager note. Only known
+  // once the reads have settled (a read in flight is `unknown` too).
+  const agentManagerUnknown = useMemo(
+    () =>
+      agentManager.isLoading || agentManager.isUnavailable
+        ? []
+        : availableInstallations.filter(
+            name => agentManager.presenceOf(name) === 'unknown',
+          ),
+    [availableInstallations, agentManager],
+  );
 
   // The sole installation on a single-management-cluster instance: there is
   // nothing to choose, so pick it for the user instead of offering a one-option
   // dropdown. Keyed on the configured list rather than the narrower "usable"
   // one, so the choice lands as soon as it is knowable.
-  const singleInstallation =
+  const singleConfigured =
     !isLoadingInstallations && installations.length === 1
       ? installations[0].name
       : undefined;
+  const isSettling = isLoading || agentManager.isLoading;
+  // Latched: `isLoading` includes the inventory's probing, which turns true
+  // again on a cluster-access reconnect, and the sole-option line must not
+  // flip back to a dropdown and forth each time.
+  const hasSettled = useRef(false);
+  if (!isLoadingInstallations && !isSettling) {
+    hasSettled.current = true;
+  }
+  // Several installations configured, but once the fleet has settled only one
+  // of them is usable: still no real choice, so pick it too. Only when every
+  // installation with models has a definite agent-manager answer: one whose
+  // server list couldn't be read may be usable, so the choice stays open.
+  const singleUsable =
+    hasSettled.current &&
+    usableInstallations.length === 1 &&
+    usableInstallations.length + withoutAgentManager.length ===
+      availableInstallations.length
+      ? usableInstallations[0]
+      : undefined;
+  const singleInstallation = singleConfigured ?? singleUsable;
 
   useEffect(() => {
     if (singleInstallation && state.installation !== singleInstallation) {
@@ -109,17 +224,23 @@ export function InstallationSelect() {
     return null;
   }
 
-  const isSettling = isLoading || agentManager.isLoading;
+  // Something about an installation that is not offered needs saying.
+  const hasNotes =
+    unreachableInstallations.length > 0 ||
+    withoutAgentManager.length > 0 ||
+    agentManagerUnknown.length > 0 ||
+    inaccessibleInstallations.length > 0;
 
   // Hide the field only once the sole installation proves usable. While the
   // fleet query is still settling we can't tell yet, so stay out of the way; if
   // it turns out to be unreachable, model-less or without agent-manager we fall
   // through, because the guidance below is then the only thing that explains
-  // why the form is stuck.
+  // why the form is stuck. Only here: with several installations the card has
+  // been on screen while they resolved, and removing it would shift the form.
   if (
-    singleInstallation &&
+    singleConfigured &&
     (isSettling || usableInstallations.length > 0) &&
-    withoutAgentManager.length === 0 &&
+    !hasNotes &&
     !agentManager.isUnavailable
   ) {
     return null;
@@ -130,6 +251,16 @@ export function InstallationSelect() {
       installations={unreachableInstallations}
       resourceName="ModelConfigs"
     />
+  );
+  const notes = (
+    <>
+      {unreachableNote}
+      <InaccessibleInstallationsNote
+        installations={inaccessibleInstallations}
+      />
+      <NoAgentManagerNote installations={withoutAgentManager} />
+      <AgentManagerUnknownNote installations={agentManagerUnknown} />
+    </>
   );
 
   if (agentManager.isUnavailable) {
@@ -172,20 +303,36 @@ export function InstallationSelect() {
           <Flex direction="column" gap="2">
             {/* If every queried installation errored, the warning explains it;
                 only claim "no models" when reads actually succeeded. */}
-            {unreachableNote}
-            <NoAgentManagerNote installations={withoutAgentManager} />
-            {unreachableInstallations.length === 0 &&
-              withoutAgentManager.length === 0 && (
-                <Alert
-                  status="info"
-                  title="No installations with models"
-                  description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
-                />
-              )}
+            {notes}
+            {!hasNotes && (
+              <Alert
+                status="info"
+                title="No installations with models"
+                description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
+              />
+            )}
           </Flex>
         </InstallationCard>
       );
     }
+  }
+
+  // Only one usable installation out of several: it is picked above, so say
+  // where the agent runs instead of offering a one-option dropdown. The card
+  // stays (it was on screen while the fleet resolved), and so do the notes on
+  // the others.
+  if (singleUsable) {
+    return (
+      <InstallationCard>
+        <Flex direction="column" gap="2">
+          <Text>
+            Runs on <strong>{singleUsable}</strong>, the only installation with
+            models and agent-manager.
+          </Text>
+          {notes}
+        </Flex>
+      </InstallationCard>
+    );
   }
 
   return (
@@ -210,8 +357,7 @@ export function InstallationSelect() {
             Still checking the remaining installations…
           </Text>
         )}
-        {unreachableNote}
-        <NoAgentManagerNote installations={withoutAgentManager} />
+        {notes}
       </Flex>
     </InstallationCard>
   );

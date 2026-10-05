@@ -16,7 +16,7 @@ const dummyEmit = jest.fn();
 const dummyCache = { get: jest.fn(), set: jest.fn() } as any;
 
 type GetTags = ContainerRegistryService['getTags'];
-type GetTagManifest = ContainerRegistryService['getTagManifest'];
+type TagExists = ContainerRegistryService['tagExists'];
 
 const credentialsProvider = {
   getCredentials: jest.fn().mockResolvedValue({ token: undefined }),
@@ -38,7 +38,7 @@ function releaseFetch(releaseTag?: string, releaseStatus = 200) {
 
 function makeProcessor(options: {
   getTags: jest.Mock;
-  getTagManifest?: jest.Mock;
+  tagExists?: jest.Mock;
   releaseTag?: string;
   releaseStatus?: number;
   fetchImpl?: jest.Mock;
@@ -46,7 +46,7 @@ function makeProcessor(options: {
 }) {
   const {
     getTags,
-    getTagManifest = jest.fn().mockRejectedValue(new NotFoundError('nope')),
+    tagExists = jest.fn().mockResolvedValue(false),
     releaseTag,
     releaseStatus = 200,
     fetchImpl = releaseFetch(releaseTag, releaseStatus),
@@ -57,7 +57,7 @@ function makeProcessor(options: {
     logger,
     containerRegistry: {
       getTags: getTags as unknown as GetTags,
-      getTagManifest: getTagManifest as unknown as GetTagManifest,
+      tagExists: tagExists as unknown as TagExists,
     },
     credentialsProvider,
     integrations,
@@ -303,10 +303,10 @@ describe('AppReadinessProcessor', () => {
       tags: [{ tag: '1.5.0', createdAt: null }],
       latestStableVersion: '1.5.0',
     });
-    const getTagManifest = jest.fn().mockResolvedValue({ manifest: {} });
+    const tagExists = jest.fn().mockResolvedValue(true);
     const processor = makeProcessor({
       getTags,
-      getTagManifest,
+      tagExists,
       releaseTag: 'v1.6.0',
     });
 
@@ -316,7 +316,7 @@ describe('AppReadinessProcessor', () => {
       READINESS_RELEASABLE,
     );
     // Asked for the published form of the tag, without the v prefix.
-    expect(getTagManifest).toHaveBeenCalledWith(
+    expect(tagExists).toHaveBeenCalledWith(
       'gsoci.azurecr.io',
       'charts/giantswarm/my-app',
       '1.6.0',
@@ -331,10 +331,10 @@ describe('AppReadinessProcessor', () => {
       tags: [{ tag: '1.6.0-dev.branch.1', createdAt: null }],
       latestStableVersion: undefined,
     });
-    const getTagManifest = jest.fn().mockResolvedValue({ manifest: {} });
+    const tagExists = jest.fn().mockResolvedValue(true);
     const processor = makeProcessor({
       getTags,
-      getTagManifest,
+      tagExists,
       releaseTag: 'v1.6.0',
     });
 
@@ -352,12 +352,12 @@ describe('AppReadinessProcessor', () => {
       tags: [{ tag: '1.5.0', createdAt: null }],
       latestStableVersion: '1.5.0',
     });
-    const getTagManifest = jest
+    const tagExists = jest
       .fn()
       .mockRejectedValue(new AuthenticationError('token expired'));
     const processor = makeProcessor({
       getTags,
-      getTagManifest,
+      tagExists,
       releaseTag: 'v1.6.0',
     });
 
@@ -376,20 +376,20 @@ describe('AppReadinessProcessor', () => {
       tags: [{ tag: '1.5.0', createdAt: null }],
       latestStableVersion: '1.5.0',
     });
-    const getTagManifest = jest
+    const tagExists = jest
       .fn()
       .mockRejectedValueOnce(new AuthenticationError('token expired'))
       .mockRejectedValueOnce(new AuthenticationError('token expired'))
-      .mockResolvedValue({ manifest: {} });
+      .mockResolvedValue(true);
     const processor = makeProcessor({
       getTags,
-      getTagManifest,
+      tagExists,
       releaseTag: 'v1.6.0',
     });
 
     const inconclusive = await run(processor, component(chartAnnotations));
     const retried = await run(processor, component(chartAnnotations));
-    const callsAfterAnswer = getTagManifest.mock.calls.length;
+    const callsAfterAnswer = tagExists.mock.calls.length;
     await run(processor, component(chartAnnotations));
 
     expect(inconclusive.metadata.labels?.['giantswarm.io/readiness']).toBe(
@@ -399,7 +399,7 @@ describe('AppReadinessProcessor', () => {
       READINESS_RELEASABLE,
     );
     // The definite answer is cached; the unanswered lookups were not.
-    expect(getTagManifest).toHaveBeenCalledTimes(callsAfterAnswer);
+    expect(tagExists).toHaveBeenCalledTimes(callsAfterAnswer);
   });
 
   it('keeps an inaccessible registry out of Sentry', async () => {

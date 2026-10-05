@@ -1,27 +1,28 @@
 import { useState } from 'react';
 import { dump, load } from 'js-yaml';
 import {
-  Box,
+  Alert,
   Button,
-  CircularProgress,
   Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  IconButton,
-  Typography,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  Flex,
+  Text,
+} from '@backstage/ui';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
-import Close from '@material-ui/icons/Close';
+// MUI's Tooltip, not bui's: a disabled bui Button fires neither hover nor
+// focus, so a react-aria tooltip could not explain why it is disabled.
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
+  ALERT_MESSAGE_STYLE,
+  ConfirmDialog,
   GitOpsManagedLabel,
+  useOnDialogOpen,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -35,44 +36,6 @@ import {
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
-import { StateBadge } from '../shared';
-
-const useStyles = makeStyles((theme: Theme) => ({
-  actions: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-  },
-  titleBar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  // MUI's default DialogActions padding (8px) sits the footer buttons much
-  // closer to the edge than the 24px-padded content above; align the horizontal
-  // padding and give the buttons a bit more breathing room from the edge.
-  dialogActions: {
-    padding: theme.spacing(2, 3),
-  },
-  closeButton: {
-    color: theme.palette.grey[500],
-  },
-  statusArea: {
-    minHeight: theme.spacing(8),
-    maxHeight: theme.spacing(16),
-    overflowY: 'auto',
-    marginTop: theme.spacing(1),
-  },
-  error: {
-    color: theme.palette.error.main,
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-  },
-  ok: {
-    color: theme.palette.success.main,
-  },
-}));
 
 /**
  * GitOps "manifest to commit" dialog: GitOps-managed workflows are read-only in
@@ -89,7 +52,6 @@ function GitOpsManifestDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const classes = useStyles();
   const releaseId = provenanceReleaseId(readProvenance(workflow));
   const manifest = toManifestYaml(workflow);
 
@@ -98,33 +60,30 @@ function GitOpsManifestDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle disableTypography className={classes.titleBar}>
-        <Typography variant="h6">
-          Workflow manifest — {workflow.getName()}
-        </Typography>
-        <IconButton
-          aria-label="close"
-          className={classes.closeButton}
-          onClick={onClose}
-        >
-          <Close />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText component="div">
-          This workflow is <strong>GitOps-managed</strong>
-          {releaseId ? (
-            <>
-              {' '}
-              by HelmRelease <code>{releaseId}</code>
-            </>
-          ) : null}
-          . Live changes would be reverted by the reconciler, so they are
-          read-only here. To change it, edit its manifest in the
-          management-clusters GitOps repo and open a PR.
-        </DialogContentText>
-        <Box mt={2}>
+    <Dialog
+      isOpen={open}
+      onOpenChange={next => {
+        if (!next) {
+          onClose();
+        }
+      }}
+      width="min(90vw, 860px)"
+    >
+      <DialogHeader>Workflow manifest — {workflow.getName()}</DialogHeader>
+      <DialogBody>
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-medium">
+            This workflow is <strong>GitOps-managed</strong>
+            {releaseId ? (
+              <>
+                {' '}
+                by HelmRelease <code>{releaseId}</code>
+              </>
+            ) : null}
+            . Live changes would be reverted by the reconciler, so they are
+            read-only here. To change it, edit its manifest in the
+            management-clusters GitOps repo and open a PR.
+          </Text>
           <YamlEditorFormField
             label="Current manifest"
             value={manifest}
@@ -132,13 +91,16 @@ function GitOpsManifestDialog({
             height={360}
             maxHeight={360}
           />
-        </Box>
-      </DialogContent>
-      <DialogActions className={classes.dialogActions}>
-        <Button onClick={copy} color="primary" variant="contained">
+        </Flex>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="secondary" onPress={copy}>
           Copy manifest
         </Button>
-      </DialogActions>
+        <Button variant="primary" onPress={onClose}>
+          Close
+        </Button>
+      </DialogFooter>
     </Dialog>
   );
 }
@@ -156,81 +118,55 @@ function ConfirmDeleteDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(workflow.cluster);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [done, setDone] = useState(false);
-
-  const handleClose = () => {
-    setError(undefined);
-    setDone(false);
-    setBusy(false);
-    onClose();
-  };
-
-  const run = async () => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      await musterApi.callTool(
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Workflows are not a tracked portal action yet.',
+    mutationFn: () =>
+      musterApi.callTool(
         'core_workflow_delete',
         { name: workflow.getName() },
         workflow.cluster,
-      );
-      // muster deletes the CR synchronously, so refetching now removes the
-      // row instead of waiting for the next 30s poll. The workflow list is
-      // fed entirely by the provider's CRD reads (no runtime aggregator query
-      // like the servers page), so the provider retry covers everything.
-      refresh();
-      setDone(true);
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+      ),
+    // muster deletes the CR synchronously, so refetching now removes the
+    // row instead of waiting for the next 30s poll. The workflow list is
+    // fed entirely by the provider's CRD reads (no runtime aggregator query
+    // like the servers page), so the provider retry covers everything.
+    onSuccess: () => refresh(),
+  });
+
+  // Reset on open, not on close: the dialog keeps rendering while it fades out.
+  useOnDialogOpen(open, () => mutation.reset());
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Delete {workflow.getName()}</DialogTitle>
-      <DialogContent>
-        <DialogContentText component="div">
-          This permanently removes the ad-hoc workflow{' '}
-          <code>{workflow.getName()}</code> from this muster instance. This is a
-          live mutation and cannot be undone.
-        </DialogContentText>
-        {error && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.error}>
-              {error}
-            </Typography>
-          </Box>
-        )}
-        {done && (
-          <Box mt={2}>
-            <Typography variant="body2" className={classes.ok}>
-              Done. The workflow list has been refreshed.
-            </Typography>
-          </Box>
-        )}
-      </DialogContent>
-      <DialogActions className={classes.dialogActions}>
-        <Button onClick={handleClose}>{done ? 'Close' : 'Cancel'}</Button>
-        {!done && (
-          <Button
-            onClick={run}
-            color="secondary"
-            variant="contained"
-            disabled={busy}
-            startIcon={busy ? <CircularProgress size={14} /> : undefined}
-          >
-            Delete
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+    <ConfirmDialog
+      isOpen={open}
+      onOpenChange={next => {
+        if (!next) {
+          onClose();
+        }
+      }}
+      title={`Delete ${workflow.getName()}`}
+      confirmLabel="Delete"
+      destructive
+      isBusy={mutation.isPending}
+      error={mutation.error ? mutationErrorMessage(mutation.error) : undefined}
+      isDone={mutation.isSuccess}
+      onConfirm={() => mutation.mutate()}
+    >
+      <Text as="p" variant="body-medium">
+        This permanently removes the ad-hoc workflow{' '}
+        <code>{workflow.getName()}</code> from this muster instance. This is a
+        live mutation and cannot be undone.
+      </Text>
+      {mutation.isSuccess && (
+        <Alert
+          status="success"
+          description="Done. The workflow list has been refreshed."
+        />
+      )}
+    </ConfirmDialog>
   );
 }
 
@@ -245,7 +181,9 @@ const NEW_WORKFLOW_TEMPLATE = {
  * Ad-hoc workflow dialog: a JSON editor validated via `core_workflow_validate`
  * and saved via `core_workflow_create` (when `workflow` is absent) or
  * `core_workflow_update` (editing an existing ad-hoc workflow). Both calls go
- * through the `/call` proxy. Mirrors the MCP-server `AdHocServerDialog`.
+ * through the `/call` proxy. The MCP-server edit dialog (`AdHocServerDialog`
+ * in the server page's `serverActions`) follows the same shape, for editing
+ * only.
  */
 export function AdHocWorkflowDialog({
   installation,
@@ -258,18 +196,53 @@ export function AdHocWorkflowDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const isEdit = Boolean(workflow);
   const target = workflow?.cluster ?? installation;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
 
-  // Seed the editor when the dialog opens.
-  const seed = () => {
+  const onError = (e: Error) => setError(mutationErrorMessage(e));
+  const validation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A validation that writes nothing.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool('core_workflow_validate', def, target),
+    onSuccess: () => setMessage('Definition is valid.'),
+    onError,
+  });
+  const save = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Workflows are not a tracked portal action yet.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool(
+        isEdit ? 'core_workflow_update' : 'core_workflow_create',
+        def,
+        target,
+      ),
+    onSuccess: () => {
+      // muster writes the CR synchronously, so refetching now shows the new
+      // or updated workflow instead of waiting for the next 30s poll; the
+      // reconciler-trailing availability badge settles on the follow-up read.
+      refresh();
+      setMessage(
+        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
+      );
+    },
+    onError,
+  });
+  let busy: 'validate' | 'save' | undefined;
+  if (validation.isPending) {
+    busy = 'validate';
+  } else if (save.isPending) {
+    busy = 'save';
+  }
+
+  // Seeded on open only: `workflow` is polled, and re-seeding on every
+  // refetch would overwrite what the user is typing.
+  useOnDialogOpen(open, () => {
     setValue(
       dump(workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE, {
         lineWidth: 120,
@@ -278,7 +251,7 @@ export function AdHocWorkflowDialog({
     );
     setError(undefined);
     setMessage(undefined);
-  };
+  });
 
   const parsed = (): Record<string, unknown> | undefined => {
     let obj: unknown;
@@ -301,113 +274,81 @@ export function AdHocWorkflowDialog({
     return obj as Record<string, unknown>;
   };
 
-  const validate = async () => {
+  const submit = (mutation: typeof validation) => {
     const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      await musterApi.callTool('core_workflow_validate', def, target);
-      setMessage('Definition is valid.');
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const save = async () => {
-    const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy(true);
-    setMessage(undefined);
-    try {
-      await musterApi.callTool(
-        isEdit ? 'core_workflow_update' : 'core_workflow_create',
-        def,
-        target,
-      );
-      // muster writes the CR synchronously, so refetching now shows the new
-      // or updated workflow instead of waiting for the next 30s poll; the
-      // reconciler-trailing availability badge settles on the follow-up read.
-      refresh();
-      setMessage(
-        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
-      );
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
+    if (def) {
+      setMessage(undefined);
+      mutation.mutate(def);
     }
   };
 
   return (
     <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      TransitionProps={{ onEnter: seed }}
+      isOpen={open}
+      // Gated here as well: DialogHeader's close button ignores isDismissable.
+      onOpenChange={next => {
+        if (!next && !busy) {
+          onClose();
+        }
+      }}
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={Boolean(busy)}
+      width="min(90vw, 860px)"
     >
-      <DialogTitle disableTypography className={classes.titleBar}>
-        <Typography variant="h6">
-          {isEdit
-            ? `Edit ad-hoc workflow — ${workflow?.getName()}`
-            : 'Create workflow'}
-        </Typography>
-        <IconButton
-          aria-label="close"
-          className={classes.closeButton}
-          onClick={onClose}
-        >
-          <Close />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent>
-        <DialogContentText>
-          {isEdit ? 'Edit' : 'Define'} the muster workflow (name, optional
-          description/args, and steps). Validate before saving; both run as live
-          mutations against installation <code>{target}</code>.
-        </DialogContentText>
-        <YamlEditorFormField
-          label="Workflow definition (YAML)"
-          value={value}
-          onChange={setValue}
-          height={360}
-          maxHeight={360}
-          error={Boolean(error)}
-        />
-        <Box className={classes.statusArea}>
+      <DialogHeader>
+        {isEdit
+          ? `Edit ad-hoc workflow — ${workflow?.getName()}`
+          : 'Create workflow'}
+      </DialogHeader>
+      <DialogBody>
+        <Flex direction="column" gap="3">
+          <Text as="p" variant="body-medium">
+            {isEdit ? 'Edit' : 'Define'} the muster workflow (name, optional
+            description/args, and steps). Validate before saving; both run as
+            live mutations against installation <code>{target}</code>.
+          </Text>
+          <YamlEditorFormField
+            label="Workflow definition (YAML)"
+            value={value}
+            onChange={setValue}
+            height={360}
+            maxHeight={360}
+            error={Boolean(error)}
+          />
           {error && (
-            <Typography variant="body2" className={classes.error}>
-              {error}
-            </Typography>
+            <Alert
+              status="danger"
+              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
+            />
           )}
-          {message && (
-            <Typography variant="body2" className={classes.ok}>
-              {message}
-            </Typography>
-          )}
-        </Box>
-      </DialogContent>
-      <DialogActions className={classes.dialogActions}>
-        <Button onClick={validate} disabled={busy}>
+          {message && <Alert status="success" description={message} />}
+        </Flex>
+      </DialogBody>
+      <DialogFooter>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          onPress={onClose}
+        >
+          Close
+        </Button>
+        <Button
+          variant="secondary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'validate'}
+          onPress={() => submit(validation)}
+        >
           Validate
         </Button>
         <Button
-          onClick={save}
-          color="primary"
-          variant="contained"
-          disabled={busy}
-          startIcon={busy ? <CircularProgress size={14} /> : undefined}
+          variant="primary"
+          isDisabled={Boolean(busy)}
+          isPending={busy === 'save'}
+          onPress={() => submit(save)}
         >
           Save
         </Button>
-      </DialogActions>
+      </DialogFooter>
     </Dialog>
   );
 }
@@ -417,72 +358,95 @@ export interface WorkflowMutationActionsProps {
 }
 
 /**
- * Provenance-aware CRUD affordances for one workflow. Provenance is the only
- * restriction: GitOps-managed workflows are read-only and route Edit/Remove
- * through a GitOps PR/manifest; manually-added (ad-hoc) workflows allow live
- * `core_workflow_*` CRUD behind a confirm dialog. Mirrors
- * `ServerMutationActions`.
+ * A GitOps-managed workflow's provenance, in the page: it is read-only and
+ * offers its manifest to commit. A manually-added (ad-hoc) one shows nothing
+ * here; its Edit and Delete are the page header's (`WorkflowHeaderActions`).
  */
 export function WorkflowMutationActions({
   workflow,
 }: WorkflowMutationActionsProps) {
-  const classes = useStyles();
-  const managed = isGitOpsManaged(workflow);
-
   const [manifestOpen, setManifestOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  if (managed) {
-    return (
-      <Box className={classes.actions}>
-        <GitOpsManagedLabel />
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={() => setManifestOpen(true)}
-        >
-          Show manifest
-        </Button>
-        <GitOpsManifestDialog
-          workflow={workflow}
-          open={manifestOpen}
-          onClose={() => setManifestOpen(false)}
-        />
-      </Box>
-    );
+  if (!isGitOpsManaged(workflow)) {
+    return null;
   }
-
-  // Manually-added (ad-hoc) workflow: live CRUD.
   return (
-    <Box className={classes.actions}>
-      <StateBadge tone="neutral" label="Manually added" />
+    <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+      <GitOpsManagedLabel />
       <Button
         size="small"
-        startIcon={<Edit />}
-        onClick={() => setEditOpen(true)}
+        variant="secondary"
+        onPress={() => setManifestOpen(true)}
+      >
+        Show manifest
+      </Button>
+      <GitOpsManifestDialog
+        workflow={workflow}
+        open={manifestOpen}
+        onClose={() => setManifestOpen(false)}
+      />
+    </Flex>
+  );
+}
+
+/** Which of an ad-hoc workflow's dialogs is open. */
+export type WorkflowDialog = 'edit' | 'delete';
+
+/**
+ * Edit and Delete for a manually-added (ad-hoc) workflow, in the page header.
+ * The header renders outside muster's QueryClientProvider, so the buttons only
+ * ask the page to open a dialog; the dialogs, and the live `core_workflow_*`
+ * mutations behind them, are the page's (`WorkflowDialogs`).
+ */
+export function WorkflowHeaderActions({
+  onOpen,
+}: {
+  onOpen: (dialog: WorkflowDialog) => void;
+}) {
+  return (
+    <Flex align="center" gap="2">
+      <Button
+        variant="secondary"
+        iconStart={<Edit fontSize="inherit" />}
+        onPress={() => onOpen('edit')}
       >
         Edit
       </Button>
       <Button
-        size="small"
-        startIcon={<DeleteOutline />}
-        onClick={() => setDeleteOpen(true)}
+        variant="secondary"
+        destructive
+        iconStart={<DeleteOutline fontSize="inherit" />}
+        onPress={() => onOpen('delete')}
       >
         Delete
       </Button>
+    </Flex>
+  );
+}
 
+/** The ad-hoc workflow's edit and delete dialogs, opened from the header. */
+export function WorkflowDialogs({
+  workflow,
+  open,
+  onClose,
+}: {
+  workflow: MusterWorkflow;
+  open?: WorkflowDialog;
+  onClose: () => void;
+}) {
+  return (
+    <>
       <AdHocWorkflowDialog
         workflow={workflow}
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
+        open={open === 'edit'}
+        onClose={onClose}
       />
       <ConfirmDeleteDialog
         workflow={workflow}
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
+        open={open === 'delete'}
+        onClose={onClose}
       />
-    </Box>
+    </>
   );
 }
 
@@ -506,28 +470,28 @@ export function CreateWorkflowButton({
   authenticated?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const button = (
-    <Button
-      size="small"
-      variant="outlined"
-      startIcon={<Add />}
-      onClick={() => setOpen(true)}
-      disabled={!authenticated}
-      title="Create a live ad-hoc workflow"
-    >
-      Create workflow
-    </Button>
-  );
   return (
     <>
-      {authenticated ? (
-        button
-      ) : (
-        <Tooltip title="Connect to muster (sign in) to create a workflow.">
-          {/* span wrapper so the tooltip still fires over the disabled button */}
-          <span>{button}</span>
-        </Tooltip>
-      )}
+      <Tooltip
+        title={
+          authenticated
+            ? 'Create a live ad-hoc workflow'
+            : 'Connect to muster (sign in) to create a workflow.'
+        }
+      >
+        {/* span wrapper so the tooltip still fires over the disabled button */}
+        <span>
+          <Button
+            size="small"
+            variant="secondary"
+            iconStart={<Add fontSize="inherit" />}
+            onPress={() => setOpen(true)}
+            isDisabled={!authenticated}
+          >
+            Create workflow
+          </Button>
+        </span>
+      </Tooltip>
       <AdHocWorkflowDialog
         installation={installation}
         open={open}

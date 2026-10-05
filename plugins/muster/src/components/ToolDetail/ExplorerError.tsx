@@ -1,0 +1,76 @@
+import { Alert, Button } from '@backstage/ui';
+import { ResponseErrorPanel } from '@backstage/core-components';
+import { useApi } from '@backstage/frontend-plugin-api';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { musterApiRef } from '../../apis';
+
+/**
+ * True when an error reflects a missing/expired muster auth token rather than a
+ * genuine failure. The backend raises AuthenticationError (401) when the target
+ * installation requires a user token that wasn't forwarded.
+ */
+export function isAuthError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  const err = error as { name?: string; message?: string };
+  return (
+    err.name === 'UnauthorizedError' ||
+    /requires a user token|authentication|unauthorized|sign in/i.test(
+      err.message ?? '',
+    )
+  );
+}
+
+export interface ExplorerErrorProps {
+  error: unknown;
+  installation?: string;
+}
+
+/**
+ * Renders a query error: an actionable inline "Sign in" affordance when the
+ * error is an auth failure, otherwise the standard error panel. Keeps the
+ * Auth-Required path friendly instead of dumping a raw 401.
+ */
+export function ExplorerError({ error, installation }: ExplorerErrorProps) {
+  const musterApi = useApi(musterApiRef);
+  const queryClient = useQueryClient();
+
+  const signIn = useTrackedMutation({
+    event: null,
+    untrackedReason: 'An authentication step, not a portal action.',
+    mutationFn: () => musterApi.signIn(installation),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['muster'] });
+    },
+  });
+
+  if (!isAuthError(error)) {
+    return <ResponseErrorPanel error={error as Error} />;
+  }
+
+  const description = `Sign in to muster${
+    installation ? ` (${installation})` : ''
+  } to browse and run its tools.${
+    signIn.isError ? ' Sign-in failed — check the muster auth provider.' : ''
+  }`;
+
+  return (
+    <Alert
+      status="info"
+      title="Authentication required"
+      description={description}
+      customActions={
+        <Button
+          variant="secondary"
+          size="small"
+          isPending={signIn.isPending}
+          onClick={() => signIn.mutate()}
+        >
+          {signIn.isPending ? 'Signing in…' : 'Sign in'}
+        </Button>
+      }
+    />
+  );
+}

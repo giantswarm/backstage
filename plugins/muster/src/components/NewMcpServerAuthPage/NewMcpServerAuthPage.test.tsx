@@ -3,8 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 
-import { rootRouteRef } from '../../routes';
+import { mcpServersRouteRef } from '../../routes';
+import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
+
+/** Registered servers of the active installation, per test. */
+let mockMcpServers: MCPServer[] = [];
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -18,6 +22,8 @@ jest.mock('../MusterInstanceProvider', () => ({
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
+    mcpServers: mockMcpServers,
+    isLoading: false,
   }),
 }));
 
@@ -36,20 +42,20 @@ function renderWizard(path: string) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/agent-platform/muster/servers/*"
+        path="/agent-platform/mcp-servers/*"
         element={<McpServersRouter />}
       />
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/muster': rootRouteRef },
+      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
     },
   );
 }
 
 /** Walks the real flow: fills the details step, continues to authentication. */
 async function renderAuthStep() {
-  const result = await renderWizard('/agent-platform/muster/servers/new');
+  const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -62,7 +68,7 @@ async function renderAuthStep() {
 
 describe('NewMcpServerAuthPage', () => {
   it('sends a deep link back to step 1 while the details are incomplete', async () => {
-    await renderWizard('/agent-platform/muster/servers/new/auth');
+    await renderWizard('/agent-platform/mcp-servers/new/auth');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(
@@ -209,5 +215,87 @@ describe('NewMcpServerAuthPage', () => {
     expect(
       screen.getByRole('radio', { name: 'No authentication' }),
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  describe('required audiences', () => {
+    beforeEach(() => {
+      mockMcpServers = [];
+    });
+
+    it('keeps them when the already-selected choice is clicked again', async () => {
+      await renderAuthStep();
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Platform SSO' }),
+      );
+      await userEvent.type(
+        screen.getByLabelText(/Required audiences/),
+        'aud-a, aud-b',
+      );
+
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Platform SSO' }),
+      );
+
+      expect(screen.getByLabelText(/Required audiences/)).toHaveValue(
+        'aud-a, aud-b',
+      );
+    });
+
+    it('clears the text with the state when the choice changes', async () => {
+      await renderAuthStep();
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Platform SSO' }),
+      );
+      await userEvent.type(
+        screen.getByLabelText(/Required audiences/),
+        'aud-a',
+      );
+
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'No authentication' }),
+      );
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Platform SSO' }),
+      );
+
+      expect(screen.getByLabelText(/Required audiences/)).toHaveValue('');
+    });
+
+    it("brings an edited server's audiences back when its own choice is picked again", async () => {
+      mockMcpServers = [
+        new MCPServer(
+          {
+            apiVersion: 'muster.giantswarm.io/v1alpha1',
+            kind: 'MCPServer',
+            metadata: { name: 'miro' },
+            spec: {
+              type: 'streamable-http',
+              url: 'https://mcp.miro.com/',
+              auth: {
+                forwardToken: true,
+                requiredAudiences: ['aud-a', 'aud-b'],
+              },
+            },
+          } as never,
+          'gazelle',
+        ),
+      ];
+      await renderWizard('/agent-platform/mcp-servers/new/auth?edit=miro');
+      await screen.findByText('Step 2 of 4: Authentication');
+      expect(screen.getByLabelText(/Required audiences/)).toHaveValue(
+        'aud-a, aud-b',
+      );
+
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'No authentication' }),
+      );
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Platform SSO' }),
+      );
+
+      expect(screen.getByLabelText(/Required audiences/)).toHaveValue(
+        'aud-a, aud-b',
+      );
+    });
   });
 });

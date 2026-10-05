@@ -188,6 +188,24 @@ jest.mock('./AgentToolsetCard', () => ({
   AgentToolsetCard: () => <div data-testid="agent-toolset-card" />,
 }));
 
+// The carrier read behind the Overview's toolset line: a namespaced
+// RemoteMCPServer list through `useResources`, which the page's fetch stub does
+// not cover. Driven per case; the default is the toolset the Agents list would
+// summarise as one labelled preset.
+const mockUseAgentToolset = jest.fn();
+jest.mock('../../hooks/useAgentToolset', () => ({
+  useAgentToolset: (...args: unknown[]) => mockUseAgentToolset(...args),
+}));
+const READ_ONLY_TOOLSET = {
+  declared: {
+    state: 'declared',
+    carrier: 'pr-reviewer',
+    selectors: ['preset:read-only'],
+  },
+  isReading: false,
+  isUnreadable: false,
+};
+
 // The serving layer's word on the model behind the agent is driven per case;
 // the provider (which would read the fleet) becomes a pass-through.
 const mockServingStateFor = jest.fn<
@@ -331,6 +349,22 @@ const NO_SESSIONS: AgentSessionsView = {
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
+};
+
+const ONE_SESSION: AgentSessionsView = {
+  ...NO_SESSIONS,
+  rows: [
+    {
+      id: 'gazelle/abc',
+      sessionId: 'abc',
+      installation: 'gazelle',
+      title: 'Review #2705',
+      agentName: 'PR reviewer',
+      agentTechnicalName: 'pr-reviewer',
+      agentNamespace: 'agent-platform',
+      createdAt: '2026-07-23T16:04:28Z',
+    },
+  ],
 };
 
 /** Every `useResource` outcome the page can see, per resource class. */
@@ -483,6 +517,8 @@ describe('AgentDetailPage', () => {
     mockServingStateFor.mockReset();
     mockUseAgentStatus.mockReset();
     mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    mockUseAgentToolset.mockReset();
+    mockUseAgentToolset.mockReturnValue(READ_ONLY_TOOLSET);
     agentManagerPresence = 'unknown';
     isMusterUnavailable = true;
     managerAgent = undefined;
@@ -515,11 +551,31 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
 
-    // The admitting Harness, in the configuration and in the status.
-    expect(screen.getByText(/From the label/)).toHaveTextContent(HARNESS_LABEL);
+    // The admitting Harness, once, in the status.
+    expect(screen.getByText(/Sessions run on/)).toHaveTextContent(
+      'Sessions run on kagent',
+    );
+    expect(screen.queryByText(/From the label/)).toBeNull();
+
+    // Nothing stands in for Start a session: the agent is ready.
+    expect(screen.queryByText("Sessions can't start")).toBeNull();
     expect(
-      screen.getByRole('list', { name: 'Admitting Harnesses' }),
-    ).toHaveTextContent(/kagent.*Ready.*sessions run here/);
+      screen.queryByText('Sessions can start once the agent is ready'),
+    ).toBeNull();
+  });
+
+  // Each fact once: the installation is the chip, `namespace/name` the
+  // subtitle, the Harness the Status card's.
+  it('names where the agent runs in the header and nowhere else', async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    expect(screen.getByText('agent-platform/pr-reviewer')).toBeInTheDocument();
+    const terms = Array.from(document.querySelectorAll('dt')).map(
+      term => term.textContent,
+    );
+    expect(terms).toEqual(['Model', 'Tools', 'Created', 'Deployed by']);
   });
 
   // Update skills runs from this page and navigates to the URL it is already
@@ -684,6 +740,49 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
 
+    // Update skills only moves the pins of skills already mounted, so an agent
+    // without any is pointed at the edit page, where skills are added.
+    describe('without any', () => {
+      const withoutSkills = () =>
+        makeAgent({ spec: { skills: [] } } as Partial<AgentInterface>);
+
+      it('offers Add skills to whoever may edit the agent', async () => {
+        withAgentManager('helmrelease');
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(screen.getByText(/^No skills yet/)).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Add skills' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Update skills\u2026' }),
+        ).toBeNull();
+      });
+
+      it('offers nothing to a viewer who cannot edit the agent', async () => {
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(screen.getByText(/^No skills yet/)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
+      });
+
+      it('says where the skills of an agent applied from git are added', async () => {
+        withAgentManager('gitops');
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(
+          screen.getByText(/deployed from a GitOps repository/),
+        ).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
+      });
+    });
+
     // The exact label, because the stubbed dialog's own button says
     // "stub: Update skills landed" and would match a looser query.
     const updateSkills = () =>
@@ -796,18 +895,29 @@ describe('AgentDetailPage', () => {
     const terms = Array.from(document.querySelectorAll('dt')).map(
       term => term.textContent,
     );
-    expect(terms).toEqual(expect.arrayContaining(['Harness', 'Model']));
+    expect(terms).toEqual(expect.arrayContaining(['Model', 'Tools']));
     expect(screen.queryByRole('heading', { name: 'Model' })).toBeNull();
   });
 
-  it('heads each condition one level below the Status card', async () => {
+  // A ready agent's conditions all read healthy: one closed disclosure below
+  // the Status card's heading, each condition a level below that once opened.
+  it('keeps a ready agent’s conditions behind one disclosure', async () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
     await renderPage();
 
+    const disclosure = screen.getByRole('button', { name: 'Conditions (2)' });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.getByRole('heading', { level: 4, name: /^Accepted/ }),
+      screen.getByRole('heading', { level: 4, name: 'Conditions (2)' }),
     ).toBeInTheDocument();
+
+    await userEvent.click(disclosure);
+
+    expect(
+      screen.getByRole('heading', { level: 5, name: /^Accepted/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Revision')).toHaveTextContent('Revision rev-1');
   });
 
   it.each([
@@ -874,15 +984,25 @@ describe('AgentDetailPage', () => {
         screen.getAllByText('Compiling revision rev-2').length,
       ).toBeGreaterThan(0);
       expect(screen.getByText('Compiling')).toBeInTheDocument();
-      // The Harness row says which revision it is working on.
+      // Listed open, not behind the disclosure a ready agent gets.
       expect(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).toHaveTextContent(
-        /kagent.*Progressing.*compiling rev-2, last successful rev-1/,
-      );
+        screen.getByRole('heading', { level: 4, name: /^Ready/ }),
+      ).toBeInTheDocument();
+      // The one moment the revision explains something.
+      expect(
+        screen
+          .getAllByText(/^Compiling/)
+          .some(
+            element => element.textContent === 'Compiling rev-2, running rev-1',
+          ),
+      ).toBe(true);
+      // The page says why sessions cannot start yet.
+      expect(
+        screen.getByText('Sessions can start once the agent is ready'),
+      ).toBeInTheDocument();
     });
 
-    it('reports a rejected template as not accepted, with the Harness’s reason', async () => {
+    it('reports an incompatible template as failed, with the Harness’s reason', async () => {
       stubResources({
         resource: makeAgent({
           status: {
@@ -906,15 +1026,207 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expectHeaderReadiness('Not accepted');
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
       expect(
         screen.getAllByText(
           'Dedicated sub-agents are not supported by this Harness',
         ).length,
       ).toBeGreaterThan(0);
+      // A configuration problem names no field to mark.
+      expect(screen.queryByText('Cannot be resolved')).toBeNull();
+    });
+
+    // What kagent writes for a missing ModelConfig: Accepted stays True, the
+    // reference check fails, and every later stage reads Blocked — all at one
+    // timestamp.
+    const unresolvedModelAgent = () =>
+      makeAgent({
+        status: {
+          observedGeneration: 1,
+          harnesses: [
+            harness(
+              [
+                {
+                  type: 'Accepted',
+                  status: 'True',
+                  reason: 'Accepted',
+                  message:
+                    'Harness admission selector matches the AgentTemplate',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+                {
+                  type: 'Compatible',
+                  status: 'False',
+                  reason: 'Blocked',
+                  message: 'blocked by ResolvedRefs',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+                {
+                  type: 'Ready',
+                  status: 'False',
+                  reason: 'Blocked',
+                  message: 'blocked by ResolvedRefs',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+                {
+                  type: 'ResolvedRefs',
+                  status: 'False',
+                  reason: 'ReferenceResolutionFailed',
+                  message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+              ],
+              { latestSuccessfulRevision: undefined },
+            ),
+          ],
+        },
+      } as Partial<AgentInterface>);
+
+    it('leads a failed agent with its root cause and marks the field it is about', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
       expect(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).toHaveTextContent(/kagent.*Failed/);
+        screen.getAllByText(
+          'resolve ModelConfig "qwen3-4b-instruct": not found',
+        ).length,
+      ).toBeGreaterThan(0);
+
+      // The Model row, not the Accepted condition, is where to look.
+      const modelRow = screen
+        .getByText('Model')
+        .closest('dt')?.nextElementSibling;
+      expect(modelRow).toHaveTextContent('Cannot be resolved');
+
+      // Conditions in the order kagent evaluates them: the failed stage
+      // before the stages it blocks, and the one open.
+      const headings = screen
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent ?? '');
+      expect(
+        headings.filter(text =>
+          /^(Accepted|ResolvedRefs|Compatible|Ready)/.test(text),
+        ),
+      ).toEqual([
+        expect.stringMatching(/^Accepted/),
+        expect.stringMatching(/^ResolvedRefs/),
+        expect.stringMatching(/^Compatible/),
+        expect.stringMatching(/^Ready/),
+      ]);
+      expect(
+        screen.getByRole('button', { name: /^ResolvedRefs/ }),
+      ).toHaveAttribute('aria-expanded', 'true');
+      expect(
+        screen.getByRole('button', { name: /^Compatible/ }),
+      ).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('marks the Model row even when the template names no ModelConfig', async () => {
+      const { jsonData } = unresolvedModelAgent();
+      stubResources({
+        resource: new Agent(
+          {
+            ...jsonData,
+            spec: { ...jsonData.spec, modelConfig: undefined },
+          } as AgentInterface,
+          'gazelle',
+        ),
+      });
+
+      await renderPage();
+
+      expect(
+        screen.getByText('Model').closest('dt')?.nextElementSibling,
+      ).toHaveTextContent('Cannot be resolved');
+    });
+
+    it('offers Edit agent beside the cause to whoever may edit the agent', async () => {
+      withAgentManager();
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByRole('button', { name: 'Edit agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('says where a failed agent applied from git is fixed', async () => {
+      withAgentManager('gitops');
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /deployed from a GitOps repository, so it is fixed there/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    // The Harness is named, but no claim that sessions run on it.
+    it('names the Harness of a failed agent without saying sessions run there', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText(/^Admitted by/)).toHaveTextContent(
+        'Admitted by kagent',
+      );
+      expect(screen.queryByText(/Sessions run on/)).toBeNull();
+    });
+
+    it('offers no fix to a viewer who cannot edit the agent', async () => {
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    it('sends a platform cause to a platform admin rather than to the edit page', async () => {
+      withAgentManager();
+      stubResources({
+        resource: makeAgent({
+          status: {
+            observedGeneration: 1,
+            harnesses: [
+              harness([
+                READY_CONDITIONS[0],
+                {
+                  type: 'ResolvedRefs',
+                  status: 'False',
+                  reason: 'WorkerPoolNotFound',
+                  message: 'WorkerPool "kagent/default" not found',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+                {
+                  type: 'Compatible',
+                  status: 'False',
+                  reason: 'Blocked',
+                  message: 'blocked by ResolvedRefs',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+              ]),
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          'WorkerPool "kagent/default" not found. This is a problem with the platform, not with the agent: a platform admin has to fix it.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+      expect(screen.queryByText('Cannot be resolved')).toBeNull();
     });
 
     // The state of its own: no Harness will ever run this agent until its labels
@@ -935,6 +1247,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expectHeaderReadiness('Not admitted');
+      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
       expect(
         screen.getByText(
           `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`,
@@ -946,10 +1259,8 @@ describe('AgentDetailPage', () => {
       expect(
         screen.queryByRole('list', { name: 'Admitting Harnesses' }),
       ).not.toBeInTheDocument();
-      // The configuration says the label is missing, too.
-      expect(
-        screen.getByText(/Not labelled for any Harness/),
-      ).toBeInTheDocument();
+      // The label is not on the edit page, so there is nothing to offer there.
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
       // No session can start on it.
       expect(
         screen.queryByRole('button', { name: 'Start a session' }),
@@ -1062,21 +1373,50 @@ describe('AgentDetailPage', () => {
   });
 
   describe('tools', () => {
-    it('links the muster gateway to the Tool Explorer, installation preselected', async () => {
+    // What the agent can do, in the Agents list's words, rather than the
+    // gateway object it reaches it through (that is in View manifest).
+    it('summarises the gateway toolset in one line, linked to the Tools tab', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage();
 
-      // Unbound external route in the test app, so assert the reference is named
-      // and that a non-gateway server gets no link (below) — the binding itself is
-      // muster's to provide. The gateway is the carrier named after the agent.
+      expect(screen.getByText('Read-only tools')).toBeInTheDocument();
+      expect(screen.getByText('preset:read-only')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'See tools' })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}/tools`,
+      );
+      expect(screen.queryByText('RemoteMCPServer pr-reviewer')).toBeNull();
+    });
+
+    // The read answered and the carrier is not there: not a permission problem.
+    it('says the gateway server is missing when the read finds none', async () => {
+      mockUseAgentToolset.mockReturnValue({
+        declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+        isReading: false,
+        isUnreadable: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
       expect(
-        screen.getByText('RemoteMCPServer pr-reviewer'),
+        screen.getByText('pr-reviewer does not exist'),
       ).toBeInTheDocument();
-      // The gateway row defers to the toolset rather than claiming "all tools":
-      // which of the gateway's tools the agent can use is its toolset, which
-      // lives on the Tools tab ('tabs' above asserts it renders there).
-      expect(screen.getByText(/see the Tools tab/)).toBeInTheDocument();
+    });
+
+    it('waits for the toolset read instead of guessing', async () => {
+      mockUseAgentToolset.mockReturnValue({
+        declared: { state: 'unresolved', carrier: 'pr-reviewer' },
+        isReading: true,
+        isUnreadable: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderPage();
+
+      expect(screen.getByText('Reading the toolset…')).toBeInTheDocument();
     });
 
     it('describes a restricted server by its allowlist', async () => {
@@ -1117,14 +1457,14 @@ describe('AgentDetailPage', () => {
             tools: [
               {
                 mcp: {
-                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
-                  tools: ['list_tools'],
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['query'],
                 },
               },
               {
                 mcp: {
-                  server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' },
-                  tools: ['call_tool'],
+                  server: { kind: 'RemoteMCPServer', name: 'grafana' },
+                  tools: ['annotate'],
                   requireApproval: true,
                 },
               },
@@ -1135,10 +1475,8 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(
-        screen.getByText(/1 meta-tool \(list_tools\)/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/1 meta-tool \(call_tool\)/)).toBeInTheDocument();
+      expect(screen.getByText('1 tool: query')).toBeInTheDocument();
+      expect(screen.getByText('1 tool: annotate')).toBeInTheDocument();
       expect(
         screen.getByText('Requires approval before every call'),
       ).toBeInTheDocument();
@@ -1161,7 +1499,10 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText(/declares no tool servers/)).toBeInTheDocument();
+      expect(screen.getByText('No tools')).toBeInTheDocument();
+      expect(
+        screen.getByText('The agent has nothing beyond its own reasoning.'),
+      ).toBeInTheDocument();
     });
 
     it('links another template invoked as a tool, by the template behind it', async () => {
@@ -1324,6 +1665,7 @@ describe('AgentDetailPage', () => {
   describe('sessions', () => {
     it('describes the list as the user’s own', async () => {
       stubResources({ resource: makeAgent() });
+      mockUseAgentSessions.mockReturnValue(ONE_SESSION);
 
       await renderPage('sessions');
 
@@ -1337,7 +1679,7 @@ describe('AgentDetailPage', () => {
     it('stops claiming the sessions are yours when kagent is not user-scoped', async () => {
       stubResources({ resource: makeAgent() });
       mockUseAgentSessions.mockReturnValue({
-        ...NO_SESSIONS,
+        ...ONE_SESSION,
         isNotUserScoped: true,
       });
 
@@ -1346,6 +1688,56 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText(/does not scope sessions to a user/),
       ).toBeInTheDocument();
+    });
+
+    // Nothing to search, sort or page: the table gives way to the next step.
+    it('offers to start the first session instead of an empty table', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('sessions');
+
+      expect(
+        screen.getByText('You have no sessions with this agent.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Start a session' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.queryByText(/not a usage total/)).toBeNull();
+    });
+
+    it('offers no session on an agent that cannot run one', async () => {
+      stubResources({
+        resource: makeAgent({
+          status: {
+            observedGeneration: 1,
+            harnesses: [
+              harness([
+                READY_CONDITIONS[0],
+                {
+                  type: 'Compatible',
+                  status: 'False',
+                  reason: 'UnsupportedConfiguration',
+                  message: 'nope',
+                  lastTransitionTime: '2026-07-31T10:05:00Z',
+                },
+              ]),
+            ],
+          },
+        } as Partial<AgentInterface>),
+      });
+
+      await renderPage('sessions');
+
+      expect(
+        screen.getByText('You have no sessions with this agent.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).toBeNull();
+      // The banner above the tabs says why, on this tab too.
+      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
     });
 
     it('distinguishes unreadable sessions from no sessions', async () => {

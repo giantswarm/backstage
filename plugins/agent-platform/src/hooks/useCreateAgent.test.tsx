@@ -1,6 +1,7 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   musterApiRef,
@@ -12,6 +13,7 @@ import { useCreateAgent } from './useCreateAgent';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
+const analyticsApi = mockApis.analytics.mock();
 
 const spec: AgentSpec = {
   namespace: 'kagent',
@@ -40,7 +42,12 @@ function renderWith(
   });
   const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -50,7 +57,18 @@ function renderWith(
   };
 }
 
+function expectAgentCreated(mode: 'deploy' | 'commit') {
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.agentCreated',
+      attributes: { mode },
+    }),
+  );
+}
+
 beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
   callTool.mockReset();
 });
 
@@ -75,6 +93,7 @@ describe('useCreateAgent', () => {
       'gazelle',
     );
     expect(created).toMatchObject({ requestedBy: 'admin@lab.local' });
+    expectAgentCreated('deploy');
     // No mode and no force: the portal applies live, never overrides a refusal.
     const args = callTool.mock.calls[0][1] as Record<string, unknown>;
     expect(args).not.toHaveProperty('mode');
@@ -106,6 +125,7 @@ describe('useCreateAgent', () => {
         message: expect.stringContaining('oidc:viewer@lab.local'),
       }),
     );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it('reports a conflict for an existing name as a refusal', async () => {
@@ -162,6 +182,7 @@ describe('useCreateAgent', () => {
     expect(outcome).toEqual({
       pullRequestUrl: 'https://github.com/org/gitops/pull/7',
     });
+    expectAgentCreated('commit');
   });
 
   it('refuses to write without an installation to reach agent-manager on', async () => {

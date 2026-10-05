@@ -196,6 +196,27 @@ function Violations({ errors }: { errors: string[] }) {
   );
 }
 
+/**
+ * The checks agent-manager's dry run could not make. Informational: the dry
+ * run is still valid, so they never block Deploy.
+ */
+function Notes({ notes }: { notes: string[] }) {
+  const classes = useStyles();
+  return (
+    <Alert
+      status="info"
+      title="agent-manager could not check everything"
+      description={
+        <ul className={classes.violations} aria-label="Notes">
+          {notes.map(note => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      }
+    />
+  );
+}
+
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
   if (code === 'forbidden') {
@@ -368,6 +389,7 @@ export function NewAgentReviewPage() {
 
   const dryRun = validation.result;
   const violations = dryRun?.errors ?? [];
+  const notes = dryRun?.notes ?? [];
   const canWrite =
     Boolean(dryRun) && violations.length === 0 && !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
@@ -688,6 +710,7 @@ export function NewAgentReviewPage() {
               />
             )}
             {violations.length > 0 && <Violations errors={violations} />}
+            {notes.length > 0 && <Notes notes={notes} />}
             {dryRun && (
               <>
                 <div className={classes.files}>

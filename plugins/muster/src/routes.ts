@@ -1,62 +1,56 @@
 import {
-  createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
 
-export const rootRouteRef = createRouteRef();
+/**
+ * The Agent Platform's "MCP Servers" tab (`/agent-platform/mcp-servers`): the
+ * servers table. A tab's sub-page takes a plain route ref, so this is a root
+ * of its own rather than a sub-route of a muster section.
+ */
+export const mcpServersRouteRef = createRouteRef();
 
-export const mcpServersRouteRef = createSubRouteRef({
-  path: '/servers',
-  parent: rootRouteRef,
-});
-
-// The MCP server registration wizard, sub-routes of the servers view — the
+// The MCP server registration wizard, sub-routes of the servers tab — the
 // same shape as agent creation's `/new` + `/new/skills` + `/new/review` under
 // the agents tab.
 export const newMcpServerRouteRef = createSubRouteRef({
-  path: '/servers/new',
-  parent: rootRouteRef,
+  path: '/new',
+  parent: mcpServersRouteRef,
 });
 
 export const newMcpServerAuthRouteRef = createSubRouteRef({
-  path: '/servers/new/auth',
-  parent: rootRouteRef,
+  path: '/new/auth',
+  parent: mcpServersRouteRef,
 });
 
 export const newMcpServerReviewRouteRef = createSubRouteRef({
-  path: '/servers/new/review',
-  parent: rootRouteRef,
+  path: '/new/review',
+  parent: mcpServersRouteRef,
 });
 
 export const newMcpServerVerifyRouteRef = createSubRouteRef({
-  path: '/servers/new/verify',
-  parent: rootRouteRef,
+  path: '/new/verify',
+  parent: mcpServersRouteRef,
 });
 
-export const workflowsRouteRef = createSubRouteRef({
-  path: '/workflows',
-  parent: rootRouteRef,
+// A server's page and a tool's page beneath it. `:server` is the family name
+// for a server family, the CR name for a singular server and `muster` for
+// muster's own tools; `:tool` is the full muster tool name. The wizard's
+// static `new` segment outranks `:server`.
+export const mcpServerRouteRef = createSubRouteRef({
+  path: '/:server',
+  parent: mcpServersRouteRef,
 });
 
-export const toolExplorerRouteRef = createSubRouteRef({
-  path: '/tools',
-  parent: rootRouteRef,
+export const mcpServerToolRouteRef = createSubRouteRef({
+  path: '/:server/tools/:tool',
+  parent: mcpServersRouteRef,
 });
+
+/** The Agent Platform's "Workflows" tab (`/agent-platform/workflows`). */
+export const workflowsRouteRef = createRouteRef();
 
 export const workflowDetailRouteRef = createSubRouteRef({
-  path: '/workflows/:name',
-  parent: rootRouteRef,
-});
-
-/**
- * The Agent Platform's Usage tab, where the MCP usage view now lives.
- *
- * External because it belongs to the other plugin. `defaultTarget` resolves it
- * without an app-config binding and leaves it unbound when agent-platform is
- * disabled -- the mirror of that plugin's `musterToolExplorer` ref, and the
- * reason every call site has to handle `undefined`.
- */
-export const agentPlatformUsageExternalRouteRef = createExternalRouteRef({
-  defaultTarget: 'agent-platform.usage',
+  path: '/:name',
+  parent: workflowsRouteRef,
 });

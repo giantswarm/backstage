@@ -3,10 +3,15 @@
  * them. Nothing here is computed by the page; the names are the tools' own.
  */
 
-/** The state of a capability on an installation, in the manager's words. */
+/**
+ * The state of a capability on an installation, in the manager's words.
+ * *ready to merge* is an action that needs no Team review (every target a
+ * test installation): its actor merges the pull requests, nobody approves.
+ */
 export type CapabilityStateName =
   | 'not enabled'
   | 'pending approval'
+  | 'ready to merge'
   | 'rolling out'
   | 'waiting for the customer'
   | 'enabled'
@@ -16,12 +21,19 @@ export type CapabilityStateName =
 
 /**
  * The state of an Action, in the manager's words: the installation's states
- * an action produces, plus the three that are the action's own -- the gate
- * refused it before any write, a member of the team denied it, or the files
- * it wrote left the repositories' default branch again (removed).
+ * an action produces, plus the action's own -- the gate refused it before
+ * any write, a member of the team denied it before its merge, its merged
+ * pull requests were reverted on the default branch, its actor withdrew it
+ * after its merge, or the files it wrote left the repositories' default
+ * branch again (removed).
  */
 export type ActionStateName =
-  CapabilityStateName | 'refused' | 'denied' | 'removed';
+  | CapabilityStateName
+  | 'refused'
+  | 'denied'
+  | 'reverted'
+  | 'withdrawn'
+  | 'removed';
 
 /** The installation's record: the definitions' `installation.*` inputs. */
 export interface InstallationRecord {
@@ -220,11 +232,30 @@ export interface CapabilityPlan {
   commit?: string;
 }
 
+/** The commit on the default branch that took a merged pull request back. */
+export interface ActionRevert {
+  commit: string;
+  url?: string;
+  /** The pull request the revert came through, where GitHub links one. */
+  pullRequest?: number;
+  pullRequestUrl?: string;
+  at?: string;
+}
+
 export interface ActionPullRequest {
   repository: string;
   number?: number;
   url?: string;
   state?: string;
+  /** Set once the manager read the pull request reverted. */
+  revert?: ActionRevert;
+}
+
+/** The actor withdrawing a merged action, with the reason. */
+export interface ActionWithdrawal {
+  by: string;
+  reason: string;
+  at?: string;
 }
 
 export interface ActionApproval {
@@ -260,6 +291,7 @@ export interface Action {
       installations?: { name: string; state?: string; message?: string }[];
     };
     result?: { state?: ActionStateName; message?: string; at?: string };
+    withdrawal?: ActionWithdrawal;
   };
 }
 

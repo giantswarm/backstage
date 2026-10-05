@@ -537,8 +537,8 @@ unused and its removal is that repository's follow-up.
 
 ## The installation scope
 
-The five tabs of the section — Sessions, Agents, Models, Usage and the muster
-plugin's MCP Servers — share **one installation scope**: `'all'` (the default) or
+The six tabs of the section — Sessions, Agents, Models, the muster plugin's
+MCP Servers and Workflows, and Usage — share **one installation scope**: `'all'` (the default) or
 one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through
 `useSyncExternalStore`, not as a React context: the muster section is a
@@ -590,7 +590,8 @@ a context could not cross the boundary. The store is the contract.
   rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
-  the MCP Servers tab shows the home muster — one muster is one aggregator —
+  the MCP Servers and Workflows tabs show the home muster — one muster is one
+  aggregator —
   and under a pinned installation that muster; `MusterInstanceProvider` reads
   the scope instead of owning `?installation=`, its picker pins the shared
   scope, and it writes no default back any more.
@@ -2448,8 +2449,8 @@ portal and the tool agree:
 The **deciding** entry is the platform Harness named by the admission label when it
 reports, else the readiest of the others — sessions started from the portal run on
 the platform Harness, so another Harness being ready does not make the agent ready.
-Its verdict is the agent's: `ready`, `notReady` (progressing), `notAccepted`
-(failed), `pending`. Two more rules complete the picture:
+Its verdict is the agent's: `ready`, `notReady` (progressing), `failed`,
+`pending`. Two more rules complete the picture:
 
 - **Not admitted** — `status.harnesses[]` is empty while `status.observedGeneration`
   equals `metadata.generation`: the controller has seen the current spec and no
@@ -2574,7 +2575,7 @@ durable view of the same verdict.
   to the gs deployment details page, where the release's Flux status already
   lives), and the agent's tool bindings: each same-namespace `RemoteMCPServer` with
   its allowlist (`tools`) and whether calls need approval (`requireApproval`), the
-  gateway carrier linking to muster's Tool Explorer, and each template invoked as a
+  gateway carrier linking to muster's MCP Servers tab, and each template invoked as a
   tool (`agent.templateRef`) linking to its own page.
 - **System prompt** — `spec.systemPrompt`, copyable. An unset value says so
   explicitly, naming the ConfigMap key when the prompt comes from
@@ -3289,7 +3290,12 @@ router the contributed _array_ rather than a fragment, because it has to know
 whether anything was contributed at all in order to leave the tab out. Neither
 plugin
 depends on the other, which is the same mechanism muster already uses to put its
-"MCP Servers" tab on `page:agent-platform`, one level deeper.
+"MCP Servers" and "Workflows" tabs on `page:agent-platform`, one level deeper.
+
+The page orders its tabs itself, by `AGENT_PLATFORM_TAB_ORDER`
+(`lib/tabOrder.ts`): attach order cannot interleave two plugins' tabs, and an
+extension a deployment names in its own `app.extensions` would attach first. A
+tab the list does not know sorts before Usage, which closes the row.
 
 An import would instead pull muster's whole bundle into the Usage tab even where
 muster is switched off, and would leave the section with no extension id to
@@ -3298,8 +3304,6 @@ commented on both ends, because a cross-plugin coupling by string fails
 silently. If a second contributor ever appears, promote it to a blueprint
 exported from an `alpha` entry point, mirroring
 `plugins/flux-react/src/alpha/blueprints/`.
-
-`/agent-platform/muster/usage` redirects here, preserving the query string.
 
 ### What it cannot show
 

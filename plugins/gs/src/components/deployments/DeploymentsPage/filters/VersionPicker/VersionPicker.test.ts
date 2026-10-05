@@ -27,6 +27,15 @@ describe('compareVersionOptions', () => {
     ]);
   });
 
+  it('reads the first version in a value with a prefix', () => {
+    const input = [opt('chart-1.10.0'), opt('chart-1.9.0'), opt('1.0.0')];
+    expect(input.sort(compareVersionOptions).map(o => o.value)).toEqual([
+      '1.0.0',
+      'chart-1.9.0',
+      'chart-1.10.0',
+    ]);
+  });
+
   it('sorts non-semver strings alphabetically after semver versions', () => {
     const input = [opt('banana'), opt('1.0.0'), opt('apple')];
     expect(input.sort(compareVersionOptions).map(o => o.value)).toEqual([

@@ -1,0 +1,1 @@
+export { useOnDialogOpen } from './useOnDialogOpen';

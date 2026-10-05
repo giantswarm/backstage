@@ -199,7 +199,7 @@ export type ToolsetResolutionListProps = {
   resolution: ToolsetResolution;
   /** The installation's MCPServer CRs, for the grouping. */
   servers: ServerInfo[];
-  /** Where a tool name links — the Tool Explorer, when the muster plugin routes are bound. */
+  /** Where a tool name links — its page beneath its MCP server, when the muster plugin routes are bound. */
   toolHref?: (name: string) => string | undefined;
   /** What to say when the toolset resolves to nothing at all. */
   emptyText?: string;

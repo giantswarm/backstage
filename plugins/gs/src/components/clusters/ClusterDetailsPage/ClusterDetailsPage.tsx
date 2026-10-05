@@ -1,3 +1,4 @@
+import { ReactElement } from 'react';
 import { AsyncClusterProvider } from './useCurrentCluster';
 import { ClusterLayout } from '../ClusterLayout';
 import { ClusterApps } from '../cluster-details/ClusterApps';
@@ -13,11 +14,16 @@ import {
   ErrorsProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-export const ClusterDetailsPage = () => {
+export type ClusterDetailsPageProps = {
+  /** Header actions other plugins attach (Delete); they read the cluster with `useClusterPageTarget`. */
+  actions?: ReactElement[];
+};
+
+export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
   return (
     <QueryClientProvider>
       <AsyncClusterProvider>
-        <ClusterLayout>
+        <ClusterLayout actions={actions}>
           <ClusterLayout.Route path="/" title="Overview">
             <ErrorsProvider>
               <ClusterOverview />

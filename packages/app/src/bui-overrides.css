@@ -15,3 +15,12 @@
   overflow-y: auto;
   max-height: min(320px, 60vh);
 }
+
+/*
+ * bui's Switch lays its track and label out in a flex row without keeping the
+ * track's width, so a long label squeezes the 2rem track narrower than the
+ * thumb's travel and the selected thumb sits outside it.
+ */
+.bui-SwitchIndicator {
+  flex-shrink: 0;
+}

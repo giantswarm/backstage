@@ -1,5 +1,5 @@
 import { TableColumn } from '@backstage/core-components';
-import semver from 'semver';
+import { Version } from '@giantswarm/semver-ts';
 
 export function sortAndFilterOptions<T extends object>(
   fn: (item: T) => string | undefined,
@@ -24,10 +24,33 @@ export function stringCompareFilter<T>(fn: (item: T) => string | undefined) {
   };
 }
 
-export function semverCompareSort<T>(fn: (item: T) => string | undefined) {
+/**
+ * Returns a comparator that sorts items by the version `fn` reads from them,
+ * oldest first or, with `descending`, newest first. Items without a version
+ * sort last either way.
+ */
+export function semverCompareSort<T>(
+  fn: (item: T) => string | undefined,
+  options: { descending?: boolean } = {},
+) {
+  const direction = options.descending ? -1 : 1;
+  // A sort compares each value many times; parse each one once.
+  const parsed = new Map<string, Version | null>();
+  const parse = (value: string | undefined): Version | null => {
+    if (!value) {
+      return null;
+    }
+    let version = parsed.get(value);
+    if (version === undefined) {
+      version = Version.tryParse(value);
+      parsed.set(value, version);
+    }
+    return version;
+  };
+
   return (a: T, b: T) => {
-    const versionA = semver.valid(fn(a));
-    const versionB = semver.valid(fn(b));
+    const versionA = parse(fn(a));
+    const versionB = parse(fn(b));
 
     if (!versionA && !versionB) {
       return 0;
@@ -41,6 +64,6 @@ export function semverCompareSort<T>(fn: (item: T) => string | undefined) {
       return -1;
     }
 
-    return semver.compare(versionA, versionB);
+    return direction * versionA.compare(versionB);
   };
 }

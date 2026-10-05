@@ -8,6 +8,7 @@ export * from './useSelfSubjectAccessReview';
 export * from './utils/createResource';
 export * from './utils/deleteResource';
 export * from './utils/fetchResourceList';
+export * from './utils/k8sResponseError';
 export * from './utils/patchResource';
 export * from './utils/queries';
 export * from './utils/queryPersistence';

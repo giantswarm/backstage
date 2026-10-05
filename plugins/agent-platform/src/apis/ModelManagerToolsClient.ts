@@ -69,7 +69,7 @@ export type ServeRequest = {
   backend?: string;
   /** kserve: `split` across the nodes of a fast link, or `copies` (the default). */
   placement?: ModelManagerPlacement;
-  /** kserve, placement `split`: the nodes to split across; default the recommended fast link's. */
+  /** kserve: placement `split`, the nodes to split across (default the recommended fast link's); placement `copies`, one copy on each. */
   nodes?: string[];
   /** kserve, one copy: the node to pin it to; default any node that fits. */
   node?: string;

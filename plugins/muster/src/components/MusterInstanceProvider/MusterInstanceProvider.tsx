@@ -23,9 +23,8 @@ import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
 
 // A light background refetch so the live health reads (per-MC pills, the
-// "Servers healthy" stat, fleet coverage) don't drift silently from the CRD
-// between page loads. Configured once here so both the dashboard and the
-// MCP-servers manager inherit it (ADR D4). The reads are trivially cheap once
+// healthy count) don't drift silently from the CRD between page loads.
+// Configured once here so every view inherits it (ADR D4). The reads are trivially cheap once
 // the cluster auth is warm; the manual refresh control covers the gap between
 // intervals.
 const HEALTH_REFETCH_INTERVAL_MS = 30_000;
@@ -65,7 +64,7 @@ export type MusterInstance = {
    * home installation -- could not be asked whether it runs muster: its
    * inventory probe failed (gs `selectInventoryFailure`), with a 401 the
    * person's token cannot repair, a 403 or another error. When that leaves the
-   * section without an installation, `MusterSection` renders the gate that
+   * section without an installation, `MusterSubPage` renders the gate that
    * explains it instead of a view. Undefined while the probe is pending or
    * once it answered.
    */
@@ -90,10 +89,11 @@ export type MusterInstance = {
   /** Workflow CRs of the active instance. */
   workflows: MusterWorkflow[];
   isLoading: boolean;
-  /** Epoch-ms of the most recent successful CRD read, or undefined while cold. */
-  dataUpdatedAt: number | undefined;
-  /** Whether a (background or manual) health refetch is currently in flight. */
-  isRefreshing: boolean;
+  /**
+   * Epoch-ms of the most recent successful MCPServer read alone (workflows
+   * left out), for a caller that must know the server list postdates a write.
+   */
+  mcpServersUpdatedAt?: number;
   /** Re-fetch the live CRD reads on demand (manual refresh / error retry). */
   retry: () => void;
 };
@@ -256,7 +256,6 @@ export const MusterInstanceProvider = ({
     resources: workflows,
     errors: workflowErrors,
     retry: retryWorkflows,
-    queries: workflowQueries,
   } = useResources(
     clusters,
     MusterWorkflow,
@@ -266,24 +265,14 @@ export const MusterInstanceProvider = ({
     },
   );
 
-  // Freshness surfaced from the underlying react-query state: the newest
-  // successful read across both CRD fan-outs, and whether any read is in
-  // flight. The FreshnessIndicator turns these into "updated Xs ago" + a
-  // spinner on the manual refresh control (ADR D4).
-  const dataUpdatedAt = useMemo(() => {
-    const times = [...mcpServerQueries, ...workflowQueries]
+  // When the server list was last read, for a caller that must know it
+  // postdates a write (the registration wizard's verify step).
+  const mcpServersUpdatedAt = useMemo(() => {
+    const times = mcpServerQueries
       .map(({ query }) => query.dataUpdatedAt)
       .filter(t => t > 0);
     return times.length > 0 ? Math.max(...times) : undefined;
-  }, [mcpServerQueries, workflowQueries]);
-
-  const isRefreshing = useMemo(
-    () =>
-      [...mcpServerQueries, ...workflowQueries].some(
-        ({ query }) => query.isFetching,
-      ),
-    [mcpServerQueries, workflowQueries],
-  );
+  }, [mcpServerQueries]);
 
   const errors = useMemo(
     () => [...mcpServerErrors, ...workflowErrors],
@@ -325,8 +314,7 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingServers &&
           mcpServers.length === 0),
-      dataUpdatedAt,
-      isRefreshing,
+      mcpServersUpdatedAt,
       retry: () => {
         retryServers();
         retryWorkflows();
@@ -347,8 +335,7 @@ export const MusterInstanceProvider = ({
       mcpServers,
       workflows,
       isLoadingServers,
-      dataUpdatedAt,
-      isRefreshing,
+      mcpServersUpdatedAt,
       retryServers,
       retryWorkflows,
     ],

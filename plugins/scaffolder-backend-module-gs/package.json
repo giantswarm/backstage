@@ -29,6 +29,7 @@
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
     "@backstage/plugin-scaffolder-node": "backstage:^",
+    "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "@kubernetes/client-node": "^2.0.0",
     "js-yaml": "^5.0.0"
   },

@@ -1,12 +1,55 @@
 import {
   coreServices,
   createServiceFactory,
+  RootConfigService,
 } from '@backstage/backend-plugin-api';
 import { format, transports } from 'winston';
 import Sentry from 'winston-sentry-log';
 import { WinstonLogger } from '@backstage/backend-defaults/rootLogger';
 import { createConfigSecretEnumerator } from '@backstage/backend-defaults/rootConfig';
-import { normalizeSentryEvent } from './normalizeSentryEvent';
+import { normalizeSentryEvent, SentryEvent } from './normalizeSentryEvent';
+import { isStartupPollFailure, STARTUP_REQUEST_FAILURE } from './startupRace';
+
+/**
+ * The options of the Sentry transport, passed to `Sentry.init` as they are;
+ * `undefined` when backend Sentry is not configured.
+ */
+export function getSentryTransportConfig(config: RootConfigService) {
+  const sentryConfig = config.getOptionalConfig('backend.errorReporter.sentry');
+  if (!sentryConfig) {
+    return undefined;
+  }
+  return {
+    dsn: sentryConfig.getString('dsn'),
+    environment: sentryConfig.getString('environment'),
+    release:
+      sentryConfig.getOptionalString('releaseVersion') ??
+      config.getOptionalString('app.releaseVersion'),
+    // A release would otherwise turn on one release-health session per
+    // backend process.
+    autoSessionTracking: false,
+    tracesSampleRate: sentryConfig.getNumber('tracesSampleRate'),
+    ignoreErrors: [
+      /^Index for techdocs was not created: indexer received 0 documents$/,
+      // Benign warning from @pagerduty/backstage-plugin-backend when we
+      // use the legacy single-token config (`pagerDuty.apiToken`) instead
+      // of the newer `pagerDuty.accounts` format. PagerDuty works fine —
+      // the plugin just logs this and falls back to the legacy path. We
+      // can't migrate to `accounts`: the plugin's single-account branch
+      // never sets its `fallbackEndpointConfig`, so any request without an
+      // explicit `account` (which is what our WhoIsOnCallEntityCard sends)
+      // throws when resolving the API base URL. See giantswarm/giantswarm#37085.
+      /^No PagerDuty accounts configuration found in config file\. Reverting to legacy configuration\.$/,
+      // A request that reached the backend before it finished starting up;
+      // the caller retries. See giantswarm/giantswarm#37351.
+      STARTUP_REQUEST_FAILURE,
+    ],
+    // The events poll loop's startup failures need the event's cause, which
+    // `ignoreErrors` cannot see.
+    beforeSend: <T extends SentryEvent>(event: T) =>
+      isStartupPollFailure(event) ? null : normalizeSentryEvent(event),
+  };
+}
 
 export const rootLogger = createServiceFactory({
   service: coreServices.rootLogger,
@@ -15,32 +58,9 @@ export const rootLogger = createServiceFactory({
   },
   async factory({ config }) {
     const trasporters: any[] = [new transports.Console()];
-    const logConfig = config.getOptionalConfig('backend.errorReporter.sentry');
-    if (logConfig) {
-      trasporters.push(
-        new Sentry({
-          config: {
-            dsn: logConfig.getString('dsn'),
-            environment: logConfig.getString('environment'),
-            releaseVersion: logConfig.getString('releaseVersion'),
-            tracesSampleRate: logConfig.getNumber('tracesSampleRate'),
-            ignoreErrors: [
-              /^Index for techdocs was not created: indexer received 0 documents$/,
-              // Benign warning from @pagerduty/backstage-plugin-backend when we
-              // use the legacy single-token config (`pagerDuty.apiToken`) instead
-              // of the newer `pagerDuty.accounts` format. PagerDuty works fine —
-              // the plugin just logs this and falls back to the legacy path. We
-              // can't migrate to `accounts`: the plugin's single-account branch
-              // never sets its `fallbackEndpointConfig`, so any request without an
-              // explicit `account` (which is what our WhoIsOnCallEntityCard sends)
-              // throws when resolving the API base URL. See giantswarm/giantswarm#37085.
-              /^No PagerDuty accounts configuration found in config file\. Reverting to legacy configuration\.$/,
-            ],
-            beforeSend: normalizeSentryEvent,
-          },
-          level: 'warn',
-        }),
-      );
+    const sentryConfig = getSentryTransportConfig(config);
+    if (sentryConfig) {
+      trasporters.push(new Sentry({ config: sentryConfig, level: 'warn' }));
     }
 
     const logger = WinstonLogger.create({

@@ -31,7 +31,9 @@ import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
 import {
+  AnyControlPlane,
   ControlPlane,
+  findControlPlaneModel,
   getErrorMessage,
   getIncompatibilityMessage,
   useResource,
@@ -107,15 +109,22 @@ export function ClusterAboutCard() {
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
+  // A Cluster may have no control plane reference yet (one still being
+  // created, or an imported one). Only the Kubernetes version depends on it,
+  // so that reads as not available and the rest of the card renders.
   const controlPlaneRef = cluster.getControlPlaneRef();
-  if (!controlPlaneRef) {
-    throw new Error(
-      'There is no control plane reference defined in the cluster resource.',
-    );
-  }
+  const controlPlaneName = controlPlaneRef?.name ?? '';
+  const controlPlaneNamespace = controlPlaneRef?.namespace;
 
-  const { name: controlPlaneName, namespace: controlPlaneNamespace } =
-    controlPlaneRef;
+  // The reference decides which control plane kind to read: a
+  // KubeadmControlPlane, or the AzureASOManagedControlPlane of an AKS
+  // cluster. A kind without a model in CONTROL_PLANE_MODELS (an EKS cluster's
+  // AWSManagedControlPlane, say) would only 404, so its fetch stays disabled
+  // and the Kubernetes version reads as not available.
+  const ControlPlaneModel = controlPlaneRef
+    ? findControlPlaneModel(controlPlaneRef)
+    : undefined;
+  const hasSupportedControlPlane = ControlPlaneModel !== undefined;
 
   const {
     resource: controlPlane,
@@ -123,27 +132,37 @@ export function ClusterAboutCard() {
     errors: controlPlaneErrors,
     error: controlPlaneError,
     incompatibilities: controlPlaneIncompatibilities,
-  } = useResource(installationName, ControlPlane, {
-    name: controlPlaneName,
-    namespace: controlPlaneNamespace,
-  });
+  } = useResource<AnyControlPlane>(
+    installationName,
+    ControlPlaneModel ?? ControlPlane,
+    {
+      name: controlPlaneName,
+      namespace: controlPlaneNamespace,
+    },
+    { enabled: hasSupportedControlPlane },
+  );
 
   let controlPlaneErrorMessage;
   if (controlPlaneError) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
-      resourceKind: ControlPlane.kind,
+      resourceKind: (ControlPlaneModel ?? ControlPlane).kind,
       resourceName: controlPlaneName,
       resourceNamespace: controlPlaneNamespace,
     });
   }
-  if (controlPlaneIncompatibilities[0]) {
+  // A disabled query still returns incompatibilities from ControlPlane
+  // discovery that another page has cached. The hook cannot tell whether a
+  // caller disabled its query to mean "not yet" or "does not apply", so the
+  // card keeps them out itself when there is no supported control plane to
+  // read.
+  if (hasSupportedControlPlane && controlPlaneIncompatibilities[0]) {
     controlPlaneErrorMessage = getIncompatibilityMessage(
       controlPlaneIncompatibilities[0],
     );
   }
 
-  useShowErrors(controlPlaneErrors);
+  useShowErrors(hasSupportedControlPlane ? controlPlaneErrors : null);
 
   const clusterType = calculateClusterType(cluster);
   const description = getClusterDescription(cluster);
@@ -245,14 +264,15 @@ export function ClusterAboutCard() {
         </AboutField>
 
         <ClusterSwitch
-          renderAWS={() => (
+          renderAWS={infrastructureRef => (
             <AboutField label="AWS account">
               <AboutFieldValue>
-                <AWSAccountField />
+                <AWSAccountField infrastructureRef={infrastructureRef} />
               </AboutFieldValue>
             </AboutField>
           )}
           renderAzure={() => null}
+          renderAzureManaged={() => null}
           renderVSphere={() => null}
           renderVCD={() => null}
         />

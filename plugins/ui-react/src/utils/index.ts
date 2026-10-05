@@ -15,3 +15,4 @@ export {
 } from './chartPalette';
 export { stopRowPress } from './rowPress';
 export { MENU_WIDTH } from './menuWidth';
+export { createMarkdownLinkResolver } from './resolveMarkdownLink';

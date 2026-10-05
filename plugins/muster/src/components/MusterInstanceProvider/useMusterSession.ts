@@ -41,6 +41,13 @@ export type MusterSession = {
   connecting: boolean;
   /** Re-run the token mint for the active installation, then re-probe. */
   connect: () => Promise<void>;
+  /**
+   * Every tool muster offers the session, as the probe reports it. Absent
+   * without a session, while the probe is in flight, or when it failed.
+   */
+  toolCount?: number;
+  /** True while the probe that yields {@link toolCount} has not answered. */
+  toolCountPending?: boolean;
 };
 
 /**
@@ -113,7 +120,7 @@ export function unreachableFailure(
 
 /**
  * Whether the session's only problem is that the backend cannot reach the
- * installation's muster from this portal. The live-MCP screens (tool explorer,
+ * installation's muster from this portal. The live-MCP screens (a server's Tools tab, a tool page,
  * MCP usage, the runtime state on the servers page) render the session gate's
  * "not reachable" note instead of their content when this is true; the
  * CRD-backed screens are unaffected. One predicate, so every screen agrees.
@@ -200,5 +207,13 @@ export function useMusterSession(): MusterSession {
     }
   }, [musterApi, activeInstallation, refetch, unreachable]);
 
-  return { authenticated, pending, failure, connecting, connect };
+  return {
+    authenticated,
+    pending,
+    failure,
+    connecting,
+    connect,
+    toolCount: authenticated ? probe?.total : undefined,
+    toolCountPending: enabled && status === 'pending',
+  };
 }

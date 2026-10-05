@@ -73,9 +73,8 @@ export function familyToolGroup(servers: MCPServer[]): ToolGroupKey {
  * never an empty or broken page. Every group is always present, possibly with
  * no rows, so callers render a stable set of sections.
  *
- * Shared by the MCP-servers manager and the dashboard's capability view so
- * both group the fleet identically; fleet coverage reads the family rows
- * across all groups through {@link familyGroups}.
+ * The MCP-servers manager reads the family rows across all groups through
+ * {@link familyGroups} to measure each family's fleet coverage.
  */
 export function partitionServers(servers: MCPServer[]): ToolGroupPartition[] {
   const families = new Map<string, MCPServer[]>();
@@ -254,44 +253,6 @@ export function orderPresenceDegradedFirst(
 }
 
 /**
- * How many cluster pills a collapsed family row shows before the healthy
- * remainder folds into a "+N more" count. Eight keeps the row on one line at
- * the pages' 1024px reading width even when two of the pills carry a state
- * ("<name> Failed" is half again as wide as "<name>"); a family across two
- * dozen clusters used to wrap onto a second and third line.
- */
-export const SUMMARY_PILL_LIMIT = 8;
-
-export type PresenceSummary = {
-  /** Pills to render: every degraded cluster, then healthy ones while room remains. */
-  shown: McPresence[];
-  /** Healthy clusters folded into the "+N more" count. */
-  folded: number;
-};
-
-/**
- * The pills a collapsed family row shows. Degraded clusters are never folded
- * (they are what the row is for, even when there are more than `limit` of
- * them); healthy clusters fill the remaining room. A single healthy leftover
- * is shown rather than folded -- "+1 more" costs the same width as the pill.
- */
-export function summarizePresence(
-  presence: McPresence[],
-  limit = SUMMARY_PILL_LIMIT,
-): PresenceSummary {
-  const ordered = orderPresenceDegradedFirst(presence);
-  const degraded = ordered.filter(p => p.severity !== 'ok');
-  const healthy = ordered.filter(p => p.severity === 'ok');
-  const room = Math.max(0, limit - degraded.length);
-  const shownHealthy =
-    healthy.length <= room + 1 ? healthy : healthy.slice(0, room);
-  return {
-    shown: [...degraded, ...shownHealthy],
-    folded: healthy.length - shownHealthy.length,
-  };
-}
-
-/**
  * Every management cluster any standard family is federated across, sorted:
  * the fleet a family's coverage is measured against. Servers without the
  * management-cluster label contribute nothing here.
@@ -341,4 +302,57 @@ export function familyCoverage(
     degraded: present.filter(p => p.severity !== 'ok'),
     fleetSize: fleet.length,
   };
+}
+
+/**
+ * The `:server` segment of muster's own server page: its core tools
+ * (`core_*`, `workflow_*`) are children of muster the way every other tool is a
+ * child of the server offering it. A CR literally named `muster` is shadowed by
+ * it, as one named `new` is by the registration wizard.
+ */
+export const MUSTER_SERVER_KEY = 'muster';
+
+/** What a server page shows: a list row, or muster itself. */
+export type ServerPageRow = ServerRow | { kind: 'core' };
+
+/**
+ * The `:server` segment of a row's page: the family name for a Server family,
+ * the CR name for a singular server, {@link MUSTER_SERVER_KEY} for muster.
+ */
+export function serverRowKey(row: ServerPageRow): string {
+  switch (row.kind) {
+    case 'family':
+      return row.family;
+    case 'server':
+      return row.server.getName();
+    default:
+      return MUSTER_SERVER_KEY;
+  }
+}
+
+/**
+ * The row a server page's `:server` segment names on this installation, or
+ * undefined when the installation has no such server. A family wins over a
+ * singular CR of the same name: the family's page is the one every family link
+ * points at.
+ */
+export function findServerRow(
+  servers: MCPServer[],
+  key: string,
+): ServerPageRow | undefined {
+  if (key === MUSTER_SERVER_KEY) {
+    return { kind: 'core' };
+  }
+  const members = servers.filter(s => s.getFamily() === key);
+  if (members.length > 0) {
+    return {
+      kind: 'family',
+      family: key,
+      servers: [...members].sort((a, b) =>
+        a.getName().localeCompare(b.getName()),
+      ),
+    };
+  }
+  const server = servers.find(s => !s.getFamily() && s.getName() === key);
+  return server ? { kind: 'server', server } : undefined;
 }

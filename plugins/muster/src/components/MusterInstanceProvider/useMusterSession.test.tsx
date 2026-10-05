@@ -35,8 +35,6 @@ function instance(overrides: Partial<MusterInstance> = {}): MusterInstance {
     mcpServers: [],
     workflows: [],
     isLoading: false,
-    dataUpdatedAt: undefined,
-    isRefreshing: false,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
     ...overrides,
@@ -78,12 +76,16 @@ describe('useMusterSession', () => {
     expect(result.current.pending).toBe(true);
     expect(result.current.authenticated).toBe(false);
     expect(result.current.failure).toBeUndefined();
+    expect(result.current.toolCountPending).toBe(true);
+    expect(result.current.toolCount).toBeUndefined();
 
     act(() => resolveProbe(PROBE_OK));
 
     await waitFor(() => expect(result.current.authenticated).toBe(true));
     expect(result.current.pending).toBe(false);
     expect(result.current.failure).toBeUndefined();
+    expect(result.current.toolCountPending).toBe(false);
+    expect(result.current.toolCount).toBe(484);
     expect(api.filterTools).toHaveBeenCalledWith({
       installation: 'golem',
       limit: 1,
@@ -115,6 +117,8 @@ describe('useMusterSession', () => {
     });
     expect(result.current.authenticated).toBe(false);
     expect(result.current.pending).toBe(false);
+    expect(result.current.toolCount).toBeUndefined();
+    expect(result.current.toolCountPending).toBe(false);
   });
 
   it('reports a failed mint with its cause', async () => {
@@ -232,6 +236,9 @@ describe('useMusterSession', () => {
         message:
           'muster on golem is not reachable from this portal (no answer within 3000 ms).',
       });
+
+      expect(result.current.toolCount).toBeUndefined();
+      expect(result.current.toolCountPending).toBe(false);
 
       // Give a would-be probe every chance to fire: it must not.
       await new Promise(resolve => setTimeout(resolve, 20));

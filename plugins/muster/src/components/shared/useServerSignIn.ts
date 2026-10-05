@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  QueryClient,
-} from '@tanstack/react-query';
+import { useQuery, useQueryClient, QueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef, ServerAuthStatus } from '../../apis';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
@@ -39,6 +35,16 @@ const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'auth_required',
   'reauth_required',
 ];
+
+/** Whether muster reports a server as waiting for this user's sign-in. */
+export function needsSignIn(status: ServerAuthStatus): boolean {
+  return NEEDS_LOGIN.includes(status.status);
+}
+
+/** The per-installation `auth://status` read every sign-in affordance shares. */
+export function authStatusQueryKey(installation?: string) {
+  return ['muster', 'auth-status', installation] as const;
+}
 
 /**
  * Muster's own `signed_out` confirmation is written for CLI users -- it ends
@@ -216,7 +222,7 @@ export function useServerSignIn(
   const signInTabOpened = pending?.opened ?? false;
 
   const { data, error: statusError } = useQuery({
-    queryKey: ['muster', 'auth-status', installation],
+    queryKey: authStatusQueryKey(installation),
     queryFn: () => musterApi.getAuthStatus(installation),
     enabled: Boolean(installation),
     refetchInterval: isWaiting ? pollIntervalMs : false,
@@ -258,7 +264,9 @@ export function useServerSignIn(
   // only the click that opened the tab ever needs the handle again.
   const signInTabRef = useRef<Window | null>(null);
 
-  const signIn = useMutation({
+  const signIn = useTrackedMutation({
+    event: null,
+    untrackedReason: 'An authentication step, not a portal action.',
     mutationFn: () => musterApi.signInServer(serverName, installation),
     onSuccess: result => {
       const tab = signInTabRef.current;
@@ -310,7 +318,9 @@ export function useServerSignIn(
   // died with the pod, leaving the row claiming "Sign out" for a session that
   // was in fact signed out. The outcome is unknown either way, so re-read the
   // truth instead of trusting the stale row.
-  const signOut = useMutation({
+  const signOut = useTrackedMutation({
+    event: null,
+    untrackedReason: 'An authentication step, not a portal action.',
     mutationFn: () => musterApi.signOutServer(serverName, installation),
     onSuccess: result => {
       if (result.status !== 'error') {

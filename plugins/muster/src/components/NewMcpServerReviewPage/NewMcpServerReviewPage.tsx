@@ -1,14 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
-import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
-import { musterApiRef } from '../../apis';
 import {
   newMcpServerRouteRef,
   newMcpServerAuthRouteRef,
@@ -23,6 +20,8 @@ import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { SessionGate } from '../shared';
+import { withEditParam } from '../NewMcpServerEditGate';
+import { useRegisterMcpServer } from './useRegisterMcpServer';
 
 const useStyles = makeStyles(theme => ({
   column: {
@@ -106,65 +105,54 @@ function SummaryItem({
 /**
  * Step 3 (Review & register) of the MCP server registration wizard: summary
  * strip, the full generated server definition, a collapsed manual fallback
- * (manifest + CLI command), then registration through muster's existing
- * validate + create core tools over the per-user MCP session — the same live
- * write path the raw-JSON dialog and the CLI use. Validate runs as a dry-run
- * before anything is written. When this wizard run already registered the CR
- * (the verify step's "Edit details" loop), saving is an update to that same CR
- * — never a delete-and-recreate.
+ * (manifest + CLI command), then registration through `useRegisterMcpServer`.
+ * When this wizard run already registered the CR (the verify step's "Edit
+ * details" loop), saving is an update to that same CR.
  */
 export function NewMcpServerReviewPage() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const musterApi = useApi(musterApiRef);
-  const queryClient = useQueryClient();
   const detailsLink = useRouteRef(newMcpServerRouteRef);
   const authLink = useRouteRef(newMcpServerAuthRouteRef);
   const verifyLink = useRouteRef(newMcpServerVerifyRouteRef);
-  const { state, definition, isComplete, registeredName, setRegisteredName } =
+  const { state, definition, isComplete, registeredName, markSaved } =
     useNewMcpServerForm();
   const session = useMusterSession();
   const { authenticated } = session;
 
   const isEdit = Boolean(registeredName);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const registration = useRegisterMcpServer();
+  const { mutate: register } = registration;
+  const busy = registration.isPending;
+  const error = registration.error
+    ? mutationErrorMessage(registration.error)
+    : undefined;
 
-  const onRegister = useCallback(async () => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      // Dry-run first: muster's own validation, so the definition is checked by
-      // the same authority that will apply it.
-      await musterApi.callTool(
-        'core_mcpserver_validate',
+  const onRegister = useCallback(() => {
+    register(
+      {
         definition,
-        state.installation,
-      );
-      await musterApi.callTool(
-        isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create',
-        definition,
-        state.installation,
-      );
-      setRegisteredName(definition.name);
-      // The CR exists now — refresh every muster read (server lists, tools) so
-      // the verify step opens on live data.
-      queryClient.invalidateQueries({ queryKey: ['muster'] });
-      if (verifyLink) {
-        navigate(verifyLink());
-      }
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+        installation: state.installation,
+        authMode: state.authMode,
+        isEdit,
+      },
+      {
+        onSuccess: () => {
+          // What was just written is the base of any further save in this run.
+          markSaved(definition);
+          if (verifyLink) {
+            navigate(withEditParam(verifyLink(), definition.name));
+          }
+        },
+      },
+    );
   }, [
-    musterApi,
+    register,
     definition,
     state.installation,
+    state.authMode,
     isEdit,
-    setRegisteredName,
-    queryClient,
+    markSaved,
     verifyLink,
     navigate,
   ]);
@@ -178,7 +166,9 @@ export function NewMcpServerReviewPage() {
         <Button
           variant="tertiary"
           isDisabled={busy}
-          onPress={() => authLink && navigate(authLink())}
+          onPress={() =>
+            authLink && navigate(withEditParam(authLink(), registeredName))
+          }
         >
           Back
         </Button>
@@ -195,6 +185,7 @@ export function NewMcpServerReviewPage() {
       busy,
       authenticated,
       authLink,
+      registeredName,
       navigate,
       onRegister,
       busyLabel,
@@ -209,7 +200,12 @@ export function NewMcpServerReviewPage() {
 
   // A deep link with the form incomplete can't be reviewed — back to step 1.
   if (isRedirecting) {
-    return <Navigate to={detailsLink ? detailsLink() : '..'} replace />;
+    return (
+      <Navigate
+        to={detailsLink ? withEditParam(detailsLink(), registeredName) : '..'}
+        replace
+      />
+    );
   }
 
   const definitionJson = JSON.stringify(definition, null, 2);
@@ -225,7 +221,9 @@ export function NewMcpServerReviewPage() {
           color="secondary"
           className={classes.stepLabel}
         >
-          Step 3 of 4: Review &amp; register
+          {isEdit
+            ? 'Step 3 of 4: Review & save'
+            : 'Step 3 of 4: Review & register'}
         </Text>
         <Text
           as="h2"
@@ -233,7 +231,7 @@ export function NewMcpServerReviewPage() {
           weight="bold"
           className={classes.pageTitle}
         >
-          Review and register
+          {isEdit ? 'Review and save' : 'Review and register'}
         </Text>
         <Text as="p" color="secondary" className={classes.intro}>
           {isEdit ? (
@@ -286,28 +284,32 @@ export function NewMcpServerReviewPage() {
 
                 <details className={classes.details}>
                   <summary className={classes.summaryLine}>
-                    Register manually instead
+                    {isEdit
+                      ? 'Manage via GitOps instead'
+                      : 'Register manually instead'}
                   </summary>
                   <div className={classes.detailsBody}>
                     <Text variant="body-small" color="secondary">
-                      Prefer GitOps or the CLI? Commit the manifest to your
-                      management-clusters repo, or run the command against the
-                      installation.
+                      {isEdit
+                        ? 'Prefer GitOps? Commit the manifest to your management-clusters repo instead.'
+                        : 'Prefer GitOps or the CLI? Commit the manifest to your management-clusters repo, or run the command against the installation.'}
                     </Text>
                     <pre className={classes.codeBlock}>{manifestYaml}</pre>
                     {/* The CLI cannot express every definition this wizard can
                         compose: `muster create mcpserver` has no flags for
                         sigv4 signing or request metadata. Saying so beats
-                        printing a command that looks right and is rejected. */}
-                    {cliCommand ? (
-                      <pre className={classes.codeBlock}>{cliCommand}</pre>
-                    ) : (
-                      <Text variant="body-small" color="secondary">
-                        The muster CLI has no flags for this server&apos;s
-                        signing configuration or request metadata — use the
-                        manifest above, or register it here.
-                      </Text>
-                    )}
+                        printing a command that looks right and is rejected.
+                        An edit shows none: the command is a create. */}
+                    {!isEdit &&
+                      (cliCommand ? (
+                        <pre className={classes.codeBlock}>{cliCommand}</pre>
+                      ) : (
+                        <Text variant="body-small" color="secondary">
+                          The muster CLI has no flags for this server&apos;s
+                          signing configuration or request metadata — use the
+                          manifest above, or register it here.
+                        </Text>
+                      ))}
                   </div>
                 </details>
               </Flex>

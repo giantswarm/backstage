@@ -13,7 +13,7 @@ export interface SentryErrorReporterConfig {
   dsn: string;
   environment: string;
   tracePropagationTargets: string[];
-  releaseVersion: string;
+  releaseVersion?: string;
   tracesSampleRate: number;
 }
 
@@ -58,7 +58,9 @@ export class SentryErrorReporter implements ErrorReporterApi {
       errorReporter.initialize({
         dsn: sentryConfig.getString('dsn'),
         environment: sentryConfig.getString('environment'),
-        releaseVersion: sentryConfig.getString('releaseVersion'),
+        releaseVersion:
+          sentryConfig.getOptionalString('releaseVersion') ??
+          configApi.getOptionalString('app.releaseVersion'),
         tracesSampleRate: sentryConfig.getNumber('tracesSampleRate'),
         tracePropagationTargets: [`${backendBaseUrl}/api`],
       });

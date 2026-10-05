@@ -102,6 +102,9 @@ async function stageModelManager(
   const stub = await stubModelManagerTools(page, {
     list_backends: { backends: [KSERVE_POOL_BACKEND] },
     list_presets: { presets: L4_POOL_PRESETS },
+    // The pool launches its nodes on demand: none to pick from yet, so the
+    // lab's own nodes stay out of the staged pool's Serve dialog.
+    list_nodes: { nodes: [] },
     list_models: () => (served ? servedModels : { models: [] }),
     check_fit: poolFitAnswer,
     load_model: () => {

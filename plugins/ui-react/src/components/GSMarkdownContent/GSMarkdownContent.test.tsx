@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { renderInTestApp } from '@backstage/test-utils';
 import { GSMarkdownContent } from './GSMarkdownContent';
 
 describe('GSMarkdownContent', () => {
@@ -26,5 +27,51 @@ describe('GSMarkdownContent', () => {
     );
 
     expect(container.querySelector('.custom-class')).toBeInTheDocument();
+  });
+
+  it('resolves relative links against the source URL', async () => {
+    await renderInTestApp(
+      <GSMarkdownContent
+        content="See [the values](helm/trivy/values.yaml) and [below](#configuration)."
+        sourceUrl="https://raw.githubusercontent.com/giantswarm/trivy-app/refs/tags/v0.18.1/README.md"
+      />,
+    );
+
+    const valuesLink = screen.getByRole('link', { name: /the values/ });
+    expect(valuesLink).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/trivy-app/blob/refs/tags/v0.18.1/helm/trivy/values.yaml',
+    );
+    expect(valuesLink).toHaveAttribute('target', '_blank');
+    expect(valuesLink).toHaveAttribute('rel', 'noopener');
+    // In-page anchors stay on the page; the router adds the current path.
+    expect(screen.getByRole('link', { name: 'below' })).toHaveAttribute(
+      'href',
+      '/#configuration',
+    );
+  });
+
+  it('leaves relative links alone without a source URL', async () => {
+    await renderInTestApp(
+      <GSMarkdownContent content="See [the values](helm/trivy/values.yaml)." />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: /the values/ }),
+    ).not.toHaveAttribute('target');
+  });
+
+  it('renders an unsafe link as text when resolving against a source URL', async () => {
+    // common-mark skips rehype-sanitize, so only the link resolver guards it.
+    await renderInTestApp(
+      <GSMarkdownContent
+        dialect="common-mark"
+        content="[click](javascript:alert(1))"
+        sourceUrl="https://raw.githubusercontent.com/giantswarm/trivy-app/refs/tags/v0.18.1/README.md"
+      />,
+    );
+
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText('click')).toBeInTheDocument();
   });
 });

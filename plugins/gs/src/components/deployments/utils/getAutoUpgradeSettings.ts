@@ -1,3 +1,5 @@
+import { Constraints, Version } from '@giantswarm/semver-ts';
+
 export type AutoUpgradeMode =
   'no-upgrades' | 'patch-upgrades' | 'minor-upgrades' | 'major-upgrades';
 
@@ -8,41 +10,94 @@ const autoUpgradeLabels: Record<AutoUpgradeMode, string> = {
   'major-upgrades': 'Any',
 };
 
+type OciRepositoryRef = { semver?: string; tag?: string; digest?: string };
+
 /**
- * Derives automatic upgrade mode from an OCIRepository reference.
+ * The version a semver range starts from: the version Flux currently resolves
+ * it to, when that is known and inside the range, else the lowest version the
+ * range admits.
+ */
+function rangeBase(range: Constraints, currentVersion?: string) {
+  const current = currentVersion ? Version.tryParse(currentVersion) : null;
+  return current && range.check(current) ? current : range.minVersion();
+}
+
+/**
+ * Whether the range admits any version at or above `from` and, when given,
+ * below `below`: each of its `||` alternatives narrowed to those bounds.
+ */
+function admitsBetween(
+  range: Constraints,
+  from: string,
+  below?: string,
+): boolean {
+  const bounds = below ? `>=${from}, <${below}` : `>=${from}`;
+  const narrowed = range
+    .toString()
+    .split('||')
+    .map(alternative => `${alternative.trim() || '*'}, ${bounds}`)
+    .join(' || ');
+  return Boolean(Constraints.tryParse(narrowed)?.minVersion());
+}
+
+/**
+ * Derives the automatic upgrade mode of an OCIRepository reference: which
+ * upgrades Flux performs from the current version, read with the constraint
+ * semantics Flux uses (Masterminds/semver). As in Flux, a digest takes
+ * precedence over a semver range, and a pinned tag or digest, or a range that
+ * admits no newer version, means no automatic upgrades.
  *
- * Supports Masterminds/semver constraint syntax used by Flux:
- * - Tilde ranges (`~1.2.3`) and patch wildcards (`1.2.x`) → patch upgrades
- * - Caret ranges (`^1.2.3`) and minor wildcards (`1.x`, `1.x.x`) → minor and patch upgrades
- * - Comparison operators (`>=1.2.3`, `>1.2.3`) and full wildcards (`*`) → major, minor and patch upgrades
- * - No semver (pinned tag) → no automatic upgrades
+ * @param ref - The OCIRepository `spec.ref`
+ * @param currentVersion - The version Flux currently resolves the range to, if known
  */
 export function deriveAutoUpgradeMode(
-  ref: { semver?: string; tag?: string } | undefined,
+  ref: OciRepositoryRef | undefined,
+  currentVersion?: string,
 ): AutoUpgradeMode {
-  if (!ref?.semver) return 'no-upgrades';
+  if (ref?.digest) return 'no-upgrades';
 
-  const s = ref.semver.trim();
+  const range = ref?.semver ? Constraints.tryParse(ref.semver) : null;
+  const base = range ? rangeBase(range, currentVersion) : null;
+  if (!range || !base) return 'no-upgrades';
 
-  // Tilde range: ~1.2.3, ~1, ~2.3 → patch-level changes
-  if (s.startsWith('~')) return 'patch-upgrades';
+  const { major, minor, patch } = base;
+  const nextMajor = `${major + 1}.0.0`;
+  const nextMinor = `${major}.${minor + 1}.0`;
 
-  // Caret range: ^1.2.3, ^0.2.3 → minor-level changes
-  if (s.startsWith('^')) return 'minor-upgrades';
-
-  // Greater-than operators: >=1.2.3, >1.2.3 → major-level changes
-  if (s.startsWith('>=') || s.startsWith('>')) return 'major-upgrades';
-
-  // Patch-level wildcard: 1.2.x, 1.2.*, 1.2.X
-  if (/^\d+\.\d+\.[xX*]$/.test(s)) return 'patch-upgrades';
-
-  // Minor-level wildcard: 1.x, 1.*, 1.x.x, 1.*.*, 1.X, 1.X.X
-  if (/^\d+\.[xX*](\.[xX*])?$/.test(s)) return 'minor-upgrades';
-
-  // Full wildcard: *, x, X, x.x.x, *.*.*, X.X.X (and mixed)
-  if (/^[xX*](\.[xX*]){0,2}$/.test(s)) return 'major-upgrades';
-
+  if (admitsBetween(range, nextMajor)) return 'major-upgrades';
+  if (admitsBetween(range, nextMinor, nextMajor)) return 'minor-upgrades';
+  if (admitsBetween(range, `${major}.${minor}.${patch + 1}`, nextMinor)) {
+    return 'patch-upgrades';
+  }
   return 'no-upgrades';
+}
+
+/**
+ * Derives the chart version of an OCIRepository reference, with the precedence
+ * Flux uses: for a digest the tag, if any; for a semver range the version Flux
+ * currently resolves it to, else the lowest version the range admits; else the
+ * tag.
+ */
+export function deriveChartVersion(
+  ref: OciRepositoryRef | undefined,
+  currentVersion?: string,
+): string | undefined {
+  if (ref?.digest) return ref.tag;
+
+  const range = ref?.semver ? Constraints.tryParse(ref.semver) : null;
+  if (range) return rangeBase(range, currentVersion)?.toOriginalString();
+
+  return ref?.tag;
+}
+
+/**
+ * Reads the version from an OCIRepository `status.artifact.revision`:
+ * `1.2.3@sha256:…`, or `1.2.3/sha256:…` as written before Flux 2.0.
+ */
+export function versionFromRevision(
+  revision: string | undefined,
+): string | undefined {
+  return revision?.split(/[@/]/)[0] || undefined;
 }
 
 export function getAutoUpgradeLabel(mode: AutoUpgradeMode): string {

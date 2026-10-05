@@ -262,6 +262,44 @@ describe('MCPServer Ready condition and per-session auth', () => {
   });
 });
 
+describe('MCPServer.isReconcilePending', () => {
+  function withReady(
+    generation: number | undefined,
+    conditions: Array<Record<string, unknown>> | undefined,
+  ): MCPServer {
+    return new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'srv', generation },
+        spec: { type: 'streamable-http' },
+        status: { state: 'Connected', conditions },
+      } as never,
+      'gazelle',
+    );
+  }
+
+  it('is pending while the Ready condition trails the spec generation', () => {
+    expect(
+      withReady(3, [
+        { type: 'Ready', status: 'True', observedGeneration: 2 },
+      ]).isReconcilePending(),
+    ).toBe(true);
+    expect(
+      withReady(3, [
+        { type: 'Ready', status: 'True', observedGeneration: 3 },
+      ]).isReconcilePending(),
+    ).toBe(false);
+  });
+
+  it('claims nothing without a condition to tell by', () => {
+    expect(withReady(3, undefined).isReconcilePending()).toBe(false);
+    expect(
+      withReady(3, [{ type: 'Ready', status: 'True' }]).isReconcilePending(),
+    ).toBe(false);
+  });
+});
+
 describe('serversHealthSummary', () => {
   function fleet(healthy: number, unhealthy: number): MCPServer[] {
     return [
@@ -292,6 +330,26 @@ describe('serversHealthSummary', () => {
 
   it('warns once a meaningful fraction is unhealthy', () => {
     expect(serversHealthSummary(fleet(49, 6)).tone).toBe('warning');
+  });
+
+  it('counts deactivated servers apart, not as unhealthy', () => {
+    const deactivated = new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'off' },
+        spec: { type: 'streamable-http', suspended: true },
+        status: { state: 'Disconnected' },
+      } as never,
+      'gazelle',
+    );
+    const summary = serversHealthSummary([...fleet(8, 0), deactivated]);
+    expect(summary).toEqual({
+      healthy: 8,
+      total: 8,
+      deactivated: 1,
+      tone: 'ok',
+    });
   });
 
   it('is ok for an all-healthy or empty fleet', () => {

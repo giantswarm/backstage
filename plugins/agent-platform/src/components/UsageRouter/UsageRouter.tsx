@@ -60,8 +60,8 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
       {/* Inset the tab strip by the page gutter so it lines up with the level-1
           header tabs and the content below. `px="5"` is hand-matched to the
           horizontal padding the bui PluginHeader / Content apply (bui space-5 =
-          20px), the same value ModelsRouter and MusterSection use; if bui ever
-          changes that gutter all three have to follow. */}
+          20px), the same value ModelsRouter uses; if bui ever changes that
+          gutter both have to follow. */}
       <Box px="5">
         <Tabs>
           <TabList>

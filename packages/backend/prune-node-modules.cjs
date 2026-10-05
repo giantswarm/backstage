@@ -8,9 +8,6 @@
  *   - *.map source maps under node_modules (only read by debuggers).
  *   - *.d.ts / *.d.cts / *.d.mts under node_modules (only read by compilers)
  *     EXCEPT the config schema closure described below.
- *   - isolated-vm's bundled source tarball, C++ sources, vendored V8 headers,
- *     and the prebuilt bindings for every platform other than the one the
- *     image actually loads.
  *   - node-gyp, which is only invoked while yarn install compiles native
  *     modules, never at runtime.
  *
@@ -194,47 +191,6 @@ for (const file of candidates) {
   if (path.basename(file) === 'config.d.ts') keep.add(file);
 }
 
-// ---------------------------------------------------------------------------
-// isolated-vm: resolve the binding it actually loads (via its own
-// node-gyp-build, exactly like its entry point does), then drop the bundled
-// npm-pack tarball, the C++ sources, and every other platform's prebuilds.
-let isolatedVmFreed = 0;
-const isolatedVmDir = path.join(appDir, 'node_modules', 'isolated-vm');
-if (fs.existsSync(isolatedVmDir)) {
-  const ivmRequire = createRequire(path.join(isolatedVmDir, 'noop.js'));
-  const binding = ivmRequire('node-gyp-build').path(isolatedVmDir);
-  console.log(`prune-node-modules: isolated-vm binding is ${binding}`);
-  const extras = fs
-    .readdirSync(isolatedVmDir)
-    .filter(
-      name =>
-        (name.startsWith('isolated-vm-') && name.endsWith('.tgz')) ||
-        ['src', 'vendor', 'native-example'].includes(name),
-    )
-    .map(name => path.join(isolatedVmDir, name));
-  const prebuildsDir = path.join(isolatedVmDir, 'prebuilds');
-  if (fs.existsSync(prebuildsDir)) {
-    for (const name of fs.readdirSync(prebuildsDir)) {
-      const platformDir = path.join(prebuildsDir, name);
-      if (!binding.startsWith(platformDir + path.sep)) {
-        extras.push(platformDir);
-      }
-    }
-  }
-  for (const extra of extras) {
-    if (binding.startsWith(extra + path.sep) || binding === extra) {
-      fail(
-        `refusing to delete ${extra}, it contains the loaded binding ${binding}`,
-      );
-    }
-    isolatedVmFreed += treeSize(extra);
-    fs.rmSync(extra, { recursive: true, force: true });
-  }
-  if (!fs.existsSync(binding)) {
-    fail(`isolated-vm binding ${binding} vanished during pruning`);
-  }
-}
-
 function treeSize(p) {
   let stat;
   try {
@@ -273,7 +229,7 @@ for (const file of candidates) {
   try {
     stat = fs.lstatSync(file);
   } catch {
-    continue; // already gone with the isolated-vm/node-gyp removals above
+    continue; // already gone with the node-gyp removal above
   }
   prunedBytes += stat.size;
   fs.unlinkSync(file);
@@ -363,7 +319,7 @@ verify()
     console.log(
       `prune-node-modules: removed ${prunedCount} declaration/map files (${mb(
         prunedBytes,
-      )} MB), isolated-vm extras (${mb(isolatedVmFreed)} MB), node-gyp (${mb(
+      )} MB), node-gyp (${mb(
         nodeGypFreed,
       )} MB); kept ${keptCount} schema-closure files`,
     );

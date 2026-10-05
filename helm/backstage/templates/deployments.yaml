@@ -34,6 +34,9 @@ spec:
         app.kubernetes.io/instance: {{ .Chart.Name }}
         {{- include "labels.backstage" $ | nindent 8 }}
     spec:
+      {{- with include "backstage.podScheduling" . }}
+      {{- . | nindent 6 }}
+      {{- end }}
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -74,6 +77,10 @@ spec:
           args:
           {{- range .Values.backstage.args }}
             - {{ . | quote }}
+          {{- end }}
+          {{- if eq .Values.database.engine "postgresql" }}
+            - "--config"
+            - "app-config-database.yaml"
           {{- end }}
           {{- if .Values.backstage.appConfig }}
             - "--config"
@@ -117,6 +124,10 @@ spec:
             {{- end }}
           env:
             - name: VERSION
+              value: "{{ .Chart.AppVersion }}"
+            # `app.releaseVersion`: the pod loads only the chart's config
+            # files, never the image's app-config.yaml.
+            - name: APP_CONFIG_app_releaseVersion
               value: "{{ .Chart.AppVersion }}"
             {{- if eq .Values.database.engine "postgresql" }}
             - name: POSTGRES_HOST
@@ -221,6 +232,9 @@ spec:
             - name: database-server-ca
               mountPath: /app/database-ca-certificate/ca.crt
               subPath: ca.crt
+            - name: database-config
+              mountPath: "/app/app-config-database.yaml"
+              subPath: app-config-database.yaml
             {{- end }}
             {{- if .Values.pluginKeys }}
             {{- range .Values.pluginKeys }}
@@ -295,6 +309,9 @@ spec:
         - name: database-server-ca
           secret:
             secretName: {{ .Chart.Name }}-{{ .Values.database.postgresql.clusterNameSuffix }}-ca
+        - name: database-config
+          configMap:
+            name: {{ .Values.name }}-database-config
         {{- end }}
         {{- if .Values.pluginKeys }}
         {{- range .Values.pluginKeys }}
@@ -303,7 +320,3 @@ spec:
             secretName: {{ $.Values.name }}-plugin-key-{{ .keyId }}-secret
         {{- end }}
         {{- end }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}

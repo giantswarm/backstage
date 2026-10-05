@@ -327,13 +327,13 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
 /**
  * Severity order for the readiness column: ascending sorts worst-first, so one
  * click puts the agents that need attention at the top. Alphabetical order on
- * the label would be meaningless ("Not accepted" < "Not admitted" < "Not
- * ready" < "Pending" < "Ready" only by accident). Not admitted sorts first: it
+ * the label would be meaningless ("Failed" < "Not admitted" < "Not ready"
+ * < "Pending" < "Ready" puts the never-resolving state second). Not admitted sorts first: it
  * never resolves on its own.
  */
 const READINESS_SEVERITY: Record<AgentReadiness, number> = {
   notAdmitted: 0,
-  notAccepted: 1,
+  failed: 1,
   notReady: 2,
   pending: 3,
   ready: 4,

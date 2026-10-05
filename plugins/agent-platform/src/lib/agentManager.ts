@@ -135,6 +135,12 @@ export type ValidateAgentResult = {
   mode: 'create' | 'update';
   /** Every schema violation and precondition failure, in agent-manager's words. */
   errors?: string[];
+  /**
+   * Checks the dry run could not make, such as the name-clash check for a
+   * person who may not read the namespace's HelmReleases. They do not block
+   * the write.
+   */
+  notes?: string[];
   schemaVersion: string;
   schemaSource: string;
   manifests: AgentManifests;

@@ -141,7 +141,7 @@ describe('DocsUrlPreparer', () => {
     expect(mkdocs.edit_uri).toEqual(
       'https://github.com/giantswarm/alfred-app/edit/main',
     );
-    expect(mkdocs.plugins).toEqual(['monorepo']);
+    expect(mkdocs.plugins).toBeUndefined();
     expect(mkdocs.nav).toEqual([
       { Readme: 'README.md' },
       { Changelog: 'CHANGELOG.md' },

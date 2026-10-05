@@ -26,6 +26,8 @@ export type StopServedModelDialogProps = {
  * of the model configs pointing at it — they stay when the CR is deleted, so
  * agents keep their configuration but fail until the model is served again;
  * model-manager removes the one it created itself and leaves the others.
+ *
+ * Not destructive (no red button): serving the model again undoes it.
  */
 export function StopServedModelDialog({
   model,
@@ -56,7 +58,6 @@ export function StopServedModelDialog({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       title={`Stop serving "${model.displayName ?? model.name}"?`}
-      destructive
       confirmLabel="Stop serving"
       busyLabel="Stopping…"
       isBusy={isStopping}

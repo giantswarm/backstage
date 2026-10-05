@@ -4,6 +4,10 @@ import {
   createRouteRef,
 } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  portalEvents,
+  type PortalEventSpec,
+} from '@giantswarm/backstage-plugin-analytics-react';
 import { TelemetryDeckAnalyticsApi } from './TelemetryDeckAnalyticsApi';
 
 const mockSignal = jest.fn();
@@ -18,6 +22,7 @@ const flushPromises = () => new Promise(resolve => setTimeout(resolve, 0));
 describe('TelemetryDeckAnalyticsApi', () => {
   const configApi = {
     getOptionalConfig: jest.fn().mockReturnValue(undefined),
+    getOptionalString: jest.fn().mockReturnValue(undefined),
   } as unknown as ConfigApi;
 
   const identityApi = {
@@ -58,6 +63,7 @@ describe('TelemetryDeckAnalyticsApi', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(configApi.getOptionalString).mockReturnValue(undefined);
   });
 
   it('reports untracked page views for paths that matched a registered route', () => {
@@ -105,17 +111,110 @@ describe('TelemetryDeckAnalyticsApi', () => {
     });
   });
 
-  it('ignores events other than navigate', () => {
-    createApi().captureEvent({
-      action: 'click',
-      subject: 'some-button',
-      context: {
-        pluginId: 'gs',
-        extensionId: 'page:gs/clusters',
-      },
+  it('adds the release version to the pageview signal when configured', async () => {
+    jest
+      .mocked(configApi.getOptionalString)
+      .mockImplementation(key =>
+        key === 'app.releaseVersion' ? '2.81.5' : undefined,
+      );
+
+    navigateInTestApp('/clusters', { registerRoute: true });
+    await flushPromises();
+
+    expect(mockSignal).toHaveBeenCalledWith('pageview', {
+      page: 'Clusters index',
+      path: '/clusters',
+      'TelemetryDeck.AppInfo.version': '2.81.5',
+    });
+  });
+
+  describe('actions', () => {
+    const context = {
+      pluginId: 'agent-platform',
+      extensionId: 'page:agent-platform',
+    };
+
+    function captureAction(
+      action: string,
+      attributes?: Record<string, string | boolean | number>,
+    ) {
+      createApi().captureEvent({
+        action,
+        subject: action,
+        attributes,
+        context,
+      });
+    }
+
+    it.each(
+      Object.entries(portalEvents as Record<string, PortalEventSpec>).flatMap(
+        ([name, { attributes }]) =>
+          Object.entries(attributes).flatMap(([key, values]) =>
+            values.map(value => {
+              // Every other attribute at its first value, this one at each.
+              const all = Object.fromEntries(
+                Object.entries(attributes).map(([k, v]) => [k, v[0]]),
+              );
+              return [name, { ...all, [key]: value }] as const;
+            }),
+          ),
+      ),
+    )('forwards %s %j as its own signal', async (name, attributes) => {
+      captureAction(name, attributes);
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith(name, attributes);
+      expect(errorReporterApi.notify).not.toHaveBeenCalled();
     });
 
-    expect(errorReporterApi.notify).not.toHaveBeenCalled();
-    expect(mockSignal).not.toHaveBeenCalled();
+    it('adds the release version to an action signal when configured', async () => {
+      jest
+        .mocked(configApi.getOptionalString)
+        .mockImplementation(key =>
+          key === 'app.releaseVersion' ? '2.81.5' : undefined,
+        );
+
+      captureAction('AgentPlatform.agentCreated', { mode: 'deploy' });
+      await flushPromises();
+
+      expect(mockSignal).toHaveBeenCalledWith('AgentPlatform.agentCreated', {
+        mode: 'deploy',
+        'TelemetryDeck.AppInfo.version': '2.81.5',
+      });
+    });
+
+    it.each([
+      ['an action not on the list', 'AgentPlatform.agentDeleted', {}],
+      [
+        'an attribute outside its set',
+        'Muster.mcpServerAdded',
+        { authMode: 'https://mcp.example.com' },
+      ],
+    ])('drops %s and reports it to Sentry', async (_, action, attributes) => {
+      captureAction(action, attributes);
+      await flushPromises();
+
+      expect(mockSignal).not.toHaveBeenCalled();
+      expect(errorReporterApi.notify).toHaveBeenCalledWith(
+        `Untracked action: ${action}`,
+        {
+          level: 'warning',
+          type: 'untracked_action',
+          action,
+          pluginId: 'agent-platform',
+        },
+      );
+    });
+
+    it.each(['click', 'create', 'search', 'discover'])(
+      "drops Backstage's built-in %s event silently",
+      async action => {
+        captureAction(action, { term: 'free text' });
+        await flushPromises();
+
+        expect(errorReporterApi.notify).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+      },
+    );
   });
 });
