@@ -333,9 +333,9 @@ export function AddGpuNodePoolDialog({
     setJudging(true);
     const timer = setTimeout(() => judge(seq), DRY_RUN_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-    // `judge` closes over the same inputs; `dryRun` follows the installation.
+    // `judge` closes over the same inputs; another installation is asked anew.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sizingInput, sizes, dryRun]);
+  }, [isOpen, sizingInput, sizes, installation]);
 
   const canCommit = info?.modes.commit === true;
   const notConnected = write.failure?.kind === 'not-connected';

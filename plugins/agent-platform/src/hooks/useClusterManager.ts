@@ -383,10 +383,12 @@ export function useNodePoolWrite(
     ),
   });
   const create = useTrackedMutation({
-    event: (_result, { mode }) => ({
-      name: 'AgentPlatform.nodePoolCreated',
-      attributes: { mode },
-    }),
+    // A partial apply is finished by Continue, the same call: the call that
+    // completes the pool reports it.
+    event: (result, { mode }) =>
+      result.partial
+        ? null
+        : { name: 'AgentPlatform.nodePoolCreated', attributes: { mode } },
     ...writeOptions(
       (c, { input, mode }: NodePoolCreate) => c.createNodePool(input, { mode }),
       () => true,
@@ -486,9 +488,10 @@ export function useClusterWrite(
     useClusterManagerWrites(installation);
 
   const create = useTrackedMutation({
-    // A dry run is the dialog's review step: it writes nothing.
-    event: (_result, { options }) =>
-      options.dryRun
+    // A dry run is the dialog's review step and writes nothing; a partial
+    // apply is finished by Continue, the same call, which reports it.
+    event: (result, { options }) =>
+      options.dryRun || result.partial
         ? null
         : {
             name: 'AgentPlatform.clusterCreated',

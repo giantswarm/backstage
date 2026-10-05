@@ -43,7 +43,8 @@ list differ. A plugin reports an action through `useTrackedMutation` from
 Backstage's analytics API after the write succeeded; ESLint refuses a plain
 `useMutation` in `plugins/*/src`. A write that is not a tracked action passes
 `event: null` with an `untrackedReason`. A write ESLint cannot see, one run by
-hand with a busy flag and an `await`, goes through `useTrackedMutation` too. The app's TelemetryDeck connector
+hand with a busy flag and an `await`, goes through `useTrackedMutation` too.
+The app's TelemetryDeck connector
 (`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`) forwards only
 listed events with valid attributes; an action named like ours but not on the
 list, or with an attribute outside its set, is dropped and reported to Sentry as
