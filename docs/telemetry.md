@@ -20,11 +20,13 @@ nothing.
 
 <!-- portal-events:start -->
 
-| Event                          | When                                                                                             | Attributes and their only possible values                    |
-| ------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `AgentPlatform.agentCreated`   | An agent was created in the Agent Platform, deployed live or committed to Git as a pull request. | `mode`: `deploy`, `commit`                                   |
-| `AgentPlatform.sessionStarted` | A session with an agent was started.                                                             | `entryPoint`: `sessionsList`, `agentDetail`, `sessionDetail` |
-| `Muster.mcpServerAdded`        | An MCP server was registered in muster through the wizard.                                       | `authMode`: `none`, `own-account`, `platform-sso`, `sigv4`   |
+| Event                           | When                                                                                              | Attributes and their only possible values                    |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `AgentPlatform.agentCreated`    | An agent was created in the Agent Platform, deployed live or committed to Git as a pull request.  | `mode`: `deploy`, `commit`                                   |
+| `AgentPlatform.sessionStarted`  | A session with an agent was started.                                                              | `entryPoint`: `sessionsList`, `agentDetail`, `sessionDetail` |
+| `AgentPlatform.clusterCreated`  | A workload cluster was created through cluster-manager, applied live or committed to Git.         | `mode`: `apply`, `commit`                                    |
+| `AgentPlatform.nodePoolCreated` | A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git. | `mode`: `apply`, `commit`                                    |
+| `Muster.mcpServerAdded`         | An MCP server was registered in muster through the wizard.                                        | `authMode`: `none`, `own-account`, `platform-sso`, `sigv4`   |
 
 <!-- portal-events:end -->
 
@@ -40,7 +42,8 @@ list differ. A plugin reports an action through `useTrackedMutation` from
 `@giantswarm/backstage-plugin-analytics-react`, which reports the event through
 Backstage's analytics API after the write succeeded; ESLint refuses a plain
 `useMutation` in `plugins/*/src`. A write that is not a tracked action passes
-`event: null` with an `untrackedReason`. The app's TelemetryDeck connector
+`event: null` with an `untrackedReason`. A write ESLint cannot see, one run by
+hand with a busy flag and an `await`, goes through `useTrackedMutation` too. The app's TelemetryDeck connector
 (`packages/app/src/apis/analytics/TelemetryDeckAnalyticsApi.ts`) forwards only
 listed events with valid attributes; an action named like ours but not on the
 list, or with an attribute outside its set, is dropped and reported to Sentry as

@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -178,13 +179,22 @@ function makeMusterApi(scenario: Scenario = {}) {
   return { api: { callTool } as unknown as MusterApi, callTool };
 }
 
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
+
 async function renderDialog(scenario: Scenario = {}) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <CreateClusterDialog
           installations={['inst-1']}
@@ -261,6 +271,14 @@ describe('CreateClusterDialog', () => {
         'inst-1',
       ],
     ]);
+    // The review's dry run reports nothing; the commit reports once.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.clusterCreated',
+        attributes: { mode: 'commit' },
+      }),
+    );
   });
 
   it('disables Commit with cluster-manager’s reason and deploys as the person', async () => {
@@ -282,6 +300,12 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Cluster demo1 applied as you'),
     ).toBeInTheDocument();
     expect(writesOf(callTool)[0][1]).toMatchObject({ mode: 'apply' });
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.clusterCreated',
+        attributes: { mode: 'apply' },
+      }),
+    );
   });
 
   it('never asks for mode commit where the installation does not offer it', async () => {
@@ -304,6 +328,7 @@ describe('CreateClusterDialog', () => {
     expect(
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 });
 
