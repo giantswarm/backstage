@@ -118,10 +118,15 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:gs/installations'),
         nav.take('page:flux'),
         nav.take('page:agent-platform'),
-        nav.take('page:plans'),
-        nav.take('page:roadmap'),
         nav.take('page:repositories'),
         nav.take('page:bot-prs'),
+      ].filter(Boolean);
+
+      // Product: what the teams plan, build and learned, side by side.
+      const productGroup = [
+        nav.take('page:plans'),
+        nav.take('page:roadmap'),
+        nav.take('page:plans/magazine'),
       ].filter(Boolean);
 
       const group3 = [
@@ -132,7 +137,9 @@ export const SidebarContent = NavContentBlueprint.make({
         />,
       ];
 
-      const menuGroups = [group1, group2, group3].filter(g => g.length > 0);
+      const menuGroups = [group1, group2, productGroup, group3].filter(
+        g => g.length > 0,
+      );
 
       return compatWrapper(
         <>

@@ -11,6 +11,29 @@ export interface Config {
     repositories?: string[];
 
     /**
+     * The team product magazine shown on the Magazine page (`/product`): a
+     * repository whose generated JSON (`magazine/*.json` on `ref`) and
+     * knowledge documents (`knowledge/**` on `knowledgeRef`) are read through
+     * the same muster GitHub access as the plans. The repository is not a
+     * plan repository: it stays out of `repositories`, the plans picker and
+     * the epics crawl, and only its two refs are readable. Without it the
+     * Magazine page reports that it is not configured.
+     *
+     * Every key keeps the default backend visibility: the frontend learns
+     * whether a magazine is configured from the authenticated `/magazine`
+     * endpoint, so a private repository's name never reaches the
+     * unauthenticated frontend config.
+     */
+    magazine?: {
+      /** The magazine repository, as an `owner/repo` slug. */
+      repository: string;
+      /** Branch with the generated data. Default: `data`. */
+      ref?: string;
+      /** Branch with the knowledge documents. Default: `main`. */
+      knowledgeRef?: string;
+    };
+
+    /**
      * Where GitHub is reached as the signed-in person: a GitHub MCP server
      * registered in a muster installation. The frontend forwards the user's
      * Dex ID token (the installation's `authProvider`), muster holds the

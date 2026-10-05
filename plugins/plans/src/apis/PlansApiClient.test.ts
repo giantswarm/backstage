@@ -53,6 +53,36 @@ describe('PlansApiClient', () => {
     });
   });
 
+  it('reads the magazine configuration', async () => {
+    const payload = {
+      configured: true,
+      repository: 'giantswarm/team-magazine',
+      ref: 'data',
+      knowledgeRef: 'main',
+    };
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+
+    await expect(client.getMagazine()).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/magazine`, AUTHED);
+  });
+
+  it('reads a magazine file at its ref', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ path: 'magazine/now.json', ref: 'data', content: '{}' }),
+    );
+
+    await client.getContent(
+      'magazine/now.json',
+      'data',
+      'giantswarm/team-magazine',
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/content?path=magazine%2Fnow.json&ref=data&repo=giantswarm%2Fteam-magazine`,
+      AUTHED,
+    );
+  });
+
   it('lists repositories', async () => {
     const payload = { repositories: ['giantswarm/bumblebee-plans'] };
     fetchMock.mockResolvedValue(jsonResponse(payload));

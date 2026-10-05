@@ -5,6 +5,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { PlansAuthApi } from './auth';
 import {
+  MagazineConfigResponse,
   NewReviewComment,
   PlanComment,
   PlanReviewComment,
@@ -72,6 +73,10 @@ export class PlansApiClient implements PlansApi {
 
   async getConnection(): Promise<PlansConnectionResponse> {
     return this.get<PlansConnectionResponse>('/connection');
+  }
+
+  async getMagazine(): Promise<MagazineConfigResponse> {
+    return this.get<MagazineConfigResponse>('/magazine');
   }
 
   async listPulls(repo?: string): Promise<PlansPullsResponse> {

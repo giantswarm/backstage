@@ -18,6 +18,7 @@ const CONTENT = '# Full screen\n\nFirst paragraph.\n\nSecond paragraph.\n';
 function createPlansApi(): jest.Mocked<PlansApi> {
   return {
     getConnection: jest.fn().mockResolvedValue({ connected: true }),
+    getMagazine: jest.fn().mockResolvedValue({ configured: false }),
     listRepos: jest.fn().mockResolvedValue({ repositories: [REPO] }),
     listPulls: jest.fn().mockResolvedValue({
       pulls: [
