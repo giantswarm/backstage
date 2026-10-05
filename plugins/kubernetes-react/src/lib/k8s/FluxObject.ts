@@ -2,7 +2,7 @@ import { FluxResourceStatusMixin } from './FluxResourceMixin';
 import { FluxResourceStatus } from './FluxResourceStatusManager';
 import { KubeObject, KubeObjectInterface } from './KubeObject';
 
-interface FluxObjectInterface extends KubeObjectInterface {
+export interface FluxObjectInterface extends KubeObjectInterface {
   status?: {
     conditions?: {
       lastTransitionTime: string;
@@ -82,7 +82,29 @@ export class FluxObject<
   }
 
   /**
-   * The managers that server-side apply `spec.suspend`, if any.
+   * The field that suspends this object, as a `managedFields` path.
+   */
+  protected getSuspendFieldPath(): string[] {
+    return ['spec', 'suspend'];
+  }
+
+  /**
+   * How {@link getSuspendFieldPath} is named to people.
+   */
+  getSuspendFieldName(): string {
+    return 'spec.suspend';
+  }
+
+  /**
+   * The merge patch that suspends (`true`) or resumes (`false`) this object.
+   */
+  getSuspendPatch(suspend: boolean): Record<string, unknown> {
+    return { spec: { suspend } };
+  }
+
+  /**
+   * The managers that server-side apply the suspend field (`spec.suspend`
+   * unless {@link getSuspendFieldPath} says otherwise), if any.
    *
    * When this is non-empty the field is under declarative management — typically
    * `kustomize-controller`, when the object itself is deployed from Git by a
@@ -122,11 +144,11 @@ export class FluxObject<
       return [];
     }
 
-    return this.getApplyFieldOwners(['spec', 'suspend']);
+    return this.getApplyFieldOwners(this.getSuspendFieldPath());
   }
 
   /**
-   * Whether `spec.suspend` is declaratively managed, and so cannot be changed
+   * Whether the suspend field is declaratively managed, and so cannot be changed
    * durably from here. See {@link getSuspendFieldApplyOwners}.
    */
   isSuspendFieldManaged(): boolean {

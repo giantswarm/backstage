@@ -100,7 +100,7 @@ export function useFluxResourceActions(
     event: null,
     untrackedReason:
       'Flux reconcile and suspend are operations, not a tracked portal action yet.',
-    mutationFn: (suspend: boolean) => patch({ spec: { suspend } }),
+    mutationFn: (suspend: boolean) => patch(resource.getSuspendPatch(suspend)),
     onSuccess: invalidateReads,
   });
 
