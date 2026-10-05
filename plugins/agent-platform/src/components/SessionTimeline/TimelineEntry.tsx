@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
+import { AttachmentEntry } from './AttachmentEntry';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
 import {
@@ -338,6 +339,10 @@ export function TimelineEntry({
         <MessageBody text={item.text} />
       </div>
     );
+  }
+
+  if (item.kind === 'attachment') {
+    return <AttachmentEntry item={item} />;
   }
 
   // The turn ended without answering — it failed, was rejected, or was canceled.

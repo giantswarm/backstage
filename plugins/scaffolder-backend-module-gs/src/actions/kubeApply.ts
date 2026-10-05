@@ -18,9 +18,10 @@ type ObjectHeader = Parameters<KubernetesObjectApi['read']>[0];
 
 /**
  * The action ID and input schema are a stable contract with templates that
- * live outside this repo (e.g. the hidden `agent-deployment` template driven
- * by the Agent Platform create flow) — don't change them without migrating
- * those templates first.
+ * live outside this repo (the `app-deployment` templates,
+ * `templates/app-deployment/template.yaml` and `edit-template.yaml` in
+ * giantswarm/backstage-catalogs) — don't change them without migrating those
+ * templates first.
  */
 export const createKubeApplyAction = (
   clientFactory: KubernetesClientFactory,

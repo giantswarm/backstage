@@ -1,5 +1,8 @@
 import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
-import { releaseReadinessFlagNames } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  buildReadinessFlagNames,
+  releaseReadinessFlagNames,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * The single source of truth for how release-readiness verdicts are presented.
@@ -60,33 +63,42 @@ export function readinessRank(readiness?: string): number {
 }
 
 /**
- * The blockers `AppReadinessProcessor` writes. Everything else appearing in
- * `giantswarm.io/readiness-flags` is an enforced chart-metadata gap from the
- * catalog importer, which merges into the same annotation.
+ * The blockers `AppReadinessProcessor` writes, and the one `BuildStatusProcessor`
+ * writes. Everything else appearing in `giantswarm.io/readiness-flags` is an
+ * enforced chart-metadata gap from the catalog importer, which merges into the
+ * same annotation.
  *
- * Taken from gs-common rather than restated here: the processor writes these
+ * Taken from gs-common rather than restated here: the processors write these
  * names and this module recognises them, so a blocker added on one side only
  * would be presented as the wrong kind of problem on the other.
  */
 export const RELEASE_READINESS_FLAGS = releaseReadinessFlagNames;
+export const BUILD_READINESS_FLAGS = buildReadinessFlagNames;
 
 /**
- * Splits the merged flag list back into the two verdicts that write it.
+ * Splits the merged flag list back into the three verdicts that write it.
  *
- * `giantswarm.io/readiness-flags` carries both the release blockers above and
- * the importer's enforced chart-metadata gaps (`META-NO-TEAM`,
- * `NO-VALUES-SCHEMA`). They answer different questions — "can this be released"
- * versus "does this chart build" — so anything presenting them must attribute
- * each to its own verdict rather than listing them under one claim.
+ * `giantswarm.io/readiness-flags` carries the release blockers, the build
+ * blocker and the importer's enforced chart-metadata gaps (`META-NO-TEAM`,
+ * `NO-VALUES-SCHEMA`). They answer different questions — "can this be
+ * released", "does the default branch build right now" and "does this chart
+ * pass what app-build-suite enforces" — so anything presenting them must
+ * attribute each to its own verdict rather than listing them under one claim.
+ * The importer owns the open-ended half of the list, so an unrecognised flag
+ * is chart metadata.
  */
 export function partitionReadinessFlags(flags: string[]): {
   release: string[];
+  build: string[];
   chartMetadata: string[];
 } {
   return {
     release: flags.filter(flag => RELEASE_READINESS_FLAGS.includes(flag)),
+    build: flags.filter(flag => BUILD_READINESS_FLAGS.includes(flag)),
     chartMetadata: flags.filter(
-      flag => !RELEASE_READINESS_FLAGS.includes(flag),
+      flag =>
+        !RELEASE_READINESS_FLAGS.includes(flag) &&
+        !BUILD_READINESS_FLAGS.includes(flag),
     ),
   };
 }

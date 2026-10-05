@@ -29,6 +29,7 @@ import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
+import { HarnessPicker } from '../HarnessPicker';
 import { TextAreaField } from './TextAreaField';
 import {
   MAX_SYSTEM_MESSAGE_LENGTH,
@@ -211,7 +212,7 @@ function NewAgentPageContent() {
             <CardBody>
               <SectionHeader
                 title="Configuration"
-                description="What powers the agent and shapes how it behaves: which model it uses and its system prompt."
+                description="What powers the agent and shapes how it behaves: its system prompt, the model it uses and what runs it."
               />
               <Flex direction="column" gap="5">
                 <TextAreaField
@@ -227,6 +228,7 @@ function NewAgentPageContent() {
                   error={systemMessageProblem(state.systemMessage)}
                 />
                 <ModelConfigPicker />
+                <HarnessPicker />
               </Flex>
             </CardBody>
           </Card>

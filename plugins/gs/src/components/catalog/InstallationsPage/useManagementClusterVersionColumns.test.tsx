@@ -3,21 +3,21 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
+import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, screen, waitFor } from '@testing-library/react';
-import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { gsAuthProvidersApiRef } from '../../../apis/auth';
 import {
   __resetInstallationsConfigForTests,
   setInstallationsConfig,
 } from '../../../apis/installations';
 import {
+  ManagementClusterVersions,
   useManagementClusterVersionColumns,
   useManagementClusterVersions,
 } from './useManagementClusterVersionColumns';
-
-const GROUP = Cluster.group;
 
 const row = (name: string) =>
   ({
@@ -29,95 +29,83 @@ const row = (name: string) =>
     },
   }) as unknown as CatalogTableRow;
 
-function ok(body: unknown) {
-  return { ok: true, status: 200, json: async () => body } as Response;
-}
+const NO_RELEASE = {
+  state: 'absent',
+  reason: 'The management cluster carries no Giant Swarm release',
+} as const;
 
-function status(code: number) {
+function known(
+  kubernetes: string,
+  release?: string,
+): ManagementClusterVersions {
   return {
-    ok: false,
-    status: code,
-    statusText: '',
-    json: async () => ({ message: `status ${code}` }),
-  } as Response;
+    kubernetes: { state: 'known', version: kubernetes },
+    release: release ? { state: 'known', version: release } : NO_RELEASE,
+  };
 }
 
-type Fleet = Record<
-  string,
-  {
-    /** `/version` of the API server; a number is an HTTP error status. */
-    version: string | number | 'pending';
-    /** The release label of the management cluster's own Cluster; none without. */
-    release?: string;
-    /** The installation serves no CAPI: the Cluster API is not found. */
-    noCapi?: boolean;
-  }
->;
+/** The backend's answer for the fleet, or a pending or failed request. */
+type Answer = Record<string, ManagementClusterVersions> | 'pending' | number;
 
-/** A proxy serving each installation's `/version`, CAPI discovery and Cluster list. */
-function fleetProxy(fleet: Fleet) {
+function versionsFetch(answer: Answer, readInBrowser: string[] = []) {
+  return jest.fn(async (_url: string, _init?: RequestInit) => {
+    if (answer === 'pending') {
+      return new Promise<Response>(() => {});
+    }
+    if (typeof answer === 'number') {
+      return { ok: false, status: answer } as Response;
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ installations: answer, readInBrowser }),
+    } as Response;
+  });
+}
+
+/** The Kubernetes plugin's proxy: `/version` for each browser-read installation, no CAPI. */
+function browserProxy(versions: Record<string, string>) {
   return jest.fn(
-    async ({ clusterName, path }: { clusterName: string; path: string }) => {
-      const mc = fleet[clusterName];
-      if (path === '/version') {
-        if (mc.version === 'pending') {
-          return new Promise<Response>(() => {});
-        }
-        return typeof mc.version === 'number'
-          ? status(mc.version)
-          : ok({ gitVersion: mc.version });
-      }
-      if (mc.noCapi && path.startsWith(`/apis/${GROUP}`)) {
-        return status(404);
-      }
-      if (path === `/apis/${GROUP}`) {
-        return ok({
-          name: GROUP,
-          versions: [{ groupVersion: `${GROUP}/v1beta1`, version: 'v1beta1' }],
-          preferredVersion: {
-            groupVersion: `${GROUP}/v1beta1`,
-            version: 'v1beta1',
-          },
-        });
-      }
-      if (path === `/apis/${GROUP}/v1beta1`) {
-        return ok({
-          groupVersion: `${GROUP}/v1beta1`,
-          resources: [{ name: Cluster.plural }],
-        });
-      }
-      if (
-        path.startsWith(
-          `/apis/${GROUP}/v1beta1/namespaces/org-giantswarm/${Cluster.plural}`,
-        )
-      ) {
-        return ok({
-          items: [
-            {
-              apiVersion: `${GROUP}/v1beta1`,
-              kind: 'Cluster',
-              metadata: {
-                name: clusterName,
-                namespace: 'org-giantswarm',
-                labels: mc.release
-                  ? { 'release.giantswarm.io/version': mc.release }
-                  : {},
-              },
-            },
-          ],
-        });
-      }
-      return status(404);
-    },
+    async ({ clusterName, path }: { clusterName: string; path: string }) =>
+      path === '/version'
+        ? ({
+            ok: true,
+            status: 200,
+            json: async () => ({ gitVersion: versions[clusterName] }),
+          } as Response)
+        : ({
+            ok: false,
+            status: 404,
+            statusText: '',
+            json: async () => ({ message: 'not found' }),
+          } as Response),
   );
 }
 
-function wrapper(proxy: jest.Mock) {
-  const queryClient = new QueryClient({
+let queryClient: QueryClient;
+
+function wrapper(
+  fetch: jest.Mock,
+  options: { proxy?: jest.Mock; getIdToken?: () => Promise<string> } = {},
+) {
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const getIdToken = options.getIdToken ?? (async () => 'main-id-token');
   return ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[kubernetesApiRef, { proxy } as any]]}>
+    <TestApiProvider
+      apis={[
+        [fetchApiRef, { fetch }],
+        [kubernetesApiRef, { proxy: options.proxy ?? browserProxy({}) } as any],
+        [discoveryApiRef, { getBaseUrl: async () => 'http://backend/api/gs' }],
+        [
+          gsAuthProvidersApiRef,
+          {
+            getMainAuthApi: () => ({ getIdToken }),
+          } as any,
+        ],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -141,29 +129,31 @@ function Probe({ names }: { names: string[] }) {
   );
 }
 
-async function renderProbe(fleet: Fleet, rows: string[]) {
-  const proxy = fleetProxy(fleet);
-  setInstallationsConfig(Object.keys(fleet).map(name => ({ name })));
-  const Wrapper = wrapper(proxy);
+async function renderProbe(
+  installations: string[],
+  answer: Answer,
+  rows = installations,
+  options: Parameters<typeof wrapper>[1] & { readInBrowser?: string[] } = {},
+) {
+  const fetch = versionsFetch(answer, options.readInBrowser);
+  setInstallationsConfig(installations.map(name => ({ name })));
+  const Wrapper = wrapper(fetch, options);
   await renderInTestApp(
     <Wrapper>
       <Probe names={rows} />
     </Wrapper>,
   );
-  return proxy;
+  return fetch;
 }
 
 describe('useManagementClusterVersionColumns', () => {
   beforeEach(() => __resetInstallationsConfigForTests());
 
-  it('shows each management cluster’s Kubernetes version and release', async () => {
-    await renderProbe(
-      {
-        alpha: { version: 'v1.35.8', release: '35.1.1' },
-        beta: { version: 'v1.34.7', release: '34.4.0' },
-      },
-      ['alpha', 'beta'],
-    );
+  it('shows every management cluster’s Kubernetes version and release from one request', async () => {
+    const fetch = await renderProbe(['alpha', 'beta'], {
+      alpha: known('v1.35.8', '35.1.1'),
+      beta: known('v1.34.7', '34.4.0'),
+    });
 
     expect(screen.getByTestId('titles')).toHaveTextContent(
       'Kubernetes version,Release',
@@ -171,62 +161,92 @@ describe('useManagementClusterVersionColumns', () => {
     expect(
       await screen.findByTestId('version-kubernetes-alpha'),
     ).toHaveTextContent('1.35.8');
-    expect(
-      await screen.findByTestId('version-release-alpha'),
-    ).toHaveTextContent('35.1.1');
-    expect(
-      await screen.findByTestId('version-kubernetes-beta'),
-    ).toHaveTextContent('1.34.7');
-    expect(await screen.findByTestId('version-release-beta')).toHaveTextContent(
+    expect(screen.getByTestId('version-release-alpha')).toHaveTextContent(
+      '35.1.1',
+    );
+    expect(screen.getByTestId('version-kubernetes-beta')).toHaveTextContent(
+      '1.34.7',
+    );
+    expect(screen.getByTestId('version-release-beta')).toHaveTextContent(
       '34.4.0',
     );
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('http://backend/api/gs/installations/versions');
+    expect(init?.headers).toEqual({ 'gs-subject-token': 'main-id-token' });
   });
 
-  it('shows a skeleton while an installation has not answered, and the others’ versions', async () => {
+  it('never persists the person’s answer to the browser’s storage', async () => {
+    await renderProbe(['alpha'], { alpha: known('v1.35.8') });
+
+    await screen.findByTestId('version-kubernetes-alpha');
+    expect(
+      queryClient
+        .getQueryCache()
+        .find({ queryKey: ['installations', 'management-cluster-versions'] })
+        ?.meta,
+    ).toEqual({ persist: false });
+  });
+
+  it('reads in the browser what the backend leaves to it', async () => {
+    const proxy = browserProxy({ own: 'v1.33.4' });
     await renderProbe(
+      ['alpha', 'own'],
+      { alpha: known('v1.35.8') },
+      undefined,
       {
-        alpha: { version: 'v1.35.8', release: '35.1.1' },
-        slow: { version: 'pending' },
+        proxy,
+        readInBrowser: ['own'],
       },
-      ['alpha', 'slow'],
     );
 
     expect(
-      await screen.findByTestId('version-kubernetes-alpha'),
-    ).toHaveTextContent('1.35.8');
+      await screen.findByTestId('version-kubernetes-own'),
+    ).toHaveTextContent('1.33.4');
+    expect(screen.getByTestId('version-kubernetes-alpha')).toHaveTextContent(
+      '1.35.8',
+    );
     expect(
-      screen.getByTestId('version-kubernetes-slow-loading'),
+      proxy.mock.calls.map(([{ clusterName }]) => clusterName),
+    ).not.toContain('alpha');
+  });
+
+  it('shows a skeleton in every row while the versions load', async () => {
+    await renderProbe(['alpha', 'beta'], 'pending');
+
+    expect(
+      await screen.findByTestId('version-kubernetes-alpha-loading'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId('version-release-beta-loading'),
     ).toBeInTheDocument();
   });
 
   it('says why a version is missing: not connected, no release, request failed', async () => {
+    const forbidden = { state: 'failed', reason: 'Access forbidden' } as const;
     await renderProbe(
+      ['bare', 'locked'],
       {
-        bare: { version: 'v1.33.2' },
-        plain: { version: 'v1.34.0', noCapi: true },
-        locked: { version: 403 },
+        bare: known('v1.33.2'),
+        locked: { kubernetes: forbidden, release: forbidden },
       },
-      ['bare', 'plain', 'locked', 'elsewhere'],
+      ['bare', 'locked', 'elsewhere'],
     );
 
     expect(
-      await screen.findByTestId('version-kubernetes-plain'),
-    ).toHaveTextContent('1.34.0');
-    expect(await screen.findByTestId('version-release-plain')).toHaveAttribute(
-      'title',
-      'The management cluster carries no Giant Swarm release',
-    );
-
-    const noRelease = await screen.findByTestId('version-release-bare');
+      await screen.findByTestId('version-kubernetes-bare'),
+    ).toHaveTextContent('1.33.2');
+    const noRelease = screen.getByTestId('version-release-bare');
     expect(noRelease).toHaveTextContent('—');
     expect(noRelease).toHaveAttribute(
       'title',
       'The management cluster carries no Giant Swarm release',
     );
 
-    expect(
-      await screen.findByTestId('version-kubernetes-locked'),
-    ).toHaveTextContent('Access forbidden');
+    expect(screen.getByTestId('version-kubernetes-locked')).toHaveTextContent(
+      'Access forbidden',
+    );
     expect(screen.getByTestId('version-release-locked')).toHaveTextContent(
       'Access forbidden',
     );
@@ -239,11 +259,47 @@ describe('useManagementClusterVersionColumns', () => {
     );
   });
 
+  it('shows the reason in every row when the versions cannot be read', async () => {
+    await renderProbe(['alpha'], 403);
+
+    expect(
+      await screen.findByTestId('version-kubernetes-alpha'),
+    ).toHaveTextContent('Access forbidden');
+    expect(screen.getByTestId('version-release-alpha')).toHaveTextContent(
+      'Access forbidden',
+    );
+  });
+
+  it('says not signed in when the main sign-in is declined', async () => {
+    await renderProbe(['alpha'], { alpha: known('v1.35.8') }, undefined, {
+      getIdToken: async () => {
+        throw Object.assign(new Error('Login failed, popup was closed'), {
+          name: 'RejectedError',
+        });
+      },
+    });
+
+    const cell = await screen.findByTestId('version-kubernetes-alpha');
+    expect(cell).toHaveTextContent('Not signed in');
+    expect(cell).not.toHaveTextContent('popup');
+  });
+
+  it('keeps a failed read short in the cell, the details on hover', async () => {
+    await renderProbe(['alpha'], 500);
+
+    const cell = await screen.findByTestId('version-kubernetes-alpha');
+    expect(cell).toHaveTextContent(/^Read failed$/);
+    expect(cell).toHaveAttribute(
+      'title',
+      'The portal could not read the management cluster versions (HTTP 500)',
+    );
+  });
+
   it('sorts in semver order and matches the table search', async () => {
-    const proxy = fleetProxy({
-      a: { version: 'v1.9.0', release: '9.0.0' },
-      b: { version: 'v1.35.8', release: '35.1.1' },
-      c: { version: 'v1.34.7', release: '34.4.0' },
+    const fetch = versionsFetch({
+      a: known('v1.9.0', '9.0.0'),
+      b: known('v1.35.8', '35.1.1'),
+      c: known('v1.34.7', '34.4.0'),
     });
     setInstallationsConfig(['a', 'b', 'c'].map(name => ({ name })));
 
@@ -252,7 +308,7 @@ describe('useManagementClusterVersionColumns', () => {
         versions: useManagementClusterVersions(),
         columns: useManagementClusterVersionColumns(),
       }),
-      { wrapper: wrapper(proxy) },
+      { wrapper: wrapper(fetch) },
     );
 
     await waitFor(() =>

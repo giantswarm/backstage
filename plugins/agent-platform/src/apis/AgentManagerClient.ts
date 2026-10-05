@@ -93,7 +93,7 @@ export class AgentManagerClient {
     });
   }
 
-  /** One verdict on the template's readiness on the platform Harness. */
+  /** One verdict on the template's readiness on the Harness it names. */
   getAgentStatus(namespace: string, name: string): Promise<AgentStatus> {
     return this.call<AgentStatus>(AGENT_MANAGER_TOOLS.getAgentStatus, {
       namespace,

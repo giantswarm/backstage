@@ -1,4 +1,4 @@
-import { TtlCache } from './AppReadinessProcessor';
+import { TtlCache } from './TtlCache';
 
 describe('TtlCache', () => {
   it('runs a lookup once within the TTL', async () => {

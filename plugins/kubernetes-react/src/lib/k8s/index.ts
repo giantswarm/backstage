@@ -68,6 +68,15 @@ export { Node } from './Node';
 export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
+export { Harness } from './Harness';
+export type { HarnessAgentTemplateSelector, HarnessRuntime } from './Harness';
+export { FluxInstance } from './FluxInstance';
+export {
+  FLUX_OPERATOR_RECONCILE_ANNOTATION,
+  FluxOperatorObject,
+} from './FluxOperatorObject';
+export type { FluxOperatorReconciliation } from './FluxOperatorObject';
+export { FluxReport } from './FluxReport';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';
@@ -75,6 +84,11 @@ export { ImagePolicy } from './ImagePolicy';
 export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
+export { matchesLabelSelector } from './labelSelector';
+export type { LabelSelector } from './labelSelector';
+export { ResourceSet } from './ResourceSet';
+export type { InputProviderRef } from './ResourceSet';
+export { ResourceSetInputProvider } from './ResourceSetInputProvider';
 export {
   deriveModelConfigReadiness,
   ModelConfig,

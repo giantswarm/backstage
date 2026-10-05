@@ -7,7 +7,7 @@ import { compareDates } from '../../utils/helpers';
 function getAppUpdatedTimestamp(app: App) {
   const status = app.getStatus();
 
-  return status?.release.lastDeployed;
+  return status?.release.lastDeployed ?? undefined;
 }
 
 function getHelmReleaseUpdatedTimestamp(helmRelease: HelmRelease) {

@@ -365,15 +365,44 @@ agent-manager's own resolution is not what pins: what the person picked is what
 runs, until they update it explicitly on the agent's page. Repo-root skills omit
 `path`; agents with no skills selected omit `skills` entirely. There is no
 per-skill credential in the request (private skill repositories are a separate
-piece of platform work) and no runtime field.
+piece of platform work).
+
+### The runtime is a Harness
+
+Below the model, the details step lists the **Harnesses of the chosen model's
+namespace** (`HarnessPicker`, `harnesses.kagent.dev` read through the
+Kubernetes proxy with the person's own RBAC, the same rights as reading
+AgentTemplates and ModelConfigs) as runtime cards. A card is titled by the
+Harness's `ui.giantswarm.io/display-name` when an admin set one, else by its
+runtime family (the one of `spec.kagent`, `spec.claude`, `spec.codex` and
+`spec.byo` that is set), with the Harness's name and image beneath: two Claude
+Code Harnesses with different toolchains read apart only by those, or by a
+display name. Only a Harness whose
+`allowedAgentTemplates` selector matches on
+`agent-platform.giantswarm.io/harness` is offered, and the pick is that label
+value, which is what agent-manager's `harness` argument names (`lib/harnesses.ts`).
+
+The platform Harness (`get_info`'s `harness.name`) comes first and is the
+default. Picking it is no pick: the request leaves `harness` out and
+agent-manager composes its own, exactly as before. Any other pick is sent as
+`harness` to `validate_agent` and `create_agent`. A namespace holding one
+Harness, which is every installation without coding Harnesses, shows it as a
+read-only card, so the person still sees what will run the agent; the request
+is unchanged there. A namespace listing none shows no section. A list that could
+not be read (forbidden, or failed) shows a warning instead, since a choice may
+have been missed. Changing the installation, or picking a model in another
+namespace, drops the pick, since a Harness admits templates of its own namespace
+only, and a status notice says so until the person picks a runtime again. The
+Harness is fixed at create: the edit page has no runtime field.
 
 ### The review page is agent-manager's dry run
 
 Nothing in the portal composes a manifest. The review page turns the form into
 agent-manager's create contract (`lib/agentSpec.ts` → `AgentSpec`: `namespace`
 = the ModelConfig's, `name` = the slug, `displayName`, `description`,
-`systemMessage`, `modelConfig`, `iconUrl` from the avatar rule, `skills` pinned
-to commits, `toolset` exactly as the Tools step composed it) and asks
+`systemMessage`, `modelConfig`, `harness` when one other than the platform
+Harness was picked, `iconUrl` from the avatar rule, `skills` pinned to commits,
+`toolset` exactly as the Tools step composed it) and asks
 agent-manager to validate it (`useValidateAgent` → `x_agent-manager_validate_agent`).
 The answer is rendered verbatim:
 
@@ -390,7 +419,8 @@ The answer is rendered verbatim:
 
 `get_info` (`useAgentManagerInfo`) supplies what used to be config or a
 registry read: the chart's OCI URL and range, the newest published version, the
-platform Harness's name (`harness.name`) the copy names, the muster MCP URL
+platform Harness's name (`harness.name`) the review names when no other
+Harness was picked, the muster MCP URL
 agent-manager composes (`muster.url`), the Flux ServiceAccount, and the
 capability flags. The portal has no chart knowledge of its own: no version
 resolution, no default-prompt read (an empty system prompt is sent as absent
@@ -502,8 +532,8 @@ scaffolder template's `kube:apply` action with an OIDC token it minted
 (`agentPlatform.chart.*`, `agentPlatform.fluxServiceAccountName`,
 `agentPlatform.deployTemplateRef`), left with the move to agent-manager. The
 `kube:apply` action and `scaffolder-backend-module-gs` stay for the other
-templates; the `agent-deployment` template in `giantswarm/backstage-catalogs` is
-unused and its removal is that repository's follow-up.
+templates; the `agent-deployment` template no longer exists in
+`giantswarm/backstage-catalogs` main.
 
 ## The installation scope
 
@@ -1398,6 +1428,7 @@ yanking someone who scrolled up out of what they were reading.
 | Delegation           | a `function_call` whose name contains `__NS__`, plus the child's own usage |
 | Approval             | ADK's `adk_request_confirmation`, with the user's verdict                  |
 | Failed turn          | a task in state `failed`/`rejected`, with the reason from `status.message` |
+| Attachment           | a file part, previewed only when its own bytes say it is an allowed image  |
 
 **Calls through Muster are unwrapped.** Agents reach most MCP tools via muster's
 `call_tool`, so untreated every row reads `call_tool` with the real tool buried in the
@@ -1424,6 +1455,57 @@ Two things real payloads taught us, both now relied on: kagent repeats each user
 message under the **same `messageId`** on every turn, so the session-wide dedupe is
 required rather than defensive; and one message can carry prose plus several tool
 calls, always text first.
+
+#### Attachments
+
+A file part renders as an attachment beside the message it came with. It is
+**conversation, not working**, so it is never one of the activity kinds and the
+Hidden setting does not remove it.
+
+**The bytes are untrusted and rendered in our own origin**, so the declared
+`mimeType` is never acted on. `readAttachmentPreview` rejects in order: no
+payload, a location rather than bytes, over the 8 MB cap by length alone,
+invalid base64 — and only then decodes the first 30 bytes to derive the type from
+the magic bytes and read the dimensions (a JPEG's frame header is found by
+walking its segment headers). An image declaring more than 50 megapixels is not
+previewed, since the byte cap does not bound the decode. Unpadded, URL-safe and
+line-wrapped base64 are normalised first. The allowlist is PNG, JPEG, GIF and
+WebP, and the `data:` URL is labelled with the **sniffed** type, so the browser
+is never told a type the bytes do not support.
+
+A decided preview is cached on the raw part object. react-query keeps the
+identity of unchanged parts across polls, so rebuilding the timeline does not
+revalidate the payload or rebuild its `data:` URL.
+
+**SVG is never previewed**, whatever it calls itself. An SVG in
+`<img src="data:…">` does not run script — browsers load it in a non-scripting
+mode — so this is defence in depth: it holds if the renderer ever becomes an
+inline `<svg>`, an `<object>` or an "open in a new tab", and it keeps SVG's
+XML-entity and filter denial-of-service surface out of the page. Sniffing is what
+makes the rule effective: a `.png`-declared SVG never reaches a renderer either.
+
+A previewed image is captioned with the type its bytes carry, and pressing it
+opens the same `data:` URL at natural size in an in-page dialog, scrolled rather
+than scaled; never a new tab. Anything with no
+preview renders as an inert chip naming the file, its declared type (as the
+sender's claim), its size and why there is nothing to see. **No download link** — handing an
+untrusted file to disk only moves the risk to wherever it is opened next. The
+bytes never pass through the markdown renderer, whose sanitiser strips `data:`
+sources today; loosening that would weaken markdown everywhere in the portal.
+
+**A file kagent only linked to is not fetched.** The portal would be making a
+request on the reader's behalf to a host named by whoever sent the message.
+
+No CSP change is needed: `img-src` already carries `data:`. Backstage _replaces_
+config arrays rather than merging them, so a deployment that overrides `img-src`
+must re-list `data:` along with the other base entries.
+
+**Only the poll renders attachments.** The live stream overlay reads text and
+call parts, so the first stream event of a turn that carries a file part
+(`StreamTurn.carriesFile`) re-reads the session's tasks there and then, rather
+than leaving the file to the next poll or the end of the turn. Once per turn: the
+terminal event repeats the parts the turn already streamed, and every re-read
+downloads every attachment in the session.
 
 **A message the parser cannot read is counted, not hidden.** `skippedMessages`
 counts history entries that failed the schema outright — artifact and status updates
@@ -2678,7 +2760,8 @@ description, system prompt, the model (offered from
 `x_agent-manager_list_model_configs` for the agent's namespace, read through
 agent-manager rather than the admin-only fleet-wide ModelConfigs list), the
 toolset selectors, and the skills with the commit or digest each is pinned to.
-There is **no runtime field**: every agent runs on the platform Harness (D5).
+There is **no runtime field**: the Harness is fixed at create, and agent-manager
+keeps it on an update.
 
 **The review is agent-manager's dry run.** The form keeps a baseline (agent-
 manager's reading) and the edit; `lib/agentEdit.ts` derives from the two the

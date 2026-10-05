@@ -1,6 +1,7 @@
 import {
   A2aTaskWire,
   addTokenUsage,
+  AttachmentPreview,
   ASK_USER_TOOL_NAME,
   claimEndedTurnUsage,
   CONFIRMATION_TOOL_NAME,
@@ -10,6 +11,7 @@ import {
   isFunctionResponsePart,
   isInternalToolName,
   isThoughtPart,
+  KagentAttachment,
   normalizeTimestamp,
   parseHistoryEntry,
   parsePart,
@@ -17,6 +19,8 @@ import {
   readFunctionResponse,
   readKagentMetadataString,
   readMessageText,
+  readAttachment,
+  readAttachmentPreview,
   readNestedTokenUsage,
   readPartText,
   readTokenUsage,
@@ -110,6 +114,22 @@ export type TimelineItem =
       verdict?: 'approved' | 'rejected';
     })
   | (TimelineItemBase & {
+      kind: 'attachment';
+      /** The file name kagent reported, when it reported one. */
+      name?: string;
+      /**
+       * The type the sender declared.
+       *
+       * Carried so the entry can say what the file claims to be, and never used
+       * to decide how to render it — see `readAttachmentPreview`.
+       */
+      declaredType?: string;
+      /** Whether it can be shown, and as what. */
+      preview: AttachmentPreview;
+      /** Whether the attachment came from the user rather than the agent. */
+      isUser: boolean;
+    })
+  | (TimelineItemBase & {
       /**
        * A turn that ended with no reply under it. Named for the case it was built
        * for, and kept that way because an e2e suite and the stream reducer address
@@ -152,6 +172,32 @@ export type SessionTimeline = {
 type OpenCall = { callId: string; itemIndex: number };
 
 const EMPTY_USAGE: TokenUsage = { total: 0, prompt: 0, completion: 0 };
+
+/**
+ * Previews already decided, keyed on the raw part.
+ *
+ * The timeline is rebuilt on every poll, and deciding a preview validates the
+ * whole payload and builds a `data:` URL as long as it. react-query keeps the
+ * identity of every part that did not change between polls, so an unchanged
+ * attachment is decided once, and a part that is no longer referenced takes its
+ * preview with it.
+ */
+const previewsByPart = new WeakMap<object, AttachmentPreview>();
+
+function previewFor(
+  rawPart: unknown,
+  attachment: KagentAttachment,
+): AttachmentPreview {
+  if (!rawPart || typeof rawPart !== 'object') {
+    return readAttachmentPreview(attachment);
+  }
+  let preview = previewsByPart.get(rawPart);
+  if (!preview) {
+    preview = readAttachmentPreview(attachment);
+    previewsByPart.set(rawPart, preview);
+  }
+  return preview;
+}
 
 /**
  * The A2A states in which `status.message` is a prompt the task is *waiting on*,
@@ -352,7 +398,8 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // are none, the answers are recovered from the decision payload's
           // `ask_user_answers` instead: kagent's own UI reads only that field, so it
           // may be the sole carrier on sessions that did not come through a
-          // gateway that also writes the text part.
+          // gateway that also writes the text part. The parts still go through the
+          // handling below, so a file sent with the answers is not dropped.
           if (decision.answers.length > 0 && !hasTextPart(parts)) {
             items.push({
               kind: 'user-message',
@@ -361,7 +408,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
               taskIndex,
               text: decision.answers.join('\n\n'),
             });
-            return;
           }
         }
       }
@@ -494,10 +540,34 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           return;
         }
 
+        const attachment = readAttachment(part);
+        if (attachment) {
+          // Conversation, not working: a file someone attached belongs with the
+          // message it came with, so it is never one of `ACTIVITY_KINDS` and the
+          // Hidden setting does not remove it.
+          flushText();
+          const preview = previewFor(rawPart, attachment);
+          items.push({
+            kind: 'attachment',
+            id: `${taskIndex}:${entryIndex}:${items.length}`,
+            at,
+            author,
+            taskIndex,
+            messageId: message.messageId,
+            isUser,
+            preview,
+            ...(attachment.name === undefined ? {} : { name: attachment.name }),
+            ...(attachment.declaredType === undefined
+              ? {}
+              : { declaredType: attachment.declaredType }),
+          });
+          return;
+        }
+
         if (!isFunctionCallPart(part)) {
-          // A file part, or something we have no renderer for. Silently ignored:
-          // the timeline is about what the agent said and did, and an unknown part
-          // type is not evidence of either.
+          // Something we have no renderer for. Silently ignored: the timeline is
+          // about what the agent said and did, and an unknown part type is not
+          // evidence of either.
           return;
         }
 

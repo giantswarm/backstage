@@ -1,4 +1,5 @@
 import {
+  formatBytes,
   formatCount,
   formatPercent,
   formatSeconds,
@@ -128,5 +129,17 @@ describe('formatTokensPerSecond', () => {
     // Mimir can also answer the division as NaN — neither is "0 tokens/s".
     expect(formatTokensPerSecond(undefined)).toBe('—');
     expect(formatTokensPerSecond(Number.NaN)).toBe('—');
+  });
+});
+
+describe('formatBytes', () => {
+  it('humanises byte sizes with binary prefixes', () => {
+    expect(formatBytes(undefined)).toBe('—');
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(522653767)).toBe('498 MiB');
+    expect(formatBytes(6594474711)).toBe('6.1 GiB');
+    expect(formatBytes(34254796848)).toBe('31.9 GiB');
+    expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
   });
 });

@@ -1,5 +1,5 @@
 import type { LifecycleStep } from './lifecycle';
-import { formatBytes } from './modelManagerServing';
+import { formatBytes } from './formatNumbers';
 import {
   explanationWithoutReason,
   type ServedModel,

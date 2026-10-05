@@ -7,7 +7,7 @@ import {
 import { scaffolderModuleGS } from './module';
 
 describe('scaffolderModuleGS', () => {
-  it('registers the kube:apply action and the template filters', async () => {
+  it('registers its actions and the template filters', async () => {
     const actionIds: string[] = [];
     const filterNames: string[] = [];
 
@@ -42,7 +42,9 @@ describe('scaffolderModuleGS', () => {
       features: [scaffolderModuleGS],
     });
 
-    expect(actionIds).toContain('kube:apply');
+    expect(actionIds).toEqual(
+      expect.arrayContaining(['kube:apply', 'gs:oci:tagExists']),
+    );
     expect(filterNames).toEqual(
       expect.arrayContaining(['parseClusterRef', 'fromJson']),
     );
