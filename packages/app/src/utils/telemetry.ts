@@ -350,6 +350,12 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Roadmap item' };
       break;
 
+    // The Magazine page (`/product`): its tab, history window and knowledge
+    // document live in the query string, so one page name covers them all.
+    case pathname === '/product':
+      payload = { page: 'Product magazine' };
+      break;
+
     case pathname === '/metrics':
       payload = { page: 'Metrics' };
       break;

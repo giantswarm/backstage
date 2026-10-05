@@ -1,0 +1,1 @@
+export { MagazineNowTab } from './MagazineNowTab';

@@ -6,6 +6,9 @@ import {
 
 export const rootRouteRef = createRouteRef();
 
+/** The product magazine page (`/product`). */
+export const magazineRouteRef = createRouteRef();
+
 export const pullRouteRef = createSubRouteRef({
   path: '/pr/:number',
   parent: rootRouteRef,
