@@ -14,11 +14,23 @@ import {
   sigv4Advisories,
   toMcpServerManifestYaml,
   toMusterCliCommand,
-  validateNewMcpServerForm,
+  validateMcpServerAuth,
+  validateMcpServerDetails,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
 import { toMcpServerDefinition } from './gitops';
 import { MCPServer } from './k8s';
+
+/**
+ * Every validation problem of the form, in form order, the way the form
+ * provider combines its two steps. Mirrors the CRD's structural rules so
+ * nothing fails later at apply time; the auth mutual exclusions are handled by
+ * `authFieldAvailability` instead, since the wizard's exclusive auth modes make
+ * them unreachable rather than merely invalid.
+ */
+function validateNewMcpServerForm(form: NewMcpServerFormState): string[] {
+  return [...validateMcpServerDetails(form), ...validateMcpServerAuth(form)];
+}
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},

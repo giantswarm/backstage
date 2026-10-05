@@ -148,26 +148,6 @@ export function describeSessionState(
 }
 
 /**
- * The session's state, taken from its **most recent** task.
- *
- * kagent returns tasks `ORDER BY created_at ASC`
- * (`go/core/internal/database/gen/tasks.sql.go`), so the array is chronological
- * and the last element is the newest turn. Its state is the session's state:
- * earlier turns having completed says nothing about whether the session is
- * currently working.
- *
- * Returns `undefined` when there are no tasks or none reported a state — a
- * session created but never run. That is a real condition ("no activity yet"),
- * distinct from any state kagent could report, so it must not be flattened into
- * one of them.
- */
-export function deriveSessionState(
-  tasks: A2aTaskWire[],
-): SessionState | undefined {
-  return readNewestTaskState(tasks)?.state;
-}
-
-/**
  * How long a session's newest task may sit in an active state without its
  * timestamp advancing before we stop treating it as live and report it
  * **stalled** instead.
@@ -226,9 +206,12 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
 /**
  * Walk back to the newest task that reports a state, and resolve when it moved.
  *
- * kagent returns tasks oldest-first, so the session's state is the newest task's.
- * The walk takes the state **and** the timestamp from the same task, so a trailing
- * task carrying no state cannot lend its timestamp to an earlier task's state.
+ * kagent returns tasks oldest-first (`ORDER BY created_at ASC`,
+ * `go/core/internal/database/gen/tasks.sql.go`), so the session's state is the
+ * newest task's. The walk takes the state **and** the timestamp from the same
+ * task, so a trailing task carrying no state cannot lend its timestamp to an
+ * earlier task's state. Undefined when no task reports a state: a session
+ * created but never run, distinct from any state kagent could report.
  *
  * When that task has no usable timestamp of its own, the conversation's newest
  * usable one stands in — losing the "same task" property deliberately. A missing
