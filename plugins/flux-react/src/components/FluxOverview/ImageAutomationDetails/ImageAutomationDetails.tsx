@@ -3,14 +3,15 @@ import {
   ImagePolicy,
   ImageRepository,
   ImageUpdateAutomation,
-  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { Section } from '../../UI';
-import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
-import { findTargetClusterName } from '../../../utils/findTargetClusterName';
-import { findKustomizationSource } from '../../../utils/findKustomizationSource';
+import {
+  InventoryOwner,
+  KustomizationTreeBuilder,
+} from '../utils/KustomizationTreeBuilder';
+import { ParentSection } from '../ParentSection';
 
 function findImageRepository(
   imagePolicy: ImagePolicy,
@@ -77,17 +78,15 @@ function findSourceGitRepository(
 type ImagePolicyDetailsProps = {
   imagePolicy: ImagePolicy;
   parentImageRepository?: ImageRepository;
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
 };
 
 const ImagePolicyDetails = ({
   imagePolicy,
   parentImageRepository,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
 }: ImagePolicyDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -102,19 +101,11 @@ const ImagePolicyDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={[]}
+      />
 
       {parentImageRepository ? (
         <Section heading="ImageRepository">
@@ -134,17 +125,15 @@ const ImagePolicyDetails = ({
 type ImageRepositoryDetailsProps = {
   imageRepository: ImageRepository;
   childImagePolicies: ImagePolicy[];
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
 };
 
 const ImageRepositoryDetails = ({
   imageRepository,
   childImagePolicies,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
 }: ImageRepositoryDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -159,19 +148,11 @@ const ImageRepositoryDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={[]}
+      />
 
       {childImagePolicies.length > 0 ? (
         <Section heading="ImagePolicies">
@@ -196,17 +177,15 @@ const ImageRepositoryDetails = ({
 type ImageUpdateAutomationDetailsProps = {
   imageUpdateAutomation: ImageUpdateAutomation;
   sourceGitRepository?: GitRepository;
-  parentKustomization?: ReturnType<
-    KustomizationTreeBuilder['findParentKustomization']
-  >;
-  parentKustomizationSource?: GitRepository | OCIRepository;
+  parent?: InventoryOwner | null;
+  allGitRepositories: GitRepository[];
 };
 
 const ImageUpdateAutomationDetails = ({
   imageUpdateAutomation,
   sourceGitRepository,
-  parentKustomization,
-  parentKustomizationSource,
+  parent,
+  allGitRepositories,
 }: ImageUpdateAutomationDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -221,19 +200,11 @@ const ImageUpdateAutomationDetails = ({
         />
       </Section>
 
-      {parentKustomization ? (
-        <Section heading="Kustomization">
-          <ResourceCard
-            cluster={parentKustomization.cluster}
-            kind={parentKustomization.getKind()}
-            name={parentKustomization.getName()}
-            namespace={parentKustomization.getNamespace()}
-            targetCluster={findTargetClusterName(parentKustomization)}
-            resource={parentKustomization}
-            source={parentKustomizationSource}
-          />
-        </Section>
-      ) : null}
+      <ParentSection
+        parent={parent}
+        allGitRepositories={allGitRepositories}
+        allOCIRepositories={[]}
+      />
 
       {sourceGitRepository ? (
         <Section heading="Source">
@@ -270,17 +241,14 @@ export const ImageAutomationDetails = ({
       resource,
       allImageRepositories,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImagePolicyDetails
         imagePolicy={resource}
         parentImageRepository={parentImageRepository}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
       />
     );
   }
@@ -290,17 +258,14 @@ export const ImageAutomationDetails = ({
       resource,
       allImagePolicies,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImageRepositoryDetails
         imageRepository={resource}
         childImagePolicies={childImagePolicies}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
       />
     );
   }
@@ -310,17 +275,14 @@ export const ImageAutomationDetails = ({
       resource,
       allGitRepositories,
     );
-    const parentKustomization = treeBuilder?.findParentKustomization(resource);
-    const parentKustomizationSource = parentKustomization
-      ? findKustomizationSource(parentKustomization, allGitRepositories, [])
-      : undefined;
+    const parent = treeBuilder?.findParent(resource);
 
     return (
       <ImageUpdateAutomationDetails
         imageUpdateAutomation={resource}
         sourceGitRepository={sourceGitRepository}
-        parentKustomization={parentKustomization}
-        parentKustomizationSource={parentKustomizationSource}
+        parent={parent}
+        allGitRepositories={allGitRepositories}
       />
     );
   }

@@ -1,12 +1,10 @@
 import {
-  GitRepository,
+  FluxInstance,
   HelmRelease,
-  HelmRepository,
   ImagePolicy,
   ImageRepository,
-  ImageUpdateAutomation,
   Kustomization,
-  OCIRepository,
+  ResourceSet,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ObjectMetadata,
@@ -18,7 +16,40 @@ import {
   FluxResourceCollections,
 } from '../../../../utils/fluxResources';
 
-const COMPACT_GROUP = 'toolkit.fluxcd.io';
+/**
+ * Whether objects of `group` are Flux objects, which the tree's compact
+ * ("Flux") view keeps: the toolkit kinds and the Flux Operator kinds.
+ */
+export function isFluxGroup(group: string): boolean {
+  return group.endsWith('toolkit.fluxcd.io') || group === FluxInstance.group;
+}
+
+/**
+ * A Flux object that applies other objects and lists them in its
+ * `status.inventory`, and so has children in the tree.
+ */
+export type InventoryOwner = Kustomization | ResourceSet | FluxInstance;
+
+export function isInventoryOwner(
+  resource: FluxResource | undefined,
+): resource is InventoryOwner {
+  return (
+    resource instanceof Kustomization ||
+    resource instanceof ResourceSet ||
+    resource instanceof FluxInstance
+  );
+}
+
+/**
+ * The order in which owners that nothing else applies become roots, and in
+ * which a cycle of owners is broken: a FluxInstance installs Flux and creates
+ * the Kustomization that may in turn apply the FluxInstance from Git.
+ */
+const ROOT_KIND_ORDER: string[] = [
+  FluxInstance.kind,
+  Kustomization.kind,
+  ResourceSet.kind,
+];
 
 export type KustomizationTreeNodeData = {
   label: string;
@@ -55,78 +86,47 @@ export type KustomizationTreeNode = {
   displayInCompactView: boolean;
 };
 
+function getObjectKey({ group, kind, namespace, name }: ObjectMetadata) {
+  return `${group}/${kind}/${namespace}/${name}`;
+}
+
+function getResourceKey(resource: FluxResource) {
+  return getObjectKey({
+    group: resource.getGroup() ?? '',
+    kind: resource.getKind(),
+    namespace: resource.getNamespace() ?? '',
+    name: resource.getName(),
+  });
+}
+
 export class KustomizationTreeBuilder {
-  private kustomizations: Map<string, Kustomization> = new Map();
-  private helmReleases: Map<string, HelmRelease> = new Map();
+  /** Every resource, by group, kind, namespace and name. */
+  private resources: Map<string, FluxResource> = new Map();
+  private owners: Map<string, InventoryOwner> = new Map();
   private inventories: Map<string, ObjectMetadata[] | undefined> = new Map();
-  private gitRepositories: Map<string, GitRepository> = new Map();
-  private ociRepositories: Map<string, OCIRepository> = new Map();
-  private helmRepositories: Map<string, HelmRepository> = new Map();
-  private imagePolicies: Map<string, ImagePolicy> = new Map();
-  private imageRepositories: Map<string, ImageRepository> = new Map();
-  private imageUpdateAutomations: Map<string, ImageUpdateAutomation> =
-    new Map();
+  private imagePolicies: ImagePolicy[];
 
-  constructor({
-    kustomizations = [],
-    helmReleases = [],
-    gitRepositories = [],
-    ociRepositories = [],
-    helmRepositories = [],
-    imagePolicies = [],
-    imageRepositories = [],
-    imageUpdateAutomations = [],
-  }: Partial<FluxResourceCollections>) {
-    kustomizations.forEach(k => {
-      const key = this.getKey(k.getName(), k.getNamespace());
+  constructor(resources: Partial<FluxResourceCollections>) {
+    const allResources = Object.values(resources).flat() as FluxResource[];
 
-      this.kustomizations.set(key, k);
+    for (const resource of allResources) {
+      const key = getResourceKey(resource);
+      this.resources.set(key, resource);
 
-      const inventory = k.getInventory();
-      const inventoryEntries = inventory
-        ? parseInventoryEntries(k, inventory.entries)
-        : undefined;
-      this.inventories.set(key, inventoryEntries);
-    });
+      if (isInventoryOwner(resource)) {
+        this.owners.set(key, resource);
 
-    helmReleases.forEach(h => {
-      const key = this.getKey(h.getName(), h.getNamespace());
-      this.helmReleases.set(key, h);
-    });
+        const inventory = resource.getInventory();
+        this.inventories.set(
+          key,
+          inventory
+            ? parseInventoryEntries(resource, inventory.entries)
+            : undefined,
+        );
+      }
+    }
 
-    gitRepositories.forEach(g => {
-      const key = this.getKey(g.getName(), g.getNamespace());
-      this.gitRepositories.set(key, g);
-    });
-
-    ociRepositories.forEach(o => {
-      const key = this.getKey(o.getName(), o.getNamespace());
-      this.ociRepositories.set(key, o);
-    });
-
-    helmRepositories.forEach(h => {
-      const key = this.getKey(h.getName(), h.getNamespace());
-      this.helmRepositories.set(key, h);
-    });
-
-    imagePolicies.forEach(p => {
-      const key = this.getKey(p.getName(), p.getNamespace());
-      this.imagePolicies.set(key, p);
-    });
-
-    imageRepositories.forEach(r => {
-      const key = this.getKey(r.getName(), r.getNamespace());
-      this.imageRepositories.set(key, r);
-    });
-
-    imageUpdateAutomations.forEach(a => {
-      const key = this.getKey(a.getName(), a.getNamespace());
-      this.imageUpdateAutomations.set(key, a);
-    });
-  }
-
-  private getKey(name: string, namespace?: string): string {
-    return namespace ? `${namespace}/${name}` : name;
+    this.imagePolicies = resources.imagePolicies ?? [];
   }
 
   private findImagePoliciesForRepository(
@@ -136,7 +136,7 @@ export class KustomizationTreeBuilder {
     const repoNamespace = imageRepository.getNamespace();
     const repoCluster = imageRepository.cluster;
 
-    return Array.from(this.imagePolicies.values()).filter(policy => {
+    return this.imagePolicies.filter(policy => {
       if (policy.cluster !== repoCluster) {
         return false;
       }
@@ -151,46 +151,62 @@ export class KustomizationTreeBuilder {
     });
   }
 
-  private findRoots(): Kustomization[] {
-    // Find kustomizations that are not listed in another kustomization's
-    // inventory. References are matched by namespace and name — name-only
-    // matching would let any inventory entry disqualify unrelated
-    // kustomizations that share its name in other namespaces, which can
-    // collapse the whole tree to zero roots on multi-org clusters.
-    // (A kustomization's own self-reference — the self-managed bootstrap
-    // pattern — is already stripped at parse time by parseInventoryEntries.)
-    const referencedKeys = new Set(
-      Array.from(this.inventories.values()).flatMap(inventoryEntries => {
-        if (!inventoryEntries) {
-          return [];
-        }
-
-        return inventoryEntries
-          .filter(e => e.kind === Kustomization.kind)
-          .map(e => this.getKey(e.name, e.namespace));
-      }),
-    );
-
-    return Array.from(this.kustomizations.entries())
-      .filter(([key]) => !referencedKeys.has(key))
-      .map(([, k]) => k);
+  private findChildOwnerKeys(ownerKey: string): string[] {
+    return (this.inventories.get(ownerKey) ?? [])
+      .map(getObjectKey)
+      .filter(key => this.owners.has(key));
   }
 
-  private findChildren(parentKey: string): ObjectMetadata[] {
-    const inventoryEntries = this.inventories.get(parentKey);
-    if (!inventoryEntries) {
-      return [];
+  /**
+   * Owners that no other owner lists in its inventory, plus one owner of every
+   * cycle that nothing else reaches. References are matched by group, kind,
+   * namespace and name — name-only matching would let any inventory entry
+   * disqualify unrelated owners that share its name in other namespaces, which
+   * can collapse the whole tree to zero roots on multi-org clusters. (An
+   * owner's own self-reference — the self-managed bootstrap pattern — is
+   * already stripped at parse time by parseInventoryEntries.)
+   */
+  private findRoots(): InventoryOwner[] {
+    const referencedKeys = new Set(
+      Array.from(this.owners.keys()).flatMap(key =>
+        this.findChildOwnerKeys(key),
+      ),
+    );
+
+    const roots = this.sortRoots(
+      Array.from(this.owners.entries())
+        .filter(([key]) => !referencedKeys.has(key))
+        .map(([, owner]) => owner),
+    );
+
+    const reached = new Set<string>();
+    const reach = (key: string) => {
+      if (reached.has(key)) {
+        return;
+      }
+      reached.add(key);
+      this.findChildOwnerKeys(key).forEach(reach);
+    };
+    roots.forEach(root => reach(getResourceKey(root)));
+
+    for (const owner of this.sortRoots(Array.from(this.owners.values()))) {
+      const key = getResourceKey(owner);
+      if (!reached.has(key)) {
+        roots.push(owner);
+        reach(key);
+      }
     }
-    return inventoryEntries;
+
+    return this.sortRoots(roots);
   }
 
   private sortChildResources(
     childResources: ObjectMetadata[],
   ): ObjectMetadata[] {
     return childResources.sort((a, b) => {
-      // 1. Flux resources go first (resources that end with toolkit.fluxcd.io)
-      const aIsFlux = a.group.endsWith(COMPACT_GROUP);
-      const bIsFlux = b.group.endsWith(COMPACT_GROUP);
+      // 1. Flux resources go first
+      const aIsFlux = isFluxGroup(a.group);
+      const bIsFlux = isFluxGroup(b.group);
 
       if (aIsFlux && !bIsFlux) return -1;
       if (!aIsFlux && bIsFlux) return 1;
@@ -217,49 +233,55 @@ export class KustomizationTreeBuilder {
     });
   }
 
-  private sortRootKustomizations(
-    kustomizations: Kustomization[],
-  ): Kustomization[] {
-    return kustomizations.sort((a, b) => {
-      // 1. Alphabetical by namespace
+  private sortRoots(owners: InventoryOwner[]): InventoryOwner[] {
+    return owners.sort((a, b) => {
+      // 1. By kind: FluxInstances, then Kustomizations, then ResourceSets
+      const kindComparison =
+        ROOT_KIND_ORDER.indexOf(a.getKind()) -
+        ROOT_KIND_ORDER.indexOf(b.getKind());
+      if (kindComparison !== 0) return kindComparison;
+
+      // 2. Alphabetical by namespace
       const aNamespace = a.getNamespace() || '';
       const bNamespace = b.getNamespace() || '';
       const namespaceComparison = aNamespace.localeCompare(bNamespace);
       if (namespaceComparison !== 0) return namespaceComparison;
 
-      // 2. Alphabetical by name
+      // 3. Alphabetical by name
       return a.getName().localeCompare(b.getName());
     });
   }
 
+  private getOwnerNodeId(owner: InventoryOwner) {
+    return `${owner.cluster}-${owner.getKind().toLowerCase()}-${owner.getNamespace()}-${owner.getName()}`;
+  }
+
   private buildSubtree(
-    kustomization: Kustomization,
+    owner: InventoryOwner,
     visited: Set<string>,
   ): KustomizationTreeNode {
-    const key = this.getKey(
-      kustomization.getName(),
-      kustomization.getNamespace(),
-    );
+    const key = getResourceKey(owner);
+    const targetCluster =
+      owner instanceof Kustomization ? findTargetClusterName(owner) : undefined;
+
     if (visited.has(key)) {
       // Circular dependency detected - return node without children
       // eslint-disable-next-line no-console
       console.warn(`Circular dependency detected for: ${key}`);
 
-      const targetCluster = findTargetClusterName(kustomization);
-
       return {
-        id: `${kustomization.cluster}-kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
+        id: this.getOwnerNodeId(owner),
         nodeData: {
-          label: kustomization.getName(),
-          kind: kustomization.getKind(),
-          name: kustomization.getName(),
-          namespace: kustomization.getNamespace(),
-          cluster: kustomization.cluster,
+          label: owner.getName(),
+          kind: owner.getKind(),
+          name: owner.getName(),
+          namespace: owner.getNamespace(),
+          cluster: owner.cluster,
           targetCluster,
-          resource: kustomization,
+          resource: owner,
           hasChildren: false,
           hasChildrenInCompactView: false,
-          isFailing: isResourceFailing(kustomization),
+          isFailing: isResourceFailing(owner),
           hasFailingDescendants: false,
         },
         children: [],
@@ -269,8 +291,9 @@ export class KustomizationTreeBuilder {
 
     visited.add(key);
 
-    // Find children - kustomizations that depend on this one
-    const childResources = this.sortChildResources(this.findChildren(key));
+    const childResources = this.sortChildResources([
+      ...(this.inventories.get(key) ?? []),
+    ]);
 
     // Filter out ImagePolicies that have a parent ImageRepository in the same inventory
     // (they will be shown as children of the ImageRepository instead)
@@ -279,9 +302,8 @@ export class KustomizationTreeBuilder {
         return true;
       }
 
-      const childKey = this.getKey(child.name, child.namespace);
-      const imagePolicy = this.imagePolicies.get(childKey);
-      if (!imagePolicy) {
+      const imagePolicy = this.resources.get(getObjectKey(child));
+      if (!(imagePolicy instanceof ImagePolicy)) {
         return true;
       }
 
@@ -305,44 +327,16 @@ export class KustomizationTreeBuilder {
 
     const children: KustomizationTreeNode[] = filteredChildResources.map(
       child => {
-        if (child.kind === Kustomization.kind) {
-          const childKustomizationKey = this.getKey(
-            child.name,
-            child.namespace,
-          );
-          const childKustomization = this.kustomizations.get(
-            childKustomizationKey,
-          );
-          if (childKustomization) {
-            return this.buildSubtree(childKustomization, new Set(visited));
-          }
+        const childKey = getObjectKey(child);
+
+        const childOwner = this.owners.get(childKey);
+        if (childOwner) {
+          return this.buildSubtree(childOwner, new Set(visited));
         }
 
-        let childResource: FluxResource | undefined;
-        const childKey = this.getKey(child.name, child.namespace);
-        if (child.kind === HelmRelease.kind) {
-          childResource = this.helmReleases.get(childKey);
-        }
-        if (child.kind === HelmRepository.kind) {
-          childResource = this.helmRepositories.get(childKey);
-        }
-        if (child.kind === GitRepository.kind) {
-          childResource = this.gitRepositories.get(childKey);
-        }
-        if (child.kind === OCIRepository.kind) {
-          childResource = this.ociRepositories.get(childKey);
-        }
-        if (child.kind === ImagePolicy.kind) {
-          childResource = this.imagePolicies.get(childKey);
-        }
-        if (child.kind === ImageRepository.kind) {
-          childResource = this.imageRepositories.get(childKey);
-        }
-        if (child.kind === ImageUpdateAutomation.kind) {
-          childResource = this.imageUpdateAutomations.get(childKey);
-        }
+        const childResource = this.resources.get(childKey);
 
-        const targetCluster =
+        const childTargetCluster =
           childResource instanceof HelmRelease
             ? findTargetClusterName(childResource)
             : undefined;
@@ -353,7 +347,7 @@ export class KustomizationTreeBuilder {
           const childPolicies =
             this.findImagePoliciesForRepository(childResource);
           imageRepositoryChildren = childPolicies.map(policy => ({
-            id: `${kustomization.cluster}-${ImagePolicy.kind}-${policy.getNamespace()}-${policy.getName()}`,
+            id: `${owner.cluster}-${ImagePolicy.kind}-${policy.getNamespace()}-${policy.getName()}`,
             nodeData: {
               label: policy.getName(),
               kind: policy.getKind(),
@@ -372,13 +366,13 @@ export class KustomizationTreeBuilder {
         }
 
         return {
-          id: `${kustomization.cluster}-${child.kind}-${child.namespace}-${child.name}`,
+          id: `${owner.cluster}-${child.kind}-${child.namespace}-${child.name}`,
           nodeData: {
             ...child,
             label: child.name,
-            cluster: kustomization.cluster,
+            cluster: owner.cluster,
             resource: childResource,
-            targetCluster,
+            targetCluster: childTargetCluster,
             hasChildren: imageRepositoryChildren.length > 0,
             hasChildrenInCompactView: imageRepositoryChildren.length > 0,
             isFailing: isResourceFailing(childResource),
@@ -387,28 +381,26 @@ export class KustomizationTreeBuilder {
             ),
           },
           children: imageRepositoryChildren,
-          displayInCompactView: child.group.endsWith(COMPACT_GROUP),
+          displayInCompactView: isFluxGroup(child.group),
         };
       },
     );
 
     visited.delete(key);
 
-    const targetCluster = findTargetClusterName(kustomization);
-
     return {
-      id: `${kustomization.cluster}-kustomization-${kustomization.getNamespace()}-${kustomization.getName()}`,
+      id: this.getOwnerNodeId(owner),
       nodeData: {
-        label: kustomization.getName(),
-        kind: kustomization.getKind(),
-        name: kustomization.getName(),
-        namespace: kustomization.getNamespace(),
-        cluster: kustomization.cluster,
+        label: owner.getName(),
+        kind: owner.getKind(),
+        name: owner.getName(),
+        namespace: owner.getNamespace(),
+        cluster: owner.cluster,
         targetCluster,
-        resource: kustomization,
+        resource: owner,
         hasChildren: children.length > 0,
         hasChildrenInCompactView: children.some(r => r.displayInCompactView),
-        isFailing: isResourceFailing(kustomization),
+        isFailing: isResourceFailing(owner),
         hasFailingDescendants: children.some(
           r => r.nodeData.isFailing || r.nodeData.hasFailingDescendants,
         ),
@@ -419,31 +411,35 @@ export class KustomizationTreeBuilder {
   }
 
   buildTree(): KustomizationTreeNode[] {
-    const roots = this.sortRootKustomizations(this.findRoots());
-    return roots.map(root => this.buildSubtree(root, new Set()));
+    return this.findRoots().map(root => this.buildSubtree(root, new Set()));
   }
 
-  findParentKustomization(
-    resource:
-      | Kustomization
-      | HelmRelease
-      | ImageRepository
-      | ImagePolicy
-      | ImageUpdateAutomation,
-  ): Kustomization | null {
+  /**
+   * The owner whose inventory lists `resource`, if any.
+   */
+  findParent(resource: FluxResource): InventoryOwner | null {
+    const resourceKey = getResourceKey(resource);
+
     for (const [key, inventoryEntries] of this.inventories.entries()) {
-      const matchingInventoryEntry = inventoryEntries?.find(
-        entry =>
-          entry.kind === resource.getKind() &&
-          entry.name === resource.getName() &&
-          entry.namespace === resource.getNamespace(),
-      );
-      if (matchingInventoryEntry) {
-        const matchingKustomization = this.kustomizations.get(key);
-        return matchingKustomization ?? null;
+      if (
+        inventoryEntries?.some(entry => getObjectKey(entry) === resourceKey)
+      ) {
+        return this.owners.get(key) ?? null;
       }
     }
 
     return null;
+  }
+
+  /**
+   * The resources `owner` lists in its inventory that this builder knows.
+   */
+  findInventoryResources(owner: InventoryOwner): FluxResource[] {
+    return (this.inventories.get(getResourceKey(owner)) ?? []).flatMap(
+      entry => {
+        const resource = this.resources.get(getObjectKey(entry));
+        return resource ? [resource] : [];
+      },
+    );
   }
 }

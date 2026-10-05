@@ -1,4 +1,6 @@
 import {
+  FluxInstance,
+  FluxReport,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -7,10 +9,13 @@ import {
   ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
+  ResourceSet,
+  ResourceSetInputProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 /**
- * Every Flux kind the UI fetches, keyed by the name of its collection.
+ * Every Flux kind the UI fetches, keyed by the name of its collection. Each of
+ * them has a details panel.
  */
 export const FLUX_RESOURCE_CLASSES = {
   kustomizations: Kustomization,
@@ -21,6 +26,10 @@ export const FLUX_RESOURCE_CLASSES = {
   imagePolicies: ImagePolicy,
   imageRepositories: ImageRepository,
   imageUpdateAutomations: ImageUpdateAutomation,
+  fluxInstances: FluxInstance,
+  resourceSets: ResourceSet,
+  resourceSetInputProviders: ResourceSetInputProvider,
+  fluxReports: FluxReport,
 } as const;
 
 type FluxResourceClasses = typeof FLUX_RESOURCE_CLASSES;
@@ -91,4 +100,11 @@ export function findFluxResource(
       r.getNamespace() === ref.namespace &&
       r.getName() === ref.name,
   );
+}
+
+/**
+ * Whether the details panel can show resources of `kind`.
+ */
+export function hasDetailsPanel(kind: string): boolean {
+  return findFluxResourceCollectionKey(kind) !== undefined;
 }

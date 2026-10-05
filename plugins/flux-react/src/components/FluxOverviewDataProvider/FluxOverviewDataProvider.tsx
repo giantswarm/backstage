@@ -66,7 +66,12 @@ export const FluxOverviewDataProvider = ({
   useShowErrors(errors);
 
   const { treeBuilder, tree } = useMemo(() => {
-    if (isLoading || resources.kustomizations.length === 0) {
+    const hasInventoryOwners =
+      resources.kustomizations.length > 0 ||
+      resources.resourceSets.length > 0 ||
+      resources.fluxInstances.length > 0;
+
+    if (isLoading || !hasInventoryOwners) {
       return { treeBuilder: undefined, tree: undefined };
     }
 

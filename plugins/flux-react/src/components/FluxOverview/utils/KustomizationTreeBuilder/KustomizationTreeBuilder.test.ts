@@ -1,8 +1,14 @@
 import {
+  FluxInstance,
   HelmRelease,
   Kustomization,
+  ResourceSet,
+  ResourceSetInputProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { KustomizationTreeBuilder } from './KustomizationTreeBuilder';
+import {
+  KustomizationTreeBuilder,
+  isFluxGroup,
+} from './KustomizationTreeBuilder';
 
 type InventoryRef = {
   namespace: string;
@@ -86,7 +92,31 @@ function createMockHelmRelease(options: {
   return new HelmRelease(json as any, 'test-installation');
 }
 
+function createMockOperatorObject<T>(
+  ResourceClass: new (json: any, cluster: string) => T,
+  kind: string,
+  options: { name: string; namespace?: string; inventory?: InventoryRef[] },
+): T {
+  const json = {
+    apiVersion: 'fluxcd.controlplane.io/v1',
+    kind,
+    metadata: {
+      name: options.name,
+      namespace: options.namespace ?? 'flux-system',
+    },
+    spec: {},
+    status: {
+      inventory: options.inventory
+        ? { entries: options.inventory.map(inventoryEntry) }
+        : undefined,
+    },
+  };
+
+  return new ResourceClass(json, 'test-installation');
+}
+
 const KUSTOMIZATION_GROUP = 'kustomize.toolkit.fluxcd.io';
+const OPERATOR_GROUP = 'fluxcd.controlplane.io';
 const HELM_RELEASE_GROUP = 'helm.toolkit.fluxcd.io';
 
 function buildFixtureTree(options: {
@@ -368,5 +398,156 @@ describe('KustomizationTreeBuilder', () => {
       expect(parent?.nodeData.hasFailingDescendants).toBe(true);
       expect(findNode(tree, 'root')?.nodeData.hasFailingDescendants).toBe(true);
     });
+  });
+
+  describe('Flux Operator owners', () => {
+    it('nests the objects a ResourceSet applies under it', () => {
+      const root = createMockKustomization({
+        name: 'root',
+        inventory: [
+          {
+            namespace: 'flux-system',
+            name: 'apps',
+            group: OPERATOR_GROUP,
+            kind: 'ResourceSet',
+          },
+          {
+            namespace: 'flux-system',
+            name: 'branches',
+            group: OPERATOR_GROUP,
+            kind: 'ResourceSetInputProvider',
+          },
+        ],
+      });
+      const resourceSet = createMockOperatorObject(ResourceSet, 'ResourceSet', {
+        name: 'apps',
+        inventory: [
+          {
+            namespace: 'default',
+            name: 'my-app',
+            group: HELM_RELEASE_GROUP,
+            kind: 'HelmRelease',
+          },
+        ],
+      });
+      const provider = createMockOperatorObject(
+        ResourceSetInputProvider,
+        'ResourceSetInputProvider',
+        { name: 'branches' },
+      );
+      const helmRelease = createMockHelmRelease({ name: 'my-app' });
+
+      const builder = new KustomizationTreeBuilder({
+        kustomizations: [root],
+        resourceSets: [resourceSet],
+        resourceSetInputProviders: [provider],
+        helmReleases: [helmRelease],
+      });
+      const tree = builder.buildTree();
+
+      expect(tree.map(node => node.nodeData.name)).toEqual(['root']);
+      const resourceSetNode = findNode(tree, 'apps');
+      expect(resourceSetNode?.nodeData.resource).toBe(resourceSet);
+      expect(resourceSetNode?.displayInCompactView).toBe(true);
+      expect(resourceSetNode?.children.map(c => c.nodeData.resource)).toEqual([
+        helmRelease,
+      ]);
+      expect(findNode(tree, 'branches')?.nodeData.resource).toBe(provider);
+      expect(findNode(tree, 'branches')?.displayInCompactView).toBe(true);
+
+      expect(builder.findParent(helmRelease)).toBe(resourceSet);
+      expect(builder.findParent(resourceSet)).toBe(root);
+      expect(builder.findParent(root)).toBeNull();
+    });
+
+    it('makes a FluxInstance the root above the Kustomization it syncs, even when that Kustomization applies it back', () => {
+      // The usual bootstrap: the operator creates flux-system from
+      // spec.sync, and flux-system applies the FluxInstance from Git.
+      const instance = createMockOperatorObject(FluxInstance, 'FluxInstance', {
+        name: 'flux',
+        inventory: [
+          {
+            namespace: 'flux-system',
+            name: 'flux-system',
+            group: KUSTOMIZATION_GROUP,
+            kind: 'Kustomization',
+          },
+        ],
+      });
+      const syncKustomization = createMockKustomization({
+        name: 'flux-system',
+        inventory: [
+          {
+            namespace: 'flux-system',
+            name: 'flux',
+            group: OPERATOR_GROUP,
+            kind: 'FluxInstance',
+          },
+        ],
+      });
+
+      const tree = new KustomizationTreeBuilder({
+        kustomizations: [syncKustomization],
+        fluxInstances: [instance],
+      }).buildTree();
+
+      expect(tree.map(node => node.nodeData.kind)).toEqual(['FluxInstance']);
+      expect(tree[0].children[0].nodeData.resource).toBe(syncKustomization);
+      // The cycle ends at the FluxInstance listed a second time.
+      expect(tree[0].children[0].children[0].nodeData.resource).toBe(instance);
+      expect(tree[0].children[0].children[0].children).toEqual([]);
+    });
+
+    it('keeps a ResourceSet and a Kustomization of the same name apart', () => {
+      const kustomization = createMockKustomization({
+        name: 'apps',
+        inventory: [
+          {
+            namespace: 'default',
+            name: 'from-kustomization',
+            group: HELM_RELEASE_GROUP,
+            kind: 'HelmRelease',
+          },
+        ],
+      });
+      const resourceSet = createMockOperatorObject(ResourceSet, 'ResourceSet', {
+        name: 'apps',
+        inventory: [
+          {
+            namespace: 'default',
+            name: 'from-resourceset',
+            group: HELM_RELEASE_GROUP,
+            kind: 'HelmRelease',
+          },
+        ],
+      });
+
+      const tree = new KustomizationTreeBuilder({
+        kustomizations: [kustomization],
+        resourceSets: [resourceSet],
+      }).buildTree();
+
+      expect(
+        tree.map(node => [
+          node.nodeData.kind,
+          node.children.map(c => c.nodeData.name),
+        ]),
+      ).toEqual([
+        ['Kustomization', ['from-kustomization']],
+        ['ResourceSet', ['from-resourceset']],
+      ]);
+    });
+  });
+});
+
+describe('isFluxGroup', () => {
+  it.each([
+    ['kustomize.toolkit.fluxcd.io', true],
+    ['source.toolkit.fluxcd.io', true],
+    ['fluxcd.controlplane.io', true],
+    ['apps', false],
+    ['application.giantswarm.io', false],
+  ])('%s → %s', (group, expected) => {
+    expect(isFluxGroup(group)).toBe(expected);
   });
 });

@@ -1,6 +1,8 @@
 import {
   ErrorInfoUnion,
+  FluxInstance,
   FluxObject,
+  FluxReport,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -10,6 +12,8 @@ import {
   Kustomization,
   MultiVersionResourceMatcher,
   OCIRepository,
+  ResourceSet,
+  ResourceSetInputProvider,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -89,6 +93,14 @@ export function useFluxResources(clusters: string | string[] | null) {
     ImageUpdateAutomation,
     refetchInterval,
   );
+  const fluxInstances = useFluxKind(clusters, FluxInstance, refetchInterval);
+  const resourceSets = useFluxKind(clusters, ResourceSet, refetchInterval);
+  const resourceSetInputProviders = useFluxKind(
+    clusters,
+    ResourceSetInputProvider,
+    refetchInterval,
+  );
+  const fluxReports = useFluxKind(clusters, FluxReport, refetchInterval);
 
   const resources: FluxResourceCollections = useMemo(
     () => ({
@@ -100,6 +112,10 @@ export function useFluxResources(clusters: string | string[] | null) {
       imagePolicies: imagePolicies.resources,
       imageRepositories: imageRepositories.resources,
       imageUpdateAutomations: imageUpdateAutomations.resources,
+      fluxInstances: fluxInstances.resources,
+      resourceSets: resourceSets.resources,
+      resourceSetInputProviders: resourceSetInputProviders.resources,
+      fluxReports: fluxReports.resources,
     }),
     [
       kustomizations.resources,
@@ -110,6 +126,10 @@ export function useFluxResources(clusters: string | string[] | null) {
       imagePolicies.resources,
       imageRepositories.resources,
       imageUpdateAutomations.resources,
+      fluxInstances.resources,
+      resourceSets.resources,
+      resourceSetInputProviders.resources,
+      fluxReports.resources,
     ],
   );
 
@@ -121,7 +141,11 @@ export function useFluxResources(clusters: string | string[] | null) {
     helmRepositories.isLoading ||
     imagePolicies.isLoading ||
     imageRepositories.isLoading ||
-    imageUpdateAutomations.isLoading;
+    imageUpdateAutomations.isLoading ||
+    fluxInstances.isLoading ||
+    resourceSets.isLoading ||
+    resourceSetInputProviders.isLoading ||
+    fluxReports.isLoading;
 
   const errors = useMemo(
     () => [
@@ -133,6 +157,10 @@ export function useFluxResources(clusters: string | string[] | null) {
       ...imagePolicies.errors,
       ...imageRepositories.errors,
       ...imageUpdateAutomations.errors,
+      ...fluxInstances.errors,
+      ...resourceSets.errors,
+      ...resourceSetInputProviders.errors,
+      ...fluxReports.errors,
     ],
     [
       kustomizations.errors,
@@ -143,6 +171,10 @@ export function useFluxResources(clusters: string | string[] | null) {
       imagePolicies.errors,
       imageRepositories.errors,
       imageUpdateAutomations.errors,
+      fluxInstances.errors,
+      resourceSets.errors,
+      resourceSetInputProviders.errors,
+      fluxReports.errors,
     ],
   );
 
@@ -152,6 +184,9 @@ export function useFluxResources(clusters: string | string[] | null) {
       ...resources.imagePolicies,
       ...resources.imageRepositories,
       ...resources.imageUpdateAutomations,
+      ...resources.fluxInstances,
+      ...resources.resourceSets,
+      ...resources.resourceSetInputProviders,
     ].some(r => r.isReconciling());
 
     // An on-demand reconciliation the controller has not picked up yet also

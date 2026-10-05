@@ -1,5 +1,7 @@
 import { Progress } from '@backstage/core-components';
 import {
+  FluxInstance,
+  FluxReport,
   GitRepository,
   HelmRelease,
   HelmRepository,
@@ -8,6 +10,8 @@ import {
   ImageUpdateAutomation,
   Kustomization,
   OCIRepository,
+  ResourceSet,
+  ResourceSetInputProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   FLUX_RESOURCE_CLASSES,
@@ -21,6 +25,7 @@ import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
 import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { RepositoryDetails } from '../RepositoryDetails';
 import { ImageAutomationDetails } from '../ImageAutomationDetails';
+import { FluxOperatorDetails } from '../FluxOperatorDetails';
 
 type DetailsProps = {
   resourceRef: {
@@ -63,7 +68,7 @@ export const Details = ({
     const diagnosticMessage =
       resourcesInCluster === 0
         ? `No ${resourceKindName} resources were found in cluster ${resourceRef.cluster}. This could indicate a permissions issue or that this resource type is not available.`
-        : `This resource is referenced in a Kustomization inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
+        : `This resource is referenced in an inventory but could not be found. It may have been deleted or the inventory data may be stale.`;
 
     return (
       <Flex direction="column" gap="2">
@@ -124,6 +129,16 @@ export const Details = ({
           allImagePolicies={resources.imagePolicies}
           allImageRepositories={resources.imageRepositories}
           allGitRepositories={resources.gitRepositories}
+          treeBuilder={treeBuilder}
+        />
+      )}
+      {(resource instanceof FluxInstance ||
+        resource instanceof ResourceSet ||
+        resource instanceof ResourceSetInputProvider ||
+        resource instanceof FluxReport) && (
+        <FluxOperatorDetails
+          resource={resource}
+          resources={resources}
           treeBuilder={treeBuilder}
         />
       )}
