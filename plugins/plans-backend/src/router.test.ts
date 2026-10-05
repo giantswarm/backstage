@@ -938,6 +938,41 @@ describe('createRouter', () => {
       expect(res.status).toBe(400);
       expect(github.calls).toHaveLength(0);
     });
+
+    describe('kept on a branch of a plan repository', () => {
+      const onPlans = () =>
+        magazineApp({ repository: REPO, ref: 'magazine', knowledgeRef: 'magazine' });
+
+      it('leaves the plan routes of that repository open', async () => {
+        github.answers.set('list_pull_requests', []);
+        const res = await request(await onPlans())
+          .get('/pulls')
+          .query({ repo: REPO });
+        expect(res.status).toBe(200);
+      });
+
+      it('reads the magazine branch when asked for it', async () => {
+        github.contentAnswers.set('get_file_contents', fileContent('{}'));
+        const res = await request(await onPlans())
+          .get('/content')
+          .query({ repo: REPO, ref: 'magazine', path: 'magazine/now.json' });
+        expect(res.status).toBe(200);
+        expect(github.calls[0].args).toMatchObject({
+          ref: 'refs/heads/magazine',
+        });
+      });
+
+      it('keeps plan reads on the default branch', async () => {
+        github.contentAnswers.set('get_file_contents', fileContent('# Plan'));
+        const res = await request(await onPlans())
+          .get('/content')
+          .query({ repo: REPO, path: 'plan-a/PRD.md' });
+        expect(res.status).toBe(200);
+        expect(github.calls[0].args).not.toMatchObject({
+          ref: 'refs/heads/magazine',
+        });
+      });
+    });
   });
 
   describe('/epics', () => {

@@ -276,9 +276,15 @@ export async function createRouter(
    * repositories are accepted -- this keeps the proxy scoped to plan repos
    * instead of being a general GitHub relay.
    */
+  /** The magazine repository, when it is not also a plan repository. */
+  const isMagazineOnly = (requested: string | undefined): boolean =>
+    !!magazine &&
+    requested === magazine.repository &&
+    !repositories.includes(requested);
+
   const resolveRepo = (req: express.Request): string => {
     const requested = singleQueryValue(req.query.repo, 'repo');
-    if (magazine && requested === magazine.repository) {
+    if (isMagazineOnly(requested)) {
       throw new InputError(
         `The magazine repository '${requested}' is only readable through /tree and /content.`,
       );
@@ -307,13 +313,14 @@ export async function createRouter(
   /**
    * Repository and ref of a read (`/tree`, `/content`): a plan repository at
    * any ref, or the magazine repository at one of its two configured refs
-   * (default: the data ref). The magazine stays a read-only source of two
-   * branches, never a general relay to its repository.
+   * (default: the data ref). A magazine repository of its own stays a
+   * read-only source of two branches, never a general relay to it; a magazine
+   * kept on branches of a plan repository is read like that plan repository.
    */
   const resolveRead = (req: express.Request): { repo: string; ref: string } => {
     const requested = singleQueryValue(req.query.repo, 'repo');
     const ref = singleQueryValue(req.query.ref, 'ref');
-    if (magazine && requested === magazine.repository) {
+    if (magazine && isMagazineOnly(requested)) {
       const allowed = [magazine.ref, magazine.knowledgeRef];
       if (ref !== undefined && !allowed.includes(ref)) {
         throw new InputError(

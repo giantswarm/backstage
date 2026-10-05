@@ -14,10 +14,12 @@ export interface Config {
      * The team product magazine shown on the Magazine page (`/product`): a
      * repository whose generated JSON (`magazine/*.json` on `ref`) and
      * knowledge documents (`knowledge/**` on `knowledgeRef`) are read through
-     * the same muster GitHub access as the plans. The repository is not a
-     * plan repository: it stays out of `repositories`, the plans picker and
-     * the epics crawl, and only its two refs are readable. Without it the
-     * Magazine page reports that it is not configured.
+     * the same muster GitHub access as the plans. A repository of its own
+     * stays out of `repositories`, the plans picker and the epics crawl, and
+     * only its two refs are readable. It may also be one of `repositories`,
+     * the magazine kept on branches of that plan repository: the plan routes
+     * stay as they are and the magazine reads ask for its refs. Without it
+     * the Magazine page reports that it is not configured.
      *
      * Every key keeps the default backend visibility: the frontend learns
      * whether a magazine is configured from the authenticated `/magazine`
