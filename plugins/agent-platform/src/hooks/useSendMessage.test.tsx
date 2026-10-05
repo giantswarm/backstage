@@ -212,18 +212,19 @@ describe('useSendMessage', () => {
     expect(filters?.refetchType).toBeUndefined();
   });
 
-  it('re-reads the conversation as soon as the stream carries a file', async () => {
+  it('re-reads the conversation once as soon as the stream carries a file', async () => {
     // The live preview renders no files, so waiting for the stream to end (or
-    // the next poll) would leave an attachment missing for the whole turn.
+    // the next poll) would leave an attachment missing for the whole turn. The
+    // terminal event repeats the file, and that must not re-read it again.
     const { result, invalidateQueries } = renderWith();
     let tasksReadsDuringStream = 0;
     streamMessage.mockImplementation(async (...args: unknown[]) => {
       const onEvent = args[4] as (event: unknown) => void;
-      onEvent({
+      const fileEvent = (final: boolean) => ({
         kind: 'status-update',
-        final: false,
+        final,
         status: {
-          state: 'working',
+          state: final ? 'completed' : 'working',
           message: {
             kind: 'message',
             messageId: 'reply-1',
@@ -234,6 +235,8 @@ describe('useSendMessage', () => {
           },
         },
       });
+      onEvent(fileEvent(false));
+      onEvent(fileEvent(true));
       tasksReadsDuringStream = invalidateQueries.mock.calls.filter(
         ([filters]) =>
           JSON.stringify(filters?.queryKey) === JSON.stringify(TASKS_KEY),

@@ -35,7 +35,7 @@ import {
   servedPresetRow,
   servesPresetOn,
 } from '../../lib/modelManagerServe';
-import { formatBytes } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import {
   modelManagerFitQueryKey,
   modelManagerNodesQueryKey,

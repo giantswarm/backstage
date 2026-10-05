@@ -5,7 +5,6 @@ import {
   isStreamTurnOver,
   readStreamFrame,
   StreamTurn,
-  streamEventCarriesFile,
 } from './kagentStreamTurn';
 import { TimelineItem } from './kagentTimeline';
 
@@ -1015,8 +1014,11 @@ describe('isStreamTurnOver', () => {
   });
 });
 
-describe('streamEventCarriesFile', () => {
+describe('carriesFile', () => {
   const file = { kind: 'file', file: { name: 'chart.png', bytes: 'AAAA' } };
+  const carries = (...events: unknown[]) =>
+    events.reduce<StreamTurn>(applyStreamEvent, createStreamTurn('sent'))
+      .carriesFile;
 
   it.each([
     [
@@ -1042,17 +1044,50 @@ describe('streamEventCarriesFile', () => {
       'a bare message',
       { kind: 'message', messageId: 'm', role: 'agent', parts: [file] },
     ],
+    [
+      "a task snapshot's history",
+      {
+        kind: 'task',
+        id: 't',
+        status: { state: 'working' },
+        history: [{ kind: 'message', messageId: 'm', parts: [file] }],
+      },
+    ],
+    [
+      "a task snapshot's artifacts",
+      {
+        kind: 'task',
+        id: 't',
+        status: { state: 'working' },
+        artifacts: [{ artifactId: 'a', parts: [file] }],
+      },
+    ],
   ])('sees a file on %s', (_name, event) => {
-    expect(streamEventCarriesFile(event)).toBe(true);
+    expect(carries(event)).toBe(true);
   });
 
   it('ignores an event with text and calls only', () => {
     expect(
-      streamEventCarriesFile({
+      carries({
         kind: 'artifact-update',
         artifact: { artifactId: 'a', parts: [{ kind: 'text', text: 'hi' }] },
       }),
     ).toBe(false);
-    expect(streamEventCarriesFile('not an event')).toBe(false);
+    expect(carries('not an event')).toBe(false);
+  });
+
+  it('stays set for the rest of the turn', () => {
+    expect(
+      carries(
+        {
+          kind: 'artifact-update',
+          artifact: { artifactId: 'a', parts: [file] },
+        },
+        {
+          kind: 'artifact-update',
+          artifact: { artifactId: 'a', parts: [{ kind: 'text', text: 'hi' }] },
+        },
+      ),
+    ).toBe(true);
   });
 });

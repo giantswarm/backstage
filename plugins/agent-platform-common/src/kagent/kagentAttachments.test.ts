@@ -3,6 +3,7 @@ import {
   decodedLength,
   MAX_PREVIEW_BYTES,
   MAX_PREVIEW_PIXELS,
+  normalizeBase64,
   readAttachment,
   readAttachmentPreview,
   sniffImageType,
@@ -233,12 +234,14 @@ describe('readAttachmentPreview', () => {
   });
 
   it('refuses a payload far past the size cap from its length alone', () => {
-    // Not even valid base64: the length decides before the content is read.
+    // Not even valid base64: the length decides before the content is read, and
+    // the size the chip shows is estimated from it.
     const oversized = '!'.repeat(MAX_PREVIEW_BYTES * 2);
 
     expect(readAttachmentPreview({ base64: oversized })).toEqual({
       kind: 'none',
       reason: 'too-large',
+      byteSize: MAX_PREVIEW_BYTES * 1.5,
     });
   });
 
@@ -274,6 +277,26 @@ describe('sniffImageType', () => {
     ];
 
     expect(sniffImageType(Uint8Array.from(wav))).toBeUndefined();
+  });
+});
+
+describe('normalizeBase64', () => {
+  it('hands back standard base64 as it is', () => {
+    const standard = payload(PNG);
+
+    expect(normalizeBase64(standard)).toBe(standard);
+  });
+
+  it.each([
+    ['unpadded', 'AAE', 'AAE='],
+    ['URL-safe', '-_8=', '+/8='],
+    ['line-wrapped', 'AAAA\nAAE=', 'AAAAAAE='],
+  ])('reads %s base64 as the same bytes', (_name, raw, standard) => {
+    expect(normalizeBase64(raw)).toBe(standard);
+  });
+
+  it.each([['A'], ['AAA=A'], ['AA!A'], ['']])('refuses %j', raw => {
+    expect(normalizeBase64(raw)).toBeUndefined();
   });
 });
 

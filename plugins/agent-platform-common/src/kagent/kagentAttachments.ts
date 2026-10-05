@@ -115,7 +115,10 @@ export type AttachmentPreview =
   | {
       kind: 'none';
       reason: NoPreviewReason;
-      /** Decoded size in bytes, present only when the payload is valid base64. */
+      /**
+       * Decoded size in bytes, present when the payload is valid base64. For a
+       * payload too long to read at all, an estimate from its encoded length.
+       */
       byteSize?: number;
     };
 
@@ -174,7 +177,13 @@ export function readAttachmentPreview(
     };
   }
   if (attachment.base64.length > MAX_ENCODED_LENGTH) {
-    return { kind: 'none', reason: 'too-large' };
+    // Not validated: reading the string is what this cap avoids. The size is
+    // what explains the reason, so it is estimated rather than left out.
+    return {
+      kind: 'none',
+      reason: 'too-large',
+      byteSize: Math.floor((attachment.base64.length / 4) * 3),
+    };
   }
 
   const base64 = normalizeBase64(attachment.base64);
@@ -209,6 +218,9 @@ export function readAttachmentPreview(
   };
 }
 
+/** Padded standard base64, the form a `data:` URL needs. */
+const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
 /**
  * The payload as padded standard base64, or undefined when it is not base64.
  *
@@ -218,6 +230,11 @@ export function readAttachmentPreview(
  * needs the one form.
  */
 export function normalizeBase64(raw: string): string | undefined {
+  // What proto3 JSON writes for `bytes`, and so what nearly every payload is:
+  // one pass to recognise it, and no copy of a string of up to ~11 MB.
+  if (raw.length % 4 === 0 && STANDARD_BASE64.test(raw)) {
+    return raw;
+  }
   const compact = raw
     .replace(/\s+/g, '')
     .replace(/-/g, '+')

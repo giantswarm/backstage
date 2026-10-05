@@ -12,7 +12,6 @@ import {
 } from './modelManager';
 import {
   describeServedModel,
-  formatBytes,
   formatContextLength,
   formatGpuShare,
   isServedKServeModel,
@@ -429,16 +428,6 @@ describe('model features', () => {
 });
 
 describe('formatting', () => {
-  it('humanises byte sizes with binary prefixes', () => {
-    expect(formatBytes(undefined)).toBe('—');
-    expect(formatBytes(0)).toBe('0 B');
-    expect(formatBytes(512)).toBe('512 B');
-    expect(formatBytes(522653767)).toBe('498 MiB');
-    expect(formatBytes(6594474711)).toBe('6.1 GiB');
-    expect(formatBytes(34254796848)).toBe('31.9 GiB');
-    expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
-  });
-
   it('shortens context lengths', () => {
     expect(formatContextLength(262144)).toBe('256k');
     expect(formatContextLength(40960)).toBe('40k');
