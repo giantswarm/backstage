@@ -68,6 +68,8 @@ export { Node } from './Node';
 export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
+export { Harness } from './Harness';
+export type { HarnessAgentTemplateSelector, HarnessRuntime } from './Harness';
 export { HelmRelease } from './HelmRelease';
 export { HelmRepository } from './HelmRepository';
 export { GitRepository } from './GitRepository';
