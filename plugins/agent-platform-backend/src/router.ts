@@ -61,7 +61,7 @@ export interface RouterOptions {
  * probe (`probeKagentGrpc`) makes one unauthenticated `SystemService/GetVersion`
  * call there; behind agentgateway's JWT policy that answers `Unauthenticated`,
  * which is a perfectly good proof that the route exists from where the portal
- * runs. It carries no token and no user data, and never reads an instance.
+ * runs. It carries no token and no user data, and never reads a session.
  */
 export function kagentProbeUrl(installation: KagentInstallationConfig): string {
   return installation.apiBaseUrl;
@@ -119,7 +119,7 @@ function readSessionName(body: Record<string, unknown>): string {
  * The idempotency key of a create, when the caller supplied one.
  *
  * The browser generates one per submission and reuses it on a retry, so a
- * create whose answer was lost does not make a second instance: the controller
+ * create whose answer was lost does not make a second session: the controller
  * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
  * fresh one, which makes *its* retry a second create — the honest behaviour
  * for a caller that did not ask for idempotency, and what keeps the body an
@@ -727,13 +727,13 @@ export async function createRouter(
    * The agent's namespace and name are the AgentTemplate's, as the caller read
    * them from the resource; the platform Harness is picked in the client from
    * the template's own status. `name` is required because the controller does
-   * not auto-title — an instance created without one has no title at all; the
+   * not auto-title — a session created without one has no title at all; the
    * frontend derives it from the first prompt (see "Starting a session" in
    * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
    * {@link readRequestId}.
    *
    * The token is **required**, for the same reason the other writes require it:
-   * the controller decides whose instance this is from the identity the gateway
+   * the controller decides whose session this is from the identity the gateway
    * derived from the token alone.
    *
    * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
@@ -757,7 +757,7 @@ export async function createRouter(
     );
 
     // 201 for a create. The body is the controller's `CreateSessionResponse`
-    // as JSON: the frontend needs the generated instance id out of it, and this
+    // as JSON: the frontend needs the generated session id out of it, and this
     // proxy stays transport.
     res.status(201).json(result);
   });
@@ -860,7 +860,7 @@ export async function createRouter(
    * Stop the turn a session is running: cancel its task server-side.
    *
    * The Stop control in the composer. Cancelling is `A2AService/CancelTask` on
-   * the instance, which ends the run at the harness (or quiesces the actor when
+   * the session, which ends the run at the harness (or quiesces the actor when
    * the runtime cannot) and records the task canceled — so a stopped turn stays
    * stopped when the tab is closed, unlike cutting the stream, which the turn
    * survives. Answers the task as the controller left it: `canceled`, or the
@@ -868,7 +868,7 @@ export async function createRouter(
    * error and nothing to undo.
    *
    * Task ids are opaque like session ids and pass through undecorated. The
-   * token is **required**: the controller decides whose instance this is from
+   * token is **required**: the controller decides whose session this is from
    * the identity the gateway derived.
    */
   router.post(
@@ -888,14 +888,13 @@ export async function createRouter(
   /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped because the session *is* the conversation: the Session record
-   * binds the agent, and the A2A call names the instance in its metadata. The
-   * agent's namespace and name stay in the body for the contract's sake (the
-   * browser knows them from the resource) but nothing downstream needs them. The
-   * A2A request is built in the client, so the frontend never has to know A2A.
+   * Session-shaped because the session *is* the conversation. The agent's
+   * namespace and name in the body are the A2A route (the gateway's `tenant`),
+   * and the session id is the message's context; the A2A request is built in
+   * the client, so the frontend never has to know A2A.
    *
    * Nothing expected here reaches a 5xx, which `MiddlewareFactory.error()` would
-   * forward to Sentry: a malformed body is a 400, an unknown instance a 404, a
+   * forward to Sentry: a malformed body is a 400, an unknown session a 404, a
    * second message during a turn a 409, and a turn that outruns its timeout a
    * **202** — it is still running, and the conversation poll will show it land.
    */

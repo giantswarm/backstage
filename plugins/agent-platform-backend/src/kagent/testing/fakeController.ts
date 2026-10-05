@@ -21,7 +21,10 @@ import {
   type StreamResponse,
   type Task,
 } from '../gen/a2a_pb';
-import { RuntimeState } from '../gen/kagent/api/v1alpha1/runtime_pb';
+import {
+  RuntimeOperation,
+  RuntimeState,
+} from '../gen/kagent/api/v1alpha1/runtime_pb';
 import {
   SessionSchema,
   SessionService,
@@ -58,9 +61,13 @@ import {
  *   Agent answers the existing session, a repeat with other parameters
  *   `AlreadyExists`. An Agent the controller knows no ready revision for is
  *   `FailedPrecondition`, as the controller answers it.
- * - **A2A routing** by exactly one `x-kagent-agent-instance-id`, carrying the
- *   session id; a missing or doubled header is `InvalidArgument`, somebody
- *   else's session `NotFound`.
+ * - **A2A routing** as the gateway does it: the Agent from the request's
+ *   `tenant` (`<namespace>/<name>`, refused otherwise), the session from
+ *   `message.contextId` or the task named; a send with neither starts a new
+ *   session of that Agent; a context that does not match the task is
+ *   `InvalidArgument`; somebody else's session, or another Agent's, is
+ *   `NotFound`. No metadata routes anything. A session not `READY` with no
+ *   operation in flight refuses work.
  * - **HITL is negotiated**: a turn scripted to pause carries the typed request
  *   on the paused task only when the call requested the extension.
  * - **One active task per session**: a second message during a turn is the
@@ -77,6 +84,8 @@ export type RecordedCall = {
   method: string;
   /** Every request header, lower-cased names, as the server received them. */
   headers: Record<string, string>;
+  /** The A2A request's `tenant`, when the call carried one. */
+  tenant?: string;
 };
 
 /** What a scripted turn does once the message is accepted. */
@@ -175,16 +184,23 @@ export function createFakeController(
 
   const calls: RecordedCall[] = [];
   const sessions = new Map<string, Session>();
+  /** Session id by task id, the gateway's way from a task to its session. */
+  const taskSessions = new Map<string, string>();
   const creators = new Map<string, string>();
   const requests = new Map<string, string>();
   const tasks = new Map<string, StoredTask[]>();
 
-  function record(service: string, method: string, ctx: HandlerContext) {
+  function record(
+    service: string,
+    method: string,
+    ctx: HandlerContext,
+    tenant?: string,
+  ) {
     const headers: Record<string, string> = {};
     ctx.requestHeader.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
-    calls.push({ service, method, headers });
+    calls.push({ service, method, headers, ...(tenant && { tenant }) });
   }
 
   function creatorOf(ctx: HandlerContext): string {
@@ -201,19 +217,105 @@ export function createFakeController(
     return now().toISOString();
   }
 
-  /** The session an A2A call is routed to, scoped to the caller. */
-  function routed(ctx: HandlerContext): Session {
-    const creator = creatorOf(ctx);
-    const header = ctx.requestHeader.get('x-kagent-agent-instance-id');
-    if (!header || header.includes(',')) {
+  /** The Agent an A2A request names, as the gateway parses the `tenant`. */
+  function agentOf(tenant: string): { namespace: string; name: string } {
+    const [namespace, name, ...rest] = tenant.split('/');
+    if (!namespace || !name || rest.length > 0) {
       throw new ConnectError(
-        'exactly one x-kagent-agent-instance-id header is required',
+        'Agent tenant must be namespace/name',
         Code.InvalidArgument,
       );
     }
-    const session = sessions.get(header);
-    if (!session || creators.get(session.id) !== creator) {
+    return { namespace, name };
+  }
+
+  function sameAgent(
+    session: Session,
+    agent: { namespace: string; name: string },
+  ): boolean {
+    return (
+      session.agent?.namespace === agent.namespace &&
+      session.agent?.name === agent.name
+    );
+  }
+
+  /** The session a task belongs to, for the caller and the Agent named. */
+  function taskSession(
+    ctx: HandlerContext,
+    tenant: string,
+    taskId: string,
+  ): Session {
+    const creator = creatorOf(ctx);
+    const agent = agentOf(tenant);
+    const sessionId = taskSessions.get(taskId);
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (
+      !session ||
+      creators.get(session.id) !== creator ||
+      !sameAgent(session, agent)
+    ) {
+      throw new ConnectError('task not found', Code.NotFound);
+    }
+    return session;
+  }
+
+  /** The session a context names, for the caller and the Agent named. */
+  function contextSession(
+    ctx: HandlerContext,
+    tenant: string,
+    contextId: string,
+  ): Session {
+    const creator = creatorOf(ctx);
+    const agent = agentOf(tenant);
+    const session = sessions.get(contextId);
+    if (
+      !session ||
+      creators.get(session.id) !== creator ||
+      !sameAgent(session, agent)
+    ) {
       throw new ConnectError('Session not found', Code.NotFound);
+    }
+    return session;
+  }
+
+  /**
+   * The session a send is for: the task's when the message names one, the
+   * context's when it names one, else a new session of the Agent — exactly
+   * the gateway's resolution. A context that does not match the task is
+   * refused, and so is a session that cannot take work.
+   */
+  function sendSession(
+    ctx: HandlerContext,
+    tenant: string,
+    message: Message,
+  ): Session {
+    let session: Session;
+    if (message.taskId) {
+      session = taskSession(ctx, tenant, message.taskId);
+    } else if (message.contextId) {
+      session = contextSession(ctx, tenant, message.contextId);
+    } else {
+      const agent = agentOf(tenant);
+      session = createSession(ctx, {
+        agent,
+        requestId: `a2a/${tenant}/${message.messageId}`,
+        name: '',
+      } as CreateSessionRequest);
+    }
+    if (message.contextId && message.contextId !== session.contextId) {
+      throw new ConnectError(
+        'message context does not match task',
+        Code.InvalidArgument,
+      );
+    }
+    if (
+      session.state !== RuntimeState.READY ||
+      session.operation !== RuntimeOperation.NONE
+    ) {
+      throw new ConnectError(
+        'Session cannot accept work during a lifecycle operation',
+        Code.Unimplemented,
+      );
     }
     return session;
   }
@@ -296,11 +398,12 @@ export function createFakeController(
       agent: request.agent,
       preparedRevision: 'rev-1',
       state: RuntimeState.READY,
+      operation: RuntimeOperation.NONE,
       createdAt: at,
       updatedAt: at,
       name: request.name,
-      contextId: randomUUID(),
     });
+    session.contextId = session.id;
     sessions.set(session.id, session);
     creators.set(session.id, creator);
     requests.set(key, session.id);
@@ -412,12 +515,6 @@ export function createFakeController(
     if (!message || !message.messageId) {
       throw new ConnectError('message ID is required', Code.InvalidArgument);
     }
-    if (message.contextId && message.contextId !== session.contextId) {
-      throw new ConnectError(
-        'message context does not match Session',
-        Code.InvalidArgument,
-      );
-    }
     const activated = hitlActivated(ctx);
     const list = storedTasks(session);
 
@@ -500,6 +597,7 @@ export function createFakeController(
     const stored: StoredTask = { task };
     list.push(stored);
     tasks.set(session.id, list);
+    taskSessions.set(task.id, session.id);
     touch(session);
 
     yield create(StreamResponseSchema, {
@@ -749,6 +847,9 @@ export function createFakeController(
         const session = owned(ctx, request.sessionId);
         sessions.delete(session.id);
         creators.delete(session.id);
+        for (const entry of tasks.get(session.id) ?? []) {
+          taskSessions.delete(entry.task.id);
+        }
         tasks.delete(session.id);
         const deleting = clone(SessionSchema, session);
         deleting.state = RuntimeState.DELETING;
@@ -769,30 +870,43 @@ export function createFakeController(
 
     router.service(A2AService, {
       async sendMessage(request, ctx) {
-        record('A2AService', 'SendMessage', ctx);
-        const session = routed(ctx);
+        record('A2AService', 'SendMessage', ctx, request.tenant);
+        const message = request.message;
+        if (!message || !message.messageId) {
+          throw new ConnectError(
+            'message ID is required',
+            Code.InvalidArgument,
+          );
+        }
+        const session = sendSession(ctx, request.tenant, message);
         let last: Task | undefined;
         for await (const event of runTurn(ctx, session, request)) {
           if (event.payload.case === 'task') {
             last = event.payload.value;
           }
         }
-        const taskId = last?.id ?? request.message?.taskId;
+        const taskId = last?.id ?? message.taskId;
         const stored = taskId ? taskOf(session, taskId) : undefined;
         return {
           payload: stored
             ? { case: 'task', value: stored.task }
-            : { case: 'message', value: request.message! },
+            : { case: 'message', value: message },
         };
       },
       async *sendStreamingMessage(request, ctx) {
-        record('A2AService', 'SendStreamingMessage', ctx);
-        const session = routed(ctx);
+        record('A2AService', 'SendStreamingMessage', ctx, request.tenant);
+        const message = request.message;
+        if (!message || !message.messageId) {
+          throw new ConnectError(
+            'message ID is required',
+            Code.InvalidArgument,
+          );
+        }
+        const session = sendSession(ctx, request.tenant, message);
         yield* runTurn(ctx, session, request);
       },
       listTasks(request, ctx) {
-        record('A2AService', 'ListTasks', ctx);
-        const session = routed(ctx);
+        record('A2AService', 'ListTasks', ctx, request.tenant);
         const pageSize = request.pageSize || 50;
         if (pageSize < 1 || pageSize > 100) {
           throw new ConnectError(
@@ -800,10 +914,19 @@ export function createFakeController(
             Code.InvalidArgument,
           );
         }
-        if (request.contextId && request.contextId !== session.contextId) {
-          return { tasks: [], pageSize, nextPageToken: '', totalSize: 0 };
-        }
-        const all = storedTasks(session).map(entry => entry.task);
+        const creator = creatorOf(ctx);
+        const agent = agentOf(request.tenant);
+        // The caller's sessions of the Agent, narrowed to one by context.
+        const scope = request.contextId
+          ? [contextSession(ctx, request.tenant, request.contextId)]
+          : [...sessions.values()].filter(
+              session =>
+                creators.get(session.id) === creator &&
+                sameAgent(session, agent),
+            );
+        const all = scope.flatMap(session =>
+          storedTasks(session).map(entry => entry.task),
+        );
         const offset = Number(request.pageToken || '0');
         const page = all.slice(offset, offset + pageSize);
         return {
@@ -821,8 +944,8 @@ export function createFakeController(
         };
       },
       getTask(request, ctx) {
-        record('A2AService', 'GetTask', ctx);
-        const session = routed(ctx);
+        record('A2AService', 'GetTask', ctx, request.tenant);
+        const session = taskSession(ctx, request.tenant, request.id);
         return shape(
           taskOf(session, request.id).task,
           request.historyLength,
@@ -830,8 +953,8 @@ export function createFakeController(
         );
       },
       cancelTask(request, ctx) {
-        record('A2AService', 'CancelTask', ctx);
-        const session = routed(ctx);
+        record('A2AService', 'CancelTask', ctx, request.tenant);
+        const session = taskSession(ctx, request.tenant, request.id);
         const stored = taskOf(session, request.id);
         if (terminal(stored.task)) {
           return stored.task;

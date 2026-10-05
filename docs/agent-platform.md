@@ -944,10 +944,12 @@ wired up.
 | `…/sessions/:id`       | `SessionService/GetSession`        | the session: title, agent, runtime state, timestamps, existence |
 | `…/sessions/:id/tasks` | `A2AService/ListTasks` (all pages) | the conversation, its state, and token usage                    |
 
-Both A2A calls name the instance in the `x-kagent-agent-instance-id` metadata
-(exactly once — the gateway refuses a missing or doubled header), which is also
-what scopes `ListTasks` to the instance; no `context_id` needs reading first. The
-conversation comes from the tasks: on this line the user's messages are in each
+Every A2A call is addressed the way the gateway routes: the Agent as the request's
+`tenant` (`<namespace>/<name>`, the session's `agent`) and the session as the A2A
+`contextId` (the session's context, which the controller keeps equal to its id;
+`ListTasks` is filtered by it). No metadata routes anything. The backend learns a
+session's Agent from the list, create or read that preceded the call, and reads the
+Session once otherwise. The conversation comes from the tasks: on this line the user's messages are in each
 task's `history` and the agent's output in its `artifacts`, which the common
 package merges into one history ordered by the `kagent.dev/timeline-position`
 the controller stamps on both.
@@ -1724,13 +1726,14 @@ in both.
 
 `SessionComposer` + `useSendMessage`, at the foot of the page.
 
-Talking to an agent is A2A v1 `SendMessage` / `SendStreamingMessage` on the
-instance: the `x-kagent-agent-instance-id` metadata routes the call, the
-instance already binds the agent, and the message's `contextId` stays empty (the
-controller fills in the instance's; a different one is refused). The route is
+Talking to an agent is A2A v1 `SendMessage` / `SendStreamingMessage` addressed to
+the Agent (`tenant`) with the session's context on the message: the gateway
+resolves the session from `message.contextId` (or the task a reply names); a
+message with neither would start a new session, and a context that does not match
+the task is refused. The route is
 `POST /kagent/sessions/:sessionId/messages` — session-shaped, because the session
 is what the user is looking at. The A2A request is built in `KagentClient`, so
-the frontend never learns A2A. **One active task per instance**: a second message
+the frontend never learns A2A. **One active task per session**: a second message
 during a turn is not a queued reply but a competing one, and the controller
 refuses it — the backend answers 409, and the composer withholds Send while the
 agent works for exactly that reason.

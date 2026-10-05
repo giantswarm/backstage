@@ -41,9 +41,11 @@ transport, one transport per installation. The RPCs in use:
 | `SystemService`  | `GetCurrentUser` (the identity probe), `GetVersion` (the reachability probe)                                            |
 | `A2AService`     | `SendMessage`, `SendStreamingMessage`, `ListTasks`, `GetTask`, `CancelTask`                                             |
 
-Every A2A call carries exactly one `x-kagent-agent-instance-id` metadata entry —
-the gateway refuses a missing or doubled one — and requests the human-in-the-loop
-extension (`a2a-extensions: https://kagent.dev/extensions/hitl/v1`), so a
+Every A2A call is addressed to the Agent as the request's `tenant`
+(`<namespace>/<name>`) with the session's A2A context (`contextId`, equal to the
+session id) on the message or the listing — the gateway routes by those, never by
+metadata, and a send without them would start a new session — and requests the
+human-in-the-loop extension (`a2a-extensions: https://kagent.dev/extensions/hitl/v1`), so a
 confirmation that arrives on a turn is a typed request the panel can render.
 
 ## Endpoints

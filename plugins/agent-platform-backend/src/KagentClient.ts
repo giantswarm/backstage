@@ -131,11 +131,16 @@ export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
  */
 export const REQUEST_ID_MAX_LENGTH = 128;
 
-/**
- * The gRPC metadata key that selects the Session an A2A call belongs to. The
- * name predates the Session record and carries the session id.
- */
-export const SESSION_HEADER = 'x-kagent-agent-instance-id';
+/** An Agent as the A2A gateway routes by: the `tenant` of every A2A request. */
+export type AgentRef = { namespace: string; name: string };
+
+/** The `tenant` the A2A gateway resolves an Agent from: `<namespace>/<name>`. */
+export function agentTenant(agent: AgentRef): string {
+  return `${agent.namespace}/${agent.name}`;
+}
+
+/** Sessions whose Agent this client has learned, so a task read need not re-read the Session. */
+const MAX_REMEMBERED_AGENTS = 1_000;
 
 /**
  * Page size for the paged listings. The controller caps `ListTasks` at 100 and
@@ -262,6 +267,9 @@ type OutboundMessage = {
   metadata?: JsonObject;
 };
 
+/** Where an A2A call goes: the Agent (the gateway's `tenant`) and the session's A2A context. */
+type Target = { tenant: string; contextId: string };
+
 /**
  * Client for one installation's kagent API v2 controller, over native gRPC.
  *
@@ -274,10 +282,13 @@ type OutboundMessage = {
  * `agent-platform-common`.
  *
  * A "session" in the method names is the controller's Session record: one
- * conversation of one person with one Agent (plan decision D10). Its id is
- * the session id, and every A2A call names it in the
- * `x-kagent-agent-instance-id` metadata — exactly once; the gateway refuses a
- * missing or doubled header.
+ * conversation of one person with one Agent (plan decision D10). The A2A
+ * gateway reads no session header: it resolves the Agent from the request's
+ * `tenant` (`<namespace>/<name>`) and the session from `message.contextId`
+ * (the session's A2A context, which the controller keeps equal to the session
+ * id) or from the task named. A send with neither would start a new session,
+ * so every A2A call here carries both. The Agent is the caller's when the
+ * route has it, else read once off the Session and remembered.
  *
  * **Identity is the bearer and nothing else.** Every call carries
  * `authorization: Bearer <the person's Dex ID token>`; agentgateway validates
@@ -291,6 +302,8 @@ export class KagentClient {
   private sessions?: Client<typeof SessionService>;
   private a2a?: Client<typeof A2AService>;
   private system?: Client<typeof SystemService>;
+  /** The Agent of each session this client has seen, by session id. */
+  private readonly agents = new Map<string, AgentRef>();
 
   constructor(
     private readonly installation: KagentInstallationConfig,
@@ -356,6 +369,9 @@ export class KagentClient {
         context,
       );
       sessions.push(...response.sessions);
+      for (const session of response.sessions) {
+        this.remember(session);
+      }
       pageToken = response.page?.nextPageToken ?? '';
       if (!pageToken) {
         break;
@@ -411,6 +427,7 @@ export class KagentClient {
           ),
       },
     );
+    this.remember(response.session);
     return toJson(CreateSessionResponseSchema, response);
   }
 
@@ -441,6 +458,7 @@ export class KagentClient {
           new InputError('The session id is not a Session id.'),
       },
     );
+    this.remember(response.session);
     return toJson(GetSessionResponseSchema, response);
   }
 
@@ -448,10 +466,9 @@ export class KagentClient {
    * `A2AService/ListTasks` for one session — the conversation, its state and
    * per-message token usage — walked to the end, as `{tasks: […], totalSize}`.
    *
-   * The session is named by the `x-kagent-agent-instance-id` metadata; the
-   * gateway scopes the listing to that session, so no `context_id` needs
-   * reading first (a `context_id` that does not match the session's would
-   * answer an empty list, not an error). Tasks come back oldest first.
+   * The call is addressed to the session's Agent (`tenant`) and filtered by
+   * the session's A2A context, which the gateway scopes the listing to. Tasks
+   * come back oldest first.
    */
   async listSessionTasks(
     sessionId: string,
@@ -459,7 +476,7 @@ export class KagentClient {
     extra: ListSessionTasksOptions = {},
   ): Promise<unknown> {
     const { tasks, totalSize } = await this.readTasks(
-      sessionId,
+      await this.target(sessionId, options),
       options,
       extra,
     );
@@ -475,12 +492,13 @@ export class KagentClient {
     taskId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    const { tenant } = await this.target(sessionId, options);
     const task = await this.call(
       () =>
         this.a2aService.getTask(
-          { id: taskId },
+          { tenant, id: taskId },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.timeoutMs,
           },
         ),
@@ -494,13 +512,13 @@ export class KagentClient {
 
   /**
    * Send one message to a session's agent, as a turn of the conversation, and
-   * wait for the turn — `A2AService/SendMessage` with the session in metadata
-   * and the HITL extension requested, answering the `SendMessageResponse` as
-   * JSON (`{task}`; a bare `{message}` for an agent that answered without a
-   * task).
+   * wait for the turn — `A2AService/SendMessage` addressed to the Agent
+   * (`tenant`) with the session's context on the message and the HITL
+   * extension requested, answering the `SendMessageResponse` as JSON (`{task}`;
+   * a bare `{message}` for an agent that answered without a task).
    *
-   * The agent's namespace and name are accepted for the route's sake, but the
-   * session already binds the Agent, so they are not sent anywhere.
+   * The agent's namespace and name are the gateway's route: a message without
+   * them, or without the session's context, would start a new session.
    *
    * **It answers with the finished task**, not an acknowledgement, and a failed
    * turn is still a success at the transport: `status.state` carries the
@@ -510,12 +528,12 @@ export class KagentClient {
    */
   async sendMessage(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
   ): Promise<unknown> {
     return this.dispatch(
-      sessionId,
+      this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
         parts: [{ content: { case: 'text', value: message.text } }],
@@ -528,8 +546,8 @@ export class KagentClient {
    * Send one message, **streaming** the turn's events as the agent produces
    * them.
    *
-   * `A2AService/SendStreamingMessage` (server-streaming gRPC) with the session
-   * header and the HITL extension requested on every turn — a confirmation that
+   * `A2AService/SendStreamingMessage` (server-streaming gRPC) addressed like
+   * {@link sendMessage}, with the HITL extension requested on every turn — a confirmation that
    * arrives on this turn is then a typed request the answer panel can render.
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
@@ -547,7 +565,7 @@ export class KagentClient {
    */
   async streamMessage(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     message: { messageId: string; text: string },
     options: KagentRequestOptions,
     /**
@@ -557,7 +575,7 @@ export class KagentClient {
     signal: AbortSignal,
   ): Promise<Response> {
     return this.openStream(
-      sessionId,
+      this.targetOf(sessionId, agent),
       {
         messageId: message.messageId,
         parts: [{ content: { case: 'text', value: message.text } }],
@@ -582,7 +600,7 @@ export class KagentClient {
    */
   async streamAnswer(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -591,8 +609,9 @@ export class KagentClient {
     options: KagentRequestOptions,
     signal: AbortSignal,
   ): Promise<Response> {
-    const message = await this.buildAnswerMessage(sessionId, answer, options);
-    return this.openStream(sessionId, message, options, signal);
+    const target = this.targetOf(sessionId, agent);
+    const message = await this.buildAnswerMessage(target, answer, options);
+    return this.openStream(target, message, options, signal);
   }
 
   /**
@@ -602,15 +621,15 @@ export class KagentClient {
    * opened, bounded and ended.
    */
   private async openStream(
-    sessionId: string,
+    target: Target,
     message: OutboundMessage,
     options: KagentRequestOptions,
     signal: AbortSignal,
   ): Promise<Response> {
-    const request = this.buildRequest(message);
+    const request = this.buildRequest(target, message);
     const stream = this.a2aService
       .sendStreamingMessage(request, {
-        headers: this.turnHeaders(sessionId, options),
+        headers: this.turnHeaders(options),
         signal,
       })
       [Symbol.asyncIterator]();
@@ -698,7 +717,7 @@ export class KagentClient {
    */
   async answerConfirmation(
     sessionId: string,
-    _agent: { namespace: string; name: string },
+    agent: AgentRef,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -707,8 +726,9 @@ export class KagentClient {
     },
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    const message = await this.buildAnswerMessage(sessionId, answer, options);
-    return this.dispatch(sessionId, message, options);
+    const target = this.targetOf(sessionId, agent);
+    const message = await this.buildAnswerMessage(target, answer, options);
+    return this.dispatch(target, message, options);
   }
 
   /**
@@ -718,7 +738,7 @@ export class KagentClient {
    * with the same payload.
    */
   private async buildAnswerMessage(
-    sessionId: string,
+    target: Target,
     answer: HitlAnswer & {
       messageId: string;
       taskId: string;
@@ -729,9 +749,9 @@ export class KagentClient {
     const task = await this.call(
       () =>
         this.a2aService.getTask(
-          { id: answer.taskId, historyLength: 0 },
+          { tenant: target.tenant, id: answer.taskId, historyLength: 0 },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.timeoutMs,
           },
         ),
@@ -776,12 +796,13 @@ export class KagentClient {
     taskId: string,
     options: KagentRequestOptions,
   ): Promise<unknown> {
+    const { tenant } = await this.target(sessionId, options);
     const task = await this.call(
       () =>
         this.a2aService.cancelTask(
-          { id: taskId },
+          { tenant, id: taskId },
           {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             // Cancelling waits for the ingester to drain and the actor to
             // quiesce; give it the turn's budget rather than a read's.
             timeoutMs: this.turnTimeoutMs,
@@ -877,18 +898,18 @@ export class KagentClient {
    * transport.
    */
   private async dispatch(
-    sessionId: string,
+    target: Target,
     message: OutboundMessage,
     options: KagentRequestOptions,
   ): Promise<unknown> {
-    const request = this.buildRequest(message);
+    const request = this.buildRequest(target, message);
 
     let response;
     try {
       response = await this.call(
         () =>
           this.a2aService.sendMessage(request, {
-            headers: this.turnHeaders(sessionId, options),
+            headers: this.turnHeaders(options),
             timeoutMs: this.turnTimeoutMs,
           }),
         this.sendContext(false),
@@ -908,9 +929,7 @@ export class KagentClient {
       ) {
         throw error;
       }
-      if (
-        !(await this.hasMessageLanded(sessionId, message.messageId, options))
-      ) {
+      if (!(await this.hasMessageLanded(target, message.messageId, options))) {
         throw error;
       }
       this.logger.debug(
@@ -926,12 +945,15 @@ export class KagentClient {
 
   /**
    * The `SendMessageRequest` for one outbound message — the same request
-   * whether it goes out unary or streaming.
+   * whether it goes out unary or streaming: the Agent as `tenant`, the
+   * session's context on the message.
    */
-  private buildRequest(message: OutboundMessage) {
+  private buildRequest(target: Target, message: OutboundMessage) {
     return create(SendMessageRequestSchema, {
+      tenant: target.tenant,
       message: {
         messageId: message.messageId,
+        contextId: target.contextId,
         role: Role.USER,
         parts: message.parts,
         // Set means "resume this task"; empty means "start a new one". Naming a
@@ -972,12 +994,12 @@ export class KagentClient {
    * second one.
    */
   private async hasMessageLanded(
-    sessionId: string,
+    target: Target,
     messageId: string,
     options: KagentRequestOptions,
   ): Promise<boolean> {
     try {
-      const { tasks } = await this.readTasks(sessionId, options, {
+      const { tasks } = await this.readTasks(target, options, {
         includeArtifacts: false,
       });
       return tasks.some(task =>
@@ -993,7 +1015,7 @@ export class KagentClient {
   }
 
   private async readTasks(
-    sessionId: string,
+    target: Target,
     options: KagentRequestOptions,
     extra: ListSessionTasksOptions,
   ): Promise<{ tasks: Task[]; totalSize: number }> {
@@ -1011,6 +1033,8 @@ export class KagentClient {
         () =>
           this.a2aService.listTasks(
             {
+              tenant: target.tenant,
+              contextId: target.contextId,
               pageSize: PAGE_SIZE,
               pageToken: token,
               includeArtifacts: extra.includeArtifacts ?? true,
@@ -1019,7 +1043,7 @@ export class KagentClient {
               }),
             },
             {
-              headers: this.turnHeaders(sessionId, options),
+              headers: this.turnHeaders(options),
               timeoutMs: extra.timeoutMs ?? this.timeoutMs,
             },
           ),
@@ -1047,19 +1071,78 @@ export class KagentClient {
   }
 
   /**
-   * The metadata of an A2A call: the bearer, the session the call belongs to
-   * (exactly once), and the HITL extension requested so a confirmation on this
-   * turn arrives typed.
+   * The metadata of an A2A call: the bearer and the HITL extension requested
+   * so a confirmation on this turn arrives typed. The session is addressed in
+   * the request, not in metadata.
    */
-  private turnHeaders(
-    sessionId: string,
-    options: KagentRequestOptions,
-  ): Record<string, string> {
+  private turnHeaders(options: KagentRequestOptions): Record<string, string> {
     return {
       ...bearerHeaders(options),
-      [SESSION_HEADER]: sessionId,
       [A2A_EXTENSIONS_HEADER]: HITL_EXTENSION_URI,
     };
+  }
+
+  /**
+   * Where a call on `sessionId` goes when the caller names the Agent: the
+   * session's A2A context is its id (the controller keeps the two equal).
+   */
+  private targetOf(sessionId: string, agent: AgentRef): Target {
+    this.agents.set(sessionId, agent);
+    return { tenant: agentTenant(agent), contextId: sessionId };
+  }
+
+  /**
+   * Where a call on `sessionId` goes when the caller names no Agent: the one
+   * remembered from a list, a create or a read of the session, else read off
+   * the Session now.
+   */
+  private async target(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<Target> {
+    const known = this.agents.get(sessionId);
+    if (known) {
+      return { tenant: agentTenant(known), contextId: sessionId };
+    }
+    const response = await this.call(
+      () =>
+        this.sessionService.getSession(
+          { sessionId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session detail',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: () =>
+          new InputError('The session id is not a Session id.'),
+      },
+    );
+    const agent = this.remember(response.session);
+    if (!agent) {
+      throw new ConflictError(
+        `Session '${sessionId}' on installation '${this.installation.name}' names no Agent, so no call can be addressed to it.`,
+      );
+    }
+    return { tenant: agentTenant(agent), contextId: sessionId };
+  }
+
+  /** Remember a session's Agent for the task reads that follow. */
+  private remember(session: Session | undefined): AgentRef | undefined {
+    const agent = session?.agent;
+    if (!session?.id || !agent?.namespace || !agent.name) {
+      return undefined;
+    }
+    if (this.agents.size >= MAX_REMEMBERED_AGENTS) {
+      const oldest = this.agents.keys().next().value;
+      if (oldest !== undefined) {
+        this.agents.delete(oldest);
+      }
+    }
+    this.agents.set(session.id, {
+      namespace: agent.namespace,
+      name: agent.name,
+    });
+    return this.agents.get(session.id);
   }
 
   /** Run one RPC and translate its failure into the error the caller should see. */

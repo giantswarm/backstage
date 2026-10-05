@@ -6,7 +6,6 @@ import {
   isTransportFailure,
   KagentClient,
   readKagentInstallationsFromConfig,
-  SESSION_HEADER,
   TURN_PENDING_ERROR_NAME,
 } from './KagentClient';
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
@@ -176,9 +175,7 @@ describe('KagentClient against a fake controller', () => {
         // and no other `x-` header than the instance route on the A2A calls.
         expect(call.headers['x-user-id']).toBeUndefined();
         expect(
-          Object.keys(call.headers).filter(
-            name => name.startsWith('x-') && name !== SESSION_HEADER,
-          ),
+          Object.keys(call.headers).filter(name => name.startsWith('x-')),
         ).toEqual([]);
       }
     });
@@ -365,6 +362,54 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('turns over A2A v1', () => {
+    it('addresses a turn to the Agent with the session’s context, so no new session starts', async () => {
+      const { fake, client } = build();
+      const id = await created(client);
+
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm0', text: 'hello' },
+        USER,
+      );
+
+      const send = fake.calls.find(call => call.method === 'SendMessage')!;
+      expect(send.tenant).toBe('kagent/sre-agent');
+      expect(send.headers['x-kagent-agent-instance-id']).toBeUndefined();
+      expect(fake.sessions.size).toBe(1);
+      expect(fake.tasks.get(id)?.[0]?.task.contextId).toBe(id);
+    });
+
+    it('reads a session’s tasks through the Agent it remembers from the create, and through a fresh read otherwise', async () => {
+      const { fake, client } = build();
+      const id = await created(client);
+      await client.sendMessage(
+        id,
+        AGENT,
+        { messageId: 'm0', text: 'hi' },
+        USER,
+      );
+
+      // A second client knows nothing about the session yet.
+      const fresh = new KagentClient(
+        installation,
+        logger,
+        createRouterTransport(fake.routes),
+        500,
+        800,
+      );
+      const listed = (await fresh.listSessionTasks(id, USER)) as {
+        tasks: unknown[];
+      };
+      expect(listed.tasks).toHaveLength(1);
+      const [read, list] = fake.calls.slice(-2);
+      expect(`${read.service}/${read.method}`).toBe(
+        'SessionService/GetSession',
+      );
+      expect(list.method).toBe('ListTasks');
+      expect(list.tenant).toBe('kagent/sre-agent');
+    });
+
     it('streams the turn as SSE frames of StreamResponse JSON, routed by the session header with HITL requested', async () => {
       const { fake, client } = build();
       const id = await created(client);
@@ -405,7 +450,7 @@ describe('KagentClient against a fake controller', () => {
       const stream = fake.calls.find(
         call => call.method === 'SendStreamingMessage',
       )!;
-      expect(stream.headers[SESSION_HEADER]).toBe(id);
+      expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     });
 
@@ -484,7 +529,7 @@ describe('KagentClient against a fake controller', () => {
       };
 
       expect(task.id).toBe(sent.task.id);
-      expect(fake.calls.at(-1)?.headers[SESSION_HEADER]).toBe(id);
+      expect(fake.calls.at(-1)?.tenant).toBe('kagent/sre-agent');
     });
 
     it('refuses a second message during a turn as a 409', async () => {
@@ -718,7 +763,7 @@ describe('KagentClient against a fake controller', () => {
       const send = fake.calls
         .filter(call => call.method === 'SendMessage')
         .at(-1)!;
-      expect(send.headers[SESSION_HEADER]).toBe(id);
+      expect(send.tenant).toBe('kagent/sre-agent');
       expect(send.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     });
 
@@ -767,7 +812,7 @@ describe('KagentClient against a fake controller', () => {
       const stream = fake.calls
         .filter(call => call.method === 'SendStreamingMessage')
         .at(-1)!;
-      expect(stream.headers[SESSION_HEADER]).toBe(id);
+      expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
 
       // The controller recorded the resume against the same task, with the
