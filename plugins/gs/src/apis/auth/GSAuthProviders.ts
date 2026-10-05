@@ -22,13 +22,12 @@ import {
   SignInConnectorMemory,
 } from './signInConnectorMemory';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { InstallationConfig, readInstallationsConfig } from '../installations';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
-
-const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
 
 /**
  * `oidc-<installation>` -> `<installation>`; other provider names are shown as

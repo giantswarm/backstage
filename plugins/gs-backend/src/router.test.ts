@@ -14,10 +14,13 @@ const mimir = {} as unknown as typeof mimirServiceRef.T;
 const githubCredentialsProvider = {} as unknown as GithubCredentialsProvider;
 const managementClusterVersions = {
   read: jest.fn(async () => ({
-    golem: {
-      kubernetes: { state: 'known', version: 'v1.35.8' },
-      release: { state: 'known', version: '35.1.1' },
+    installations: {
+      golem: {
+        kubernetes: { state: 'known', version: 'v1.35.8' },
+        release: { state: 'known', version: '35.1.1' },
+      },
     },
+    readInBrowser: ['elsewhere'],
   })),
 } as unknown as ManagementClusterVersionsService;
 
@@ -267,6 +270,7 @@ describe('GET /installations/versions', () => {
       state: 'known',
       version: '35.1.1',
     });
+    expect(response.body.readInBrowser).toEqual(['elsewhere']);
     expect(managementClusterVersions.read).toHaveBeenCalledWith(
       expect.objectContaining({ principal: expect.anything() }),
       'subject',
