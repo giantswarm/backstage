@@ -1,16 +1,7 @@
 import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-import {
-  Kustomization,
-  HelmRelease,
-  GitRepository,
-  OCIRepository,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useFluxResources } from '../../hooks/useFluxResources';
+import { FluxResourceCollections } from '../../utils/fluxResources';
 import { useTreeSearch } from '../../hooks/useTreeSearch';
 import {
   KustomizationTreeBuilder,
@@ -23,14 +14,7 @@ export type ResourceType = 'all' | 'flux';
 export type StatusFilter = 'all' | 'failing';
 
 export type FluxOverviewData = {
-  kustomizations: Kustomization[];
-  helmReleases: HelmRelease[];
-  gitRepositories: GitRepository[];
-  ociRepositories: OCIRepository[];
-  helmRepositories: HelmRepository[];
-  imagePolicies: ImagePolicy[];
-  imageRepositories: ImageRepository[];
-  imageUpdateAutomations: ImageUpdateAutomation[];
+  resources: FluxResourceCollections;
   isLoading: boolean;
   activeCluster: string | null;
   setActiveCluster: (cluster: string | null) => void;
@@ -77,51 +61,19 @@ export const FluxOverviewDataProvider = ({
   const [resourceType, setResourceType] = useState<ResourceType>('flux');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  const {
-    resources: {
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
-    },
-    isLoading,
-    errors,
-  } = useFluxResources(activeCluster);
+  const { resources, isLoading, errors } = useFluxResources(activeCluster);
 
   useShowErrors(errors);
 
   const { treeBuilder, tree } = useMemo(() => {
-    if (isLoading || kustomizations.length === 0) {
+    if (isLoading || resources.kustomizations.length === 0) {
       return { treeBuilder: undefined, tree: undefined };
     }
 
-    const builder = new KustomizationTreeBuilder(
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
-    );
+    const builder = new KustomizationTreeBuilder(resources);
 
     return { treeBuilder: builder, tree: builder.buildTree() };
-  }, [
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
-    isLoading,
-  ]);
+  }, [resources, isLoading]);
 
   const displayTree = useMemo(() => {
     if (!tree || statusFilter !== 'failing') {
@@ -147,14 +99,7 @@ export const FluxOverviewDataProvider = ({
 
   const contextValue: FluxOverviewData = useMemo(() => {
     return {
-      kustomizations,
-      helmReleases,
-      gitRepositories,
-      ociRepositories,
-      helmRepositories,
-      imagePolicies,
-      imageRepositories,
-      imageUpdateAutomations,
+      resources,
       isLoading,
       activeCluster,
       setActiveCluster,
@@ -175,14 +120,7 @@ export const FluxOverviewDataProvider = ({
       totalMatches,
     };
   }, [
-    kustomizations,
-    helmReleases,
-    gitRepositories,
-    ociRepositories,
-    helmRepositories,
-    imagePolicies,
-    imageRepositories,
-    imageUpdateAutomations,
+    resources,
     isLoading,
     activeCluster,
     resourceType,

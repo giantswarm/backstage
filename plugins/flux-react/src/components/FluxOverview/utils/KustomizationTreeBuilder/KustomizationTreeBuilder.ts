@@ -13,6 +13,10 @@ import {
   parseInventoryEntries,
 } from '../../../../utils/inventoryParser';
 import { findTargetClusterName } from '../../../../utils/findTargetClusterName';
+import {
+  FluxResource,
+  FluxResourceCollections,
+} from '../../../../utils/fluxResources';
 
 const COMPACT_GROUP = 'toolkit.fluxcd.io';
 
@@ -23,15 +27,7 @@ export type KustomizationTreeNodeData = {
   namespace?: string;
   cluster: string;
   targetCluster?: string;
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource?: FluxResource;
   hasChildren: boolean;
   hasChildrenInCompactView: boolean;
   isFailing: boolean;
@@ -71,16 +67,16 @@ export class KustomizationTreeBuilder {
   private imageUpdateAutomations: Map<string, ImageUpdateAutomation> =
     new Map();
 
-  constructor(
-    kustomizations: Kustomization[],
-    helmReleases: HelmRelease[],
-    gitRepositories: GitRepository[],
-    ociRepositories: OCIRepository[],
-    helmRepositories: HelmRepository[],
-    imagePolicies: ImagePolicy[] = [],
-    imageRepositories: ImageRepository[] = [],
-    imageUpdateAutomations: ImageUpdateAutomation[] = [],
-  ) {
+  constructor({
+    kustomizations = [],
+    helmReleases = [],
+    gitRepositories = [],
+    ociRepositories = [],
+    helmRepositories = [],
+    imagePolicies = [],
+    imageRepositories = [],
+    imageUpdateAutomations = [],
+  }: Partial<FluxResourceCollections>) {
     kustomizations.forEach(k => {
       const key = this.getKey(k.getName(), k.getNamespace());
 
@@ -322,15 +318,7 @@ export class KustomizationTreeBuilder {
           }
         }
 
-        let childResource:
-          | HelmRelease
-          | HelmRepository
-          | GitRepository
-          | OCIRepository
-          | ImagePolicy
-          | ImageRepository
-          | ImageUpdateAutomation
-          | undefined;
+        let childResource: FluxResource | undefined;
         const childKey = this.getKey(child.name, child.namespace);
         if (child.kind === HelmRelease.kind) {
           childResource = this.helmReleases.get(childKey);

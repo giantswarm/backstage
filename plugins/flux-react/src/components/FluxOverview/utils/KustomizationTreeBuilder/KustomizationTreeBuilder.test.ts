@@ -132,13 +132,10 @@ function buildFixtureTree(options: {
     readyCondition: { status: options.helmReleaseReadyStatus },
   });
 
-  const builder = new KustomizationTreeBuilder(
-    [root, mid, sibling],
-    [helmRelease],
-    [],
-    [],
-    [],
-  );
+  const builder = new KustomizationTreeBuilder({
+    kustomizations: [root, mid, sibling],
+    helmReleases: [helmRelease],
+  });
 
   return builder.buildTree();
 }
@@ -202,13 +199,9 @@ describe('KustomizationTreeBuilder', () => {
         readyCondition: { status: 'True' },
       });
 
-      const builder = new KustomizationTreeBuilder(
-        [root, child],
-        [],
-        [],
-        [],
-        [],
-      );
+      const builder = new KustomizationTreeBuilder({
+        kustomizations: [root, child],
+      });
       const tree = builder.buildTree();
 
       expect(tree).toHaveLength(1);
@@ -243,13 +236,9 @@ describe('KustomizationTreeBuilder', () => {
         readyCondition: { status: 'True' },
       });
 
-      const builder = new KustomizationTreeBuilder(
-        [root, child, sameNameOtherNamespace],
-        [],
-        [],
-        [],
-        [],
-      );
+      const builder = new KustomizationTreeBuilder({
+        kustomizations: [root, child, sameNameOtherNamespace],
+      });
       const tree = builder.buildTree();
 
       expect(tree.map(node => node.nodeData.name).sort()).toEqual([
@@ -318,13 +307,9 @@ describe('KustomizationTreeBuilder', () => {
         readyCondition: { status: 'False', message: 'was failing' },
       });
 
-      const builder = new KustomizationTreeBuilder(
-        [root, suspended],
-        [],
-        [],
-        [],
-        [],
-      );
+      const builder = new KustomizationTreeBuilder({
+        kustomizations: [root, suspended],
+      });
       const tree = builder.buildTree();
 
       expect(findNode(tree, 'suspended')?.nodeData.isFailing).toBe(false);
@@ -372,13 +357,9 @@ describe('KustomizationTreeBuilder', () => {
         ],
       });
 
-      const builder = new KustomizationTreeBuilder(
-        [root, a, b],
-        [],
-        [],
-        [],
-        [],
-      );
+      const builder = new KustomizationTreeBuilder({
+        kustomizations: [root, a, b],
+      });
       const tree = builder.buildTree();
 
       const failingNode = findNode(tree, 'b');

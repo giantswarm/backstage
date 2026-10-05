@@ -4,6 +4,7 @@ import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { emptyFluxResourceCollections } from '../../../utils/fluxResources';
 import { Details } from './Details';
 
 /**
@@ -58,17 +59,6 @@ function createKustomization(): Kustomization {
   return new Kustomization(json as any, 'test-installation');
 }
 
-const emptyCollections = {
-  allKustomizations: [],
-  allHelmReleases: [],
-  allGitRepositories: [],
-  allOCIRepositories: [],
-  allHelmRepositories: [],
-  allImagePolicies: [],
-  allImageRepositories: [],
-  allImageUpdateAutomations: [],
-};
-
 describe('Details', () => {
   it('shows a loading indicator while resources are loading', async () => {
     await renderInTestApp(
@@ -79,7 +69,7 @@ describe('Details', () => {
           name: 'my-app',
         }}
         isLoadingResources
-        {...emptyCollections}
+        resources={emptyFluxResourceCollections()}
       />,
     );
 
@@ -96,7 +86,7 @@ describe('Details', () => {
           namespace: 'flux-system',
         }}
         isLoadingResources={false}
-        {...emptyCollections}
+        resources={emptyFluxResourceCollections()}
       />,
     );
 
@@ -117,7 +107,7 @@ describe('Details', () => {
         }}
         resource={createKustomization()}
         isLoadingResources={false}
-        {...emptyCollections}
+        resources={emptyFluxResourceCollections()}
       />,
     );
 

@@ -1,15 +1,6 @@
 import { Box, Flex } from '@backstage/ui';
 import ReportProblemOutlinedIcon from '@material-ui/icons/ReportProblemOutlined';
-import {
-  Kustomization,
-  HelmRelease,
-  GitRepository,
-  OCIRepository,
-  HelmRepository,
-  ImagePolicy,
-  ImageRepository,
-  ImageUpdateAutomation,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../../utils/fluxResources';
 import { ResourceHeading } from '../ResourceHeading';
 import { ResourceStatus } from '../ResourceStatus';
 import { ResourceChips } from '../ResourceChips';
@@ -20,15 +11,7 @@ type ResourceInfoProps = {
   cluster: string;
   namespace?: string;
   targetCluster?: string;
-  resource?:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource?: FluxResource;
   readyStatus: 'True' | 'False' | 'Unknown';
   isDependencyNotReady: boolean;
   isReconciling: boolean;

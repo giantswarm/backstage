@@ -8,6 +8,7 @@ import {
   Kustomization,
   OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FluxResource } from '../../../../utils/fluxResources';
 import {
   ConditionMessage,
   DateComponent,
@@ -596,15 +597,7 @@ function getSpecAndStatus(
 }
 
 type ResourceMetadataProps = {
-  resource:
-    | Kustomization
-    | HelmRelease
-    | GitRepository
-    | OCIRepository
-    | HelmRepository
-    | ImagePolicy
-    | ImageRepository
-    | ImageUpdateAutomation;
+  resource: FluxResource;
   source?: GitRepository | OCIRepository | HelmRepository;
   fixedKeyColumnWidth?: string;
 };
