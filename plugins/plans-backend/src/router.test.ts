@@ -941,7 +941,11 @@ describe('createRouter', () => {
 
     describe('kept on a branch of a plan repository', () => {
       const onPlans = () =>
-        magazineApp({ repository: REPO, ref: 'magazine', knowledgeRef: 'magazine' });
+        magazineApp({
+          repository: REPO,
+          ref: 'magazine',
+          knowledgeRef: 'magazine',
+        });
 
       it('leaves the plan routes of that repository open', async () => {
         github.answers.set('list_pull_requests', []);
