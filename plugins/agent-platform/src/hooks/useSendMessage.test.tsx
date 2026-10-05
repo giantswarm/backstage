@@ -212,6 +212,59 @@ describe('useSendMessage', () => {
     expect(filters?.refetchType).toBeUndefined();
   });
 
+  it('re-reads the conversation once as soon as the stream carries a file', async () => {
+    // The live preview renders no files, so waiting for the stream to end (or
+    // the next poll) would leave an attachment missing for the whole turn. The
+    // terminal event repeats the file, and that must not re-read it again.
+    const { result, invalidateQueries } = renderWith();
+    let tasksReadsDuringStream = 0;
+    streamMessage.mockImplementation(async (...args: unknown[]) => {
+      const onEvent = args[4] as (event: unknown) => void;
+      const fileEvent = (final: boolean) => ({
+        kind: 'status-update',
+        final,
+        status: {
+          state: final ? 'completed' : 'working',
+          message: {
+            kind: 'message',
+            messageId: 'reply-1',
+            role: 'agent',
+            parts: [
+              { kind: 'file', file: { name: 'chart.png', bytes: 'AAAA' } },
+            ],
+          },
+        },
+      });
+      onEvent(fileEvent(false));
+      onEvent(fileEvent(true));
+      tasksReadsDuringStream = invalidateQueries.mock.calls.filter(
+        ([filters]) =>
+          JSON.stringify(filters?.queryKey) === JSON.stringify(TASKS_KEY),
+      ).length;
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    expect(tasksReadsDuringStream).toBe(1);
+  });
+
+  it('does not re-read the conversation mid-stream for text alone', async () => {
+    const { result, invalidateQueries } = renderWith();
+    let tasksReadsDuringStream = 0;
+    streamMessage.mockImplementation(async (...args: unknown[]) => {
+      (args[4] as (event: unknown) => void)(finalReplyEvent('done'));
+      tasksReadsDuringStream = invalidateQueries.mock.calls.length;
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('hello');
+    });
+
+    expect(tasksReadsDuringStream).toBe(0);
+  });
+
   it('refreshes the session, whose last activity the turn moved', async () => {
     const { result, invalidateQueries } = renderWith();
 

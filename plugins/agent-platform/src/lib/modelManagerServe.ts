@@ -5,7 +5,7 @@ import type {
   ModelManagerPlacement,
   ModelManagerServeStep,
 } from './modelManager';
-import { formatBytes } from './modelManagerServing';
+import { formatBytes } from './formatNumbers';
 import type { ServedModel } from './serving';
 
 /**

@@ -25,7 +25,7 @@ import { modelManagerApiRef } from '../../apis';
 import { usePullModel } from '../../hooks/usePullJobs';
 import type { ModelManagerSearchResult } from '../../lib/modelManager';
 import { describeFit } from '../../lib/modelManagerServe';
-import { formatBytes } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import type { GpuNode, ServingBackend } from '../../lib/serving';
 import { SelectableCard, SelectableCardGrid } from '../SelectableCard';
 

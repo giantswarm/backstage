@@ -18,13 +18,13 @@ import { modelDetailRouteRef } from '../../routes';
 import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
-  formatBytes,
   formatContextLength,
   formatGpuShare,
   formatTime,
   isServedKServeModel,
   lacksToolCalling,
 } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import {
   SERVED_MODEL_READINESS_ORDER,
   type ServedModel,
