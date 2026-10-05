@@ -417,6 +417,14 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for the product magazine', () => {
+    const result = getTelemetryPageViewPayload('/product');
+    expect(result).toEqual({
+      page: 'Product magazine',
+      path: '/product',
+    });
+  });
+
   it('should return correct payload for roadmap index page', () => {
     const result = getTelemetryPageViewPayload('/roadmap');
     expect(result).toEqual({
@@ -529,6 +537,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/plans/pr/22',
       '/roadmap',
       '/roadmap/items/PVTI_abc123',
+      '/product',
       '/metrics',
       '/search',
     ];

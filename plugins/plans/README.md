@@ -41,3 +41,27 @@ plans:
   repositories:
     - giantswarm/bumblebee-plans
 ```
+
+### Magazine
+
+The team product magazine is a second page of the plugin at `/product`
+(extension `page:plans/magazine`, also disabled by default). It renders the
+generated JSON of a magazine repository (Now, History in three windows) and
+its knowledge documents, read through the same plans backend and GitHub
+connection. Enable it next to `api:plans` and point the backend at the
+repository:
+
+```yaml
+app:
+  extensions:
+    - page:plans/magazine
+    - api:plans
+plans:
+  magazine:
+    repository: giantswarm/team-magazine
+    # ref: data          # generated magazine/*.json
+    # knowledgeRef: main # knowledge/{product,architecture,decisions}/*.md
+```
+
+Without `plans.magazine` the page says no magazine is configured. The
+sidebar groups Plans, Roadmap and Magazine as one Product section.

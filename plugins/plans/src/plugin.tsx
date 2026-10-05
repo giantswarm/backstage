@@ -6,9 +6,11 @@ import {
   PageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import AssignmentIcon from '@material-ui/icons/Assignment';
+import MenuBookIcon from '@material-ui/icons/MenuBook';
 
 import { plansApiRef, PlansApiClient, plansAuthApiRef } from './apis';
 import {
+  magazineRouteRef,
   pullRouteRef,
   roadmapItemExternalRouteRef,
   rootRouteRef,
@@ -37,6 +39,29 @@ const plansPage = PageBlueprint.make({
   },
 });
 
+// The team product magazine at `/product`: extension id
+// `page:plans/magazine`, disabled by default like the plans page. It reads
+// the repository in `plans.magazine` through the same API.
+const magazinePage = PageBlueprint.make({
+  name: 'magazine',
+  disabled: true,
+  params: {
+    title: 'Magazine',
+    icon: <MenuBookIcon />,
+    path: '/product',
+    routeRef: magazineRouteRef,
+    loader: async () => {
+      const { PlansProviders } = await import('./components/PlansProviders');
+      const { MagazinePage } = await import('./components/MagazinePage');
+      return (
+        <PlansProviders>
+          <MagazinePage />
+        </PlansProviders>
+      );
+    },
+  },
+});
+
 // No `name`: the extension id is plain `api:plans`.
 const plansApi = ApiBlueprint.make({
   disabled: true,
@@ -55,10 +80,11 @@ const plansApi = ApiBlueprint.make({
 
 export const plansPlugin = createFrontendPlugin({
   pluginId: 'plans',
-  extensions: [plansPage, plansApi],
+  extensions: [plansPage, magazinePage, plansApi],
   routes: {
     root: rootRouteRef,
     pull: pullRouteRef,
+    magazine: magazineRouteRef,
   },
   externalRoutes: {
     roadmapItem: roadmapItemExternalRouteRef,

@@ -828,6 +828,118 @@ describe('createRouter', () => {
     });
   });
 
+  describe('the magazine repository', () => {
+    const MAGAZINE = 'giantswarm/team-magazine';
+
+    async function magazineApp(
+      magazine: Record<string, string> = { repository: MAGAZINE },
+      repositories: string[] = [REPO],
+    ) {
+      const logger = mockServices.logger.mock();
+      const config = mockServices.rootConfig({
+        data: {
+          plans: {
+            ...(repositories.length > 0 && { repositories }),
+            magazine,
+          },
+        },
+      });
+      const router = await createRouter({
+        logger,
+        config,
+        httpAuth: mockServices.httpAuth(),
+        github,
+      });
+      const magazineServer = express();
+      magazineServer.use((req, _res, next) => {
+        req.headers[TOKEN_HEADER] = 'dex-id-token';
+        next();
+      });
+      magazineServer.use(router);
+      magazineServer.use(MiddlewareFactory.create({ logger, config }).error());
+      return magazineServer;
+    }
+
+    it('reports the configuration with its ref defaults', async () => {
+      const res = await request(await magazineApp()).get('/magazine');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        configured: true,
+        repository: MAGAZINE,
+        ref: 'data',
+        knowledgeRef: 'main',
+      });
+      expect(github.calls).toHaveLength(0);
+    });
+
+    it('reports an unconfigured magazine', async () => {
+      const res = await request(app).get('/magazine');
+      expect(res.body).toEqual({ configured: false });
+    });
+
+    it('rejects an invalid repository slug', async () => {
+      await expect(magazineApp({ repository: 'nope' })).rejects.toThrow(
+        /Invalid plans.magazine.repository/,
+      );
+    });
+
+    it('stays out of the plan repositories', async () => {
+      const res = await request(await magazineApp()).get('/repos');
+      expect(res.body).toEqual({ repositories: [REPO] });
+    });
+
+    it('reads the data ref by default, without any plan repository', async () => {
+      github.contentAnswers.set('get_file_contents', fileContent('{}'));
+      const res = await request(await magazineApp(undefined, []))
+        .get('/content')
+        .query({ repo: MAGAZINE, path: 'magazine/now.json' });
+      expect(res.status).toBe(200);
+      expect(res.body.ref).toBe('data');
+      expect(github.calls[0].args).toEqual({
+        owner: 'giantswarm',
+        repo: 'team-magazine',
+        path: 'magazine/now.json',
+        ref: 'refs/heads/data',
+      });
+    });
+
+    it('passes the configured knowledge ref to the tree call', async () => {
+      github.answers.set('get_repository_tree', {
+        sha: 's',
+        truncated: false,
+        tree: [],
+      });
+      const res = await request(
+        await magazineApp({ repository: MAGAZINE, knowledgeRef: 'docs' }),
+      )
+        .get('/tree')
+        .query({ repo: MAGAZINE, ref: 'docs' });
+      expect(res.status).toBe(200);
+      expect(github.calls[0].args).toMatchObject({
+        owner: 'giantswarm',
+        repo: 'team-magazine',
+        tree_sha: 'refs/heads/docs',
+      });
+    });
+
+    it('refuses any other ref', async () => {
+      const res = await request(await magazineApp())
+        .get('/tree')
+        .query({ repo: MAGAZINE, ref: 'feature' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toMatch(/allowed: data, main/);
+      expect(github.calls).toHaveLength(0);
+    });
+
+    it('refuses the pull request routes', async () => {
+      const res = await request(await magazineApp())
+        .get('/pulls')
+        .query({ repo: MAGAZINE });
+      expect(res.status).toBe(400);
+      expect(github.calls).toHaveLength(0);
+    });
+  });
+
   describe('/epics', () => {
     it('collects epics of merged plans and open pull requests', async () => {
       github.answers.set('get_repository_tree', {

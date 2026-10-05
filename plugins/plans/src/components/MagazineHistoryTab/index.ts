@@ -1,0 +1,1 @@
+export { MagazineHistoryTab } from './MagazineHistoryTab';

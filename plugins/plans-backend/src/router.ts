@@ -211,6 +211,31 @@ function gitRef(ref: string): string | undefined {
   return `refs/heads/${ref}`;
 }
 
+interface MagazineConfig {
+  repository: string;
+  ref: string;
+  knowledgeRef: string;
+}
+
+/** `plans.magazine`, validated, with its ref defaults; undefined when unset. */
+function readMagazineConfig(config: Config): MagazineConfig | undefined {
+  const section = config.getOptionalConfig('plans.magazine');
+  if (!section) {
+    return undefined;
+  }
+  const repository = section.getString('repository');
+  if (!REPO_SLUG_PATTERN.test(repository)) {
+    throw new Error(
+      `Invalid plans.magazine.repository '${repository}'; expected an owner/repo slug`,
+    );
+  }
+  return {
+    repository,
+    ref: section.getOptionalString('ref') ?? 'data',
+    knowledgeRef: section.getOptionalString('knowledgeRef') ?? 'main',
+  };
+}
+
 function splitRepo(repo: string): { owner: string; repo: string } {
   const [owner, name] = repo.split('/');
   return { owner, repo: name };
@@ -232,6 +257,8 @@ export async function createRouter(
     return repo;
   });
 
+  const magazine = readMagazineConfig(config);
+
   if (repositories.length === 0) {
     logger.info(
       'No plan repositories configured (set plans.repositories); plans endpoints will return 503.',
@@ -250,12 +277,17 @@ export async function createRouter(
    * instead of being a general GitHub relay.
    */
   const resolveRepo = (req: express.Request): string => {
+    const requested = singleQueryValue(req.query.repo, 'repo');
+    if (magazine && requested === magazine.repository) {
+      throw new InputError(
+        `The magazine repository '${requested}' is only readable through /tree and /content.`,
+      );
+    }
     if (repositories.length === 0) {
       throw new ServiceUnavailableError(
         'No plan repository is configured. Set plans.repositories.',
       );
     }
-    const requested = singleQueryValue(req.query.repo, 'repo');
     if (!requested) {
       if (repositories.length > 1) {
         throw new InputError(
@@ -270,6 +302,28 @@ export async function createRouter(
       );
     }
     return requested;
+  };
+
+  /**
+   * Repository and ref of a read (`/tree`, `/content`): a plan repository at
+   * any ref, or the magazine repository at one of its two configured refs
+   * (default: the data ref). The magazine stays a read-only source of two
+   * branches, never a general relay to its repository.
+   */
+  const resolveRead = (req: express.Request): { repo: string; ref: string } => {
+    const requested = singleQueryValue(req.query.repo, 'repo');
+    const ref = singleQueryValue(req.query.ref, 'ref');
+    if (magazine && requested === magazine.repository) {
+      const allowed = [magazine.ref, magazine.knowledgeRef];
+      if (ref !== undefined && !allowed.includes(ref)) {
+        throw new InputError(
+          `Unknown ref '${ref}' for the magazine repository; allowed: ${allowed.join(', ')}`,
+        );
+      }
+      return { repo: requested, ref: ref ?? magazine.ref };
+    }
+    // HEAD resolves to the repository's default branch on the GitHub side.
+    return { repo: resolveRepo(req), ref: ref ?? 'HEAD' };
   };
 
   const gateway = (): MusterServerGateway => {
@@ -508,6 +562,17 @@ export async function createRouter(
   });
 
   /**
+   * Where the Magazine page reads from: the repository and its data and
+   * knowledge refs, or `configured: false`. Served to signed-in users only,
+   * so the repository name stays out of the frontend config.
+   */
+  router.get('/magazine', (_, res) => {
+    res.json(
+      magazine ? { configured: true, ...magazine } : { configured: false },
+    );
+  });
+
+  /**
    * Whether the caller's muster session can reach GitHub, and the sign-in
    * URL when it cannot yet. Lets the frontend offer "Connect GitHub" before
    * the first failing request, and poll after the popup.
@@ -688,15 +753,12 @@ export async function createRouter(
   });
 
   router.get('/tree', async (req, res) => {
-    const repo = resolveRepo(req);
-    // HEAD resolves to the repository's default branch on the GitHub side.
-    const ref = singleQueryValue(req.query.ref, 'ref') ?? 'HEAD';
+    const { repo, ref } = resolveRead(req);
     res.json(await getTree(githubFor(req), repo, ref));
   });
 
   router.get('/content', async (req, res) => {
-    const repo = resolveRepo(req);
-    const ref = singleQueryValue(req.query.ref, 'ref') ?? 'HEAD';
+    const { repo, ref } = resolveRead(req);
     const path = singleQueryValue(req.query.path, 'path');
     if (!path) {
       throw new InputError('path query parameter is required');
