@@ -4,8 +4,8 @@ import { lab } from './lab';
 /**
  * The management cluster versions on the Installations page
  * (giantswarm/backstage#2704): the Kubernetes version and the Giant Swarm
- * release of each installation, read live through the portal's Kubernetes
- * proxy.
+ * release of each installation, read live by the portal's backend in one
+ * request (`GET /api/gs/installations/versions`).
  *
  * The lab's catalog has no installation entities, so the spec adds the lab's
  * own installation to the catalog's answer: the row is the fixture, the
@@ -71,6 +71,14 @@ test.describe('installations: management cluster versions', () => {
   test('shows the Kubernetes version and the release of the installation', async ({
     admin,
   }) => {
+    const versionRequests: string[] = [];
+    const onRequest = (request: { url(): string }) => {
+      if (request.url().includes('/api/gs/installations/versions')) {
+        versionRequests.push(request.url());
+      }
+    };
+    admin.on('request', onRequest);
+
     await open(admin, '/installations');
     await expect(
       admin.getByRole('columnheader', { name: 'Kubernetes version' }),
@@ -90,6 +98,10 @@ test.describe('installations: management cluster versions', () => {
       'title',
       'The management cluster carries no Giant Swarm release',
     );
+
+    // Both columns of every row come from one request.
+    admin.off('request', onRequest);
+    expect(versionRequests).toHaveLength(1);
   });
 
   test('finds the installation by its Kubernetes version in the search', async ({

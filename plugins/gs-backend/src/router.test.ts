@@ -7,10 +7,19 @@ import request from 'supertest';
 import { createRouter } from './router';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
+import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
 
 const containerRegistry = {} as unknown as typeof containerRegistryServiceRef.T;
 const mimir = {} as unknown as typeof mimirServiceRef.T;
 const githubCredentialsProvider = {} as unknown as GithubCredentialsProvider;
+const managementClusterVersions = {
+  read: jest.fn(async () => ({
+    golem: {
+      kubernetes: { state: 'known', version: 'v1.35.8' },
+      release: { state: 'known', version: '35.1.1' },
+    },
+  })),
+} as unknown as ManagementClusterVersionsService;
 
 function makeConfig(data: JsonObject): RootConfigService {
   return mockServices.rootConfig({ data });
@@ -22,6 +31,8 @@ async function buildApp(config: RootConfigService) {
     containerRegistry,
     mimir,
     githubCredentialsProvider,
+    httpAuth: mockServices.httpAuth(),
+    managementClusterVersions,
   });
   const app = express();
   app.use(router);
@@ -112,19 +123,23 @@ describe('GET /config', () => {
 });
 
 /**
- * The Mimir proxy routes.
+ * The Mimir proxy and versions routes.
  *
  * A local app rather than `buildApp`, because these need a real `mimir` stub
- * and an error handler: in production `httpRouter` supplies the latter, so a
+ * or an error handler: in production `httpRouter` supplies the latter, so a
  * bare test app would surface an `InputError` as a 500 and hide the difference
  * between "the caller sent a bad request" and "the route broke".
  */
-async function buildMimirApp(mimirStub: Partial<typeof mimirServiceRef.T>) {
+async function buildAppWithErrors(
+  mimirStub: Partial<typeof mimirServiceRef.T>,
+) {
   const router = await createRouter({
     config: makeConfig({}),
     containerRegistry,
     mimir: mimirStub as unknown as typeof mimirServiceRef.T,
     githubCredentialsProvider,
+    httpAuth: mockServices.httpAuth(),
+    managementClusterVersions,
   });
   const app = express();
   app.use(router);
@@ -148,7 +163,7 @@ describe('GET /mimir/query_range', () => {
     const queryRange = jest
       .fn()
       .mockResolvedValue({ status: 'success', data: { result: [] } });
-    const app = await buildMimirApp({ queryRange });
+    const app = await buildAppWithErrors({ queryRange });
 
     const response = await request(app)
       .get('/mimir/query_range')
@@ -174,7 +189,7 @@ describe('GET /mimir/query_range', () => {
 
   it('answers 400 without the token header', async () => {
     const queryRange = jest.fn();
-    const app = await buildMimirApp({ queryRange });
+    const app = await buildAppWithErrors({ queryRange });
 
     const response = await request(app).get('/mimir/query_range').query({
       query: 'up',
@@ -194,7 +209,7 @@ describe('GET /mimir/query_range', () => {
     'answers 400 when %s is missing',
     async missing => {
       const queryRange = jest.fn();
-      const app = await buildMimirApp({ queryRange });
+      const app = await buildAppWithErrors({ queryRange });
 
       const params: Record<string, string> = {
         query: 'up',
@@ -221,7 +236,7 @@ describe('GET /mimir/query_range', () => {
         name: 'NotFoundError',
       }),
     );
-    const app = await buildMimirApp({ queryRange });
+    const app = await buildAppWithErrors({ queryRange });
 
     const response = await request(app)
       .get('/mimir/query_range')
@@ -235,5 +250,34 @@ describe('GET /mimir/query_range', () => {
       .set('X-Mimir-Token', 'tok');
 
     expect(response.body.error.name).toBe('NotFoundError');
+  });
+});
+
+describe('GET /installations/versions', () => {
+  it('serves the management cluster versions read with the forwarded main session', async () => {
+    const app = await buildApp(makeConfig({}));
+
+    const response = await request(app)
+      .get('/installations/versions')
+      .set('gs-subject-token', 'subject');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body.installations.golem.release).toEqual({
+      state: 'known',
+      version: '35.1.1',
+    });
+    expect(managementClusterVersions.read).toHaveBeenCalledWith(
+      expect.objectContaining({ principal: expect.anything() }),
+      'subject',
+    );
+  });
+
+  it('refuses a request without the main session', async () => {
+    const app = await buildAppWithErrors({});
+
+    const response = await request(app).get('/installations/versions');
+
+    expect(response.status).toBe(400);
   });
 });

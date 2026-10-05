@@ -1,4 +1,7 @@
-import { RootConfigService } from '@backstage/backend-plugin-api';
+import {
+  HttpAuthService,
+  RootConfigService,
+} from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
@@ -12,17 +15,25 @@ import {
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { readSignedInConfig } from './signedInConfig';
+import {
+  ManagementClusterVersionsService,
+  SUBJECT_TOKEN_HEADER,
+} from './services/ManagementClusterVersions';
 
 export async function createRouter({
   config,
   containerRegistry,
   mimir,
   githubCredentialsProvider,
+  httpAuth,
+  managementClusterVersions,
 }: {
   config: RootConfigService;
   containerRegistry: typeof containerRegistryServiceRef.T;
   mimir: typeof mimirServiceRef.T;
   githubCredentialsProvider: GithubCredentialsProvider;
+  httpAuth: HttpAuthService;
+  managementClusterVersions: ManagementClusterVersionsService;
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
@@ -40,6 +51,30 @@ export async function createRouter({
    */
   router.get('/config', async (_req, res) => {
     res.json(readSignedInConfig(config));
+  });
+
+  /**
+   * GET /installations/versions
+   *
+   * Every management cluster's Kubernetes version and Giant Swarm release,
+   * read as the signed-in person in one request: the Installations page's
+   * version columns. The person's main Dex ID token travels in the
+   * `gs-subject-token` header; each installation's answer is a version, an
+   * absent value with the reason, or the short reason it failed.
+   */
+  router.get('/installations/versions', async (req, res) => {
+    const credentials = await httpAuth.credentials(req, { allow: ['user'] });
+    const subjectToken = req.header(SUBJECT_TOKEN_HEADER);
+    if (!subjectToken) {
+      throw new InputError(`Missing ${SUBJECT_TOKEN_HEADER} header`);
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      installations: await managementClusterVersions.read(
+        credentials,
+        subjectToken,
+      ),
+    });
   });
 
   /**
