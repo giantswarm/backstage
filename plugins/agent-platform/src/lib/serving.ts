@@ -542,19 +542,6 @@ export const NO_SERVING_CAPABILITIES: ServingCapabilities = {
   search: false,
 };
 
-/** Whether any per-model operation is offered — decides the actions column. */
-export function hasServedModelActions(
-  capabilities: ServingCapabilities | undefined,
-): boolean {
-  return Boolean(
-    capabilities &&
-    (capabilities.load ||
-      capabilities.unload ||
-      capabilities.delete ||
-      capabilities.wire),
-  );
-}
-
 /** A GPU-carrying node as the capacity panel shows it. */
 export type GpuNode = {
   /** Stable unique key: installation + node name (+ backend for a backend host). */
@@ -958,18 +945,6 @@ export function findServedModel(
     return undefined;
   }
   return onServer.length === 1 ? onServer[0] : undefined;
-}
-
-/**
- * {@link findServedModel} by endpoint alone. Kept for callers that know
- * nothing but a base URL; prefer the lookup form where the client's model id
- * is at hand, or a multi-model host cannot be resolved.
- */
-export function findServedModelForEndpoint(
-  endpoint: string | undefined,
-  candidates: ServedModel[],
-): ServedModel | undefined {
-  return findServedModel({ endpoint }, candidates);
 }
 
 /**

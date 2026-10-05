@@ -226,25 +226,6 @@ export function resolveModelConfig(
 }
 
 /**
- * Resolve an agent's `spec.modelConfig` reference to a
- * human-readable label by joining against the ModelConfigs on the same
- * installation ({@link resolveModelConfig}).
- *
- * Falls back to the raw reference name when the ModelConfig can't be found,
- * and to `undefined` when the agent references no model at all.
- */
-export function resolveModelLabel(
-  agent: Agent,
-  modelConfigs: ModelConfig[],
-): string | undefined {
-  const ref = agent.getModelConfigName();
-  if (!ref) {
-    return undefined;
-  }
-  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
-}
-
-/**
  * How a ModelConfig resolves to the serving layer —
  * `useServing().servingStateFor`, partially applied to the installation.
  */

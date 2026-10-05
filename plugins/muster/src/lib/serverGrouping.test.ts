@@ -6,14 +6,11 @@ import {
 } from './k8s';
 import {
   ServerRow,
-  familyCoverage,
   familyGroups,
   familyToolGroup,
   findServerRow,
   fleetManagementClusters,
-  orderPresenceDegradedFirst,
   partitionServers,
-  presenceByMc,
   selectRepresentative,
   serverRowKey,
 } from './serverGrouping';
@@ -25,8 +22,6 @@ function makeServer(opts: {
   state?: string;
   /** The tool-group label value; `undefined` leaves the CR unlabelled. */
   toolGroup?: ToolGroup | string;
-  /** `spec.suspended`: the server is deactivated. */
-  suspended?: boolean;
 }): MCPServer {
   return new MCPServer(
     {
@@ -41,7 +36,6 @@ function makeServer(opts: {
       },
       spec: {
         ...(opts.family ? { family: { name: opts.family } } : {}),
-        ...(opts.suspended ? { suspended: true } : {}),
       },
       status: opts.state ? { state: opts.state } : {},
     } as never,
@@ -299,55 +293,6 @@ describe('familyGroups', () => {
   });
 });
 
-describe('presenceByMc', () => {
-  it('reports one entry per management cluster, sorted, with the worst state', () => {
-    const presence = presenceByMc([
-      makeServer({ name: 'k8s-beta', mc: 'beta', state: 'Failed' }),
-      makeServer({ name: 'k8s-beta-2', mc: 'beta', state: 'Connected' }),
-      makeServer({ name: 'k8s-alpha', mc: 'alpha', state: 'Connected' }),
-    ]);
-
-    expect(presence.map(p => p.mc)).toEqual(['alpha', 'beta']);
-    expect(presence[0].severity).toBe('ok');
-    expect(presence[1].severity).toBe('error');
-    expect(presence[1].state).toBe('Failed');
-  });
-
-  it('treats Auth Required as healthy (not degraded)', () => {
-    const presence = presenceByMc([
-      makeServer({ name: 'k8s', mc: 'alpha', state: 'Auth Required' }),
-    ]);
-    expect(presence[0].severity).toBe('ok');
-  });
-
-  it('treats Awaiting Session as healthy: the federated fleet between sessions', () => {
-    // Every remote cluster's server is served per session through token
-    // exchange; with nobody connected the whole fleet reads Awaiting Session,
-    // which must not paint every pill amber.
-    const presence = presenceByMc([
-      makeServer({ name: 'k8s-alpha', mc: 'alpha', state: 'Awaiting Session' }),
-      makeServer({ name: 'k8s-beta', mc: 'beta', state: 'Awaiting Session' }),
-    ]);
-    expect(presence.map(p => p.severity)).toEqual(['ok', 'ok']);
-    expect(presence[0].state).toBe('Awaiting Session');
-  });
-
-  it('names a deactivated instance rather than its Disconnected symptom', () => {
-    // The pill still counts as degraded (the cluster's tools are unavailable),
-    // but the text says why, so nobody goes looking for an outage.
-    const presence = presenceByMc([
-      makeServer({
-        name: 'k8s',
-        mc: 'alpha',
-        state: 'Disconnected',
-        suspended: true,
-      }),
-    ]);
-    expect(presence[0].severity).toBe('warning');
-    expect(presence[0].state).toBe('Deactivated');
-  });
-});
-
 describe('selectRepresentative', () => {
   // Federated families are listed in MC-alphabetical order, so the first server
   // is a peer/customer MC; selection must not default to it (ADR D1).
@@ -397,27 +342,7 @@ describe('selectRepresentative', () => {
   });
 });
 
-describe('orderPresenceDegradedFirst', () => {
-  it('puts failed before disconnected before healthy, alphabetical within a band', () => {
-    const presence = presenceByMc([
-      makeServer({ name: 'a', mc: 'agama', state: 'Connected' }),
-      makeServer({ name: 'b', mc: 'zebra', state: 'Failed' }),
-      makeServer({ name: 'c', mc: 'garm', state: 'Disconnected' }),
-      makeServer({ name: 'd', mc: 'alba', state: 'Auth Required' }),
-      makeServer({ name: 'e', mc: 'beta', state: 'Failed' }),
-    ]);
-
-    expect(orderPresenceDegradedFirst(presence).map(p => p.mc)).toEqual([
-      'beta',
-      'zebra',
-      'garm',
-      'agama',
-      'alba',
-    ]);
-  });
-});
-
-describe('fleetManagementClusters / familyCoverage', () => {
+describe('fleetManagementClusters', () => {
   const kubernetes = {
     family: 'kubernetes',
     servers: ['agama', 'alba', 'gaggle', 'garm'].map(mc =>
@@ -449,34 +374,6 @@ describe('fleetManagementClusters / familyCoverage', () => {
       'gaggle',
       'garm',
     ]);
-  });
-
-  it('reports a partially rolled-out family as missing from the rest of the fleet', () => {
-    const coverage = familyCoverage(
-      capi,
-      fleetManagementClusters([capi, kubernetes]),
-    );
-
-    expect(coverage.present.map(p => p.mc)).toEqual(['gaggle', 'garm']);
-    expect(coverage.missing).toEqual(['agama', 'alba']);
-    expect(coverage.degraded).toEqual([]);
-    expect(coverage.fleetSize).toBe(4);
-  });
-
-  it('reports a fully deployed family with its degraded clusters first', () => {
-    const coverage = familyCoverage(
-      kubernetes,
-      fleetManagementClusters([capi, kubernetes]),
-    );
-
-    expect(coverage.missing).toEqual([]);
-    expect(coverage.present.map(p => p.mc)).toEqual([
-      'garm',
-      'agama',
-      'alba',
-      'gaggle',
-    ]);
-    expect(coverage.degraded.map(p => p.mc)).toEqual(['garm']);
   });
 });
 

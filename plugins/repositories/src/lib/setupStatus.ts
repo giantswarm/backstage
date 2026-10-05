@@ -30,11 +30,6 @@ export function stepDetail(step: SetupStep): string {
   return parts.join(' | ');
 }
 
-/** Every step's findings, in step order (the CLI's Findings section). */
-export function resultFindings(result: SetupResult) {
-  return result.steps.flatMap(step => step.findings ?? []);
-}
-
 /**
  * What a step's verdict means, for the status icon next to the word: `ok`
  * and `repaired` are good, `drift` wants the reconciler, `reported` left a
