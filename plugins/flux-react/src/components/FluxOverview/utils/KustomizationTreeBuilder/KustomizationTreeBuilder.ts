@@ -270,7 +270,9 @@ export class KustomizationTreeBuilder {
       console.warn(`Circular dependency detected for: ${key}`);
 
       return {
-        id: this.getOwnerNodeId(owner),
+        // The owner's own node is further up this path, so this one needs an
+        // id of its own: the tree keys its rows by id.
+        id: `${this.getOwnerNodeId(owner)}-repeated`,
         nodeData: {
           label: owner.getName(),
           kind: owner.getKind(),

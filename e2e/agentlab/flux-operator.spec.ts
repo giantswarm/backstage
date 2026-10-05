@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 
 /**
@@ -8,23 +9,28 @@ import { expect, open, test } from './fixtures';
  * distribution and the report.
  */
 
+/**
+ * Waits until the page shows either `ready` or the portal's Not Found page,
+ * and skips the test on the latter. `open` only waits for the sidebar, which
+ * renders before the page content.
+ */
+async function skipWithoutFluxPage(page: Page, ready: Locator) {
+  const notFound = page.getByText(/not found/i).first();
+  await expect(ready.or(notFound).first()).toBeVisible({ timeout: 60_000 });
+  test.skip(await notFound.isVisible(), 'this lab portal has no Flux page');
+}
+
 test('the Flux list shows the FluxInstance and its FluxReport', async ({
   admin,
 }) => {
   await open(admin, '/flux/list');
-  test.skip(
-    await admin
-      .getByText(/not found/i)
-      .first()
-      .isVisible(),
-    'this lab portal has no Flux page',
-  );
 
   const instanceRow = admin
     .getByRole('row')
     .filter({ hasText: 'FluxInstance' })
-    .filter({ hasText: 'flux' });
-  await expect(instanceRow.first()).toBeVisible({ timeout: 60_000 });
+    .filter({ hasText: 'flux' })
+    .first();
+  await skipWithoutFluxPage(admin, instanceRow);
   await expect(
     admin.getByRole('row').filter({ hasText: 'FluxReport' }).first(),
   ).toBeVisible();
@@ -40,17 +46,11 @@ test('the Flux list shows the FluxInstance and its FluxReport', async ({
 
 test('the Flux tree has the FluxInstance as a root', async ({ admin }) => {
   await open(admin, '/flux/tree');
-  test.skip(
-    await admin
-      .getByText(/not found/i)
-      .first()
-      .isVisible(),
-    'this lab portal has no Flux page',
-  );
 
   // The instance's own inventory holds the Flux controllers only, which the
   // default Flux view hides, so the node stands alone.
-  await expect(
+  await skipWithoutFluxPage(
+    admin,
     admin.getByRole('link', { name: 'flux', exact: true }).first(),
-  ).toBeVisible({ timeout: 60_000 });
+  );
 });

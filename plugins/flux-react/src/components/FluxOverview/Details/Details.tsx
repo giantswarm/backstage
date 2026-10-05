@@ -129,6 +129,7 @@ export const Details = ({
           allImagePolicies={resources.imagePolicies}
           allImageRepositories={resources.imageRepositories}
           allGitRepositories={resources.gitRepositories}
+          allOCIRepositories={resources.ociRepositories}
           treeBuilder={treeBuilder}
         />
       )}

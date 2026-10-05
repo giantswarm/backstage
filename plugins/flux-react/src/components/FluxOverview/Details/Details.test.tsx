@@ -159,8 +159,19 @@ describe('Details', () => {
             apiVersion: 'v1',
             kind: 'ResourceSetInputProvider',
             name: 'branches',
+            namespace: 'flux-system',
           },
-          { apiVersion: 'apps/v1', kind: 'Deployment', name: 'gateway' },
+          {
+            apiVersion: 'apps/v1',
+            kind: 'Deployment',
+            name: 'gateway',
+            namespace: 'edge',
+          },
+          {
+            apiVersion: 'apiextensions.k8s.io/v1',
+            kind: 'CustomResourceDefinition',
+            name: 'helmreleases.helm.toolkit.fluxcd.io',
+          },
         ],
       },
     );
@@ -227,8 +238,11 @@ describe('Details', () => {
       // name in the ResourceSet's own spec.
       expect(screen.getAllByText('branches')).toHaveLength(3);
       expect(screen.getByText('Dependencies')).toBeInTheDocument();
+      expect(screen.getByText('Deployment edge/gateway')).toBeInTheDocument();
       expect(
-        screen.getByText('Deployment flux-system/gateway'),
+        screen.getByText(
+          'CustomResourceDefinition helmreleases.helm.toolkit.fluxcd.io',
+        ),
       ).toBeInTheDocument();
     });
 

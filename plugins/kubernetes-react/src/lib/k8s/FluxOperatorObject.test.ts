@@ -73,14 +73,31 @@ describe('FluxOperatorObject', () => {
   it('suspends and resumes through the reconcile annotation', () => {
     const resource = createResourceSet();
 
-    expect(resource.getSuspendPatch(true)).toEqual({
+    expect(resource.getSuspendPatch(true, 'jane@example.com')).toEqual({
       metadata: {
-        annotations: { 'fluxcd.controlplane.io/reconcile': 'disabled' },
+        annotations: {
+          'fluxcd.controlplane.io/reconcile': 'disabled',
+          'fluxcd.controlplane.io/suspendedBy': 'jane@example.com',
+        },
       },
     });
-    expect(resource.getSuspendPatch(false)).toEqual({
+    // Resuming clears the record, so a later suspension never shows an
+    // earlier suspender.
+    expect(resource.getSuspendPatch(false, 'jane@example.com')).toEqual({
       metadata: {
-        annotations: { 'fluxcd.controlplane.io/reconcile': 'enabled' },
+        annotations: {
+          'fluxcd.controlplane.io/reconcile': 'enabled',
+          'fluxcd.controlplane.io/suspendedBy': null,
+        },
+      },
+    });
+    // Without a known actor, a stale record is cleared rather than kept.
+    expect(resource.getSuspendPatch(true)).toEqual({
+      metadata: {
+        annotations: {
+          'fluxcd.controlplane.io/reconcile': 'disabled',
+          'fluxcd.controlplane.io/suspendedBy': null,
+        },
       },
     });
     expect(resource.getSuspendFieldName()).toBe(

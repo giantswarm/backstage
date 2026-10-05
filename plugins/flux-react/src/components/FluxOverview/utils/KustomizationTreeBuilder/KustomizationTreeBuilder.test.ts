@@ -496,6 +496,15 @@ describe('KustomizationTreeBuilder', () => {
       // The cycle ends at the FluxInstance listed a second time.
       expect(tree[0].children[0].children[0].nodeData.resource).toBe(instance);
       expect(tree[0].children[0].children[0].children).toEqual([]);
+
+      const ids: string[] = [];
+      const collectIds = (nodes: typeof tree) =>
+        nodes.forEach(node => {
+          ids.push(node.id);
+          collectIds(node.children);
+        });
+      collectIds(tree);
+      expect(new Set(ids).size).toBe(ids.length);
     });
 
     it('keeps a ResourceSet and a Kustomization of the same name apart', () => {

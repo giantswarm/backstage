@@ -8,7 +8,10 @@ import {
 import { Flex, Text } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
 import { ParentSection } from '../ParentSection';
-import { KustomizationTreeBuilder } from '../utils/KustomizationTreeBuilder';
+import {
+  isInventoryOwner,
+  KustomizationTreeBuilder,
+} from '../utils/KustomizationTreeBuilder';
 import { Section } from '../../UI';
 import { findTargetClusterName } from '../../../utils/findTargetClusterName';
 import {
@@ -67,15 +70,23 @@ export const FluxOperatorDetails = ({
   resources,
   treeBuilder,
 }: FluxOperatorDetailsProps) => {
-  const parentSection =
-    resource instanceof FluxReport ? null : (
-      <ParentSection
-        parent={treeBuilder?.findParent(resource)}
-        headingPrefix="Parent "
-        allGitRepositories={resources.gitRepositories}
-        allOCIRepositories={resources.ociRepositories}
-      />
-    );
+  const parent =
+    resource instanceof FluxReport ? null : treeBuilder?.findParent(resource);
+  // A FluxInstance's sync Kustomization may apply the instance back from Git.
+  // The tree shows the instance above it, so the panel does not call that
+  // Kustomization its parent too.
+  const isAppliedBack =
+    parent &&
+    isInventoryOwner(resource) &&
+    treeBuilder?.findInventoryResources(resource).includes(parent);
+  const parentSection = isAppliedBack ? null : (
+    <ParentSection
+      parent={parent}
+      headingPrefix="Parent "
+      allGitRepositories={resources.gitRepositories}
+      allOCIRepositories={resources.ociRepositories}
+    />
+  );
 
   if (resource instanceof FluxInstance) {
     // The source and Kustomization the operator creates for spec.sync are in
@@ -112,8 +123,10 @@ export const FluxOperatorDetails = ({
       resources.resourceSetInputProviders,
     );
 
+    // The operator does not default a dependency's namespace: without one,
+    // the dependency is a cluster-scoped object.
     const dependencies = (resource.getDependsOn() ?? []).map(dependency => {
-      const namespace = dependency.namespace ?? resource.getNamespace();
+      const namespace = dependency.namespace;
       return {
         label: `${dependency.kind} ${namespace ? `${namespace}/` : ''}${dependency.name}`,
         resource: findFluxResource(resources, {

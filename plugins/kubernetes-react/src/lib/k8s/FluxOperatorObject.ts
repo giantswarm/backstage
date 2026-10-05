@@ -57,13 +57,19 @@ export class FluxOperatorObject<
     return FLUX_OPERATOR_RECONCILE_ANNOTATION;
   }
 
-  getSuspendPatch(suspend: boolean): Record<string, unknown> {
+  /**
+   * Also records who suspended the object, as the Flux Operator's own UI does,
+   * and clears that record on resume — `null` deletes the annotation in a merge
+   * patch — so it never names someone from an earlier suspension.
+   */
+  getSuspendPatch(suspend: boolean, actor?: string): Record<string, unknown> {
     return {
       metadata: {
         annotations: {
           [FLUX_OPERATOR_RECONCILE_ANNOTATION]: suspend
             ? 'disabled'
             : 'enabled',
+          [SUSPENDED_BY_ANNOTATION]: suspend && actor ? actor : null,
         },
       },
     };

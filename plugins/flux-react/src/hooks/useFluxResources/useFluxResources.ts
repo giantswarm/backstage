@@ -31,34 +31,52 @@ const isNotFoundError = (errorInfo: ErrorInfoUnion): boolean =>
   errorInfo.error.name === 'NotFoundError';
 
 /**
- * Lists one Flux kind. A cluster without the kind's CRD answers 404; the kind is
- * then no longer requested, and the 404 is not reported as an error.
+ * Lists one Flux kind. A cluster without the kind's CRD answers 404; the kind
+ * is then no longer requested from that cluster, and the 404 is not reported
+ * as an error. Other clusters keep being asked: the Flux Operator kinds, for
+ * one, exist only where the operator is installed.
  */
-function useFluxKind<R extends FluxObject>(
+export function useFluxKind<R extends FluxObject>(
   clusters: string | string[] | null,
   ResourceClass: (new (json: any, cluster: string) => R) & {
     getGVK(): MultiVersionResourceMatcher;
   },
   refetchInterval: number,
 ) {
-  const [enabled, setEnabled] = useState(true);
+  const [clustersWithoutKind, setClustersWithoutKind] = useState<string[]>([]);
+
+  const queriedClusters = useMemo(
+    () =>
+      clusters === null
+        ? []
+        : [clusters]
+            .flat()
+            .filter(cluster => !clustersWithoutKind.includes(cluster)),
+    [clusters, clustersWithoutKind],
+  );
 
   const { resources, isLoading, errors } = useResources(
-    clusters!,
+    queriedClusters,
     ResourceClass,
     {},
     {
       refetchInterval,
-      enabled: Boolean(clusters) && enabled,
+      enabled: queriedClusters.length > 0,
     },
   );
 
-  const isCRDMissing = errors.some(isNotFoundError);
+  const missingOn = errors
+    .filter(isNotFoundError)
+    .map(errorInfo => errorInfo.cluster)
+    .sort()
+    .join(',');
   useEffect(() => {
-    if (isCRDMissing) {
-      setEnabled(false);
+    if (missingOn) {
+      setClustersWithoutKind(previous => [
+        ...new Set([...previous, ...missingOn.split(',')]),
+      ]);
     }
-  }, [isCRDMissing]);
+  }, [missingOn]);
 
   const reportedErrors = useMemo(
     () => errors.filter(errorInfo => !isNotFoundError(errorInfo)),

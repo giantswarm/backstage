@@ -19,6 +19,7 @@ FluxInstance's panel its sync source and FluxReport.
 
 `kubernetes-react` adds the resource classes on a `FluxOperatorObject` base,
 which suspends through the `fluxcd.controlplane.io/reconcile` annotation instead
-of `spec.suspend` (`FluxObject.getSuspendPatch`), and a `matchesLabelSelector`
-helper. `@giantswarm/k8s-types` moves to v0.9.0, whose App types mark nullable
+of `spec.suspend` (`FluxObject.getSuspendPatch`) and, like the operator's own
+UI, records the signed-in user in `fluxcd.controlplane.io/suspendedBy` (cleared
+on resume), and a `matchesLabelSelector` helper. `@giantswarm/k8s-types` moves to v0.9.0, whose App types mark nullable
 fields as such.

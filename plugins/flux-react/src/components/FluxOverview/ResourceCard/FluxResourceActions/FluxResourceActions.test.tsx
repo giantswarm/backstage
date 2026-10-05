@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
-import { alertApiRef } from '@backstage/core-plugin-api';
+import { alertApiRef, identityApiRef } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -149,6 +149,10 @@ async function renderActions(
         apis={[
           [kubernetesApiRef, kubernetesApi],
           [alertApiRef, alertApi],
+          [
+            identityApiRef,
+            { getProfileInfo: async () => ({ email: 'jane@example.com' }) },
+          ],
         ]}
       >
         {children}
@@ -429,7 +433,10 @@ describe('FluxResourceActions for Flux Operator kinds', () => {
     await waitFor(() =>
       expect(findPatchBody(kubernetesApi)).toEqual({
         metadata: {
-          annotations: { 'fluxcd.controlplane.io/reconcile': 'disabled' },
+          annotations: {
+            'fluxcd.controlplane.io/reconcile': 'disabled',
+            'fluxcd.controlplane.io/suspendedBy': 'jane@example.com',
+          },
         },
       }),
     );

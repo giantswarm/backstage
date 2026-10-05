@@ -96,9 +96,11 @@ export class FluxObject<
   }
 
   /**
-   * The merge patch that suspends (`true`) or resumes (`false`) this object.
+   * The merge patch that suspends (`true`) or resumes (`false`) this object,
+   * on behalf of `actor` (an email address) where the kind records who
+   * suspended it.
    */
-  getSuspendPatch(suspend: boolean): Record<string, unknown> {
+  getSuspendPatch(suspend: boolean, _actor?: string): Record<string, unknown> {
     return { spec: { suspend } };
   }
 

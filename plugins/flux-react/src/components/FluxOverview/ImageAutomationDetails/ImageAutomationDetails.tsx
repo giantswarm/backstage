@@ -3,6 +3,7 @@ import {
   ImagePolicy,
   ImageRepository,
   ImageUpdateAutomation,
+  OCIRepository,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { Flex } from '@backstage/ui';
 import { ResourceCard } from '../ResourceCard';
@@ -80,6 +81,7 @@ type ImagePolicyDetailsProps = {
   parentImageRepository?: ImageRepository;
   parent?: InventoryOwner | null;
   allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImagePolicyDetails = ({
@@ -87,6 +89,7 @@ const ImagePolicyDetails = ({
   parentImageRepository,
   parent,
   allGitRepositories,
+  allOCIRepositories,
 }: ImagePolicyDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -104,7 +107,7 @@ const ImagePolicyDetails = ({
       <ParentSection
         parent={parent}
         allGitRepositories={allGitRepositories}
-        allOCIRepositories={[]}
+        allOCIRepositories={allOCIRepositories}
       />
 
       {parentImageRepository ? (
@@ -127,6 +130,7 @@ type ImageRepositoryDetailsProps = {
   childImagePolicies: ImagePolicy[];
   parent?: InventoryOwner | null;
   allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImageRepositoryDetails = ({
@@ -134,6 +138,7 @@ const ImageRepositoryDetails = ({
   childImagePolicies,
   parent,
   allGitRepositories,
+  allOCIRepositories,
 }: ImageRepositoryDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -151,7 +156,7 @@ const ImageRepositoryDetails = ({
       <ParentSection
         parent={parent}
         allGitRepositories={allGitRepositories}
-        allOCIRepositories={[]}
+        allOCIRepositories={allOCIRepositories}
       />
 
       {childImagePolicies.length > 0 ? (
@@ -179,6 +184,7 @@ type ImageUpdateAutomationDetailsProps = {
   sourceGitRepository?: GitRepository;
   parent?: InventoryOwner | null;
   allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
 };
 
 const ImageUpdateAutomationDetails = ({
@@ -186,6 +192,7 @@ const ImageUpdateAutomationDetails = ({
   sourceGitRepository,
   parent,
   allGitRepositories,
+  allOCIRepositories,
 }: ImageUpdateAutomationDetailsProps) => {
   return (
     <Flex direction="column" gap="8">
@@ -203,7 +210,7 @@ const ImageUpdateAutomationDetails = ({
       <ParentSection
         parent={parent}
         allGitRepositories={allGitRepositories}
-        allOCIRepositories={[]}
+        allOCIRepositories={allOCIRepositories}
       />
 
       {sourceGitRepository ? (
@@ -226,6 +233,7 @@ type ImageAutomationDetailsProps = {
   allImagePolicies: ImagePolicy[];
   allImageRepositories: ImageRepository[];
   allGitRepositories: GitRepository[];
+  allOCIRepositories: OCIRepository[];
   treeBuilder?: KustomizationTreeBuilder;
 };
 
@@ -234,6 +242,7 @@ export const ImageAutomationDetails = ({
   allImagePolicies,
   allImageRepositories,
   allGitRepositories,
+  allOCIRepositories,
   treeBuilder,
 }: ImageAutomationDetailsProps) => {
   if (resource instanceof ImagePolicy) {
@@ -249,6 +258,7 @@ export const ImageAutomationDetails = ({
         parentImageRepository={parentImageRepository}
         parent={parent}
         allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }
@@ -266,6 +276,7 @@ export const ImageAutomationDetails = ({
         childImagePolicies={childImagePolicies}
         parent={parent}
         allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }
@@ -283,6 +294,7 @@ export const ImageAutomationDetails = ({
         sourceGitRepository={sourceGitRepository}
         parent={parent}
         allGitRepositories={allGitRepositories}
+        allOCIRepositories={allOCIRepositories}
       />
     );
   }
