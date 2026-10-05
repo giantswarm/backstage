@@ -327,6 +327,14 @@ export class Agent extends KubeObject<AgentInterface> {
     return this.jsonData.spec?.harnessRef?.name;
   }
 
+  /**
+   * The HTTP(S) origins the agent may reach besides what its revision
+   * compiles (`spec.egress`), such as `https://github.com:443`.
+   */
+  getEgress(): string[] {
+    return [...(this.jsonData.spec?.egress ?? [])];
+  }
+
   getDescription() {
     return this.getTemplate()?.description;
   }

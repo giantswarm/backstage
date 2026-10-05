@@ -76,6 +76,11 @@ export type AgentSpec = {
   skills?: AgentSkillEntry[];
   /** The toolset selectors exactly as the Tools step composed them. */
   toolset: string[];
+  /**
+   * HTTP(S) origins the agent may reach besides what its revision compiles
+   * (`Agent.spec.egress`), such as `https://github.com:443`.
+   */
+  egress?: string[];
 };
 
 export type AgentManagerChart = {
@@ -404,6 +409,8 @@ export type AgentManagerAgent = {
   ready: boolean | null;
   /** The Harness that runs the agent (`spec.harnessRef.name`). */
   harness?: string;
+  /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
+  egress?: string[];
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
   helmRelease?: AgentHelmReleaseRef;
@@ -439,6 +446,8 @@ export type AgentUpdate = {
   iconUrl?: string;
   skills?: AgentSkillEntry[];
   toolset?: string[];
+  /** Replaces the whole list; an empty list clears it. */
+  egress?: string[];
   refreshSkills?: boolean;
 };
 

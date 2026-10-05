@@ -151,6 +151,8 @@ function dryRunOf(spec: AgentSpec): ValidateAgentResult {
 }
 
 type Scenario = {
+  /** Extra egress origins typed on the first step, one per line. */
+  egressText?: string;
   info?: Partial<AgentManagerInfo>;
   /** Violations the dry run reports instead of a clean result. */
   violations?: string[];
@@ -235,15 +237,18 @@ function Seed({
   children,
   withSkill = true,
   harness,
+  egressText,
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
+  egressText?: string;
 }) {
   const {
     setName,
     setDescription,
     setSystemMessage,
+    setEgressText,
     setInstallation,
     selectModelConfig,
     selectHarness,
@@ -255,6 +260,9 @@ function Seed({
     setName('Go service reviewer');
     setDescription('Reviews pull requests.');
     setSystemMessage('You review pull requests.');
+    if (egressText) {
+      setEgressText(egressText);
+    }
     setInstallation('gazelle');
     selectModelConfig('opus-4-7', 'kagent');
     selectHarness(harness);
@@ -279,7 +287,11 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <NewAgentFormProvider>
-          <Seed withSkill={withSkill} harness={scenario.harness}>
+          <Seed
+            withSkill={withSkill}
+            harness={scenario.harness}
+            egressText={scenario.egressText}
+          >
             <NewAgentReviewPage />
           </Seed>
         </NewAgentFormProvider>
@@ -307,6 +319,28 @@ beforeEach(() => {
 });
 
 describe('NewAgentReviewPage', () => {
+  it('sends the extra egress origins and names them in the summary', async () => {
+    const { callTool } = await renderReview({
+      egressText: 'https://github.com:443\nhttps://*.githubusercontent.com',
+    });
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_validate_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').egress,
+    ).toEqual(['https://github.com:443', 'https://*.githubusercontent.com']);
+    expect(screen.getByText('Extra egress')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'https://github.com:443, https://*.githubusercontent.com',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders agent-manager's dry run: the 1.x OCIRepository, the HelmRelease with the pinned skill, the chart and the Harness", async () => {
     const { callTool } = await renderReview();
 
@@ -341,6 +375,7 @@ describe('NewAgentReviewPage', () => {
     });
     expect(spec).not.toHaveProperty('runtime');
     expect(spec).not.toHaveProperty('harness');
+    expect(spec).not.toHaveProperty('egress');
 
     // What agent-manager rendered is what is shown, verbatim.
     const oci = await screen.findByTestId('code-agent.yaml');

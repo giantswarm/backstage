@@ -577,6 +577,32 @@ describe('AgentDetailPage', () => {
     expect(terms).toEqual(['Model', 'Tools', 'Created', 'Deployed by']);
   });
 
+  it('lists the extra egress origins the Agent declares, and no row without them', async () => {
+    const base = makeAgent();
+    const withEgress = new Agent(
+      {
+        ...base.jsonData,
+        spec: {
+          ...base.jsonData.spec,
+          egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+        },
+      },
+      'gazelle',
+    );
+    stubResources({ resource: withEgress }, { resource: makeModelConfig() });
+
+    await renderPage();
+
+    const terms = Array.from(document.querySelectorAll('dt')).map(
+      term => term.textContent,
+    );
+    expect(terms).toContain('Extra egress');
+    expect(screen.getByText('https://github.com:443')).toBeInTheDocument();
+    expect(
+      screen.getByText('https://*.githubusercontent.com'),
+    ).toBeInTheDocument();
+  });
+
   // Update skills runs from this page and navigates to the URL it is already
   // on, so nothing unmounts. The handoff has to be picked up from the new
   // location rather than only at mount, or the write lands with a toast and no

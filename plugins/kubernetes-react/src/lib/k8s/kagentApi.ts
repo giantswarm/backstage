@@ -107,6 +107,8 @@ export interface AgentInterface {
     templateRef?: { name: string };
     harness?: HarnessSpec;
     harnessRef?: { name: string };
+    /** HTTP(S) origins the agent may reach besides what its revision compiles. */
+    egress?: string[];
   };
   status?: AgentStatus;
 }

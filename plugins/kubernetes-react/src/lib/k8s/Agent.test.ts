@@ -114,6 +114,22 @@ describe('Agent', () => {
   });
 
   describe('template and Harness references', () => {
+    it('reads the extra egress origins, empty when none are declared', () => {
+      expect(withTemplate({}).getEgress()).toEqual([]);
+      const agent = makeAgent({
+        metadata: { name: 'my-agent', namespace: 'team-a' },
+        spec: {
+          template: {},
+          harnessRef: { name: 'kagent' },
+          egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+        },
+      } as Partial<AgentInterface>);
+      expect(agent.getEgress()).toEqual([
+        'https://github.com:443',
+        'https://*.githubusercontent.com',
+      ]);
+    });
+
     it('reads the Harness the agent names', () => {
       expect(withTemplate({}).getHarnessName()).toBe('kagent');
       expect(withTemplate({}).getTemplateRef()).toBeUndefined();

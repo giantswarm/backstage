@@ -384,6 +384,39 @@ describe('EditAgentPage', () => {
     expect(saveButton()).toBeDisabled();
   });
 
+  it('names a bad egress origin and keeps Save locked until it is fixed', async () => {
+    const { callTool } = await renderPage();
+    const egress = await screen.findByLabelText('Extra egress origins');
+
+    await userEvent.click(egress);
+    await userEvent.paste('github.com/giantswarm');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Egress origin "github.com/giantswarm" is not an http(s) origin',
+    );
+    expect(egress).toHaveAttribute('aria-invalid', 'true');
+    expect(saveButton()).toBeDisabled();
+
+    await userEvent.clear(egress);
+    await userEvent.paste(
+      'https://github.com:443\nhttps://*.githubusercontent.com',
+    );
+
+    const changed = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changed).getByText('Egress')).toBeInTheDocument();
+    await waitFor(() => {
+      const dryRun = callTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_validate_agent',
+      );
+      expect(dryRun.at(-1)?.[1]).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+        update: true,
+      });
+    });
+  });
+
   it('adds a skill pinned to the head commit its card shows', async () => {
     const { callTool } = await renderPage();
     await screen.findByDisplayValue('PR reviewer');

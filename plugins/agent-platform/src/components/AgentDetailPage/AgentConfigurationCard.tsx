@@ -299,6 +299,7 @@ export function AgentConfigurationCard({
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
+  const egress = agent.getEgress();
 
   const metadata: Record<string, ReactNode> = {
     Model: (
@@ -317,6 +318,17 @@ export function AgentConfigurationCard({
         isFailing={failure?.field === 'tools'}
       />
     ),
+    ...(egress.length > 0 && {
+      'Extra egress': (
+        <Flex direction="column" gap="1">
+          {egress.map(origin => (
+            <Text key={origin} variant="body-medium" style={MONO}>
+              {origin}
+            </Text>
+          ))}
+        </Flex>
+      ),
+    }),
     Created: created ? (
       <DateComponent value={created} relative />
     ) : (

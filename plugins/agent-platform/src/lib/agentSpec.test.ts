@@ -23,6 +23,7 @@ const state: NewAgentFormState = {
   harness: undefined,
   droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
+  egressText: '',
   selectedSkills: [skill],
   toolset: ['preset:read-only'],
 };
@@ -43,6 +44,22 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
+  it('sends the extra egress origins as typed, one per line, and none when empty', () => {
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          egressText:
+            ' https://github.com:443 \n\nhttps://*.githubusercontent.com\n',
+        },
+        { toolset: ['preset:read-only'] },
+      ).egress,
+    ).toEqual(['https://github.com:443', 'https://*.githubusercontent.com']);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('egress');
+  });
+
   it('names the Harness picked, and none for the platform Harness', () => {
     expect(
       agentSpecOf(

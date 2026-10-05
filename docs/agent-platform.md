@@ -394,6 +394,22 @@ namespace, drops the pick, since an Agent names a Harness of its own namespace
 only, and a status notice says so until the person picks a runtime again. The
 Harness is fixed at create: the edit page has no runtime field.
 
+### Extra egress origins
+
+An agent reaches its model, its MCP servers, its skill and plugin sources and
+telemetry without any configuration: the controller compiles those destinations
+from the template. Anything else is closed. The create form's **Extra egress
+origins** field (and the same field on the edit page) lists further HTTP(S)
+origins the agent may reach, one per line, which agent-manager carries as
+`egress` and the Generic chart renders as `Agent.spec.egress`
+(kagent-dev/kagent#3019): `https://github.com:443`,
+`https://*.githubusercontent.com` (the `*` matches exactly one host label and
+needs two labels under it; nothing opens every host). `lib/egress.ts` applies
+the CRD's rules client-side, naming the entry at fault: an http(s) origin with a
+lowercase host and an optional port, no path, at most 270 characters each, at
+most 64, no duplicates. The agent page's Configuration card shows the list when
+the Agent declares one.
+
 ### The review page is agent-manager's dry run
 
 Nothing in the portal composes a manifest. The review page turns the form into
@@ -401,7 +417,8 @@ agent-manager's create contract (`lib/agentSpec.ts` → `AgentSpec`: `namespace`
 = the ModelConfig's, `name` = the slug, `displayName`, `description`,
 `systemMessage`, `modelConfig`, `harness` when one other than the platform
 Harness was picked, `iconUrl` from the avatar rule, `skills` pinned to commits,
-`toolset` exactly as the Tools step composed it) and asks
+`toolset` exactly as the Tools step composed it, `egress` when extra origins
+were typed) and asks
 agent-manager to validate it (`useValidateAgent` → `x_agent-manager_validate_agent`).
 The answer is rendered verbatim:
 
@@ -2753,8 +2770,9 @@ keeps it on an update.
 manager's reading) and the edit; `lib/agentEdit.ts` derives from the two the
 fields that changed and the `update_agent` arguments that carry **exactly
 those** — an emptied string field is sent as `""` (agent-manager's "back to the
-chart default"; an omitted field would mean "unchanged"), `toolset` and
-`skills` replace their whole list, the empty toolset selection is declared as
+chart default"; an omitted field would mean "unchanged"), `toolset`, `skills`
+and `egress` replace their whole list (an empty `egress` removes every extra
+origin), the empty toolset selection is declared as
 `preset:none` (never an empty list, which agent-manager refuses), and an agent
 without a declared toolset keeps its implicit full access until a selector is
 picked. Whenever something changed, the page asks **`validate_agent` with

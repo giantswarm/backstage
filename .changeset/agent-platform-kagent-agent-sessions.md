@@ -32,7 +32,10 @@ the Agent and no longer picks a Harness, and an Agent without a ready revision i
 409 naming it. The generated stubs are pinned to `giantswarm/kagent-upstream`
 `a8353a0ace648252e4d0886795406c121117839f`.
 
-**agent-platform.** The runtime picker offers every Harness of the namespace by name,
+**agent-platform.** An agent's extra egress origins (`Agent.spec.egress`, kagent-dev/kagent#3019) are typed on
+the create form and the edit page, carried as agent-manager's `egress`, and listed on
+the agent's Configuration card; `Agent.getEgress()` reads them in kubernetes-react. The
+runtime picker offers every Harness of the namespace by name,
 the agent pages read the Agent's own status and the Harness it names, and
 agent-manager's responses are read in their Agent shape (`status.agent`, `harness`,
 `agentDeleted`). Installation inventory detects kagent by the `api.kagent.dev` group;
