@@ -1,11 +1,11 @@
 import {
-  agentInstanceEnvelopeWireSchema,
-  agentInstanceListWireSchema,
-  isAgentInstanceEnvelope,
-  isAgentInstanceList,
-  normalizeAgentInstance,
-  parseAgentInstanceWire,
-} from './kagentAgentInstance';
+  isSessionRecordEnvelope,
+  isSessionRecordList,
+  normalizeSessionRecord,
+  parseSessionRecordWire,
+  sessionRecordEnvelopeWireSchema,
+  sessionRecordListWireSchema,
+} from './kagentSessionRecord';
 import {
   KagentSessionWire,
   kagentCreatedSessionSchema,
@@ -20,14 +20,14 @@ export { normalizeTimestamp } from './kagentTimestamp';
  * Stable, UI-facing session shape.
  *
  * Deliberately decoupled from the wire: a kagent schema change is absorbed in
- * `normalizeSession` / `normalizeAgentInstance` rather than rippling through
+ * `normalizeSession` / `normalizeSessionRecord` rather than rippling through
  * every component. kagent ships no OpenAPI spec and the fleet can run mixed
  * versions, so this boundary is the only thing keeping version drift out of
  * the UI.
  *
- * On the kagent API v2 line a session **is** an AgentInstance; the fields
- * below `updatedAt` are what an instance says about itself and a 0.10 session
- * never did.
+ * On the kagent API v2 line a session is a Session record of the controller;
+ * the fields below `updatedAt` are what the record says about itself and a
+ * 0.10 session never did.
  */
 export type KagentSession = {
   /** `${installation}/${sessionId}` — unique fleet-wide; the table row key. */
@@ -42,7 +42,7 @@ export type KagentSession = {
   title?: string;
   /**
    * The agent, encoded as kagent's python identifier (`ns__NS__agent_name`) —
-   * verbatim from a 0.10 session, derived from an instance's template. What the
+   * verbatim from a 0.10 session, derived from a record's Agent. What the
    * frontend joins agents on, because encoding is lossless and decoding is not.
    */
   agentId?: string;
@@ -51,18 +51,18 @@ export type KagentSession = {
   /** RFC3339, guaranteed parseable and not Go zero time; undefined otherwise. */
   createdAt?: string;
   updatedAt?: string;
-  /** The AgentTemplate an instance runs — the agent's real namespace and name. */
-  agentTemplate?: { namespace: string; name: string };
+  /** The Agent the session runs — the agent's real namespace and name. */
+  agent?: { namespace: string; name: string };
   /**
-   * An instance's lifecycle state as one lower-case word (`ready`,
-   * `suspended`, `creating`, `failed`, `deleting`), for what the instance says
-   * about itself. Not a turn state: a suspended instance may be idle after a
-   * finished turn or waiting on a human, and only its tasks can tell.
+   * The session's runtime state as one lower-case word (`ready`, `suspended`,
+   * `creating`, `failed`, `deleting`), for what the record says about itself.
+   * Not a turn state: a suspended session may be idle after a finished turn
+   * or waiting on a human, and only its tasks can tell.
    */
   state?: string;
-  /** The A2A context every turn of the instance shares. */
+  /** The A2A context every turn of the session shares. */
   contextId?: string;
-  /** Why a `failed` instance failed, in the controller's words. */
+  /** Why a `failed` session failed, in the controller's words. */
   failure?: { reason?: string; message?: string };
 };
 
@@ -116,8 +116,8 @@ export type NormalizedSessionList = {
 };
 
 /**
- * Parse and normalize a raw session list: a `ListAgentInstancesResponse`
- * (`{agentInstances: […]}`, the API v2 line) or a 0.10 `GET /api/sessions`
+ * Parse and normalize a raw session list: a `ListSessionsResponse`
+ * (`{sessions: […]}`, the API v2 line) or a 0.10 `GET /api/sessions`
  * envelope.
  *
  * Never throws: the worst case is an empty list plus a `drift` note. That
@@ -128,8 +128,8 @@ export function normalizeSessionList(
   raw: unknown,
   installation: string,
 ): NormalizedSessionList {
-  if (isAgentInstanceList(raw)) {
-    return normalizeAgentInstanceList(raw, installation);
+  if (isSessionRecordList(raw)) {
+    return normalizeSessionRecordList(raw, installation);
   }
 
   const parsed = kagentSessionListSchema.safeParse(raw);
@@ -204,16 +204,16 @@ export function normalizeSessionList(
 }
 
 /**
- * The API v2 half of {@link normalizeSessionList}: one row per instance,
+ * The API v2 half of {@link normalizeSessionList}: one row per record,
  * validated one at a time so a malformed row is skipped rather than costing the
- * list. An absent `agentInstances` is an empty result (proto3 JSON omits an
- * empty repeated field), never drift.
+ * list. An absent `sessions` is an empty result (proto3 JSON omits an empty
+ * repeated field), never drift.
  */
-function normalizeAgentInstanceList(
+function normalizeSessionRecordList(
   raw: unknown,
   installation: string,
 ): NormalizedSessionList {
-  const parsed = agentInstanceListWireSchema.safeParse(raw);
+  const parsed = sessionRecordListWireSchema.safeParse(raw);
   if (!parsed.success) {
     return {
       sessions: [],
@@ -222,13 +222,13 @@ function normalizeAgentInstanceList(
   }
   const sessions: KagentSession[] = [];
   let skippedRows = 0;
-  for (const row of parsed.data.agentInstances ?? []) {
-    const wire = parseAgentInstanceWire(row);
+  for (const row of parsed.data.sessions ?? []) {
+    const wire = parseSessionRecordWire(row);
     if (!wire || !wire.id) {
       skippedRows += 1;
       continue;
     }
-    sessions.push(normalizeAgentInstance(wire, installation));
+    sessions.push(normalizeSessionRecord(wire, installation));
   }
   if (skippedRows > 0) {
     return {
@@ -263,10 +263,10 @@ export function parseSessionWire(raw: unknown): KagentSessionWire | undefined {
  * status code alone would let through.
  */
 export function parseCreatedSessionId(raw: unknown): string | undefined {
-  if (isAgentInstanceEnvelope(raw)) {
-    const parsed = agentInstanceEnvelopeWireSchema.safeParse(raw);
+  if (isSessionRecordEnvelope(raw)) {
+    const parsed = sessionRecordEnvelopeWireSchema.safeParse(raw);
     return parsed.success
-      ? parseAgentInstanceWire(parsed.data.agentInstance)?.id
+      ? parseSessionRecordWire(parsed.data.session)?.id
       : undefined;
   }
 

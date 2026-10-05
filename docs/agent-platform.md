@@ -370,17 +370,16 @@ piece of platform work).
 ### The runtime is a Harness
 
 Below the model, the details step lists the **Harnesses of the chosen model's
-namespace** (`HarnessPicker`, `harnesses.kagent.dev` read through the
+namespace** (`HarnessPicker`, `harnesses.api.kagent.dev` read through the
 Kubernetes proxy with the person's own RBAC, the same rights as reading
-AgentTemplates and ModelConfigs) as runtime cards. A card is titled by the
+Agents and ModelConfigs) as runtime cards. A card is titled by the
 Harness's `ui.giantswarm.io/display-name` when an admin set one, else by its
 runtime family (the one of `spec.kagent`, `spec.claude`, `spec.codex` and
 `spec.byo` that is set), with the Harness's name and image beneath: two Claude
 Code Harnesses with different toolchains read apart only by those, or by a
-display name. Only a Harness whose
-`allowedAgentTemplates` selector matches on
-`agent-platform.giantswarm.io/harness` is offered, and the pick is that label
-value, which is what agent-manager's `harness` argument names (`lib/harnesses.ts`).
+display name. Every Harness of the namespace is offered: an Agent names the
+Harness it runs on in `spec.harnessRef.name`, and the pick is that name, which
+is what agent-manager's `harness` argument takes (`lib/harnesses.ts`).
 
 The platform Harness (`get_info`'s `harness.name`) comes first and is the
 default. Picking it is no pick: the request leaves `harness` out and
@@ -391,7 +390,7 @@ read-only card, so the person still sees what will run the agent; the request
 is unchanged there. A namespace listing none shows no section. A list that could
 not be read (forbidden, or failed) shows a warning instead, since a choice may
 have been missed. Changing the installation, or picking a model in another
-namespace, drops the pick, since a Harness admits templates of its own namespace
+namespace, drops the pick, since an Agent names a Harness of its own namespace
 only, and a status notice says so until the person picks a runtime again. The
 Harness is fixed at create: the edit page has no runtime field.
 
@@ -674,11 +673,11 @@ flag. Two consequences of gating the screen on it, both handled in
 ### Why it needs a backend
 
 Unlike agents and model configs, kagent **sessions are not Kubernetes
-resources**. On the kagent API v2 line a session is an **`AgentInstance`** — one
-conversation of one person with one `AgentTemplate` on one `Harness` — held in
-the controller's database and served over **gRPC**: `AgentInstanceService` for
-the instances themselves, the A2A v1 `A2AService` for the turns, `SystemService`
-for the caller's identity, `AgentTemplateService` for what a create needs. The
+resources**. On the kagent API v2 line a session is a **`Session`** record — one
+conversation of one person with one `Agent`, which names its `Harness` — held
+in the controller's database and served over **gRPC**: `SessionService` for the
+sessions themselves, the A2A v1 `A2AService` for the turns, `SystemService` for
+the caller's identity. The
 Kubernetes proxy the rest of the plugin uses cannot reach any of that, and
 neither can the browser: gRPC over HTTP/2 wants a server-side client, and
 `agentgateway.<baseDomain>` is cross-origin anyway.
@@ -739,12 +738,12 @@ list can only come from one installation (one pinned in the header, or only one
 running kagent), where it would repeat the same name on every row.
 
 There is **no Last activity column**, and the list sorts by Started. On the
-kagent API v2 line `AgentInstance.updated_at` moves only at creation and on
+kagent API v2 line `Session.updated_at` moves only at creation and on
 `CREATING` → `READY`; sending a message never touches it, so the column only
 repeated Started, and a resumed session did not move up. The session detail
 page drops "last activity" and the Duration stat for the same reason. Restore
 them once kagent-dev/kagent#2397 exposes the newest task's time on
-`ListAgentInstances`.
+`ListSessions`.
 
 Two consequences worth knowing:
 
@@ -868,13 +867,13 @@ The filter composes with `defaultShouldDehydrateQuery` rather than replacing it,
 the library's "only persist successful queries" rule still applies.
 
 **The blob is versioned by the API the readers expect.** `PersistQueryClientProvider`
-gets `buster: AGENT_PLATFORM_CACHE_BUSTER` (`kagent.dev/v1alpha3`) and, on restore,
-discards a blob whose stored buster differs — so a release that changes the CR
-schema the readers understand (kagent 0.10's `v1alpha2 Agent` to API v2's
-`v1alpha3 AgentTemplate`) starts from an empty cache, and a browser holding the
-previous release's blob shows no stale rows, only fresh reads. The query keys
-carry group, version and plural anyway (`['cluster', <installation>, 'list',
-'kagent.dev', 'v1alpha3', 'agenttemplates']`), which is what keeps an old entry
+gets `buster: AGENT_PLATFORM_CACHE_BUSTER` (`api.kagent.dev/v1alpha3`) and, on
+restore, discards a blob whose stored buster differs — so a release that changes
+the CR schema the readers understand (`kagent.dev/v1alpha3 AgentTemplate` to
+`api.kagent.dev/v1alpha3 Agent`) starts from an empty cache, and a browser
+holding the previous release's blob shows no stale rows, only fresh reads. The
+query keys carry group, version and plural anyway (`['cluster', <installation>,
+'list', 'api.kagent.dev', 'v1alpha3', 'agents']`), which is what keeps an old entry
 from ever being _read_ as the new shape; the buster is what stops it being kept and
 rewritten for the rest of its `maxAge`. The shape checks on entries not keyed by
 version (`isKagentInstallationList`) stay. Bump the buster with the next schema
@@ -899,9 +898,9 @@ flagged.
 kagent ships no OpenAPI spec and the fleet can run a mix of versions. Tolerance
 therefore lives in the parsing layer (`agent-platform-common`) rather than in
 version detection. **Two wires are read**: the API v2 line's proto3 JSON —
-`{agentInstances: […]}`, `{tasks: […]}` with `TASK_STATE_*` states and oneof
+`{sessions: […]}`, `{tasks: […]}` with `TASK_STATE_*` states and oneof
 parts, `StreamResponse` frames — and the 0.10 REST envelope. The v1 shapes are
-parsed by their own permissive schemas (`kagentA2aV1.ts`, `kagentAgentInstance.ts`)
+parsed by their own permissive schemas (`kagentA2aV1.ts`, `kagentSessionRecord.ts`)
 and **normalised into the one internal shape** every reader already parses
 (`kind`-discriminated parts and events, lower-case hyphenated states, the agent's
 artifacts merged into the history as agent messages, the HITL extension's typed
@@ -940,10 +939,10 @@ wired up.
 
 ### Two reads
 
-| Route                  | RPC                                     | Used for                                                           |
-| ---------------------- | --------------------------------------- | ------------------------------------------------------------------ |
-| `…/sessions/:id`       | `AgentInstanceService/GetAgentInstance` | the instance: title, agent, lifecycle state, timestamps, existence |
-| `…/sessions/:id/tasks` | `A2AService/ListTasks` (all pages)      | the conversation, its state, and token usage                       |
+| Route                  | RPC                                | Used for                                                        |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------- |
+| `…/sessions/:id`       | `SessionService/GetSession`        | the session: title, agent, runtime state, timestamps, existence |
+| `…/sessions/:id/tasks` | `A2AService/ListTasks` (all pages) | the conversation, its state, and token usage                    |
 
 Both A2A calls name the instance in the `x-kagent-agent-instance-id` metadata
 (exactly once — the gateway refuses a missing or doubled header), which is also
@@ -1084,10 +1083,10 @@ each of the caller's sessions, what state it is in. The session switcher rail
 groups by it, and the sessions list shows it as a column.
 
 **This is one of two routes in the backend that interpret kagent rather than
-forwarding it**, and the exception is arithmetic rather than taste. An
-`AgentInstance` reports its lifecycle state — ready, suspended, creating, failed,
+forwarding it**, and the exception is arithmetic rather than taste. A
+`Session` reports its runtime state — ready, suspended, creating, failed,
 deleting — but not what its newest turn is doing, which is what the rail groups
-by: working, waiting for a human, finished. That lives in the instance's tasks,
+by: working, waiting for a human, finished. That lives in the session's tasks,
 so the backend reads each candidate's task list — **status only**, no history and
 no artifacts, which is most of a task — and takes the newest task's state. Where
 the instance's own state already answers (failed, still being created, being
@@ -1834,7 +1833,7 @@ a spot interruption, a consolidation, a node roll — the snapshot goes with it,
 and the next message cannot be delivered: kagent asks Substrate to resume an
 actor whose only copy is gone, the resume fails after the runtime's budget, and
 the gateway records the turn **failed** with the runtime's words as its reason
-(`actor "ai-…" request timed out`, or `failed to connect to AgentInstance
+(`actor "ai-…" request timed out`, or `failed to connect to Session
 runtime`) before it ends the stream. Every retry does the same. This is what a
 person met on gazelle on 2026-09-15 (giantswarm/giantswarm#37795): sixty seconds,
 an actor name and "timed out", and the same retry forever.
@@ -1843,7 +1842,7 @@ an actor name and "timed out", and the same retry forever.
 `agent-platform-common` (`readRuntimeLoss` and its readers), so every surface
 agrees:
 
-- **Reported.** kagent marks the `AgentInstance` with a `Failure` whose reason is
+- **Reported.** kagent marks the `Session` with a `Failure` whose reason is
   `RUNTIME_LOST` once it knows the runtime is gone (and ends such a turn at once
   with an A2A error starting `runtime lost: <cause>`). Feature-detected off the
   field: a kagent from before the reason existed marks nothing, and the interim
@@ -1888,9 +1887,9 @@ table, and on the switcher rail's card. Only kagent's word earns the mark; the
 interim reading is the notice's alone, because a list has no conversation to
 read it from.
 
-**Deleting.** kagent's delete suspends the instance's runtime before removing it,
+**Deleting.** kagent's delete suspends the session's runtime before removing it,
 and on a lost runtime that suspend dials a node that no longer exists — the
-delete fails as `Unavailable: Failed to delete AgentInstance`, which says none of
+delete fails as `Unavailable: Failed to delete Session`, which says none of
 that. On a session the page reads as lost, the dialog words the failure
 (`describeSessionDeleteFailure`): why, and that a kagent update skipping the
 suspend for a lost runtime is what fixes it. Once that update lands, the delete
@@ -2314,9 +2313,8 @@ starts** and Shift+Enter inserts a newline, matching the reply composer.
 Three steps, and the order is the whole design:
 
 1. `POST /kagent/sessions` with the agent, the title and a **`requestId`** — one
-   fast call: `CreateAgentInstance` on the agent's template, on the Harness whose
-   `Ready` condition the template's own status reports (read through
-   `AgentTemplateService`, so the backend depends on nothing the browser read).
+   fast call: `CreateSession` on the Agent, which names the Harness it runs on,
+   so nothing is picked and the backend depends on nothing the browser read.
 2. Navigate to the session's detail page, carrying the prompt in the router state.
 3. The **detail page** sends the prompt as the session's first message.
 
@@ -2355,15 +2353,15 @@ deletes it.
 
 #### Titles are ours to derive
 
-The controller does **not** auto-title: `CreateAgentInstance` takes `name` as an
-optional field and an instance created without one has none. Since the spec has
+The controller does **not** auto-title: `CreateSession` takes `name` as an
+optional field and a session created without one has none. Since the spec has
 users never naming sessions, `deriveSessionTitle` produces one from the prompt:
 whitespace collapsed to single spaces (a prompt may be paragraphs; a title is one
 line), cut to 60 characters at a word boundary where that doesn't throw most of it
 away, with trailing punctuation stripped before the ellipsis. Deliberately
 mechanical rather than a summary — anything cleverer would mean a model call on
 the way to creating a session, and the title is renameable afterwards
-(`UpdateAgentInstanceName`, 200 characters at most — the controller's limit).
+(`UpdateSessionName`, 200 characters at most — the controller's limit).
 
 #### The agent implies the installation
 
@@ -2405,9 +2403,9 @@ read".
 
 **Nothing but agents can appear here**, which is worth stating because it looks like
 an omission. The fleet-wide list this picker reads (`AgentsDataProvider`) lists
-`AgentTemplate`s and nothing else; on kagent API v2 there is no per-agent workload
-kind beside them, so there is no filter and no extra field on `AgentRow`. A template
-no Harness admits is `notAdmitted`, which is not `ready`, so it is never offered.
+`Agent`s and nothing else; on kagent API v2 there is no per-agent workload kind
+beside them, so there is no filter and no extra field on `AgentRow`. An Agent
+whose Harness rejects it is `failed`, which is not `ready`, so it is never offered.
 
 #### The default agent is the last one used
 
@@ -2435,33 +2433,34 @@ no favourites concept.
 
 ## The agents list
 
-The Agents tab reads kagent **API v2** objects, single version (`kagent.dev/v1alpha3`),
-and nothing older: there is no `Agent` CRD on that line, and this portal is a hard
-cut (bumblebee-plans#51 D12) — an installation still on kagent 0.10 has no
-`agenttemplates` resource and is shown as having no API v2 agents (see below), never
-read through a second code path.
+The Agents tab reads kagent **API v2** objects, single version
+(`api.kagent.dev/v1alpha3`), and nothing older: this portal is a hard cut
+(bumblebee-plans#51 D12) — an installation still on the `kagent.dev` group has no
+`agents` resource and is shown as having no API v2 agents (see below), never read
+through a second code path.
 
 ### What a row is
 
-An agent is an **`AgentTemplate`** — model, system prompt, tool bindings,
-commit-pinned skills — that a **Harness** admits by label and compiles into a
-revision; people instantiate it per conversation. The Generic chart 1.x renders one
-per release, with the display name in the `ui.giantswarm.io/display-name`
-annotation, an optional `ui.giantswarm.io/icon-url`, and the admission label
-`agent-platform.giantswarm.io/harness: kagent` (the value is the Harness name).
+An agent is an **`Agent`** — a template (model, system prompt, tool bindings,
+commit-pinned skills), inline under `spec.template` or named by `spec.templateRef`,
+paired with the **Harness** that runs it, named by `spec.harnessRef` — which the
+controller compiles into a revision; people start sessions of it. The Generic chart
+renders one per release, with the template inline and the Harness by name, the
+display name in the `ui.giantswarm.io/display-name` annotation and an optional
+`ui.giantswarm.io/icon-url`.
 Unless the toolset is `preset:none`, the chart also renders a **`RemoteMCPServer`
 named after the agent** in the same namespace, pointing at the muster gateway and
 carrying the agent's toolset as the static `X-Muster-Toolset` header — the toolset's
-_carrier_. A row is therefore a template **joined with the carrier its gateway
+_carrier_. A row is therefore an Agent **joined with the carrier its gateway
 binding names**: `AgentsDataProvider` lists both kinds per installation
 (`useResources(Agent)` and `useResources(RemoteMCPServer)`, cluster-wide, discovery
 off) and `toAgentRow` reads the header off the carrier (`lib/toolset.ts`,
 `toolsetOfAgent`). Both lists are sticky per installation, so a transient miss of one
 neither drops rows nor flips their toolset.
 
-`kubernetes-react` wraps the objects: `Agent` is the `AgentTemplate` class
-(`agenttemplates`, kept under its old name so the pages read as before),
-`RemoteMCPServer` reads `spec.headersFrom` (a literal value only — a header sourced
+`kubernetes-react` wraps the objects: `Agent` is the `Agent` class (`agents`;
+its template readers answer for the inline template, and `getTemplateRef` names
+an `AgentTemplate` run by reference), `RemoteMCPServer` reads `spec.headersFrom` (a literal value only — a header sourced
 from a Secret is never guessed), `ModelConfig` is `v1alpha3` with both `Accepted` and
 `ResolvedRefs` conditions. There is no `spec.type`: a bring-your-own runtime is a
 Harness on API v2, not an agent.
@@ -2473,7 +2472,7 @@ an info icon whose tooltip gives the readiness message and any Harness warnings)
 Installation, Namespace, Model (resolved by name in the agent's namespace),
 **Toolset** (the declaration as the carrier carries it: the selectors, `No tools` in
 secondary text, `Full gateway access`, or a dash while the carrier is not readable)
-and Skills (count). The status column sorts by severity, not admitted first.
+and Skills (count). The status column sorts by severity, failed first.
 
 Installation is dropped when the list comes from one installation — the pinned one,
 or the only one that answered once loading settles — and Namespace while every row
@@ -2484,45 +2483,31 @@ disabled there.
 
 ### Readiness
 
-Readiness lives on `AgentTemplate.status.harnesses[]`, one entry per admitting
-Harness, each with the conditions `Accepted`, `ResolvedRefs`, `Compatible` and `Ready`,
-a `desiredRevision`, a `latestSuccessfulRevision` and `warnings` (compile
-downgrades). `Harness.status` is never written. The derivation (`Agent.ts`,
+Readiness lives on `Agent.status`: the conditions `Accepted`, `ResolvedRefs`,
+`Compatible` and `Ready`, a `desiredRevision`, a `latestSuccessfulRevision` and
+`warnings` (compile downgrades). `Harness.status` is never written, and an
+`AgentTemplate` has no status at all. The derivation (`Agent.ts`,
 `deriveAgentReadiness`) is the one agent-manager's `get_agent_status` applies, so the
 portal and the tool agree:
 
-| Per Harness entry | When                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| `ready`           | `Ready=True`                                                                                      |
-| `failed`          | `Accepted=False` or `Compatible=False`                                                            |
-| `progressing`     | `Accepted=True` and not ready (`desiredRevision != latestSuccessfulRevision`, or `Ready != True`) |
-| `pending`         | the Harness has written no verdict yet                                                            |
-
-The **deciding** entry is the platform Harness named by the admission label when it
-reports, else the readiest of the others — sessions started from the portal run on
-the platform Harness, so another Harness being ready does not make the agent ready.
-Its verdict is the agent's: `ready`, `notReady` (progressing), `failed`,
-`pending`. Two more rules complete the picture:
-
-- **Not admitted** — `status.harnesses[]` is empty while `status.observedGeneration`
-  equals `metadata.generation`: the controller has seen the current spec and no
-  Harness selects it. This is its own not-ready state with its own reason (the
-  admission label is missing, or names a Harness that selects none); it never
-  resolves without a spec edit, so it must not read as a `pending` that will.
-- **Pending** — no status yet, `harnesses[]` empty with a stale or absent
-  `observedGeneration`, or a status that lags the stored generation.
+| Readiness  | When                                                           |
+| ---------- | -------------------------------------------------------------- |
+| `ready`    | `Ready=True`                                                   |
+| `failed`   | `Accepted=False`, `ResolvedRefs=False` or `Compatible=False`   |
+| `notReady` | `Accepted=True` and `Ready != True` (the Harness is compiling) |
+| `pending`  | no conditions yet, or a status that lags the stored generation |
 
 Polling is two-tier as before (`getAgentsRefetchInterval`): 5 s for an installation
 with an agent still converging, 60 s otherwise, with the three-minute bound that keeps
-a durably broken — or never admitted — agent from pinning its installation to the
+a durably broken — or never reported — agent from pinning its installation to the
 fast tier.
 
 ### Absence
 
-An installation whose apiserver answers 404 for `agenttemplates` — no kagent, or a
-kagent still on 0.10 — is shown as having **no API v2 agents**, not as an error: the
-provider's per-installation rule treats the 404 as a successful empty read, exactly
-as it treated a missing `kagent.dev` group before. The detail page's not-found copy
+An installation whose apiserver answers 404 for `agents` — no kagent, or a kagent
+still on the `kagent.dev` group — is shown as having **no API v2 agents**, not as an
+error: the provider's per-installation rule treats the 404 as a successful empty
+read, exactly as it treated a missing API group before. The detail page's not-found copy
 says the same for a deep link. Whether an installation's kagent is reachable for chat
 is the backend's `GET /kagent/installations` probe, which belongs to the sessions
 side.
@@ -2599,36 +2584,34 @@ tab, and now run only when someone opens it rather than on every visit to the pa
 Right after a create, the page opens with **the create's progress**
 (`AgentCreationProgress`): the review page hands the created agent over in the
 router state (consumed once, so Back does not replay it) and the alert polls
-agent-manager's `get_agent_status` until the platform Harness reports the
-template ready — then names the Harness — or failed, with agent-manager's
-reason. It renders nothing on any other visit; the status card below is the
+agent-manager's `get_agent_status` until the Agent's Harness reports it
+ready — then names the Harness — or failed, with agent-manager's reason. It renders nothing on any other visit; the status card below is the
 durable view of the same verdict.
 
 - **Header** — avatar, display name, derived readiness, technical name,
   installation/namespace, creation age, description. A kebab in the shared plugin
   header offers `Edit agent…`, `Update skills…` and `Delete agent…` when the
   installation's muster lists agent-manager (see below) and opens the
-  **manifest dialog**: the `AgentTemplate` as read-only YAML, minus
+  **manifest dialog**: the `Agent` as read-only YAML, minus
   `metadata.managedFields` (server-side-apply bookkeeping, and the bulk of a
-  reconciled template) and the `last-applied-configuration` annotation. That dialog
+  reconciled object) and the `last-applied-configuration` annotation. That dialog
   is the escape hatch for everything the page does not surface — `plugins`,
-  `promptTemplate`, labels, the raw `status.harnesses[]`.
+  `promptTemplate`, labels, the raw `status`.
 - **GitOps** — the shared `GitOpsCard` from `flux-react`, shown only when the
   agent's desired state really is in Git. See "GitOps provenance" below.
-- **Status** — the readiness label, the reason (the deciding Harness's failing
-  condition, or why no Harness admits the template), a note naming both generations
-  when the status is stale, **every admitting Harness** with its own verdict
-  (`Ready` / `Progressing` / `Failed` / `Pending`), the revision it is compiling
-  and which one sessions run on, the Harnesses' compile warnings, and the deciding
-  Harness's conditions verbatim through `ConditionsList`. This is what makes a
+- **Status** — the readiness label, the reason (the failing condition), a note
+  naming both generations when the status is stale, the Harness the Agent names
+  and the revision it is compiling, the Harness's compile warnings, and the
+  conditions verbatim through `ConditionsList`. This is what makes a
   broken agent debuggable without `kubectl`, so it leads the page.
-- **Configuration** — the Harness the admission label names (or that the label is
-  missing), model, installation, namespace, created, the owning HelmRelease (linked
+- **Configuration** — the Harness the Agent names (`spec.harnessRef.name`), model,
+  installation, namespace, created, the owning HelmRelease (linked
   to the gs deployment details page, where the release's Flux status already
   lives), and the agent's tool bindings: each same-namespace `RemoteMCPServer` with
   its allowlist (`tools`) and whether calls need approval (`requireApproval`), the
-  gateway carrier linking to muster's MCP Servers tab, and each template invoked as a
-  tool (`agent.templateRef`) linking to its own page.
+  gateway carrier linking to muster's MCP Servers tab, and each sub-agent
+  (`subAgent.templateRef`, a same-namespace `AgentTemplate` compiled into the
+  agent's own runtime).
 - **System prompt** — `spec.systemPrompt`, copyable. An unset value says so
   explicitly, naming the ConfigMap key when the prompt comes from
   `spec.systemPromptFrom` instead.

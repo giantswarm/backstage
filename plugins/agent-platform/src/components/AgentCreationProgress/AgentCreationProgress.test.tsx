@@ -88,7 +88,7 @@ describe('AgentCreationProgress', () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValueOnce(status('progressing')).mockResolvedValue(
       status('ready', {
-        template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+        agent: { exists: true, harness: 'kagent' },
       }),
     );
 
@@ -132,21 +132,21 @@ describe('AgentCreationProgress', () => {
 
     /** The pre-write revision: settled, and at the generation of the baseline. */
     const beforeTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 4,
         observedGeneration: 4,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
     /** The write's own revision, compiled by the Harness. */
     const afterTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 5,
         observedGeneration: 5,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
@@ -202,10 +202,10 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
       callTool.mockResolvedValue(
         status('ready', {
-          template: {
+          agent: {
             exists: true,
             generation: 5,
-            harnesses: [{ harness: 'kagent' }],
+            harness: 'kagent',
           },
         }),
       );
@@ -254,7 +254,7 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
       callTool.mockResolvedValue(
         status('ready', {
-          template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+          agent: { exists: true, harness: 'kagent' },
         }),
       );
 

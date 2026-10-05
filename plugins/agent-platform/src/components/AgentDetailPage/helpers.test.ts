@@ -1,6 +1,6 @@
 import {
   Agent,
-  AgentTemplateInterface,
+  AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   describeToolScope,
@@ -10,13 +10,11 @@ import {
   skillLabel,
 } from './helpers';
 
-type AgentInterface = AgentTemplateInterface;
-
 function makeAgent(overrides: Partial<AgentInterface> = {}): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: { name: 'pr-reviewer', namespace: 'agent-platform' },
       ...overrides,
     } as AgentInterface,

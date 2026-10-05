@@ -99,7 +99,7 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
     getReadiness: () => spec.readiness ?? 'ready',
-    getDecidingHarness: () => ({ name: 'kagent' }),
+    getHarnessName: () => 'kagent',
     getReadinessMessage: () => undefined,
     getHarnessWarnings: () => [],
     getMcpBindings: () => [],

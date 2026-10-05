@@ -80,13 +80,13 @@ export function useUpdateAgent(
         return Promise.resolve();
       }
       return Promise.all([
-        // Every kagent.dev read on this installation, keyed the way the
+        // Every api.kagent.dev read on this installation, keyed the way the
         // kubernetes-react hooks key them: the template's spec changes.
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, 'list', 'kagent.dev'],
+          queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
         }),
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, 'get', 'kagent.dev'],
+          queryKey: ['cluster', installation, 'get', 'api.kagent.dev'],
         }),
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerAgentQueryKey(
@@ -116,7 +116,7 @@ export function useUpdateAgent(
           update.namespace,
           update.name,
         );
-        fromGeneration = before.template?.generation;
+        fromGeneration = before.agent?.generation;
       } catch {
         fromGeneration = undefined;
       }

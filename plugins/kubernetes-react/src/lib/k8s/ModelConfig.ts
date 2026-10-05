@@ -1,7 +1,5 @@
-import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
-
-type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
+import { KAGENT_API_GROUP, type ModelConfigInterface } from './kagentApi';
 
 /** A `status.conditions` entry as the kagent controller writes it. */
 export type ModelConfigCondition = NonNullable<
@@ -89,7 +87,7 @@ export function deriveModelConfigReadiness(
  */
 export class ModelConfig extends KubeObject<ModelConfigInterface> {
   static readonly supportedVersions = ['v1alpha3'] as const;
-  static readonly group = 'kagent.dev';
+  static readonly group = KAGENT_API_GROUP;
   static readonly kind = 'ModelConfig' as const;
   static readonly plural = 'modelconfigs';
 

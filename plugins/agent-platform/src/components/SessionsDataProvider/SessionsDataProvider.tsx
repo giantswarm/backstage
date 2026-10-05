@@ -90,7 +90,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Which installations run kagent: those whose inventory has the `kagent.dev`
+  // Which installations run kagent: those whose inventory has the `api.kagent.dev`
   // API group and whose access is healthy, home first (gs
   // `useInstallationInventory`, one `GET /apis` per installation shared by every
   // tab), narrowed to the section's scope. Same reason as the other providers,

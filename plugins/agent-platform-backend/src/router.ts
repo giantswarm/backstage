@@ -722,7 +722,7 @@ export async function createRouter(
   });
 
   /**
-   * Start a session for one agent: create its AgentInstance.
+   * Start a session for one agent: create its Session record.
    *
    * The agent's namespace and name are the AgentTemplate's, as the caller read
    * them from the resource; the platform Harness is picked in the client from
@@ -756,7 +756,7 @@ export async function createRouter(
       { userToken: readUserToken(req, { required: true }) },
     );
 
-    // 201 for a create. The body is the controller's `CreateAgentInstanceResponse`
+    // 201 for a create. The body is the controller's `CreateSessionResponse`
     // as JSON: the frontend needs the generated instance id out of it, and this
     // proxy stays transport.
     res.status(201).json(result);
@@ -888,7 +888,7 @@ export async function createRouter(
   /**
    * Send a message to the session's agent — one turn of the conversation.
    *
-   * Session-shaped because the session *is* the conversation: the AgentInstance
+   * Session-shaped because the session *is* the conversation: the Session record
    * binds the agent, and the A2A call names the instance in its metadata. The
    * agent's namespace and name stay in the body for the contract's sake (the
    * browser knows them from the resource) but nothing downstream needs them. The

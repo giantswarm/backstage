@@ -2,7 +2,7 @@ import { expect, open, test } from './fixtures';
 
 /**
  * The Agents tab as the admin reads it: the roster from the installation's
- * `AgentTemplate`s, an agent's detail page, and the first step of the New
+ * `Agent`s, an agent's detail page, and the first step of the New
  * agent wizard. Creating an agent for real is `agent-lifecycle.spec.ts`.
  */
 

@@ -1,18 +1,19 @@
-import { crds } from '@giantswarm/k8s-types';
-import { Harness } from './Harness';
-
-type HarnessInterface = crds.kagent.v1alpha3.Harness;
+import { Harness, type HarnessInterface } from './Harness';
 
 function makeHarness(spec: Record<string, unknown>): Harness {
   return new Harness(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'Harness',
       metadata: { name: 'claude', namespace: 'kagent' },
       spec: {
         workload: {
           image:
             'gsoci.azurecr.io/giantswarm/kagent/claude-harness@sha256:85230e58',
+        },
+        substrate: {
+          workerPoolRef: { name: 'kagent' },
+          snapshotPolicy: { location: 's3://snapshots/claude' },
         },
         ...spec,
       },
@@ -32,31 +33,40 @@ describe('Harness', () => {
     expect(makeHarness({}).getRuntime()).toBeUndefined();
   });
 
-  it('reads the harness label value its selector admits templates by', () => {
-    const selecting = (matchLabels: Record<string, string>) =>
-      makeHarness({ allowedAgentTemplates: { selector: { matchLabels } } });
+  it('is the api.kagent.dev Harness', () => {
+    expect(Harness.group).toBe('api.kagent.dev');
+    expect(Harness.plural).toBe('harnesses');
+  });
 
+  it('reads the Claude limits and the declared egress', () => {
     expect(
-      selecting({
-        'agent-platform.giantswarm.io/harness': 'claude',
-      }).getAdmittedHarnessLabel(),
-    ).toBe('claude');
+      makeHarness({
+        claude: { limits: { budgetUSD: '2.50', maxTurns: 40 } },
+        substrate: {
+          workerPoolRef: { name: 'kagent' },
+          snapshotPolicy: { location: 's3://snapshots/claude' },
+          egress: ['github.com', '*.githubusercontent.com'],
+        },
+      }).getLimits(),
+    ).toEqual({ budgetUSD: '2.50', maxTurns: 40 });
     expect(
-      selecting({ team: 'bumblebee' }).getAdmittedHarnessLabel(),
-    ).toBeUndefined();
-    expect(
-      selecting({
-        'agent-platform.giantswarm.io/harness': ' ',
-      }).getAdmittedHarnessLabel(),
-    ).toBeUndefined();
-    expect(makeHarness({}).getAdmittedHarnessLabel()).toBeUndefined();
+      makeHarness({
+        substrate: {
+          workerPoolRef: { name: 'kagent' },
+          snapshotPolicy: { location: 's3://snapshots/claude' },
+          egress: ['github.com', '*.githubusercontent.com'],
+        },
+      }).getEgress(),
+    ).toEqual(['github.com', '*.githubusercontent.com']);
+    expect(makeHarness({ claude: {} }).getLimits()).toBeUndefined();
+    expect(makeHarness({}).getEgress()).toEqual([]);
   });
 
   it('reads the display name annotation, ignoring a blank one', () => {
     const annotated = (value: string) =>
       new Harness(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'Harness',
           metadata: {
             name: 'go',

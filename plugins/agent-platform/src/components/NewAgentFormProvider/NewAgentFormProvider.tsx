@@ -190,8 +190,8 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      // The ModelConfig's namespace is the agent's, and a Harness admits only
-      // templates of its own namespace, so a model in another namespace drops
+      // The ModelConfig's namespace is the agent's, and an Agent names a
+      // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick.
       selectModelConfig: (name, namespace) =>
         setState(prev =>

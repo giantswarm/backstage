@@ -88,7 +88,7 @@ export type SessionStateOptions = {
  *
  * This is the one place in the proxy that *interprets* kagent rather than
  * forwarding it, and the exception is deliberate: the rail needs one state
- * string per session. An AgentInstance says whether it is ready, suspended,
+ * string per session. A Session record says whether it is ready, suspended,
  * failed or still being created — but not whether its newest turn is working,
  * waiting for a human or finished, which is what the rail groups by and what
  * lives in the instance's tasks. So each candidate's task list is read (status

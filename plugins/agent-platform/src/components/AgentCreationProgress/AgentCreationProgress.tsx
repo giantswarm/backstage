@@ -9,9 +9,9 @@ import { useAgentStatus } from '../../hooks/useAgentStatus';
 import { hasReachedWrittenRevision } from '../../lib/agentManager';
 import type { AgentStatus } from '../../lib/agentManager';
 
-/** The admitting Harness's entry, when the template has one. */
+/** The Harness the Agent names, once the release has rendered it. */
 function harnessOf(status: AgentStatus | undefined): string | undefined {
-  return status?.template?.harnesses?.[0]?.harness;
+  return status?.agent?.harness;
 }
 
 /**
@@ -139,7 +139,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
  * so with agent-manager's summary; once the verdict is `ready` it names the
  * Harness the agent runs on, and a `failed` verdict carries agent-manager's
  * reason — the same verdict the page's own status card derives from
- * `status.harnesses[]`, so the two never disagree.
+ * `status.conditions`, so the two never disagree.
  */
 export function AgentCreationProgress({
   installation,

@@ -3,8 +3,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   ModelConfigFormValues,
@@ -39,16 +41,14 @@ function values(
   };
 }
 
-function makeModelConfig(
-  spec: crds.kagent.v1alpha3.ModelConfig['spec'],
-): ModelConfig {
+function makeModelConfig(spec: ModelConfigInterface['spec']): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'qwen3', namespace: 'kagent' },
       spec,
-    } as crds.kagent.v1alpha3.ModelConfig,
+    } as ModelConfigInterface,
     CLUSTER,
   );
 }

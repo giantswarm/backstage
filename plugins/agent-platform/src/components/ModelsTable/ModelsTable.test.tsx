@@ -7,8 +7,10 @@ import { toastApiRef } from '@backstage/frontend-plugin-api';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { crds } from '@giantswarm/k8s-types';
-import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
 import {
@@ -518,7 +520,7 @@ describe('toModelRow', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: {
             name: 'qwen3',
@@ -543,7 +545,7 @@ describe('toModelRow', () => {
               },
             ],
           },
-        } as crds.kagent.v1alpha3.ModelConfig,
+        } as ModelConfigInterface,
         'inst-1',
       ),
     );
@@ -566,11 +568,11 @@ describe('toModelRow', () => {
     const row = toModelRow(
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: { name: 'qwen3', namespace: 'kagent' },
           spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
-        } as crds.kagent.v1alpha3.ModelConfig,
+        } as ModelConfigInterface,
         'inst-1',
       ),
       {

@@ -43,7 +43,7 @@ export function agentSpecOf(
     spec.systemMessage = state.systemMessage;
   }
   if (state.harness) {
-    spec.harness = state.harness.admits;
+    spec.harness = state.harness.name;
   }
   if (options.iconUrl) {
     spec.iconUrl = options.iconUrl;

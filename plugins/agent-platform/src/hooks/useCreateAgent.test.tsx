@@ -101,7 +101,7 @@ describe('useCreateAgent', () => {
     // The installation's kagent lists are dropped so the roster re-reads.
     await waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
-        queryKey: ['cluster', 'gazelle', 'list', 'kagent.dev'],
+        queryKey: ['cluster', 'gazelle', 'list', 'api.kagent.dev'],
       }),
     );
   });

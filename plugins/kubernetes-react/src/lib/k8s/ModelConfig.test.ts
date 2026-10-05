@@ -1,11 +1,9 @@
-import { crds } from '@giantswarm/k8s-types';
+import type { ModelConfigInterface } from './kagentApi';
 import {
   deriveModelConfigReadiness,
   ModelConfig,
   ModelConfigCondition,
 } from './ModelConfig';
-
-type ModelConfigInterface = crds.kagent.v1alpha3.ModelConfig;
 
 const AT = '2026-07-31T10:00:00Z';
 
@@ -23,7 +21,7 @@ function makeModelConfig(
 ): ModelConfig {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: { name: 'opus', namespace: 'kagent', generation },
       spec: { provider: 'Anthropic', model: 'claude-opus-4-7' },
@@ -38,7 +36,7 @@ describe('ModelConfig', () => {
     const withAnnotation = (value?: string) =>
       new ModelConfig(
         {
-          apiVersion: 'kagent.dev/v1alpha3',
+          apiVersion: 'api.kagent.dev/v1alpha3',
           kind: 'ModelConfig',
           metadata: {
             name: 'opus',
@@ -69,7 +67,7 @@ describe('ModelConfig', () => {
   });
 
   it('is the v1alpha3 ModelConfig, single version', () => {
-    expect(ModelConfig.group).toBe('kagent.dev');
+    expect(ModelConfig.group).toBe('api.kagent.dev');
     expect(ModelConfig.plural).toBe('modelconfigs');
     expect(ModelConfig.supportedVersions).toEqual(['v1alpha3']);
   });

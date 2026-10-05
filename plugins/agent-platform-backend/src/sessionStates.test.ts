@@ -508,17 +508,16 @@ describe('SessionStateReader — what counts as a shortfall', () => {
   });
 
   describe('on the kagent API v2 line', () => {
-    /** An AgentInstance as `ListAgentInstances` answers it. */
-    function instance(id: string, overrides: Record<string, unknown> = {}) {
+    /** A Session as `ListSessions` answers it. */
+    function session(id: string, overrides: Record<string, unknown> = {}) {
       return {
         id,
         creator: 'dev@lab.local',
-        harness: { namespace: 'kagent', name: 'kagent' },
-        agentTemplate: { namespace: 'kagent', name: 'sre-agent' },
-        state: 'AGENT_INSTANCE_STATE_SUSPENDED',
+        agent: { namespace: 'kagent', name: 'sre-agent' },
+        state: 'RUNTIME_STATE_SUSPENDED',
         createdAt: '2026-09-11T00:00:00Z',
         updatedAt: '2026-09-11T01:00:00Z',
-        name: `instance ${id}`,
+        name: `session ${id}`,
         contextId: `ctx-${id}`,
         ...overrides,
       };
@@ -532,11 +531,11 @@ describe('SessionStateReader — what counts as a shortfall', () => {
       };
     }
 
-    it('reads the newest task state of a ready or suspended instance', async () => {
+    it('reads the newest task state of a ready or suspended session', async () => {
       listSessions.mockResolvedValue({
-        agentInstances: [
-          instance('a'),
-          instance('b', { state: 'AGENT_INSTANCE_STATE_READY' }),
+        sessions: [
+          session('a'),
+          session('b', { state: 'RUNTIME_STATE_READY' }),
         ],
       });
       listSessionTasks.mockImplementation(async (id: string) =>
@@ -562,15 +561,15 @@ describe('SessionStateReader — what counts as a shortfall', () => {
       expect(listSessionTasks).toHaveBeenCalledTimes(2);
     });
 
-    it('takes a failed, creating or deleting instance’s own state without a task read', async () => {
+    it('takes a failed, creating or deleting session’s own state without a task read', async () => {
       listSessions.mockResolvedValue({
-        agentInstances: [
-          instance('failed', {
-            state: 'AGENT_INSTANCE_STATE_FAILED',
+        sessions: [
+          session('failed', {
+            state: 'RUNTIME_STATE_FAILED',
             failure: { reason: 'ActorFailed', message: 'no worker' },
           }),
-          instance('creating', { state: 'AGENT_INSTANCE_STATE_CREATING' }),
-          instance('ok'),
+          session('creating', { state: 'RUNTIME_STATE_CREATING' }),
+          session('ok'),
         ],
       });
       listSessionTasks.mockResolvedValue(

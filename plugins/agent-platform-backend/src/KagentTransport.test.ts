@@ -2,7 +2,7 @@ import { mockServices } from '@backstage/backend-test-utils';
 import { connectNodeAdapter } from '@connectrpc/connect-node';
 import http2 from 'http2';
 import { AddressInfo } from 'net';
-import { AGENT_INSTANCE_HEADER, KagentClient } from './KagentClient';
+import { SESSION_HEADER, KagentClient } from './KagentClient';
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
 import { probeKagentGrpc } from './kagent/reachability';
 import { createFakeController } from './kagent/testing/fakeController';
@@ -17,13 +17,7 @@ import { createFakeController } from './kagent/testing/fakeController';
 describe('KagentClient over native gRPC (h2c)', () => {
   const logger = mockServices.logger.mock();
   const fake = createFakeController({
-    templates: [
-      {
-        namespace: 'kagent',
-        name: 'sre-agent',
-        harnesses: [{ name: 'kagent', ready: true }],
-      },
-    ],
+    agents: [{ namespace: 'kagent', name: 'sre-agent', ready: true }],
     turn: ({ message }) =>
       message.parts[0]?.content.case === 'text' &&
       message.parts[0].content.value === 'wait'
@@ -68,8 +62,8 @@ describe('KagentClient over native gRPC (h2c)', () => {
       'Over the wire',
       'req-h2c',
       options,
-    )) as { agentInstance: { id: string } };
-    const id = createdBody.agentInstance.id;
+    )) as { session: { id: string } };
+    const id = createdBody.session.id;
 
     const stream = await c.streamMessage(
       id,
@@ -124,7 +118,7 @@ describe('KagentClient over native gRPC (h2c)', () => {
     );
     expect(a2a.length).toBeGreaterThanOrEqual(4);
     for (const headers of a2a) {
-      expect(headers[AGENT_INSTANCE_HEADER]).toBe(id);
+      expect(headers[SESSION_HEADER]).toBe(id);
       expect(headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
     }
   });

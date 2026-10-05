@@ -3,12 +3,10 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   Agent,
-  AgentTemplateInterface,
+  AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef } from '../../routes';
 import { AgentActionsMenu, type AgentManagerGate } from './AgentActionsMenu';
-
-type AgentInterface = AgentTemplateInterface;
 
 // The menu renders in the shared plugin header, outside the plugin's
 // QueryClientProvider, so it calls no react-query hook itself: whether the write
@@ -19,14 +17,14 @@ type AgentInterface = AgentTemplateInterface;
 function makeAgent(): Agent {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
         managedFields: [{ manager: 'helm-controller', operation: 'Apply' }],
       },
-      spec: { modelConfig: { name: 'opus-4-7' } },
+      spec: { template: { modelConfig: { name: 'opus-4-7' } } },
     } as AgentInterface,
     'gazelle',
   );

@@ -92,10 +92,11 @@ const INFO: AgentManagerInfo = {
   capabilities: { create: true, validate: true, commit: false },
   identity: 'caller',
   apiVersions: {
-    agentTemplate: 'kagent.dev/v1alpha3',
-    harness: 'kagent.dev/v1alpha3',
-    remoteMcpServer: 'kagent.dev/v1alpha3',
-    modelConfig: 'kagent.dev/v1alpha3',
+    agent: 'api.kagent.dev/v1alpha3',
+    agentTemplate: 'api.kagent.dev/v1alpha3',
+    harness: 'api.kagent.dev/v1alpha3',
+    remoteMcpServer: 'api.kagent.dev/v1alpha3',
+    modelConfig: 'api.kagent.dev/v1alpha3',
     helmRelease: 'helm.toolkit.fluxcd.io/v2',
     ociRepository: 'source.toolkit.fluxcd.io/v1',
   },
@@ -374,7 +375,6 @@ describe('NewAgentReviewPage', () => {
     const { callTool } = await renderReview({
       harness: {
         name: 'claude',
-        admits: 'claude',
         runtime: 'claude',
         imageName: 'claude-harness',
       },

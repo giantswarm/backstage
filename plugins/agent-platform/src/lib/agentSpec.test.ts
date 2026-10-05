@@ -43,16 +43,16 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
-  it('names the Harness picked by the label value it admits, and none for the platform Harness', () => {
+  it('names the Harness picked, and none for the platform Harness', () => {
     expect(
       agentSpecOf(
         {
           ...state,
-          harness: { name: 'claude-go', admits: 'go', runtime: 'claude' },
+          harness: { name: 'claude-go', runtime: 'claude' },
         },
         { toolset: [] },
       ).harness,
-    ).toBe('go');
+    ).toBe('claude-go');
     expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('harness');
   });
 

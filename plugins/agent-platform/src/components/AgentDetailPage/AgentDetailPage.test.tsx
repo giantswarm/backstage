@@ -1,19 +1,17 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
-  AgentHarnessCondition,
-  AgentHarnessStatus,
-  AgentTemplateInterface,
+  AgentCondition,
+  AgentInterface,
+  AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { agentsRouteRef, modelsRouteRef } from '../../routes';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
 import { AgentDetailPage } from './AgentDetailPage';
-
-type AgentInterface = AgentTemplateInterface;
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
 // is mocked — so the page is exercised against the actual getters, readiness
@@ -237,9 +235,7 @@ const mockParams: {
 const { Agent, GitRepository, HelmRelease, Kustomization, ModelConfig } =
   jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react');
 
-const HARNESS_LABEL = 'agent-platform.giantswarm.io/harness';
-
-const READY_CONDITIONS: AgentHarnessCondition[] = [
+const READY_CONDITIONS: AgentCondition[] = [
   {
     type: 'Accepted',
     status: 'True',
@@ -256,17 +252,17 @@ const READY_CONDITIONS: AgentHarnessCondition[] = [
   },
 ];
 
-/** One Harness entry of `status.harnesses[]`, the platform Harness by default. */
-function harness(
-  conditions: AgentHarnessCondition[],
-  extra: Partial<AgentHarnessStatus> = {},
-): AgentHarnessStatus {
+/** The verdict the controller wrote, `desiredRevision` defaulting to a compiled-and-current one. */
+function reported(
+  conditions: AgentCondition[],
+  extra: Omit<AgentStatus, 'conditions'> = {},
+): AgentStatus {
   return {
-    harness: 'kagent',
+    observedGeneration: 1,
     desiredRevision: 'rev-1',
     latestSuccessfulRevision: 'rev-1',
     ...extra,
-    conditions: conditions as AgentHarnessStatus['conditions'],
+    conditions,
   };
 }
 
@@ -275,8 +271,8 @@ const COMMIT = '0123456789abcdef0123456789abcdef01234567';
 function makeAgent(overrides: Partial<AgentInterface> = {}) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',
@@ -284,37 +280,40 @@ function makeAgent(overrides: Partial<AgentInterface> = {}) {
         creationTimestamp: '2026-07-21T09:00:00Z',
         annotations: { 'ui.giantswarm.io/display-name': 'PR reviewer' },
         labels: {
-          [HARNESS_LABEL]: 'kagent',
           'helm.toolkit.fluxcd.io/name': 'pr-reviewer',
           'helm.toolkit.fluxcd.io/namespace': 'agent-platform',
         },
         ...(overrides.metadata as object),
       },
       spec: {
-        description: 'Reviews pull requests in depth.',
-        modelConfig: { name: 'opus-4-7' },
-        systemPrompt: 'You review pull requests.',
-        tools: [
-          // The gateway carrier the chart renders, named after the agent.
-          { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
-        ],
-        skills: [
-          {
-            name: 'PR review conventions',
-            source: {
-              git: {
-                url: 'https://github.com/giantswarm/skills',
-                commit: COMMIT,
-              },
-              path: 'pr-review',
+        harnessRef: { name: 'kagent' },
+        template: {
+          description: 'Reviews pull requests in depth.',
+          modelConfig: { name: 'opus-4-7' },
+          systemPrompt: 'You review pull requests.',
+          tools: [
+            // The gateway carrier the chart renders, named after the agent.
+            {
+              mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } },
             },
-          },
-        ],
-        ...(overrides.spec as object),
+          ],
+          skills: [
+            {
+              name: 'PR review conventions',
+              source: {
+                git: {
+                  url: 'https://github.com/giantswarm/skills',
+                  commit: COMMIT,
+                },
+                path: 'pr-review',
+              },
+            },
+          ],
+          ...(overrides.spec as object),
+        },
       },
       status: {
-        observedGeneration: 1,
-        harnesses: [harness(READY_CONDITIONS)],
+        ...reported(READY_CONDITIONS),
         ...(overrides.status as object),
       },
     },
@@ -328,7 +327,7 @@ function makeModelConfig({
 }: { displayName?: string | null } = {}) {
   return new ModelConfig(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
       metadata: {
         name: 'opus-4-7',
@@ -955,24 +954,19 @@ describe('AgentDetailPage', () => {
     it('surfaces the Ready condition message for a compiling agent, expanded', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness(
-                [
-                  READY_CONDITIONS[0],
-                  {
-                    type: 'Ready',
-                    status: 'False',
-                    reason: 'Compiling',
-                    message: 'Compiling revision rev-2',
-                    lastTransitionTime: '2026-07-31T10:05:00Z',
-                  },
-                ],
-                { desiredRevision: 'rev-2' },
-              ),
+          status: reported(
+            [
+              READY_CONDITIONS[0],
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'Compiling',
+                message: 'Compiling revision rev-2',
+                lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
             ],
-          },
+            { observedGeneration: 1, desiredRevision: 'rev-2' },
+          ),
         } as Partial<AgentInterface>),
       });
 
@@ -1005,22 +999,16 @@ describe('AgentDetailPage', () => {
     it('reports an incompatible template as failed, with the Harness’s reason', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness([
-                READY_CONDITIONS[0],
-                {
-                  type: 'Compatible',
-                  status: 'False',
-                  reason: 'Incompatible',
-                  message:
-                    'Dedicated sub-agents are not supported by this Harness',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-              ]),
-            ],
-          },
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Incompatible',
+              message: 'Dedicated sub-agents are not supported by this Harness',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
         } as Partial<AgentInterface>),
       });
 
@@ -1042,45 +1030,39 @@ describe('AgentDetailPage', () => {
     // timestamp.
     const unresolvedModelAgent = () =>
       makeAgent({
-        status: {
-          observedGeneration: 1,
-          harnesses: [
-            harness(
-              [
-                {
-                  type: 'Accepted',
-                  status: 'True',
-                  reason: 'Accepted',
-                  message:
-                    'Harness admission selector matches the AgentTemplate',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-                {
-                  type: 'Compatible',
-                  status: 'False',
-                  reason: 'Blocked',
-                  message: 'blocked by ResolvedRefs',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-                {
-                  type: 'Ready',
-                  status: 'False',
-                  reason: 'Blocked',
-                  message: 'blocked by ResolvedRefs',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-                {
-                  type: 'ResolvedRefs',
-                  status: 'False',
-                  reason: 'ReferenceResolutionFailed',
-                  message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-              ],
-              { latestSuccessfulRevision: undefined },
-            ),
+        status: reported(
+          [
+            {
+              type: 'Accepted',
+              status: 'True',
+              reason: 'Accepted',
+              message: 'Harness "kagent" runs this template',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Ready',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'ReferenceResolutionFailed',
+              message: 'resolve ModelConfig "qwen3-4b-instruct": not found',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
           ],
-        },
+          { observedGeneration: 1, latestSuccessfulRevision: undefined },
+        ),
       } as Partial<AgentInterface>);
 
     it('leads a failed agent with its root cause and marks the field it is about', async () => {
@@ -1175,9 +1157,7 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText(/^Admitted by/)).toHaveTextContent(
-        'Admitted by kagent',
-      );
+      expect(screen.getByText(/^Runs on/)).toHaveTextContent('Runs on kagent');
       expect(screen.queryByText(/Sessions run on/)).toBeNull();
     });
 
@@ -1193,28 +1173,23 @@ describe('AgentDetailPage', () => {
       withAgentManager();
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness([
-                READY_CONDITIONS[0],
-                {
-                  type: 'ResolvedRefs',
-                  status: 'False',
-                  reason: 'WorkerPoolNotFound',
-                  message: 'WorkerPool "kagent/default" not found',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-                {
-                  type: 'Compatible',
-                  status: 'False',
-                  reason: 'Blocked',
-                  message: 'blocked by ResolvedRefs',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-              ]),
-            ],
-          },
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'WorkerPoolNotFound',
+              message: 'WorkerPool "kagent/default" not found',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
         } as Partial<AgentInterface>),
       });
 
@@ -1229,44 +1204,6 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByText('Cannot be resolved')).toBeNull();
     });
 
-    // The state of its own: no Harness will ever run this agent until its labels
-    // change, so it must not read as a pending that will resolve.
-    it('reports a template no Harness admits as not admitted, with the missing label', async () => {
-      stubResources({
-        resource: makeAgent({
-          metadata: {
-            name: 'pr-reviewer',
-            namespace: 'agent-platform',
-            generation: 1,
-            labels: {},
-          },
-          status: { observedGeneration: 1, harnesses: [] },
-        } as Partial<AgentInterface>),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Not admitted');
-      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          `No Harness admits this agent: it carries no ${HARNESS_LABEL} label.`,
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(/No Harness admits this agent, so none has written/),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('list', { name: 'Admitting Harnesses' }),
-      ).not.toBeInTheDocument();
-      // The label is not on the edit page, so there is nothing to offer there.
-      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
-      // No session can start on it.
-      expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
-      ).not.toBeInTheDocument();
-    });
-
     it('explains a stale status by naming both generations', async () => {
       stubResources({
         resource: makeAgent({
@@ -1275,10 +1212,7 @@ describe('AgentDetailPage', () => {
             namespace: 'agent-platform',
             generation: 5,
           },
-          status: {
-            observedGeneration: 4,
-            harnesses: [harness(READY_CONDITIONS)],
-          },
+          status: reported(READY_CONDITIONS, { observedGeneration: 4 }),
         } as Partial<AgentInterface>),
       });
 
@@ -1292,8 +1226,8 @@ describe('AgentDetailPage', () => {
     it('explains an agent no Harness has reported on yet', async () => {
       stubResources({
         resource: makeAgent({
-          // The controller has not looked at it: no observedGeneration yet.
-          status: { observedGeneration: undefined, harnesses: [] },
+          // The controller has not looked at it: no status yet.
+          status: { observedGeneration: undefined, conditions: [] },
         } as Partial<AgentInterface>),
       });
 
@@ -1301,7 +1235,7 @@ describe('AgentDetailPage', () => {
 
       expectHeaderReadiness('Pending');
       expect(
-        screen.getByText(/No Harness has reported on this agent yet/),
+        screen.getByText(/The controller has not reported on this agent yet/),
       ).toBeInTheDocument();
     });
 
@@ -1309,14 +1243,10 @@ describe('AgentDetailPage', () => {
     it('shows the Harness warnings separately from readiness', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
+          status: reported(READY_CONDITIONS, {
             observedGeneration: 1,
-            harnesses: [
-              harness(READY_CONDITIONS, {
-                warnings: ['memory tools are not supported by this Harness'],
-              }),
-            ],
-          },
+            warnings: ['memory tools are not supported by this Harness'],
+          }),
         } as Partial<AgentInterface>),
       });
 
@@ -1331,62 +1261,6 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('memory tools are not supported by this Harness'),
       ).toBeInTheDocument();
-    });
-
-    it('lists every admitting Harness, the deciding one first', async () => {
-      stubResources({
-        resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness(READY_CONDITIONS, { harness: 'claude' }),
-              harness(
-                [
-                  READY_CONDITIONS[0],
-                  {
-                    type: 'Ready',
-                    status: 'False',
-                    reason: 'Compiling',
-                    message: 'compiling',
-                    lastTransitionTime: '2026-07-31T10:05:00Z',
-                  },
-                ],
-                { desiredRevision: 'rev-2' },
-              ),
-            ],
-          },
-        } as Partial<AgentInterface>),
-      });
-
-      await renderPage();
-
-      // The labelled platform Harness decides, even though claude is ready.
-      expectHeaderReadiness('Not ready');
-      const rows = within(
-        screen.getByRole('list', { name: 'Admitting Harnesses' }),
-      ).getAllByRole('listitem');
-      expect(rows.map(row => row.textContent)).toEqual([
-        expect.stringMatching(/^kagent.*Progressing.*sessions run here/),
-        expect.stringMatching(/^claude.*Ready/),
-      ]);
-    });
-  });
-
-  describe('tools', () => {
-    // What the agent can do, in the Agents list's words, rather than the
-    // gateway object it reaches it through (that is in View manifest).
-    it('summarises the gateway toolset in one line, linked to the Tools tab', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderPage();
-
-      expect(screen.getByText('Read-only tools')).toBeInTheDocument();
-      expect(screen.getByText('preset:read-only')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'See tools' })).toHaveAttribute(
-        'href',
-        `${AGENT_PATH}/tools`,
-      );
-      expect(screen.queryByText('RemoteMCPServer pr-reviewer')).toBeNull();
     });
 
     // The read answered and the carrier is not there: not a permission problem.
@@ -1505,13 +1379,13 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('links another template invoked as a tool, by the template behind it', async () => {
+    it('names a sub-agent by the template behind it', async () => {
       stubResources({
         resource: makeAgent({
           spec: {
             tools: [
               {
-                agent: {
+                subAgent: {
                   name: 'escalate',
                   description: 'Escalate to the SRE agent',
                   templateRef: { name: 'sre-agent' },
@@ -1524,12 +1398,7 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(
-        screen.getByRole('link', { name: 'agent-platform/sre-agent' }),
-      ).toHaveAttribute(
-        'href',
-        '/agent-platform/agents/gazelle/agent-platform/sre-agent',
-      );
+      expect(screen.getByText('agent-platform/sre-agent')).toBeInTheDocument();
       expect(screen.getByText(/Called as the tool/)).toHaveTextContent(
         'escalate',
       );
@@ -1710,21 +1579,16 @@ describe('AgentDetailPage', () => {
     it('offers no session on an agent that cannot run one', async () => {
       stubResources({
         resource: makeAgent({
-          status: {
-            observedGeneration: 1,
-            harnesses: [
-              harness([
-                READY_CONDITIONS[0],
-                {
-                  type: 'Compatible',
-                  status: 'False',
-                  reason: 'UnsupportedConfiguration',
-                  message: 'nope',
-                  lastTransitionTime: '2026-07-31T10:05:00Z',
-                },
-              ]),
-            ],
-          },
+          status: reported([
+            READY_CONDITIONS[0],
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'UnsupportedConfiguration',
+              message: 'nope',
+              lastTransitionTime: '2026-07-31T10:05:00Z',
+            },
+          ]),
         } as Partial<AgentInterface>),
       });
 
@@ -1890,7 +1754,13 @@ describe('AgentDetailPage', () => {
         namespace: mockParams.namespace,
         verdict: 'progressing',
         summary: 'HelmRelease created; Flux has not reconciled it yet',
-        template: { exists: false, harnesses: [] },
+        agent: {
+          exists: false,
+          ready: null,
+          accepted: null,
+          resolvedRefs: null,
+          compatible: null,
+        },
         helmRelease: {
           exists: true,
           ready: null,

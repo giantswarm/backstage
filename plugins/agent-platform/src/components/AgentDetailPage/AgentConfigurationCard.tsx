@@ -20,10 +20,7 @@ import {
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import type { ClientServingSummary } from '../../lib/serving';
 import { describeToolset } from '../../lib/toolset';
-import {
-  agentDetailRouteRef,
-  deploymentDetailsExternalRouteRef,
-} from '../../routes';
+import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { FailureMarker } from './FailureMarker';
 import {
@@ -178,13 +175,12 @@ function ToolsValue({
   toolsHref?: string;
   isFailing: boolean;
 }) {
-  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const mcpBindings = agent.getMcpBindings();
   const directBindings = mcpBindings.filter(
     binding => !isGatewayServerBinding(agent, binding),
   );
   const hasGateway = directBindings.length < mcpBindings.length;
-  const agentRefs = agent.getAgentRefs();
+  const agentRefs = agent.getSubAgentBindings();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
     return (
@@ -215,30 +211,21 @@ function ToolsValue({
       ))}
 
       {agentRefs.map(ref => {
-        // Another template invoked over A2A. Same installation and namespace
-        // by definition — a binding cannot cross either — and `name` is what
-        // the agent calls the tool, `templateRef.name` the template behind it.
+        // A same-namespace AgentTemplate compiled into this agent's runtime.
+        // `name` is what the agent calls the tool, `templateRef.name` the
+        // template behind it; a template is not an agent, so there is no
+        // detail page to link.
         const namespace = agent.getNamespace() ?? '';
-        const target = ref.templateRef.name ?? ref.name;
-        const href = agentDetailRoute?.({
-          installation: agent.cluster,
-          namespace,
-          name: target,
-        });
+        const target = ref.templateRef.name;
 
         return (
           <Flex key={`agent/${ref.name}/${target}`} direction="column" gap="1">
             <Text variant="body-medium">
-              Agent{' '}
-              {href ? (
-                <Link to={href}>{`${namespace}/${target}`}</Link>
-              ) : (
-                <span style={MONO}>{`${namespace}/${target}`}</span>
-              )}
+              Sub-agent <span style={MONO}>{`${namespace}/${target}`}</span>
             </Text>
             <Text variant="body-small" color="secondary">
-              Called as the tool <span style={MONO}>{ref.name}</span> over A2A
-              {ref.isolation === 'Dedicated' ? ', in its own instance' : ''}
+              Called as the tool <span style={MONO}>{ref.name}</span>, running
+              inside this agent
             </Text>
           </Flex>
         );

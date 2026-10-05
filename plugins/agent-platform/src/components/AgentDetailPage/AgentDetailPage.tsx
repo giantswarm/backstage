@@ -240,7 +240,7 @@ function AgentDetailPageContent() {
   const isDeploying =
     isTemplateMissing &&
     (release.status?.helmRelease?.exists === true ||
-      release.status?.template?.exists === true);
+      release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
@@ -630,11 +630,11 @@ function AgentDetailPageContent() {
               title={
                 failed
                   ? 'The agent’s release did not become ready'
-                  : 'Deploying — waiting for kagent to render the template'
+                  : 'Deploying — waiting for kagent to render the agent'
               }
               description={
                 release.status?.summary ??
-                'agent-manager applied the Helm release; Flux and kagent have not rendered the AgentTemplate yet.'
+                'agent-manager applied the Helm release; Flux and kagent have not rendered the Agent object yet.'
               }
             />
           </Flex>
@@ -645,7 +645,7 @@ function AgentDetailPageContent() {
     // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
     // agent — so it gets an explanation rather than an error banner. Also covers
     // "no kagent API v2 on this installation": no kagent, or a kagent still on
-    // 0.10, answers 404 for the `agenttemplates` resource.
+    // kagent.dev, answers 404 for the `agents` resource.
     if (errors.some(isNotFoundError)) {
       return (
         <Content>

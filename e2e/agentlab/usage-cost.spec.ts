@@ -17,7 +17,7 @@ import { expect, open, test } from './fixtures';
 
 const MODEL = 'lab-model';
 
-/** An agent no `AgentTemplate` of the lab is named after. */
+/** An agent no `Agent` of the lab is named after. */
 const REMOVED = { agent_namespace: 'kagent', agent: 'lab-removed-agent' };
 /** The gateway's own value for a call it could attribute to no caller. */
 const UNKNOWN = { agent_namespace: 'kagent', agent: 'unknown' };

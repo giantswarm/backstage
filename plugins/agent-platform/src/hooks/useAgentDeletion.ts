@@ -67,11 +67,11 @@ export function useAgentDeletion(
     // Invalidate rather than edit the cache: the plugin's QueryClient is
     // persisted to localStorage, so a stale pre-deletion template could
     // otherwise be rehydrated on reload. Prefixes of the kubernetes-react keys,
-    // so one entry per operation covers every kagent.dev list and instance.
+    // so one entry per operation covers every api.kagent.dev list and instance.
     return Promise.all(
       ['list', 'get'].map(operation =>
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, operation, 'kagent.dev'],
+          queryKey: ['cluster', installation, operation, 'api.kagent.dev'],
         }),
       ),
     ).then(() => undefined);

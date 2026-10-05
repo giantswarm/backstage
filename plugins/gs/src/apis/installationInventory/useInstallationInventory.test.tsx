@@ -74,7 +74,7 @@ function fakeKubernetesApi(answers: Record<string, Answer>) {
   return { proxy };
 }
 
-const KAGENT_AND_KSERVE = ['apps', 'kagent.dev', 'serving.kserve.io'];
+const KAGENT_AND_KSERVE = ['apps', 'api.kagent.dev', 'serving.kserve.io'];
 
 type SetupOptions = {
   /** Configured installations, in config order. `golem` is the home. */
@@ -113,7 +113,7 @@ function setup({
   answers = {
     golem: { status: 200, groups: KAGENT_AND_KSERVE },
     wombat: { status: 200, groups: ['apps'] },
-    snail: { status: 200, groups: ['kagent.dev'] },
+    snail: { status: 200, groups: ['api.kagent.dev'] },
   },
   mainProvider = 'oidc-golem',
   states,
@@ -467,7 +467,7 @@ describe('useInstallationInventory', () => {
       hasInferenceServices: true,
     });
     queryClient.setQueryData(installationInventoryQueryKey('snail'), [
-      'kagent.dev',
+      'api.kagent.dev',
     ]);
     // A valid, fresh entry is served from the cache and not probed again.
     queryClient.setQueryData(installationInventoryQueryKey('wombat'), {
@@ -560,7 +560,7 @@ describe('useInstallationInventory', () => {
       answers: {
         golem: { status: 200, deferred },
         wombat: { status: 200, groups: ['apps'] },
-        snail: { status: 200, groups: ['kagent.dev'] },
+        snail: { status: 200, groups: ['api.kagent.dev'] },
       },
       states: allHealthy,
     });
