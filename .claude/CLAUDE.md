@@ -332,6 +332,8 @@ from `@giantswarm/backstage-plugin-analytics-react`, never a plain
 `plugins/analytics-react/src/events.ts` — or `event: null` with an
 `untrackedReason`. Report from the hook every entry point shares, never from a
 page component. A write that is not a react-query mutation moves into a hook.
+ESLint cannot see a write run by hand (a busy flag, an `await`, a `catch`), so
+check for one in review: it goes through `useTrackedMutation` too.
 
 **When you add a tracked action**: add it to `portalEvents` (TelemetryDeck's
 naming: capitalized prefixes, a past-tense last part, at most three levels;

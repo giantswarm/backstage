@@ -30,6 +30,16 @@ export const portalEvents = defineEvents({
       entryPoint: ['sessionsList', 'agentDetail', 'sessionDetail'],
     },
   },
+  'AgentPlatform.clusterCreated': {
+    description:
+      'A workload cluster was created through cluster-manager, applied live or committed to Git.',
+    attributes: { mode: ['apply', 'commit'] },
+  },
+  'AgentPlatform.nodePoolCreated': {
+    description:
+      'A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git.',
+    attributes: { mode: ['apply', 'commit'] },
+  },
   'Muster.mcpServerAdded': {
     description: 'An MCP server was registered in muster through the wizard.',
     attributes: {

@@ -17,6 +17,7 @@ import Add from '@material-ui/icons/Add';
 // focus, so a react-aria tooltip could not explain why it is disabled.
 import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   ALERT_MESSAGE_STYLE,
   ConfirmDialog,
@@ -119,37 +120,24 @@ function ConfirmDeleteDialog({
 }) {
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(workflow.cluster);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [done, setDone] = useState(false);
-
-  // Reset on open, not on close: the dialog keeps rendering while it fades out.
-  useOnDialogOpen(open, () => {
-    setError(undefined);
-    setDone(false);
-  });
-
-  const run = async () => {
-    setBusy(true);
-    setError(undefined);
-    try {
-      await musterApi.callTool(
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Workflows are not a tracked portal action yet.',
+    mutationFn: () =>
+      musterApi.callTool(
         'core_workflow_delete',
         { name: workflow.getName() },
         workflow.cluster,
-      );
-      // muster deletes the CR synchronously, so refetching now removes the
-      // row instead of waiting for the next 30s poll. The workflow list is
-      // fed entirely by the provider's CRD reads (no runtime aggregator query
-      // like the servers page), so the provider retry covers everything.
-      refresh();
-      setDone(true);
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+      ),
+    // muster deletes the CR synchronously, so refetching now removes the
+    // row instead of waiting for the next 30s poll. The workflow list is
+    // fed entirely by the provider's CRD reads (no runtime aggregator query
+    // like the servers page), so the provider retry covers everything.
+    onSuccess: () => refresh(),
+  });
+
+  // Reset on open, not on close: the dialog keeps rendering while it fades out.
+  useOnDialogOpen(open, () => mutation.reset());
 
   return (
     <ConfirmDialog
@@ -162,17 +150,17 @@ function ConfirmDeleteDialog({
       title={`Delete ${workflow.getName()}`}
       confirmLabel="Delete"
       destructive
-      isBusy={busy}
-      error={error}
-      isDone={done}
-      onConfirm={run}
+      isBusy={mutation.isPending}
+      error={mutation.error ? mutationErrorMessage(mutation.error) : undefined}
+      isDone={mutation.isSuccess}
+      onConfirm={() => mutation.mutate()}
     >
       <Text as="p" variant="body-medium">
         This permanently removes the ad-hoc workflow{' '}
         <code>{workflow.getName()}</code> from this muster instance. This is a
         live mutation and cannot be undone.
       </Text>
-      {done && (
+      {mutation.isSuccess && (
         <Alert
           status="success"
           description="Done. The workflow list has been refreshed."
@@ -213,9 +201,44 @@ export function AdHocWorkflowDialog({
   const target = workflow?.cluster ?? installation;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState<'validate' | 'save'>();
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
+
+  const onError = (e: Error) => setError(mutationErrorMessage(e));
+  const validation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A validation that writes nothing.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool('core_workflow_validate', def, target),
+    onSuccess: () => setMessage('Definition is valid.'),
+    onError,
+  });
+  const save = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Workflows are not a tracked portal action yet.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool(
+        isEdit ? 'core_workflow_update' : 'core_workflow_create',
+        def,
+        target,
+      ),
+    onSuccess: () => {
+      // muster writes the CR synchronously, so refetching now shows the new
+      // or updated workflow instead of waiting for the next 30s poll; the
+      // reconciler-trailing availability badge settles on the follow-up read.
+      refresh();
+      setMessage(
+        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
+      );
+    },
+    onError,
+  });
+  let busy: 'validate' | 'save' | undefined;
+  if (validation.isPending) {
+    busy = 'validate';
+  } else if (save.isPending) {
+    busy = 'save';
+  }
 
   // Seeded on open only: `workflow` is polled, and re-seeding on every
   // refetch would overwrite what the user is typing.
@@ -251,47 +274,11 @@ export function AdHocWorkflowDialog({
     return obj as Record<string, unknown>;
   };
 
-  const validate = async () => {
+  const submit = (mutation: typeof validation) => {
     const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy('validate');
-    setMessage(undefined);
-    try {
-      await musterApi.callTool('core_workflow_validate', def, target);
-      setMessage('Definition is valid.');
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(undefined);
-    }
-  };
-
-  const save = async () => {
-    const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy('save');
-    setMessage(undefined);
-    try {
-      await musterApi.callTool(
-        isEdit ? 'core_workflow_update' : 'core_workflow_create',
-        def,
-        target,
-      );
-      // muster writes the CR synchronously, so refetching now shows the new
-      // or updated workflow instead of waiting for the next 30s poll; the
-      // reconciler-trailing availability badge settles on the follow-up read.
-      refresh();
-      setMessage(
-        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
-      );
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(undefined);
+    if (def) {
+      setMessage(undefined);
+      mutation.mutate(def);
     }
   };
 
@@ -349,7 +336,7 @@ export function AdHocWorkflowDialog({
           variant="secondary"
           isDisabled={Boolean(busy)}
           isPending={busy === 'validate'}
-          onPress={validate}
+          onPress={() => submit(validation)}
         >
           Validate
         </Button>
@@ -357,7 +344,7 @@ export function AdHocWorkflowDialog({
           variant="primary"
           isDisabled={Boolean(busy)}
           isPending={busy === 'save'}
-          onPress={save}
+          onPress={() => submit(save)}
         >
           Save
         </Button>

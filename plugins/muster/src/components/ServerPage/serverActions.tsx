@@ -17,6 +17,7 @@ import {
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
@@ -63,35 +64,28 @@ export function ConfirmActionDialog({
 }) {
   const musterApi = useApi(musterApiRef);
   const refresh = useMusterMutationRefresh(server.cluster);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [done, setDone] = useState(false);
-
-  // Reset on open, not on close: the dialog keeps rendering while it fades
-  // out, and `action` stays set for that reason too.
-  useOnDialogOpen(open, () => {
-    setError(undefined);
-    setDone(false);
-  });
-
-  const run = async () => {
-    if (!action) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      await musterApi.callTool(action.tool, action.args, server.cluster);
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Server lifecycle changes and deletion are not a tracked portal action yet.',
+    mutationFn: (live: LiveAction) =>
+      musterApi.callTool(live.tool, live.args, server.cluster),
+    onSuccess: (_result, live) => {
       // muster writes the CR synchronously, so refetching now shows the spec
       // change (e.g. the Activate/Deactivate swap) instead of waiting for the
       // next 30s poll.
       refresh();
-      setDone(true);
-      onDone?.(action);
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(false);
+      onDone?.(live);
+    },
+  });
+
+  // Reset on open, not on close: the dialog keeps rendering while it fades
+  // out, and `action` stays set for that reason too.
+  useOnDialogOpen(open, () => mutation.reset());
+
+  const run = () => {
+    if (action) {
+      mutation.mutate(action);
     }
   };
 
@@ -106,9 +100,9 @@ export function ConfirmActionDialog({
       title={action?.label ?? ''}
       confirmLabel={action?.destructive ? 'Delete' : 'Confirm'}
       destructive={action?.destructive}
-      isBusy={busy}
-      error={error}
-      isDone={done}
+      isBusy={mutation.isPending}
+      error={mutation.error ? mutationErrorMessage(mutation.error) : undefined}
+      isDone={mutation.isSuccess}
       onConfirm={run}
     >
       <Text as="p" variant="body-medium">
@@ -127,7 +121,7 @@ export function ConfirmActionDialog({
           </>
         )}
       </Text>
-      {done && (
+      {mutation.isSuccess && (
         <Alert
           status="success"
           description="Done. The server list has been refreshed; the connection status may take a few seconds to settle."
@@ -157,9 +151,35 @@ export function AdHocServerDialog({
   const target = server.cluster;
   const refresh = useMusterMutationRefresh(target);
   const [value, setValue] = useState('');
-  const [busy, setBusy] = useState<'validate' | 'save'>();
   const [error, setError] = useState<string | undefined>();
   const [message, setMessage] = useState<string | undefined>();
+
+  const onError = (e: Error) => setError(mutationErrorMessage(e));
+  const validation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A validation that writes nothing.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool('core_mcpserver_validate', def, target),
+    onSuccess: () => setMessage('Definition is valid.'),
+    onError,
+  });
+  const update = useTrackedMutation({
+    event: null,
+    untrackedReason: 'An edit of a server, not an addition.',
+    mutationFn: (def: Record<string, unknown>) =>
+      musterApi.callTool('core_mcpserver_update', def, target),
+    onSuccess: () => {
+      refresh();
+      setMessage('Saved. The server list has been refreshed.');
+    },
+    onError,
+  });
+  let busy: 'validate' | 'save' | undefined;
+  if (validation.isPending) {
+    busy = 'validate';
+  } else if (update.isPending) {
+    busy = 'save';
+  }
 
   // Seeded on open only: `server` is polled, and re-seeding on every refetch
   // would overwrite what the user is typing.
@@ -180,38 +200,11 @@ export function AdHocServerDialog({
     }
   };
 
-  const validate = async () => {
+  const submit = (mutation: typeof validation) => {
     const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy('validate');
-    setMessage(undefined);
-    try {
-      await musterApi.callTool('core_mcpserver_validate', def, target);
-      setMessage('Definition is valid.');
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(undefined);
-    }
-  };
-
-  const save = async () => {
-    const def = parsed();
-    if (!def) {
-      return;
-    }
-    setBusy('save');
-    setMessage(undefined);
-    try {
-      await musterApi.callTool('core_mcpserver_update', def, target);
-      refresh();
-      setMessage('Saved. The server list has been refreshed.');
-    } catch (e) {
-      setError(mutationErrorMessage(e));
-    } finally {
-      setBusy(undefined);
+    if (def) {
+      setMessage(undefined);
+      mutation.mutate(def);
     }
   };
 
@@ -263,7 +256,7 @@ export function AdHocServerDialog({
           variant="secondary"
           isDisabled={Boolean(busy)}
           isPending={busy === 'validate'}
-          onPress={validate}
+          onPress={() => submit(validation)}
         >
           Validate
         </Button>
@@ -271,7 +264,7 @@ export function AdHocServerDialog({
           variant="primary"
           isDisabled={Boolean(busy)}
           isPending={busy === 'save'}
-          onPress={save}
+          onPress={() => submit(update)}
         >
           Save
         </Button>
