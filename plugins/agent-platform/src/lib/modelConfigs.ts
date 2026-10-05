@@ -17,8 +17,8 @@ import {
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
  * the kagent chart installs its runtime and default ModelConfig into. Agents
- * are deployed into their ModelConfig's namespace (see composeManifests), so
- * this is also where portal-created agents land.
+ * are composed by agent-manager and deployed into their ModelConfig's
+ * namespace, so this is also where portal-created agents land.
  */
 export const MODEL_CONFIG_NAMESPACE = 'kagent';
 

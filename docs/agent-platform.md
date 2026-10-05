@@ -532,8 +532,8 @@ scaffolder template's `kube:apply` action with an OIDC token it minted
 (`agentPlatform.chart.*`, `agentPlatform.fluxServiceAccountName`,
 `agentPlatform.deployTemplateRef`), left with the move to agent-manager. The
 `kube:apply` action and `scaffolder-backend-module-gs` stay for the other
-templates; the `agent-deployment` template in `giantswarm/backstage-catalogs` is
-unused and its removal is that repository's follow-up.
+templates; the `agent-deployment` template no longer exists in
+`giantswarm/backstage-catalogs` main.
 
 ## The installation scope
 
