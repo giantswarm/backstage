@@ -1,4 +1,4 @@
-import { Grid, Typography } from '@material-ui/core';
+import { Flex, Grid, Text } from '@backstage/ui';
 import { AppStatus } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/AppStatus';
 import { HelmReleaseConditions } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/HelmReleaseConditions';
 import {
@@ -13,30 +13,28 @@ type ClusterAppStatusProps = {
 
 export const ClusterAppStatus = ({ installer }: ClusterAppStatusProps) => {
   return (
-    <Grid container spacing={3} alignItems="stretch">
-      <Grid item md={6} xs={12}>
-        <Grid item container spacing={3}>
-          <Grid item xs={12}>
-            <Typography variant="h4">
+    <Grid.Root columns={{ initial: '1', md: '2' }} gap="5">
+      <Grid.Item>
+        <Flex direction="column" gap="5">
+          <Flex direction="column" gap="2">
+            <Text as="h2" variant="title-large">
               Cluster creation is in progress.
-            </Typography>
-            <Typography variant="subtitle1">
+            </Text>
+            <Text variant="body-large">
               Below are details about the cluster {installer.getKind()} resource
               status.
-            </Typography>
-            <Typography variant="subtitle1">
+            </Text>
+            <Text variant="body-large">
               Reload the page to see the latest status.
-            </Typography>
-          </Grid>
-          <Grid item xs={12}>
-            {installer instanceof App ? (
-              <AppStatus app={installer} />
-            ) : (
-              <HelmReleaseConditions helmrelease={installer} />
-            )}
-          </Grid>
-        </Grid>
-      </Grid>
-    </Grid>
+            </Text>
+          </Flex>
+          {installer instanceof App ? (
+            <AppStatus app={installer} />
+          ) : (
+            <HelmReleaseConditions helmrelease={installer} />
+          )}
+        </Flex>
+      </Grid.Item>
+    </Grid.Root>
   );
 };
