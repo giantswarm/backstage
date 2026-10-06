@@ -70,7 +70,7 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent `AgentTemplate`s across every installation in the section's
+ * Lists kagent `Agent`s across every installation in the section's
  * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
@@ -140,7 +140,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // Single AgentTemplate version (v1alpha3), so skip API version discovery — it
+  // Single Agent version (v1alpha3), so skip API version discovery — it
   // adds round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.

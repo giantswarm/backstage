@@ -31,7 +31,7 @@ export type SessionEntryPoint =
   PortalEventAttributes<'AgentPlatform.sessionStarted'>['entryPoint'];
 
 /**
- * Start a session with an agent: create its AgentInstance.
+ * Start a session with an agent: create its Session.
  *
  * **Creating the instance says nothing to the agent.** The prompt has to be
  * sent separately, as an A2A turn on the new instance. This hook does only the
@@ -59,7 +59,7 @@ export function useCreateSession(entryPoint: SessionEntryPoint) {
     mutationFn: async ({ agent, prompt, requestId }: NewSessionRequest) => {
       const { sessionId } = await kagentApi.createSession(
         agent.installation,
-        // The agent's *technical* name, which names its AgentTemplate. `name` is
+        // The agent's *technical* name, the `Agent` object's name. `name` is
         // the display annotation and would not match anything.
         { namespace: agent.namespace, name: agent.technicalName },
         deriveSessionTitle(prompt),

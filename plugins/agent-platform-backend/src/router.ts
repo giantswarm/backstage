@@ -724,7 +724,7 @@ export async function createRouter(
   /**
    * Start a session for one agent: create its Session record.
    *
-   * The agent's namespace and name are the AgentTemplate's, as the caller read
+   * The agent's namespace and name are the Agent object's, as the caller read
    * them from the resource; the platform Harness is picked in the client from
    * the template's own status. `name` is required because the controller does
    * not auto-title — a session created without one has no title at all; the
