@@ -17,20 +17,9 @@ const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
 test('a refused kagent token shows the edge’s reason when a session does not start', async ({
   admin,
+  labAgent,
 }) => {
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  await agents.first().click();
+  await open(admin, labAgent.detailPath);
   const start = admin.getByRole('button', { name: 'Start a session' });
   await expect(start).toBeVisible();
 

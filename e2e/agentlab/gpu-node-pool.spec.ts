@@ -792,6 +792,8 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       list_backends: { backends: [KSERVE_POOL_BACKEND] },
       list_presets: { presets: L4_POOL_PRESETS },
       list_models: { models: [] },
+      // The fresh pool has no node yet; the lab's own inventory is not its.
+      list_nodes: { nodes: [] },
       check_fit: poolFitAnswer,
       load_model: new ToolRefusal('unexpected: nothing was to be served'),
     });
@@ -1117,6 +1119,7 @@ async function stageServeIntent(page: Page, options: IntentStubOptions = {}) {
       backends: options.backendOnFit && !fitAsked ? [] : [KSERVE_POOL_BACKEND],
     }),
     list_presets: { presets: L4_POOL_PRESETS },
+    list_nodes: { nodes: [] },
     list_models: () => {
       if (!served) {
         return { models: [] };

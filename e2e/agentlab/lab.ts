@@ -15,6 +15,9 @@ export interface LabUser {
   name: string;
 }
 
+/** The lab's kind cluster: `clusterName` in its `agentlab.yaml`. */
+const cluster = process.env.AGENTLAB_CLUSTER ?? 'agentlab';
+
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
@@ -26,6 +29,15 @@ export const lab = {
    * name of the platform chart in the lab, not the kind cluster's name.
    */
   installation: process.env.AGENTLAB_INSTALLATION ?? 'agent-platform',
+  /**
+   * The MCPServer the lab registers for its own cluster: the `kubernetes`
+   * family member `<cluster>-mcp-kubernetes`, the way every management
+   * cluster registers itself (`agentlab-2-mcp-kubernetes` on a lab whose
+   * `clusterName` is `agentlab-2`).
+   */
+  mcpKubernetes: `${cluster}-mcp-kubernetes`,
+  /** The lab's kind node, the one the platform's workloads run on. */
+  kindNode: `${cluster}-control-plane`,
   /**
    * The lab's Ollama as model-manager reaches it from the kind node: the
    * host on the kind docker network (`docker network inspect kind`, the

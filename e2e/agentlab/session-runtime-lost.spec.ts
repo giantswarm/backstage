@@ -219,24 +219,12 @@ async function deleteCurrentSession(page: Page): Promise<void> {
 
 test('a session whose runtime is lost explains itself, is marked, and opens a new session with the message', async ({
   admin,
+  labAgent,
 }) => {
   test.setTimeout(6 * 60_000);
 
   // --- An agent to start from --------------------------------------------
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  const agentName = (await agents.first().textContent())?.trim() ?? '';
-  await agents.first().click();
+  await open(admin, labAgent.detailPath);
   await expect(
     admin.getByRole('button', { name: 'Start a session' }),
   ).toBeVisible();
@@ -298,7 +286,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       'the retry stays while the loss is only suspected',
     ).toBeVisible();
     const startNew = admin.getByRole('button', {
-      name: `Start a new session with ${agentName}`,
+      name: `Start a new session with ${labAgent.name}`,
     });
     await expect(startNew, 'the way out stands under the box').toBeEnabled();
     await snapshot(admin, 'runtime-lost-suspected');

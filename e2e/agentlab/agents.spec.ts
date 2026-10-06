@@ -3,10 +3,14 @@ import { expect, open, test } from './fixtures';
 /**
  * The Agents tab as the admin reads it: the roster from the installation's
  * `AgentTemplate`s, an agent's detail page, and the first step of the New
- * agent wizard. Creating an agent for real is `agent-lifecycle.spec.ts`.
+ * agent wizard. The roster and the detail page read the worker's own agent
+ * (`labAgent`); the whole journey of one is `agent-lifecycle.spec.ts`.
  */
 
-test('the roster shows the agent table with its columns', async ({ admin }) => {
+test('the roster shows the agent table with its columns', async ({
+  admin,
+  labAgent,
+}) => {
   await open(admin, '/agent-platform/agents');
   await expect(
     admin.getByRole('searchbox', { name: 'Search agents' }),
@@ -21,29 +25,27 @@ test('the roster shows the agent table with its columns', async ({ admin }) => {
     'Toolset',
     'Skills',
   ]);
+  await expect(
+    grid.getByRole('rowheader').getByRole('link', { name: labAgent.name }),
+  ).toBeVisible();
   await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
 });
 
-test('an agent in the roster opens its detail page', async ({ admin }) => {
+test('an agent in the roster opens its detail page', async ({
+  admin,
+  labAgent,
+}) => {
   await open(admin, '/agent-platform/agents');
   const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  // The table's rows arrive after the CR reads; the header row is always there.
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts covers the detail page with its own',
-  );
+  const agent = grid
+    .getByRole('rowheader')
+    .getByRole('link', { name: labAgent.name });
 
   // The link shows the display name; the URL carries the slug — the href is
   // the contract, not the text.
-  const href = await agents.first().getAttribute('href');
-  expect(href).toMatch(/^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+$/);
-  await agents.first().click();
+  const href = await agent.getAttribute('href');
+  expect(href).toBe(labAgent.detailPath);
+  await agent.click();
   await expect(admin).toHaveURL(new RegExp(`${href}$`));
   await expect(admin.getByRole('link', { name: '← Agents' })).toBeVisible();
   // The Overview tab's cards; the toolset has its own tab since the page was

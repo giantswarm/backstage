@@ -11,8 +11,8 @@ import { expect, open, test } from './fixtures';
  * - Serve ends in a toast naming the node, and the row reads Starting (never
  *   a red Not ready) until the model answers.
  *
- * Needs the lab preset served when it starts (`agentlab serving-test` leaves
- * it so, or Serve it once); it leaves it served. Skipped without the serving
+ * Serves the lab preset first when it does not serve yet (a fresh lab, or an
+ * earlier spec stopped it); leaves it served. Skipped without the serving
  * slice.
  */
 
@@ -55,6 +55,19 @@ async function openServeDialog(page: Page) {
   return dialog;
 }
 
+/** Picks the lab preset in the Serve dialog and serves it; resolves once the dialog closed. */
+async function servePreset(page: Page) {
+  const dialog = await openServeDialog(page);
+  await dialog.getByRole('button', { name: /Preset/ }).click();
+  await page.getByRole('option', { name: PRESET_LABEL }).click();
+  const serve = dialog.getByRole('button', { name: 'Serve', exact: true });
+  await expect(serve, 'enabled once the fit verdict is in').toBeEnabled({
+    timeout: 60_000,
+  });
+  await serve.click();
+  await expect(dialog).toBeHidden({ timeout: 60_000 });
+}
+
 test.describe.serial('Serve feedback on KServe', () => {
   test.setTimeout(10 * 60_000);
 
@@ -86,7 +99,15 @@ test.describe.serial('Serve feedback on KServe', () => {
   test('a served preset reads "Serving on <node>" and cannot be served again', async ({
     admin,
   }) => {
-    await expect(presetRow(admin)).toContainText('Ready', { timeout: 60_000 });
+    const row = presetRow(admin);
+    await row
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .catch(() => undefined);
+    if ((await row.count()) === 0) {
+      await servePreset(admin);
+    }
+    await expect(row).toContainText('Ready', { timeout: 8 * 60_000 });
     const dialog = await openServeDialog(admin);
     await dialog.getByRole('button', { name: /Preset/ }).click();
     const option = admin.getByRole('option', { name: PRESET_LABEL });
@@ -117,15 +138,7 @@ test.describe.serial('Serve feedback on KServe', () => {
   test('Serve toasts the node, and the row reads Starting until Ready, never red', async ({
     admin,
   }) => {
-    const dialog = await openServeDialog(admin);
-    await dialog.getByRole('button', { name: /Preset/ }).click();
-    await admin.getByRole('option', { name: PRESET_LABEL }).click();
-    const serve = dialog.getByRole('button', { name: 'Serve', exact: true });
-    await expect(serve, 'enabled once the fit verdict is in').toBeEnabled({
-      timeout: 60_000,
-    });
-    await serve.click();
-    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    await servePreset(admin);
     await expect(
       admin.getByText(/^Serving ".+" on .+ · \S+ — loading$/),
       'the toast names the node',

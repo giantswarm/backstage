@@ -61,23 +61,12 @@ const STATE_LABELS = [
 
 test('a session started in the portal reports its state on the list', async ({
   admin,
+  labAgent,
 }) => {
   test.setTimeout(6 * 60_000);
 
   // --- An agent to start from --------------------------------------------
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  await agents.first().click();
+  await open(admin, labAgent.detailPath);
   await expect(
     admin.getByRole('button', { name: 'Start a session' }),
   ).toBeVisible();

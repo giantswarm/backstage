@@ -97,7 +97,24 @@ type WorkerFixtures = {
    * per worker, no copies, is the shape that stays signed in.
    */
   adminPage: Page;
+  /**
+   * An agent of the worker's own on the lab, created as the admin in the New
+   * agent wizard (agent-manager's `create_agent` through muster) the first
+   * time a test asks for it, ready on the platform Harness, and deleted again
+   * when the worker ends. A spec that needs an agent on the roster uses this
+   * one, never whatever earlier runs left on a shared lab.
+   */
+  labAgent: LabAgent;
 };
+
+/** The worker's {@link WorkerFixtures.labAgent}. */
+export interface LabAgent {
+  /** The display name the roster and the session pages show. */
+  name: string;
+  slug: string;
+  /** The agent's detail page, `/agent-platform/agents/<installation>/<ns>/<slug>`. */
+  detailPath: string;
+}
 
 type TestFixtures = {
   /** The worker's admin page; an uncaught page error during the test fails it. */
@@ -122,12 +139,38 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     { scope: 'worker' },
   ],
 
+  labAgent: [
+    async ({ adminPage }, use, workerInfo) => {
+      // Unique to the run and the worker, so a failed run's leftover never
+      // collides with the next one's and is easy to find in the roster.
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
+      const name = `E2E Roster ${stamp} ${workerInfo.workerIndex}`;
+      const slug = `e2e-roster-${stamp}-${workerInfo.workerIndex}`;
+      const detailPath = await createAgentInWizard(adminPage, name, slug);
+      try {
+        // The button follows the roster's read of the agent: offered once the
+        // golden boot on the platform Harness is done.
+        await expect(
+          adminPage.getByRole('button', { name: 'Start a session' }),
+          'the fixture agent becomes ready on the platform Harness (golden boot): `kubectl -n kagent get harness,workerpools` and the kagent-controller log',
+        ).toBeVisible({ timeout: 6 * 60_000 });
+        await use({ name, slug, detailPath });
+      } finally {
+        await deleteAgentInPortal(adminPage, detailPath, slug);
+      }
+    },
+    { scope: 'worker', timeout: 10 * 60_000 },
+  ],
+
   admin: async ({ adminPage }, use) => {
     const errors: string[] = [];
     const record = (error: Error) => errors.push(error.message);
     adminPage.on('pageerror', record);
     await use(adminPage);
     adminPage.off('pageerror', record);
+    // The page outlives the test: a route a test left behind (a swapped
+    // token, a stubbed answer) must not answer the next test's requests.
+    await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
     expect(errors, 'no uncaught errors on the page').toEqual([]);
   },
 

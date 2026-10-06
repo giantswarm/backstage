@@ -89,10 +89,18 @@ test.describe('Usage → Cost, by agent', () => {
     try {
       await open(admin, '/agent-platform/usage/cost');
 
+      // The portal queries the lab's Prometheus only where the lab runs one
+      // (`platform.observability`); without it the page says so instead.
+      const byAgent = admin.getByText('By agent', { exact: true });
+      const noObservability = admin.getByText(/has no observability stack/);
       await expect(
-        admin.getByText('By agent', { exact: true }),
-        'the by-agent table renders (the lab has observability on, so the portal queries its Prometheus)',
+        byAgent.or(noObservability).first(),
+        'the Cost page renders the by-agent table or says there is nothing to query',
       ).toBeVisible();
+      test.skip(
+        await noObservability.isVisible(),
+        'the lab has no observability stack (platform.observability: false)',
+      );
 
       const removed = rowWith(admin, 'kagent/lab-removed-agent');
       await expect(
