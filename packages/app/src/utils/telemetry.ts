@@ -356,6 +356,37 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Product magazine' };
       break;
 
+    // Hive (`/hive`): one page name per tab, a bare `/hive` landing on Now.
+    // The board's items and the plans' reviews are details without `view`,
+    // like Roadmap item and Plan detail: the varying segment is an id.
+    case pathname === '/hive' || pathname === '/hive/now':
+      payload = { page: 'Hive now' };
+      break;
+
+    case pathname === '/hive/history':
+      payload = { page: 'Hive history' };
+      break;
+
+    case pathname === '/hive/roadmap':
+      payload = { page: 'Hive roadmap' };
+      break;
+
+    case pathname.startsWith('/hive/roadmap/'):
+      payload = { page: 'Hive roadmap item' };
+      break;
+
+    case pathname === '/hive/plans':
+      payload = { page: 'Hive plans' };
+      break;
+
+    case pathname.startsWith('/hive/plans/'):
+      payload = { page: 'Hive plan detail' };
+      break;
+
+    case pathname === '/hive/knowledge':
+      payload = { page: 'Hive knowledge' };
+      break;
+
     case pathname === '/metrics':
       payload = { page: 'Metrics' };
       break;
