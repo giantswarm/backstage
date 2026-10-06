@@ -7,7 +7,7 @@ giantswarm-repo-manager as the signed-in person and lands as a team-file pull
 request under their name; the page shows what the manager returns and composes
 nothing.
 
-- **Create repository** (`/repositories/create`, the plugin's `create` route):
+- **Create repository** (`/repositories/create`, from the page's button):
   the declaration form (team, name, component type, language, flavours,
   description, visibility, reason), _Review_ — the dry run as
   `validate_repository` renders it: the entry with the schema's defaults, the
@@ -26,6 +26,3 @@ nothing.
   and notice — before the commit, and shows the pull request it opened.
 - A write the manager refuses (`mode: apply`, a taken name, a refused
   declaration) shows the manager's reason verbatim; no override is offered.
-- Bind `catalog.createComponent` to `repositories.create` in
-  `app.routes.bindings` so the catalog's _Create…_ lands on the form; no
-  scaffolder template is registered.

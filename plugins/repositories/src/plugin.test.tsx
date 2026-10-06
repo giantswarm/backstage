@@ -57,9 +57,6 @@ describe('repositoriesPlugin gating', () => {
       await screen.findByRole('tab', { name: 'My team' }, { timeout: 15_000 }),
     ).toBeInTheDocument();
 
-    // Create repository is the page's own sub-route, `repositories.create`
-    // -- the target a deployment binds `catalog.createComponent` to.
-    expect(repositoriesPlugin.routes.create).toBeDefined();
     // A LinkButton: MUI gives the anchor role button.
     const create = screen.getByRole('button', { name: 'Create repository' });
     expect(create).toHaveAttribute('href', '/repositories/create');
