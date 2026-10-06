@@ -6,6 +6,7 @@
 
 import {
   classifyNodePoolWriteFailure,
+  isNothingLeft,
   type ClusterWriteResult,
   type NodePoolWriteFailure,
   type WriteMode,
@@ -92,13 +93,23 @@ export function modeBlocker(
   return verdict.state === 'refused' ? verdict.failure.message : verdict.reason;
 }
 
+/** The refusals of the dry runs, Deploy's first. */
+function failuresOf(
+  verdicts: ModeVerdicts | undefined,
+): NodePoolWriteFailure[] {
+  return [verdicts?.apply, verdicts?.commit].flatMap(verdict =>
+    verdict?.state === 'refused' ? [verdict.failure] : [],
+  );
+}
+
 /** The first "not connected" answer of the dry runs: the connect step is shown for it. */
 export function notConnectedOf(
   verdicts: ModeVerdicts | undefined,
 ): NodePoolWriteFailure | undefined {
-  return [verdicts?.apply, verdicts?.commit]
-    .map(verdict =>
-      verdict?.state === 'refused' ? verdict.failure : undefined,
-    )
-    .find(failure => failure?.kind === 'not-connected');
+  return failuresOf(verdicts).find(failure => failure.kind === 'not-connected');
+}
+
+/** Whether a dry run answered that nothing of the cluster is left: it is already removed. */
+export function nothingLeftOf(verdicts: ModeVerdicts | undefined): boolean {
+  return failuresOf(verdicts).some(isNothingLeft);
 }
