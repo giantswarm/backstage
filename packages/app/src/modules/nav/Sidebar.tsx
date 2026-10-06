@@ -72,9 +72,8 @@ function ClusterAccessSidebarItem({ mobile }: { mobile: boolean }) {
 
 /**
  * *Create…*: where the catalog's `createComponent` external route points
- * (`app.routes.bindings`) -- the scaffolder's templates by default, the
- * Repositories page's declaration form where a deployment binds
- * `repositories.create`. Shown only when something is bound.
+ * (`app.routes.bindings`), else the scaffolder page when it is enabled.
+ * Hidden when there is neither.
  */
 function CreateSidebarItem({ fallback }: { fallback?: string }) {
   const createLink = useRouteRef(catalogPlugin.externalRoutes.createComponent);
@@ -122,12 +121,10 @@ export const SidebarContent = NavContentBlueprint.make({
         nav.take('page:bot-prs'),
       ].filter(Boolean);
 
-      // Product: what the teams plan, build and learned, side by side.
-      const productGroup = [
-        nav.take('page:plans'),
-        nav.take('page:roadmap'),
-        nav.take('page:plans/magazine'),
-      ].filter(Boolean);
+      // Product: Hive, what the teams plan, build and learned, in one place.
+      // The old Plans, Roadmap and Magazine pages are redirects into it and
+      // carry no nav item of their own.
+      const productGroup = [nav.take('page:plans')].filter(Boolean);
 
       const group3 = [
         <AiChatSidebarItem key="ai-chat" />,

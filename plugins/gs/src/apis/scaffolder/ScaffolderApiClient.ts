@@ -7,24 +7,61 @@ import {
 } from '@backstage/plugin-scaffolder-react';
 import { ScaffolderClient } from '@backstage/plugin-scaffolder';
 import { Observable } from '@backstage/types';
+import type {
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+} from '@backstage/plugin-kubernetes-react';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCTokenInstallation } from '../../components/scaffolder/OIDCToken/utils';
+import {
+  mintTemplateTokens,
+  templateTokenFields,
+} from '../../components/scaffolder/utils/templateTokens';
 import ObservableImpl from 'zen-observable';
 
 const SESSION_TASK_INSTALLATION = 'gs-task-installation';
 const DEFAULT_INSTALLATION_TOKEN = 'default';
 
+type ScaffolderApiClientOptions = ConstructorParameters<
+  typeof ScaffolderClient
+>[0] & {
+  kubernetesApi: KubernetesApi;
+  kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
+};
+
 export class ScaffolderApiClient extends ScaffolderClient {
   private cachedTasks: ScaffolderTask[] = [];
+  private readonly kubernetesApi: KubernetesApi;
+  private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
 
+  constructor(options: ScaffolderApiClientOptions) {
+    super(options);
+    this.kubernetesApi = options.kubernetesApi;
+    this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
+  }
+
+  /**
+   * Starts the task on the installation of the template's first `GSOIDCToken`
+   * field, with every field's cluster token minted now: one minted while the
+   * form was filled may have expired by the time it is submitted. Rejects with
+   * a `TemplateSignInError`, and starts nothing, when a sign-in a token needs
+   * did not complete.
+   */
   async scaffold(
     options: ScaffolderScaffoldOptions,
   ): Promise<ScaffolderScaffoldResponse> {
-    const { values } = options;
-    const installationName = getOIDCTokenInstallation(values);
+    const { templateRef, values, secrets } = options;
+    const manifest = await this.getTemplateParameterSchema(templateRef);
+    const tokenFields = templateTokenFields(manifest, values);
+    const tokens = await mintTemplateTokens(
+      tokenFields,
+      this.kubernetesApi,
+      this.kubernetesAuthProvidersApi,
+    );
+    const installationName = tokenFields[0]?.installation ?? null;
 
     const result = await this.withInstallation(installationName, () =>
-      super.scaffold(options),
+      super.scaffold({ ...options, secrets: { ...secrets, ...tokens } }),
     );
 
     this.setInstallationToSessionStorage(result.taskId, installationName);

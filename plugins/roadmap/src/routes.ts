@@ -4,7 +4,11 @@ import {
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
 
+/** The board: Hive's Roadmap tab (`/hive/roadmap`). */
 export const rootRouteRef = createRouteRef();
+
+/** The old Roadmap page (`/roadmap`), now a redirect into Hive. */
+export const legacyRootRouteRef = createRouteRef();
 
 export const itemRouteRef = createSubRouteRef({
   path: '/items/:id',

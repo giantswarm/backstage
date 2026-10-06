@@ -1,3 +1,7 @@
+import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
+
+export { isSessionExpiredError };
+
 /**
  * Which token reaches which muster.
  *
@@ -88,26 +92,5 @@ export function isMusterTokenMintError(
   return (
     (error as { name?: string } | null | undefined)?.name ===
     MUSTER_TOKEN_MINT_ERROR_NAME
-  );
-}
-
-/**
- * Whether a mint failure means the person's main portal session is gone.
- * Recognises the gs cluster-token broker's typed error (`ClusterTokenError`
- * with reason `session-expired` / `subject_invalid`) by shape, so the muster
- * plugin needs no dependency on the gs plugin, and the wording the broker and
- * Backstage's auth APIs use when a re-login was declined.
- */
-export function isSessionExpiredError(error: unknown): boolean {
-  const e = error as
-    { name?: string; reason?: string; message?: string } | null | undefined;
-  if (!e) {
-    return false;
-  }
-  if (e.name === 'ClusterTokenError') {
-    return e.reason === 'session-expired' || e.reason === 'subject_invalid';
-  }
-  return /session[ -]?expired|sign in again|login did not complete/i.test(
-    e.message ?? '',
   );
 }

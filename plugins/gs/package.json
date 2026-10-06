@@ -45,6 +45,7 @@
     "@backstage/plugin-kubernetes-common": "backstage:^",
     "@backstage/plugin-kubernetes-react": "backstage:^",
     "@backstage/plugin-scaffolder": "backstage:^",
+    "@backstage/plugin-scaffolder-common": "backstage:^",
     "@backstage/plugin-scaffolder-react": "backstage:^",
     "@backstage/plugin-user-settings": "backstage:^",
     "@backstage/theme": "backstage:^",

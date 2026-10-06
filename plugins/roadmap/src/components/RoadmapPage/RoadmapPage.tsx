@@ -1,57 +1,47 @@
-import { useMemo } from 'react';
+import { Key, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Box,
-  MenuItem,
-  Tab,
-  Tabs,
-  TextField,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
 import { Content, Progress } from '@backstage/core-components';
+import { Flex, Select, Tab, TabList, Tabs } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import { RoadmapField, RoadmapItemFilters } from '../../apis';
 import { useSchema } from '../../hooks';
 import { BoardView } from '../BoardView';
 import { TeamActivityView } from '../TeamActivityView';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
-const useStyles = makeStyles((theme: Theme) => ({
+const useStyles = makeStyles({
   toolbar: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    paddingBottom: theme.spacing(1),
+    gap: 'var(--bui-space-4)',
+    marginBottom: 'var(--bui-space-4)',
   },
   filters: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1.5),
     marginLeft: 'auto',
+    flexWrap: 'wrap',
   },
   filter: {
-    minWidth: 150,
+    minWidth: 170,
   },
-  keyword: {
-    minWidth: 200,
-  },
-  viewBody: {
-    paddingTop: theme.spacing(1),
-  },
-}));
+});
 
 const ALL = '';
+
+/** The "Any kind" option's key: a select option needs a non-empty one. */
+const ANY = 'any';
+
+/**
+ * Hive's "all teams" scope (`?team=all`), and the old page's explicit
+ * empty `?team=`, both mean no team filter.
+ */
+const ALL_TEAMS_PARAMS = new Set([ALL, 'all']);
 
 /** The filter fields the toolbar offers, in display order. */
 const FILTER_FIELDS: Array<{
   param: keyof RoadmapItemFilters;
   field: string;
 }> = [
-  { param: 'team', field: 'Team' },
   { param: 'kind', field: 'Kind' },
   { param: 'quarter', field: 'Quarter' },
   { param: 'availability', field: 'Availability' },
@@ -63,55 +53,55 @@ function fieldValues(field: RoadmapField | undefined): string[] {
 
 /**
  * Roadmap board viewer: the status-column board and the per-assignee team
- * activity view over the GitHub Projects roadmap board. All filters travel
- * as query params so any view is shareable.
+ * activity view over the GitHub Projects roadmap board, as Hive's Roadmap
+ * tab. The team (`?team=`) and the search (`?q=`) come from Hive's header;
+ * the view and the board's own filters travel as query params, so any view
+ * is shareable.
  */
 export function RoadmapPage() {
   const classes = useStyles();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: schema, isLoading, error } = useSchema();
 
-  const tab = searchParams.get('view') === 'activity' ? 'activity' : 'board';
+  const view = searchParams.get('view') === 'activity' ? 'activity' : 'board';
 
   // The configured default team scopes the initial view; an explicit
-  // `team=` param (including the empty "all teams" value) wins.
+  // `team=` (Hive's header writes it) wins, "all" meaning every team.
   const defaultTeam = schema?.defaultTeams[0] ?? ALL;
   const filters: RoadmapItemFilters = useMemo(() => {
-    const result: RoadmapItemFilters = {
-      team: searchParams.has('team')
-        ? (searchParams.get('team') ?? ALL)
-        : defaultTeam,
-    };
+    const teamParam = searchParams.get('team');
+    const result: RoadmapItemFilters = {};
+    const team = teamParam === null ? defaultTeam : teamParam;
+    if (!ALL_TEAMS_PARAMS.has(team)) {
+      result.team = team;
+    }
     for (const { param } of FILTER_FIELDS) {
-      if (param === 'team') {
-        continue;
-      }
       const value = searchParams.get(param);
       if (value) {
         result[param] = value;
       }
     }
-    const keyword = searchParams.get('keyword');
+    // `keyword` is the old page's search parameter; old links keep it.
+    const keyword = searchParams.get('q') ?? searchParams.get('keyword');
     if (keyword) {
       result.keyword = keyword;
-    }
-    if (!result.team) {
-      delete result.team;
     }
     return result;
   }, [searchParams, defaultTeam]);
 
-  const setParam = (key: string, value: string) => {
-    const params = new URLSearchParams(searchParams);
-    // `team` keeps an explicit empty value so "All teams" can override the
-    // configured default; the other filters just drop out of the URL.
-    if (value === ALL && key !== 'team') {
-      params.delete(key);
-    } else {
-      params.set(key, value);
-    }
-    setSearchParams(params, { replace: true });
-  };
+  const setParam = (key: string, value: string) =>
+    setSearchParams(
+      prev => {
+        const params = new URLSearchParams(prev);
+        if (value === ALL) {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+        return params;
+      },
+      { replace: true },
+    );
 
   if (isLoading) {
     return (
@@ -133,66 +123,48 @@ export function RoadmapPage() {
 
   return (
     <Content>
-      <Box className={classes.toolbar}>
+      <div className={classes.toolbar}>
         <Tabs
-          value={tab}
-          onChange={(_, value) => setParam('view', value)}
-          indicatorColor="primary"
+          selectedKey={view}
+          onSelectionChange={(key: Key) =>
+            setParam('view', key === 'activity' ? 'activity' : ALL)
+          }
         >
-          <Tab label="Board" value="board" />
-          <Tab label="Team activity" value="activity" />
+          <TabList aria-label="Roadmap views">
+            <Tab id="board">Board</Tab>
+            <Tab id="activity">Team activity</Tab>
+          </TabList>
         </Tabs>
-        <Box className={classes.filters}>
+        <Flex className={classes.filters} gap="3" align="end">
           {FILTER_FIELDS.map(({ param, field }) => {
             const values = fieldValues(fieldByName.get(field));
             if (values.length === 0) {
               return null;
             }
             return (
-              <TextField
-                key={param}
-                className={classes.filter}
-                select
-                size="small"
-                variant="outlined"
-                label={field}
-                value={filters[param] ?? ALL}
-                onChange={event => setParam(param, event.target.value)}
-              >
-                <MenuItem value={ALL}>All {field.toLowerCase()}s</MenuItem>
-                {values.map(value => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <div key={param} className={classes.filter}>
+                <Select
+                  label={field}
+                  size="small"
+                  options={[
+                    { id: ANY, label: `Any ${field.toLowerCase()}` },
+                    ...values.map(value => ({ id: value, label: value })),
+                  ]}
+                  selectedKey={filters[param] ?? ANY}
+                  onSelectionChange={key =>
+                    setParam(param, key === ANY ? ALL : String(key ?? ALL))
+                  }
+                />
+              </div>
             );
           })}
-          <TextField
-            className={classes.keyword}
-            size="small"
-            variant="outlined"
-            label="Search"
-            defaultValue={filters.keyword ?? ''}
-            onKeyDown={event => {
-              if (event.key === 'Enter') {
-                setParam(
-                  'keyword',
-                  (event.target as HTMLInputElement).value.trim(),
-                );
-              }
-            }}
-            onBlur={event => setParam('keyword', event.target.value.trim())}
-          />
-        </Box>
-      </Box>
-      <Box className={classes.viewBody}>
-        {tab === 'board' ? (
-          <BoardView filters={filters} schemaFields={fields} />
-        ) : (
-          <TeamActivityView filters={filters} />
-        )}
-      </Box>
+        </Flex>
+      </div>
+      {view === 'board' ? (
+        <BoardView filters={filters} schemaFields={fields} />
+      ) : (
+        <TeamActivityView filters={filters} />
+      )}
     </Content>
   );
 }

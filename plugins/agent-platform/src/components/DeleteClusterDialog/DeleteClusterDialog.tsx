@@ -17,6 +17,7 @@ import {
 import { useClusterWrite } from '../../hooks/useClusterManager';
 import {
   CLUSTER_MANAGER_SERVER,
+  isNothingLeft,
   type ClusterWriteResult,
   type DeleteClusterInput,
   type WriteMode,
@@ -25,6 +26,7 @@ import {
   judgeModes,
   modeBlocker,
   notConnectedOf,
+  nothingLeftOf,
   preferredMode,
   previewOf,
   type ModeVerdicts,
@@ -51,7 +53,9 @@ export type DeleteClusterDialogProps = {
  * the way out. **Delete** removes the cluster's release as the person and
  * offers **Finish removal**, the second call cluster-manager names once the
  * cluster is gone; **Commit** opens the removal pull request and, once it is
- * merged, offers the live step its answer names.
+ * merged, offers the live step its answer names. cluster-manager's
+ * `notFound.nothingLeft` answer, to a dry run or a call, reads as the removal
+ * complete.
  */
 export function DeleteClusterDialog({
   isOpen,
@@ -125,9 +129,12 @@ export function DeleteClusterDialog({
     write.failure?.kind === 'not-connected'
       ? write.failure
       : notConnectedOf(verdicts);
-  const preview = previewOf(verdicts);
-  const refusedEverywhere = Boolean(verdicts) && !preview && !notConnected;
-  const secondPass = removed && !removed.partial && removed.nextStep;
+  const nothingLeft = nothingLeftOf(verdicts) || isNothingLeft(write.failure);
+  const preview = nothingLeft ? undefined : previewOf(verdicts);
+  const refusedEverywhere =
+    Boolean(verdicts) && !preview && !notConnected && !nothingLeft;
+  const secondPass =
+    removed && !removed.partial && removed.nextStep && !nothingLeft;
 
   return (
     <Dialog
@@ -235,13 +242,15 @@ export function DeleteClusterDialog({
             </>
           )}
 
-          {write.failure && write.failure.kind !== 'not-connected' && (
-            <Alert
-              status="danger"
-              title="cluster-manager refused"
-              description={write.failure.message}
-            />
-          )}
+          {write.failure &&
+            write.failure.kind !== 'not-connected' &&
+            !nothingLeft && (
+              <Alert
+                status="danger"
+                title="cluster-manager refused"
+                description={write.failure.message}
+              />
+            )}
           {notConnected && (
             <ConnectAgentManagerAlert
               installation={installation}
@@ -299,11 +308,23 @@ export function DeleteClusterDialog({
               }
             />
           )}
+          {nothingLeft && (
+            <Alert
+              status="success"
+              data-testid="delete-complete"
+              title={
+                started
+                  ? `${name} is removed: nothing of it is left`
+                  : `${name} is already removed: nothing of it is left`
+              }
+            />
+          )}
           {committed?.commit && (
             <ClusterManagerCommitOutcome
               commit={committed.commit}
               liveStep={
-                !removed && (
+                !removed &&
+                !nothingLeft && (
                   <Button
                     variant="secondary"
                     size="small"
@@ -325,9 +346,9 @@ export function DeleteClusterDialog({
             onPress={() => close(false)}
             isDisabled={write.isBusy}
           >
-            {started ? 'Close' : 'Cancel'}
+            {started || nothingLeft ? 'Close' : 'Cancel'}
           </Button>
-          {!started && (
+          {!started && !nothingLeft && (
             <Button
               variant="primary"
               destructive
