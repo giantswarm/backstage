@@ -56,7 +56,7 @@ export function CreateClusterAction() {
 /**
  * **Delete** beside a cluster's header, where the installation's
  * cluster-manager offers `delete_cluster`; never on the installation's own
- * cluster, which it refuses.
+ * cluster, which it refuses, nor on one already being deleted.
  */
 export function DeleteClusterAction() {
   const target = useClusterPageTarget();
@@ -73,6 +73,7 @@ export function DeleteClusterAction() {
   if (
     !target ||
     target.isManagementCluster ||
+    target.isDeleting ||
     !target.organization ||
     !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster)
   ) {
