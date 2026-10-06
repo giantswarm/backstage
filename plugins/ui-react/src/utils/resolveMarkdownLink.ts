@@ -67,8 +67,10 @@ function sanitize(href: string): string {
  * Returns a link transform for markdown loaded from `sourceUrl`, which
  * resolves relative links against that document instead of the page it is
  * shown on. Links in a document from a GitHub repository point to the file on
- * github.com at the same ref, the way GitHub renders them. Returns `undefined`
- * when `sourceUrl` is not an http(s) URL.
+ * github.com at the same ref, the way GitHub resolves them; a `#heading` link
+ * opens the document itself on github.com at that heading. For any other
+ * source a `#heading` link passes through unchanged. Returns `undefined` when
+ * `sourceUrl` is not an http(s) URL.
  */
 export function createMarkdownLinkResolver(
   sourceUrl: string | undefined,
@@ -91,21 +93,21 @@ export function createMarkdownLinkResolver(
 
   return (rawHref: string) => {
     const href = rawHref.trim();
-    if (
-      href === '' ||
-      href.startsWith('#') ||
-      href.startsWith('//') ||
-      schemeOf(href) !== null
-    ) {
+    if (href === '' || href.startsWith('//') || schemeOf(href) !== null) {
       return sanitize(href);
     }
 
     if (!gitHubDocument) {
-      return sanitize(new URL(href, source).href);
+      // A `#fragment` alone stays an in-page link.
+      return href.startsWith('#') ? href : sanitize(new URL(href, source).href);
     }
 
     // Resolved on a throwaway origin, so `..` stops at the repository root
-    // and a leading `/` means the root, as on GitHub.
+    // and a leading `/` means the root, as on GitHub. A `#fragment` alone
+    // resolves to the document itself on github.com: `MarkdownContent` builds
+    // heading ids differently from GitHub and routes the hash through the
+    // router, so an in-page jump does not land on the heading, while the same
+    // anchor does on GitHub.
     const { owner, repo, ref, path } = gitHubDocument;
     const resolved = new URL(href, `https://repo.invalid/${path}`);
     return `https://github.com/${owner}/${repo}/blob/${ref}${resolved.pathname}${resolved.search}${resolved.hash}`;

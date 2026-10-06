@@ -18,6 +18,7 @@ describe('createMarkdownLinkResolver', () => {
       ['docs/', `${TRIVY_BLOB}/docs/`],
       ['CHANGELOG.md#v0181', `${TRIVY_BLOB}/CHANGELOG.md#v0181`],
       ['values.yaml?plain=1', `${TRIVY_BLOB}/values.yaml?plain=1`],
+      ['#configuration', `${TRIVY_BLOB}/README.md#configuration`],
     ])('resolves %s to the file at the same ref', (href, expected) => {
       expect(resolve(href)).toBe(expected);
     });
@@ -31,6 +32,9 @@ describe('createMarkdownLinkResolver', () => {
         `${TRIVY_BLOB}/docs/guide/setup.md`,
       );
       expect(resolveNested('../../README.md')).toBe(`${TRIVY_BLOB}/README.md`);
+      expect(resolveNested('#setup')).toBe(
+        `${TRIVY_BLOB}/docs/guide/README.md#setup`,
+      );
     });
 
     it('takes a single-segment ref', () => {
@@ -54,7 +58,6 @@ describe('createMarkdownLinkResolver', () => {
     });
 
     it.each([
-      '#configuration',
       'https://example.com/docs',
       'mailto:support@example.com',
       '//example.com/docs',
@@ -91,6 +94,9 @@ describe('createMarkdownLinkResolver', () => {
     expect(resolve('../shared/TOOLS.md')).toBe(
       'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/shared/TOOLS.md',
     );
+    expect(resolve('#setup')).toBe(
+      'https://github.com/giantswarm/klaus-personalities/blob/main/personalities/sre/SOUL.md#setup',
+    );
   });
 
   it('resolves against any other http(s) source', () => {
@@ -100,6 +106,7 @@ describe('createMarkdownLinkResolver', () => {
 
     expect(resolve('setup.md')).toBe('https://example.com/docs/guide/setup.md');
     expect(resolve('/index.html')).toBe('https://example.com/index.html');
+    expect(resolve('#setup')).toBe('#setup');
     expect(resolve('java\tscript:alert(1)')).toBe('');
   });
 

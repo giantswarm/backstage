@@ -44,7 +44,26 @@ describe('GSMarkdownContent', () => {
     );
     expect(valuesLink).toHaveAttribute('target', '_blank');
     expect(valuesLink).toHaveAttribute('rel', 'noopener');
-    // In-page anchors stay on the page; the router adds the current path.
+    // In-page anchors of a GitHub document open it on github.com, where the
+    // heading ids match.
+    const anchorLink = screen.getByRole('link', { name: /below/ });
+    expect(anchorLink).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/trivy-app/blob/refs/tags/v0.18.1/README.md#configuration',
+    );
+    expect(anchorLink).toHaveAttribute('target', '_blank');
+    expect(anchorLink).toHaveAttribute('rel', 'noopener');
+  });
+
+  it('keeps in-page anchors on the page for a non-GitHub source', async () => {
+    await renderInTestApp(
+      <GSMarkdownContent
+        content="See [below](#configuration)."
+        sourceUrl="https://docs.example.com/apps/README.md"
+      />,
+    );
+
+    // The router adds the current path.
     expect(screen.getByRole('link', { name: 'below' })).toHaveAttribute(
       'href',
       '/#configuration',
