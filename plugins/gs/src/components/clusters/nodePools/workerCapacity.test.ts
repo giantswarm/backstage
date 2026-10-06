@@ -28,9 +28,9 @@ describe('computeWorkerCapacity', () => {
   it('takes the nodes, CPU and memory of a pool without a size from node metrics', () => {
     // The pool reports 3 ready machines; one node is not ready to the
     // machine controller but Ready to Kubernetes, which the metrics count.
-    const metrics = new Map([
-      ['karpenter', { nodes: 4, vcpus: 16, memoryBytes: 64 * GIB }],
-    ]);
+    const metrics = {
+      karpenter: { nodes: 4, vcpus: 16, memoryBytes: 64 * GIB },
+    };
 
     expect(
       computeWorkerCapacity(
@@ -55,7 +55,7 @@ describe('computeWorkerCapacity', () => {
           { name: 'a', readyReplicas: 1, machineSize: m5xlarge },
           { name: 'aks', readyReplicas: 2, machineSize: undefined },
         ],
-        new Map(),
+        {},
       ),
     ).toEqual({
       nodes: 3,
@@ -65,14 +65,37 @@ describe('computeWorkerCapacity', () => {
     });
   });
 
-  it('needs no size for a pool without ready nodes', () => {
-    const pools = [
-      { name: 'empty', readyReplicas: 0, machineSize: undefined },
-      { name: 'new', readyReplicas: undefined, machineSize: undefined },
-    ];
+  it('counts a pool from node metrics while its CR reports no ready nodes', () => {
+    // A Karpenter pool scaled up between two reconciles of its MachinePool.
+    expect(
+      computeWorkerCapacity(
+        [
+          {
+            name: 'karpenter',
+            readyReplicas: undefined,
+            machineSize: undefined,
+          },
+        ],
+        { karpenter: { nodes: 2, vcpus: 8, memoryBytes: 32 * GIB } },
+      ),
+    ).toEqual({
+      nodes: 2,
+      vcpus: 8,
+      memoryBytes: 32 * GIB,
+      uncountedPools: [],
+    });
+  });
 
-    expect(needsNodeMetrics(pools)).toBe(false);
-    expect(computeWorkerCapacity(pools)).toEqual({
+  it('skips a pool without a size that neither its CR nor the metrics count', () => {
+    expect(
+      computeWorkerCapacity(
+        [
+          { name: 'empty', readyReplicas: 0, machineSize: undefined },
+          { name: 'sized', readyReplicas: 0, machineSize: m5xlarge },
+        ],
+        {},
+      ),
+    ).toEqual({
       nodes: 0,
       vcpus: 0,
       memoryBytes: 0,
@@ -85,14 +108,14 @@ describe('hasUnknownResources', () => {
   it('is true only when no pool had its CPU and memory counted', () => {
     const unknown = computeWorkerCapacity(
       [{ name: 'vcd', readyReplicas: 3, machineSize: undefined }],
-      new Map(),
+      {},
     );
     const partial = computeWorkerCapacity(
       [
         { name: 'a', readyReplicas: 1, machineSize: m5xlarge },
         { name: 'vcd', readyReplicas: 3, machineSize: undefined },
       ],
-      new Map(),
+      {},
     );
 
     expect(hasUnknownResources(unknown)).toBe(true);
@@ -101,13 +124,18 @@ describe('hasUnknownResources', () => {
 });
 
 describe('needsNodeMetrics', () => {
-  it('is true when a pool with ready nodes has no machine size', () => {
+  it('is true when a pool has no machine size, whatever its ready count', () => {
     expect(
       needsNodeMetrics([
         { name: 'a', readyReplicas: 1, machineSize: m5xlarge },
-        { name: 'b', readyReplicas: 1, machineSize: undefined },
+        { name: 'b', readyReplicas: 0, machineSize: undefined },
       ]),
     ).toBe(true);
+    expect(
+      needsNodeMetrics([
+        { name: 'a', readyReplicas: 0, machineSize: m5xlarge },
+      ]),
+    ).toBe(false);
   });
 });
 

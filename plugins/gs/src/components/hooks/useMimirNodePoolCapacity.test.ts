@@ -33,21 +33,24 @@ describe('parseNodePoolCapacity', () => {
   });
 
   it('groups nodes, CPU and memory by cluster and pool', () => {
-    const result = parseNodePoolCapacity([
-      sample('c1', 'p1', 'nodes', '2'),
-      sample('c1', 'p1', 'cpu', '8'),
-      sample('c1', 'p1', 'memory', '1024'),
-      sample('c2', 'p2', 'nodes', '1'),
-      sample('c2', 'p2', 'cpu', '4'),
-      sample('c2', 'p2', 'memory', '2048'),
-    ]);
+    const result = parseNodePoolCapacity(
+      [
+        sample('c1', 'p1', 'nodes', '2'),
+        sample('c1', 'p1', 'cpu', '8'),
+        sample('c1', 'p1', 'memory', '1024'),
+        sample('c2', 'p2', 'nodes', '1'),
+        sample('c2', 'p2', 'cpu', '4'),
+        sample('c2', 'p2', 'memory', '2048'),
+      ],
+      ['c1', 'c2'],
+    );
 
-    expect(result.get('c1')?.get('p1')).toEqual({
+    expect(result.c1.p1).toEqual({
       nodes: 2,
       vcpus: 8,
       memoryBytes: 1024,
     });
-    expect(result.get('c2')?.get('p2')).toEqual({
+    expect(result.c2.p2).toEqual({
       nodes: 1,
       vcpus: 4,
       memoryBytes: 2048,
@@ -55,14 +58,47 @@ describe('parseNodePoolCapacity', () => {
   });
 
   it('leaves out a pool missing a resource or with a non-numeric value', () => {
-    const result = parseNodePoolCapacity([
-      sample('c1', 'no-nodes', 'cpu', '8'),
-      sample('c1', 'no-nodes', 'memory', '1024'),
-      sample('c1', 'nan', 'nodes', '1'),
-      sample('c1', 'nan', 'cpu', 'NaN'),
-      sample('c1', 'nan', 'memory', '1024'),
-    ]);
+    const result = parseNodePoolCapacity(
+      [
+        sample('c1', 'no-nodes', 'cpu', '8'),
+        sample('c1', 'no-nodes', 'memory', '1024'),
+        sample('c1', 'nan', 'nodes', '1'),
+        sample('c1', 'nan', 'cpu', 'NaN'),
+        sample('c1', 'nan', 'memory', '1024'),
+      ],
+      ['c1'],
+    );
 
-    expect(result.get('c1')?.size).toBe(0);
+    expect(result).toEqual({ c1: {} });
+  });
+
+  it('has an entry for each queried cluster and none for another', () => {
+    const result = parseNodePoolCapacity(
+      [
+        sample('c1', 'p1', 'nodes', '1'),
+        sample('c1', 'p1', 'cpu', '4'),
+        sample('c1', 'p1', 'memory', '2048'),
+        sample('other', 'p1', 'nodes', '1'),
+      ],
+      ['c1', 'quiet'],
+    );
+
+    expect(result).toEqual({
+      c1: { p1: { nodes: 1, vcpus: 4, memoryBytes: 2048 } },
+      quiet: {},
+    });
+  });
+
+  it('survives a JSON round trip, as the persisted query cache makes', () => {
+    const result = parseNodePoolCapacity(
+      [
+        sample('c1', 'p1', 'nodes', '1'),
+        sample('c1', 'p1', 'cpu', '4'),
+        sample('c1', 'p1', 'memory', '2048'),
+      ],
+      ['c1'],
+    );
+
+    expect(JSON.parse(JSON.stringify(result))).toEqual(result);
   });
 });

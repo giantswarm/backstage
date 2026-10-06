@@ -18,6 +18,7 @@ import {
   isNotFoundError,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { Labels } from '@giantswarm/backstage-plugin-gs-common';
 import {
   AWS_MANAGED_CLUSTER_KIND,
   NodePoolCapacityInput,
@@ -59,30 +60,95 @@ function keyOf(cluster: Cluster) {
   });
 }
 
+type ListScope = {
+  namespace?: string;
+  labelSelector?: { matchingLabels: Record<string, string> };
+};
+
 /**
  * Lists in the namespace of the clusters when an installation's clusters all
  * share one (always so for a single cluster), so a cluster's page needs no
- * more than namespace access; across namespaces otherwise.
+ * more than namespace access; across namespaces otherwise. `pools` also
+ * selects the MachinePools and MachineDeployments of an installation's only
+ * cluster by its label, as the Node pools tab lists them, so the two share
+ * one query.
  */
-function listScopes(
-  clusters: Cluster[],
-): Record<string, { namespace?: string }> {
-  const namespaces = new Map<string, Set<string | undefined>>();
+function listScopes(clusters: Cluster[]): {
+  all: Record<string, ListScope>;
+  pools: Record<string, ListScope>;
+} {
+  const byInstallation = new Map<string, Cluster[]>();
   for (const cluster of clusters) {
-    if (!namespaces.has(cluster.cluster)) {
-      namespaces.set(cluster.cluster, new Set());
-    }
-    namespaces.get(cluster.cluster)!.add(cluster.getNamespace());
+    const installationClusters = byInstallation.get(cluster.cluster) ?? [];
+    installationClusters.push(cluster);
+    byInstallation.set(cluster.cluster, installationClusters);
   }
 
-  const scopes: Record<string, { namespace?: string }> = {};
-  for (const [installationName, set] of namespaces) {
-    const [namespace] = set;
-    if (set.size === 1 && namespace) {
-      scopes[installationName] = { namespace };
+  const all: Record<string, ListScope> = {};
+  const pools: Record<string, ListScope> = {};
+  for (const [installationName, installationClusters] of byInstallation) {
+    const namespaces = new Set(installationClusters.map(c => c.getNamespace()));
+    const [namespace] = namespaces;
+    if (namespaces.size !== 1 || !namespace) {
+      continue;
     }
+
+    all[installationName] = { namespace };
+    pools[installationName] =
+      installationClusters.length === 1
+        ? {
+            namespace,
+            labelSelector: {
+              matchingLabels: {
+                [Labels.labelClusterName]: installationClusters[0].getName(),
+              },
+            },
+          }
+        : { namespace };
   }
-  return scopes;
+  return { all, pools };
+}
+
+type ListState = {
+  isLoading: boolean;
+  queries: {
+    cluster: string;
+    query: { isSuccess: boolean; isError: boolean };
+  }[];
+  errors: ErrorInfoUnion[];
+};
+
+/**
+ * Whether `list` is still loading on one installation. The list's own
+ * `isLoading` covers the whole fleet, so it stays true while any other
+ * installation is slow or unreachable.
+ */
+function isLoadingOn(list: ListState, installationName: string): boolean {
+  if (!list.isLoading) {
+    return false;
+  }
+  if (list.errors.some(e => e.cluster === installationName)) {
+    return false;
+  }
+  const entry = list.queries.find(q => q.cluster === installationName);
+  return !entry || !(entry.query.isSuccess || entry.query.isError);
+}
+
+/** A list or dataset a cluster's node pools are read from. */
+type PoolSource = {
+  errors: ErrorInfoUnion[];
+  isLoadingOn: (installationName: string) => boolean;
+};
+
+function listSource(list: ListState): PoolSource {
+  return {
+    errors: list.errors,
+    isLoadingOn: installationName => isLoadingOn(list, installationName),
+  };
+}
+
+function catalogSource(isLoading: boolean): PoolSource {
+  return { errors: [], isLoadingOn: () => isLoading };
 }
 
 function errorMessageFor(errors: ErrorInfoUnion[]): string | undefined {
@@ -108,69 +174,70 @@ export function useWorkerCapacity(
   capacities: Map<string, ClusterWorkerCapacity>;
   errors: ErrorInfoUnion[];
 } {
-  const byKind = installationsByInfraKind(clusters);
-  const aws = byKind[AWSCluster.kind] ?? [];
-  const eks = byKind[AWS_MANAGED_CLUSTER_KIND] ?? [];
-  const aks = byKind[AzureASOManagedCluster.kind] ?? [];
-  const azure = byKind[AzureCluster.kind] ?? [];
-  const vsphere = byKind[VSphereCluster.kind] ?? [];
-  const vcd = byKind[VCDCluster.kind] ?? [];
-  const withMachinePools = Array.from(new Set([...aws, ...eks, ...aks]));
-  const withMachineDeployments = Array.from(
-    new Set([...azure, ...vsphere, ...vcd]),
-  );
+  const installations = useMemo(() => {
+    const byKind = installationsByInfraKind(clusters);
+    const aws = byKind[AWSCluster.kind] ?? [];
+    const eks = byKind[AWS_MANAGED_CLUSTER_KIND] ?? [];
+    const aks = byKind[AzureASOManagedCluster.kind] ?? [];
+    const azure = byKind[AzureCluster.kind] ?? [];
+    const vsphere = byKind[VSphereCluster.kind] ?? [];
+    const vcd = byKind[VCDCluster.kind] ?? [];
+    return {
+      aws,
+      eks,
+      aks,
+      azure,
+      vsphere,
+      withMachinePools: Array.from(new Set([...aws, ...eks, ...aks])),
+      withMachineDeployments: Array.from(
+        new Set([...azure, ...vsphere, ...vcd]),
+      ),
+    };
+  }, [clusters]);
+  const { aws, eks, aks, azure, vsphere } = installations;
+  const { withMachinePools, withMachineDeployments } = installations;
 
   const scopes = useMemo(() => listScopes(clusters), [clusters]);
 
-  const {
-    resources: machinePools,
-    errors: machinePoolErrors,
-    isLoading: isLoadingMachinePools,
-  } = useResources(withMachinePools, MachinePool, scopes, {
-    enabled: enabled && withMachinePools.length > 0,
-  });
-  const {
-    resources: awsMachinePools,
-    errors: awsMachinePoolErrors,
-    isLoading: isLoadingAWSMachinePools,
-  } = useResources(aws, AWSMachinePool, scopes, {
+  const machinePoolList = useResources(
+    withMachinePools,
+    MachinePool,
+    scopes.pools,
+    { enabled: enabled && withMachinePools.length > 0 },
+  );
+  const awsMachinePoolList = useResources(aws, AWSMachinePool, scopes.all, {
     enabled: enabled && aws.length > 0,
   });
-  const {
-    resources: awsManagedMachinePools,
-    errors: awsManagedMachinePoolErrors,
-    isLoading: isLoadingAWSManagedMachinePools,
-  } = useResources(eks, AWSManagedMachinePool, scopes, {
-    enabled: enabled && eks.length > 0,
-  });
-  const {
-    resources: azureASOManagedMachinePools,
-    errors: azureASOManagedMachinePoolErrors,
-    isLoading: isLoadingAzureASOManagedMachinePools,
-  } = useResources(aks, AzureASOManagedMachinePool, scopes, {
-    enabled: enabled && aks.length > 0,
-  });
-  const {
-    resources: machineDeployments,
-    errors: machineDeploymentErrors,
-    isLoading: isLoadingMachineDeployments,
-  } = useResources(withMachineDeployments, MachineDeployment, scopes, {
-    enabled: enabled && withMachineDeployments.length > 0,
-  });
-  const {
-    resources: azureMachineTemplates,
-    errors: azureMachineTemplateErrors,
-    isLoading: isLoadingAzureMachineTemplates,
-  } = useResources(azure, AzureMachineTemplate, scopes, {
-    enabled: enabled && azure.length > 0,
-  });
-  const {
-    resources: vsphereMachineTemplates,
-    errors: vsphereMachineTemplateErrors,
-    isLoading: isLoadingVSphereMachineTemplates,
-  } = useResources(vsphere, VSphereMachineTemplate, scopes, {
-    enabled: enabled && vsphere.length > 0,
-  });
+  const awsManagedMachinePoolList = useResources(
+    eks,
+    AWSManagedMachinePool,
+    scopes.all,
+    { enabled: enabled && eks.length > 0 },
+  );
+  const azureASOManagedMachinePoolList = useResources(
+    aks,
+    AzureASOManagedMachinePool,
+    scopes.all,
+    { enabled: enabled && aks.length > 0 },
+  );
+  const machineDeploymentList = useResources(
+    withMachineDeployments,
+    MachineDeployment,
+    scopes.pools,
+    { enabled: enabled && withMachineDeployments.length > 0 },
+  );
+  const azureMachineTemplateList = useResources(
+    azure,
+    AzureMachineTemplate,
+    scopes.all,
+    { enabled: enabled && azure.length > 0 },
+  );
+  const vsphereMachineTemplateList = useResources(
+    vsphere,
+    VSphereMachineTemplate,
+    scopes.all,
+    { enabled: enabled && vsphere.length > 0 },
+  );
   const withAwsInstanceTypes = aws.length > 0 || eks.length > 0;
   const { catalog: awsCatalog, isLoading: isLoadingAWSCatalog } =
     useMachineTypeCatalog('aws', {
@@ -194,65 +261,46 @@ export function useWorkerCapacity(
       return result;
     }
 
-    const machinePoolSource = {
-      errors: machinePoolErrors,
-      isLoading: isLoadingMachinePools,
-    };
-    const machineDeploymentSource = {
-      errors: machineDeploymentErrors,
-      isLoading: isLoadingMachineDeployments,
-    };
+    const machinePoolSource = listSource(machinePoolList);
+    const machineDeploymentSource = listSource(machineDeploymentList);
+    const awsCatalogSource = catalogSource(isLoadingAWSCatalog);
+    const azureCatalogSource = catalogSource(isLoadingAzureCatalog);
     // The lists and datasets each infrastructure kind reads its pools from.
-    const sourcesByKind: Record<
-      string,
-      { errors?: ErrorInfoUnion[]; isLoading: boolean }[]
-    > = {
+    const sourcesByKind: Record<string, PoolSource[]> = {
       [AWSCluster.kind]: [
         machinePoolSource,
-        { errors: awsMachinePoolErrors, isLoading: isLoadingAWSMachinePools },
-        { isLoading: isLoadingAWSCatalog },
+        listSource(awsMachinePoolList),
+        awsCatalogSource,
       ],
       [AWS_MANAGED_CLUSTER_KIND]: [
         machinePoolSource,
-        {
-          errors: awsManagedMachinePoolErrors,
-          isLoading: isLoadingAWSManagedMachinePools,
-        },
-        { isLoading: isLoadingAWSCatalog },
+        listSource(awsManagedMachinePoolList),
+        awsCatalogSource,
       ],
       [AzureASOManagedCluster.kind]: [
         machinePoolSource,
-        {
-          errors: azureASOManagedMachinePoolErrors,
-          isLoading: isLoadingAzureASOManagedMachinePools,
-        },
-        { isLoading: isLoadingAzureCatalog },
+        listSource(azureASOManagedMachinePoolList),
+        azureCatalogSource,
       ],
       [AzureCluster.kind]: [
         machineDeploymentSource,
-        {
-          errors: azureMachineTemplateErrors,
-          isLoading: isLoadingAzureMachineTemplates,
-        },
-        { isLoading: isLoadingAzureCatalog },
+        listSource(azureMachineTemplateList),
+        azureCatalogSource,
       ],
       [VSphereCluster.kind]: [
         machineDeploymentSource,
-        {
-          errors: vsphereMachineTemplateErrors,
-          isLoading: isLoadingVSphereMachineTemplates,
-        },
+        listSource(vsphereMachineTemplateList),
       ],
       [VCDCluster.kind]: [machineDeploymentSource],
     };
     const resources = {
-      machinePools,
-      awsMachinePools,
-      awsManagedMachinePools,
-      azureASOManagedMachinePools,
-      machineDeployments,
-      azureMachineTemplates,
-      vsphereMachineTemplates,
+      machinePools: machinePoolList.resources,
+      awsMachinePools: awsMachinePoolList.resources,
+      awsManagedMachinePools: awsManagedMachinePoolList.resources,
+      azureASOManagedMachinePools: azureASOManagedMachinePoolList.resources,
+      machineDeployments: machineDeploymentList.resources,
+      azureMachineTemplates: azureMachineTemplateList.resources,
+      vsphereMachineTemplates: vsphereMachineTemplateList.resources,
     };
     const catalogs = { aws: awsCatalog, azure: azureCatalog };
 
@@ -261,14 +309,15 @@ export function useWorkerCapacity(
         sourcesByKind[cluster.getInfrastructureRef()?.kind ?? ''] ?? [];
       // A 404 means the installation does not serve that CRD: no such pools.
       const errorMessage = errorMessageFor(
-        sources.flatMap(({ errors = [] }) =>
+        sources.flatMap(({ errors }) =>
           errors.filter(
             e => e.cluster === cluster.cluster && !isNotFoundError(e),
           ),
         ),
       );
       const isLoading =
-        !errorMessage && sources.some(source => source.isLoading);
+        !errorMessage &&
+        sources.some(source => source.isLoadingOn(cluster.cluster));
 
       result.set(keyOf(cluster), {
         cluster,
@@ -284,27 +333,13 @@ export function useWorkerCapacity(
   }, [
     enabled,
     clusters,
-    machinePools,
-    machinePoolErrors,
-    isLoadingMachinePools,
-    awsMachinePools,
-    awsMachinePoolErrors,
-    isLoadingAWSMachinePools,
-    awsManagedMachinePools,
-    awsManagedMachinePoolErrors,
-    isLoadingAWSManagedMachinePools,
-    azureASOManagedMachinePools,
-    azureASOManagedMachinePoolErrors,
-    isLoadingAzureASOManagedMachinePools,
-    machineDeployments,
-    machineDeploymentErrors,
-    isLoadingMachineDeployments,
-    azureMachineTemplates,
-    azureMachineTemplateErrors,
-    isLoadingAzureMachineTemplates,
-    vsphereMachineTemplates,
-    vsphereMachineTemplateErrors,
-    isLoadingVSphereMachineTemplates,
+    machinePoolList,
+    awsMachinePoolList,
+    awsManagedMachinePoolList,
+    azureASOManagedMachinePoolList,
+    machineDeploymentList,
+    azureMachineTemplateList,
+    vsphereMachineTemplateList,
     awsCatalog,
     isLoadingAWSCatalog,
     azureCatalog,
@@ -341,16 +376,19 @@ export function useWorkerCapacity(
       }
 
       const installationMetrics = metrics.get(cluster.cluster);
-      const metricsStatus = installationMetrics?.status ?? 'loading';
+      const clusterMetrics = installationMetrics?.clusters?.[cluster.getName()];
+      let metricsStatus = installationMetrics?.status ?? 'loading';
+      // The previous answer, kept while the query for a new set of clusters
+      // runs, does not cover a cluster added to it.
+      if (metricsStatus === 'ok' && !clusterMetrics) {
+        metricsStatus = 'loading';
+      }
       result.set(key, {
         isLoading: metricsStatus === 'loading',
         capacity:
           metricsStatus === 'loading'
             ? undefined
-            : computeWorkerCapacity(
-                clusterPools,
-                installationMetrics?.clusters?.get(cluster.getName()),
-              ),
+            : computeWorkerCapacity(clusterPools, clusterMetrics),
         metricsStatus,
       });
     }
@@ -359,22 +397,22 @@ export function useWorkerCapacity(
 
   const errors = useMemo(
     () => [
-      ...machinePoolErrors,
-      ...awsMachinePoolErrors,
-      ...awsManagedMachinePoolErrors,
-      ...azureASOManagedMachinePoolErrors,
-      ...machineDeploymentErrors,
-      ...azureMachineTemplateErrors,
-      ...vsphereMachineTemplateErrors,
+      ...machinePoolList.errors,
+      ...awsMachinePoolList.errors,
+      ...awsManagedMachinePoolList.errors,
+      ...azureASOManagedMachinePoolList.errors,
+      ...machineDeploymentList.errors,
+      ...azureMachineTemplateList.errors,
+      ...vsphereMachineTemplateList.errors,
     ],
     [
-      machinePoolErrors,
-      awsMachinePoolErrors,
-      awsManagedMachinePoolErrors,
-      azureASOManagedMachinePoolErrors,
-      machineDeploymentErrors,
-      azureMachineTemplateErrors,
-      vsphereMachineTemplateErrors,
+      machinePoolList.errors,
+      awsMachinePoolList.errors,
+      awsManagedMachinePoolList.errors,
+      azureASOManagedMachinePoolList.errors,
+      machineDeploymentList.errors,
+      azureMachineTemplateList.errors,
+      vsphereMachineTemplateList.errors,
     ],
   );
 

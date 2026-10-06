@@ -156,4 +156,18 @@ describe('numberCompareSort', () => {
       { cpu: undefined },
     ]);
   });
+
+  it('sorts items without a number last when material-table sorts descending', () => {
+    const items = [{ cpu: 16 }, { cpu: undefined }, { cpu: 4 }, { cpu: 0 }];
+    const compare = numberCompareSort<{ cpu?: number }>(item => item.cpu);
+
+    const sortedItems = items.sort((a, b) => compare(b, a, 'row', 'desc'));
+
+    expect(sortedItems).toEqual([
+      { cpu: 16 },
+      { cpu: 4 },
+      { cpu: 0 },
+      { cpu: undefined },
+    ]);
+  });
 });

@@ -1,5 +1,9 @@
 import { useCallback, useMemo } from 'react';
-import { UseQueryResult, useQueries } from '@tanstack/react-query';
+import {
+  UseQueryResult,
+  keepPreviousData,
+  useQueries,
+} from '@tanstack/react-query';
 import { MimirMetricSample } from '../../apis/mimir';
 import {
   KubeNodeLabels,
@@ -43,51 +47,48 @@ const RESOURCE_FIELDS: Record<string, keyof PoolSample> = {
   memory: 'memoryBytes',
 };
 
-/** Pool capacities by cluster id. A pool without all three series is absent. */
+/**
+ * Pool capacities by cluster id, with an entry for each of `clusterIds`, so a
+ * cluster absent from the result was not part of the query. A pool without
+ * all three series is absent. Plain objects, as the query cache is persisted
+ * as JSON.
+ */
 export function parseNodePoolCapacity(
   samples: MimirMetricSample[],
-): Map<string, NodePoolMetrics> {
-  const partial = new Map<string, Map<string, PoolSample>>();
+  clusterIds: string[],
+): Record<string, NodePoolMetrics> {
+  const partial: Record<string, Record<string, PoolSample>> = {};
+  for (const clusterId of clusterIds) {
+    partial[clusterId] = {};
+  }
 
   for (const { metric, value } of samples) {
     const amount = Number(value[1]);
     const field = RESOURCE_FIELDS[metric.resource];
-    if (
-      !metric.cluster_id ||
-      !metric.nodepool ||
-      !field ||
-      !Number.isFinite(amount)
-    ) {
+    const pools = partial[metric.cluster_id];
+    if (!pools || !metric.nodepool || !field || !Number.isFinite(amount)) {
       continue;
     }
 
-    let pools = partial.get(metric.cluster_id);
-    if (!pools) {
-      pools = new Map();
-      partial.set(metric.cluster_id, pools);
-    }
-    pools.set(metric.nodepool, {
-      ...pools.get(metric.nodepool),
-      [field]: amount,
-    });
+    pools[metric.nodepool] = { ...pools[metric.nodepool], [field]: amount };
   }
 
-  const result = new Map<string, NodePoolMetrics>();
-  for (const [clusterId, pools] of partial) {
-    const complete = new Map<
+  const result: Record<string, NodePoolMetrics> = {};
+  for (const [clusterId, pools] of Object.entries(partial)) {
+    const complete: Record<
       string,
       { nodes: number; vcpus: number; memoryBytes: number }
-    >();
-    for (const [name, { nodes, vcpus, memoryBytes }] of pools) {
+    > = {};
+    for (const [name, { nodes, vcpus, memoryBytes }] of Object.entries(pools)) {
       if (
         nodes !== undefined &&
         vcpus !== undefined &&
         memoryBytes !== undefined
       ) {
-        complete.set(name, { nodes, vcpus, memoryBytes });
+        complete[name] = { nodes, vcpus, memoryBytes };
       }
     }
-    result.set(clusterId, complete);
+    result[clusterId] = complete;
   }
   return result;
 }
@@ -96,8 +97,12 @@ export type NodePoolMetricsStatus = 'loading' | 'ok' | 'unavailable' | 'error';
 
 export type InstallationNodePoolMetrics = {
   status: NodePoolMetricsStatus;
-  /** By cluster id; set when `status` is `ok`. */
-  clusters?: Map<string, NodePoolMetrics>;
+  /**
+   * By cluster id; set when `status` is `ok`. While the installation's set of
+   * clusters changes, this is the previous answer, without the clusters it
+   * did not ask for.
+   */
+  clusters?: Readonly<Record<string, NodePoolMetrics>>;
 };
 
 /**
@@ -117,7 +122,7 @@ export function useMimirNodePoolCapacity(
     useMimirInstallations(requested);
 
   const combine = useCallback(
-    (results: UseQueryResult<Map<string, NodePoolMetrics>>[]) => {
+    (results: UseQueryResult<Record<string, NodePoolMetrics>>[]) => {
       const byInstallation = new Map<string, InstallationNodePoolMetrics>();
       for (const installationName of requested) {
         byInstallation.set(installationName, {
@@ -141,15 +146,17 @@ export function useMimirNodePoolCapacity(
 
   return useQueries({
     queries: withMimir.map(installationName => {
-      const query = buildNodePoolCapacityQuery(
-        [...clusterIdsByInstallation[installationName]].sort(),
-      );
+      const clusterIds = [...clusterIdsByInstallation[installationName]].sort();
+      const query = buildNodePoolCapacityQuery(clusterIds);
       return {
         queryKey: ['mimir-node-pool-capacity', installationName, query],
         queryFn: async () => {
           const response = await queryMimir(installationName, query);
-          return parseNodePoolCapacity(response.data?.result ?? []);
+          return parseNodePoolCapacity(response.data?.result ?? [], clusterIds);
         },
+        // The key holds the installation's cluster ids, so it changes as
+        // clusters come and go; the clusters already answered stay shown.
+        placeholderData: keepPreviousData,
         staleTime: 30_000,
       };
     }),

@@ -79,7 +79,9 @@ export function azureMachineTypeCatalog(
 
     const capability = (name: string) =>
       info.capabilities.find(c => c.name === name)?.value;
-    const vcpus = capability('vCPUs');
+    // `vCPUsAvailable` is lower than `vCPUs` on constrained-vCPU sizes
+    // (Standard_E4-2s_v3: 4 and 2), and it is what the node reports.
+    const vcpus = capability('vCPUsAvailable') ?? capability('vCPUs');
     // Azure labels this "GB", but the values are GiB (Standard_D2s_v3: 8).
     const memoryGiB = capability('MemoryGB');
     const architecture = capability('CpuArchitectureType');

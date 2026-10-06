@@ -460,8 +460,11 @@ describe('ClusterAboutCard', () => {
       },
     };
 
-    const machineDeploymentsPath =
-      '/apis/cluster.x-k8s.io/v1beta2/namespaces/org-test/machinedeployments/';
+    // Selected by the cluster's label, as the Node pools tab lists them, so
+    // the two share one query.
+    const machineDeploymentsPath = `/apis/cluster.x-k8s.io/v1beta2/namespaces/org-test/machinedeployments/?${new URLSearchParams(
+      { labelSelector: 'cluster.x-k8s.io/cluster-name=my-cluster' },
+    )}`;
     const vsphereTemplatesPath =
       '/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/org-test/vspheremachinetemplates/';
 

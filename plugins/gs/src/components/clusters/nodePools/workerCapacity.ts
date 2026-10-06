@@ -3,9 +3,8 @@ import { NodePoolCapacityInput } from './nodePoolRows';
 import { formatResourceQuantity } from './resourceFormat';
 
 /** What the Ready nodes of one pool report, keyed by pool name. */
-export type NodePoolMetrics = ReadonlyMap<
-  string,
-  MachineSize & { nodes: number }
+export type NodePoolMetrics = Readonly<
+  Record<string, MachineSize & { nodes: number }>
 >;
 
 export type WorkerCapacity = {
@@ -23,22 +22,20 @@ export type WorkerCapacity = {
   uncountedPools: string[];
 };
 
-function hasReadyNodes(pool: NodePoolCapacityInput): boolean {
-  return (pool.readyReplicas ?? 0) > 0;
-}
-
 /**
- * Whether some pool can only be counted from node metrics: it has ready
- * nodes but no known machine size (Karpenter, AKS, VCD, an unknown type).
+ * Whether some pool can only be counted from node metrics: it has no known
+ * machine size (Karpenter, AKS, VCD, an unknown type). Its ready count on the
+ * CR does not decide this, since the CR can lag the nodes.
  */
 export function needsNodeMetrics(pools: NodePoolCapacityInput[]): boolean {
-  return pools.some(pool => hasReadyNodes(pool) && !pool.machineSize);
+  return pools.some(pool => !pool.machineSize);
 }
 
 /**
  * Ready worker nodes times their machine size, summed over the node pools.
  * A pool without a known size takes its Ready nodes, CPU and memory from
- * `metrics` instead, so all three describe the same nodes.
+ * `metrics` instead, so all three describe the same nodes; only when the
+ * metrics lack it does its CR's ready count stand in for the nodes.
  */
 export function computeWorkerCapacity(
   pools: NodePoolCapacityInput[],
@@ -52,26 +49,22 @@ export function computeWorkerCapacity(
   };
 
   for (const pool of pools) {
-    if (!hasReadyNodes(pool)) {
-      continue;
-    }
-
-    const nodes = pool.readyReplicas ?? 0;
+    const readyReplicas = pool.readyReplicas ?? 0;
 
     if (pool.machineSize) {
-      capacity.nodes += nodes;
-      capacity.vcpus += nodes * pool.machineSize.vcpus;
-      capacity.memoryBytes += nodes * pool.machineSize.memoryBytes;
+      capacity.nodes += readyReplicas;
+      capacity.vcpus += readyReplicas * pool.machineSize.vcpus;
+      capacity.memoryBytes += readyReplicas * pool.machineSize.memoryBytes;
       continue;
     }
 
-    const observed = metrics?.get(pool.name);
+    const observed = metrics?.[pool.name];
     if (observed) {
       capacity.nodes += observed.nodes;
       capacity.vcpus += observed.vcpus;
       capacity.memoryBytes += observed.memoryBytes;
-    } else {
-      capacity.nodes += nodes;
+    } else if (readyReplicas > 0) {
+      capacity.nodes += readyReplicas;
       capacity.uncountedPools.push(pool.name);
     }
   }

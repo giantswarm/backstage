@@ -151,11 +151,10 @@ export const ClustersDataProvider = ({
     visibleColumns.includes(ClusterColumns.workerMemory);
 
   const { capacities: workerCapacities, errors: workerCapacityErrors } =
+    // Not gated on the whole fleet's Cluster lists: the hook reads each
+    // installation on its own, so the rows already shown get their figures.
     useWorkerCapacity(clusterResources, {
-      enabled:
-        workerCapacityRequired &&
-        !isLoadingClusters &&
-        clusterResources.length > 0,
+      enabled: workerCapacityRequired && clusterResources.length > 0,
     });
 
   // Only block the table while the primary cluster list has produced nothing

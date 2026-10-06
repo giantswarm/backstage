@@ -48,6 +48,23 @@ describe('azureMachineTypeCatalog', () => {
       architectures: ['x64'],
     });
   });
+
+  it('counts the available vCPUs of a constrained-vCPU size', () => {
+    const catalog = azureMachineTypeCatalog({
+      'Standard_E4-2s_v3': {
+        capabilities: [
+          { name: 'vCPUs', value: '4' },
+          { name: 'MemoryGB', value: '32' },
+          { name: 'vCPUsAvailable', value: '2' },
+        ],
+      },
+    });
+
+    expect(catalog('Standard_E4-2s_v3')?.size).toEqual({
+      vcpus: 2,
+      memoryBytes: 32 * GIB,
+    });
+  });
 });
 
 describe('vsphereMachineSize', () => {
