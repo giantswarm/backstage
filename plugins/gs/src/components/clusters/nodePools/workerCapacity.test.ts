@@ -3,6 +3,7 @@ import {
   formatWorkerCpu,
   formatWorkerMemory,
   formatWorkerNodes,
+  hasUnknownResources,
   needsNodeMetrics,
 } from './workerCapacity';
 
@@ -24,9 +25,11 @@ describe('computeWorkerCapacity', () => {
     });
   });
 
-  it('takes the CPU and memory of a pool without a size from node metrics', () => {
+  it('takes the nodes, CPU and memory of a pool without a size from node metrics', () => {
+    // The pool reports 3 ready machines; one node is not ready to the
+    // machine controller but Ready to Kubernetes, which the metrics count.
     const metrics = new Map([
-      ['karpenter', { vcpus: 12, memoryBytes: 48 * GIB }],
+      ['karpenter', { nodes: 4, vcpus: 16, memoryBytes: 64 * GIB }],
     ]);
 
     expect(
@@ -38,9 +41,9 @@ describe('computeWorkerCapacity', () => {
         metrics,
       ),
     ).toEqual({
-      nodes: 4,
-      vcpus: 16,
-      memoryBytes: 64 * GIB,
+      nodes: 5,
+      vcpus: 20,
+      memoryBytes: 80 * GIB,
       uncountedPools: [],
     });
   });
@@ -75,6 +78,25 @@ describe('computeWorkerCapacity', () => {
       memoryBytes: 0,
       uncountedPools: [],
     });
+  });
+});
+
+describe('hasUnknownResources', () => {
+  it('is true only when no pool had its CPU and memory counted', () => {
+    const unknown = computeWorkerCapacity(
+      [{ name: 'vcd', readyReplicas: 3, machineSize: undefined }],
+      new Map(),
+    );
+    const partial = computeWorkerCapacity(
+      [
+        { name: 'a', readyReplicas: 1, machineSize: m5xlarge },
+        { name: 'vcd', readyReplicas: 3, machineSize: undefined },
+      ],
+      new Map(),
+    );
+
+    expect(hasUnknownResources(unknown)).toBe(true);
+    expect(hasUnknownResources(partial)).toBe(false);
   });
 });
 

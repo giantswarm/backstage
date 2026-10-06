@@ -566,15 +566,18 @@ describe('ClusterAboutCard', () => {
 
       await renderCard(api);
 
+      // The only pool is uncounted: the node count stands alone rather than
+      // beside 0 vCPUs and 0 MiB.
       expect(
         await workerCapacityField().findByRole('button', {
-          name: 'Why some node pools are not counted',
+          name: 'Why CPU and memory are unknown',
         }),
       ).toBeInTheDocument();
       expect(
-        workerCapacityField().getByText('(1 node pool not counted)'),
+        workerCapacityField().getByText('(CPU and memory unknown)'),
       ).toBeInTheDocument();
-      expect(workerCapacityField().getByText(/4 nodes/)).toBeInTheDocument();
+      expect(workerCapacityField().getByText('4 nodes')).toBeInTheDocument();
+      expect(workerCapacityField().queryByText(/vCPU/)).not.toBeInTheDocument();
       expect(mimirApi.query).not.toHaveBeenCalled();
     });
 
@@ -584,6 +587,14 @@ describe('ClusterAboutCard', () => {
         data: {
           resultType: 'vector',
           result: [
+            {
+              metric: {
+                cluster_id: 'my-cluster',
+                nodepool: 'my-cluster-worker',
+                resource: 'nodes',
+              },
+              value: [0, '3'],
+            },
             {
               metric: {
                 cluster_id: 'my-cluster',
@@ -635,8 +646,8 @@ describe('ClusterAboutCard', () => {
       await renderCard(api);
 
       await waitFor(() => {
-        expect(workerCapacityField().getByText(/4 nodes/).textContent).toMatch(
-          /^4 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/,
+        expect(workerCapacityField().getByText(/3 nodes/).textContent).toMatch(
+          /^3 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/,
         );
       });
       expect(mimirApi.query).toHaveBeenCalledWith(

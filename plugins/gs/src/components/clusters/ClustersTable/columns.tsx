@@ -26,6 +26,16 @@ import {
 } from '../../../assets/icons/CustomIcons';
 import { ClusterData } from '../ClustersDataProvider';
 import { WorkerCapacity } from '../WorkerCapacity';
+import {
+  WorkerCapacity as WorkerCapacityValue,
+  hasUnknownResources,
+} from '../nodePools';
+
+/** The capacity of a row when its CPU and memory are known, for sorting. */
+function knownCapacity(row: ClusterData): WorkerCapacityValue | undefined {
+  const capacity = row.workerCapacity?.capacity;
+  return capacity && !hasUnknownResources(capacity) ? capacity : undefined;
+}
 
 function renderWorkerCapacity(row: ClusterData, show: 'cpu' | 'memory') {
   const workerCapacity = row.workerCapacity;
@@ -232,16 +242,14 @@ export const getInitialColumns = ({
       field: ClusterColumns.workerCpu,
       hidden: true,
       render: row => renderWorkerCapacity(row, 'cpu'),
-      customSort: numberCompareSort(row => row.workerCapacity?.capacity?.vcpus),
+      customSort: numberCompareSort(row => knownCapacity(row)?.vcpus),
     },
     {
       title: 'Worker memory',
       field: ClusterColumns.workerMemory,
       hidden: true,
       render: row => renderWorkerCapacity(row, 'memory'),
-      customSort: numberCompareSort(
-        row => row.workerCapacity?.capacity?.memoryBytes,
-      ),
+      customSort: numberCompareSort(row => knownCapacity(row)?.memoryBytes),
     },
     {
       title: 'Created',

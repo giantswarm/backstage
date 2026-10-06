@@ -15,6 +15,9 @@ describe('buildNodePoolCapacityQuery', () => {
       'kube_node_labels{cluster_id=~"c1|c2", nodepool!=""}',
     );
     expect(query).toContain('condition="Ready", status="true"} == 1');
+    expect(query).toContain(
+      'or label_replace(count by (cluster_id, nodepool) (',
+    );
   });
 });
 
@@ -29,19 +32,23 @@ describe('parseNodePoolCapacity', () => {
     value: [0, value] as [number, string],
   });
 
-  it('groups CPU and memory by cluster and pool', () => {
+  it('groups nodes, CPU and memory by cluster and pool', () => {
     const result = parseNodePoolCapacity([
+      sample('c1', 'p1', 'nodes', '2'),
       sample('c1', 'p1', 'cpu', '8'),
       sample('c1', 'p1', 'memory', '1024'),
+      sample('c2', 'p2', 'nodes', '1'),
       sample('c2', 'p2', 'cpu', '4'),
       sample('c2', 'p2', 'memory', '2048'),
     ]);
 
     expect(result.get('c1')?.get('p1')).toEqual({
+      nodes: 2,
       vcpus: 8,
       memoryBytes: 1024,
     });
     expect(result.get('c2')?.get('p2')).toEqual({
+      nodes: 1,
       vcpus: 4,
       memoryBytes: 2048,
     });
@@ -49,7 +56,9 @@ describe('parseNodePoolCapacity', () => {
 
   it('leaves out a pool missing a resource or with a non-numeric value', () => {
     const result = parseNodePoolCapacity([
-      sample('c1', 'cpu-only', 'cpu', '8'),
+      sample('c1', 'no-nodes', 'cpu', '8'),
+      sample('c1', 'no-nodes', 'memory', '1024'),
+      sample('c1', 'nan', 'nodes', '1'),
       sample('c1', 'nan', 'cpu', 'NaN'),
       sample('c1', 'nan', 'memory', '1024'),
     ]);

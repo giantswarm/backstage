@@ -6,7 +6,9 @@ import {
   formatWorkerCpu,
   formatWorkerMemory,
   formatWorkerNodes,
+  hasUnknownResources,
 } from '../nodePools';
+import { NotAvailable } from '../../UI';
 import { NodePoolMetricsStatus } from '../../hooks/useMimirNodePoolCapacity';
 
 const useStyles = makeStyles(theme => ({
@@ -64,13 +66,19 @@ export const WorkerCapacity = ({
 }: WorkerCapacityProps) => {
   const classes = useStyles();
 
+  const resourcesUnknown = hasUnknownResources(capacity);
+
   let value: ReactNode;
-  if (show === 'cpu') {
+  if (show !== 'summary' && resourcesUnknown) {
+    value = <NotAvailable />;
+  } else if (show === 'cpu') {
     value = formatWorkerCpu(capacity.vcpus);
   } else if (show === 'memory') {
     value = formatWorkerMemory(capacity.memoryBytes);
   } else if (capacity.nodes === 0) {
     return <>No ready worker nodes</>;
+  } else if (resourcesUnknown) {
+    value = formatWorkerNodes(capacity.nodes);
   } else {
     value = (
       <>
@@ -89,17 +97,19 @@ export const WorkerCapacity = ({
     capacity.uncountedPools,
     metricsStatus,
   );
+  const note = resourcesUnknown ? 'CPU and memory unknown' : label;
+  const summaryHintLabel = resourcesUnknown
+    ? 'Why CPU and memory are unknown'
+    : 'Why some node pools are not counted';
 
   return (
     <span className={classes.root}>
       <span>{value}</span>
-      {show === 'summary' && <span className={classes.note}>({label})</span>}
+      {show === 'summary' && <span className={classes.note}>({note})</span>}
       <InfoHint
         // Beside the visible note, the button names what it reveals rather
         // than repeating the note.
-        label={
-          show === 'summary' ? 'Why some node pools are not counted' : label
-        }
+        label={show === 'summary' ? summaryHintLabel : label}
         size="medium"
       >
         {explanation}

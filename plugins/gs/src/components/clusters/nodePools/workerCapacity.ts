@@ -2,11 +2,17 @@ import { MachineSize } from './machineTypes';
 import { NodePoolCapacityInput } from './nodePoolRows';
 import { formatResourceQuantity } from './resourceFormat';
 
-/** CPU and memory the ready nodes of one pool report, keyed by pool name. */
-export type NodePoolMetrics = ReadonlyMap<string, MachineSize>;
+/** What the Ready nodes of one pool report, keyed by pool name. */
+export type NodePoolMetrics = ReadonlyMap<
+  string,
+  MachineSize & { nodes: number }
+>;
 
 export type WorkerCapacity = {
-  /** Ready worker nodes, as the node pools report them. */
+  /**
+   * Ready worker nodes: as the node pools report them, or as the node
+   * metrics do for a pool whose CPU and memory come from them.
+   */
   nodes: number;
   vcpus: number;
   memoryBytes: number;
@@ -31,8 +37,8 @@ export function needsNodeMetrics(pools: NodePoolCapacityInput[]): boolean {
 
 /**
  * Ready worker nodes times their machine size, summed over the node pools.
- * A pool without a known size takes the CPU and memory its ready nodes
- * report in `metrics` instead.
+ * A pool without a known size takes its Ready nodes, CPU and memory from
+ * `metrics` instead, so all three describe the same nodes.
  */
 export function computeWorkerCapacity(
   pools: NodePoolCapacityInput[],
@@ -51,9 +57,9 @@ export function computeWorkerCapacity(
     }
 
     const nodes = pool.readyReplicas ?? 0;
-    capacity.nodes += nodes;
 
     if (pool.machineSize) {
+      capacity.nodes += nodes;
       capacity.vcpus += nodes * pool.machineSize.vcpus;
       capacity.memoryBytes += nodes * pool.machineSize.memoryBytes;
       continue;
@@ -61,9 +67,11 @@ export function computeWorkerCapacity(
 
     const observed = metrics?.get(pool.name);
     if (observed) {
+      capacity.nodes += observed.nodes;
       capacity.vcpus += observed.vcpus;
       capacity.memoryBytes += observed.memoryBytes;
     } else {
+      capacity.nodes += nodes;
       capacity.uncountedPools.push(pool.name);
     }
   }
@@ -73,6 +81,15 @@ export function computeWorkerCapacity(
 
 function pluralize(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/** Whether no pool with ready nodes had its CPU and memory counted. */
+export function hasUnknownResources(capacity: WorkerCapacity): boolean {
+  return (
+    capacity.uncountedPools.length > 0 &&
+    capacity.vcpus === 0 &&
+    capacity.memoryBytes === 0
+  );
 }
 
 export function formatWorkerNodes(nodes: number): string {

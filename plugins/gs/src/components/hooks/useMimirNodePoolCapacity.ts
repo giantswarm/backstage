@@ -6,40 +6,58 @@ import {
   KubeNodeStatusCapacity,
   KubeNodeStatusCondition,
 } from '../../apis/mimir/metrics';
-import { MachineSize, NodePoolMetrics } from '../clusters/nodePools';
+import { NodePoolMetrics } from '../clusters/nodePools';
 import { sanitizePromQLValue } from './promql';
 import { useMimirInstallations } from './useMimirInstallations';
 import { useMimirQueryFn } from './useMimirQueryFn';
 
 /**
- * Per-pool CPU and memory capacity of the Ready nodes of the given clusters.
- * Nodes join their pool through the `nodepool` label on `kube_node_labels`,
- * which carries the MachinePool or MachineDeployment name.
+ * Per-pool Ready node count and CPU and memory capacity of the given
+ * clusters. Nodes join their pool through the `nodepool` label on
+ * `kube_node_labels`, which carries the MachinePool or MachineDeployment
+ * name.
  */
 export function buildNodePoolCapacityQuery(clusterIds: string[]): string {
   const ids = clusterIds.map(sanitizePromQLValue).join('|');
   const clusters = `cluster_id=~"${ids}"`;
+  const readyPoolNodes = [
+    `max by (cluster_id, node, nodepool) (${KubeNodeLabels.name}{${clusters}, nodepool!=""})`,
+    '* on (cluster_id, node) group_left ()',
+    `max by (cluster_id, node) (${KubeNodeStatusCondition.name}{${clusters}, condition="Ready", status="true"} == 1)`,
+  ].join(' ');
 
   return [
     'sum by (cluster_id, nodepool, resource) (',
     `  max by (cluster_id, node, resource) (${KubeNodeStatusCapacity.name}{${clusters}, resource=~"cpu|memory"})`,
-    '  * on (cluster_id, node) group_left (nodepool)',
-    `    max by (cluster_id, node, nodepool) (${KubeNodeLabels.name}{${clusters}, nodepool!=""})`,
-    '  * on (cluster_id, node) group_left ()',
-    `    max by (cluster_id, node) (${KubeNodeStatusCondition.name}{${clusters}, condition="Ready", status="true"} == 1)`,
+    `  * on (cluster_id, node) group_left (nodepool) (${readyPoolNodes})`,
     ')',
+    `or label_replace(count by (cluster_id, nodepool) (${readyPoolNodes}), "resource", "nodes", "", "")`,
   ].join(' ');
 }
 
-/** Pool capacities by cluster id. A pool without series is absent. */
+type PoolSample = { nodes?: number; vcpus?: number; memoryBytes?: number };
+
+const RESOURCE_FIELDS: Record<string, keyof PoolSample> = {
+  nodes: 'nodes',
+  cpu: 'vcpus',
+  memory: 'memoryBytes',
+};
+
+/** Pool capacities by cluster id. A pool without all three series is absent. */
 export function parseNodePoolCapacity(
   samples: MimirMetricSample[],
 ): Map<string, NodePoolMetrics> {
-  const partial = new Map<string, Map<string, Partial<MachineSize>>>();
+  const partial = new Map<string, Map<string, PoolSample>>();
 
   for (const { metric, value } of samples) {
     const amount = Number(value[1]);
-    if (!metric.cluster_id || !metric.nodepool || !Number.isFinite(amount)) {
+    const field = RESOURCE_FIELDS[metric.resource];
+    if (
+      !metric.cluster_id ||
+      !metric.nodepool ||
+      !field ||
+      !Number.isFinite(amount)
+    ) {
       continue;
     }
 
@@ -48,21 +66,25 @@ export function parseNodePoolCapacity(
       pools = new Map();
       partial.set(metric.cluster_id, pools);
     }
-    const pool = pools.get(metric.nodepool) ?? {};
-    if (metric.resource === 'cpu') {
-      pool.vcpus = amount;
-    } else if (metric.resource === 'memory') {
-      pool.memoryBytes = amount;
-    }
-    pools.set(metric.nodepool, pool);
+    pools.set(metric.nodepool, {
+      ...pools.get(metric.nodepool),
+      [field]: amount,
+    });
   }
 
   const result = new Map<string, NodePoolMetrics>();
   for (const [clusterId, pools] of partial) {
-    const complete = new Map<string, MachineSize>();
-    for (const [name, { vcpus, memoryBytes }] of pools) {
-      if (vcpus !== undefined && memoryBytes !== undefined) {
-        complete.set(name, { vcpus, memoryBytes });
+    const complete = new Map<
+      string,
+      { nodes: number; vcpus: number; memoryBytes: number }
+    >();
+    for (const [name, { nodes, vcpus, memoryBytes }] of pools) {
+      if (
+        nodes !== undefined &&
+        vcpus !== undefined &&
+        memoryBytes !== undefined
+      ) {
+        complete.set(name, { nodes, vcpus, memoryBytes });
       }
     }
     result.set(clusterId, complete);
