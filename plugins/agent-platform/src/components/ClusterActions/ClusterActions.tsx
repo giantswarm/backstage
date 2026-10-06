@@ -55,16 +55,23 @@ export function CreateClusterAction() {
 
 /**
  * **Delete** beside a cluster's header, where the installation's
- * cluster-manager offers `delete_cluster`; never on the installation's own
- * cluster, which it refuses.
+ * cluster-manager offers `delete_cluster`; only on a cluster create_cluster
+ * made (rendered by a HelmRelease of its own name), the only kind it removes,
+ * and never on the installation's own cluster.
  */
 export function DeleteClusterAction() {
   const target = useClusterPageTarget();
+  const deletable =
+    Boolean(target) &&
+    !target!.isManagementCluster &&
+    Boolean(target!.organization) &&
+    target!.helmRelease?.name === target!.name &&
+    target!.helmRelease?.namespace === target!.namespace;
   const { presenceOf } = useClusterManagerAvailability(
-    target ? [target.installationName] : [],
+    deletable ? [target!.installationName] : [],
   );
   const reachable =
-    Boolean(target) && presenceOf(target!.installationName) === 'available';
+    deletable && presenceOf(target!.installationName) === 'available';
   const { info } = useClusterManagerInfo(
     reachable ? target!.installationName : undefined,
   );
@@ -72,8 +79,7 @@ export function DeleteClusterAction() {
 
   if (
     !target ||
-    target.isManagementCluster ||
-    !target.organization ||
+    !deletable ||
     !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster)
   ) {
     return null;
