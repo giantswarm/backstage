@@ -4,8 +4,8 @@ import { oidcTokenInstallation, OIDCTokenProps } from './schema';
 
 /**
  * Records the installation the cluster token is for. The token itself is
- * minted when the template is submitted (`useStartTemplateTask`), since one
- * minted while the form is filled may have expired by then.
+ * minted when the template is submitted (`GSScaffolderApiClient.scaffold`),
+ * since one minted while the form is filled may have expired by then.
  */
 export const OIDCToken = ({
   uiSchema,

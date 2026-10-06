@@ -129,7 +129,7 @@ function GSTemplateListContent(props: {
 function GSTemplatesSubPage(props: {
   fieldExtensions: FieldExtensionOptions<any, any>[];
   layouts: LayoutOptions[];
-  ReviewStepComponent?: ComponentType<ReviewStepProps>;
+  ReviewStepComponent: ComponentType<ReviewStepProps>;
   templateFilter?: (entity: TemplateEntityV1beta3) => boolean;
 }) {
   return (
@@ -147,11 +147,9 @@ function GSTemplatesSubPage(props: {
             <GSTemplateWizardPageContent
               extensions={props.fieldExtensions}
               layouts={props.layouts}
-              components={
-                props.ReviewStepComponent
-                  ? { ReviewStepComponent: props.ReviewStepComponent }
-                  : undefined
-              }
+              components={{
+                ReviewStepComponent: props.ReviewStepComponent,
+              }}
             />
           </SecretsContextProvider>
         }

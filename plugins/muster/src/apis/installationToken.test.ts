@@ -1,7 +1,7 @@
+import { ClusterTokenError } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   isHomeInstallation,
   isMusterTokenMintError,
-  isSessionExpiredError,
   MusterTokenMintError,
 } from './installationToken';
 
@@ -36,48 +36,11 @@ describe('isHomeInstallation', () => {
   });
 });
 
-describe('isSessionExpiredError', () => {
-  const brokerError = (reason: string) =>
-    Object.assign(new Error(`Cluster token request failed: ${reason}`), {
-      name: 'ClusterTokenError',
-      reason,
-    });
-
-  it("recognises the broker's session-expired and subject_invalid reasons", () => {
-    expect(isSessionExpiredError(brokerError('session-expired'))).toBe(true);
-    expect(isSessionExpiredError(brokerError('subject_invalid'))).toBe(true);
-  });
-
-  it('does not mistake other broker failures for an expired session', () => {
-    expect(isSessionExpiredError(brokerError('broker_unreachable'))).toBe(
-      false,
-    );
-    expect(isSessionExpiredError(brokerError('exchange_failed'))).toBe(false);
-  });
-
-  it('recognises the wording of a declined re-login', () => {
-    expect(
-      isSessionExpiredError(
-        new Error('Main session expired and re-login did not complete'),
-      ),
-    ).toBe(true);
-  });
-
-  it('is false for anything else', () => {
-    expect(isSessionExpiredError(new Error('ENOTFOUND'))).toBe(false);
-    expect(isSessionExpiredError(undefined)).toBe(false);
-    expect(isSessionExpiredError(null)).toBe(false);
-  });
-});
-
 describe('MusterTokenMintError', () => {
   it('classifies an expired session and names the installation', () => {
     const error = MusterTokenMintError.fromMintFailure(
       'golem',
-      Object.assign(new Error('Cluster token request failed'), {
-        name: 'ClusterTokenError',
-        reason: 'session-expired',
-      }),
+      new ClusterTokenError('golem', 'session-expired'),
     );
     expect(error.reason).toBe('session-expired');
     expect(error.installation).toBe('golem');

@@ -7,6 +7,7 @@ import {
   __resetSignedInConfigForTests,
   setSignedInConfig,
 } from '@giantswarm/backstage-plugin-gs-react';
+import { ClusterTokenError } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
 import { MusterAuthProvidersApi } from './types';
 
@@ -277,9 +278,10 @@ describe('MusterApiClient token selection', () => {
     const t = setup({
       broker: () =>
         Promise.reject(
-          Object.assign(
-            new Error('Main session expired and re-login did not complete'),
-            { name: 'ClusterTokenError', reason: 'session-expired' },
+          new ClusterTokenError(
+            'golem',
+            'session-expired',
+            'Main session expired and re-login did not complete',
           ),
         ),
     });

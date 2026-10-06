@@ -153,8 +153,10 @@ test.describe('a template submitted after the sign-in expired', () => {
     await expect(login, 'the portal asks for the sign-in').toBeVisible();
     await login.getByRole('button', { name: 'Reject All' }).click();
 
+    // A broker-covered installation reports the expired portal session; any
+    // other reports the declined prompt.
     const alert = page.getByRole('alert').filter({
-      hasText: 'Your sign-in expired',
+      hasText: /Your sign-in expired|Sign-in needed/,
     });
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('your entries are kept');
