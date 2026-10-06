@@ -673,7 +673,7 @@ export function SessionDetailPage() {
    * different page instance, since `SessionDetailRoute` keys the page on the
    * session.
    */
-  const creation = useCreateSession();
+  const creation = useCreateSession('sessionDetail');
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession } = creation;

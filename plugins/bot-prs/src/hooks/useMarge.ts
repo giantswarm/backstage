@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   ALL_INSTALLATIONS,
   applyInstallationScope,
@@ -223,7 +224,9 @@ export function useBotPrs(
   // bot PR the person can see. A read can be refused after the fact; a
   // write cannot.
   const [classifying, setClassifying] = useState<string[]>([]);
-  const classifyRun = useMutation({
+  const classifyRun = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal bot PR tooling, not a customer portal action.',
     mutationFn: async (prsByTeam?: Record<string, string[]>) => {
       const named = prsByTeam ? Object.keys(prsByTeam) : teams;
       setClassifying(named);
@@ -382,7 +385,9 @@ export function useMargeTeamSweeps(
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal bot PR tooling, not a customer portal action.',
     mutationFn: async ({
       args,
       kept,
@@ -482,7 +487,9 @@ export function useMargeMark(installation: string | undefined): MargeMarkState {
   const client = useMargeClient(installation);
   const queryClient = useQueryClient();
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal bot PR tooling, not a customer portal action.',
     mutationFn: async (args: MargeMarkArgs) => {
       if (!client) {
         throw new Error('marge is not reachable on this installation');

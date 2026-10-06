@@ -335,7 +335,7 @@ export type ToolsetCarrier = Pick<
  * the gateway into a `RemoteMCPServer` **named after the agent** in its own
  * namespace (the per-agent toolset carrier), and a hand-written template may
  * still bind a shared gateway server by the conventional name. A name match,
- * like the detail page's Tool Explorer link: any other server is some other
+ * like the detail page's link to muster's MCP servers: any other server is some other
  * MCP server, whatever its URL.
  */
 export function isGatewayBinding(
@@ -476,7 +476,7 @@ export function surfaceName(server: ServerInfo): string {
 /**
  * The server surface a tool belongs to, by muster's `server` field when the
  * aggregator reports one, else by the longest matching `x_<segment>` prefix
- * (the way the Tool Explorer attributes tools on older aggregators).
+ * (the way muster's server pages attribute tools on older aggregators).
  */
 export function serverOfTool(
   tool: Pick<ToolSummary, 'name' | 'server'>,

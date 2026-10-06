@@ -1,12 +1,13 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Flex, SearchField, Text } from '@backstage/ui';
+import { Alert, Flex, SearchField, Table, Text, useTable } from '@backstage/ui';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { ServerPageRow } from '../../../lib/serverGrouping';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
 import { noToolsExplanation } from '../../McpServersPage/serverDetail';
-import { ToolTable, toolTableItem, useServerPageLinks } from '../../shared';
+import { hasMarkers, useServerPageLinks } from '../../shared';
 import { ServerTools } from '../useServerPageData';
+import { sortToolRows, toolColumns, ToolRow } from './columns';
 
 export interface ServerToolsTabProps {
   row: ServerPageRow;
@@ -33,9 +34,21 @@ function emptyExplanation(row: ServerPageRow): string {
   return 'muster reports no tools of its own.';
 }
 
+/** The filter's rule, the one the servers list counts its tool matches by. */
+function searchToolRows(rows: ToolRow[], query: string): ToolRow[] {
+  return rows.filter(row =>
+    toolMatchesQuery(
+      { name: row.id, description: row.description },
+      row.name,
+      query,
+    ),
+  );
+}
+
 /**
- * The server's tools, each linking to its tool page: short name, markers,
- * description. The filter is the page's `?q=`, so a link can open the tab
+ * The server's tools, each linking to its tool page: short name, the
+ * read-only / destructive markers, and description, sortable by each and
+ * paged. The filter is the page's `?q=`, so a link can open the tab
  * pre-filtered. A family's tools are listed once for the whole family,
  * including the ones muster exposes per instance.
  */
@@ -51,27 +64,61 @@ export function ServerToolsTab({
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
 
-  const setQuery = (next: string) =>
-    setSearchParams(
-      prev => {
-        if (next) {
-          prev.set('q', next);
-        } else {
-          prev.delete('q');
-        }
-        return prev;
-      },
-      { replace: true },
-    );
+  const setQuery = useCallback(
+    (next: string) =>
+      setSearchParams(
+        prev => {
+          if (next) {
+            prev.set('q', next);
+          } else {
+            prev.delete('q');
+          }
+          return prev;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
 
   const { tools: listed, shortName } = tools;
-  const visible = useMemo(
+  const rows = useMemo<ToolRow[]>(
     () =>
-      (listed ?? []).filter(tool =>
-        toolMatchesQuery(tool, shortName(tool.name), query),
-      ),
-    [listed, shortName, query],
+      (listed ?? []).map(tool => ({
+        id: tool.name,
+        name: shortName(tool.name),
+        href: links.tool(serverKey, tool.name, installation),
+        annotations: tool.annotations,
+        // muster's catalogue carries a one-line `summary`; the full
+        // description only where an older aggregator still sends it.
+        description: tool.description ?? tool.summary,
+      })),
+    [listed, shortName, links, serverKey, installation],
   );
+
+  // From every tool, not the filtered ones, so the column stays put while
+  // the filter narrows the rows.
+  const columns = useMemo(
+    () =>
+      toolColumns({
+        annotations: (listed ?? []).some(tool => hasMarkers(tool.annotations)),
+      }),
+    [listed],
+  );
+
+  const { tableProps } = useTable<ToolRow>({
+    mode: 'complete',
+    data: rows,
+    // Without a sortFn a complete table's sorting does nothing at all.
+    sortFn: sortToolRows,
+    initialSort: { column: 'tool', direction: 'ascending' },
+    // The table's search is the URL's `?q=`: a changed filter goes back to
+    // the first page.
+    search: query,
+    onSearchChange: setQuery,
+    searchFn: searchToolRows,
+    // As the Sessions table pages.
+    paginationOptions: { pageSize: 25, pageSizeOptions: [25, 50, 100] },
+  });
 
   if (sessionGate) {
     return <>{sessionGate}</>;
@@ -101,12 +148,13 @@ export function ServerToolsTab({
   }
 
   return (
-    <Flex direction="column" gap="3" style={{ maxWidth: 1024 }}>
+    <Flex direction="column" gap="3">
       <SearchField
         aria-label="Filter tools"
         placeholder="Filter tools"
         value={query}
         onChange={setQuery}
+        style={{ maxWidth: 480 }}
       />
       {tools.truncated && (
         <Text as="p" variant="body-small" color="secondary">
@@ -114,16 +162,15 @@ export function ServerToolsTab({
           may be incomplete.
         </Text>
       )}
-      <ToolTable
-        ariaLabel="Tools"
-        emptyText={`No tool of this server matches “${query}”.`}
-        items={visible.map(tool => {
-          const href = links.tool(serverKey, tool.name, installation);
-          return toolTableItem(tool, {
-            name: tools.shortName(tool.name),
-            mode: href ? { kind: 'link', href } : { kind: 'static' },
-          });
-        })}
+      {/* `tableProps` carries the sorted rows; never pass `data` after it. */}
+      <Table<ToolRow>
+        {...tableProps}
+        columnConfig={columns}
+        emptyState={
+          <Text as="p" variant="body-medium" color="secondary">
+            No tool of this server matches “{query}”.
+          </Text>
+        }
       />
     </Flex>
   );

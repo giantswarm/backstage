@@ -64,7 +64,7 @@ export type MusterInstance = {
    * home installation -- could not be asked whether it runs muster: its
    * inventory probe failed (gs `selectInventoryFailure`), with a 401 the
    * person's token cannot repair, a 403 or another error. When that leaves the
-   * section without an installation, `MusterSection` renders the gate that
+   * section without an installation, `MusterSubPage` renders the gate that
    * explains it instead of a view. Undefined while the probe is pending or
    * once it answered.
    */

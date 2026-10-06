@@ -124,8 +124,22 @@ export interface PlansEpicsResponse {
   pulls: PullEpic[];
 }
 
+/** Where the Magazine page reads from (`GET /magazine`). */
+export type MagazineConfigResponse =
+  | { configured: false }
+  | {
+      configured: true;
+      /** `owner/repo` of the magazine repository. */
+      repository: string;
+      /** Branch with the generated `magazine/*.json`. */
+      ref: string;
+      /** Branch with the `knowledge/**` documents. */
+      knowledgeRef: string;
+    };
+
 export interface PlansApi {
   getConnection(): Promise<PlansConnectionResponse>;
+  getMagazine(): Promise<MagazineConfigResponse>;
   listRepos(): Promise<PlansReposResponse>;
   listPulls(repo?: string): Promise<PlansPullsResponse>;
   listPullFiles(

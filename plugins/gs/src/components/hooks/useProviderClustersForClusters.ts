@@ -1,5 +1,6 @@
 import {
   AWSCluster,
+  AzureASOManagedCluster,
   AzureCluster,
   Cluster,
   useResources,
@@ -14,6 +15,7 @@ export function useProviderClustersForClusters(
 ) {
   const awsInstallations = new Set<string>();
   const azureInstallations = new Set<string>();
+  const azureManagedInstallations = new Set<string>();
   const vSphereInstallations = new Set<string>();
   const vCDInstallations = new Set<string>();
   clusterResources.forEach(cluster => {
@@ -29,6 +31,10 @@ export function useProviderClustersForClusters(
 
     if (infrastructureRef.kind === AzureCluster.kind) {
       azureInstallations.add(cluster.cluster);
+    }
+
+    if (infrastructureRef.kind === AzureASOManagedCluster.kind) {
+      azureManagedInstallations.add(cluster.cluster);
     }
 
     if (infrastructureRef.kind === VSphereCluster.kind) {
@@ -63,6 +69,17 @@ export function useProviderClustersForClusters(
   );
 
   const {
+    resources: azureManagedClusters,
+    errors: azureManagedClusterErrors,
+    isLoading: isLoadingAzureManagedClusters,
+  } = useResources(
+    Array.from(azureManagedInstallations),
+    AzureASOManagedCluster,
+    {},
+    { enabled: enabled && azureManagedInstallations.size > 0 },
+  );
+
+  const {
     resources: vSphereClusters,
     errors: vSphereClusterErrors,
     isLoading: isLoadingVSphereClusters,
@@ -89,32 +106,38 @@ export function useProviderClustersForClusters(
       resources: [
         ...awsClusters,
         ...azureClusters,
+        ...azureManagedClusters,
         ...vSphereClusters,
         ...vCDClusters,
       ],
       errors: [
         ...awsClusterErrors,
         ...azureClusterErrors,
+        ...azureManagedClusterErrors,
         ...vSphereClusterErrors,
         ...vCDClusterErrors,
       ],
       isLoading:
         isLoadingAWSClusters ||
         isLoadingAzureClusters ||
+        isLoadingAzureManagedClusters ||
         isLoadingVSphereClusters ||
         isLoadingVCDClusters,
     };
   }, [
     awsClusters,
     azureClusters,
+    azureManagedClusters,
     vSphereClusters,
     vCDClusters,
     awsClusterErrors,
     azureClusterErrors,
+    azureManagedClusterErrors,
     vSphereClusterErrors,
     vCDClusterErrors,
     isLoadingAWSClusters,
     isLoadingAzureClusters,
+    isLoadingAzureManagedClusters,
     isLoadingVSphereClusters,
     isLoadingVCDClusters,
   ]);

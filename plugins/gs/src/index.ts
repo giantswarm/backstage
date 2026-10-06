@@ -113,6 +113,12 @@ export {
   ClusterAccessConnector,
 } from './components/ClusterAccessStatus';
 export { KubernetesClient } from './apis/kubernetes/KubernetesClient';
+// The cluster of a cluster page, for the actions other plugins attach to
+// `page:gs/clusters` (input `clusterActions`).
+export {
+  useClusterPageTarget,
+  type ClusterPageTarget,
+} from './components/clusters/ClusterDetailsPage/useClusterPageTarget';
 export { createCustomEntityPresentationRenderer as createGSEntityPresentationRenderer } from './apis/entityPresentation';
 export { CustomCatalogPage as GSCustomCatalogPage } from './components/catalog/CustomCatalogPage';
 export { ResourcesCard as GSHomePageResources } from './components/home/ResourcesCard';

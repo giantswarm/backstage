@@ -53,8 +53,7 @@ export type AgentSkillEntry =
 /**
  * What the portal sends to `validate_agent` and `create_agent` — the form
  * model. Everything but `name`, `modelConfig` and `toolset` is optional and an
- * omitted field keeps the chart's default. There is no runtime (every agent
- * runs on the platform Harness) and no per-skill credential.
+ * omitted field keeps the chart's default. There is no per-skill credential.
  */
 export type AgentSpec = {
   /** The ModelConfig's namespace: where the release and the template land. */
@@ -66,6 +65,11 @@ export type AgentSpec = {
   systemMessage?: string;
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
+  /**
+   * The harness label value of a Harness in `namespace` (chart
+   * `agent.harness`). Omitted, the platform Harness. Fixed at create.
+   */
+  harness?: string;
   /** Avatar URL (chart `agent.iconUrl`, rendered as an annotation). */
   iconUrl?: string;
   skills?: AgentSkillEntry[];
@@ -131,6 +135,12 @@ export type ValidateAgentResult = {
   mode: 'create' | 'update';
   /** Every schema violation and precondition failure, in agent-manager's words. */
   errors?: string[];
+  /**
+   * Checks the dry run could not make, such as the name-clash check for a
+   * person who may not read the namespace's HelmReleases. They do not block
+   * the write.
+   */
+  notes?: string[];
   schemaVersion: string;
   schemaSource: string;
   manifests: AgentManifests;

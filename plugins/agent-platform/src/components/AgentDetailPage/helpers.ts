@@ -32,26 +32,15 @@ export function mcpBindingId(binding: AgentMcpBinding): string {
 }
 
 /**
- * How the agent's access to a server is scoped, in words.
+ * How the agent's access to a server it binds directly (not through the
+ * gateway) is scoped, in words.
  *
  * `tools` is an allowlist; an absent or empty one means the agent may call
  * everything the server exposes, which is worth stating rather than leaving to
- * be inferred from a missing value. For the gateway that allowlist only ever
- * covers muster's meta-tools, so the row points at the Toolset card, where the
- * agent's actual tool access is declared and resolved.
+ * be inferred from a missing value.
  */
-export function describeToolScope(
-  binding: AgentMcpBinding,
-  isGateway: boolean,
-): string {
+export function describeToolScope(binding: AgentMcpBinding): string {
   const tools = binding.tools ?? [];
-  if (isGateway) {
-    return tools.length === 0
-      ? 'The gateway; which of its tools the agent can use is its toolset — see the Tools tab'
-      : `The gateway, with ${tools.length} meta-tool${
-          tools.length === 1 ? '' : 's'
-        } (${tools.join(', ')}); which tools the agent can use is its toolset — see the Tools tab`;
-  }
   if (tools.length === 0) {
     return 'All tools from this server';
   }

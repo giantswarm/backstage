@@ -13,8 +13,9 @@ import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-rea
 import type { AgentRow } from '../AgentsDataProvider';
 
 /**
- * How each readiness state presents. Wording follows kagent's own UI so the two
- * agree; the icon and colour handling lives in `StatusLabel`.
+ * How each readiness state presents. `Failed` is the word the Harness rows and
+ * agent-manager's `get_agent_status` use for the same verdict; the icon and
+ * colour handling lives in `StatusLabel`.
  *
  * Icons are passed explicitly rather than relying on `StatusLabel`'s per-intent
  * defaults: `pending` reads far better as an hourglass than as the neutral
@@ -39,7 +40,7 @@ export const READINESS_PRESENTATION: Record<
 > = {
   ready: { label: 'Ready', intent: 'positive', icon: CheckCircleIcon },
   notReady: { label: 'Not ready', intent: 'warning', icon: ReportProblemIcon },
-  notAccepted: { label: 'Not accepted', intent: 'negative', icon: ErrorIcon },
+  failed: { label: 'Failed', intent: 'negative', icon: ErrorIcon },
   notAdmitted: { label: 'Not admitted', intent: 'negative', icon: BlockIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };
@@ -56,6 +57,13 @@ function getReadinessHint(row: AgentRow): string | undefined {
   ].filter(Boolean);
 
   return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+/** The info icon's name: "Why X failed", "Why X is not ready". */
+function readinessHintLabel(name: string, readiness: AgentReadiness): string {
+  return readiness === 'failed'
+    ? `Why ${name} failed`
+    : `Why ${name} is ${READINESS_PRESENTATION[readiness].label.toLowerCase()}`;
 }
 
 /**
@@ -75,7 +83,7 @@ export function AgentReadinessCell({ row }: { row: AgentRow }) {
             size="medium"
             label={
               row.readinessMessage
-                ? `Why ${row.name} is ${label.toLowerCase()}`
+                ? readinessHintLabel(row.name, row.readiness)
                 : `Harness warnings for ${row.name}`
             }
           >

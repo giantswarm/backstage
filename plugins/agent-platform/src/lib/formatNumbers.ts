@@ -126,3 +126,22 @@ export function formatSeconds(value: number | undefined): string {
   }
   return `${value.toFixed(value < 10 ? 1 : 0)}s`;
 }
+
+const BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+
+/** Bytes → a short binary-prefixed figure: 6594474711 → "6.1 GiB". */
+export function formatBytes(bytes: number | undefined): string {
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) {
+    return '—';
+  }
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  // Whole bytes are exact; above that one decimal until the figure has three
+  // digits, where a decimal is noise ("498 MiB", "6.1 GiB").
+  const digits = unit === 0 || value >= 100 ? 0 : 1;
+  return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
+}

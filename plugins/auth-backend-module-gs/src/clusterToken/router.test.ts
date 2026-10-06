@@ -2,7 +2,8 @@ import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { ConfigReader } from '@backstage/config';
 import express from 'express';
 import request from 'supertest';
-import { createClusterTokenRouter, SUBJECT_TOKEN_HEADER } from './router';
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import { createClusterTokenRouter } from './router';
 
 const logger = {
   error: jest.fn(),

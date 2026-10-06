@@ -19,6 +19,8 @@ import {
   Breadcrumbs,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  RouteTabs,
+  RouteTabSpec,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../lib/k8s';
@@ -51,8 +53,7 @@ import {
   ServerStateBadge,
   useServerSignIn,
 } from '../shared';
-import { ServerPageTabs, ServerPageTabSpec } from './ServerPageTabs';
-import { ServerOverviewTab } from './ServerOverviewTab';
+import { ServerDetailsTab } from './ServerDetailsTab';
 import { ServerToolsTab } from './ServerToolsTab';
 import { ServerCapabilityTab } from './ServerCapabilityTab';
 import { ServerInstancesTab } from './ServerInstancesTab';
@@ -207,7 +208,7 @@ function ServerPageContent({
           onAction: () => openAction(deactivate),
         });
       }
-      // Gated for an OAuth server waiting on a sign-in; the Overview says so.
+      // Gated for an OAuth server waiting on a sign-in; the Details tab says so.
       if (live.reconnect && !live.reconnectGate) {
         const reconnect = live.reconnect;
         menuItems.push({
@@ -271,8 +272,8 @@ function ServerPageContent({
     singular && canSignIn && signInState.needsLogin ? (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
-          Your muster session is not signed in to this server, so its tools are
-          hidden.
+          Your muster session is not signed in to this server, so its tools,
+          resources and prompts are hidden.
         </Text>
         <ServerAuthActions
           serverName={singular.getName()}
@@ -285,22 +286,26 @@ function ServerPageContent({
       </Flex>
     ) : undefined;
 
+  // Resources and Prompts, each only when the server exposes any (most expose
+  // neither). Its counts are this session's, so a server the session is not
+  // signed in to shows neither; the Tools tab's sign-in gate says why.
+  const capabilities = (
+    [
+      ['resources', 'Resources', counts.resourcesCount],
+      ['prompts', 'Prompts', counts.promptsCount],
+    ] as const
+  ).map(([capability, title, count]) => ({
+    capability,
+    title,
+    count,
+    shown: (count ?? 0) > 0,
+  }));
+
   // Tools leads and is the index: what a server offers is what a person
-  // comes to it for, so a server link lands there. Overview closes the row.
-  const tabs: ServerPageTabSpec[] = [
+  // comes to it for, so a server link lands there. A family's instances come
+  // next, then Resources and Prompts. Details closes the row.
+  const tabs: RouteTabSpec[] = [
     { id: 'tools', path: '', title: 'Tools', count: tools.tools?.length },
-    {
-      id: 'resources',
-      path: 'resources',
-      title: 'Resources',
-      count: counts.resourcesCount,
-    },
-    {
-      id: 'prompts',
-      path: 'prompts',
-      title: 'Prompts',
-      count: counts.promptsCount,
-    },
   ];
   if (row.kind === 'family') {
     tabs.push({
@@ -310,7 +315,14 @@ function ServerPageContent({
       count: row.servers.length,
     });
   }
-  tabs.push({ id: 'overview', path: 'overview', title: 'Overview' });
+  for (const { capability, title, count, shown } of capabilities) {
+    if (shown) {
+      tabs.push({ id: capability, path: capability, title, count });
+    }
+  }
+  tabs.push({ id: 'details', path: 'details', title: 'Details' });
+
+  const toIndex = <Navigate to={`${basePath}${search}`} replace />;
 
   return (
     <Flex direction="column" gap="4">
@@ -363,7 +375,7 @@ function ServerPageContent({
           />
         )}
 
-      <ServerPageTabs tabs={tabs} search={search} />
+      <RouteTabs tabs={tabs} search={search} />
 
       <Routes>
         <Route
@@ -390,10 +402,15 @@ function ServerPageContent({
             />
           }
         />
+        {/* Details' path while it was named Overview. */}
         <Route
           path="overview"
+          element={<Navigate to={`${basePath}/details${search}`} replace />}
+        />
+        <Route
+          path="details"
           element={
-            <ServerOverviewTab
+            <ServerDetailsTab
               row={row}
               servers={servers}
               representative={representative}
@@ -401,28 +418,28 @@ function ServerPageContent({
             />
           }
         />
-        <Route
-          path="resources"
-          element={
-            <ServerCapabilityTab
-              capability="resources"
-              row={row}
-              representative={representative}
-              sessionGate={sessionGate}
-            />
-          }
-        />
-        <Route
-          path="prompts"
-          element={
-            <ServerCapabilityTab
-              capability="prompts"
-              row={row}
-              representative={representative}
-              sessionGate={sessionGate}
-            />
-          }
-        />
+        {/* Without the counts yet (or a session) the tab renders its own
+            loading or session state. Once they say there is nothing -- or
+            there is nothing to read them for, as for muster itself -- the
+            tab has no place in the row, so a link to it lands on Tools. */}
+        {capabilities.map(({ capability, shown }) => (
+          <Route
+            key={capability}
+            path={capability}
+            element={
+              !representative || (counts.isLoaded && !shown) ? (
+                toIndex
+              ) : (
+                <ServerCapabilityTab
+                  capability={capability}
+                  row={row}
+                  representative={representative}
+                  sessionGate={sessionGate}
+                />
+              )
+            }
+          />
+        ))}
         {row.kind === 'family' && (
           <Route
             path="instances"
@@ -435,10 +452,7 @@ function ServerPageContent({
             }
           />
         )}
-        <Route
-          path="*"
-          element={<Navigate to={`${basePath}${search}`} replace />}
-        />
+        <Route path="*" element={toIndex} />
       </Routes>
 
       {singular && isGitOpsManaged(singular) && (
@@ -477,9 +491,9 @@ function ServerPageContent({
 }
 
 /**
- * One MCP server's page: Tools (the index) · Resources · Prompts, plus
- * Instances for a server family, and Overview, with the server's actions in the page
- * header. `:server` names the row the servers list shows -- a family, a
+ * One MCP server's page: Tools (the index), Instances for a server family,
+ * Resources and Prompts when it exposes any, and Details, with the server's
+ * actions in the page header. `:server` names the row the servers list shows -- a family, a
  * singular server or muster itself -- on the installation the section's scope
  * selects (`?installation=` first); switching the installation shows the same
  * server there, or says it does not exist there.

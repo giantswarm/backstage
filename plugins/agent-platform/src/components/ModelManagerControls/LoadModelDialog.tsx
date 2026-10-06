@@ -15,7 +15,8 @@ import {
   Select,
   Text,
 } from '@backstage/ui';
-import { useMutation, useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
 import { useInvalidateModelManagerReads } from '../../hooks/useServedModelAction';
@@ -34,7 +35,7 @@ import {
   servedPresetRow,
   servesPresetOn,
 } from '../../lib/modelManagerServe';
-import { formatBytes } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import {
   modelManagerFitQueryKey,
   modelManagerNodesQueryKey,
@@ -421,7 +422,10 @@ export function LoadModelDialog({
       )
     : undefined;
 
-  const load = useMutation({
+  const load = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Model serving operations are not a tracked portal action yet.',
     mutationFn: () =>
       client!.loadModel({
         model,

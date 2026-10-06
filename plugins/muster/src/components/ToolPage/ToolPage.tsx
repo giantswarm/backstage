@@ -7,10 +7,19 @@ import {
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
-import { serverPrefixInfos, shortToolName } from '../../lib/toolGrouping';
+import {
+  serverPageResolver,
+  serverPrefixInfos,
+  shortToolName,
+} from '../../lib/toolGrouping';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { SessionGate, useServerPageLinks } from '../shared';
+import {
+  SessionGate,
+  ToolMarkers,
+  useServerPageLinks,
+  useToolDescription,
+} from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
 import { useServersListHref } from '../ServerPage';
 import { useServerTools } from '../ServerPage/useServerPageData';
@@ -18,7 +27,7 @@ import { useServerTools } from '../ServerPage/useServerPageData';
 /**
  * One tool's page, beneath the server offering it: its short and full name,
  * markers, description and input schema, and the typed argument form that runs
- * it -- the Tool explorer's detail panel, on a page of its own. A family's
+ * it, on a page of its own beneath the server. A family's
  * grouped tool asks for the family's instance argument like any other
  * required parameter.
  */
@@ -44,7 +53,21 @@ export function ToolPage() {
       enabled: Boolean(row && activeInstallation) && session.authenticated,
     },
   );
-  const offered = serverTools.tools?.some(t => t.name === tool);
+  const pageOfTool = useMemo(
+    () => serverPageResolver(mcpServers),
+    [mcpServers],
+  );
+  // A truncated catalogue may stop short of the tool; then its prefix decides,
+  // and describing it says whether muster has it.
+  const listed = serverTools.tools?.find(t => t.name === tool);
+  const offered =
+    Boolean(listed) ||
+    (serverTools.truncated && pageOfTool(tool) === serverKey);
+  // The panel's request, so the markers beside the name cost nothing extra.
+  const described = useToolDescription(tool, activeInstallation, {
+    enabled: offered && session.authenticated,
+  });
+  const annotations = described.data?.annotations ?? listed?.annotations;
 
   const trail = (
     <Breadcrumbs
@@ -121,7 +144,7 @@ export function ToolPage() {
         key={`${activeInstallation}/${tool}`}
         name={tool}
         installation={activeInstallation}
-        showName={false}
+        showMarkers={false}
       />
     );
   }
@@ -135,10 +158,13 @@ export function ToolPage() {
           <Text as="h2" variant="title-medium">
             {shortName}
           </Text>
-          <Text variant="body-small" color="secondary">
-            Exposed by muster as:{' '}
-            <span style={{ fontFamily: 'monospace' }}>{tool}</span>
-          </Text>
+          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+            <Text variant="body-small" color="secondary">
+              Exposed by muster as:{' '}
+              <span style={{ fontFamily: 'monospace' }}>{tool}</span>
+            </Text>
+            <ToolMarkers annotations={annotations} />
+          </Flex>
         </Flex>
         {body}
       </Flex>

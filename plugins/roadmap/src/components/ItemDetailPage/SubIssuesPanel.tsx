@@ -17,7 +17,8 @@ import { Alert } from '@material-ui/lab';
 import LinkOffIcon from '@material-ui/icons/LinkOff';
 import { Link, Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { roadmapApiRef } from '../../apis';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
@@ -66,7 +67,9 @@ export function SubIssuesPanel(props: {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
 
-  const addSubIssue = useMutation({
+  const addSubIssue = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal roadmap tooling, not a customer portal action.',
     mutationFn: (reference: string) =>
       roadmapApi.addSubIssue(owner, repo, issueNumber, reference),
     onSuccess: () => {
@@ -75,7 +78,9 @@ export function SubIssuesPanel(props: {
     },
   });
 
-  const removeSubIssue = useMutation({
+  const removeSubIssue = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Internal roadmap tooling, not a customer portal action.',
     mutationFn: (subIssueId: number) =>
       roadmapApi.removeSubIssue(owner, repo, issueNumber, subIssueId),
     onSuccess: invalidate,

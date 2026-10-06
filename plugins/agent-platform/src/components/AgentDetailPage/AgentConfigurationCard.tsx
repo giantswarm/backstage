@@ -4,10 +4,10 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Agent,
+  AgentFailure,
   AgentMcpBinding,
   getHelmReleaseName,
   getHelmReleaseNamespace,
-  HARNESS_LABEL,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
@@ -17,13 +17,15 @@ import {
   StructuredMetadataList,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useAgentToolset } from '../../hooks/useAgentToolset';
 import type { ClientServingSummary } from '../../lib/serving';
+import { describeToolset } from '../../lib/toolset';
 import {
   agentDetailRouteRef,
   deploymentDetailsExternalRouteRef,
-  musterToolExplorerExternalRouteRef,
 } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
   isGatewayServerBinding,
@@ -49,14 +51,16 @@ function ModelValue({
   modelConfig,
   modelServing,
   namespace,
+  isFailing,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
   namespace?: string;
+  isFailing: boolean;
 }) {
   if (!modelConfigName) {
-    return <NotAvailable />;
+    return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
 
   const modelLine = [modelConfig?.getModel(), modelConfig?.getProvider()]
@@ -88,44 +92,23 @@ function ModelValue({
         </span>
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
+      {isFailing && <FailureMarker />}
     </Flex>
   );
 }
 
 /**
- * One MCP server binding: the same-namespace `RemoteMCPServer` the agent draws
- * tools from, and how much of it.
+ * One MCP server binding outside the gateway: a same-namespace
+ * `RemoteMCPServer` the agent draws tools from directly, and how much of it.
  */
-function McpBindingRow({
-  agent,
-  binding,
-}: {
-  agent: Agent;
-  binding: AgentMcpBinding;
-}) {
-  const toolExplorerRoute = useRouteRef(musterToolExplorerExternalRouteRef);
-  const isGateway = isGatewayServerBinding(agent, binding);
-
-  // Preselect the installation the agent runs on, the way muster's own
-  // cross-links do. Only offered for the gateway: the Tool Explorer talks to
-  // muster, so it can say nothing about any other MCP server.
-  const musterLink =
-    isGateway && toolExplorerRoute
-      ? `${toolExplorerRoute()}?installation=${encodeURIComponent(
-          agent.cluster,
-        )}`
-      : undefined;
-
+function McpBindingRow({ binding }: { binding: AgentMcpBinding }) {
   return (
     <Flex direction="column" gap="1">
-      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-        <Text variant="body-medium" style={MONO}>
-          {mcpBindingId(binding)}
-        </Text>
-        {musterLink && <Link to={musterLink}>Explore tools</Link>}
-      </Flex>
+      <Text variant="body-medium" style={MONO}>
+        {mcpBindingId(binding)}
+      </Text>
       <Text variant="body-small" color="secondary">
-        {describeToolScope(binding, isGateway)}
+        {describeToolScope(binding)}
       </Text>
       {/* Rare, and the only per-binding setting that changes what a user will
           experience mid-session (the turn pauses for a decision), so it is
@@ -139,31 +122,94 @@ function McpBindingRow({
   );
 }
 
-/** The tools block: MCP servers, then any agents invoked as tools. */
-function ToolsValue({ agent }: { agent: Agent }) {
+/**
+ * What the agent can reach through the gateway, in the words the Agents list
+ * uses for it — read from the toolset its carrier `RemoteMCPServer` declares,
+ * which is a Kubernetes read. Resolving it to tools needs muster, so that is
+ * left to the Tools tab, linked here.
+ */
+function GatewayToolsetSummary({
+  agent,
+  toolsHref,
+}: {
+  agent: Agent;
+  toolsHref?: string;
+}) {
+  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  // The read answered and the carrier is not in it: the binding reaches
+  // nothing, which describeToolset — written for a list cell that cannot tell
+  // the two apart — would call "not readable".
+  const isCarrierMissing =
+    !isReading && !isUnreadable && declared.state === 'unresolved';
+  const { summary, detail } = isCarrierMissing
+    ? {
+        summary: 'Gateway server missing',
+        detail: `${declared.carrier} does not exist`,
+      }
+    : describeToolset(declared);
+
+  return (
+    <Flex direction="column" gap="1">
+      <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+        <Text variant="body-medium">
+          {isReading ? 'Reading the toolset…' : summary}
+        </Text>
+        {toolsHref && <Link to={toolsHref}>See tools</Link>}
+      </Flex>
+      {!isReading && detail && (
+        <Text variant="body-small" color="secondary" style={MONO}>
+          {detail}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/**
+ * The tools block: what the agent reaches through the gateway in one line,
+ * then any MCP server bound directly and any agents invoked as tools.
+ */
+function ToolsValue({
+  agent,
+  toolsHref,
+  isFailing,
+}: {
+  agent: Agent;
+  toolsHref?: string;
+  isFailing: boolean;
+}) {
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const mcpBindings = agent.getMcpBindings();
+  const directBindings = mcpBindings.filter(
+    binding => !isGatewayServerBinding(agent, binding),
+  );
+  const hasGateway = directBindings.length < mcpBindings.length;
   const agentRefs = agent.getAgentRefs();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
     return (
-      <Text variant="body-small" color="secondary">
-        This agent declares no tool servers, so it has no tools beyond its own
-        reasoning.
-      </Text>
+      <Flex direction="column" gap="1">
+        <Text variant="body-medium">No tools</Text>
+        <Text variant="body-small" color="secondary">
+          The agent has nothing beyond its own reasoning.
+        </Text>
+      </Flex>
     );
   }
 
   return (
     <Flex direction="column" gap="3">
-      {mcpBindings.map((binding, index) => (
+      {hasGateway && (
+        <GatewayToolsetSummary agent={agent} toolsHref={toolsHref} />
+      )}
+
+      {directBindings.map((binding, index) => (
         <McpBindingRow
           // The server name is not unique: nothing stops two bindings referencing
           // the same server with different `tools`/`requireApproval`, which is
           // how you express "these tools need approval, those don't" for one
           // server. Same reasoning as the skill cards.
           key={`${mcpBindingId(binding)}#${index}`}
-          agent={agent}
           binding={binding}
         />
       ))}
@@ -197,33 +243,8 @@ function ToolsValue({ agent }: { agent: Agent }) {
           </Flex>
         );
       })}
-    </Flex>
-  );
-}
 
-/**
- * The Harness the admission label asks to run the agent. The label is what
- * makes a Harness admit the template; without it the agent never becomes
- * ready, and the status card says so.
- */
-function HarnessValue({ agent }: { agent: Agent }) {
-  const harness = agent.getHarnessLabel();
-  if (!harness) {
-    return (
-      <Text variant="body-small" color="secondary">
-        Not labelled for any Harness (<span style={MONO}>{HARNESS_LABEL}</span>{' '}
-        is missing)
-      </Text>
-    );
-  }
-  return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-medium" style={MONO}>
-        {harness}
-      </Text>
-      <Text variant="body-small" color="secondary">
-        From the label <span style={MONO}>{HARNESS_LABEL}</span>
-      </Text>
+      {isFailing && <FailureMarker />}
     </Flex>
   );
 }
@@ -268,10 +289,16 @@ export type AgentConfigurationCardProps = {
   modelConfig?: ModelConfig;
   /** The serving layer's word on the model behind `modelConfig`, when it has one. */
   modelServing?: ClientServingSummary;
+  /** A failed agent's root cause, which marks the field it is about. */
+  failure?: AgentFailure;
+  /** The Tools tab, which resolves the toolset this card summarises. */
+  toolsHref?: string;
 };
 
 /**
- * What the agent *is*, as its AgentTemplate defines it.
+ * What the agent *is*, as its AgentTemplate defines it. Where it runs — the
+ * installation, `namespace/name` — is in the page header and the Harness in
+ * the Status card, so neither is repeated here.
  *
  * Read-only here: the values behind it are changed through **Edit agent…** in
  * the header's actions, which goes through agent-manager as the person.
@@ -280,29 +307,35 @@ export function AgentConfigurationCard({
   agent,
   modelConfig,
   modelServing,
+  failure,
+  toolsHref,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const created = agent.getCreatedTimestamp();
 
   const metadata: Record<string, ReactNode> = {
-    Harness: <HarnessValue agent={agent} />,
     Model: (
       <ModelValue
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
         namespace={namespace}
+        isFailing={failure?.field === 'model'}
       />
     ),
-    Installation: agent.cluster,
-    Namespace: namespace ?? <NotAvailable />,
+    Tools: (
+      <ToolsValue
+        agent={agent}
+        toolsHref={toolsHref}
+        isFailing={failure?.field === 'tools'}
+      />
+    ),
     Created: created ? (
       <DateComponent value={created} relative />
     ) : (
       <NotAvailable />
     ),
     'Deployed by': <DeployedByValue agent={agent} />,
-    Tools: <ToolsValue agent={agent} />,
   };
 
   return (

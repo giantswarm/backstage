@@ -63,13 +63,10 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
-    // Order matters: `agentPlatformPlugin` must come before `musterPlugin`.
-    // The Agent Platform page's level-1 tabs are gathered in feature-registration
-    // order — agent-platform contributes its own tabs, of which "Sessions" is the
-    // first, and muster attaches the "MCP Servers" tab externally
-    // (`attachTo: page:agent-platform`). Registering agent-platform first keeps
-    // Sessions as the first tab (and the tab a bare `/agent-platform` lands on).
-    // Reordering here flips the tabs.
+    // The Agent Platform page's level-1 tabs come from both plugins: muster
+    // attaches "MCP Servers" and "Workflows" (`attachTo: page:agent-platform`).
+    // The page sorts them into its row itself (agent-platform's
+    // `AGENT_PLATFORM_TAB_ORDER`), so the order here does not matter for them.
     agentPlatformPlugin,
     musterPlugin,
     musterPluginOverrides,

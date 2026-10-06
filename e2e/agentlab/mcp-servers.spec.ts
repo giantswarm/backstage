@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { completeDexLogin, expect, open, test } from './fixtures';
+import {
+  completeDexLogin,
+  connectToMuster,
+  expect,
+  open,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -12,7 +18,7 @@ import { lab } from './lab';
  * (proxy start → muster → Dex) is real.
  */
 
-const serversPath = `/agent-platform/muster/servers?installation=${lab.installation}`;
+const serversPath = `/agent-platform/mcp-servers?installation=${lab.installation}`;
 
 /** A server's link in the servers table: its name, then its description. */
 function serverLink(page: Page, name: string) {
@@ -23,9 +29,9 @@ test('lists the installation servers in one table, muster included', async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  // Exact: the section's own tab is "MCP Servers", the sub-tab "Servers".
+  // A level-1 tab of the Agent Platform, with no tab row of its own.
   await expect(
-    admin.getByRole('tab', { name: 'Servers', exact: true }),
+    admin.getByRole('tab', { name: 'MCP Servers', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   for (const name of [
     'agent-manager',
@@ -40,43 +46,11 @@ test('lists the installation servers in one table, muster included', async ({
   ).toBeVisible();
 });
 
-/**
- * Opens the muster session for the page's user when the page shows the gate.
- * The backend keeps that session server-side per user, so a page that
- * connected earlier in the run finds no gate — the same signed-in portal.
- *
- * The gate also renders while the session probe is still pending and unmounts
- * the moment the probe says authenticated, so a click can land on an element
- * that just left the DOM: click while it is there, judge by its absence.
- */
-async function connectToMuster(page: Page) {
-  const gate = page.getByRole('button', { name: 'Connect to muster' });
-  const table = page.getByRole('grid');
-  await expect(gate.or(table).first()).toBeVisible();
-  await expect
-    .poll(
-      async () => {
-        if (!(await gate.isVisible())) {
-          return 'connected';
-        }
-        await gate.click({ timeout: 2_000 }).catch(() => undefined);
-        return 'gate';
-      },
-      {
-        timeout: 90_000,
-        intervals: [1_000],
-        message:
-          'the muster session did not open within 90 s — the lab muster may be unhealthy (`kubectl -n agent-platform get pods`), or the backend cached an unreachable probe after a pod roll (5 min TTL)',
-      },
-    )
-    .toBe('connected');
-}
-
 test('searching a tool name narrows the list to the servers offering it', async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await admin
     .getByRole('searchbox', { name: 'Search servers and tools' })
     .fill('mcpserver_list');
@@ -89,7 +63,7 @@ test('searching a tool name narrows the list to the servers offering it', async 
   await expect(serverLink(admin, 'lab-oauth-fixture')).toHaveCount(0);
 
   await muster.click();
-  await expect(admin).toHaveURL(/\/servers\/muster\?.*q=mcpserver_list/);
+  await expect(admin).toHaveURL(/\/mcp-servers\/muster\?.*q=mcpserver_list/);
   await expect(
     admin.getByRole('link', { name: 'mcpserver_list', exact: true }),
   ).toBeVisible({ timeout: 60_000 });
@@ -100,9 +74,9 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
 }) => {
   test.setTimeout(180_000);
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await serverLink(admin, 'lab-oauth-fixture').click();
-  await admin.getByRole('tab', { name: 'Overview' }).click();
+  await admin.getByRole('tab', { name: 'Details' }).click();
 
   // For about a minute after a muster pod roll the fixture's CR reads Failed
   // (muster dials itself before its own listener is up) and offers no sign-in;
@@ -115,7 +89,7 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
 
   // The per-server session is muster's, per user, and outlives a page: a
   // previous run may have left the fixture signed in — sign out first, so
-  // the flow under test is the sign-in. The Overview's Authentication card
+  // the flow under test is the sign-in. The Details tab's Authentication card
   // carries both; the page header repeats Sign in, hence `.last()`.
   const signIn = admin.getByRole('button', { name: 'Sign in' }).last();
   const signOut = admin.getByRole('button', { name: 'Sign out' });
@@ -137,40 +111,18 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
     signOut,
     'the server page now offers Sign out for this session',
   ).toBeVisible({ timeout: 60_000 });
-});
 
-test('the Tool explorer lists tools once the session is open', async ({
-  admin,
-}) => {
-  await open(
-    admin,
-    `/agent-platform/muster/tools?installation=${lab.installation}`,
-  );
-  await expect(
-    admin.getByRole('tab', { name: 'Tool explorer' }),
-  ).toHaveAttribute('aria-selected', 'true');
-  const gate = admin.getByRole('button', { name: 'Connect to muster' });
-  if (await gate.isVisible().catch(() => false)) {
-    await gate.click();
-    await expect(gate).toBeHidden({ timeout: 90_000 });
-  }
-  // The explorer lists on search; muster's own core tools are always there.
-  await admin.getByRole('searchbox', { name: 'Search tools' }).fill('core_');
-  await expect(
-    admin.getByText(/^\d+ match/),
-    'the search reports its matches',
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    admin.getByText(/^core_/).first(),
-    "muster's core tools are listed",
-  ).toBeVisible();
+  // Leave the fixture as the lab ships it: `agentlab platform-test` expects
+  // it among the servers that require a sign-in.
+  await signOut.click();
+  await expect(signIn).toBeVisible({ timeout: 60_000 });
 });
 
 test("a row opens its server page, with the server's tabs", async ({
   admin,
 }) => {
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await serverLink(admin, 'mcp-kubernetes').click();
 
   await expect(
@@ -178,7 +130,7 @@ test("a row opens its server page, with the server's tabs", async ({
   ).toBeVisible();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/muster/servers/mcp-kubernetes\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/mcp-kubernetes\\?installation=${lab.installation}$`,
     ),
   );
   // Tools is the server page's index: a server link lands on its tools.
@@ -190,14 +142,12 @@ test("a row opens its server page, with the server's tabs", async ({
     admin.getByRole('searchbox', { name: 'Filter tools' }),
     'the Tools tab lists the server’s tools',
   ).toBeVisible({ timeout: 60_000 });
-  for (const tab of [/^Resources/, /^Prompts/, /^Overview/]) {
-    await expect(admin.getByRole('tab', { name: tab })).toBeVisible();
-  }
-
-  await admin.getByRole('tab', { name: 'Overview' }).click();
+  // Resources and Prompts show only for a server exposing any, which
+  // mcp-kubernetes may not.
+  await admin.getByRole('tab', { name: 'Details' }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/muster/servers/mcp-kubernetes/overview\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/mcp-kubernetes/details\\?installation=${lab.installation}$`,
     ),
   );
   await expect(admin.getByText('Configuration').first()).toBeVisible();
@@ -208,10 +158,10 @@ test("muster's own server page lists its core tools, and a tool page runs one", 
 }) => {
   test.setTimeout(120_000);
   await open(admin, serversPath);
-  await connectToMuster(admin);
+  await connectToMuster(admin, admin.getByRole('grid'));
   await open(
     admin,
-    `/agent-platform/muster/servers/muster?installation=${lab.installation}`,
+    `/agent-platform/mcp-servers/muster?installation=${lab.installation}`,
   );
 
   // Read-only, and there on every muster: the aggregator's own server list.

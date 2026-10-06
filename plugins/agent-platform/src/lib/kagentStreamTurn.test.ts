@@ -1013,3 +1013,81 @@ describe('isStreamTurnOver', () => {
     ).toBe(true);
   });
 });
+
+describe('carriesFile', () => {
+  const file = { kind: 'file', file: { name: 'chart.png', bytes: 'AAAA' } };
+  const carries = (...events: unknown[]) =>
+    events.reduce<StreamTurn>(applyStreamEvent, createStreamTurn('sent'))
+      .carriesFile;
+
+  it.each([
+    [
+      'a status-update message',
+      {
+        kind: 'status-update',
+        status: {
+          state: 'working',
+          message: {
+            kind: 'message',
+            messageId: 'm',
+            role: 'agent',
+            parts: [file],
+          },
+        },
+      },
+    ],
+    [
+      'an artifact-update',
+      { kind: 'artifact-update', artifact: { artifactId: 'a', parts: [file] } },
+    ],
+    [
+      'a bare message',
+      { kind: 'message', messageId: 'm', role: 'agent', parts: [file] },
+    ],
+    [
+      "a task snapshot's history",
+      {
+        kind: 'task',
+        id: 't',
+        status: { state: 'working' },
+        history: [{ kind: 'message', messageId: 'm', parts: [file] }],
+      },
+    ],
+    [
+      "a task snapshot's artifacts",
+      {
+        kind: 'task',
+        id: 't',
+        status: { state: 'working' },
+        artifacts: [{ artifactId: 'a', parts: [file] }],
+      },
+    ],
+  ])('sees a file on %s', (_name, event) => {
+    expect(carries(event)).toBe(true);
+  });
+
+  it('ignores an event with text and calls only', () => {
+    expect(
+      carries({
+        kind: 'artifact-update',
+        artifact: { artifactId: 'a', parts: [{ kind: 'text', text: 'hi' }] },
+      }),
+    ).toBe(false);
+    expect(carries('not an event')).toBe(false);
+  });
+
+  it('stays set for the rest of the turn', () => {
+    expect(
+      carries(
+        {
+          kind: 'artifact-update',
+          artifact: { artifactId: 'a', parts: [file] },
+        },
+        {
+          kind: 'artifact-update',
+          artifact: { artifactId: 'a', parts: [{ kind: 'text', text: 'hi' }] },
+        },
+      ),
+    ).toBe(true);
+  });
+});

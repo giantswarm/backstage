@@ -1,4 +1,6 @@
 export function formatDuration(durationMs: number): string {
-  if (durationMs < 1000) return `${durationMs}ms`;
-  return `${(durationMs / 1000).toFixed(1)}s`;
+  // Whole milliseconds: an average over runs is rarely one.
+  const ms = Math.round(durationMs);
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }

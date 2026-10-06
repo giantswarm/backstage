@@ -151,8 +151,9 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
       'v1alpha2',
       'agents',
     ];
+    const now = Date.now();
     return {
-      timestamp: Date.now(),
+      timestamp: now,
       buster,
       clientState: {
         mutations: [],
@@ -160,9 +161,10 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
           {
             queryKey,
             queryHash: JSON.stringify(queryKey),
+            dehydratedAt: now,
             state: {
               data: [{ kind: 'Agent', metadata: { name: 'stale' } }],
-              dataUpdatedAt: Date.now(),
+              dataUpdatedAt: now,
               dataUpdateCount: 1,
               error: null,
               errorUpdatedAt: 0,

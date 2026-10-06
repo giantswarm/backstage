@@ -40,6 +40,16 @@ export type ConditionsListProps = {
   isFailing?: (condition: ConditionLike) => boolean;
   /** Extra controls for a condition's panel, e.g. an "explain this error" button. */
   renderActions?: (condition: ConditionLike) => ReactNode;
+  /**
+   * Condition types in the order the controller evaluates them. When given,
+   * the list follows it instead of sorting by transition time, so the first
+   * failing condition — the one that starts expanded — is the earliest stage
+   * that failed: the root cause rather than a later stage it blocks. A stage
+   * still `Unknown` explains nothing, so an outright failure later in the
+   * order is expanded ahead of it. Types not listed follow, in the default
+   * order.
+   */
+  order?: readonly string[];
   /** Shown instead of the list when there are no conditions at all. */
   emptyContent?: ReactNode;
   /** Heading level of each condition's trigger; see `SimpleAccordion`. */
@@ -73,13 +83,26 @@ function transitionTime(condition: ConditionLike): number | undefined {
 }
 
 /**
- * Sort the most recently changed condition first, so the reason a resource just
+ * Sort by `order` when given; otherwise, and among types it does not list,
+ * the most recently changed condition first, so the reason a resource just
  * became unhealthy is at the top. Conditions with no usable timestamp sort last
  * — "unknown" is not "oldest" — and ties fall back to the type for a stable
  * order.
  */
-function sortConditions(conditions: ConditionLike[]): ConditionLike[] {
+function sortConditions(
+  conditions: ConditionLike[],
+  order?: readonly string[],
+): ConditionLike[] {
+  const rank = (condition: ConditionLike) => {
+    const index = order?.indexOf(condition.type) ?? -1;
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+
   return [...conditions].sort((a, b) => {
+    if (rank(a) !== rank(b)) {
+      return rank(a) - rank(b);
+    }
+
     const aTime = transitionTime(a);
     const bTime = transitionTime(b);
 
@@ -109,6 +132,7 @@ export const ConditionsList = ({
   conditions,
   isFailing = defaultIsFailing,
   renderActions,
+  order,
   emptyContent,
   headingLevel,
 }: ConditionsListProps) => {
@@ -116,8 +140,11 @@ export const ConditionsList = ({
     return <>{emptyContent}</>;
   }
 
-  const sorted = sortConditions(conditions);
-  const firstFailing = sorted.find(condition => isFailing(condition));
+  const sorted = sortConditions(conditions, order);
+  const failures = sorted.filter(condition => isFailing(condition));
+  const firstFailing =
+    (order && failures.find(condition => condition.status !== 'Unknown')) ||
+    failures[0];
 
   return (
     <Flex direction="column" gap="1">

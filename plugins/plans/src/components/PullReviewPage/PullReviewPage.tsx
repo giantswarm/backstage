@@ -24,12 +24,8 @@ import {
 } from '@backstage/core-components';
 import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   NewReviewComment,
   PlanPull,
@@ -202,7 +198,10 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
     queryFn: () => plansApi.listPullComments(pull.number, repo),
   });
 
-  const createComment = useMutation({
+  const createComment = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Internal plan review tooling, not a customer portal action.',
     mutationFn: (body: string) =>
       plansApi.createPullComment(pull.number, body, repo),
     onSuccess: () =>
@@ -488,7 +487,10 @@ export function PullReviewPage() {
     enabled: !!repo,
   });
 
-  const createReviewComment = useMutation({
+  const createReviewComment = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'Internal plan review tooling, not a customer portal action.',
     mutationFn: (comment: NewReviewComment) =>
       plansApi.createReviewComment(pullNumber, comment, repo),
     onSuccess: () =>

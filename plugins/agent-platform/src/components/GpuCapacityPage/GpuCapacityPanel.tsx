@@ -15,7 +15,8 @@ import {
   LoadingIndicator,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatBytes, formatTime } from '../../lib/modelManagerServing';
+import { formatTime } from '../../lib/modelManagerServing';
+import { formatBytes } from '../../lib/formatNumbers';
 import {
   gpuFree,
   gpuTotal,

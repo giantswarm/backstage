@@ -419,6 +419,34 @@ The following optional features are available:
 - `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
+## Egress through an HTTP proxy
+
+Where the backend has to reach the internet through a forward proxy, set the
+`GLOBAL_AGENT_*` variables in the chart's `backstage.extraEnvVars`:
+
+```yaml
+backstage:
+  extraEnvVars:
+    - name: GLOBAL_AGENT_HTTP_PROXY
+      value: http://proxy.example.com:3128
+    - name: GLOBAL_AGENT_NO_PROXY
+      value: 127.0.0.1,localhost,.svc,.cluster.local,.example.com
+```
+
+They cover both HTTP stacks of the backend: `global-agent` routes the
+`http`/`https` modules, and the backend gives Node's native `fetch` (the
+catalog, the scaffolder and most plugins read URLs with it) a proxy dispatcher
+from the same values. `GLOBAL_AGENT_HTTP_PROXY` also serves HTTPS unless
+`GLOBAL_AGENT_HTTPS_PROXY` is set. Only `GLOBAL_AGENT_NO_PROXY` exempts hosts; a
+`NO_PROXY` injected into the pod does not apply. Write domain suffixes with a
+leading dot or `*.` (`.example.com`, `*.example.com`): both stacks read them
+as the domain's subdomains.
+
+`NODE_USE_ENV_PROXY=1` instead hands the proxy to Node itself (`HTTP_PROXY`,
+`HTTPS_PROXY`, `NO_PROXY`); the backend then leaves `fetch` to Node. Node's
+`http` module reads a bare `example.com` in `NO_PROXY` as that one host only,
+so domain suffixes need the leading dot there.
+
 ## Grafana dashboards card
 
 Team and component pages carrying the `grafana/dashboard-selector` annotation

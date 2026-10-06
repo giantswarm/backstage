@@ -32,6 +32,7 @@
     "@backstage/frontend-plugin-api": "backstage:^",
     "@backstage/plugin-catalog-react": "backstage:^",
     "@backstage/ui": "backstage:^",
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^",
     "@giantswarm/backstage-plugin-gs": "workspace:^",
     "@giantswarm/backstage-plugin-muster": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",

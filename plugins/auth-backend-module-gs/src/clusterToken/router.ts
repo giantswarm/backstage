@@ -7,14 +7,11 @@ import {
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { InputError, NotFoundError } from '@backstage/errors';
-
-/**
- * Header used by the frontend to forward the user's main Dex ID token, which
- * the broker exchanges for a per-management-cluster token. Backstage does not
- * expose provider sessions server-side, so the token travels alongside the
- * regular Backstage credentials (same pattern the AI chat uses for MCP auth).
- */
-export const SUBJECT_TOKEN_HEADER = 'gs-subject-token';
+// The header the frontend forwards the user's main Dex ID token in, which the
+// broker exchanges for a per-management-cluster token. Backstage does not
+// expose provider sessions server-side, so the token travels alongside the
+// regular Backstage credentials (same pattern the AI chat uses for MCP auth).
+import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
 
 const TOKEN_EXCHANGE_GRANT_TYPE =
   'urn:ietf:params:oauth:grant-type:token-exchange';

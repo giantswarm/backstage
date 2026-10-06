@@ -1,21 +1,24 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
 import {
   CLUSTER_MANAGER_SERVER,
-  ClusterManagerError,
-  ClusterManagerNotConnectedError,
+  classifyNodePoolWriteFailure,
   clusterApiNote,
   isManagedPool,
   offersTool,
   poolNameOf,
   type ClusterManagerTool,
   type ClusterManagerInfo,
+  type ClusterWriteResult,
+  type CreateClusterInput,
   type CreateNodePoolInput,
+  type DeleteClusterInput,
   type DeleteNodePoolInput,
   type RemoveModelCacheInput,
-  type Refusal,
+  type NodePoolWriteFailure,
   type CacheClaim,
   type ManagedCluster,
   type NodePool,
@@ -27,6 +30,7 @@ import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
   musterCreateNodePoolSchemaQueryKey,
   musterClusterManagerInfoQueryKey,
+  musterClusterReleasesQueryKey,
   musterClustersQueryKey,
 } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
@@ -280,26 +284,10 @@ export function useInstallationsOffering(
   return useMemo(() => signature.split('|').filter(Boolean), [signature]);
 }
 
-export type NodePoolWriteFailure = {
-  kind: 'refused' | 'not-connected' | 'error';
-  message: string;
-  /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
-  refused?: Refusal;
-};
-
-export function classifyNodePoolWriteFailure(
-  error: unknown,
-): NodePoolWriteFailure {
-  const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof ClusterManagerNotConnectedError) {
-    return { kind: 'not-connected', message };
-  }
-  return {
-    kind: 'refused',
-    message,
-    refused: error instanceof ClusterManagerError ? error.refused : undefined,
-  };
-}
+export {
+  classifyNodePoolWriteFailure,
+  type NodePoolWriteFailure,
+} from '../lib/clusterManager';
 
 export type NodePoolWriteState = {
   /** `create_node_pool` with `dryRun`: the manifests, nothing written. */
@@ -325,6 +313,55 @@ export type NodePoolWriteState = {
 };
 
 /**
+ * What every cluster-manager write of one hook shares, as the options of its
+ * mutation: the write as the person, its refusal kept in cluster-manager's
+ * words (a "not connected" answer from muster becomes the connect step), one
+ * failure for all of the hook's writes, cleared when a write starts, and a
+ * re-read of the installation's clusters after a write that changed them.
+ */
+function useClusterManagerWrites(installation: string | undefined) {
+  const client = useClusterManagerClient(installation);
+  const queryClient = useQueryClient();
+  const [failure, setFailure] = useState<NodePoolWriteFailure>();
+
+  const writeOptions = <TVariables, TData>(
+    write: (c: ClusterManagerClient, variables: TVariables) => Promise<TData>,
+    invalidates: (variables: TVariables) => boolean,
+  ) => ({
+    mutationFn: (variables: TVariables) => {
+      if (!client) {
+        throw new Error(
+          'cluster-manager is not reachable: muster is not installed',
+        );
+      }
+      return write(client, variables);
+    },
+    onMutate: () => setFailure(undefined),
+    onSuccess: async (_data: TData, variables: TVariables) => {
+      if (client && invalidates(variables)) {
+        await queryClient.invalidateQueries({
+          queryKey: musterClustersQueryKey(client.installation),
+        });
+      }
+    },
+    onError: (error: Error) => setFailure(classifyNodePoolWriteFailure(error)),
+  });
+
+  const reset = useCallback(() => setFailure(undefined), []);
+  return { writeOptions, failure, reset };
+}
+
+type NodePoolCreate = { input: CreateNodePoolInput; mode: WriteMode };
+type NodePoolDelete = {
+  input: DeleteNodePoolInput;
+  options: { mode: WriteMode; force?: boolean };
+};
+type ModelCacheRemoval = {
+  input: RemoveModelCacheInput;
+  options: { mode: WriteMode; dryRun?: boolean };
+};
+
+/**
  * The writes of the node-pool dialogs, through cluster-manager over muster as
  * the signed-in person. A refusal is kept in cluster-manager's words; a
  * "not connected" answer from muster becomes the connect step; a successful
@@ -333,73 +370,164 @@ export type NodePoolWriteState = {
 export function useNodePoolWrite(
   installation: string | undefined,
 ): NodePoolWriteState {
-  const client = useClusterManagerClient(installation);
-  const queryClient = useQueryClient();
-  const [isBusy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<NodePoolWriteFailure>();
+  const { writeOptions, failure, reset } =
+    useClusterManagerWrites(installation);
 
-  const run = useCallback(
-    async (
-      write: (c: ClusterManagerClient) => Promise<NodePoolWriteResult>,
-      invalidate: boolean,
-    ) => {
-      if (!client) {
-        throw new Error(
-          'cluster-manager is not reachable: muster is not installed',
-        );
-      }
-      setBusy(true);
-      setFailure(undefined);
-      try {
-        const result = await write(client);
-        if (invalidate) {
-          await queryClient.invalidateQueries({
-            queryKey: musterClustersQueryKey(client.installation),
-          });
-        }
-        return result;
-      } catch (error) {
-        setFailure(classifyNodePoolWriteFailure(error));
-        throw error;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, queryClient],
-  );
+  const dryRun = useTrackedMutation({
+    event: null,
+    untrackedReason: 'A review (dry run) that writes nothing.',
+    ...writeOptions(
+      (c, input: CreateNodePoolInput) =>
+        c.createNodePool(input, { dryRun: true }),
+      () => false,
+    ),
+  });
+  const create = useTrackedMutation({
+    // A partial apply is finished by Continue, the same call: the call that
+    // completes the pool reports it.
+    event: (result, { mode }) =>
+      result.partial
+        ? null
+        : { name: 'AgentPlatform.nodePoolCreated', attributes: { mode } },
+    ...writeOptions(
+      (c, { input, mode }: NodePoolCreate) => c.createNodePool(input, { mode }),
+      () => true,
+    ),
+  });
+  const remove = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Node pool deletion is not a tracked portal action yet.',
+    ...writeOptions(
+      (c, { input, options }: NodePoolDelete) =>
+        c.deleteNodePool(input, options),
+      () => true,
+    ),
+  });
+  const removeCache = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Model cache removal is not a tracked portal action yet.',
+    ...writeOptions(
+      (c, { input, options }: ModelCacheRemoval) =>
+        c.removeModelCache(input, options),
+      ({ options }) => !options.dryRun,
+    ),
+  });
 
-  const dryRun = useCallback(
-    (input: CreateNodePoolInput) =>
-      run(c => c.createNodePool(input, { dryRun: true }), false),
-    [run],
-  );
-  const create = useCallback(
-    (input: CreateNodePoolInput, mode: WriteMode) =>
-      run(c => c.createNodePool(input, { mode }), true),
-    [run],
-  );
-  const remove = useCallback(
-    (
-      input: DeleteNodePoolInput,
-      options: { mode: WriteMode; force?: boolean },
-    ) => run(c => c.deleteNodePool(input, options), true),
-    [run],
-  );
-  const removeCache = useCallback(
-    (
-      input: RemoveModelCacheInput,
-      options: { mode: WriteMode; dryRun?: boolean },
-    ) => run(c => c.removeModelCache(input, options), !options.dryRun),
-    [run],
-  );
-
+  const { mutateAsync: createAsync } = create;
+  const { mutateAsync: removeAsync } = remove;
+  const { mutateAsync: removeCacheAsync } = removeCache;
   return {
-    dryRun,
-    create,
-    remove,
-    removeCache,
-    isBusy,
+    dryRun: dryRun.mutateAsync,
+    create: useCallback(
+      (input: CreateNodePoolInput, mode: WriteMode) =>
+        createAsync({ input, mode }),
+      [createAsync],
+    ),
+    remove: useCallback(
+      (input: DeleteNodePoolInput, options: NodePoolDelete['options']) =>
+        removeAsync({ input, options }),
+      [removeAsync],
+    ),
+    removeCache: useCallback(
+      (input: RemoveModelCacheInput, options: ModelCacheRemoval['options']) =>
+        removeCacheAsync({ input, options }),
+      [removeCacheAsync],
+    ),
+    isBusy: [dryRun, create, remove, removeCache].some(m => m.isPending),
     failure,
-    reset: () => setFailure(undefined),
+    reset,
+  };
+}
+
+/** `list_releases` on one installation: what the Create cluster dialog offers. */
+export function useClusterReleases(installation: string | undefined) {
+  const client = useClusterManagerClient(installation);
+  const { data, isLoading, error } = useQuery({
+    queryKey: musterClusterReleasesQueryKey(installation ?? ''),
+    enabled: Boolean(client),
+    queryFn: () => client!.listReleases(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  return {
+    providers: data?.providers ?? [],
+    releases: data?.releases ?? [],
+    isLoading: Boolean(client) && isLoading,
+    error: (error as Error) ?? null,
+  };
+}
+
+export type ClusterWriteState = {
+  /** `create_cluster` as the person; `dryRun` writes nothing. */
+  create: (
+    input: CreateClusterInput,
+    options: { mode: WriteMode; dryRun?: boolean },
+  ) => Promise<ClusterWriteResult>;
+  /** `delete_cluster` as the person; `dryRun` lists what would go, or the refusal. */
+  remove: (
+    input: DeleteClusterInput,
+    options: { mode: WriteMode; dryRun?: boolean },
+  ) => Promise<ClusterWriteResult>;
+  isBusy: boolean;
+  failure: NodePoolWriteFailure | undefined;
+  reset: () => void;
+};
+
+type ClusterWriteOptions = { mode: WriteMode; dryRun?: boolean };
+type ClusterWrite<TInput> = { input: TInput; options: ClusterWriteOptions };
+
+/**
+ * The writes of the Create cluster and Delete cluster dialogs, through
+ * cluster-manager over muster as the signed-in person — the same handling as
+ * the node-pool writes.
+ */
+export function useClusterWrite(
+  installation: string | undefined,
+): ClusterWriteState {
+  const { writeOptions, failure, reset } =
+    useClusterManagerWrites(installation);
+
+  const create = useTrackedMutation({
+    // A dry run is the dialog's review step and writes nothing; a partial
+    // apply is finished by Continue, the same call, which reports it.
+    event: (result, { options }) =>
+      options.dryRun || result.partial
+        ? null
+        : {
+            name: 'AgentPlatform.clusterCreated',
+            attributes: { mode: options.mode },
+          },
+    ...writeOptions(
+      (c, { input, options }: ClusterWrite<CreateClusterInput>) =>
+        c.createCluster(input, options),
+      ({ options }) => !options.dryRun,
+    ),
+  });
+  const remove = useTrackedMutation({
+    event: null,
+    untrackedReason: 'Cluster deletion is not a tracked portal action yet.',
+    ...writeOptions(
+      (c, { input, options }: ClusterWrite<DeleteClusterInput>) =>
+        c.deleteCluster(input, options),
+      ({ options }) => !options.dryRun,
+    ),
+  });
+
+  const { mutateAsync: createAsync } = create;
+  const { mutateAsync: removeAsync } = remove;
+  return {
+    create: useCallback(
+      (input: CreateClusterInput, options: ClusterWriteOptions) =>
+        createAsync({ input, options }),
+      [createAsync],
+    ),
+    remove: useCallback(
+      (input: DeleteClusterInput, options: ClusterWriteOptions) =>
+        removeAsync({ input, options }),
+      [removeAsync],
+    ),
+    isBusy: create.isPending || remove.isPending,
+    failure,
+    reset,
   };
 }

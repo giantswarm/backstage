@@ -1,6 +1,7 @@
 import {
   A2aMessageWire,
   a2aMessageWireSchema,
+  A2aStreamEventWire,
   a2aStreamEventWireSchema,
   CANCELED_STATE,
   CONFIRMATION_TOOL_NAME,
@@ -11,6 +12,7 @@ import {
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
+  isRecord,
   isThoughtPart,
   parsePart,
   readFunctionCall,
@@ -18,6 +20,7 @@ import {
   readKagentMetadata,
   readKagentMetadataString,
   readMessageText,
+  readAttachment,
   readPartText,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -102,6 +105,15 @@ export type StreamTurn = {
   live?: LiveRun;
   /** A terminal `status-update` was seen: the turn is over. */
   isFinal: boolean;
+  /**
+   * Some event of this turn carried a file part.
+   *
+   * The live preview renders text and calls only, so a file is left to the
+   * polled conversation, and this is how the caller knows to re-read it now
+   * rather than on the next poll. Flips once per turn: the terminal event
+   * repeats the parts a turn already streamed.
+   */
+  carriesFile: boolean;
   /** Newest A2A state the stream reported, lowercased. */
   stateKey?: string;
   /**
@@ -125,6 +137,7 @@ export function createStreamTurn(sentMessageId: string): StreamTurn {
     dispatched: false,
     items: [],
     isFinal: false,
+    carriesFile: false,
     revision: 0,
     openCalls: [],
     nextItemId: 0,
@@ -173,6 +186,9 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     items: turn.items,
     openCalls: turn.openCalls,
   };
+  if (!next.carriesFile && eventCarriesFile(event)) {
+    next.carriesFile = true;
+  }
 
   switch (event.kind) {
     case 'task': {
@@ -343,6 +359,30 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
     default:
       return next;
   }
+}
+
+/**
+ * Whether an event carries a file part anywhere: on its message, its artifact,
+ * or, for a `task` snapshot, in the history and artifacts it repeats.
+ */
+function eventCarriesFile(event: A2aStreamEventWire): boolean {
+  const partsOf = (value: unknown): unknown[] => {
+    const parts = isRecord(value) ? value.parts : undefined;
+    return Array.isArray(parts) ? parts : [];
+  };
+  const listOf = (value: unknown): unknown[] =>
+    Array.isArray(value) ? value : [];
+  const parts = [
+    ...(event.parts ?? []),
+    ...(event.artifact?.parts ?? []),
+    ...partsOf(event.status?.message),
+    ...listOf(event.history).flatMap(partsOf),
+    ...listOf(event.artifacts).flatMap(partsOf),
+  ];
+  return parts.some(rawPart => {
+    const part = parsePart(rawPart);
+    return part !== undefined && readAttachment(part) !== undefined;
+  });
 }
 
 /**

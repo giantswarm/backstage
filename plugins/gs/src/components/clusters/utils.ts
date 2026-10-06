@@ -7,6 +7,7 @@ import { ClusterStatuses } from './ClusterStatus';
 import { toSentenceCase } from '../utils/helpers';
 import {
   AWSCluster,
+  AzureASOManagedCluster,
   AzureCluster,
   Cluster,
   ProviderCluster,
@@ -127,6 +128,7 @@ export function calculateClusterProvider(cluster: Cluster) {
     case 'cluster-aws':
       return ClusterProviders.AWS;
     case 'cluster-azure':
+    case 'cluster-aks':
       return ClusterProviders.Azure;
     case 'cluster-vsphere':
       return ClusterProviders.VSphere;
@@ -181,6 +183,8 @@ export function findProviderClusterAppSourceLocation(
       return 'https://github.com/giantswarm/cluster-aws';
     case providerCluster instanceof AzureCluster:
       return 'https://github.com/giantswarm/cluster-azure';
+    case providerCluster instanceof AzureASOManagedCluster:
+      return 'https://github.com/giantswarm/cluster-aks';
     case providerCluster instanceof VSphereCluster:
       return 'https://github.com/giantswarm/cluster-vsphere';
     case providerCluster instanceof VCDCluster:

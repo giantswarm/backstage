@@ -15,7 +15,7 @@
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
 
-import { looksNotConnected, type CommitAgentResult } from './agentManager';
+import { looksNotConnected } from './agentManager';
 
 /** The MCPServer name muster registers cluster-manager under. */
 export const CLUSTER_MANAGER_SERVER = 'cluster-manager';
@@ -24,6 +24,9 @@ export const CLUSTER_MANAGER_SERVER = 'cluster-manager';
 export const CLUSTER_MANAGER_TOOLS = {
   getInfo: 'get_info',
   listClusters: 'list_clusters',
+  listReleases: 'list_releases',
+  createCluster: 'create_cluster',
+  deleteCluster: 'delete_cluster',
   listNodePools: 'list_node_pools',
   createNodePool: 'create_node_pool',
   deleteNodePool: 'delete_node_pool',
@@ -36,6 +39,20 @@ export function offersTool(
   tool: ClusterManagerTool,
 ): boolean {
   return info?.tools.includes(tool) ?? false;
+}
+
+/**
+ * Whether this installation's cluster-manager takes mode `commit` for a tool:
+ * offered at all (`modes.commit`) and, where it names them, for this tool.
+ */
+export function offersCommit(
+  info: Pick<ClusterManagerInfo, 'modes'> | undefined,
+  tool: ClusterManagerTool,
+): boolean {
+  if (!info?.modes.commit) {
+    return false;
+  }
+  return info.modes.commitTools?.includes(tool) ?? true;
 }
 
 export type ClusterManagerTool =
@@ -83,7 +100,8 @@ export function clusterApiNote(
 /** `get_info`: the version, the write modes offered and the tool names. */
 export type ClusterManagerInfo = {
   version: string;
-  modes: { apply: boolean; commit: boolean };
+  /** `commitTools`: the tools that take mode `commit` (cluster-manager 0.25+). */
+  modes: { apply: boolean; commit: boolean; commitTools?: string[] };
   tools: string[];
   clusterApi?: ClusterApiStatus;
 };
@@ -525,7 +543,100 @@ export type NodePoolWriteResult = {
    */
   partial?: boolean;
   nextStep?: string;
-} & CommitAgentResult;
+  /** The pull request of a write in mode `commit`. */
+  commit?: ClusterManagerCommit;
+};
+
+/** One file of a commit: shown on a dry run, never for a secret. */
+export type CommitFile = {
+  path: string;
+  action: string;
+  content?: string;
+};
+
+/**
+ * A write in mode `commit`: the repository owning the organization, the
+ * directory and files, and — not on a dry run — the pull request opened as
+ * the person; `liveSteps` are what the merge alone does not do.
+ */
+export type ClusterManagerCommit = {
+  repository: string;
+  base: string;
+  directory: string;
+  kustomization: string;
+  prune: boolean;
+  branch: string;
+  files: CommitFile[];
+  pullRequest?: string;
+  number?: number;
+  author?: string;
+  liveSteps?: string[];
+};
+
+/** `list_releases`: one Release CR of the installation. */
+export type ClusterRelease = {
+  /** `<provider>-<version>`. */
+  name: string;
+  provider: string;
+  version: string;
+  state: 'active' | 'deprecated' | 'wip' | 'preview' | string;
+  date?: string;
+  kubernetesVersion?: string;
+  clusterChart?: string;
+  releaseChart: {
+    url: string;
+    version: string;
+    /** Whether the registry lists the tag; null when it cannot be read. */
+    published: boolean | null;
+    note?: string;
+  };
+  /** Whether `create_cluster` creates a cluster of it; `note` says why not. */
+  offered: boolean;
+  note?: string;
+};
+
+/** `list_releases`: the provider lines `create_cluster` offers, and the releases newest first per line. */
+export type ClusterReleasesResult = {
+  providers: string[];
+  releases: ClusterRelease[];
+};
+
+/** What the Create cluster dialog sends to `create_cluster`; the tool fills every default. */
+export type CreateClusterInput = {
+  organization: string;
+  name: string;
+  provider: string;
+  release?: string;
+  identity?: string;
+  description?: string;
+  values?: Record<string, unknown>;
+};
+
+export type DeleteClusterInput = {
+  organization: string;
+  name: string;
+};
+
+/** `create_cluster` and `delete_cluster`: the write's answer. */
+export type ClusterWriteResult = NodePoolWriteResult & {
+  /** The release a created cluster runs. */
+  release?: string;
+  /** The releases that go with a deleted cluster. */
+  withCluster?: string[];
+  /** The models served on a deleted cluster, or `modelsNote` why they cannot be told. */
+  models?: string[];
+  modelsNote?: string;
+};
+
+/**
+ * A cluster name `create_cluster` takes: a DNS label of at most 20 characters
+ * starting with a letter.
+ */
+export const CLUSTER_NAME_PATTERN = /^[a-z]([-a-z0-9]{0,18}[a-z0-9])?$/;
+
+export function isValidClusterName(name: string): boolean {
+  return CLUSTER_NAME_PATTERN.test(name);
+}
 
 /** What the dialog sends to `create_node_pool`; the tool fills every default. */
 export type CreateNodePoolInput = {
@@ -903,6 +1014,27 @@ export function classifyClusterManagerError(error: unknown): Error {
     message,
     parseRefusal(toolErrorDetails(error)),
   );
+}
+
+export type NodePoolWriteFailure = {
+  kind: 'refused' | 'not-connected' | 'error';
+  message: string;
+  /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
+  refused?: Refusal;
+};
+
+export function classifyNodePoolWriteFailure(
+  error: unknown,
+): NodePoolWriteFailure {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof ClusterManagerNotConnectedError) {
+    return { kind: 'not-connected', message };
+  }
+  return {
+    kind: 'refused',
+    message,
+    refused: error instanceof ClusterManagerError ? error.refused : undefined,
+  };
 }
 
 /** A manifest's file name in the review: `<kind>-<name>.yaml`. */

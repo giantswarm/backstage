@@ -2,10 +2,15 @@ import './configureProxy';
 import 'global-agent/bootstrap';
 import { createBackend } from '@backstage/backend-defaults';
 import {
+  configureFetchProxy,
   customHttpAuthServiceFactory,
   rootLogger,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
+
+// global-agent never reaches native fetch, which the catalog, the scaffolder
+// and most plugins read URLs with: give it the same GLOBAL_AGENT_* proxy.
+configureFetchProxy();
 
 const backend = createBackend();
 

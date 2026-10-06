@@ -13,7 +13,7 @@ import { useAgentManagerClient } from './useAgentManager';
 /**
  * How often `get_agent_status` is re-read while the template is still
  * compiling. A fresh release renders its template within seconds and the
- * platform Harness reports Ready shortly after; this is the pace a person
+ * agent's Harness reports Ready shortly after; this is the pace a person
  * watching the page notices without hammering agent-manager.
  */
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
@@ -49,9 +49,9 @@ export type AgentStatusState = {
 };
 
 /**
- * `get_agent_status` for one agent, polled until the platform Harness has a
+ * `get_agent_status` for one agent, polled until the agent's Harness has a
  * verdict: `ready`, or `failed` with the reason. On API v2 that verdict comes
- * from the template's `status.harnesses[]` entry for the platform Harness —
+ * from the template's `status.harnesses[]` entry for the Harness it names —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
  * template yet, and is polled through like `progressing`.

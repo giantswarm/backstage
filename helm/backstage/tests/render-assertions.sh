@@ -13,8 +13,13 @@
 #   no release: the pod never loads the image's app-config.yaml;
 # * the metrics port, env and network policy leg, without which the backend
 #   starts with metrics on but nothing can scrape it;
+# * the pg config with the postgresql engine, without which the backend
+#   silently runs on in-memory sqlite beside an idle CNPG cluster;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
 #   renders and the install fails with "illegal base64 data at input byte N".
+# * the arm64 node selector with the toleration for the pool's
+#   `kubernetes.io/arch=arm64:NoSchedule` taint, without which the pod stays
+#   Pending, or lands on any pool when only the toleration renders.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -219,6 +224,34 @@ render_fails() {
   fi
 }
 
+# The container's args, one per line, without the YAML list markup.
+container_args() {
+  local name=$1
+  yq -r 'select(.kind == "Deployment") | .spec.template.spec.containers[0].args[]' "${work_dir}/${name}.yaml"
+}
+
+echo "--> database.engine=postgresql: the pg config renders, mounts and loads before the operator's config"
+render postgresql --set database.engine=postgresql --set-string 'backstage.appConfig=app: portal' --set 'backstage.extraAppConfig[0].filename=app-config.fragment.yaml' --set 'backstage.extraAppConfig[0].configMapRef=fragment'
+database_config=$(yq -r 'select(.kind == "ConfigMap" and .metadata.name == "backstage-database-config") | .data["app-config-database.yaml"]' "${work_dir}/postgresql.yaml")
+for want in 'client: pg' 'pluginDivisionMode: schema' 'host: ${POSTGRES_HOST}' 'port: ${POSTGRES_PORT}' 'user: ${POSTGRES_USER}' 'password: ${POSTGRES_PASSWORD}'; do
+  if ! grep -qF -- "${want}" <<<"${database_config}"; then
+    echo "FAIL: postgresql: app-config-database.yaml does not contain ${want}"
+    failed=1
+  fi
+done
+expect postgresql 'mountPath: "/app/app-config-database.yaml"'
+# Later --config files win: the operator's appConfig and extraAppConfig come
+# after the chart's pg block, so a database block of theirs still applies.
+config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
+if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
+  echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
+  failed=1
+fi
+
+echo "--> database.engine=sqlite (default): no pg config, mount or flag"
+refute sqlite 'backstage-database-config'
+refute sqlite 'app-config-database.yaml'
+
 echo "--> base64 values in the data Secrets: rendered as they are"
 render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
 # Under `data`, not beside it: a key outside `data` leaves the Secret empty and
@@ -241,6 +274,46 @@ fi
 echo "--> plaintext values in the data Secrets: the render fails and names the value"
 render_fails plain-scalar 'sentry.app.dsn must be base64-encoded' --set sentry.app.dsn=https://key@o1.ingest.sentry.io/1
 render_fails plain-map 'dexAuthCredentials.gazelle.clientID must be base64-encoded' --set dexAuthCredentials.gazelle.clientID=backstage --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0
+
+# The pod's nodeSelector and tolerations as `[<nodeSelector>,<tolerations>]`
+# in compact JSON, `null` for a field that does not render.
+pod_scheduling() {
+  local name=$1 field values=()
+  for field in nodeSelector tolerations; do
+    values+=("$(yq -o=json -I=0 "select(.kind == \"Deployment\") | .spec.template.spec.${field}" "${work_dir}/${name}.yaml")")
+  done
+  echo "[${values[0]},${values[1]}]"
+}
+
+expect_scheduling() {
+  local name=$1 want=$2 got
+  got=$(pod_scheduling "${name}")
+  if [ "${got}" != "${want}" ]; then
+    echo "FAIL: ${name}: nodeSelector and tolerations are ${got}, want ${want}"
+    failed=1
+  fi
+}
+
+arm64_toleration='{"effect":"NoSchedule","key":"kubernetes.io/arch","operator":"Equal","value":"arm64"}'
+
+echo "--> architecture: no scheduling fields by default, both the selector and the taint toleration for arm64"
+render arch-default
+expect_scheduling arch-default '[null,null]'
+render arch-arm64 --set architecture=arm64
+expect_scheduling arch-arm64 "[{\"kubernetes.io/arch\":\"arm64\"},[${arm64_toleration}]]"
+render arch-amd64 --set architecture=amd64
+expect_scheduling arch-amd64 '[{"kubernetes.io/arch":"amd64"},null]'
+render arch-selector-only --set-string 'nodeSelector.kubernetes\.io/arch=arm64'
+expect_scheduling arch-selector-only "[{\"kubernetes.io/arch\":\"arm64\"},[${arm64_toleration}]]"
+render arch-merged --set architecture=arm64 --set-string 'nodeSelector.topology\.kubernetes\.io/zone=eu-central-1a' --set 'tolerations[0].key=dedicated' --set 'tolerations[0].operator=Exists'
+expect_scheduling arch-merged "[{\"kubernetes.io/arch\":\"arm64\",\"topology.kubernetes.io/zone\":\"eu-central-1a\"},[{\"key\":\"dedicated\",\"operator\":\"Exists\"},${arm64_toleration}]]"
+render arch-covered --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists'
+expect_scheduling arch-covered '[{"kubernetes.io/arch":"arm64"},[{"key":"kubernetes.io/arch","operator":"Exists"}]]'
+render arch-covered-equal --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].value=arm64' --set 'tolerations[0].effect=NoSchedule'
+expect_scheduling arch-covered-equal '[{"kubernetes.io/arch":"arm64"},[{"effect":"NoSchedule","key":"kubernetes.io/arch","value":"arm64"}]]'
+render arch-noexecute --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists' --set 'tolerations[0].effect=NoExecute'
+expect_scheduling arch-noexecute "[{\"kubernetes.io/arch\":\"arm64\"},[{\"effect\":\"NoExecute\",\"key\":\"kubernetes.io/arch\",\"operator\":\"Exists\"},${arm64_toleration}]]"
+render_fails arch-conflict 'architecture=arm64 conflicts with nodeSelector' --set architecture=arm64 --set-string 'nodeSelector.kubernetes\.io/arch=amd64'
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

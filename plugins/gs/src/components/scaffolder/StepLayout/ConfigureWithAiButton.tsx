@@ -1,7 +1,12 @@
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { useValueFromOptions } from '../hooks/useValueFromOptions';
+import {
+  buildConfigureWithAiMessage,
+  ConfigureWithAiMode,
+} from './buildConfigureWithAiMessage';
 
 export type ConfigureWithAiButtonOptions = {
+  mode?: ConfigureWithAiMode;
   chartRef?: string;
   chartRefField?: string;
   chartTag?: string;
@@ -10,6 +15,10 @@ export type ConfigureWithAiButtonOptions = {
   installationNameField?: string;
   clusterName?: string;
   clusterNameField?: string;
+  deploymentName?: string;
+  deploymentNameField?: string;
+  deploymentNamespace?: string;
+  deploymentNamespaceField?: string;
 };
 
 export const ConfigureWithAiButton = ({
@@ -20,6 +29,7 @@ export const ConfigureWithAiButton = ({
   formContext: any;
 }) => {
   const {
+    mode,
     chartRef: chartRefOption,
     chartRefField: chartRefFieldOption,
     chartTag: chartTagOption,
@@ -28,6 +38,10 @@ export const ConfigureWithAiButton = ({
     installationNameField: installationNameFieldOption,
     clusterName: clusterNameOption,
     clusterNameField: clusterNameFieldOption,
+    deploymentName: deploymentNameOption,
+    deploymentNameField: deploymentNameFieldOption,
+    deploymentNamespace: deploymentNamespaceOption,
+    deploymentNamespaceField: deploymentNamespaceFieldOption,
   } = configureWithAiOptions ?? {};
 
   const chartRef = useValueFromOptions(
@@ -54,14 +68,27 @@ export const ConfigureWithAiButton = ({
     clusterNameFieldOption,
   );
 
-  const message = [
-    "I'm in the App Deployment template to deploy a chart to a cluster. Please help me create the configuration values as a starting point. Details:",
-    '',
-    `Chart: ${chartRef}`,
-    `Version: ${chartTag}`,
-    `Installation: ${installationName}`,
-    `Cluster: ${clusterName}`,
-  ].join('\n');
+  const deploymentName = useValueFromOptions(
+    formContext,
+    deploymentNameOption,
+    deploymentNameFieldOption,
+  );
+
+  const deploymentNamespace = useValueFromOptions(
+    formContext,
+    deploymentNamespaceOption,
+    deploymentNamespaceFieldOption,
+  );
+
+  const message = buildConfigureWithAiMessage({
+    mode,
+    chartRef,
+    chartTag,
+    installationName,
+    clusterName,
+    deploymentName,
+    deploymentNamespace,
+  });
 
   return (
     <AIChatButton

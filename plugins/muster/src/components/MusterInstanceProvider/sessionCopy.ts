@@ -9,7 +9,7 @@ export type SessionGateCopy = {
 
 /**
  * One wording per session state, shared by every gate so the manager, the
- * tool explorer and the register flow say the same thing. Never a generic "not
+ * tool pages and the register flow say the same thing. Never a generic "not
  * authenticated": the sentence names the cause, and the action matches it --
  * an expired portal session needs the single re-login, a muster the portal
  * cannot reach offers no action at all (nothing was tried, nothing can be

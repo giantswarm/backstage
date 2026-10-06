@@ -13,8 +13,8 @@ import { hasMarkers, ToolMarkers } from './ToolMarkers';
  * Below this table width the description takes a line of its own instead of a
  * column.
  *
- * Measured against the widest row the app has -- the Tool Explorer's search
- * results, where a long name carries markers, a score and the favourite star.
+ * Measured against the widest row the table supports: a long name carrying
+ * markers, a `meta` badge and a trailing control.
  * There the description gets `tableWidth - 417px`, so it keeps a readable
  * ~200px only above this. A plainer row would survive a narrower table, but a
  * threshold cannot see its own content: erring wide costs a stacked row that
@@ -30,9 +30,8 @@ const useStyles = makeStyles((theme: Theme) => ({
   list: {
     display: 'grid',
     gridTemplateColumns: 'var(--tool-table-columns)',
-    // Rows respond to the width of the table, not of the viewport: the Tool
-    // Explorer's browse panel is the narrow column of a two-column page and is
-    // cramped on the widest screen.
+    // Rows respond to the width of the table, not of the viewport: a table in
+    // a narrow column of a wide page is cramped on the widest screen.
     containerType: 'inline-size',
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
@@ -44,7 +43,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     gridTemplateColumns: 'subgrid',
     gridColumn: '1 / -1',
     // Centred, not baseline-aligned: an icon-only control in the trailing
-    // column (the Tool Explorer's favourite star) synthesises its baseline at
+    // column (a star, say) synthesises its baseline at
     // its bottom edge, so baseline alignment drags every text cell in the row
     // down with it. The description never wraps, so there is no second line
     // for a baseline to serve.
@@ -130,8 +129,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     minWidth: 0,
     overflowWrap: 'anywhere',
   },
-  // Holds the markers and whatever `meta` a caller adds beside them (the Tool
-  // Explorer's search score). The gap only materialises between things that
+  // Holds the markers and whatever `meta` a caller adds beside them (a
+  // picker's preset badge, say). The gap only materialises between things that
   // are actually there, so a row with markers and no meta is unaffected.
   markerCell: {
     display: 'inline-flex',
@@ -184,7 +183,7 @@ export type ToolRowMode =
   | { kind: 'static' }
   /** The name links somewhere; the row itself is not a control. */
   | { kind: 'link'; href: string }
-  /** The whole row selects the tool (the Tool Explorer's browse list). */
+  /** The whole row selects the tool (a browse list beside a detail panel). */
   | {
       kind: 'action';
       onSelect: () => void;
@@ -213,11 +212,11 @@ export interface ToolTableItem {
   mode: ToolRowMode;
   /** Announced name. Defaults to `name` when that is a plain string. */
   ariaLabel?: string;
-  /** Extra badges beside the markers, e.g. the Tool Explorer's search score. */
+  /** Extra badges beside the markers, e.g. a toolset picker's preset badge. */
   meta?: ReactNode;
   /**
    * A control at the row's trailing edge, outside the row's own hit area —
-   * the Tool Explorer's favourite star. Kept out of the row button because a
+   * a favourite star, say. Kept out of the row button because a
    * button cannot nest inside a button.
    */
   trailing?: ReactNode;
@@ -385,8 +384,8 @@ function ToolTableRow({
  * description, without a header row — the columns are self-evident and a
  * header would cost a line on every card that shows a handful of tools.
  *
- * One component behind every surface that lists tools, so the Tool Explorer,
- * an agent's resolved toolset and the toolset pickers cannot drift apart. What
+ * One component behind every surface that lists tools, so a server's Tools
+ * tab, an agent's resolved toolset and the toolset pickers cannot drift apart. What
  * changes between them is the row's {@link ToolRowMode} — shown, linked,
  * selectable, or checkable — not its typography.
  *

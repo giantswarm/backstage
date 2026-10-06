@@ -15,6 +15,7 @@ import type {
   AgentSpec,
   ValidateAgentResult,
 } from '../../lib/agentManager';
+import type { HarnessChoice } from '../../lib/harnesses';
 import type { DiscoveredSkill } from '../../lib/skills';
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
@@ -152,10 +153,14 @@ type Scenario = {
   info?: Partial<AgentManagerInfo>;
   /** Violations the dry run reports instead of a clean result. */
   violations?: string[];
+  /** Checks a clean dry run could not make. */
+  notes?: string[];
   /** What create_agent does: succeed, or throw this error. */
   createError?: Error;
   /** The dry run itself is refused (thrown), e.g. a not-connected session. */
   validateError?: Error;
+  /** The Harness picked on the details step; none is the platform Harness. */
+  harness?: HarnessChoice;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -170,9 +175,10 @@ function makeMusterApi(scenario: Scenario = {}) {
             throw scenario.validateError;
           }
           const result = dryRunOf(args as AgentSpec);
-          return scenario.violations
-            ? { ...result, valid: false, errors: scenario.violations }
-            : result;
+          if (scenario.violations) {
+            return { ...result, valid: false, errors: scenario.violations };
+          }
+          return scenario.notes ? { ...result, notes: scenario.notes } : result;
         }
         case 'x_agent-manager_create_agent': {
           if (scenario.createError) {
@@ -227,9 +233,11 @@ function makeMusterApi(scenario: Scenario = {}) {
 function Seed({
   children,
   withSkill = true,
+  harness,
 }: {
   children: ReactNode;
   withSkill?: boolean;
+  harness?: HarnessChoice;
 }) {
   const {
     setName,
@@ -237,6 +245,7 @@ function Seed({
     setSystemMessage,
     setInstallation,
     selectModelConfig,
+    selectHarness,
     toggleSkill,
     setToolset,
     isComplete,
@@ -247,6 +256,7 @@ function Seed({
     setSystemMessage('You review pull requests.');
     setInstallation('gazelle');
     selectModelConfig('opus-4-7', 'kagent');
+    selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
     }
@@ -268,7 +278,7 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <NewAgentFormProvider>
-          <Seed withSkill={withSkill}>
+          <Seed withSkill={withSkill} harness={scenario.harness}>
             <NewAgentReviewPage />
           </Seed>
         </NewAgentFormProvider>
@@ -329,6 +339,7 @@ describe('NewAgentReviewPage', () => {
       toolset: ['preset:read-only'],
     });
     expect(spec).not.toHaveProperty('runtime');
+    expect(spec).not.toHaveProperty('harness');
 
     // What agent-manager rendered is what is shown, verbatim.
     const oci = await screen.findByTestId('code-agent.yaml');
@@ -343,9 +354,9 @@ describe('NewAgentReviewPage', () => {
       screen.getByText('oci://gsoci.azurecr.io/charts/giantswarm/agent:1.x'),
     ).toBeInTheDocument();
     expect(screen.getByText('latest 1.0.0')).toBeInTheDocument();
-    expect(screen.getByText('Harness').parentElement).toHaveTextContent(
-      'kagent',
-    );
+    expect(
+      screen.getByText('Runtime (Harness)').parentElement,
+    ).toHaveTextContent('kagent');
     // The skills summary names the pin.
     expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
     // The Tools summary names the preset by its label, the selector below it.
@@ -356,6 +367,40 @@ describe('NewAgentReviewPage', () => {
     expect(
       screen.getByText(/Values validated against the chart's schema/),
     ).toHaveTextContent('1.0.0 (registry)');
+  });
+
+  it('validates and creates on the Harness picked, and names it in the review', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      harness: {
+        name: 'claude',
+        admits: 'claude',
+        runtime: 'claude',
+        imageName: 'claude-harness',
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_validate_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
+    const summary = screen.getByText('Runtime (Harness)')
+      .parentElement as HTMLElement;
+    expect(summary).toHaveTextContent('claude');
+    expect(summary).toHaveTextContent('Claude Code');
+    expect(
+      screen.getByText(/the agent runs on the Harness/),
+    ).toBeInTheDocument();
+
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(
+        specSentTo(callTool, 'x_agent-manager_create_agent'),
+      ).toMatchObject({ harness: 'claude' }),
+    );
   });
 
   it("shows the dry run's violations inline and withholds Deploy", async () => {
@@ -373,6 +418,32 @@ describe('NewAgentReviewPage', () => {
       screen.getByText('agent-manager refuses this configuration'),
     ).toBeInTheDocument();
     expect(deployButton()).toBeDisabled();
+  });
+
+  it("shows the dry run's notes beside a valid result and keeps Deploy", async () => {
+    await renderReview({
+      notes: [
+        'the name "go-service-reviewer" could not be checked for a clash: forbidden',
+      ],
+    });
+
+    const list = await screen.findByRole('list', { name: 'Notes' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(list).toHaveTextContent('could not be checked for a clash');
+    expect(
+      screen.queryByRole('list', { name: 'Violations' }),
+    ).not.toBeInTheDocument();
+    expect(deployButton()).toBeEnabled();
+  });
+
+  it('shows no notes when the dry run reports none', async () => {
+    await renderReview();
+
+    await screen.findByTestId('code-agent.yaml');
+    expect(
+      screen.queryByRole('list', { name: 'Notes' }),
+    ).not.toBeInTheDocument();
+    expect(deployButton()).toBeEnabled();
   });
 
   it('deploys through create_agent as given and lands on the detail page with the create handed over', async () => {

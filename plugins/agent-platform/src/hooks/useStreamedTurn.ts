@@ -175,8 +175,15 @@ export function useStreamedTurn(installation: string, sessionId: string) {
 
       try {
         await open(result => {
+          const carriedFile = turn.carriesFile;
           turn = applyStreamEvent(turn, result);
           setStreamTurn(turn);
+          if (turn.carriesFile && !carriedFile) {
+            // Not awaited: the stream keeps flowing while the poll catches up.
+            void queryClient.invalidateQueries({
+              queryKey: sessionTasksQueryKey(installation, sessionId),
+            });
+          }
         }, control.signal);
       } catch (error) {
         // Any event at all means the turn exists — a later failure only cut

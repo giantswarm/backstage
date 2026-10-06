@@ -171,7 +171,7 @@ describe('AgentCreationProgress', () => {
         screen.queryByText('The template is ready.'),
       ).not.toBeInTheDocument();
       expect(
-        screen.getByText(/waiting for the platform Harness to compile/),
+        screen.getByText(/waiting for its Harness to compile/),
       ).toBeInTheDocument();
     });
 

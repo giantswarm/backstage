@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import StarIcon from '@material-ui/icons/Star';
-import StarBorderIcon from '@material-ui/icons/StarBorder';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Accordion,
   AccordionPanel,
@@ -8,17 +7,12 @@ import {
   Alert,
   Box,
   Button,
-  ButtonIcon,
-  Flex,
   Text,
-  Tooltip,
-  TooltipTrigger,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useMutation, useQuery } from '@tanstack/react-query';
 import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers } from '../shared';
+import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -56,11 +50,11 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  /** Whether the tool is a favourite; the star shows only with a toggle. */
-  isFavourite?: boolean;
-  onToggleFavourite?: () => void;
-  /** Off where the page around the panel already names the tool. */
-  showName?: boolean;
+  /**
+   * Show the read-only / destructive markers above the description. Off where
+   * the page already shows them, as the tool page does beside the tool's name.
+   */
+  showMarkers?: boolean;
 }
 
 /**
@@ -73,9 +67,7 @@ export interface ToolDetailPanelProps {
 export function ToolDetailPanel({
   name,
   installation,
-  isFavourite = false,
-  onToggleFavourite,
-  showName = true,
+  showMarkers = true,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -94,10 +86,7 @@ export function ToolDetailPanel({
     setFieldErrors({});
   }, [storageKey]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['muster', 'describe-tool', installation, name],
-    queryFn: () => musterApi.describeTool(name, installation),
-  });
+  const { data, isLoading, error } = useToolDescription(name, installation);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 
@@ -122,7 +111,10 @@ export function ToolDetailPanel({
     });
   }, [fields]);
 
-  const mutation = useMutation({
+  const mutation = useTrackedMutation({
+    event: null,
+    untrackedReason:
+      'A tool call from the explorer; its arguments are free text and stay out.',
     mutationFn: async (args: Record<string, unknown>) => {
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation);
@@ -186,47 +178,7 @@ export function ToolDetailPanel({
 
   return (
     <Box>
-      {(showName || onToggleFavourite) && (
-        <Flex align="center" justify="between" gap="2">
-          {showName ? (
-            <Text
-              as="p"
-              variant="title-small"
-              weight="bold"
-              style={{ fontFamily: 'monospace', minWidth: 0 }}
-              truncate
-            >
-              {name}
-            </Text>
-          ) : (
-            <span />
-          )}
-          {onToggleFavourite && (
-            <TooltipTrigger>
-              <ButtonIcon
-                variant="tertiary"
-                size="small"
-                aria-label={
-                  isFavourite ? 'Remove favourite' : 'Add to favourites'
-                }
-                icon={
-                  isFavourite ? (
-                    <StarIcon fontSize="small" color="primary" />
-                  ) : (
-                    <StarBorderIcon fontSize="small" />
-                  )
-                }
-                onClick={onToggleFavourite}
-              />
-              <Tooltip>
-                {isFavourite ? 'Remove favourite' : 'Add to favourites'}
-              </Tooltip>
-            </TooltipTrigger>
-          )}
-        </Flex>
-      )}
-
-      {hasMarkers(data?.annotations) && (
+      {showMarkers && hasMarkers(data?.annotations) && (
         <Box mt="1">
           <ToolMarkers annotations={data?.annotations} />
         </Box>

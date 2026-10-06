@@ -1,11 +1,12 @@
 import { CSSProperties, Fragment, ReactNode, useMemo } from 'react';
 import { Flex, Link, Text } from '@backstage/ui';
 import { DateComponent, FactList } from '@giantswarm/backstage-plugin-ui-react';
-import { Action, Definition, Installation } from '../apis';
-import { inputFacts, verbOf } from '../lib/actions';
+import { Action, ActionRevert, Definition, Installation } from '../apis';
+import { inputFacts, stateDetailOf, verbOf } from '../lib/actions';
 import { linkify, repositoriesOf } from '../lib/links';
 import { fieldsOf, formOf } from '../lib/schemaForm';
 import { ActionStateTag } from './ActionStateTag';
+import { READY_TO_MERGE_STEP } from './StateTag';
 
 const LIST_STYLE: CSSProperties = { margin: 0, paddingLeft: 16 };
 
@@ -26,7 +27,7 @@ export function ActionLine({ action }: { action: Action }) {
       {status?.state && (
         <>
           {' · '}
-          <ActionStateTag state={status.state} />
+          <ActionStateTag state={status.state} detail={stateDetailOf(action)} />
         </>
       )}
       {action.createdAt && (
@@ -64,6 +65,30 @@ function Message({
   );
 }
 
+/**
+ * A pull request's revert after its state: the pull request it came
+ * through where GitHub links one, else the commit, linked where the
+ * manager recorded the page -- `merged, reverted by #12`.
+ */
+function RevertedBy({ revert }: { revert: ActionRevert }) {
+  const name = revert.pullRequest
+    ? `#${revert.pullRequest}`
+    : revert.commit.slice(0, 7);
+  const href = revert.pullRequest ? revert.pullRequestUrl : revert.url;
+  return (
+    <span data-testid="action-revert">
+      {', reverted by '}
+      {href ? (
+        <Link href={href} target="_blank" rel="noopener">
+          {name}
+        </Link>
+      ) : (
+        name
+      )}
+    </span>
+  );
+}
+
 /** A part of the record with its own heading, as *Pull requests*. */
 function Block({
   title,
@@ -86,7 +111,8 @@ function Block({
 
 /**
  * The record of an action under its line: what was asked, as the choices
- * the person made; the pull requests with their state; the approval and its
+ * the person made; the actor's next step where the action is ready to
+ * merge; the pull requests with their state; the approval and its
  * thread; the rollout per installation; and the manager's last word on it,
  * with every repository and file it names linked. `installation` gives the
  * repositories a message may name, `definition` the labels of the choices.
@@ -121,6 +147,11 @@ export function ActionDetails({
           <FactList facts={asked} maxWidth={null} />
         </Block>
       )}
+      {status?.state === 'ready to merge' && (
+        <Text variant="body-small" data-testid="action-next-step">
+          {READY_TO_MERGE_STEP}
+        </Text>
+      )}
       {!!status?.pullRequests?.length && (
         <Block title="Pull requests" testId="action-pull-requests">
           <ul style={LIST_STYLE}>
@@ -135,6 +166,7 @@ export function ActionDetails({
                   `${pr.repository}${pr.number ? `#${pr.number}` : ''}`
                 )}
                 {pr.state ? ` — ${pr.state}` : ''}
+                {pr.revert && <RevertedBy revert={pr.revert} />}
               </li>
             ))}
           </ul>
@@ -154,6 +186,11 @@ export function ActionDetails({
               </Link>
             </>
           )}
+        </Text>
+      )}
+      {status?.withdrawal && (
+        <Text variant="body-small" data-testid="action-withdrawal">
+          Withdrawn by {status.withdrawal.by} — {status.withdrawal.reason}
         </Text>
       )}
       {!!status?.rollout?.installations?.length && (

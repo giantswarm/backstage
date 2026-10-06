@@ -1,11 +1,11 @@
-import { ReactNode } from 'react';
+import { ReactElement, ReactNode } from 'react';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import {
   attachComponentData,
   useElementFilter,
 } from '@backstage/core-plugin-api';
 import { useRouteRefParams } from '@backstage/frontend-plugin-api';
-import { PluginHeader } from '@backstage/ui';
+import { Flex, PluginHeader } from '@backstage/ui';
 import StorageIcon from '@material-ui/icons/Storage';
 import { TabProps } from '@material-ui/core/Tab';
 import Alert from '@material-ui/lab/Alert';
@@ -101,9 +101,14 @@ function getAIChatMessage(cluster: Cluster, installationName: string): string {
 
 export interface ClusterLayoutProps {
   children?: React.ReactNode;
+  /** Header actions other plugins attach, shown once the cluster is loaded. */
+  actions?: ReactElement[];
 }
 
-export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
+export const ClusterLayout = ({
+  children,
+  actions = [],
+}: ClusterLayoutProps) => {
   const { name } = useRouteRefParams(clusterDetailsRouteRef);
 
   const {
@@ -165,17 +170,20 @@ export const ClusterLayout = ({ children }: ClusterLayoutProps) => {
         tabs={tabs}
         customActions={
           cluster ? (
-            <AIChatButtonBui
-              troubleshoot={
-                calculateClusterStatus(cluster) !== ClusterStatuses.Ready
-              }
-              items={[
-                {
-                  label: 'AI Chat',
-                  message: getAIChatMessage(cluster, installationName),
-                },
-              ]}
-            />
+            <Flex gap="2" align="center">
+              {actions}
+              <AIChatButtonBui
+                troubleshoot={
+                  calculateClusterStatus(cluster) !== ClusterStatuses.Ready
+                }
+                items={[
+                  {
+                    label: 'AI Chat',
+                    message: getAIChatMessage(cluster, installationName),
+                  },
+                ]}
+              />
+            </Flex>
           ) : undefined
         }
       />

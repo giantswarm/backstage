@@ -229,17 +229,17 @@ describe('AgentsTable', () => {
         rows={[
           {
             ...rows[0],
-            readiness: 'notAccepted',
+            readiness: 'failed',
             readinessMessage: 'bad spec',
           },
         ]}
       />,
     );
 
-    expect(screen.getByText('Not accepted')).toBeInTheDocument();
+    expect(screen.getByText('Failed')).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Why Incident triager is not accepted',
+        name: 'Why Incident triager failed',
       }),
     ).toBeInTheDocument();
   });

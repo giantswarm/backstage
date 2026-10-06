@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { TestApiProvider } from '@backstage/test-utils';
+import { analyticsApiRef } from '@backstage/core-plugin-api';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -443,6 +444,21 @@ function makeMusterApi(scenario: Scenario = {}) {
           return {
             ...applied(args.mode, Boolean(scenario.partial) && applies === 1),
             ...placement,
+            ...(args.mode === 'commit'
+              ? {
+                  commit: {
+                    repository: 'acme/fleet',
+                    base: 'main',
+                    directory: 'clusters/wc1/cluster-manager',
+                    kustomization: 'flux-giantswarm/wc1',
+                    prune: true,
+                    branch: 'cluster-manager/wc1-gpu-l4',
+                    files: [],
+                    pullRequest: 'https://github.com/acme/fleet/pull/3',
+                    number: 3,
+                  },
+                }
+              : {}),
           };
         }
         default:
@@ -466,6 +482,10 @@ function makeMusterApi(scenario: Scenario = {}) {
   return { api: { callTool, describeTool } as unknown as MusterApi, callTool };
 }
 
+const analyticsApi = mockApis.analytics.mock();
+
+beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
+
 async function renderDialog(
   scenario: Scenario = {},
   onDeployed?: (
@@ -479,7 +499,12 @@ async function renderDialog(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <AddGpuNodePoolDialog
           installations={['inst-1']}
@@ -612,6 +637,14 @@ describe('AddGpuNodePoolDialog', () => {
       cluster: 'wc1',
       name: 'gpu-l4',
     });
+    // The form's dry runs report nothing; the deploy reports once.
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.nodePoolCreated',
+        attributes: { mode: 'apply' },
+      }),
+    );
     // Without a preset chosen there is no serve intent.
     expect(onDeployed).toHaveBeenCalledTimes(1);
     expect(onDeployed.mock.calls[0][1]).toBe('inst-1');
@@ -669,6 +702,16 @@ describe('AddGpuNodePoolDialog', () => {
         'inst-1',
       ),
     );
+    // cluster-manager answers the pull request in `commit`, not agent-manager's `pullRequestUrl`.
+    expect(
+      await screen.findByRole('link', { name: /Open the pull request/ }),
+    ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/3');
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.nodePoolCreated',
+        attributes: { mode: 'commit' },
+      }),
+    );
   });
 
   it('offers the muster connect step when the session is not connected', async () => {
@@ -684,6 +727,7 @@ describe('AddGpuNodePoolDialog', () => {
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('node-size-picker')).not.toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   it("shows the tool's note, not an error, where the Cluster API is not served", async () => {
