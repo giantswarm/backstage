@@ -48,7 +48,7 @@ const meta = {
             '"Copy manifest" button.',
           whenToUse:
             'Whenever a page offers to show the raw manifest of a resource. ' +
-            'Serialize a Kubernetes object with `toManifestYaml` from ' +
+            'Serialize a Kubernetes object with `toKubectlYaml` from ' +
             '`@giantswarm/backstage-plugin-kubernetes-react` first, so it ' +
             'reads like `kubectl get -o yaml`.',
           migration: 'mixed',

@@ -7,29 +7,23 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ResourceCard } from './ResourceCard';
 
-// The real dialog embeds the CodeMirror-backed YamlEditorFormField, which does
-// not render under jsdom, and has its own tests in ui-react. This stand-in keeps
-// what the card decides: when it opens, its title and the manifest it shows.
-jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  ManifestDialog: ({
-    isOpen,
-    onOpenChange,
-    title,
-    manifest,
-  }: {
-    isOpen: boolean;
-    onOpenChange: (isOpen: boolean) => void;
-    title: string;
-    manifest: string;
-  }) =>
-    isOpen ? (
-      <div role="dialog" aria-label={title}>
-        <textarea aria-label="Manifest" value={manifest} readOnly />
-        <button onClick={() => onOpenChange(false)}>Close</button>
-      </div>
-    ) : null,
-}));
+import { ResourceManifestDialogProvider } from '../ResourceManifestDialogProvider';
+
+// A textarea stands in for the CodeMirror editor, so a test can read the
+// manifest as the textbox's value. It replaces the module ManifestDialog
+// imports, so the real dialog renders around it.
+jest.mock(
+  '@giantswarm/backstage-plugin-ui-react/src/components/YamlEditorFormField',
+  () => ({
+    YamlEditorFormField: ({
+      value,
+      label,
+    }: {
+      value: string;
+      label?: string;
+    }) => <textarea aria-label={label} value={value} readOnly />,
+  }),
+);
 
 function createKustomization(
   options: {
@@ -108,7 +102,9 @@ async function renderCard(children: ReactNode, { allowed = true } = {}) {
       <TestApiProvider
         apis={[[kubernetesApiRef, createMockKubernetesApi({ allowed })]]}
       >
-        {children}
+        <ResourceManifestDialogProvider>
+          {children}
+        </ResourceManifestDialogProvider>
       </TestApiProvider>
     </QueryClientProvider>,
   );
@@ -178,10 +174,9 @@ describe('ResourceCard', () => {
 
     await user.click(screen.getByRole('button', { name: 'View YAML' }));
 
-    const dialog = screen.getByRole('dialog', {
-      name: 'Kustomization flux-system/my-app',
-    });
-    expect(dialog).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Kustomization flux-system/my-app');
+    expect(dialog).toHaveTextContent('test-installation');
 
     const manifest = (
       screen.getByRole('textbox', { name: 'Manifest' }) as HTMLTextAreaElement
@@ -190,9 +185,15 @@ describe('ResourceCard', () => {
     expect(manifest).toContain('path: ./apps/my-app');
     expect(manifest).not.toContain('managedFields');
 
-    await user.click(screen.getByRole('button', { name: 'Close' }));
+    // The header has its own close icon button; this is the one in the footer.
+    const closeButton = screen
+      .getAllByRole('button', { name: 'Close' })
+      .find(button => button.textContent === 'Close')!;
+    await user.click(closeButton);
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
   });
 
   it('adds the Flux action buttons to the footer for a user who may patch', async () => {

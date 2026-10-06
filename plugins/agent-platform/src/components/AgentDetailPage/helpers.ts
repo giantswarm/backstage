@@ -1,7 +1,6 @@
 import {
   Agent,
   AgentMcpBinding,
-  toManifestYaml,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { isGatewayBinding } from '../../lib/toolset';
@@ -86,12 +85,4 @@ export function shortPin(pin: string): string {
     return `sha256:${digest[1].slice(0, 12)}`;
   }
   return /^[0-9a-f]{40,64}$/i.test(pin) ? pin.slice(0, 12) : pin;
-}
-
-/**
- * The agent as the YAML a reader would compare against `kubectl get -o yaml`,
- * minus server-side-apply bookkeeping (see {@link toManifestYaml}).
- */
-export function toAgentManifestYaml(agent: Agent): string {
-  return toManifestYaml(agent);
 }

@@ -5,7 +5,8 @@ const LAST_APPLIED_ANNOTATION =
   'kubectl.kubernetes.io/last-applied-configuration';
 
 /**
- * The object as the YAML a reader would compare against `kubectl get -o yaml`.
+ * The object as `kubectl get -o yaml` prints it: every key sorted
+ * alphabetically, at every level.
  *
  * Two fields are dropped first:
  *
@@ -17,10 +18,10 @@ const LAST_APPLIED_ANNOTATION =
  *
  * Everything else is shown verbatim, `status` included.
  */
-export function toManifestYaml(object: {
+export function toKubectlYaml(object: {
   jsonData: KubeObjectInterface;
 }): string {
-  const { apiVersion, kind, metadata, ...rest } = object.jsonData;
+  const { metadata } = object.jsonData;
   const {
     managedFields: _managedFields,
     annotations,
@@ -31,22 +32,17 @@ export function toManifestYaml(object: {
     annotations ?? {};
 
   return dump(
-    // Object spread order decides the key order, so this prints `apiVersion,
-    // kind, metadata, spec, status` like `kubectl get -o yaml`. `sortKeys` is
-    // off deliberately: alphabetical would put `status` before `spec`.
     {
-      apiVersion,
-      kind,
+      ...object.jsonData,
       metadata: {
         ...restMetadata,
         ...(Object.keys(restAnnotations).length > 0
           ? { annotations: restAnnotations }
           : {}),
       },
-      ...rest,
     },
     // Long values such as controller messages are a reason to open this, so
     // don't let js-yaml fold them at 80 columns.
-    { lineWidth: -1, noRefs: true, sortKeys: false },
+    { lineWidth: -1, noRefs: true, sortKeys: true },
   );
 }

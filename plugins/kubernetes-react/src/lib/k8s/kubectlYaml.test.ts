@@ -1,4 +1,4 @@
-import { toManifestYaml } from './manifestYaml';
+import { toKubectlYaml } from './kubectlYaml';
 import type { KubeObjectInterface } from './KubeObject';
 
 function makeObject(overrides: Partial<KubeObjectInterface> = {}): {
@@ -16,9 +16,9 @@ function makeObject(overrides: Partial<KubeObjectInterface> = {}): {
   };
 }
 
-describe('toManifestYaml', () => {
+describe('toKubectlYaml', () => {
   it('renders the object as YAML, status included', () => {
-    const yaml = toManifestYaml(makeObject());
+    const yaml = toKubectlYaml(makeObject());
 
     expect(yaml).toContain('apiVersion: kustomize.toolkit.fluxcd.io/v1');
     expect(yaml).toContain('kind: Kustomization');
@@ -27,25 +27,47 @@ describe('toManifestYaml', () => {
     expect(yaml).toContain('observedGeneration: 3');
   });
 
-  it('orders keys apiVersion, kind, metadata, spec, status', () => {
-    const yaml = toManifestYaml(makeObject());
+  // kubectl prints keys alphabetically at every level, which is what this view
+  // is compared against.
+  it('sorts keys alphabetically at every level, like kubectl', () => {
+    const yaml = toKubectlYaml(
+      makeObject({
+        metadata: {
+          name: 'my-app',
+          namespace: 'flux-system',
+          uid: '1234',
+          annotations: { 'example.com/team': 'bumblebee' },
+        },
+      }),
+    );
 
-    const topLevelKeys = yaml
-      .split('\n')
-      .filter(line => /^\S/.test(line))
-      .map(line => line.split(':')[0]);
+    const keysAtIndent = (indent: string) =>
+      yaml
+        .split('\n')
+        .filter(line => new RegExp(`^${indent}[A-Za-z]`).test(line))
+        .map(line => line.trim().split(':')[0]);
 
-    expect(topLevelKeys).toEqual([
+    expect(keysAtIndent('')).toEqual([
       'apiVersion',
       'kind',
       'metadata',
       'spec',
       'status',
     ]);
+    // The children of `metadata`, `spec` and `status`, in document order.
+    expect(keysAtIndent('  ')).toEqual([
+      'annotations',
+      'name',
+      'namespace',
+      'uid',
+      'interval',
+      'path',
+      'observedGeneration',
+    ]);
   });
 
   it('drops managedFields', () => {
-    const yaml = toManifestYaml(
+    const yaml = toKubectlYaml(
       makeObject({
         metadata: {
           name: 'my-app',
@@ -66,7 +88,7 @@ describe('toManifestYaml', () => {
   });
 
   it('drops the last-applied-configuration annotation and keeps the others', () => {
-    const yaml = toManifestYaml(
+    const yaml = toKubectlYaml(
       makeObject({
         metadata: {
           name: 'my-app',
@@ -83,7 +105,7 @@ describe('toManifestYaml', () => {
   });
 
   it('omits annotations when only last-applied-configuration was set', () => {
-    const yaml = toManifestYaml(
+    const yaml = toKubectlYaml(
       makeObject({
         metadata: {
           name: 'my-app',
@@ -99,7 +121,7 @@ describe('toManifestYaml', () => {
 
   it('does not fold long values', () => {
     const message = `Applied revision: main@sha1:${'a'.repeat(120)}`;
-    const yaml = toManifestYaml(
+    const yaml = toKubectlYaml(
       makeObject({ status: { conditions: [{ type: 'Ready', message }] } }),
     );
 

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode } from 'react';
 import {
   Button,
   Dialog,
@@ -8,8 +8,8 @@ import {
   Flex,
   Text,
 } from '@backstage/ui';
-import { errorApiRef, useApi } from '@backstage/core-plugin-api';
-import useCopyToClipboard from 'react-use/esm/useCopyToClipboard';
+import { useCopyWithFeedback } from '../../hooks/useCopyWithFeedback';
+import { useOnDialogOpen } from '../../hooks/useOnDialogOpen';
 import { YamlEditorFormField } from '../YamlEditorFormField';
 
 export type ManifestDialogProps = {
@@ -20,6 +20,8 @@ export type ManifestDialogProps = {
   manifest: string;
   /** Shown above the manifest, e.g. where it comes from. */
   description?: ReactNode;
+  /** The editor's label, which is also its accessible name. */
+  label?: string;
 };
 
 /**
@@ -35,34 +37,12 @@ export function ManifestDialog({
   title,
   manifest,
   description,
+  label = 'Manifest',
 }: ManifestDialogProps) {
-  const errorApi = useApi(errorApiRef);
-  const [copied, setCopied] = useState(false);
-  const [{ error }, copyToClipboard] = useCopyToClipboard();
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const { copied, copy, reset } = useCopyWithFeedback();
 
-  useEffect(() => {
-    if (error) {
-      errorApi.post(error);
-    }
-  }, [error, errorApi]);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = () => {
-    copyToClipboard(manifest);
-    setCopied(true);
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => setCopied(false), 1500);
-  };
+  // Reset on open, not on close: the dialog keeps rendering while it fades out.
+  useOnDialogOpen(isOpen, reset);
 
   return (
     <Dialog
@@ -79,6 +59,7 @@ export function ManifestDialog({
             </Text>
           )}
           <YamlEditorFormField
+            label={label}
             value={manifest}
             readOnly
             height={360}
@@ -87,8 +68,8 @@ export function ManifestDialog({
         </Flex>
       </DialogBody>
       <DialogFooter>
-        <Button variant="secondary" onPress={handleCopy}>
-          {copied && !error ? 'Copied' : 'Copy manifest'}
+        <Button variant="secondary" onPress={() => copy(manifest)}>
+          {copied ? 'Copied' : 'Copy manifest'}
         </Button>
         <Button variant="primary" onPress={() => onOpenChange(false)}>
           Close
