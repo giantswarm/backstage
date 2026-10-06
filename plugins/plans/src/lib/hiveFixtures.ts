@@ -24,9 +24,9 @@ import {
 const BUMBLEBEE = 'Bumblebee🐝';
 const ROADMAP = 'https://github.com/giantswarm/roadmap/issues';
 
-/** The fixture board's item detail (the roadmap plugin's fixture board). */
+/** The epic's page in Hive (the roadmap plugin's fixture board item). */
 function boardPath(number: number): string {
-  return `/hive/roadmap/items/fixture-${number}`;
+  return `/hive/epics/fixture-${number}`;
 }
 
 const HOUR = 3_600_000;
@@ -70,7 +70,7 @@ function card(lane: MagazineClass, seed: CardSeed): MagazineCard {
     tryIt: seed.tryIt ? { label: 'Try it', url: seed.tryIt } : undefined,
     assignees: seed.assignees ?? [],
     updatedAt: ago(seed.updated),
-    links: [{ label: 'Board', url: boardPath(seed.number) }],
+    links: [{ label: 'Epic', url: boardPath(seed.number) }],
   };
 }
 
@@ -370,13 +370,24 @@ function plans(): PlanCard[] {
   const seeds: Array<{
     title: string;
     state: PlanCard['state'];
-    epic: number;
-    epicTitle: string;
+    epic?: number;
+    epicTitle?: string;
+    pull: number;
     updated: number;
     openQuestion?: string;
   }> = [
     {
+      title: 'Workload cluster resources in the portal',
+      pull: 40,
+      state: 'review',
+      epic: 3297,
+      epicTitle:
+        'Backstage should allow inspecting k8s resources from workload clusters',
+      updated: 3 * HOUR,
+    },
+    {
       title: 'Hive: one place for Plans, Roadmap and the product overview',
+      pull: 41,
       state: 'review',
       epic: 4039,
       epicTitle: 'Homepage greeting in Backstage',
@@ -384,6 +395,7 @@ function plans(): PlanCard[] {
     },
     {
       title: 'marge rescue agent: one agent per failing bot PR',
+      pull: 39,
       state: 'review',
       epic: 4360,
       epicTitle:
@@ -392,6 +404,7 @@ function plans(): PlanCard[] {
     },
     {
       title: 'Cluster creation from the portal: templates or cluster-manager',
+      pull: 37,
       state: 'grilling',
       epic: 3519,
       epicTitle: 'Backstage UI for cluster creation',
@@ -400,6 +413,7 @@ function plans(): PlanCard[] {
     },
     {
       title: 'Support requests with context',
+      pull: 38,
       state: 'draft',
       epic: 3818,
       epicTitle: 'Make it easy to access support from the developer portal',
@@ -407,25 +421,39 @@ function plans(): PlanCard[] {
     },
     {
       title: 'Branch-writing remedies and their guard rails',
+      pull: 36,
       state: 'grilling',
       epic: 4362,
       epicTitle: 'marge sweep engine: branch-writing remedies (phase B)',
       updated: 5 * DAY,
       openQuestion: 'Which remedies may push without a person?',
     },
+    {
+      title: 'One README per plan: the plan template',
+      state: 'review',
+      pull: 42,
+      updated: 9 * HOUR,
+    },
   ];
   return seeds.map((seed, i) => ({
     key: `plan-${i + 1}`,
     title: seed.title,
-    url: `${ROADMAP}/${seed.epic}`,
+    url: `https://github.com/example/team-plans/pull/${seed.pull}`,
     state: seed.state,
-    epic: {
-      key: `giantswarm/roadmap#${seed.epic}`,
-      title: seed.epicTitle,
-      url: `${ROADMAP}/${seed.epic}`,
-    },
+    epic: seed.epic
+      ? {
+          key: `giantswarm/roadmap#${seed.epic}`,
+          title: seed.epicTitle ?? '',
+          url: `${ROADMAP}/${seed.epic}`,
+        }
+      : undefined,
     updatedAt: ago(seed.updated),
     openQuestion: seed.openQuestion,
+    // A plan is reviewed on its epic's Plan tab; one without an epic on
+    // its own page.
+    portalPath: seed.epic
+      ? `${boardPath(seed.epic)}/plan`
+      : `/hive/plans/pr/${seed.pull}`,
   }));
 }
 
@@ -456,6 +484,24 @@ export function fixtureNow(): Now {
       CHORES,
     ),
   ];
+  // Every card carries its epic's plan, as the generator joins them.
+  const reviews = plans();
+  const merged: PlanCard = {
+    key: 'plan-merged-3970',
+    title: 'The API endpoint on every cluster page',
+    url: 'https://github.com/example/team-plans/tree/main/cluster-endpoint',
+    state: 'merged',
+    updatedAt: ago(9 * DAY),
+    portalPath: `${boardPath(3970)}/plan`,
+  };
+  for (const lane of lanes) {
+    lane.cards = lane.cards.map(c => ({
+      ...c,
+      plan:
+        reviews.find(plan => plan.epic?.key === c.key) ??
+        (c.key === 'giantswarm/roadmap#3970' ? merged : undefined),
+    }));
+  }
   const cards = lanes.flatMap(l => l.cards);
   return {
     generatedAt: ago(12 * 60_000),
@@ -465,7 +511,7 @@ export function fixtureNow(): Now {
       'Cluster creation waits on the cluster-manager release.',
     ],
     lanes,
-    reviews: plans(),
+    reviews,
     blocked: cards.filter(c => c.blocker),
     upcoming: UPCOMING.map(seed => card('top-epic', seed)),
   };
@@ -607,6 +653,47 @@ function groupsFor(window: HistoryWindow): Group[] {
       release('v2.91.0', 2 * DAY, 'App deployment with the AI Assistant step.'),
     ]),
   };
+  const inspect: Group = {
+    key: 'giantswarm/roadmap#3297',
+    title:
+      'Backstage should allow inspecting k8s resources from workload clusters',
+    url: boardPath(3297),
+    kind: 'epic',
+    teaser:
+      'Pods and events of a workload cluster show on its page; logs come next.',
+    class: 'customer',
+    customers: ['Customer A', 'Customer C'],
+    progress:
+      window === 'days'
+        ? { from: { done: 3, total: 7 }, to: { done: 4, total: 7 } }
+        : { from: { done: 1, total: 7 }, to: { done: 4, total: 7 } },
+    tryIt: { label: 'Try it', url: '/clusters' },
+    entries: entries('customer', [
+      issue(
+        3301,
+        'Events of a workload cluster on its page',
+        5 * HOUR,
+        'Jonas Weber',
+      ),
+      release('v2.91.0', 2 * DAY, 'Pods of a workload cluster, per namespace.'),
+      ...(window === 'days'
+        ? []
+        : [
+            issue(
+              3299,
+              'Read workload-cluster resources as the signed-in person',
+              8 * DAY,
+              'Mira Okafor',
+            ),
+            issue(
+              3298,
+              'A resource browser on the cluster page',
+              15 * DAY,
+              'Mira Okafor',
+            ),
+          ]),
+    ]),
+  };
   const flux: Group = {
     key: 'giantswarm/roadmap#4004',
     title: 'GitOps/Flux visibility in Backstage',
@@ -693,11 +780,11 @@ function groupsFor(window: HistoryWindow): Group[] {
   };
   switch (window) {
     case 'days':
-      return [marge, apps, flux];
+      return [inspect, marge, apps, flux];
     case 'weeks':
-      return [marge, apps, flux, chat];
+      return [inspect, marge, apps, flux, chat];
     default:
-      return [marge, apps, flux, chat, tools];
+      return [inspect, marge, apps, flux, chat, tools];
   }
 }
 

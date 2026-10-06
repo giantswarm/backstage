@@ -21,3 +21,10 @@ export type {
   RoadmapSubIssuesResponse,
   RoadmapItemFilters,
 } from './apis';
+
+// The parts of an item's detail Hive's epic page shows beside its plan and
+// history: the board fields and the sub-issue tree.
+export { FieldEditor } from './components/ItemDetailPage/FieldEditor';
+export { SubIssuesPanel } from './components/ItemDetailPage/SubIssuesPanel';
+export { useSchema, useUpdateItemField } from './hooks';
+export { issueRefOf, STATUS_FIELD } from './lib/board';

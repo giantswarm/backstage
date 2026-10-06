@@ -6,11 +6,24 @@
  */
 export const HIVE_TAB_ORDER = [
   'sub-page:plans/hive-now',
-  'sub-page:plans/hive-history',
   'sub-page:roadmap/hive',
-  'sub-page:plans/hive-plans',
+  'sub-page:plans/hive-history',
   'sub-page:plans/hive-knowledge',
 ] as const;
+
+/**
+ * Hive's routes that are no tab: an epic's page and a plan without an epic
+ * are reached from Now, the board and History, never from the tab row.
+ */
+export const HIVE_HIDDEN_ROUTES = [
+  'sub-page:plans/hive-epics',
+  'sub-page:plans/hive-plans',
+] as const;
+
+/** Whether a sub-page shows in the tab row. */
+export function isHiveTab(id: string): boolean {
+  return !(HIVE_HIDDEN_ROUTES as readonly string[]).includes(id);
+}
 
 /** Where a tab goes; one the list does not know goes last. */
 function tabRank(id: string): number {

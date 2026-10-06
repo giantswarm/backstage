@@ -29,7 +29,7 @@ describe('hive', () => {
     const figures = nowFigures(nowForTeam(fixtureNow(), 'Bumblebee🐝'));
     expect(figures.customers).toBe(6);
     expect(figures.blocked).toBe(1);
-    expect(figures.plansWaiting).toBe(5);
+    expect(figures.plansWaiting).toBe(7);
   });
 
   it('reads board statuses without their emoji', () => {

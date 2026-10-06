@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import {
   ApiBlueprint,
   configApiRef,
+  coreExtensionData,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -17,8 +18,10 @@ import {
   plansAuthApiRef,
   PlansFixtureApi,
 } from './apis';
-import { orderHiveTabs } from './lib/hiveTabs';
+import { isHiveTab, orderHiveTabs } from './lib/hiveTabs';
 import {
+  epicRouteRef,
+  hiveEpicsRouteRef,
   hiveHistoryRouteRef,
   hiveKnowledgeRouteRef,
   hiveNowRouteRef,
@@ -35,28 +38,37 @@ import {
 // Deployments opt in via app-config `app.extensions` (`page:plans/hive`,
 // `api:plans`, and the redirects `page:plans`, `page:plans/magazine`).
 
-// Hive (`/hive`): the team's work in one section, the Agent Platform pattern.
-// With no loader of its own, PageBlueprint renders the attached sub-pages as
-// routed tabs in the bui PluginHeader: Now · History · Roadmap · Plans ·
-// Knowledge. The Roadmap tab is the roadmap plugin's, attached by node id
-// (`sub-page:roadmap/hive`); `HIVE_TAB_ORDER` puts it in its place.
+// Hive (`/hive`): the team's work in one section, the Agent Platform pattern:
+// the bui PluginHeader with routed tabs Now · Board · History · Knowledge.
+// The Board tab is the roadmap plugin's, attached by node id
+// (`sub-page:roadmap/hive`); `HIVE_TAB_ORDER` puts it in its place. The
+// epic pages (`/hive/epics/:id`) and the plans (`/hive/plans`) are routes
+// without a tab, so Hive draws its frame itself (`HiveShell`).
 const hivePage = PageBlueprint.makeWithOverrides({
   name: 'hive',
   disabled: true,
   factory(originalFactory, { inputs }) {
-    return originalFactory(
-      {
-        title: 'Hive',
-        icon: <EmojiNatureIcon />,
-        path: '/hive',
-        routeRef: hiveRouteRef,
-      },
-      {
-        inputs: {
-          pages: orderHiveTabs(inputs.pages, page => page.node.spec.id),
-        },
-      },
+    const routes = orderHiveTabs(inputs.pages, page => page.node.spec.id).map(
+      page => ({
+        path: page.get(coreExtensionData.routePath),
+        title: page.get(coreExtensionData.title),
+        element: page.get(coreExtensionData.reactElement),
+        tab: isHiveTab(page.node.spec.id),
+      }),
     );
+    return originalFactory({
+      title: 'Hive',
+      icon: <EmojiNatureIcon />,
+      path: '/hive',
+      routeRef: hiveRouteRef,
+      noHeader: true,
+      loader: async () => {
+        const { HiveShell } = await import('./components/HiveShell');
+        return (
+          <HiveShell title="Hive" icon={<EmojiNatureIcon />} routes={routes} />
+        );
+      },
+    });
   },
 });
 
@@ -104,9 +116,31 @@ const hiveHistorySubPage = SubPageBlueprint.make({
   },
 });
 
-// The plans, proposed and merged, and a plan's review page: the Plans page
-// moved in. It owns `rootRouteRef`, so a plan review link (`pullRouteRef`,
-// the roadmap's PlanPanel) opens inside Hive.
+// One epic's page (`/hive/epics/:id`): its overview, plan review, history
+// and sub-issues. A route, not a tab: Now, the board and History open it.
+const hiveEpicsSubPage = SubPageBlueprint.make({
+  name: 'hive-epics',
+  attachTo: { id: 'page:plans/hive', input: 'pages' },
+  params: {
+    path: 'epics',
+    title: 'Epics',
+    routeRef: hiveEpicsRouteRef,
+    loader: async () => {
+      const { PlansProviders } = await import('./components/PlansProviders');
+      const { HiveEpicsRouter } = await import('./components/HiveEpicPage');
+      return (
+        <PlansProviders>
+          <HiveEpicsRouter />
+        </PlansProviders>
+      );
+    },
+  },
+});
+
+// The plans, proposed and merged, and the review page of a plan without an
+// epic (a plan with one is reviewed on its epic's Plan tab). A route, not a
+// tab. It owns `rootRouteRef`, so a plan review link (`pullRouteRef`)
+// opens inside Hive.
 const hivePlansSubPage = SubPageBlueprint.make({
   name: 'hive-plans',
   attachTo: { id: 'page:plans/hive', input: 'pages' },
@@ -154,7 +188,8 @@ const hiveHeaderAction = PluginHeaderActionBlueprint.make({
 });
 
 // The old pages stay as nav-less redirects, so every shared link resolves:
-// `/plans…` → `/hive/plans…`, `/product?tab=x` → `/hive/x`.
+// `/plans/pr/:n` → its epic's Plan tab (or `/hive/plans/pr/:n` without an
+// epic), `/plans` → `/hive/plans`, `/product?tab=x` → `/hive/x`.
 const plansPage = PageBlueprint.make({
   disabled: true,
   params: {
@@ -162,8 +197,13 @@ const plansPage = PageBlueprint.make({
     routeRef: legacyPlansRouteRef,
     noHeader: true,
     loader: async () => {
-      const { HiveRedirect } = await import('./components/HiveRedirect');
-      return <HiveRedirect routeRef={rootRouteRef} />;
+      const { PlansProviders } = await import('./components/PlansProviders');
+      const { PlansRedirect } = await import('./components/HiveRedirect');
+      return (
+        <PlansProviders>
+          <PlansRedirect />
+        </PlansProviders>
+      );
     },
   },
 });
@@ -209,6 +249,7 @@ export const plansPlugin = createFrontendPlugin({
     hivePage,
     hiveNowSubPage,
     hiveHistorySubPage,
+    hiveEpicsSubPage,
     hivePlansSubPage,
     hiveKnowledgeSubPage,
     hiveHeaderAction,
@@ -220,6 +261,7 @@ export const plansPlugin = createFrontendPlugin({
     root: rootRouteRef,
     pull: pullRouteRef,
     hive: hiveRouteRef,
+    epic: epicRouteRef,
     magazine: magazineRouteRef,
   },
   externalRoutes: {

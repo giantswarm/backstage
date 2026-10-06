@@ -1,4 +1,4 @@
-import { useApi } from '@backstage/frontend-plugin-api';
+import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
@@ -7,6 +7,7 @@ import {
   RoadmapItemsResponse,
 } from './apis';
 import { STATUS_FIELD } from './lib/board';
+import { epicPageExternalRouteRef, itemRouteRef } from './routes';
 
 export function useSchema() {
   const roadmapApi = useApi(roadmapApiRef);
@@ -75,4 +76,14 @@ export function useUpdateStatus() {
     moveTo: (itemId: string, status: string) =>
       updateField.mutate({ itemId, name: STATUS_FIELD, value: status }),
   };
+}
+
+/**
+ * Where a board item opens: its epic page in Hive when the plans plugin
+ * provides one, the roadmap's own item detail otherwise.
+ */
+export function useItemHref(): (id: string) => string {
+  const epicPage = useRouteRef(epicPageExternalRouteRef);
+  const itemPage = useRouteRef(itemRouteRef);
+  return id => (epicPage ?? itemPage)?.({ id }) ?? '#';
 }

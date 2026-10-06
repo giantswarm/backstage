@@ -9043,6 +9043,7 @@ __metadata:
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
+    "@giantswarm/backstage-plugin-roadmap": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"
     "@material-ui/icons": "npm:^4.11.3"

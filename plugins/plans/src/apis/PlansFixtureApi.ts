@@ -38,6 +38,16 @@ const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 
 const PULLS = [
   {
+    number: 40,
+    title: 'Workload cluster resources in the portal',
+    author: 'mokafor',
+    draft: false,
+    branch: 'plan/workload-resources',
+    updatedAt: ago(0.12),
+    body: 'How the portal reads pods, events and logs of a workload cluster as the signed-in person, and what it never shows.',
+    epic: 3297,
+  },
+  {
     number: 41,
     title: 'Hive: one place for Plans, Roadmap and the product overview',
     author: 'apark',
@@ -66,6 +76,36 @@ const PULLS = [
     updatedAt: ago(3),
     body: 'Opening a support request from a cluster or an app page.',
     epic: 3818,
+  },
+  {
+    number: 37,
+    title: 'Cluster creation from the portal: templates or cluster-manager',
+    author: 'lbrandt',
+    draft: true,
+    branch: 'plan/cluster-creation',
+    updatedAt: ago(2),
+    body: 'Two ways to create a cluster from the portal, and the questions that decide between them.',
+    epic: 3519,
+  },
+  {
+    number: 36,
+    title: 'Branch-writing remedies and their guard rails',
+    author: 'tnakamura',
+    draft: true,
+    branch: 'plan/branch-remedies',
+    updatedAt: ago(5),
+    body: 'Which remedies may push to a bot branch without a person.',
+    epic: 4362,
+  },
+  {
+    number: 42,
+    title: 'One README per plan: the plan template',
+    author: 'mokafor',
+    draft: false,
+    branch: 'plan/template',
+    updatedAt: ago(0.4),
+    body: 'A template every plan starts from, so a reviewer finds the problem, the decision and the acceptance criteria in the same place. It changes how plans are written, not an epic.',
+    epic: undefined,
   },
 ];
 
@@ -108,6 +148,82 @@ every tab.
 A bot PR the sweep's rules cannot handle gets one coding agent, which
 pushes a fix to the bot branch or explains in a comment why it cannot.
 `,
+  'workload-resources/README.md': `# Workload cluster resources in the portal
+
+**Epic:** [giantswarm/roadmap#3297](https://github.com/giantswarm/roadmap/issues/3297)
+
+## Problem
+
+A customer who wants to see why a pod restarts needs a kubeconfig for the
+workload cluster, even for a look.
+
+## Proposed solution
+
+The cluster page reads pods, events and logs **as the signed-in person**,
+through the same access the portal already has. Nothing is cached, nothing
+is written.
+
+## Acceptance criteria
+
+- Pods and events per namespace on the cluster page.
+- Logs of one container, the last 500 lines.
+- A person without access sees why, not an empty list.
+`,
+  'workload-resources/PRD.md': `# Requirements
+
+| What | Who | Shown |
+|---|---|---|
+| Pods | anyone with cluster access | per namespace |
+| Events | anyone with cluster access | last hour |
+| Logs | anyone who may read pods/log | last 500 lines |
+`,
+  'cluster-creation/README.md': `# Cluster creation from the portal
+
+**Epic:** [giantswarm/roadmap#3519](https://github.com/giantswarm/roadmap/issues/3519)
+
+## Open questions
+
+- Does the portal write to the GitOps repository itself?
+- Or does it call the cluster-manager's create tool?
+`,
+  'branch-remedies/README.md': `# Branch-writing remedies
+
+**Epic:** [giantswarm/roadmap#4362](https://github.com/giantswarm/roadmap/issues/4362)
+
+Which remedies may push to a bot branch without a person, and how each one
+is undone.
+`,
+  'plan-template/README.md': `# The plan template
+
+Every plan starts from one README with four sections.
+
+## Problem
+
+What hurts today, for whom.
+
+## Decision
+
+What we do, and the alternatives we did not take.
+
+## Acceptance criteria
+
+- The README template lives in the plans repository.
+- A new plan starts from it.
+`,
+  'cluster-endpoint/README.md': `# The API endpoint on every cluster page
+
+**Epic:** [giantswarm/roadmap#3970](https://github.com/giantswarm/roadmap/issues/3970)
+
+## Decision
+
+Every cluster page shows the Kubernetes API endpoint and a login command to
+copy, for workload and management clusters alike.
+
+## Acceptance criteria
+
+- The endpoint shows on the cluster overview.
+- The login command copies with one click.
+`,
   'support-requests/README.md': `# Support requests with context
 
 **Epic:** [giantswarm/roadmap#3818](https://github.com/giantswarm/roadmap/issues/3818)
@@ -121,9 +237,17 @@ const PULL_FILES: Record<number, string[]> = {
   41: ['hive/README.md', 'hive/PRD.md'],
   39: ['marge-rescue/README.md'],
   38: ['support-requests/README.md'],
+  37: ['cluster-creation/README.md'],
+  40: ['workload-resources/README.md', 'workload-resources/PRD.md'],
+  36: ['branch-remedies/README.md'],
+  42: ['plan-template/README.md'],
 };
 
-const MERGED = ['hive/README.md', 'marge-rescue/README.md'];
+const MERGED = [
+  'hive/README.md',
+  'marge-rescue/README.md',
+  'cluster-endpoint/README.md',
+];
 
 function magazineFile(path: string): string | undefined {
   if (path === 'magazine/now.json') {
@@ -209,12 +333,17 @@ export class PlansFixtureApi implements PlansApi {
           path: 'marge-rescue/README.md',
           epic: epic(4360),
         },
+        {
+          folder: 'cluster-endpoint',
+          path: 'cluster-endpoint/README.md',
+          epic: epic(3970),
+        },
       ],
-      pulls: PULLS.map(pull => ({
-        number: pull.number,
-        title: pull.title,
-        epic: epic(pull.epic),
-      })),
+      pulls: PULLS.flatMap(pull =>
+        pull.epic
+          ? [{ number: pull.number, title: pull.title, epic: epic(pull.epic) }]
+          : [],
+      ),
     };
   }
 

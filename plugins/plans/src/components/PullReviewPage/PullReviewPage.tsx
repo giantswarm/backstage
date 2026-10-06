@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
@@ -425,23 +425,38 @@ function DocumentPanel(props: {
   );
 }
 
+/** What a plan review renders, for its page to lay out. */
+export interface PlanReviewParts {
+  repo: string;
+  pull: PlanPull;
+  /** The documents: Overview and every changed file, with comment counts. */
+  nav: ReactNode;
+  /** The selected document, or the description and discussion. */
+  reader: ReactNode;
+}
+
 /**
- * Full-width review page for one plan PR. The left nav lists Overview (PR
- * description + discussion) and the changed documents with pretty titles
- * and comment counts; the reading column renders one document at a time
- * with paragraph-level commenting. Selection travels in `?doc=` so document
- * positions are shareable, like the page URL itself.
+ * One plan PR's review: the document list and the reader of the selected
+ * document with paragraph-level commenting. The selection travels in
+ * `?doc=` so document positions are shareable. The caller lays the parts
+ * out: the review page beside each other, an epic's Plan tab with the
+ * document list in its side rail.
  */
-export function PullReviewPage() {
+export function PlanReview(props: {
+  pullNumber: number;
+  /** `?repo=`; the first plan repository when absent or unknown. */
+  repo?: string;
+  /** Where "Back" leads when the pull request is gone. */
+  backPath: (repo: string | undefined) => string;
+  backLabel: string;
+  children: (parts: PlanReviewParts) => ReactNode;
+}) {
+  const { pullNumber, repo: repoParam, backPath, backLabel } = props;
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
-  const rootLink = useRouteRef(rootRouteRef);
-  const { number } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const pullNumber = Number(number);
-  const repoParam = searchParams.get('repo') ?? undefined;
   const doc = searchParams.get('doc') ?? OVERVIEW;
 
   const reposQuery = useQuery({
@@ -451,14 +466,6 @@ export function PullReviewPage() {
   const repositories = reposQuery.data?.repositories ?? [];
   const repo =
     repoParam && repositories.includes(repoParam) ? repoParam : repositories[0];
-
-  // The review page is always mounted under the plans root route, so the
-  // relative fallback only fires while the route ref is not yet resolvable.
-  // Carry `?repo=` back to the list so the picker keeps its selection.
-  const plansPath = `${rootLink ? rootLink() : '..'}${
-    repo ? `?repo=${encodeURIComponent(repo)}` : ''
-  }`;
-
   const pullsQuery = useQuery({
     queryKey: ['plans', 'pulls', repo],
     queryFn: () => plansApi.listPulls(repo),
@@ -533,35 +540,27 @@ export function PullReviewPage() {
   }, [reviewComments]);
 
   if (reposQuery.isLoading || pullsQuery.isLoading || filesQuery.isLoading) {
-    return (
-      <Content>
-        <Progress />
-      </Content>
-    );
+    return <Progress />;
   }
   const loadError = reposQuery.error ?? pullsQuery.error ?? filesQuery.error;
   if (loadError) {
     return (
-      <Content>
-        <PlansErrorAlert
-          title="Failed to load pull request"
-          error={loadError as Error}
-        />
-      </Content>
+      <PlansErrorAlert
+        title="Failed to load pull request"
+        error={loadError as Error}
+      />
     );
   }
   if (!repo || !pull) {
     return (
-      <Content>
-        <EmptyState
-          missing="content"
-          title="Pull request not found"
-          description={`There is no open pull request #${number}${
-            repo ? ` in ${repo}` : ''
-          }. It may have been merged or closed.`}
-          action={<Link to={plansPath}>Back to plans</Link>}
-        />
-      </Content>
+      <EmptyState
+        missing="content"
+        title="Pull request not found"
+        description={`There is no open pull request #${pullNumber}${
+          repo ? ` in ${repo}` : ''
+        }. It may have been merged or closed.`}
+        action={<Link to={backPath(repo)}>{backLabel}</Link>}
+      />
     );
   }
 
@@ -583,7 +582,6 @@ export function PullReviewPage() {
   };
 
   const selectedFile = files.find(file => file.filename === doc);
-  const updated = formatDate(pull.updatedAt);
   const discussionCount = discussionComments?.comments.length;
 
   const countBadge = (count: number | undefined) =>
@@ -591,88 +589,122 @@ export function PullReviewPage() {
       <Badge size="small">{String(count)}</Badge>
     ) : null;
 
+  const nav = (
+    <List
+      aria-label="Documents in this pull request"
+      selectionMode="single"
+      disallowEmptySelection
+      selectedKeys={new Set([doc])}
+      onSelectionChange={onNavSelectionChange}
+    >
+      <ListRow
+        id={OVERVIEW}
+        textValue="Overview"
+        description="Description & discussion"
+        customActions={countBadge(discussionCount)}
+      >
+        Overview
+      </ListRow>
+      {files.map(file => (
+        <ListRow
+          key={file.filename}
+          id={file.filename}
+          textValue={titles.get(file.filename) ?? basename(file.filename)}
+          description={file.filename}
+          customActions={countBadge(commentsByFile.get(file.filename)?.length)}
+        >
+          {file.status !== 'modified' && (
+            <span
+              className={`${classes.statusDot} ${
+                file.status === 'removed' ? classes.removed : classes.added
+              }`}
+              title={file.status}
+            />
+          )}
+          {titles.get(file.filename) ?? basename(file.filename)}
+        </ListRow>
+      ))}
+    </List>
+  );
+
+  const reader = (
+    <div className={classes.panel}>
+      {selectedFile ? (
+        <DocumentPanel
+          key={selectedFile.filename}
+          repo={repo}
+          branch={pull.branch}
+          pullNumber={pull.number}
+          file={selectedFile}
+          comments={commentsByFile.get(selectedFile.filename) ?? []}
+          onCreate={comment => createReviewComment.mutateAsync(comment)}
+        />
+      ) : (
+        <OverviewPanel repo={repo} pull={pull} />
+      )}
+    </div>
+  );
+
+  return <>{props.children({ repo, pull, nav, reader })}</>;
+}
+
+/**
+ * Full-width review page for one plan PR: the document list beside the
+ * reader. In Hive it serves the plans without an epic; a plan with one is
+ * reviewed on its epic's Plan tab.
+ */
+export function PullReviewPage() {
+  const classes = useStyles();
+  const rootLink = useRouteRef(rootRouteRef);
+  const { number } = useParams();
+  const [searchParams] = useSearchParams();
+
+  // The review page is always mounted under the plans root route, so the
+  // relative fallback only fires while the route ref is not yet resolvable.
+  // Carry `?repo=` back to the list so the picker keeps its selection.
+  const plansPath = (repo: string | undefined) =>
+    `${rootLink ? rootLink() : '..'}${
+      repo ? `?repo=${encodeURIComponent(repo)}` : ''
+    }`;
+
   return (
     <Content>
-      <div className={classes.header}>
-        <Link className={classes.backLink} to={plansPath}>
-          <ArrowBackIcon fontSize="inherit" /> All plans
-        </Link>
-        <Text as="h4" variant="title-medium">
-          {pull.title}
-        </Text>
-        <div className={classes.headerMeta}>
-          {pull.draft && <Badge size="small">Draft</Badge>}
-          <Text variant="body-small" color="secondary">
-            <Link to={`https://github.com/${repo}/pull/${pull.number}`}>
-              {repo}#{pull.number}
-            </Link>
-            {pull.author && ` by ${pull.author}`}
-            {updated && ` · updated ${updated}`}
-          </Text>
-        </div>
-      </div>
-
-      <div className={classes.layout}>
-        <nav className={classes.nav}>
-          <List
-            aria-label="Documents in this pull request"
-            selectionMode="single"
-            disallowEmptySelection
-            selectedKeys={new Set([doc])}
-            onSelectionChange={onNavSelectionChange}
-          >
-            <ListRow
-              id={OVERVIEW}
-              textValue="Overview"
-              description="Description & discussion"
-              customActions={countBadge(discussionCount)}
-            >
-              Overview
-            </ListRow>
-            {files.map(file => (
-              <ListRow
-                key={file.filename}
-                id={file.filename}
-                textValue={titles.get(file.filename) ?? basename(file.filename)}
-                description={file.filename}
-                customActions={countBadge(
-                  commentsByFile.get(file.filename)?.length,
-                )}
-              >
-                {file.status !== 'modified' && (
-                  <span
-                    className={`${classes.statusDot} ${
-                      file.status === 'removed'
-                        ? classes.removed
-                        : classes.added
-                    }`}
-                    title={file.status}
-                  />
-                )}
-                {titles.get(file.filename) ?? basename(file.filename)}
-              </ListRow>
-            ))}
-          </List>
-        </nav>
-
-        <div className={classes.reading}>
-          <div className={classes.panel}>
-            {selectedFile ? (
-              <DocumentPanel
-                key={selectedFile.filename}
-                repo={repo}
-                branch={pull.branch}
-                pullNumber={pull.number}
-                file={selectedFile}
-                comments={commentsByFile.get(selectedFile.filename) ?? []}
-                onCreate={comment => createReviewComment.mutateAsync(comment)}
-              />
-            ) : (
-              <OverviewPanel repo={repo} pull={pull} />
-            )}
-          </div>
-        </div>
-      </div>
+      <PlanReview
+        pullNumber={Number(number)}
+        repo={searchParams.get('repo') ?? undefined}
+        backPath={plansPath}
+        backLabel="Back to plans"
+      >
+        {({ repo, pull, nav, reader }) => {
+          const updated = formatDate(pull.updatedAt);
+          return (
+            <>
+              <div className={classes.header}>
+                <Link className={classes.backLink} to={plansPath(repo)}>
+                  <ArrowBackIcon fontSize="inherit" /> All plans
+                </Link>
+                <Text as="h4" variant="title-medium">
+                  {pull.title}
+                </Text>
+                <div className={classes.headerMeta}>
+                  {pull.draft && <Badge size="small">Draft</Badge>}
+                  <Text variant="body-small" color="secondary">
+                    <Link to={`https://github.com/${repo}/pull/${pull.number}`}>
+                      {repo}#{pull.number}
+                    </Link>
+                    {pull.author && ` by ${pull.author}`}
+                    {updated && ` · updated ${updated}`}
+                  </Text>
+                </div>
+              </div>
+              <div className={classes.layout}>
+                <nav className={classes.nav}>{nav}</nav>
+                <div className={classes.reading}>{reader}</div>
+              </div>
+            </>
+          );
+        }}
+      </PlanReview>
     </Content>
   );
 }

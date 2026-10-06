@@ -12,9 +12,8 @@ import {
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { EmptyState, Progress } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { RoadmapItem, RoadmapItemFilters } from '../../apis';
-import { useItems } from '../../hooks';
+import { useItemHref, useItems } from '../../hooks';
 import { formatDate } from '../../lib/dates';
 import {
   findStatusOption,
@@ -22,7 +21,6 @@ import {
   KIND_FIELD,
   STATUS_FIELD,
 } from '../../lib/board';
-import { itemRouteRef } from '../../routes';
 
 /**
  * The statuses that mean "someone is actively on this". Status names carry
@@ -71,7 +69,7 @@ function isActive(item: RoadmapItem): boolean {
 
 function ItemList(props: { items: RoadmapItem[] }) {
   const classes = useStyles();
-  const itemLink = useRouteRef(itemRouteRef);
+  const itemHref = useItemHref();
   return (
     <Paper variant="outlined">
       <List dense disablePadding>
@@ -90,7 +88,7 @@ function ItemList(props: { items: RoadmapItem[] }) {
               button
               divider
               component={RouterLink}
-              to={itemLink?.({ id: item.id }) ?? '#'}
+              to={itemHref(item.id)}
             >
               <ListItemText
                 primary={

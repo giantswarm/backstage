@@ -4,7 +4,7 @@ import {
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
 
-/** The board: Hive's Roadmap tab (`/hive/roadmap`). */
+/** The board: Hive's Board tab (`/hive/board`). */
 export const rootRouteRef = createRouteRef();
 
 /** The old Roadmap page (`/roadmap`), now a redirect into Hive. */
@@ -13,6 +13,16 @@ export const legacyRootRouteRef = createRouteRef();
 export const itemRouteRef = createSubRouteRef({
   path: '/items/:id',
   parent: rootRouteRef,
+});
+
+/**
+ * Hive's epic page (`/hive/epics/:id`), where every board item opens when
+ * the plans plugin is enabled; unbound otherwise (the item opens in
+ * `itemRouteRef`).
+ */
+export const epicPageExternalRouteRef = createExternalRouteRef({
+  params: ['id'],
+  defaultTarget: 'plans.epic',
 });
 
 /**

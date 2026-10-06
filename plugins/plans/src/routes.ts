@@ -5,8 +5,8 @@ import {
 } from '@backstage/frontend-plugin-api';
 
 /**
- * The plans: Hive's Plans tab (`/hive/plans`), so a plan review
- * (`pullRouteRef`) opens inside Hive.
+ * The plans (`/hive/plans`): no tab of its own; a plan is reviewed on its
+ * epic's Plan tab, and a plan without an epic here (`pullRouteRef`).
  */
 export const rootRouteRef = createRouteRef();
 
@@ -15,6 +15,18 @@ export const hiveRouteRef = createRouteRef();
 export const hiveNowRouteRef = createRouteRef();
 export const hiveHistoryRouteRef = createRouteRef();
 export const hiveKnowledgeRouteRef = createRouteRef();
+
+/** The epics (`/hive/epics`): a route, not a tab; Now lists them. */
+export const hiveEpicsRouteRef = createRouteRef();
+
+/**
+ * One epic (`/hive/epics/:id`, the roadmap board item id): its overview,
+ * plan, history and sub-issues on one page.
+ */
+export const epicRouteRef = createSubRouteRef({
+  path: '/:id',
+  parent: hiveEpicsRouteRef,
+});
 
 /** The old Plans page (`/plans`), now a redirect into Hive. */
 export const legacyPlansRouteRef = createRouteRef();

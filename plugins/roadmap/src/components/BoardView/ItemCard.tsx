@@ -15,10 +15,9 @@ import {
 } from '@material-ui/core';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import CheckIcon from '@material-ui/icons/Check';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { RoadmapItem } from '../../apis';
 import { KIND_FIELD, STATUS_FIELD } from '../../lib/board';
-import { itemRouteRef } from '../../routes';
+import { useItemHref } from '../../hooks';
 
 const useStyles = makeStyles((theme: Theme) => ({
   card: {
@@ -83,7 +82,7 @@ export function ItemCard(props: {
 }) {
   const { item, columns, onMove } = props;
   const classes = useStyles();
-  const itemLink = useRouteRef(itemRouteRef);
+  const itemHref = useItemHref();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const status = item.fields[STATUS_FIELD];
@@ -120,7 +119,7 @@ export function ItemCard(props: {
           <Typography
             className={classes.title}
             component={RouterLink}
-            to={itemLink?.({ id: item.id }) ?? '#'}
+            to={itemHref(item.id)}
           >
             {item.title}
           </Typography>
