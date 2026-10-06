@@ -72,9 +72,8 @@ function ClusterAccessSidebarItem({ mobile }: { mobile: boolean }) {
 
 /**
  * *Create…*: where the catalog's `createComponent` external route points
- * (`app.routes.bindings`) -- the scaffolder's templates by default, the
- * Repositories page's declaration form where a deployment binds
- * `repositories.create`. Shown only when something is bound.
+ * (`app.routes.bindings`), else the scaffolder page when it is enabled.
+ * Hidden when there is neither.
  */
 function CreateSidebarItem({ fallback }: { fallback?: string }) {
   const createLink = useRouteRef(catalogPlugin.externalRoutes.createComponent);

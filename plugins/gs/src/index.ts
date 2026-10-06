@@ -5,6 +5,8 @@ export { gsPlugin } from './plugin';
 // Raw StepLayout component for scaffolder page override
 export { StepLayout } from './components/scaffolder/StepLayout/StepLayout';
 export { ReviewStep } from './components/scaffolder/ReviewStep';
+export { useStartTemplateTask } from './components/scaffolder/hooks/useStartTemplateTask';
+export { TemplateSignInError } from './apis/scaffolder/TemplateSignInError';
 
 export { DiscoveryApiClient as GSDiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 export { ScaffolderApiClient as GSScaffolderApiClient } from './apis/scaffolder/ScaffolderApiClient';
