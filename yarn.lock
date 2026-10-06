@@ -9194,6 +9194,7 @@ __metadata:
     "@backstage/core-plugin-api": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/test-utils": "backstage:^"
+    "@backstage/ui": "backstage:^"
     "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"

@@ -163,6 +163,8 @@
   "pagerDuty.eventsBaseUrl",
   "permission.EXPERIMENTAL_enableBatchedRequests",
   "permission.enabled",
+  "plans.fixtures",
+  "roadmap.fixtures",
   "search.defaultType",
   "search.query.pageLimit",
   "techdocs.builder",
