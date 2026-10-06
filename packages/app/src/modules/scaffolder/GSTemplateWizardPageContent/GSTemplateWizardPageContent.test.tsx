@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -6,13 +7,14 @@ import { GSTemplateWizardPageContent } from './GSTemplateWizardPageContent';
 const mockStart = jest.fn();
 const mockNavigate = jest.fn();
 let mockFormState: Record<string, string> = { name: 'my-app' };
+let mockTemplateName = 'app';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => {
-  const { useCallback, useState } = jest.requireActual('react');
+  const react = jest.requireActual('react');
   return {
     useStartTemplateTask: () => {
-      const [state, setState] = useState({ isPending: false });
-      const mutateAsync = useCallback(async (values: object) => {
+      const [state, setState] = react.useState({ isPending: false });
+      const mutateAsync = react.useCallback(async (values: object) => {
         setState({ isPending: true });
         try {
           const response = await mockStart(values);
@@ -37,7 +39,10 @@ jest.mock('@backstage/core-plugin-api', () => ({
   ...jest.requireActual('@backstage/core-plugin-api'),
   useRouteRef: () => (params?: { taskId: string }) =>
     params ? `/create/tasks/${params.taskId}` : '/create',
-  useRouteRefParams: () => ({ namespace: 'default', templateName: 'app' }),
+  useRouteRefParams: () => ({
+    namespace: 'default',
+    templateName: mockTemplateName,
+  }),
 }));
 
 jest.mock('react-router-dom', () => ({
@@ -57,8 +62,25 @@ jest.mock('@backstage/plugin-scaffolder-react/alpha', () => ({
   ),
 }));
 
+function WizardWithTemplateLink() {
+  const [, setTemplate] = useState(mockTemplateName);
+  return (
+    <>
+      <button
+        onClick={() => {
+          mockTemplateName = 'other-app';
+          setTemplate(mockTemplateName);
+        }}
+      >
+        Open another template
+      </button>
+      <GSTemplateWizardPageContent extensions={[]} />
+    </>
+  );
+}
+
 async function renderWizard() {
-  await renderInTestApp(<GSTemplateWizardPageContent extensions={[]} />);
+  await renderInTestApp(<WizardWithTemplateLink />);
 }
 
 function sessionExpired() {
@@ -73,6 +95,7 @@ describe('GSTemplateWizardPageContent', () => {
     mockStart.mockReset();
     mockNavigate.mockReset();
     mockFormState = { name: 'my-app' };
+    mockTemplateName = 'app';
   });
 
   it('starts the task with the entries and opens it', async () => {
@@ -138,5 +161,19 @@ describe('GSTemplateWizardPageContent', () => {
       'Backend request failed, 500 Internal Server Error',
     );
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("drops a failed Create's alert when another template opens", async () => {
+    mockStart.mockRejectedValue(new Error('500'));
+    await renderWizard();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open another template' }),
+    );
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

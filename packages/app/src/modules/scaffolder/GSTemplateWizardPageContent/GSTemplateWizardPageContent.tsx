@@ -43,26 +43,37 @@ const useStyles = makeStyles({
 // Upstream's Workflow is not used: it reports a created task whenever
 // `onCreate` resolves, and `Stepper` leaves a rejection unhandled, so a failed
 // submit would be either counted as created or raised as an app-wide error.
-export function GSTemplateWizardPageContent(props: {
+type WizardProps = {
   extensions: FieldExtensionOptions<any, any>[];
   layouts?: LayoutOptions[];
   components?: { ReviewStepComponent?: ComponentType<ReviewStepProps> };
-}) {
-  const { t } = useTranslationRef(scaffolderReactTranslationRef);
-  const styles = useStyles();
-  const rootRef = useRouteRef(scaffolderPlugin.routes.root);
-  const taskRoute = useRouteRef(scaffolderPlugin.routes.ongoingTask);
+};
+
+export function GSTemplateWizardPageContent(props: WizardProps) {
   const { namespace, templateName } = useRouteRefParams(
     scaffolderPlugin.routes.selectedTemplate,
   );
-  const errorApi = useApi(errorApiRef);
-  const navigate = useNavigate();
-
   const templateRef = stringifyEntityRef({
     kind: 'Template',
     namespace,
     name: templateName,
   });
+  // React Router reuses this element when only the template changes; the key
+  // keeps one template's entries and failed Create out of the next one.
+  return (
+    <TemplateWizard key={templateRef} templateRef={templateRef} {...props} />
+  );
+}
+
+function TemplateWizard(props: WizardProps & { templateRef: string }) {
+  const { templateRef } = props;
+  const { t } = useTranslationRef(scaffolderReactTranslationRef);
+  const styles = useStyles();
+  const rootRef = useRouteRef(scaffolderPlugin.routes.root);
+  const taskRoute = useRouteRef(scaffolderPlugin.routes.ongoingTask);
+  const errorApi = useApi(errorApiRef);
+  const navigate = useNavigate();
+
   const { loading, manifest, error } = useTemplateParameterSchema(templateRef);
   const sortedManifest = useFilteredSchemaProperties(manifest);
   const startTask = useStartTemplateTask(templateRef, sortedManifest);
