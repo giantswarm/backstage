@@ -2,9 +2,11 @@ import { renderHook } from '@testing-library/react';
 import {
   App,
   Cluster,
+  KubeObjectInterface,
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useClusterFromUrl } from './useClusterFromUrl';
+import { Query } from '@tanstack/react-query';
+import { clusterRefetchInterval, useClusterFromUrl } from './useClusterFromUrl';
 
 jest.mock('@backstage/frontend-plugin-api', () => ({
   ...jest.requireActual('@backstage/frontend-plugin-api'),
@@ -45,13 +47,29 @@ function notFound() {
   return error;
 }
 
-function mockResources(cluster: Cluster | undefined, appError: Error | null) {
+function mockResources(
+  cluster: Cluster | undefined,
+  appError: Error | null,
+  clusterError: Error | null = null,
+) {
   mockUseResource.mockImplementation(
     (_installation: string, kind: typeof App | typeof Cluster) =>
       kind === Cluster
-        ? { resource: cluster, isLoading: false, error: null }
+        ? { resource: cluster, isLoading: false, error: clusterError }
         : { resource: undefined, isLoading: false, error: appError },
   );
+}
+
+function queryState(
+  status: 'success' | 'error',
+  deletionTimestamp?: string,
+): Query<KubeObjectInterface> {
+  return {
+    state: {
+      status,
+      data: { metadata: { name: 'my-cluster', deletionTimestamp } },
+    },
+  } as Query<KubeObjectInterface>;
 }
 
 describe('useClusterFromUrl', () => {
@@ -65,6 +83,22 @@ describe('useClusterFromUrl', () => {
     expect(result.current.clusterApp).toBeUndefined();
     expect(result.current.error).toBeNull();
     expect(result.current.notFound).toBe(false);
+    expect(result.current.isDeleting).toBe(true);
+  });
+
+  it('reads a cluster that is gone as not found, though its last read is cached', () => {
+    mockResources(
+      createCluster('2026-09-30T10:00:00Z'),
+      notFound(),
+      notFound(),
+    );
+
+    const { result } = renderHook(() => useClusterFromUrl());
+
+    expect(result.current.cluster).toBeUndefined();
+    expect(result.current.isDeleting).toBe(false);
+    expect(result.current.notFound).toBe(true);
+    expect(result.current.error).toBeNull();
   });
 
   it('reports a missing App for a cluster that is not being deleted', () => {
@@ -73,5 +107,24 @@ describe('useClusterFromUrl', () => {
     const { result } = renderHook(() => useClusterFromUrl());
 
     expect(result.current.error?.name).toBe('NotFoundError');
+    expect(result.current.isDeleting).toBe(false);
+  });
+});
+
+describe('clusterRefetchInterval', () => {
+  it('re-reads a cluster being deleted', () => {
+    expect(
+      clusterRefetchInterval(queryState('success', '2026-09-30T10:00:00Z')),
+    ).toBe(10_000);
+  });
+
+  it('does not re-read a cluster that is not being deleted', () => {
+    expect(clusterRefetchInterval(queryState('success'))).toBe(false);
+  });
+
+  it('stops once a read fails, though the deleting cluster is still cached', () => {
+    expect(
+      clusterRefetchInterval(queryState('error', '2026-09-30T10:00:00Z')),
+    ).toBe(false);
   });
 });

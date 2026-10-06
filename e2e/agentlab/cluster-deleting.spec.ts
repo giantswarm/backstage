@@ -28,6 +28,13 @@ async function settled(page: Page) {
   await page.waitForTimeout(1_000);
 }
 
+/**
+ * The About card's inline error icons: each carries its error message, such
+ * as `KubeadmControlPlane resource named "wc-live" … not found.`, as a title.
+ */
+const inlineNotFoundErrors = (page: Page) =>
+  page.locator('[title*="not found"]');
+
 /** The heading of the portal's error panel, one or more failed fetches. */
 const errorPanel =
   /Errors when trying to fetch resources from|Something went wrong/;
@@ -41,6 +48,7 @@ test('a cluster being deleted says so and reports no missing resources', async (
   await expect(admin.getByText('e2e fixture (wc-deleting)')).toBeVisible();
   await settled(admin);
   await expect(admin.getByText(errorPanel)).toHaveCount(0);
+  await expect(inlineNotFoundErrors(admin)).toHaveCount(0);
 
   await admin.screenshot({
     path: testInfo.outputPath('wc-deleting.png'),
@@ -56,6 +64,7 @@ test('a cluster that is not being deleted still reports a missing control plane'
   await expect(admin.getByText('e2e fixture (wc-live)')).toBeVisible();
   await settled(admin);
   await expect(admin.getByText(errorPanel)).toBeVisible();
+  await expect(inlineNotFoundErrors(admin).first()).toBeAttached();
   await expect(admin.getByText('This cluster is being deleted')).toHaveCount(0);
 
   await admin.screenshot({

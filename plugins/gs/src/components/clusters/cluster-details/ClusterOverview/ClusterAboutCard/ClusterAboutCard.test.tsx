@@ -27,9 +27,11 @@ type ControlPlaneRef = NonNullable<ReturnType<Cluster['getControlPlaneRef']>>;
 function createCluster({
   controlPlaneRef,
   labels,
+  deletionTimestamp,
 }: {
   controlPlaneRef?: ControlPlaneRef;
   labels?: Record<string, string>;
+  deletionTimestamp?: string;
 } = {}) {
   return new Cluster(
     {
@@ -40,6 +42,7 @@ function createCluster({
         namespace: 'org-test',
         annotations: { 'cluster.giantswarm.io/description': 'Test cluster' },
         ...(labels && { labels }),
+        ...(deletionTimestamp && { deletionTimestamp }),
       },
       spec: {
         ...(controlPlaneRef && { controlPlaneRef }),
@@ -376,5 +379,68 @@ describe('ClusterAboutCard', () => {
     expect(requestedPaths(api)).toContain(
       '/apis/controlplane.cluster.x-k8s.io/v1beta2/namespaces/org-test/kubeadmcontrolplanes/my-cluster/',
     );
+  });
+
+  describe('with a control plane that is gone', () => {
+    const kubeadmControlPlaneRef = {
+      apiGroup: 'controlplane.cluster.x-k8s.io',
+      kind: 'KubeadmControlPlane',
+      name: 'my-cluster',
+      namespace: 'org-test',
+    };
+    const apiWithoutControlPlane = () =>
+      createMockKubernetesApi({
+        '/apis/controlplane.cluster.x-k8s.io': controlPlaneGroupResponse,
+        '/apis/controlplane.cluster.x-k8s.io/v1beta2':
+          controlPlaneResourcesResponse,
+      });
+
+    it('reads "n/a" without an error while the cluster is being deleted', async () => {
+      mockUseCurrentCluster.mockReturnValue({
+        installationName: INSTALLATION,
+        cluster: createCluster({
+          controlPlaneRef: kubeadmControlPlaneRef,
+          deletionTimestamp: '2026-09-30T10:00:00Z',
+        }),
+        isDeleting: true,
+      });
+      const api = apiWithoutControlPlane();
+
+      await renderCard(api);
+
+      await waitFor(() =>
+        expect(requestedPaths(api)).toContain(
+          '/apis/controlplane.cluster.x-k8s.io/v1beta2/namespaces/org-test/kubeadmcontrolplanes/my-cluster/',
+        ),
+      );
+      await settle();
+      expect(
+        kubernetesVersionField().getByLabelText('no information available'),
+      ).toBeInTheDocument();
+      expect(
+        screen
+          .getByRole('heading', { name: 'Kubernetes version' })
+          .parentElement?.querySelector('svg'),
+      ).toBeNull();
+    });
+
+    it('shows the error for a cluster that is not being deleted', async () => {
+      mockUseCurrentCluster.mockReturnValue({
+        installationName: INSTALLATION,
+        cluster: createCluster({ controlPlaneRef: kubeadmControlPlaneRef }),
+        clusterApp,
+        isDeleting: false,
+      });
+
+      await renderCard(apiWithoutControlPlane());
+
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole('heading', { name: 'Kubernetes version' })
+            .parentElement?.querySelector('svg'),
+        ).not.toBeNull(),
+      );
+    });
   });
 });

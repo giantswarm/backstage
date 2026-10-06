@@ -3,31 +3,23 @@ import {
   ErrorItem,
   ErrorsProvider,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useCurrentCluster } from './useCurrentCluster';
-import { calculateClusterStatus } from '../utils';
-import { ClusterStatuses } from '../ClusterStatus';
-
-export function isNotFoundErrorItem(item: ErrorItem) {
-  return item.type === 'error' && item.error?.name === 'NotFoundError';
-}
+import { useIsExpectedClusterError } from './useIsExpectedClusterError';
 
 /**
- * Collects the errors of a cluster details tab. While the cluster is being
- * deleted, the resources that belong to it disappear one by one, so a
- * resource that is not found is expected and not reported.
+ * Collects the errors of a cluster details tab, leaving out the ones expected
+ * for the cluster's state.
  */
 export const ClusterErrorsProvider = ({
   children,
 }: {
   children: ReactNode;
 }) => {
-  const { cluster } = useCurrentCluster();
-  const isDeleting =
-    calculateClusterStatus(cluster) === ClusterStatuses.Deleting;
+  const isExpected = useIsExpectedClusterError();
 
   const ignoreError = useCallback(
-    (item: ErrorItem) => isDeleting && isNotFoundErrorItem(item),
-    [isDeleting],
+    (item: ErrorItem) =>
+      item.type !== 'incompatibility' && isExpected(item.error),
+    [isExpected],
   );
 
   return <ErrorsProvider ignoreError={ignoreError}>{children}</ErrorsProvider>;

@@ -24,7 +24,7 @@ function isImported(cluster: Cluster) {
   return getClusterAppName(cluster) === Constants.CAPI_IMPORTER_APP_NAME;
 }
 
-function isDeleting(cluster: Cluster) {
+export function isClusterDeleting(cluster: Cluster) {
   return typeof cluster.getDeletionTimestamp() !== 'undefined';
 }
 
@@ -92,7 +92,7 @@ export function calculateClusterType(cluster: Cluster) {
 }
 
 export function calculateClusterStatus(cluster: Cluster) {
-  if (isDeleting(cluster)) {
+  if (isClusterDeleting(cluster)) {
     return ClusterStatuses.Deleting;
   }
 

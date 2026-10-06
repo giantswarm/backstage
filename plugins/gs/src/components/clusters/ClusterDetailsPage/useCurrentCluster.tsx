@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, useMemo } from 'react';
 import { useClusterFromUrl } from './useClusterFromUrl';
 import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -6,6 +6,7 @@ export type ClusterLoadingStatus = {
   installationName: string;
   cluster?: Cluster;
   clusterApp?: App;
+  isDeleting: boolean;
   loading: boolean;
   notFound: boolean;
   error: Error | null;
@@ -15,6 +16,7 @@ const ClusterContext = createContext<ClusterLoadingStatus>({
   installationName: '',
   cluster: undefined,
   clusterApp: undefined,
+  isDeleting: false,
   loading: false,
   notFound: false,
   error: null,
@@ -32,17 +34,36 @@ export interface AsyncClusterProviderProps {
 export const AsyncClusterProvider = ({
   children,
 }: AsyncClusterProviderProps) => {
-  const { installationName, cluster, clusterApp, loading, notFound, error } =
-    useClusterFromUrl();
-
-  const value = {
+  const {
     installationName,
     cluster,
     clusterApp,
+    isDeleting,
     loading,
     notFound,
     error,
-  };
+  } = useClusterFromUrl();
+
+  const value = useMemo(
+    () => ({
+      installationName,
+      cluster,
+      clusterApp,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+    }),
+    [
+      installationName,
+      cluster,
+      clusterApp,
+      isDeleting,
+      loading,
+      notFound,
+      error,
+    ],
+  );
 
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
@@ -58,8 +79,8 @@ export const AsyncClusterProvider = ({
 export function useCurrentCluster(): {
   installationName: string;
   cluster: Cluster;
-  /** Absent only for a cluster being deleted, whose App went first. */
   clusterApp?: App;
+  isDeleting: boolean;
 } {
   const value = useContext(ClusterContext);
 
@@ -77,6 +98,7 @@ export function useCurrentCluster(): {
     installationName: value.installationName,
     cluster: value.cluster,
     clusterApp: value.clusterApp,
+    isDeleting: value.isDeleting,
   };
 }
 
@@ -92,8 +114,5 @@ export function useAsyncCluster(): ClusterLoadingStatus {
     throw new Error('ClusterContext not available');
   }
 
-  const { installationName, cluster, clusterApp, loading, notFound, error } =
-    value;
-
-  return { installationName, cluster, clusterApp, loading, notFound, error };
+  return value;
 }

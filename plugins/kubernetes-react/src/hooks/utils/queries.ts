@@ -33,10 +33,15 @@ export type ErrorInfoUnion = ErrorInfo | IncompatibilityErrorInfo;
  * "couldn't read".
  */
 export function isNotFoundError(errorInfo: ErrorInfoUnion): boolean {
-  return (
-    errorInfo.type !== 'incompatibility' &&
-    errorInfo.error.name === 'NotFoundError'
-  );
+  return errorInfo.type !== 'incompatibility' && isNotFound(errorInfo.error);
+}
+
+/**
+ * True when a request failed with a 404: the `Error` itself, for callers that
+ * hold a query's `error` rather than an `ErrorInfo`.
+ */
+export function isNotFound(error: Error | null | undefined): boolean {
+  return error?.name === 'NotFoundError';
 }
 
 export const mapQueriesToClusters = <T>(

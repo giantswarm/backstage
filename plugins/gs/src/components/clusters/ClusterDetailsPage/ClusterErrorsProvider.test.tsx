@@ -6,6 +6,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ClusterErrorsProvider } from './ClusterErrorsProvider';
+import { isClusterDeleting } from '../utils';
 import { ClusterDeletingNotice } from '../ClusterLayout/ClusterLayout';
 
 const mockUseCurrentCluster = jest.fn();
@@ -64,6 +65,7 @@ async function renderTab(cluster: Cluster, errors: Error[]) {
     cluster,
     clusterApp,
     installationName: INSTALLATION,
+    isDeleting: isClusterDeleting(cluster),
   });
 
   await renderInTestApp(

@@ -26,6 +26,7 @@ import {
 } from '../../../../UI';
 import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
+import { useIsExpectedClusterError } from '../../../ClusterDetailsPage/useIsExpectedClusterError';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
@@ -106,6 +107,7 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
+  const isExpectedError = useIsExpectedClusterError();
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
@@ -143,7 +145,7 @@ export function ClusterAboutCard() {
   );
 
   let controlPlaneErrorMessage;
-  if (controlPlaneError) {
+  if (controlPlaneError && !isExpectedError(controlPlaneError)) {
     controlPlaneErrorMessage = getErrorMessage({
       error: controlPlaneError,
       resourceKind: (ControlPlaneModel ?? ControlPlane).kind,

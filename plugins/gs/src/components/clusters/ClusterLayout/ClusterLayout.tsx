@@ -15,7 +15,7 @@ import { useCurrentUser, useLayoutTabs } from '../../hooks';
 import { ClusterAppStatus } from './ClusterAppStatus';
 import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AIChatButtonBui } from '@giantswarm/backstage-plugin-ai-chat-react';
-import { calculateClusterStatus } from '../utils';
+import { calculateClusterStatus, isClusterDeleting } from '../utils';
 import { ClusterStatuses } from '../ClusterStatus';
 import { DateComponent } from '../../UI';
 
@@ -38,7 +38,7 @@ attachComponentData(Route, dataKey, true);
 attachComponentData(Route, 'core.gatherMountPoints', true);
 
 export const ClusterDeletingNotice = ({ cluster }: { cluster: Cluster }) => {
-  if (calculateClusterStatus(cluster) !== ClusterStatuses.Deleting) {
+  if (!isClusterDeleting(cluster)) {
     return null;
   }
 
@@ -59,7 +59,7 @@ export const ClusterDeletingNotice = ({ cluster }: { cluster: Cluster }) => {
             </>
           ) : null}
           Resources that belong to the cluster disappear as the deletion
-          proceeds, so some details may be missing.
+          proceeds, so some details may be missing. This page updates by itself.
         </>
       }
     />
