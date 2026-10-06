@@ -13,7 +13,16 @@ export function useInstallationEntityNames({
   const catalogApi = useApi(catalogApiRef);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['catalog-entities', 'kind', 'resource', 'type', 'installation'],
+    queryKey: [
+      'catalog-entities',
+      'kind',
+      'resource',
+      'type',
+      'installation',
+      'namespace',
+      'default',
+      'names',
+    ],
     queryFn: () =>
       catalogApi.getEntities({
         filter: {
