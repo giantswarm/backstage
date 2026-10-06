@@ -14,8 +14,8 @@ import { contextOptions, lab } from './lab';
  * token broker.
  *
  * The page's clock is jumped two hours after the form is filled, past the
- * lifetime of every token the browser holds, so Create has to mint the cluster
- * token again instead of sending the one fetched while the form was filled.
+ * lifetime of every token the browser holds, so the cluster token Create
+ * sends has to be minted at Create.
  */
 const TEMPLATE = 'session-expiry-e2e';
 const SECRETS_KEY = 'USER_OIDC_TOKEN';
@@ -68,8 +68,8 @@ async function stageTemplate(page: Page): Promise<TaskRequest[]> {
 
 /**
  * Signs a context of its own in with the page's clock under the test's control
- * and fills the staged template up to its review step, by when the field has
- * fetched its cluster token. Returns the page and the task requests it sends.
+ * and fills the staged template up to its review step. Returns the page and
+ * the task requests it sends.
  */
 async function fillTemplate(context: BrowserContext) {
   const page = await context.newPage();
@@ -77,17 +77,10 @@ async function fillTemplate(context: BrowserContext) {
   await signIn(page, lab.users.admin);
   const submitted = await stageTemplate(page);
 
-  const fetched = page.waitForResponse(
-    response =>
-      /\/api\/auth\/(cluster-token\/|[^/]+\/refresh)/.test(response.url()) &&
-      response.ok(),
-    { timeout: 30_000 },
-  );
   await page.goto(`/create/templates/default/${TEMPLATE}`);
   await page.getByRole('textbox', { name: 'Name' }).fill('expiry-check');
   await page.getByRole('button', { name: 'Review' }).click();
   await expect(page.getByRole('button', { name: 'Create' })).toBeVisible();
-  await fetched.catch(() => undefined);
 
   return { page, submitted };
 }
@@ -140,11 +133,11 @@ test.describe('a template submitted after the sign-in expired', () => {
     expect(token, 'the task carries the cluster token').toBeTruthy();
     expect(
       tokenClaims(token).iat,
-      'the token sent was issued after Create was selected, not while the form was filled',
+      'the token sent was issued after Create was selected',
     ).toBeGreaterThanOrEqual(createdAt);
   });
 
-  test('declining the login keeps the entries and offers to sign in and create', async () => {
+  test('declining the login keeps the entries, and Create signs in and submits them', async () => {
     const { page, submitted } = await fillTemplate(context);
 
     await page.route('**/api/auth/*/refresh**', route =>
@@ -170,13 +163,18 @@ test.describe('a template submitted after the sign-in expired', () => {
     await expect(page.getByRole('progressbar')).toBeHidden();
 
     await page.unroute('**/api/auth/*/refresh**');
-    await alert.getByRole('button', { name: 'Sign in and create' }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    const prompt = page.getByRole('dialog', { name: 'Login Required' });
     const done = page.waitForURL(/\/create\/tasks\/session-expiry-task/);
-    if (await prompt.isVisible({ timeout: 5_000 }).catch(() => false)) {
+    const prompted = await login
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .then(
+        () => true,
+        () => false,
+      );
+    if (prompted) {
       const popup = page.waitForEvent('popup');
-      await prompt.getByRole('button', { name: 'Log in' }).first().click();
+      await login.getByRole('button', { name: 'Log in' }).first().click();
       await completeDexLogin(await popup, lab.users.admin);
     }
     await done;

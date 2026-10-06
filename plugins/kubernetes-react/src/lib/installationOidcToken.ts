@@ -4,6 +4,23 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 
 /**
+ * No token can be minted for the installation without asking the person: the
+ * Kubernetes API does not know it, or its auth provider returned no token. A
+ * declined or failed sign-in is not this error; it surfaces as the auth
+ * provider's own.
+ */
+export class InstallationTokenUnavailableError extends Error {
+  readonly name = 'InstallationTokenUnavailableError';
+
+  constructor(
+    message: string,
+    readonly reason: 'unknown-installation' | 'no-token',
+  ) {
+    super(message);
+  }
+}
+
+/**
  * Mint the user's per-installation OIDC ID token, the same way the
  * `GSOIDCToken` scaffolder field does: `kubernetesApi.getCluster()` →
  * `kubernetesAuthProvidersApi.getCredentials()`.
@@ -25,8 +42,9 @@ export async function getInstallationOidcToken(
 ): Promise<string> {
   const cluster = await kubernetesApi.getCluster(installation);
   if (!cluster) {
-    throw new Error(
+    throw new InstallationTokenUnavailableError(
       `Installation "${installation}" is not known to the Kubernetes API.`,
+      'unknown-installation',
     );
   }
 
@@ -37,8 +55,9 @@ export async function getInstallationOidcToken(
       : authProvider,
   );
   if (!token) {
-    throw new Error(
+    throw new InstallationTokenUnavailableError(
       `Could not obtain an access token for "${installation}". You may need to log in to that installation first.`,
+      'no-token',
     );
   }
 

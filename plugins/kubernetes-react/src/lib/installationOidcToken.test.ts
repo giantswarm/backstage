@@ -2,7 +2,10 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import { getInstallationOidcToken } from './installationOidcToken';
+import {
+  getInstallationOidcToken,
+  InstallationTokenUnavailableError,
+} from './installationOidcToken';
 
 describe('getInstallationOidcToken', () => {
   const getCluster = jest.fn();
@@ -59,6 +62,16 @@ describe('getInstallationOidcToken', () => {
         'nope',
       ),
     ).rejects.toThrow(/not known to the Kubernetes API/);
+    await expect(
+      getInstallationOidcToken(
+        kubernetesApi,
+        kubernetesAuthProvidersApi,
+        'nope',
+      ),
+    ).rejects.toMatchObject({
+      name: 'InstallationTokenUnavailableError',
+      reason: 'unknown-installation',
+    });
     expect(getCredentials).not.toHaveBeenCalled();
   });
 
@@ -78,5 +91,12 @@ describe('getInstallationOidcToken', () => {
         'golem',
       ),
     ).rejects.toThrow(/log in to that installation first/);
+    await expect(
+      getInstallationOidcToken(
+        kubernetesApi,
+        kubernetesAuthProvidersApi,
+        'golem',
+      ),
+    ).rejects.toBeInstanceOf(InstallationTokenUnavailableError);
   });
 });

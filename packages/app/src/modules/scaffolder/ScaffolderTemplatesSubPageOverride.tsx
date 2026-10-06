@@ -35,7 +35,6 @@ import {
 import { parseEntityRef, stringifyEntityRef } from '@backstage/catalog-model';
 import { buildTechDocsURL } from '@backstage/plugin-techdocs-react';
 import type { TemplateEntityV1beta3 } from '@backstage/plugin-scaffolder-common';
-import { TemplateSecretRefreshProvider } from '@giantswarm/backstage-plugin-gs';
 import { GSTemplateWizardPageContent } from './GSTemplateWizardPageContent';
 
 const TECHDOCS_ANNOTATION = 'backstage.io/techdocs-ref';
@@ -145,17 +144,15 @@ function GSTemplatesSubPage(props: {
         path=":namespace/:templateName"
         element={
           <SecretsContextProvider>
-            <TemplateSecretRefreshProvider>
-              <GSTemplateWizardPageContent
-                extensions={props.fieldExtensions}
-                layouts={props.layouts}
-                components={
-                  props.ReviewStepComponent
-                    ? { ReviewStepComponent: props.ReviewStepComponent }
-                    : undefined
-                }
-              />
-            </TemplateSecretRefreshProvider>
+            <GSTemplateWizardPageContent
+              extensions={props.fieldExtensions}
+              layouts={props.layouts}
+              components={
+                props.ReviewStepComponent
+                  ? { ReviewStepComponent: props.ReviewStepComponent }
+                  : undefined
+              }
+            />
           </SecretsContextProvider>
         }
       />

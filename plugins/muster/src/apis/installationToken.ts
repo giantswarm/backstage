@@ -95,8 +95,8 @@ export function isMusterTokenMintError(
  * Whether a mint failure means the person's main portal session is gone.
  * Recognises the gs cluster-token broker's typed error (`ClusterTokenError`
  * with reason `session-expired` / `subject_invalid`) by shape, so the muster
- * plugin needs no dependency on the gs plugin, and the errors the broker and
- * Backstage's auth APIs raise when a re-login was declined or its popup closed.
+ * plugin needs no dependency on the gs plugin, and the wording the broker and
+ * Backstage's auth APIs use when a re-login was declined.
  */
 export function isSessionExpiredError(error: unknown): boolean {
   const e = error as
@@ -107,10 +107,7 @@ export function isSessionExpiredError(error: unknown): boolean {
   if (e.name === 'ClusterTokenError') {
     return e.reason === 'session-expired' || e.reason === 'subject_invalid';
   }
-  if (e.name === 'RejectedError') {
-    return true;
-  }
-  return /session[ -]?expired|sign in again|login did not complete|login failed, popup was closed/i.test(
+  return /session[ -]?expired|sign in again|login did not complete/i.test(
     e.message ?? '',
   );
 }

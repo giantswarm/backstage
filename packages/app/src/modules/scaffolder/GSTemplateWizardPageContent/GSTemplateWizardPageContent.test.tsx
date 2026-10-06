@@ -1,22 +1,32 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  renderInTestApp,
-  TestApiProvider,
-} from '@backstage/frontend-test-utils';
-import {
-  scaffolderApiRef,
-  SecretsContextProvider,
-} from '@backstage/plugin-scaffolder-react';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { GSTemplateWizardPageContent } from './GSTemplateWizardPageContent';
 
-const mockRefreshSecrets = jest.fn();
+const mockStart = jest.fn();
 const mockNavigate = jest.fn();
-const formState = { name: 'my-app' };
+let mockFormState: Record<string, string> = { name: 'my-app' };
 
-jest.mock('@giantswarm/backstage-plugin-gs', () => ({
-  useRefreshTemplateSecrets: () => mockRefreshSecrets,
-}));
+jest.mock('@giantswarm/backstage-plugin-gs', () => {
+  const { useCallback, useState } = jest.requireActual('react');
+  return {
+    useStartTemplateTask: () => {
+      const [state, setState] = useState({ isPending: false });
+      const mutateAsync = useCallback(async (values: object) => {
+        setState({ isPending: true });
+        try {
+          const response = await mockStart(values);
+          setState({ isPending: false });
+          return response;
+        } catch (error) {
+          setState({ isPending: false, error });
+          throw error;
+        }
+      }, []);
+      return { ...state, mutateAsync };
+    },
+  };
+});
 
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   isSessionExpiredError: (error: { name?: string; reason?: string }) =>
@@ -37,21 +47,18 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('@backstage/plugin-scaffolder-react/alpha', () => ({
   ...jest.requireActual('@backstage/plugin-scaffolder-react/alpha'),
-  Workflow: (props: { onCreate: (values: object) => Promise<void> }) => (
-    <button onClick={() => props.onCreate(formState)}>Create</button>
+  useTemplateParameterSchema: () => ({
+    loading: false,
+    manifest: { title: 'App', steps: [] },
+  }),
+  useFilteredSchemaProperties: (manifest: object) => manifest,
+  Stepper: (props: { onCreate: (values: object) => Promise<void> }) => (
+    <button onClick={() => props.onCreate(mockFormState)}>Create</button>
   ),
 }));
 
-const scaffolderApi = { scaffold: jest.fn() };
-
 async function renderWizard() {
-  await renderInTestApp(
-    <TestApiProvider apis={[[scaffolderApiRef, scaffolderApi]]}>
-      <SecretsContextProvider>
-        <GSTemplateWizardPageContent extensions={[]} />
-      </SecretsContextProvider>
-    </TestApiProvider>,
-  );
+  await renderInTestApp(<GSTemplateWizardPageContent extensions={[]} />);
 }
 
 function sessionExpired() {
@@ -63,14 +70,13 @@ function sessionExpired() {
 
 describe('GSTemplateWizardPageContent', () => {
   beforeEach(() => {
-    mockRefreshSecrets.mockReset();
+    mockStart.mockReset();
     mockNavigate.mockReset();
-    scaffolderApi.scaffold.mockReset();
+    mockFormState = { name: 'my-app' };
   });
 
-  it('submits freshly minted secrets and opens the task', async () => {
-    mockRefreshSecrets.mockResolvedValue({ USER_OIDC_TOKEN: 'fresh' });
-    scaffolderApi.scaffold.mockResolvedValue({ taskId: 'task-1' });
+  it('starts the task with the entries and opens it', async () => {
+    mockStart.mockResolvedValue({ taskId: 'task-1' });
     await renderWizard();
 
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
@@ -78,44 +84,47 @@ describe('GSTemplateWizardPageContent', () => {
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith('/create/tasks/task-1'),
     );
-    expect(scaffolderApi.scaffold).toHaveBeenCalledWith({
-      templateRef: 'template:default/app',
-      values: formState,
-      secrets: { USER_OIDC_TOKEN: 'fresh' },
-    });
+    expect(mockStart).toHaveBeenCalledWith({ name: 'my-app' });
   });
 
-  it('asks to sign in again when the session expired, then retries with the same entries', async () => {
-    mockRefreshSecrets
-      .mockRejectedValueOnce(sessionExpired())
-      .mockResolvedValueOnce({ USER_OIDC_TOKEN: 'fresh' });
-    scaffolderApi.scaffold.mockResolvedValue({ taskId: 'task-1' });
-    await renderWizard();
+  it.each([
+    ['the portal session expired', sessionExpired()],
+    [
+      'a Login Required prompt was declined',
+      Object.assign(new Error('Login failed, rejected by user'), {
+        name: 'RejectedError',
+      }),
+    ],
+    ['the login popup was closed', new Error('Login failed, popup was closed')],
+  ])(
+    'asks to sign in again when %s, and Create submits the current entries',
+    async (_, error) => {
+      mockStart
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ taskId: 'task-1' });
+      await renderWizard();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('Your sign-in expired');
-    expect(alert).toHaveFocus();
-    expect(scaffolderApi.scaffold).not.toHaveBeenCalled();
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Your sign-in expired');
+      expect(alert).toHaveTextContent('Select Create to sign in again');
+      expect(alert).toHaveFocus();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Sign in and create' }),
-    );
+      mockFormState = { name: 'renamed-app' };
+      await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith('/create/tasks/task-1'),
-    );
-    expect(scaffolderApi.scaffold).toHaveBeenCalledWith(
-      expect.objectContaining({ values: formState }),
-    );
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
+      await waitFor(() =>
+        expect(mockNavigate).toHaveBeenCalledWith('/create/tasks/task-1'),
+      );
+      expect(mockStart).toHaveBeenLastCalledWith({ name: 'renamed-app' });
+    },
+  );
 
-  it('reports any other failure with a retry', async () => {
-    mockRefreshSecrets.mockResolvedValue({});
-    scaffolderApi.scaffold.mockRejectedValue(
+  it('reports any other failure with its details', async () => {
+    mockStart.mockRejectedValue(
       new Error('Backend request failed, 500 Internal Server Error'),
     );
     await renderWizard();
@@ -124,10 +133,10 @@ describe('GSTemplateWizardPageContent', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("Couldn't start the template");
+    expect(alert).toHaveTextContent('Select Create to try again');
     expect(alert).toHaveTextContent(
       'Backend request failed, 500 Internal Server Error',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeEnabled();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

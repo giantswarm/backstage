@@ -1,157 +1,171 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-} from 'react';
+import { useCallback, useEffect, useRef, type ComponentType } from 'react';
 import type { JsonValue } from '@backstage/types';
 import { useNavigate, Navigate } from 'react-router-dom';
+import { makeStyles } from '@material-ui/core/styles';
 import scaffolderPlugin from '@backstage/plugin-scaffolder/alpha';
 import {
   type FieldExtensionOptions,
   type LayoutOptions,
   type ReviewStepProps,
-  scaffolderApiRef,
-  useTemplateSecrets,
+  scaffolderReactTranslationRef,
 } from '@backstage/plugin-scaffolder-react';
-import { Workflow } from '@backstage/plugin-scaffolder-react/alpha';
-import { Progress } from '@backstage/core-components';
 import {
+  Stepper,
+  useFilteredSchemaProperties,
+  useTemplateParameterSchema,
+} from '@backstage/plugin-scaffolder-react/alpha';
+import {
+  Content,
+  InfoCard,
+  MarkdownContent,
+  Progress,
+} from '@backstage/core-components';
+import {
+  errorApiRef,
   useApi,
   useRouteRef,
   useRouteRefParams,
 } from '@backstage/core-plugin-api';
+import { useTranslationRef } from '@backstage/core-plugin-api/alpha';
 import { stringifyEntityRef } from '@backstage/catalog-model';
-import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { useRefreshTemplateSecrets } from '@giantswarm/backstage-plugin-gs';
+import { Alert, Flex, Text } from '@backstage/ui';
+import { useStartTemplateTask } from '@giantswarm/backstage-plugin-gs';
 import { isSessionExpiredError } from '@giantswarm/backstage-plugin-muster';
 
-// Replaces the internal TemplateWizardPageContent using public APIs only,
-// built on Workflow from @backstage/plugin-scaffolder-react/alpha.
+const useStyles = makeStyles({
+  markdown: {
+    '& :first-child': { marginTop: 0 },
+    '& :last-child': { marginBottom: 0 },
+  },
+});
+
+// Replaces the internal TemplateWizardPageContent using public APIs only.
+// Upstream's Workflow is not used: it reports a created task whenever
+// `onCreate` resolves, and `Stepper` leaves a rejection unhandled, so a failed
+// submit would be either counted as created or raised as an app-wide error.
 export function GSTemplateWizardPageContent(props: {
   extensions: FieldExtensionOptions<any, any>[];
   layouts?: LayoutOptions[];
   components?: { ReviewStepComponent?: ComponentType<ReviewStepProps> };
 }) {
+  const { t } = useTranslationRef(scaffolderReactTranslationRef);
+  const styles = useStyles();
   const rootRef = useRouteRef(scaffolderPlugin.routes.root);
   const taskRoute = useRouteRef(scaffolderPlugin.routes.ongoingTask);
   const { namespace, templateName } = useRouteRefParams(
     scaffolderPlugin.routes.selectedTemplate,
   );
-  const scaffolderApi = useApi(scaffolderApiRef);
-  const { secrets } = useTemplateSecrets();
-  const refreshSecrets = useRefreshTemplateSecrets();
+  const errorApi = useApi(errorApiRef);
   const navigate = useNavigate();
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState<CreateError>();
 
   const templateRef = stringifyEntityRef({
     kind: 'Template',
     namespace,
     name: templateName,
   });
+  const { loading, manifest, error } = useTemplateParameterSchema(templateRef);
+  const sortedManifest = useFilteredSchemaProperties(manifest);
+  const startTask = useStartTemplateTask(templateRef, sortedManifest);
+  const { mutateAsync: start } = startTask;
+
+  useEffect(() => {
+    if (error) {
+      errorApi.post(new Error(`Failed to load template, ${error}`));
+    }
+  }, [error, errorApi]);
 
   const onCreate = useCallback(
     async (formState: Record<string, JsonValue>) => {
-      if (isCreating) return;
-      setIsCreating(true);
-      setCreateError(undefined);
+      let taskId: string;
       try {
-        const freshSecrets = await refreshSecrets();
-        const { taskId } = await scaffolderApi.scaffold({
-          templateRef,
-          values: formState,
-          secrets: { ...secrets, ...freshSecrets },
-        });
-        navigate(taskRoute({ taskId }));
-      } catch (error) {
-        setCreateError({
-          sessionExpired: isSessionExpiredError(error),
-          message: error instanceof Error ? error.message : String(error),
-          formState,
-        });
-      } finally {
-        setIsCreating(false);
+        ({ taskId } = await start(formState));
+      } catch {
+        // Shown from the mutation's error, with the entries kept.
+        return;
       }
+      navigate(taskRoute({ taskId }));
     },
-    [
-      isCreating,
-      refreshSecrets,
-      scaffolderApi,
-      templateRef,
-      secrets,
-      navigate,
-      taskRoute,
-    ],
+    [start, navigate, taskRoute],
   );
 
-  const onError = useCallback(() => <Navigate to={rootRef()} />, [rootRef]);
+  if (error) {
+    return <Navigate to={rootRef()} />;
+  }
 
   return (
     <>
-      {isCreating && <Progress />}
-      {createError && (
-        <CreateErrorAlert
-          error={createError}
-          isRetrying={isCreating}
-          onRetry={() => onCreate(createError.formState)}
-        />
-      )}
-      <Workflow
-        namespace={namespace}
-        templateName={templateName}
-        onCreate={onCreate}
-        onError={onError}
-        extensions={props.extensions}
-        layouts={props.layouts}
-        components={props.components}
-      />
+      {startTask.isPending && <Progress />}
+      {startTask.error && <CreateErrorAlert error={startTask.error} />}
+      <Content>
+        {loading && <Progress />}
+        {sortedManifest && (
+          <InfoCard
+            title={sortedManifest.title}
+            subheader={
+              <MarkdownContent
+                className={styles.markdown}
+                linkTarget="_blank"
+                content={
+                  sortedManifest.description ?? t('workflow.noDescription')
+                }
+              />
+            }
+            noPadding
+            titleTypographyProps={{ component: 'h2' }}
+          >
+            <Stepper
+              manifest={sortedManifest}
+              onCreate={onCreate}
+              extensions={props.extensions}
+              layouts={props.layouts}
+              components={props.components}
+            />
+          </InfoCard>
+        )}
+      </Content>
     </>
   );
 }
 
-type CreateError = {
-  sessionExpired: boolean;
-  message: string;
-  formState: Record<string, JsonValue>;
-};
+/**
+ * A sign-in that did not complete when Create asked for it: the portal session
+ * expired, or the person declined an installation's Login Required prompt or
+ * closed its popup.
+ */
+function isSignInFailure(error: Error): boolean {
+  return (
+    isSessionExpiredError(error) ||
+    error.name === 'RejectedError' ||
+    /login failed, popup was closed/i.test(error.message)
+  );
+}
 
-function CreateErrorAlert(props: {
-  error: CreateError;
-  isRetrying: boolean;
-  onRetry: () => void;
-}) {
-  const { error, isRetrying, onRetry } = props;
+function CreateErrorAlert(props: { error: Error }) {
+  const { error } = props;
+  const signIn = isSignInFailure(error);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     ref.current?.focus();
   }, [error]);
 
-  // The action sits under the text rather than in `customActions`, whose row
-  // layout squeezes the text to a sliver on narrow screens.
   return (
     <Alert
       ref={ref}
       tabIndex={-1}
       role="alert"
-      status={error.sessionExpired ? 'warning' : 'danger'}
+      status={signIn ? 'warning' : 'danger'}
       icon
       mx="6"
-      title={
-        error.sessionExpired
-          ? 'Your sign-in expired'
-          : "Couldn't start the template"
-      }
+      title={signIn ? 'Your sign-in expired' : "Couldn't start the template"}
       description={
         <Flex direction="column" align="start" gap="2">
           <Text as="p" variant="body-small">
-            {error.sessionExpired
-              ? 'Nothing was created and your entries are kept. Sign in again to create it.'
-              : 'Nothing was created and your entries are kept.'}
+            {signIn
+              ? 'Nothing was created and your entries are kept. Select Create to sign in again and create it.'
+              : 'Nothing was created and your entries are kept. Select Create to try again.'}
           </Text>
-          {!error.sessionExpired && (
+          {!signIn && (
             <details>
               <summary>Details</summary>
               <Text as="p" variant="body-small">
@@ -159,9 +173,6 @@ function CreateErrorAlert(props: {
               </Text>
             </details>
           )}
-          <Button size="small" isPending={isRetrying} onPress={onRetry}>
-            {error.sessionExpired ? 'Sign in and create' : 'Try again'}
-          </Button>
         </Flex>
       }
     />

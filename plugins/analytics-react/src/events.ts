@@ -40,6 +40,10 @@ export const portalEvents = defineEvents({
       'A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git.',
     attributes: { mode: ['apply', 'commit'] },
   },
+  'Scaffolder.taskStarted': {
+    description: 'A software template was submitted and its task started.',
+    attributes: {},
+  },
   'Muster.mcpServerAdded': {
     description: 'An MCP server was registered in muster through the wizard.',
     attributes: {
