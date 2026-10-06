@@ -1,6 +1,5 @@
-import { useCallback, useState, type ComponentType } from 'react';
-import type { JsonValue } from '@backstage/types';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { useCallback, type ComponentType } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { SubPageBlueprint } from '@backstage/frontend-plugin-api';
 import scaffolderPlugin, {
   formFieldsApiRef,
@@ -10,28 +9,19 @@ import {
   type FieldExtensionOptions,
   type LayoutOptions,
   type ReviewStepProps,
-  scaffolderApiRef,
   SecretsContextProvider,
-  useTemplateSecrets,
 } from '@backstage/plugin-scaffolder-react';
 import {
   TemplateCategoryPicker,
   TemplateGroups,
-  Workflow,
 } from '@backstage/plugin-scaffolder-react/alpha';
 import {
   Content,
   ContentHeader,
   DocsIcon,
-  Progress,
   SupportButton,
 } from '@backstage/core-components';
-import {
-  useApi,
-  useApp,
-  useRouteRef,
-  useRouteRefParams,
-} from '@backstage/core-plugin-api';
+import { useApp, useRouteRef } from '@backstage/core-plugin-api';
 import { useTranslationRef } from '@backstage/core-plugin-api/alpha';
 import {
   CatalogFilterLayout,
@@ -45,6 +35,8 @@ import {
 import { parseEntityRef, stringifyEntityRef } from '@backstage/catalog-model';
 import { buildTechDocsURL } from '@backstage/plugin-techdocs-react';
 import type { TemplateEntityV1beta3 } from '@backstage/plugin-scaffolder-common';
+import { TemplateSecretRefreshProvider } from '@giantswarm/backstage-plugin-gs';
+import { GSTemplateWizardPageContent } from './GSTemplateWizardPageContent';
 
 const TECHDOCS_ANNOTATION = 'backstage.io/techdocs-ref';
 const TECHDOCS_EXTERNAL_ANNOTATION = 'backstage.io/techdocs-entity';
@@ -135,62 +127,6 @@ function GSTemplateListContent(props: {
   );
 }
 
-// Replaces the internal TemplateWizardPageContent using public APIs only.
-// Uses Workflow (public from @backstage/plugin-scaffolder-react/alpha) with
-// the same create/navigate logic as the upstream component.
-function GSTemplateWizardPageContent(props: {
-  extensions: FieldExtensionOptions<any, any>[];
-  layouts?: LayoutOptions[];
-  components?: { ReviewStepComponent?: ComponentType<ReviewStepProps> };
-}) {
-  const rootRef = useRouteRef(scaffolderPlugin.routes.root);
-  const taskRoute = useRouteRef(scaffolderPlugin.routes.ongoingTask);
-  const { namespace, templateName } = useRouteRefParams(
-    scaffolderPlugin.routes.selectedTemplate,
-  );
-  const scaffolderApi = useApi(scaffolderApiRef);
-  const { secrets } = useTemplateSecrets();
-  const navigate = useNavigate();
-  const [isCreating, setIsCreating] = useState(false);
-
-  const templateRef = stringifyEntityRef({
-    kind: 'Template',
-    namespace,
-    name: templateName,
-  });
-
-  const onCreate = useCallback(
-    async (formState: Record<string, JsonValue>) => {
-      if (isCreating) return;
-      setIsCreating(true);
-      const { taskId } = await scaffolderApi.scaffold({
-        templateRef,
-        values: formState,
-        secrets,
-      });
-      navigate(taskRoute({ taskId }));
-    },
-    [isCreating, scaffolderApi, templateRef, secrets, navigate, taskRoute],
-  );
-
-  const onError = useCallback(() => <Navigate to={rootRef()} />, [rootRef]);
-
-  return (
-    <>
-      {isCreating && <Progress />}
-      <Workflow
-        namespace={namespace}
-        templateName={templateName}
-        onCreate={onCreate}
-        onError={onError}
-        extensions={props.extensions}
-        layouts={props.layouts}
-        components={props.components}
-      />
-    </>
-  );
-}
-
 function GSTemplatesSubPage(props: {
   fieldExtensions: FieldExtensionOptions<any, any>[];
   layouts: LayoutOptions[];
@@ -209,15 +145,17 @@ function GSTemplatesSubPage(props: {
         path=":namespace/:templateName"
         element={
           <SecretsContextProvider>
-            <GSTemplateWizardPageContent
-              extensions={props.fieldExtensions}
-              layouts={props.layouts}
-              components={
-                props.ReviewStepComponent
-                  ? { ReviewStepComponent: props.ReviewStepComponent }
-                  : undefined
-              }
-            />
+            <TemplateSecretRefreshProvider>
+              <GSTemplateWizardPageContent
+                extensions={props.fieldExtensions}
+                layouts={props.layouts}
+                components={
+                  props.ReviewStepComponent
+                    ? { ReviewStepComponent: props.ReviewStepComponent }
+                    : undefined
+                }
+              />
+            </TemplateSecretRefreshProvider>
           </SecretsContextProvider>
         }
       />

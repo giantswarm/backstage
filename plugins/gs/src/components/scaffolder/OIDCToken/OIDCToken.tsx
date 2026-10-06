@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { oidcTokenInstallation, OIDCTokenProps } from './schema';
@@ -8,6 +8,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import { useApi } from '@backstage/core-plugin-api';
 import { get } from 'lodash';
+import { useRegisterSecretRefresher } from '../SecretRefresh';
 
 type OIDCTokenFieldProps = {
   id?: string;
@@ -29,6 +30,32 @@ const OIDCTokenField = ({
   const [credentialsCluster, setCredentialsCluster] = useState<
     string | undefined
   >(undefined);
+
+  const mintToken = useCallback(async () => {
+    if (!installationName) {
+      throw new Error('No installation selected for the cluster token.');
+    }
+    const cluster = await kubernetesApi.getCluster(installationName);
+    if (!cluster) {
+      throw new Error(`Installation "${installationName}" is not configured.`);
+    }
+    const { authProvider, oidcTokenProvider } = cluster;
+    const { token } = await kubernetesAuthProvidersApi.getCredentials(
+      authProvider === 'oidc'
+        ? `${authProvider}.${oidcTokenProvider}`
+        : authProvider,
+    );
+    if (!token) {
+      throw new Error(`No token for installation "${installationName}".`);
+    }
+    return token;
+  }, [installationName, kubernetesApi, kubernetesAuthProvidersApi]);
+
+  useRegisterSecretRefresher(
+    secretsKey,
+    installationName ? mintToken : undefined,
+  );
+
   useDebounce(
     async () => {
       if (!secretsKey || !installationName) {
@@ -39,23 +66,13 @@ const OIDCTokenField = ({
         return;
       }
 
-      const cluster = await kubernetesApi.getCluster(installationName);
-
-      if (!cluster) {
+      let token: string;
+      try {
+        token = await mintToken();
+      } catch {
+        // The registered refresher mints again on submit and reports there.
         return;
       }
-
-      const { authProvider, oidcTokenProvider } = cluster;
-      const { token } = await kubernetesAuthProvidersApi.getCredentials(
-        authProvider === 'oidc'
-          ? `${authProvider}.${oidcTokenProvider}`
-          : authProvider,
-      );
-
-      if (!token) {
-        return;
-      }
-
       setSecrets({ [secretsKey]: token });
       setCredentialsCluster(installationName);
     },

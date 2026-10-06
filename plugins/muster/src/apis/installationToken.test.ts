@@ -63,6 +63,19 @@ describe('isSessionExpiredError', () => {
     ).toBe(true);
   });
 
+  it("recognises Backstage's declined login prompt and closed login popup", () => {
+    expect(
+      isSessionExpiredError(
+        Object.assign(new Error('Login failed, rejected by user'), {
+          name: 'RejectedError',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isSessionExpiredError(new Error('Login failed, popup was closed')),
+    ).toBe(true);
+  });
+
   it('is false for anything else', () => {
     expect(isSessionExpiredError(new Error('ENOTFOUND'))).toBe(false);
     expect(isSessionExpiredError(undefined)).toBe(false);
