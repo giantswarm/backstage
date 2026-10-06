@@ -464,8 +464,6 @@ describe('ClusterAboutCard', () => {
       '/apis/cluster.x-k8s.io/v1beta2/namespaces/org-test/machinedeployments/';
     const vsphereTemplatesPath =
       '/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/org-test/vspheremachinetemplates/';
-    const machinePoolsPath =
-      '/apis/cluster.x-k8s.io/v1beta2/namespaces/org-test/machinepools/';
 
     const workerDeployment = {
       apiVersion: 'cluster.x-k8s.io/v1beta2',
@@ -589,7 +587,7 @@ describe('ClusterAboutCard', () => {
             {
               metric: {
                 cluster_id: 'my-cluster',
-                nodepool: 'my-cluster-karpenter',
+                nodepool: 'my-cluster-worker',
                 resource: 'cpu',
               },
               value: [0, '12'],
@@ -597,7 +595,7 @@ describe('ClusterAboutCard', () => {
             {
               metric: {
                 cluster_id: 'my-cluster',
-                nodepool: 'my-cluster-karpenter',
+                nodepool: 'my-cluster-worker',
                 resource: 'memory',
               },
               value: [0, String(48 * 1024 ** 3)],
@@ -607,25 +605,27 @@ describe('ClusterAboutCard', () => {
       });
       mockUseCurrentCluster.mockReturnValue({
         installationName: INSTALLATION,
-        cluster: createCluster({
-          infrastructureKind: 'AzureASOManagedCluster',
-        }),
+        cluster: createCluster({ infrastructureKind: 'VCDCluster' }),
         clusterApp,
       });
       const api = createMockKubernetesApi({
         ...capiGroup,
-        [machinePoolsPath]: {
+        [machineDeploymentsPath]: {
           items: [
             {
-              apiVersion: 'cluster.x-k8s.io/v1beta2',
-              kind: 'MachinePool',
-              metadata: {
-                name: 'my-cluster-karpenter',
-                namespace: 'org-test',
-                labels: { 'cluster.x-k8s.io/cluster-name': 'my-cluster' },
+              ...workerDeployment,
+              spec: {
+                ...workerDeployment.spec,
+                template: {
+                  spec: {
+                    infrastructureRef: {
+                      apiGroup: 'infrastructure.cluster.x-k8s.io',
+                      kind: 'VCDMachineTemplate',
+                      name: 'my-cluster-worker-abc',
+                    },
+                  },
+                },
               },
-              spec: { template: { spec: {} } },
-              status: { readyReplicas: 3 },
             },
           ],
         },
@@ -635,8 +635,8 @@ describe('ClusterAboutCard', () => {
       await renderCard(api);
 
       await waitFor(() => {
-        expect(workerCapacityField().getByText(/3 nodes/).textContent).toMatch(
-          /^3 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/,
+        expect(workerCapacityField().getByText(/4 nodes/).textContent).toMatch(
+          /^4 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/,
         );
       });
       expect(mimirApi.query).toHaveBeenCalledWith(

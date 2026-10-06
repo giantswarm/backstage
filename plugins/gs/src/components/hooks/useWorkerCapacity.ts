@@ -3,6 +3,7 @@ import {
   AWSCluster,
   AWSMachinePool,
   AzureASOManagedCluster,
+  AzureASOManagedMachinePool,
   AzureCluster,
   AzureMachineTemplate,
   Cluster,
@@ -133,6 +134,13 @@ export function useWorkerCapacity(
     enabled: enabled && aws.length > 0,
   });
   const {
+    resources: azureASOManagedMachinePools,
+    errors: azureASOManagedMachinePoolErrors,
+    isLoading: isLoadingAzureASOManagedMachinePools,
+  } = useResources(aks, AzureASOManagedMachinePool, scopes, {
+    enabled: enabled && aks.length > 0,
+  });
+  const {
     resources: machineDeployments,
     errors: machineDeploymentErrors,
     isLoading: isLoadingMachineDeployments,
@@ -155,8 +163,9 @@ export function useWorkerCapacity(
   });
   const { catalog: awsCatalog, isLoading: isLoadingAWSCatalog } =
     useMachineTypeCatalog('aws', { enabled: enabled && aws.length > 0 });
+  const withAzureVmSizes = azure.length > 0 || aks.length > 0;
   const { catalog: azureCatalog, isLoading: isLoadingAzureCatalog } =
-    useMachineTypeCatalog('azure', { enabled: enabled && azure.length > 0 });
+    useMachineTypeCatalog('azure', { enabled: enabled && withAzureVmSizes });
 
   const pools = useMemo(() => {
     const result = new Map<
@@ -190,7 +199,14 @@ export function useWorkerCapacity(
         { errors: awsMachinePoolErrors, isLoading: isLoadingAWSMachinePools },
         { isLoading: isLoadingAWSCatalog },
       ],
-      [AzureASOManagedCluster.kind]: [machinePoolSource],
+      [AzureASOManagedCluster.kind]: [
+        machinePoolSource,
+        {
+          errors: azureASOManagedMachinePoolErrors,
+          isLoading: isLoadingAzureASOManagedMachinePools,
+        },
+        { isLoading: isLoadingAzureCatalog },
+      ],
       [AzureCluster.kind]: [
         machineDeploymentSource,
         {
@@ -211,6 +227,7 @@ export function useWorkerCapacity(
     const resources = {
       machinePools,
       awsMachinePools,
+      azureASOManagedMachinePools,
       machineDeployments,
       azureMachineTemplates,
       vsphereMachineTemplates,
@@ -251,6 +268,9 @@ export function useWorkerCapacity(
     awsMachinePools,
     awsMachinePoolErrors,
     isLoadingAWSMachinePools,
+    azureASOManagedMachinePools,
+    azureASOManagedMachinePoolErrors,
+    isLoadingAzureASOManagedMachinePools,
     machineDeployments,
     machineDeploymentErrors,
     isLoadingMachineDeployments,
@@ -316,6 +336,7 @@ export function useWorkerCapacity(
     () => [
       ...machinePoolErrors,
       ...awsMachinePoolErrors,
+      ...azureASOManagedMachinePoolErrors,
       ...machineDeploymentErrors,
       ...azureMachineTemplateErrors,
       ...vsphereMachineTemplateErrors,
@@ -323,6 +344,7 @@ export function useWorkerCapacity(
     [
       machinePoolErrors,
       awsMachinePoolErrors,
+      azureASOManagedMachinePoolErrors,
       machineDeploymentErrors,
       azureMachineTemplateErrors,
       vsphereMachineTemplateErrors,

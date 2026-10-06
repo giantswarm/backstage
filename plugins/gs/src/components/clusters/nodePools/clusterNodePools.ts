@@ -2,6 +2,7 @@ import {
   AWSCluster,
   AWSMachinePool,
   AzureASOManagedCluster,
+  AzureASOManagedMachinePool,
   AzureCluster,
   AzureMachineTemplate,
   Cluster,
@@ -17,13 +18,14 @@ import { MachineTypeCatalog, vsphereMachineSize } from './machineTypes';
 import {
   NodePoolCapacityInput,
   buildAWSNodePoolRows,
-  buildMachineDeploymentNodePoolRows,
+  buildNodePoolRows,
 } from './nodePoolRows';
 
 /** The node pool CRs of one or more clusters, as listed on their installations. */
 export type NodePoolResources = {
   machinePools: MachinePool[];
   awsMachinePools: AWSMachinePool[];
+  azureASOManagedMachinePools: AzureASOManagedMachinePool[];
   machineDeployments: MachineDeployment[];
   azureMachineTemplates: AzureMachineTemplate[];
   vsphereMachineTemplates: VSphereMachineTemplate[];
@@ -34,12 +36,13 @@ export type MachineTypeCatalogs = {
   azure?: MachineTypeCatalog;
 };
 
-/** Reads an AzureMachineTemplate's VM size and looks it up in `catalog`. */
-export function describeAzureMachineTemplate(
-  catalog: MachineTypeCatalog | undefined,
-) {
-  return (template: AzureMachineTemplate) => {
-    const vmSize = template.getVmSize();
+/**
+ * Reads the VM size of an AzureMachineTemplate or an AKS agent pool and looks
+ * it up in `catalog`.
+ */
+export function describeAzureVmSize(catalog: MachineTypeCatalog | undefined) {
+  return (infrastructure: { getVmSize(): string | undefined }) => {
+    const vmSize = infrastructure.getVmSize();
     return {
       machineType: vmSize,
       info: vmSize ? catalog?.(vmSize) : undefined,
@@ -76,25 +79,25 @@ export function getClusterNodePools(
         catalogs.aws,
       );
     case AzureASOManagedCluster.kind:
-      return resources.machinePools.filter(isOwn).map(pool => ({
-        name: pool.getName(),
-        readyReplicas: pool.getReadyReplicas(),
-        machineSize: undefined,
-      }));
+      return buildNodePoolRows(
+        resources.machinePools.filter(isOwn),
+        resources.azureASOManagedMachinePools,
+        describeAzureVmSize(catalogs.azure),
+      );
     case AzureCluster.kind:
-      return buildMachineDeploymentNodePoolRows(
+      return buildNodePoolRows(
         resources.machineDeployments.filter(isOwn),
         resources.azureMachineTemplates,
-        describeAzureMachineTemplate(catalogs.azure),
+        describeAzureVmSize(catalogs.azure),
       );
     case VSphereCluster.kind:
-      return buildMachineDeploymentNodePoolRows(
+      return buildNodePoolRows(
         resources.machineDeployments.filter(isOwn),
         resources.vsphereMachineTemplates,
         template => ({ info: { size: vsphereMachineSize(template) } }),
       );
     case VCDCluster.kind:
-      return buildMachineDeploymentNodePoolRows(
+      return buildNodePoolRows(
         resources.machineDeployments.filter(isOwn),
         [],
         () => ({}),

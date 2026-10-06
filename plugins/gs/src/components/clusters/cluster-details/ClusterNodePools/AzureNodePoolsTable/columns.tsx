@@ -6,10 +6,9 @@ import {
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { DateComponent, NotAvailable } from '../../../../UI';
-import { MachineDeploymentNodePoolRow } from '../../../nodePools';
+import { NodePoolRow } from '../../../nodePools';
 
-export type AzureNodePoolRow =
-  MachineDeploymentNodePoolRow<AzureMachineTemplate>;
+export type AzureNodePoolRow = NodePoolRow<AzureMachineTemplate>;
 
 const AzureNodePoolColumns = {
   name: 'name',

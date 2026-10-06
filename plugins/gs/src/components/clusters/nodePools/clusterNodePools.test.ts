@@ -1,5 +1,6 @@
 import {
   AWSMachinePool,
+  AzureASOManagedMachinePool,
   AzureMachineTemplate,
   Cluster,
   MachineDeployment,
@@ -90,6 +91,7 @@ const azureTemplate = (name: string) =>
 const empty: NodePoolResources = {
   machinePools: [],
   awsMachinePools: [],
+  azureASOManagedMachinePools: [],
   machineDeployments: [],
   azureMachineTemplates: [],
   vsphereMachineTemplates: [],
@@ -186,6 +188,45 @@ describe('getClusterNodePools', () => {
           ),
         ],
         azureMachineTemplates: [azureTemplate('c1-def00')],
+      },
+      catalogs,
+    );
+
+    expect(pools?.[0].machineSize).toEqual({ vcpus: 2, memoryBytes: 8 * GIB });
+  });
+
+  it('sizes AKS pools by the VM size of their agent pool', () => {
+    const agentPool = new AzureASOManagedMachinePool(
+      {
+        apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
+        kind: 'AzureASOManagedMachinePool',
+        metadata: { name: 'c1-system', namespace: 'org-a' },
+        spec: {
+          resources: [
+            {
+              apiVersion: 'containerservice.azure.com/v1api20240901',
+              kind: 'ManagedClustersAgentPool',
+              spec: { vmSize: 'Standard_D2s_v3' },
+            },
+          ],
+        },
+      },
+      INSTALLATION,
+    );
+
+    const pools = getClusterNodePools(
+      cluster('AzureASOManagedCluster'),
+      {
+        ...empty,
+        machinePools: [
+          pool(
+            MachinePool,
+            'MachinePool',
+            'c1-system',
+            'AzureASOManagedMachinePool',
+          ),
+        ],
+        azureASOManagedMachinePools: [agentPool],
       },
       catalogs,
     );

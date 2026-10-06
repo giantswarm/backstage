@@ -41,12 +41,11 @@ export type AWSNodePoolRow = NodePoolRowBase & {
   limits: Record<string, number | string> | undefined;
 };
 
-export type MachineDeploymentNodePoolRow<T extends KubeObject> =
-  NodePoolRowBase & {
-    /** The machine template the pool's infrastructureRef points at. */
-    infrastructure: T | undefined;
-    machineType: string | undefined;
-  };
+export type NodePoolRow<T extends KubeObject> = NodePoolRowBase & {
+  /** The CR the pool's infrastructureRef points at. */
+  infrastructure: T | undefined;
+  machineType: string | undefined;
+};
 
 export type ResolvedAWSNodePoolInfra = {
   type: AWSNodePoolType;
@@ -131,35 +130,36 @@ export function buildAWSNodePoolRows(
 }
 
 /**
- * Rows for node pools backed by MachineDeployments (Azure, vSphere, VCD).
- * `describe` reads the machine type and size off the provider's template;
- * pools without a template, or whose provider has none, get neither.
+ * Rows for node pools whose machine type is in the infrastructure CR they
+ * point at: a machine template (Azure, vSphere, VCD) or an AKS agent pool.
+ * `describe` reads the machine type and size off that CR; pools without one,
+ * or whose provider has none, get neither.
  */
-export function buildMachineDeploymentNodePoolRows<T extends KubeObject>(
-  machineDeployments: MachineDeployment[],
-  templates: T[],
+export function buildNodePoolRows<T extends KubeObject>(
+  pools: (MachineDeployment | MachinePool)[],
+  infrastructures: T[],
   describe: (template: T) => {
     machineType?: string;
     info?: MachineTypeInfo;
   },
-): MachineDeploymentNodePoolRow<T>[] {
-  return machineDeployments.map(deployment => {
-    const infrastructure = findInfrastructure(deployment, templates);
+): NodePoolRow<T>[] {
+  return pools.map(pool => {
+    const infrastructure = findInfrastructure(pool, infrastructures);
     const { machineType, info } = infrastructure
       ? describe(infrastructure)
       : {};
 
     return {
-      id: deployment.getName(),
-      name: deployment.getName(),
-      desiredReplicas: deployment.getDesiredReplicas(),
-      readyReplicas: deployment.getReadyReplicas(),
+      id: pool.getName(),
+      name: pool.getName(),
+      desiredReplicas: pool.getDesiredReplicas(),
+      readyReplicas: pool.getReadyReplicas(),
       infrastructure,
       machineType,
       machineSize: info?.size,
       machineTypeDescription: describeMachineType(info),
-      phase: deployment.getPhase(),
-      created: deployment.getCreatedTimestamp(),
+      phase: pool.getPhase(),
+      created: pool.getCreatedTimestamp(),
     };
   });
 }

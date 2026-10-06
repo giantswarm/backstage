@@ -4,10 +4,7 @@ import {
   useMachineTypeCatalog,
   useNodePoolsForAzureCluster,
 } from '../../../../hooks';
-import {
-  buildMachineDeploymentNodePoolRows,
-  describeAzureMachineTemplate,
-} from '../../../nodePools';
+import { buildNodePoolRows, describeAzureVmSize } from '../../../nodePools';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
@@ -28,10 +25,10 @@ export const AzureNodePools = () => {
 
   const data = useMemo(
     () =>
-      buildMachineDeploymentNodePoolRows(
+      buildNodePoolRows(
         machineDeployments,
         azureMachineTemplates,
-        describeAzureMachineTemplate(catalog),
+        describeAzureVmSize(catalog),
       ),
     [machineDeployments, azureMachineTemplates, catalog],
   );

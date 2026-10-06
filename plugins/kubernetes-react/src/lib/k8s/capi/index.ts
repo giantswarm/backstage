@@ -7,6 +7,11 @@ export type {
   AzureASOManagedClusterResource,
 } from './AzureASOManagedCluster';
 export { AzureASOManagedControlPlane } from './AzureASOManagedControlPlane';
+export { AzureASOManagedMachinePool } from './AzureASOManagedMachinePool';
+export type {
+  AzureASOManagedMachinePoolInterface,
+  AzureASOManagedMachinePoolResource,
+} from './AzureASOManagedMachinePool';
 export type { AzureASOManagedControlPlaneInterface } from './AzureASOManagedControlPlane';
 export { AzureCluster } from './AzureCluster';
 export {
