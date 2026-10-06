@@ -2,15 +2,17 @@ import type { Page } from '@playwright/test';
 import { expect, open, test, watchPageErrors } from './fixtures';
 
 /**
- * The Magazine page (`/product`): Now, History in its three windows, and
- * Knowledge, rendered from the magazine repository's generated JSON. The lab
- * has no GitHub MCP behind its muster, so every plans-backend route the page
- * calls is answered here with fixtures that follow the magazine's data
- * contract; the page, its routing and its rendering are the portal's.
+ * Hive (`/hive`): one sidebar entry with the tabs Now, History, Roadmap,
+ * Plans and Knowledge, and the redirects from the pages it replaced. The lab
+ * has no GitHub MCP behind its muster, so every plans- and roadmap-backend
+ * route the tabs call is answered here with fixtures that follow the
+ * magazine's data contract and the board's shape; the pages, their routing
+ * and their rendering are the portal's.
  *
- * The page is disabled by default; the suite is skipped with the reason
- * until AGENTLAB_MAGAZINE_PAGE=1 says the lab's Backstage names
- * `page:plans/magazine` and `api:plans` in `app.extensions`.
+ * Hive is disabled by default; the suite is skipped with the reason until
+ * AGENTLAB_HIVE=1 says the lab's Backstage names `page:plans`, `api:plans`,
+ * `page:roadmap`, `api:roadmap`, `page:plans/plans-redirect` and
+ * `page:plans/magazine` in `app.extensions`.
  */
 const MAGAZINE = 'giantswarm/team-magazine';
 const NOW = '2026-10-05T08:00:00Z';
@@ -86,19 +88,19 @@ const now = {
   upcoming: [card(30, { title: 'Other team work', team: 'Other team' })],
 };
 
-const history = (window: 'days' | 'weeks' | 'months') => ({
-  window,
+const history = {
+  window: 'weeks',
   from: '2026-07-05T00:00:00Z',
   to: NOW,
   generatedAt: NOW,
-  summary: [`Digest of the ${window} window.`],
+  summary: ['Digest of the weeks window.'],
   stats: { merged: 12, closed: 4, released: 2, epicsMoved: 3 },
   groups: [
     {
-      key: `group-${window}`,
-      title: `Epic of the ${window}`,
+      key: 'group-weeks',
+      title: 'Epic of the weeks',
       url: 'https://github.com/giantswarm/roadmap/issues/1',
-      kind: window === 'months' ? 'area' : 'epic',
+      kind: 'epic',
       teaser: 'Clusters on demand.',
       class: 'top-epic',
       customers: [],
@@ -106,7 +108,7 @@ const history = (window: 'days' | 'weeks' | 'months') => ({
       entries: [
         {
           key: 'giantswarm/example#100',
-          title: `Shipped in ${window}`,
+          title: 'Shipped in weeks',
           url: 'https://github.com/giantswarm/example/pull/100',
           kind: 'pr',
           at: NOW,
@@ -123,7 +125,7 @@ const history = (window: 'days' | 'weeks' | 'months') => ({
     outsideTeam: [],
   },
   chores: { count: 9, repos: 4, sample: [] },
-});
+};
 
 const tree = {
   truncated: false,
@@ -139,9 +141,7 @@ const tree = {
 
 const documents: Record<string, string> = {
   'magazine/now.json': JSON.stringify(now),
-  'magazine/history-days.json': JSON.stringify(history('days')),
-  'magazine/history-weeks.json': JSON.stringify(history('weeks')),
-  'magazine/history-months.json': JSON.stringify(history('months')),
+  'magazine/history-weeks.json': JSON.stringify(history),
   'knowledge/product/overview.md': '# Product overview\n\nWhat we build.',
   'knowledge/architecture/data-flow.md': '# Data flow\n\nHow it moves.',
   'knowledge/decisions/2026-09-01-0900-adr-data-branch.md':
@@ -181,97 +181,154 @@ async function mockPlansBackend(page: Page) {
   });
 }
 
-test.describe('product magazine', () => {
+async function mockRoadmapBackend(page: Page) {
+  await page.route('**/api/roadmap/**', async route => {
+    const url = new URL(route.request().url());
+    const path = url.pathname.replace(/^.*\/api\/roadmap/, '');
+    if (path === '/connection') {
+      await route.fulfill({ json: { connected: true } });
+      return;
+    }
+    if (path === '/schema') {
+      await route.fulfill({
+        json: {
+          board: 'roadmap',
+          defaultTeams: ['Bumblebee🐝'],
+          fields: [
+            {
+              name: 'Status',
+              type: 'singleSelect',
+              options: ['Up Next', 'In Progress', 'Done'],
+            },
+            { name: 'Kind', type: 'singleSelect', options: ['Epic', 'Story'] },
+          ],
+        },
+      });
+      return;
+    }
+    if (path === '/items') {
+      const keyword = url.searchParams.get('keyword') ?? '';
+      const items = [
+        {
+          id: 'PVTI_1',
+          title: 'Self-service clusters',
+          number: 1,
+          url: 'https://github.com/giantswarm/roadmap/issues/1',
+          repo: 'giantswarm/roadmap',
+          private: false,
+          fields: { Status: 'In Progress', Kind: 'Epic', Team: 'Bumblebee🐝' },
+        },
+      ].filter(item => item.title.toLowerCase().includes(keyword));
+      await route.fulfill({ json: { items } });
+      return;
+    }
+    await route.fulfill({ status: 404, json: {} });
+  });
+}
+
+test.describe('Hive', () => {
   test.skip(
-    !process.env.AGENTLAB_MAGAZINE_PAGE,
-    'needs a lab whose Backstage enables page:plans/magazine and api:plans; set AGENTLAB_MAGAZINE_PAGE=1',
+    !process.env.AGENTLAB_HIVE,
+    'needs a lab whose Backstage enables page:plans, api:plans, page:roadmap, api:roadmap, page:plans/plans-redirect and page:plans/magazine; set AGENTLAB_HIVE=1',
   );
 
   test.beforeEach(async ({ admin }) => {
     await mockPlansBackend(admin);
+    await mockRoadmapBackend(admin);
   });
 
   test.afterEach(async ({ admin }) => {
     await admin.unroute('**/api/plans/**');
+    await admin.unroute('**/api/roadmap/**');
+  });
+
+  test('one sidebar entry, the tabs in order', async ({ admin }) => {
+    await open(admin, '/');
+    const nav = admin.getByRole('navigation').first();
+    await expect(nav.getByRole('link', { name: 'Hive' })).toBeVisible();
+    for (const gone of ['Plans', 'Roadmap', 'Magazine']) {
+      await expect(
+        nav.getByRole('link', { name: gone, exact: true }),
+      ).toHaveCount(0);
+    }
+
+    await open(admin, '/hive');
+    await expect(admin).toHaveURL(/\/hive\/now/);
+    await expect(admin.getByRole('tab')).toHaveText([
+      'Now',
+      'History',
+      'Roadmap',
+      'Plans',
+      'Knowledge',
+    ]);
   });
 
   test('Now: lanes in priority order, show all, review and blockers', async ({
     admin,
   }) => {
     const errors = watchPageErrors(admin);
-    await open(admin, '/product');
+    await open(admin, '/hive/now?team=all');
 
     await expect(admin.getByText('Two customer requests move')).toBeVisible();
-    const lanes = admin.locator('section h3');
-    await expect(lanes.nth(1)).toHaveText('Customers');
-    await expect(lanes.nth(2)).toHaveText('Top epic');
-    await expect(lanes.nth(3)).toHaveText('Setup');
-    await expect(lanes.nth(4)).toHaveText('Chores');
+    const lanes = admin.locator('section[aria-labelledby^="hive-lane-"]');
+    await expect(lanes).toHaveCount(4);
+    await expect(lanes.nth(0)).toContainText('Customers');
+    await expect(lanes.nth(1)).toContainText('Top epic');
+    await expect(lanes.nth(2)).toContainText('Setup');
+    await expect(lanes.nth(3)).toContainText('Chores');
 
-    const customers = admin.getByRole('region', { name: 'Customers' });
-    await expect(customers.getByRole('heading', { level: 4 })).toHaveCount(4);
+    const customers = lanes.nth(0);
+    await expect(customers.getByText('Customer request 6')).toHaveCount(0);
     await customers.getByRole('button', { name: /Show all 6/ }).click();
-    await expect(customers.getByRole('heading', { level: 4 })).toHaveCount(6);
-    await expect(customers.getByText('2 of 5 done').first()).toBeVisible();
-    await expect(
-      customers.getByRole('link', { name: 'Try it' }),
-    ).toHaveAttribute('href', '/plans');
+    await expect(customers.getByText('Customer request 6')).toBeVisible();
+    await expect(lanes.nth(2).getByText('Nothing open.')).toBeVisible();
 
     await expect(
-      admin
-        .getByRole('region', { name: 'Setup' })
-        .getByText('Nothing in this lane right now.'),
+      admin.getByRole('grid', { name: 'Plans to grill and review' }),
+    ).toContainText('Four lanes or three?');
+    await expect(
+      admin.getByText('Waiting for an upstream release'),
     ).toBeVisible();
-
-    const review = admin.getByRole('region', { name: 'Needs review' });
-    await expect(review.getByText('Open question: Four lanes')).toBeVisible();
-    const blocked = admin.getByRole('region', { name: 'Blocked', exact: true });
-    await expect(blocked.getByRole('note', { name: 'Blocked' })).toContainText(
-      'Waiting for an upstream release',
-    );
     await expect(
-      admin.getByRole('region', { name: 'Upcoming from other teams' }),
+      admin.getByRole('grid', { name: 'Other teams, coming up' }),
     ).toContainText('Other team work');
     expect(errors).toEqual([]);
   });
 
-  test('History: three windows, shareable in the URL', async ({ admin }) => {
-    await open(admin, '/product?tab=history');
-    await expect(admin.getByText('Digest of the days window.')).toBeVisible();
-    // The entry is listed under its group and linked again from Highlights.
-    for (const section of ['What moved', 'Highlights']) {
-      await expect(
-        admin
-          .getByRole('region', { name: section })
-          .getByRole('link', { name: 'Shipped in days' }),
-      ).toBeVisible();
-    }
+  test('Now: the header search filters every lane', async ({ admin }) => {
+    await open(admin, '/hive/now?team=all&q=Top%20epic%20story');
+    const lanes = admin.locator('section[aria-labelledby^="hive-lane-"]');
+    await expect(lanes.nth(1)).toContainText('1 of 1');
+    await expect(lanes.nth(0)).toContainText('0 of 6');
+    await expect(admin.getByText('Customer request 1')).toHaveCount(0);
+  });
 
-    for (const [label, window] of [
-      ['3 weeks', 'weeks'],
-      ['3 months', 'months'],
-      ['3 days', 'days'],
-    ] as const) {
-      await admin
-        .getByRole('radio', { name: label })
-        .or(admin.getByRole('button', { name: label }))
-        .click();
-      await expect(admin).toHaveURL(new RegExp(`window=${window}`));
-      await expect(
-        admin.getByText(`Digest of the ${window} window.`),
-      ).toBeVisible();
-      await expect(admin.getByText('1 → 3 of 5 done')).toBeVisible();
-    }
-
-    await open(admin, '/product?tab=history&window=months');
-    await expect(admin.getByText('Epic of the months')).toBeVisible();
+  test('History: the last three weeks, no window to choose', async ({
+    admin,
+  }) => {
+    await open(admin, '/hive/history?team=all');
+    await expect(admin.getByText('Digest of the weeks window.')).toBeVisible();
+    await expect(admin.getByText('Epic of the weeks')).toBeVisible();
+    await expect(admin.getByText('1 → 3 of 5 done')).toBeVisible();
     await expect(
       admin.getByText('9 chores across 4 repositories.'),
     ).toBeVisible();
+    for (const label of ['3 days', '3 weeks', '3 months']) {
+      await expect(admin.getByText(label, { exact: true })).toHaveCount(0);
+    }
+  });
+
+  test('Roadmap: the board with the header team and search', async ({
+    admin,
+  }) => {
+    await open(admin, '/hive/roadmap?team=all');
+    await expect(admin.getByText('Self-service clusters')).toBeVisible();
+    await open(admin, '/hive/roadmap?team=all&q=nothing-matches');
+    await expect(admin.getByText('Self-service clusters')).toHaveCount(0);
   });
 
   test('Knowledge: documents by category, deep-linked', async ({ admin }) => {
-    await open(admin, '/product?tab=knowledge');
+    await open(admin, '/hive/knowledge');
     const nav = admin.getByRole('navigation', { name: 'Knowledge documents' });
     await expect(nav.getByRole('link', { name: 'Overview' })).toBeVisible();
     await expect(
@@ -285,13 +342,25 @@ test.describe('product magazine', () => {
     await expect(
       admin.getByRole('heading', { name: 'Data branch' }),
     ).toBeVisible();
+  });
+
+  test('the old pages redirect into Hive', async ({ admin }) => {
+    await open(admin, '/product?tab=history&window=months');
+    await expect(admin).toHaveURL(/\/hive\/history$/);
 
     await open(
       admin,
       '/product?tab=knowledge&doc=knowledge%2Farchitecture%2Fdata-flow.md',
     );
+    await expect(admin).toHaveURL(/\/hive\/knowledge\?doc=/);
     await expect(
       admin.getByRole('heading', { name: 'Data flow' }),
     ).toBeVisible();
+
+    await open(admin, '/roadmap?view=activity');
+    await expect(admin).toHaveURL(/\/hive\/roadmap\?.*view=activity/);
+
+    await open(admin, '/plans');
+    await expect(admin).toHaveURL(/\/hive\/plans/);
   });
 });

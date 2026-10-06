@@ -1,1 +1,0 @@
-export { MagazineNowTab } from './MagazineNowTab';
