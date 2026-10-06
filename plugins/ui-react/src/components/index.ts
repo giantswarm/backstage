@@ -25,6 +25,7 @@ export * from './InfoCard';
 export * from './InfoHint';
 export * from './JsonHighlight';
 export * from './LoadingIndicator';
+export * from './ManifestDialog';
 export * from './MenuArrowIcons';
 export * from './MultiplePicker';
 export * from './MultipleSelect';

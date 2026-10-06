@@ -7,6 +7,30 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Kustomization } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ResourceCard } from './ResourceCard';
 
+// The real dialog embeds the CodeMirror-backed YamlEditorFormField, which does
+// not render under jsdom, and has its own tests in ui-react. This stand-in keeps
+// what the card decides: when it opens, its title and the manifest it shows.
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  ManifestDialog: ({
+    isOpen,
+    onOpenChange,
+    title,
+    manifest,
+  }: {
+    isOpen: boolean;
+    onOpenChange: (isOpen: boolean) => void;
+    title: string;
+    manifest: string;
+  }) =>
+    isOpen ? (
+      <div role="dialog" aria-label={title}>
+        <textarea aria-label="Manifest" value={manifest} readOnly />
+        <button onClick={() => onOpenChange(false)}>Close</button>
+      </div>
+    ) : null,
+}));
+
 function createKustomization(
   options: {
     name?: string;
@@ -20,8 +44,16 @@ function createKustomization(
     metadata: {
       name: options.name ?? 'my-app',
       namespace: 'flux-system',
+      managedFields: [
+        {
+          manager: 'kustomize-controller',
+          operation: 'Apply',
+          fieldsV1: { 'f:spec': { 'f:path': {} } },
+        },
+      ],
     },
     spec: {
+      path: './apps/my-app',
       suspend: options.suspend,
     },
     status: {
@@ -129,6 +161,40 @@ describe('ResourceCard', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the manifest as YAML from the footer', async () => {
+    const user = userEvent.setup();
+
+    await renderCard(
+      <ResourceCard
+        cluster="test-installation"
+        name="my-app"
+        namespace="flux-system"
+        kind="Kustomization"
+        resource={createKustomization({ readyStatus: 'True' })}
+      />,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'View YAML' }));
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Kustomization flux-system/my-app',
+    });
+    expect(dialog).toBeInTheDocument();
+
+    const manifest = (
+      screen.getByRole('textbox', { name: 'Manifest' }) as HTMLTextAreaElement
+    ).value;
+    expect(manifest).toContain('kind: Kustomization');
+    expect(manifest).toContain('path: ./apps/my-app');
+    expect(manifest).not.toContain('managedFields');
+
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('adds the Flux action buttons to the footer for a user who may patch', async () => {
     await renderCard(
       <ResourceCard
@@ -158,9 +224,13 @@ describe('ResourceCard', () => {
       { allowed: false },
     );
 
-    // The copy menu is unaffected — only the write affordances are gated.
+    // The copy menu and the YAML view are unaffected — only the write
+    // affordances are gated.
     expect(
       await screen.findByRole('button', { name: 'Copy CLI command' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'View YAML' }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Reconcile' }),
