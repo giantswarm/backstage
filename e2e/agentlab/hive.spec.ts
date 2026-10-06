@@ -267,7 +267,8 @@ test.describe('Hive', () => {
     admin,
   }) => {
     const errors = watchPageErrors(admin);
-    await open(admin, '/hive/now?team=all');
+    // A team's view: "Other teams, coming up" drops out for all teams.
+    await open(admin, `/hive/now?team=${encodeURIComponent('Bumblebee🐝')}`);
 
     await expect(admin.getByText('Two customer requests move')).toBeVisible();
     const lanes = admin.locator('section[aria-labelledby^="hive-lane-"]');
@@ -345,8 +346,9 @@ test.describe('Hive', () => {
   });
 
   test('the old pages redirect into Hive', async ({ admin }) => {
+    // The dropped history window stays behind; the header adds the team.
     await open(admin, '/product?tab=history&window=months');
-    await expect(admin).toHaveURL(/\/hive\/history$/);
+    await expect(admin).toHaveURL(/\/hive\/history\?team=[^&]+$/);
 
     await open(
       admin,
