@@ -1,6 +1,7 @@
 export { AWSCluster } from './AWSCluster';
 export { AWSClusterRoleIdentity } from './AWSClusterRoleIdentity';
 export { AWSMachinePool } from './AWSMachinePool';
+export { AWSManagedMachinePool } from './AWSManagedMachinePool';
 export { AzureASOManagedCluster } from './AzureASOManagedCluster';
 export type {
   AzureASOManagedClusterInterface,

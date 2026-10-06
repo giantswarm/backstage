@@ -1,5 +1,6 @@
 import {
   AWSMachinePool,
+  AWSManagedMachinePool,
   AzureASOManagedMachinePool,
   AzureMachineTemplate,
   Cluster,
@@ -91,6 +92,7 @@ const azureTemplate = (name: string) =>
 const empty: NodePoolResources = {
   machinePools: [],
   awsMachinePools: [],
+  awsManagedMachinePools: [],
   azureASOManagedMachinePools: [],
   machineDeployments: [],
   azureMachineTemplates: [],
@@ -193,6 +195,35 @@ describe('getClusterNodePools', () => {
     );
 
     expect(pools?.[0].machineSize).toEqual({ vcpus: 2, memoryBytes: 8 * GIB });
+  });
+
+  it('sizes EKS pools by the instance type of their node group', () => {
+    const nodeGroup = new AWSManagedMachinePool(
+      {
+        apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta2',
+        kind: 'AWSManagedMachinePool',
+        metadata: { name: 'c1-pool0', namespace: 'org-a' },
+        spec: { instanceType: 'm5.xlarge' },
+      },
+      INSTALLATION,
+    );
+
+    const pools = getClusterNodePools(
+      cluster('AWSManagedCluster'),
+      {
+        ...empty,
+        machinePools: [
+          pool(MachinePool, 'MachinePool', 'c1-pool0', 'AWSManagedMachinePool'),
+        ],
+        awsManagedMachinePools: [nodeGroup],
+      },
+      catalogs,
+    );
+
+    expect(pools?.[0].machineSize).toEqual({
+      vcpus: 4,
+      memoryBytes: 16 * GIB,
+    });
   });
 
   it('sizes AKS pools by the VM size of their agent pool', () => {

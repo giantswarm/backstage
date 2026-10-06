@@ -1,6 +1,7 @@
 import {
   AWSCluster,
   AWSMachinePool,
+  AWSManagedMachinePool,
   AzureASOManagedCluster,
   AzureASOManagedMachinePool,
   AzureCluster,
@@ -25,6 +26,7 @@ import {
 export type NodePoolResources = {
   machinePools: MachinePool[];
   awsMachinePools: AWSMachinePool[];
+  awsManagedMachinePools: AWSManagedMachinePool[];
   azureASOManagedMachinePools: AzureASOManagedMachinePool[];
   machineDeployments: MachineDeployment[];
   azureMachineTemplates: AzureMachineTemplate[];
@@ -35,6 +37,25 @@ export type MachineTypeCatalogs = {
   aws?: MachineTypeCatalog;
   azure?: MachineTypeCatalog;
 };
+
+/**
+ * The infrastructure kind of an EKS cluster. It has no resource class: only
+ * its node pools are read.
+ */
+export const AWS_MANAGED_CLUSTER_KIND = 'AWSManagedCluster';
+
+/** Reads an EKS node group's instance type and looks it up in `catalog`. */
+export function describeAwsInstanceType(
+  catalog: MachineTypeCatalog | undefined,
+) {
+  return (infrastructure: { getInstanceType(): string | undefined }) => {
+    const instanceType = infrastructure.getInstanceType();
+    return {
+      machineType: instanceType,
+      info: instanceType ? catalog?.(instanceType) : undefined,
+    };
+  };
+}
 
 /**
  * Reads the VM size of an AzureMachineTemplate or an AKS agent pool and looks
@@ -77,6 +98,12 @@ export function getClusterNodePools(
         resources.awsMachinePools,
         [],
         catalogs.aws,
+      );
+    case AWS_MANAGED_CLUSTER_KIND:
+      return buildNodePoolRows(
+        resources.machinePools.filter(isOwn),
+        resources.awsManagedMachinePools,
+        describeAwsInstanceType(catalogs.aws),
       );
     case AzureASOManagedCluster.kind:
       return buildNodePoolRows(

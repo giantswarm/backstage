@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import {
   AWSCluster,
   AWSMachinePool,
+  AWSManagedMachinePool,
   AzureASOManagedCluster,
   AzureASOManagedMachinePool,
   AzureCluster,
@@ -18,6 +19,7 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  AWS_MANAGED_CLUSTER_KIND,
   NodePoolCapacityInput,
   WorkerCapacity,
   computeWorkerCapacity,
@@ -108,11 +110,12 @@ export function useWorkerCapacity(
 } {
   const byKind = installationsByInfraKind(clusters);
   const aws = byKind[AWSCluster.kind] ?? [];
+  const eks = byKind[AWS_MANAGED_CLUSTER_KIND] ?? [];
   const aks = byKind[AzureASOManagedCluster.kind] ?? [];
   const azure = byKind[AzureCluster.kind] ?? [];
   const vsphere = byKind[VSphereCluster.kind] ?? [];
   const vcd = byKind[VCDCluster.kind] ?? [];
-  const withMachinePools = Array.from(new Set([...aws, ...aks]));
+  const withMachinePools = Array.from(new Set([...aws, ...eks, ...aks]));
   const withMachineDeployments = Array.from(
     new Set([...azure, ...vsphere, ...vcd]),
   );
@@ -132,6 +135,13 @@ export function useWorkerCapacity(
     isLoading: isLoadingAWSMachinePools,
   } = useResources(aws, AWSMachinePool, scopes, {
     enabled: enabled && aws.length > 0,
+  });
+  const {
+    resources: awsManagedMachinePools,
+    errors: awsManagedMachinePoolErrors,
+    isLoading: isLoadingAWSManagedMachinePools,
+  } = useResources(eks, AWSManagedMachinePool, scopes, {
+    enabled: enabled && eks.length > 0,
   });
   const {
     resources: azureASOManagedMachinePools,
@@ -161,8 +171,11 @@ export function useWorkerCapacity(
   } = useResources(vsphere, VSphereMachineTemplate, scopes, {
     enabled: enabled && vsphere.length > 0,
   });
+  const withAwsInstanceTypes = aws.length > 0 || eks.length > 0;
   const { catalog: awsCatalog, isLoading: isLoadingAWSCatalog } =
-    useMachineTypeCatalog('aws', { enabled: enabled && aws.length > 0 });
+    useMachineTypeCatalog('aws', {
+      enabled: enabled && withAwsInstanceTypes,
+    });
   const withAzureVmSizes = azure.length > 0 || aks.length > 0;
   const { catalog: azureCatalog, isLoading: isLoadingAzureCatalog } =
     useMachineTypeCatalog('azure', { enabled: enabled && withAzureVmSizes });
@@ -199,6 +212,14 @@ export function useWorkerCapacity(
         { errors: awsMachinePoolErrors, isLoading: isLoadingAWSMachinePools },
         { isLoading: isLoadingAWSCatalog },
       ],
+      [AWS_MANAGED_CLUSTER_KIND]: [
+        machinePoolSource,
+        {
+          errors: awsManagedMachinePoolErrors,
+          isLoading: isLoadingAWSManagedMachinePools,
+        },
+        { isLoading: isLoadingAWSCatalog },
+      ],
       [AzureASOManagedCluster.kind]: [
         machinePoolSource,
         {
@@ -227,6 +248,7 @@ export function useWorkerCapacity(
     const resources = {
       machinePools,
       awsMachinePools,
+      awsManagedMachinePools,
       azureASOManagedMachinePools,
       machineDeployments,
       azureMachineTemplates,
@@ -268,6 +290,9 @@ export function useWorkerCapacity(
     awsMachinePools,
     awsMachinePoolErrors,
     isLoadingAWSMachinePools,
+    awsManagedMachinePools,
+    awsManagedMachinePoolErrors,
+    isLoadingAWSManagedMachinePools,
     azureASOManagedMachinePools,
     azureASOManagedMachinePoolErrors,
     isLoadingAzureASOManagedMachinePools,
@@ -336,6 +361,7 @@ export function useWorkerCapacity(
     () => [
       ...machinePoolErrors,
       ...awsMachinePoolErrors,
+      ...awsManagedMachinePoolErrors,
       ...azureASOManagedMachinePoolErrors,
       ...machineDeploymentErrors,
       ...azureMachineTemplateErrors,
@@ -344,6 +370,7 @@ export function useWorkerCapacity(
     [
       machinePoolErrors,
       awsMachinePoolErrors,
+      awsManagedMachinePoolErrors,
       azureASOManagedMachinePoolErrors,
       machineDeploymentErrors,
       azureMachineTemplateErrors,
