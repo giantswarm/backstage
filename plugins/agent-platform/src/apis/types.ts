@@ -124,7 +124,7 @@ export interface KagentApi {
    * than a second one. One per submission, reused across its retries.
    *
    * The agent's namespace and name are its **real** ones, as read from its
-   * `AgentTemplate` — never decoded from a session's `agent_id`, whose encoding
+   * `Agent` — never decoded from a session's `agent_id`, whose encoding
    * is lossy.
    *
    * As with {@link renameSession}, a 400 here does **not** mean "kagent isn't

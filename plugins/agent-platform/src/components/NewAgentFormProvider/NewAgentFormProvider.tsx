@@ -115,7 +115,7 @@ const initialState: NewAgentFormState = {
   toolset: [],
 };
 
-// RFC1123 DNS label: the slug becomes the AgentTemplate name and the
+// RFC1123 DNS label: the slug becomes the Agent name and the
 // HelmRelease name, so it must be a valid k8s object name
 // (lowercase alphanumerics and hyphens, no leading/trailing hyphen, ≤63 chars).
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;

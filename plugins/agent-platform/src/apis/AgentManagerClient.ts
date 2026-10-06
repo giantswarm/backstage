@@ -93,7 +93,7 @@ export class AgentManagerClient {
     });
   }
 
-  /** One verdict on the template's readiness on the Harness it names. */
+  /** One verdict on the Agent's readiness on the Harness it names. */
   getAgentStatus(namespace: string, name: string): Promise<AgentStatus> {
     return this.call<AgentStatus>(AGENT_MANAGER_TOOLS.getAgentStatus, {
       namespace,
@@ -151,7 +151,7 @@ export class AgentManagerClient {
   }
 
   /**
-   * Deletes the agent's HelmRelease (helm-controller uninstalls the template
+   * Deletes the agent's HelmRelease (helm-controller uninstalls the Agent
    * and the agent's RemoteMCPServer with it) and the shared OCIRepository only
    * when nothing else references it. Never with `force`: a GitOps-owned or
    * suspended release is agent-manager's refusal to show, not ours to override.

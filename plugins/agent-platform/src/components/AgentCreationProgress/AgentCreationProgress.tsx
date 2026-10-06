@@ -58,7 +58,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     fromGeneration,
     watchId,
   } = handoff;
-  // Scoped to the write: the verdict counts once the template's generation has
+  // Scoped to the write: the verdict counts once the Agent's generation has
   // moved past what it was before it, so an agent that was already `ready` is
   // not reported as done before the Harness has compiled anything.
   const { status, isSettling, error } = useAgentStatus(
@@ -84,7 +84,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   if (isSettling) {
     // Only the summary of the revision being waited on is worth showing. While
     // the status still describes the one before the write, its summary is about
-    // something else: "The template is ready" under a "Saving…" title is the
+    // something else: "Agent is Ready" under a "Saving…" title is the
     // very message this is meant not to show yet, and a previous revision that
     // failed would put an unrelated failure reason under it for as long as the
     // new one takes to compile.
@@ -98,7 +98,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
         title={wording.doing}
         description={
           (describesThisWrite ? status?.summary : undefined) ??
-          `agent-manager ${wording.wrote}${as}; waiting for its Harness to compile the template.`
+          `agent-manager ${wording.wrote}${as}; waiting for its Harness to compile the agent.`
         }
       />
     );
@@ -123,7 +123,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
       title={wording.failedTitle}
       description={
         status?.summary ??
-        'agent-manager reports the template failed on its Harness.'
+        'agent-manager reports the agent failed on its Harness.'
       }
     />
   );
@@ -135,7 +135,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
  *
  * Rendered only on the visit that follows a create (the review page hands the
  * agent over in the router state) and only for the agent the page shows;
- * otherwise nothing, and nothing is read. While the template compiles it says
+ * otherwise nothing, and nothing is read. While the agent compiles it says
  * so with agent-manager's summary; once the verdict is `ready` it names the
  * Harness the agent runs on, and a `failed` verdict carries agent-manager's
  * reason — the same verdict the page's own status card derives from

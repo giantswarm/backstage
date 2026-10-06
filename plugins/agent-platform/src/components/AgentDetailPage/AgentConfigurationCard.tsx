@@ -283,7 +283,7 @@ export type AgentConfigurationCardProps = {
 };
 
 /**
- * What the agent *is*, as its AgentTemplate defines it. Where it runs — the
+ * What the agent *is*, as its template defines it. Where it runs — the
  * installation, `namespace/name` — is in the page header and the Harness in
  * the Status card, so neither is repeated here.
  *

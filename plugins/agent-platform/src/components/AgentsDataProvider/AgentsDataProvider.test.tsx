@@ -7,8 +7,8 @@ import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 // Mock the fleet-query plumbing so the test drives the loading/partial-result
 // and sticky-accumulation logic directly (see also helpers.test.ts for the row
 // mapping itself). One stub answers both reads the provider makes per render —
-// the AgentTemplates and their carrier RemoteMCPServers — so the first call of
-// a render is always the templates' and the last the carriers'. The
+// the Agents and their carrier RemoteMCPServers — so the first call of
+// a render is always the Agents' and the last the carriers'. The
 // `mock`-prefixed names are the only out-of-scope references jest allows inside
 // a mock factory.
 const mockUseResources = jest.fn();

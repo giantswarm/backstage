@@ -90,7 +90,7 @@ const AVATAR_SIZE: AvatarSize = 96;
 
 /**
  * The header label for an agent whose HelmRelease exists but whose
- * AgentTemplate has not been rendered yet — before there is a readiness to
+ * Agent has not been rendered yet — before there is a readiness to
  * derive. Same neutral hourglass as "Pending", which is the state it becomes.
  */
 const DEPLOYING_PRESENTATION: ReadinessPresentation = {
@@ -101,7 +101,7 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 
 /**
  * The page header: avatar, name, the derived readiness, the installation it
- * runs on, its `namespace/name` and — once the template exists — what it is
+ * runs on, its `namespace/name` and — once the Agent exists — what it is
  * for. Everything else about the agent is in the Overview, once. It also names
  * the agent in the document title; `GSPageLayout` appends the app title.
  */
@@ -194,9 +194,9 @@ function AgentDetailPageContent() {
   // Same two tiers as the list: tighten while the agent is converging, relax
   // once it settles or stays broken. This page is where someone watches an
   // agent come up, so the fast tier earns its keep here — and it starts before
-  // the template exists: while agent-manager says the agent's HelmRelease is
+  // the Agent exists: while agent-manager says the agent's HelmRelease is
   // there (`isDeploying` below), the read that will eventually find the
-  // template polls at the fast tier too, instead of the 60 s the helper gives
+  // Agent polls at the fast tier too, instead of the 60 s the helper gives
   // "no data". A ref, because the flag is derived from this read's own outcome
   // and react-query re-evaluates the interval after every fetch.
   const isDeployingRef = useRef(false);
@@ -221,31 +221,30 @@ function AgentDetailPageContent() {
   );
 
   // "Not yet" against "not there". agent-manager's `create_agent` applies the
-  // HelmRelease and returns; helm-controller renders the AgentTemplate a few
+  // HelmRelease and returns; helm-controller renders the Agent a few
   // seconds later, and the create flow navigates here in between — so a 404 on
-  // the template alone does not mean the agent is missing. agent-manager's
+  // the Agent alone does not mean the agent is missing. agent-manager's
   // `get_agent_status` is the HelmRelease-aware read: by its contract it
-  // answers `not_found` only when neither the template nor the HelmRelease
+  // answers `not_found` only when neither the Agent nor the HelmRelease
   // exists; otherwise it reports the release and its verdict. It is the read
   // the creation progress polls after Deploy anyway, runs as the signed-in
   // person (so it needs no Kubernetes read on HelmReleases), and survives a
-  // reload of this URL. Asked only once the template read has come back empty;
+  // reload of this URL. Asked only once the Agent read has come back empty;
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
-  const isTemplateMissing =
-    !isLoading && !agent && errors.some(isNotFoundError);
+  const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
   const release = useAgentStatus(installation, namespace, name, {
-    enabled: isTemplateMissing,
+    enabled: isAgentMissing,
   });
   const isDeploying =
-    isTemplateMissing &&
+    isAgentMissing &&
     (release.status?.helmRelease?.exists === true ||
       release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
   const isAskingAgentManager =
-    isTemplateMissing &&
+    isAgentMissing &&
     release.isSettling &&
     !release.status &&
     !release.isNotFound;
@@ -606,10 +605,10 @@ function AgentDetailPageContent() {
   // Every branch below is gated on there being no agent to show. With one in hand
   // the page renders, whatever the last read did.
   if (!agent) {
-    // The HelmRelease exists, the template does not yet: the agent right after
+    // The HelmRelease exists, the Agent does not yet: the agent right after
     // Deploy. The header shows what is known — the name the release was
     // created under and its avatar — and agent-manager's own summary of where
-    // the release stands, until the template read finds it (polled at the fast
+    // the release stands, until the Agent read finds it (polled at the fast
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Start a session": there is nothing to start one on yet.
     if (isDeploying) {

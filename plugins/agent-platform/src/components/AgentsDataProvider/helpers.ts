@@ -268,7 +268,7 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
 }
 
 /**
- * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
+ * Flatten an `Agent` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the

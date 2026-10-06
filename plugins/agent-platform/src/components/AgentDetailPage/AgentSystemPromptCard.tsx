@@ -51,7 +51,7 @@ export function AgentSystemPromptCard({
             <Text variant="body-medium" color="secondary">
               {source
                 ? `Read from the ConfigMap ${source.name}, key ${source.key}.`
-                : 'Not set on the AgentTemplate.'}
+                : 'Not set on the Agent.'}
             </Text>
             {/* Worth spelling out: an empty field does not mean the agent has
                 no system prompt, only that it is not configured inline here. */}

@@ -14,7 +14,7 @@ import type { AgentWriteFailure } from './useUpdateAgent';
 export type AgentDeletionState = {
   /**
    * `delete_agent` as the person: agent-manager deletes the HelmRelease that
-   * owns the agent (helm-controller uninstalls the template and the agent's
+   * owns the agent (helm-controller uninstalls the Agent and the agent's
    * RemoteMCPServer with it) and the shared chart source only when nothing
    * else references it. Never `force`: a GitOps-owned or suspended release
    * is refused with agent-manager's reason, which the dialog shows as given.

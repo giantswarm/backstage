@@ -1513,9 +1513,7 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    expect(
-      screen.getByText('Not set on the AgentTemplate.'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Not set on the Agent.')).toBeInTheDocument();
   });
 
   it('names the ConfigMap a system prompt is read from', async () => {
@@ -1754,9 +1752,9 @@ describe('AgentDetailPage', () => {
 
   // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
   // and the create flow navigated here before helm-controller rendered the
-  // AgentTemplate, so the template read 404s. The page must tell that "not yet"
+  // Agent, so the Agent read 404s. The page must tell that "not yet"
   // from "not there" — by asking agent-manager, whose `get_agent_status` answers
-  // `not_found` only when neither the template nor the HelmRelease exists.
+  // `not_found` only when neither the Agent nor the HelmRelease exists.
   describe('deploying', () => {
     const templateNotFound = () =>
       stubResources({

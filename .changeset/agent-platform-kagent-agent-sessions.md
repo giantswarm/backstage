@@ -39,4 +39,5 @@ runtime picker offers every Harness of the namespace by name,
 the agent pages read the Agent's own status and the Harness it names, and
 agent-manager's responses are read in their Agent shape (`status.agent`, `harness`,
 `agentDeleted`). Installation inventory detects kagent by the `api.kagent.dev` group;
-cached kagent reads are keyed and busted by that group.
+cached kagent reads are keyed and busted by that group. The create and save progress
+and the System prompt card speak of the agent instead of its template.
