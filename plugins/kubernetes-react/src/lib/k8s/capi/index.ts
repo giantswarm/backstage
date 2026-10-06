@@ -1,12 +1,18 @@
 export { AWSCluster } from './AWSCluster';
 export { AWSClusterRoleIdentity } from './AWSClusterRoleIdentity';
 export { AWSMachinePool } from './AWSMachinePool';
+export { AWSManagedMachinePool } from './AWSManagedMachinePool';
 export { AzureASOManagedCluster } from './AzureASOManagedCluster';
 export type {
   AzureASOManagedClusterInterface,
   AzureASOManagedClusterResource,
 } from './AzureASOManagedCluster';
 export { AzureASOManagedControlPlane } from './AzureASOManagedControlPlane';
+export { AzureASOManagedMachinePool } from './AzureASOManagedMachinePool';
+export type {
+  AzureASOManagedMachinePoolInterface,
+  AzureASOManagedMachinePoolResource,
+} from './AzureASOManagedMachinePool';
 export type { AzureASOManagedControlPlaneInterface } from './AzureASOManagedControlPlane';
 export { AzureCluster } from './AzureCluster';
 export {
@@ -37,3 +43,4 @@ export { MachinePool } from './MachinePool';
 export { ProviderCluster } from './ProviderCluster';
 export { VCDCluster } from './VCDCluster';
 export { VSphereCluster } from './VSphereCluster';
+export { VSphereMachineTemplate } from './VSphereMachineTemplate';

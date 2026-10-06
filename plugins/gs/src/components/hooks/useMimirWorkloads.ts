@@ -1,12 +1,6 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  kubernetesApiRef,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
-import { mimirApiRef, MimirMetricSample } from '../../apis/mimir';
-import { useInstallations } from '../../apis/installations';
+import { MimirMetricSample } from '../../apis/mimir';
 import {
   KubeDeploymentSpecReplicas,
   KubeDeploymentStatusReplicasReady,
@@ -21,6 +15,8 @@ import {
   KubeStatefulsetCreated,
   KubeDaemonsetCreated,
 } from '../../apis/mimir/metrics';
+import { useMimirInstallations } from './useMimirInstallations';
+import { useMimirQueryFn } from './useMimirQueryFn';
 
 export type WorkloadKind = 'deployment' | 'statefulset' | 'daemonset';
 
@@ -239,27 +235,14 @@ export function useMimirWorkloads(options: { installations: string[] }): {
 } {
   const { installations } = options;
 
-  const mimirApi = useApi(mimirApiRef);
-  const kubernetesApi = useApi(kubernetesApiRef);
-  const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
+  const queryMimir = useMimirQueryFn();
 
   // Installations without Mimir (`mimirEnabled: false`) are skipped entirely —
   // their queries could only fail, and the deployments list is complete
   // without metrics there. Until the installations config loads, no queries
   // are built and `isLoading` stays true.
-  const { installations: installationsConfig, isLoading: isLoadingConfig } =
-    useInstallations();
-  const mimirInstallations = useMemo(() => {
-    if (isLoadingConfig) {
-      return [];
-    }
-    const withoutMimir = new Set(
-      installationsConfig
-        .filter(({ mimirEnabled }) => mimirEnabled === false)
-        .map(({ name }) => name),
-    );
-    return installations.filter(name => !withoutMimir.has(name));
-  }, [installations, installationsConfig, isLoadingConfig]);
+  const { installations: mimirInstallations, isLoading: isLoadingConfig } =
+    useMimirInstallations(installations);
 
   const queryDefs = useMemo(
     () => buildQueryDefs(mimirInstallations),
@@ -270,31 +253,7 @@ export function useMimirWorkloads(options: { installations: string[] }): {
     queries: queryDefs.map(def => ({
       queryKey: ['mimir-workloads', def.installationName, def.query],
       queryFn: async (): Promise<MimirMetricSample[]> => {
-        const cluster = await kubernetesApi.getCluster(def.installationName);
-        if (!cluster) {
-          throw new Error(`Cluster ${def.installationName} not found`);
-        }
-
-        const authProvider =
-          cluster.authProvider === 'oidc'
-            ? `${cluster.authProvider}.${cluster.oidcTokenProvider}`
-            : cluster.authProvider;
-
-        const credentials =
-          await kubernetesAuthProvidersApi.getCredentials(authProvider);
-
-        if (!credentials.token) {
-          throw new Error(
-            `No OIDC token available for installation "${def.installationName}"`,
-          );
-        }
-
-        const response = await mimirApi.query({
-          installationName: def.installationName,
-          query: def.query,
-          oidcToken: credentials.token,
-        });
-
+        const response = await queryMimir(def.installationName, def.query);
         return response.data?.result ?? [];
       },
       enabled: mimirInstallations.length > 0,
@@ -302,9 +261,7 @@ export function useMimirWorkloads(options: { installations: string[] }): {
     })),
   });
 
-  const isLoading =
-    (installations.length > 0 && isLoadingConfig) ||
-    queryResults.some(q => q.isLoading);
+  const isLoading = isLoadingConfig || queryResults.some(q => q.isLoading);
 
   const errors = useMemo(
     () =>

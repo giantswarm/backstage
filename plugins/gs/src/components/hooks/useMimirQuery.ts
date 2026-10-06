@@ -1,13 +1,8 @@
 import { useMemo } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
-import {
-  kubernetesApiRef,
-  kubernetesAuthProvidersApiRef,
-} from '@backstage/plugin-kubernetes-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { mimirApiRef } from '../../apis/mimir';
 import { MimirQueryResponse } from '../../apis/mimir/types';
 import { useMimirAvailable } from './useMimirAvailable';
+import { useMimirQueryFn } from './useMimirQueryFn';
 
 export function useMimirQuery(options: {
   installationName: string;
@@ -33,9 +28,7 @@ export function useMimirQuery(options: {
     keepPreviousAnswer = false,
   } = options;
 
-  const mimirApi = useApi(mimirApiRef);
-  const kubernetesApi = useApi(kubernetesApiRef);
-  const kubernetesAuthProvidersApi = useApi(kubernetesAuthProvidersApiRef);
+  const queryMimir = useMimirQueryFn();
 
   // Installations without Mimir (`mimirEnabled: false`) never get queried:
   // the query would only ever fail, and "metrics unavailable" is the truth
@@ -47,32 +40,7 @@ export function useMimirQuery(options: {
 
   const { data, isLoading, error } = useQuery<MimirQueryResponse, Error>({
     queryKey: ['mimir-query', installationName, query],
-    queryFn: async () => {
-      const cluster = await kubernetesApi.getCluster(installationName);
-      if (!cluster) {
-        throw new Error(`Cluster ${installationName} not found`);
-      }
-
-      const authProvider =
-        cluster.authProvider === 'oidc'
-          ? `${cluster.authProvider}.${cluster.oidcTokenProvider}`
-          : cluster.authProvider;
-
-      const credentials =
-        await kubernetesAuthProvidersApi.getCredentials(authProvider);
-
-      if (!credentials.token) {
-        throw new Error(
-          `No OIDC token available for installation "${installationName}"`,
-        );
-      }
-
-      return mimirApi.query({
-        installationName,
-        query,
-        oidcToken: credentials.token,
-      });
-    },
+    queryFn: () => queryMimir(installationName, query),
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     refetchInterval,

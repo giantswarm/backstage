@@ -3,6 +3,8 @@ import {
   ClusterManagerNotConnectedError,
   cheapestPriced,
   classifyClusterManagerError,
+  classifyNodePoolWriteFailure,
+  isNothingLeft,
   clusterManagerToolName,
   describeComponent,
   describePrice,
@@ -10,6 +12,7 @@ import {
   groupManifestsByRelease,
   isValidPoolName,
   manifestFilename,
+  parseNotFound,
   parseRefusal,
   poolNameOf,
   presetLabel,
@@ -46,6 +49,43 @@ describe('isValidPoolName', () => {
     expect(isValidPoolName('GPU-l4')).toBe(false);
     expect(isValidPoolName('-gpu00')).toBe(false);
     expect(isValidPoolName('gpu00-')).toBe(false);
+  });
+});
+
+describe('parseNotFound', () => {
+  it("reads delete_cluster's notFound block from the further text blocks", () => {
+    expect(
+      parseNotFound([
+        'not json',
+        '{"notFound":{"cluster":"dev01","namespace":"org-acme","nothingLeft":true}}',
+      ]),
+    ).toEqual({ cluster: 'dev01', namespace: 'org-acme', nothingLeft: true });
+  });
+  it('is undefined without a notFound block', () => {
+    expect(parseNotFound([])).toBeUndefined();
+    expect(parseNotFound(['{"refused":{"nodes":[]}}'])).toBeUndefined();
+  });
+});
+
+describe('classifyNodePoolWriteFailure', () => {
+  it("carries the notFound block of cluster-manager's answer", () => {
+    const failure = classifyNodePoolWriteFailure(
+      classifyClusterManagerError(
+        Object.assign(new Error('cluster org-acme/dev01 not found'), {
+          details: [
+            '{"notFound":{"cluster":"dev01","namespace":"org-acme","nothingLeft":true}}',
+          ],
+        }),
+      ),
+    );
+    expect(isNothingLeft(failure)).toBe(true);
+    expect(
+      isNothingLeft(
+        classifyNodePoolWriteFailure(
+          classifyClusterManagerError(new Error('cluster not found')),
+        ),
+      ),
+    ).toBe(false);
   });
 });
 

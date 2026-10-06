@@ -1,5 +1,5 @@
 import { Table } from '@backstage/core-components';
-import { NodePoolNode } from '../../../../hooks';
+import { NodePoolNode, useMachineTypeCatalog } from '../../../../hooks';
 import { getColumns } from './columns';
 
 interface NodePoolNodesTableProps {
@@ -13,7 +13,8 @@ export const NodePoolNodesTable = ({
   isLoading,
   provider,
 }: NodePoolNodesTableProps) => {
-  const columns = getColumns(provider);
+  const { catalog } = useMachineTypeCatalog(provider);
+  const columns = getColumns(catalog);
 
   return (
     <Table
