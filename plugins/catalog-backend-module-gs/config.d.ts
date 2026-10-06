@@ -16,6 +16,26 @@ export interface Config {
          */
         schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
       };
+      repoContent?: {
+        /**
+         * Enables the repo content processor. A scheduled task reads the
+         * default branch of every repository a Component names in
+         * `github.com/project-slug` over GitHub GraphQL and stores it; the
+         * processor then writes `giantswarm.io/default-branch`,
+         * `backstage.io/techdocs-ref` (when the branch has a README.md) and
+         * the `defaultbranch:master` tag from the stored record.
+         *
+         * Needs a GitHub token (app or PAT): GraphQL has no anonymous mode.
+         * @visibility backend
+         */
+        enabled?: boolean;
+        /**
+         * Optional schedule override for the refresh task. Defaults to every
+         * 60 minutes.
+         * @visibility backend
+         */
+        schedule?: SchedulerServiceTaskScheduleDefinitionConfig;
+      };
       pagerDutyAnnotations?: {
         /**
          * Enables the PagerDuty annotation processor.

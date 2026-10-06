@@ -16,14 +16,20 @@ import {
   ScmIntegrations,
 } from '@backstage/integration';
 import { BuildReadinessFlags } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  githubGraphql,
+  type GraphqlError,
+  isUnreadableRepoError,
+  NoGithubTokenError,
+} from '../util/githubGraphql';
 import { resolveGithubToken } from '../util/githubToken';
+import { parseProjectSlug } from '../util/projectSlug';
 import { type Cached, TtlCache } from '../util/TtlCache';
 
 const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const BUILD_STATUS_LABEL = 'giantswarm.io/build-status';
 const BUILD_FAILING_CHECKS_ANNOTATION = 'giantswarm.io/build-failing-checks';
 const BUILD_STATUS_CHECKED_ANNOTATION = 'giantswarm.io/build-status-checked';
-const DEFAULT_BRANCH_ANNOTATION = 'giantswarm.io/default-branch';
 const READINESS_FLAGS_ANNOTATION = 'giantswarm.io/readiness-flags';
 
 /**
@@ -49,7 +55,6 @@ const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
  * `passing` that nothing verifies any more.
  */
 const LAST_KNOWN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const GITHUB_GRAPHQL_URL = 'https://api.github.com/graphql';
 // GitHub caps `contexts(first:)` at 100. Anything past it is invisible to us,
 // and a failure past the page boundary must not read as a green branch.
 const CONTEXTS_PAGE_SIZE = 100;
@@ -95,9 +100,6 @@ const CHECK_RUN_GREEN = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED']);
 const CHECK_RUN_EVIDENCE = 'SUCCESS';
 const STATUS_FAILURES = new Set(['FAILURE', 'ERROR']);
 const STATUS_GREEN = 'SUCCESS';
-
-/** GraphQL error types that mean this repo cannot be read, not that GitHub failed. */
-const UNREADABLE_REPO = new Set(['NOT_FOUND', 'FORBIDDEN']);
 
 /** CircleCI answers that are worth asking again next pass, not caching. */
 const CIRCLE_TRANSIENT = (status: number) => status === 429 || status >= 500;
@@ -154,19 +156,7 @@ export type Verdict = {
   failingChecks: string[];
 };
 
-type BuildLookup = {
-  verdict: Verdict | undefined;
-  defaultBranch: string | undefined;
-};
-
 type FetchFn = typeof fetch;
-
-/**
- * No GitHub token resolves for this repo's owner. A configuration gap, not a
- * fact about the build: the entity is left alone, and the gap is warned about
- * once per owner rather than once per entity per pass.
- */
-class NoGithubTokenError extends Error {}
 
 const ROLLUP_QUERY = `
 query BuildStatus($owner: String!, $name: String!, $first: Int!) {
@@ -230,14 +220,14 @@ export class BuildStatusProcessor implements CatalogProcessor {
   private readonly circleciToken: string | undefined;
   private readonly fetchImpl: FetchFn;
   /** The whole lookup — rollup, attribution and verdict — keyed `owner/repo`. */
-  private readonly lookupCache: TtlCache<BuildLookup>;
+  private readonly lookupCache: TtlCache<Verdict | undefined>;
   /**
    * The last lookup that succeeded per `owner/repo`, served when a lookup
    * fails: a GitHub 5xx or a CircleCI rate limit says nothing about the build,
    * and writing `unknown` for it would flip every affected component for a
    * pass. Its `checkedAt` shows how old it is. Bounded by the fleet's size.
    */
-  private readonly lastKnown = new Map<string, Cached<BuildLookup>>();
+  private readonly lastKnown = new Map<string, Cached<Verdict | undefined>>();
   /** Owners already warned about for having no GitHub token. */
   private readonly ownersWithoutToken = new Set<string>();
 
@@ -300,7 +290,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
       return entity;
     }
 
-    const slug = parseSlug(
+    const slug = parseProjectSlug(
       entity.metadata.annotations?.[PROJECT_SLUG_ANNOTATION],
     );
     if (!slug) {
@@ -308,7 +298,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
     }
 
     const key = `${slug.owner}/${slug.repo}`;
-    let lookup: Cached<BuildLookup>;
+    let lookup: Cached<Verdict | undefined>;
     try {
       lookup = await this.lookupCache.get(key, () => this.lookup(slug));
       this.lastKnown.set(key, lookup);
@@ -345,15 +335,14 @@ export class BuildStatusProcessor implements CatalogProcessor {
       lookup = previous;
     }
 
-    if (!lookup.value.verdict) {
+    if (!lookup.value) {
       // No CI reports to this branch at all. There is nothing to say, and
       // saying "unknown" would suggest we looked for something that exists.
       return entity;
     }
 
     return withBuildStatus(entity, {
-      verdict: lookup.value.verdict,
-      defaultBranch: lookup.value.defaultBranch,
+      verdict: lookup.value,
       checkedAt: lookup.fetchedAt,
     });
   }
@@ -361,10 +350,10 @@ export class BuildStatusProcessor implements CatalogProcessor {
   private async lookup(slug: {
     owner: string;
     repo: string;
-  }): Promise<BuildLookup> {
+  }): Promise<Verdict | undefined> {
     const rollup = await this.fetchRollup(slug);
     if (!rollup) {
-      return { verdict: undefined, defaultBranch: undefined };
+      return undefined;
     }
 
     const urls = unsettled(rollup)
@@ -377,10 +366,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
       }),
     );
 
-    return {
-      verdict: verdict(rollup, builds),
-      defaultBranch: rollup.defaultBranch,
-    };
+    return verdict(rollup, builds);
   }
 
   private async fetchRollup(slug: {
@@ -401,36 +387,20 @@ export class BuildStatusProcessor implements CatalogProcessor {
       throw new NoGithubTokenError('no GitHub token available for GraphQL');
     }
 
-    const response = await this.fetchImpl(GITHUB_GRAPHQL_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/vnd.github+json',
+    const body: RollupResponse = await githubGraphql({
+      query: ROLLUP_QUERY,
+      variables: {
+        owner: slug.owner,
+        name: slug.repo,
+        first: CONTEXTS_PAGE_SIZE,
       },
-      body: JSON.stringify({
-        query: ROLLUP_QUERY,
-        variables: {
-          owner: slug.owner,
-          name: slug.repo,
-          first: CONTEXTS_PAGE_SIZE,
-        },
-      }),
+      token,
+      fetchImpl: this.fetchImpl,
     });
-    if (!response.ok) {
-      throw new Error(
-        `GitHub GraphQL returned ${response.status}: ${response.statusText}`,
-      );
-    }
-    const body = (await response.json()) as GraphqlResponse;
-    const unreadable = body.errors?.find(e =>
-      UNREADABLE_REPO.has(e.type ?? ''),
-    );
+    const unreadable = body.errors?.find(isUnreadableRepoError);
     if (unreadable) {
-      // Renamed, archived away, or outside the GitHub App's installation
-      // (`FORBIDDEN`, "Resource not accessible by integration"): a stale slug
-      // or a deliberate scope, not a fault. Resolves (and so is cached) as
-      // "nothing to say".
+      // A stale slug or a deliberate scope, not a fault. Resolves (and so is
+      // cached) as "nothing to say".
       this.logger.debug('BuildStatusProcessor: repository not readable', {
         owner: slug.owner,
         repo: slug.repo,
@@ -491,7 +461,7 @@ export class BuildStatusProcessor implements CatalogProcessor {
   }
 }
 
-type GraphqlResponse = {
+type RollupResponse = {
   data?: {
     repository?: {
       defaultBranchRef?: {
@@ -507,10 +477,10 @@ type GraphqlResponse = {
       } | null;
     } | null;
   };
-  errors?: Array<{ message: string; type?: string }>;
+  errors?: GraphqlError[];
 };
 
-export function parseRollup(body: GraphqlResponse): Rollup | undefined {
+export function parseRollup(body: RollupResponse): Rollup | undefined {
   const ref = body.data?.repository?.defaultBranchRef;
   if (!ref) {
     return undefined;
@@ -722,22 +692,6 @@ function attributeContext(
 }
 
 /**
- * Strict, as in the sibling processors: a slug with extra segments would
- * silently resolve to a different repo, and we would publish a confident
- * verdict about a repo that is not this component.
- */
-function parseSlug(slug?: string): { owner: string; repo: string } | undefined {
-  if (!slug) {
-    return undefined;
-  }
-  const segments = slug.split('/');
-  if (segments.length !== 2 || !segments[0] || !segments[1]) {
-    return undefined;
-  }
-  return { owner: segments[0], repo: segments[1] };
-}
-
-/**
  * Writes the verdict as a label and the detail as annotations, and merges
  * `BUILD-RED` into the shared flag list when failing.
  *
@@ -755,11 +709,10 @@ function withBuildStatus(
   entity: Entity,
   options: {
     verdict: Verdict;
-    defaultBranch?: string;
     checkedAt?: number;
   },
 ): Entity {
-  const { verdict: result, defaultBranch, checkedAt } = options;
+  const { verdict: result, checkedAt } = options;
   const annotations: Record<string, string> = {
     ...(entity.metadata.annotations ?? {}),
   };
@@ -767,9 +720,6 @@ function withBuildStatus(
     annotations[BUILD_STATUS_CHECKED_ANNOTATION] = new Date(
       checkedAt,
     ).toISOString();
-  }
-  if (defaultBranch) {
-    annotations[DEFAULT_BRANCH_ANNOTATION] = defaultBranch;
   }
   if (result.failingChecks.length > 0) {
     // A JSON array, not a comma list: check names contain commas, as in a

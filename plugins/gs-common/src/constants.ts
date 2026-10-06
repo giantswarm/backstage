@@ -2,6 +2,7 @@ export const Annotations = {
   annotationClusterDescription: 'cluster.giantswarm.io/description',
   annotationImportedClusterCreationTimestamp:
     'giantswarm.io/external-cluster-created',
+  annotationDefaultBranch: 'giantswarm.io/default-branch',
 } as const;
 
 export const Labels = {
