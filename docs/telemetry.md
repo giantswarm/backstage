@@ -26,6 +26,7 @@ nothing.
 | `AgentPlatform.sessionStarted`  | A session with an agent was started.                                                              | `entryPoint`: `sessionsList`, `agentDetail`, `sessionDetail` |
 | `AgentPlatform.clusterCreated`  | A workload cluster was created through cluster-manager, applied live or committed to Git.         | `mode`: `apply`, `commit`                                    |
 | `AgentPlatform.nodePoolCreated` | A GPU node pool was added to a cluster through cluster-manager, applied live or committed to Git. | `mode`: `apply`, `commit`                                    |
+| `Scaffolder.taskStarted`        | A software template was submitted and its task started.                                           |                                                              |
 | `Muster.mcpServerAdded`         | An MCP server was registered in muster through the wizard.                                        | `authMode`: `none`, `own-account`, `platform-sso`, `sigv4`   |
 
 <!-- portal-events:end -->

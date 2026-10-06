@@ -39,6 +39,10 @@ import {
   CONNECTOR_ID_PARAM,
   SignInConnectorMemory,
 } from './signInConnectorMemory';
+import {
+  ClusterTokenError,
+  type ClusterTokenErrorReason,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 let warned = false;
 
@@ -50,43 +54,7 @@ export type ClusterToken = {
   expiresInSeconds?: number;
 };
 
-/**
- * Coarse, UI-facing reason why a broker-backed cluster token could not be
- * obtained. `session-expired` means the main Dex session is gone (and the
- * single SSO re-login was declined or failed); the others mirror the backend
- * cluster-token router's failure modes.
- */
-export type ClusterTokenErrorReason =
-  | 'session-expired'
-  | 'broker_unreachable'
-  | 'broker_unavailable'
-  | 'exchange_failed'
-  | 'subject_invalid'
-  | 'unknown';
-
-/**
- * Typed error thrown by a broker-backed `clusterTokenProvider`/refresh. Carries
- * the affected installation and a coarse reason so the cluster-access status
- * UI can show what went wrong without per-cluster login popups.
- */
-export class ClusterTokenError extends Error {
-  readonly installation: string;
-  readonly reason: ClusterTokenErrorReason;
-
-  constructor(
-    installation: string,
-    reason: ClusterTokenErrorReason,
-    message?: string,
-  ) {
-    super(
-      message ??
-        `Cluster token request for installation "${installation}" failed: ${reason}`,
-    );
-    this.name = 'ClusterTokenError';
-    this.installation = installation;
-    this.reason = reason;
-  }
-}
+export { ClusterTokenError, type ClusterTokenErrorReason };
 
 type Options<AuthSession> = {
   /**
