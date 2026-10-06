@@ -1,12 +1,17 @@
 import { Grid, Typography } from '@material-ui/core';
 import { AppStatus } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/AppStatus';
-import { App } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { HelmReleaseConditions } from '../../deployments/deployment-details/DeploymentOverview/DeploymentStatusCard/HelmReleaseConditions';
+import {
+  App,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 type ClusterAppStatusProps = {
-  app: App;
+  /** The App or HelmRelease that installs the cluster. */
+  installer: App | HelmRelease;
 };
 
-export const ClusterAppStatus = ({ app }: ClusterAppStatusProps) => {
+export const ClusterAppStatus = ({ installer }: ClusterAppStatusProps) => {
   return (
     <Grid container spacing={3} alignItems="stretch">
       <Grid item md={6} xs={12}>
@@ -16,14 +21,19 @@ export const ClusterAppStatus = ({ app }: ClusterAppStatusProps) => {
               Cluster creation is in progress.
             </Typography>
             <Typography variant="subtitle1">
-              Below are details about the cluster App resource status.
+              Below are details about the cluster {installer.getKind()} resource
+              status.
             </Typography>
             <Typography variant="subtitle1">
               Reload the page to see the latest status.
             </Typography>
           </Grid>
           <Grid item xs={12}>
-            <AppStatus app={app} />
+            {installer instanceof App ? (
+              <AppStatus app={installer} />
+            ) : (
+              <HelmReleaseConditions helmrelease={installer} />
+            )}
           </Grid>
         </Grid>
       </Grid>

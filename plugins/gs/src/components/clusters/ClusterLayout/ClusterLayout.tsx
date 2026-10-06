@@ -13,7 +13,11 @@ import { useAsyncCluster } from '../ClusterDetailsPage/useCurrentCluster';
 import { clusterDetailsRouteRef } from '../../../routes';
 import { useCurrentUser, useLayoutTabs } from '../../hooks';
 import { ClusterAppStatus } from './ClusterAppStatus';
-import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  App,
+  Cluster,
+  HelmRelease,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AIChatButtonBui } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { calculateClusterStatus } from '../utils';
 import { ClusterStatuses } from '../ClusterStatus';
@@ -42,7 +46,7 @@ const PageContent = ({
   clusterName,
   installationName,
   error,
-  clusterApp,
+  installer,
   element,
 }: {
   isLoading: boolean;
@@ -50,7 +54,7 @@ const PageContent = ({
   clusterName: string;
   installationName: string;
   error: Error | null;
-  clusterApp?: App;
+  installer?: App | HelmRelease;
   element: ReactNode;
 }) => {
   if (isLoading) {
@@ -76,8 +80,8 @@ const PageContent = ({
   if (error) {
     return (
       <Content>
-        {clusterApp ? (
-          <ClusterAppStatus app={clusterApp} />
+        {installer ? (
+          <ClusterAppStatus installer={installer} />
         ) : (
           <Alert severity="error">{error.toString()}</Alert>
         )}
@@ -114,6 +118,7 @@ export const ClusterLayout = ({
   const {
     cluster,
     clusterApp,
+    clusterRelease,
     installationName,
     loading: clusterIsLoading,
     notFound,
@@ -193,7 +198,7 @@ export const ClusterLayout = ({
         clusterName={name}
         installationName={installationName}
         error={error}
-        clusterApp={clusterApp}
+        installer={clusterApp ?? clusterRelease}
         element={element}
       />
     </>
