@@ -8,6 +8,7 @@ import {
   portalEvents,
   type PortalEventSpec,
 } from '@giantswarm/backstage-plugin-analytics-react';
+import TelemetryDeck from '@telemetrydeck/sdk';
 import { TelemetryDeckAnalyticsApi } from './TelemetryDeckAnalyticsApi';
 
 const mockSignal = jest.fn();
@@ -125,6 +126,98 @@ describe('TelemetryDeckAnalyticsApi', () => {
       page: 'Clusters index',
       path: '/clusters',
       'TelemetryDeck.AppInfo.version': '2.81.5',
+    });
+  });
+
+  describe('initialisation', () => {
+    function withTelemetryConfig(telemetrydeck: Record<string, unknown>) {
+      jest.mocked(configApi.getOptionalConfig).mockReturnValue({
+        getOptional: (key: string) => telemetrydeck[key],
+        getString: (key: string) => {
+          const value = telemetrydeck[key];
+          if (typeof value !== 'string' || !value) {
+            throw new Error(`Missing required config value at '${key}'`);
+          }
+          return value;
+        },
+      } as unknown as ReturnType<ConfigApi['getOptionalConfig']>);
+    }
+
+    function navigateTwice() {
+      const api = createApi();
+      for (const path of ['/clusters', '/catalog']) {
+        api.captureEvent({
+          action: 'navigate',
+          subject: path,
+          context: { pluginId: 'gs', extensionId: 'page:gs' },
+        });
+      }
+    }
+
+    let warn: jest.SpyInstance;
+    let error: jest.SpyInstance;
+
+    beforeEach(() => {
+      warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      jest.mocked(configApi.getOptionalConfig).mockReturnValue(undefined);
+      warn.mockRestore();
+      error.mockRestore();
+    });
+
+    it.each([
+      ['empty', ''],
+      ['blank', '  '],
+      ['missing', undefined],
+    ])(
+      'skips TelemetryDeck with one warning when the app ID is %s',
+      async (_, appID) => {
+        withTelemetryConfig({ appID, salt: 'salt' });
+
+        expect(navigateTwice).not.toThrow();
+        await flushPromises();
+
+        expect(TelemetryDeck).not.toHaveBeenCalled();
+        expect(mockSignal).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(
+          'TelemetryDeck usage data is disabled: app.telemetrydeck.appID is empty.',
+        );
+      },
+    );
+
+    it('sends signals with the configured app ID', async () => {
+      withTelemetryConfig({ appID: 'APP-ID', salt: 'salt' });
+
+      navigateTwice();
+      await flushPromises();
+
+      expect(TelemetryDeck).toHaveBeenCalledTimes(1);
+      expect(TelemetryDeck).toHaveBeenCalledWith(
+        expect.objectContaining({ appID: 'APP-ID', salt: 'salt' }),
+      );
+      expect(mockSignal).toHaveBeenCalledTimes(2);
+      expect(warn).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it('logs an initialisation failure once and sends nothing', async () => {
+      withTelemetryConfig({ appID: 'APP-ID' });
+
+      expect(navigateTwice).not.toThrow();
+      await flushPromises();
+
+      expect(mockSignal).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error).toHaveBeenCalledWith(
+        'TelemetryDeck initialisation failed, usage data is not sent:',
+        expect.objectContaining({
+          message: "Missing required config value at 'salt'",
+        }),
+      );
     });
   });
 

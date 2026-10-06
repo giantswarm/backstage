@@ -16,8 +16,7 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private readonly identityApi: IdentityApi;
   private readonly errorReporterApi?: ErrorReporterApi;
   private readonly versionPayload: Record<string, string>;
-  private td: TelemetryDeck | undefined;
-  private initPromise: Promise<TelemetryDeck> | undefined;
+  private instance: Promise<TelemetryDeck | undefined> | undefined;
 
   private constructor(options: {
     configApi: ConfigApi;
@@ -44,30 +43,46 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
     return new TelemetryDeckAnalyticsApi(options);
   }
 
-  private async getOrCreateInstance(): Promise<TelemetryDeck> {
-    if (this.td) {
-      return this.td;
-    }
-
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    this.initPromise = this.createInstance();
-    this.td = await this.initPromise;
-    return this.td;
+  /**
+   * The TelemetryDeck client, created once. Resolves to undefined, after one
+   * console message, when telemetry has no app ID or initialisation fails:
+   * signals are then skipped, never sent to a client that cannot exist.
+   */
+  private getInstance(): Promise<TelemetryDeck | undefined> {
+    this.instance ??= this.createInstance().catch(error => {
+      // eslint-disable-next-line no-console
+      console.error(
+        'TelemetryDeck initialisation failed, usage data is not sent:',
+        error,
+      );
+      return undefined;
+    });
+    return this.instance;
   }
 
-  private async createInstance(): Promise<TelemetryDeck> {
+  private async createInstance(): Promise<TelemetryDeck | undefined> {
     const telemetryConfig =
       this.configApi.getOptionalConfig('app.telemetrydeck');
     const testMode =
       window.location.hostname === 'localhost' || !telemetryConfig;
 
+    // Not getOptionalString: the config reader refuses an empty string, the
+    // base config's value.
+    const appID = telemetryConfig
+      ? telemetryConfig.getOptional('appID')
+      : 'test';
+    if (typeof appID !== 'string' || !appID.trim()) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        'TelemetryDeck usage data is disabled: app.telemetrydeck.appID is empty.',
+      );
+      return undefined;
+    }
+
     const clientUser = await this.resolveClientUser();
 
     return new TelemetryDeck({
-      appID: telemetryConfig ? telemetryConfig.getString('appID') : 'test',
+      appID,
       salt: telemetryConfig ? telemetryConfig.getString('salt') : 'test',
       clientUser,
       testMode,
@@ -136,13 +151,14 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       return;
     }
 
-    this.getOrCreateInstance()
+    this.getInstance()
       .then(td =>
-        td.signal(portalEvent.name, {
+        td?.signal(portalEvent.name, {
           ...portalEvent.attributes,
           ...this.versionPayload,
         }),
       )
+      // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
   }
 
@@ -168,8 +184,11 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
       });
     }
 
-    this.getOrCreateInstance()
-      .then(td => td.signal('pageview', { ...payload, ...this.versionPayload }))
+    this.getInstance()
+      .then(td =>
+        td?.signal('pageview', { ...payload, ...this.versionPayload }),
+      )
+      // A failed send (offline, blocked by the browser) is not an error.
       .catch(() => {});
   }
 }
