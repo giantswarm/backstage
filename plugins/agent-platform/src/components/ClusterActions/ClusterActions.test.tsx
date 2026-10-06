@@ -63,7 +63,26 @@ describe('DeleteClusterAction', () => {
       'a cluster another HelmRelease rendered',
       { ...CREATED, helmRelease: { name: 'fleet', namespace: 'org-acme' } },
     ],
+    [
+      'a cluster whose HelmRelease is in another namespace',
+      { ...CREATED, helmRelease: { name: 'demo1', namespace: 'org-other' } },
+    ],
+    [
+      'a cluster outside its organization’s namespace',
+      {
+        ...CREATED,
+        organization: 'other',
+      },
+    ],
     ['the management cluster', { ...CREATED, isManagementCluster: true }],
+    [
+      'the installation’s own cluster without the management label',
+      {
+        ...CREATED,
+        name: 'inst-1',
+        helmRelease: { name: 'inst-1', namespace: 'org-acme' },
+      },
+    ],
   ])('offers no Delete on %s, nor asks its cluster-manager', (_, target) => {
     mockTarget.mockReturnValue(target);
 
