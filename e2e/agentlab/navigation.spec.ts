@@ -21,6 +21,10 @@ test('the sidebar links to every enabled page', async ({ admin }) => {
   ] as const) {
     await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
   }
+  // The lab configures a main auth provider, so cluster access is offered.
+  await expect(
+    nav.getByRole('button', { name: 'Cluster access' }),
+  ).toBeVisible();
   // The lab's app-config sends the root to the Agent Platform section, which
   // opens on its first tab.
   await expect(admin).toHaveURL(/\/agent-platform\/sessions$/);
