@@ -7,7 +7,7 @@ import {
   useSidebarPinState,
 } from '@backstage/core-components';
 import { compatWrapper } from '@backstage/core-compat-api';
-import { useApiHolder } from '@backstage/core-plugin-api';
+import { configApiRef, useApi, useApiHolder } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
@@ -67,7 +67,23 @@ function AiChatSidebarItem() {
  */
 function ClusterAccessSidebarItem({ mobile }: { mobile: boolean }) {
   const { isMobile = false } = useSidebarPinState();
-  return isMobile === mobile ? <ClusterAccessStatusSidebarItem /> : null;
+  const enabled = useClusterAccess();
+  return enabled && isMobile === mobile ? (
+    <ClusterAccessStatusSidebarItem />
+  ) : null;
+}
+
+/**
+ * Cluster access needs the main auth provider (`gs.authProvider`). Without
+ * one -- the guest sign-in of a local start -- there are no clusters to
+ * reach, and its sidebar parts would throw and take the whole sidebar down.
+ */
+function useClusterAccess(): boolean {
+  return useApi(configApiRef).has('gs.authProvider');
+}
+
+function ClusterAccessProbe() {
+  return useClusterAccess() ? <ClusterAccessConnector /> : null;
 }
 
 /**
@@ -143,7 +159,7 @@ export const SidebarContent = NavContentBlueprint.make({
 
       return compatWrapper(
         <>
-          <ClusterAccessConnector />
+          <ClusterAccessProbe />
           <Sidebar>
             <SidebarLogo />
 

@@ -29,7 +29,20 @@ const navItems = {
   withComponent: () => ({ take: () => null, rest: () => [] }),
 } as unknown as NavContentNavItems;
 
-async function renderSidebar({ isMobile }: { isMobile: boolean }) {
+// `config` replaces the test app's own, so it carries the base URLs too.
+const BASE = {
+  app: { baseUrl: 'http://localhost:3000' },
+  backend: { baseUrl: 'http://localhost:7007' },
+};
+const MAIN_AUTH = { ...BASE, gs: { authProvider: 'oidc-gazelle' } };
+
+async function renderSidebar({
+  isMobile,
+  config = MAIN_AUTH,
+}: {
+  isMobile: boolean;
+  config?: Record<string, unknown>;
+}) {
   const Content = createExtensionTester(SidebarContent).get(
     NavContentBlueprint.dataRefs.component,
   );
@@ -39,6 +52,7 @@ async function renderSidebar({ isMobile }: { isMobile: boolean }) {
     >
       <Content navItems={navItems} items={[]} />
     </SidebarPinStateProvider>,
+    { config: config as never },
   );
 }
 
@@ -60,5 +74,16 @@ describe('SidebarContent', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
 
     expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+  });
+
+  it('leaves Cluster access out without a main auth provider', async () => {
+    // The guest sign-in of a local start: no clusters to reach, and the
+    // cluster access parts would throw without the main auth API.
+    await renderSidebar({ isMobile: false, config: BASE });
+
+    expect(screen.queryByTestId('cluster-access-item')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('cluster-access-connector'),
+    ).not.toBeInTheDocument();
   });
 });
