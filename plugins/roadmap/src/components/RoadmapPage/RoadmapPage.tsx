@@ -1,47 +1,35 @@
-import { useMemo } from 'react';
+import { Key, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Box,
-  MenuItem,
-  Tab,
-  Tabs,
-  TextField,
-  makeStyles,
-  Theme,
-} from '@material-ui/core';
 import { Content, Progress } from '@backstage/core-components';
+import { Flex, Select, Tab, TabList, Tabs } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import { RoadmapField, RoadmapItemFilters } from '../../apis';
 import { useSchema } from '../../hooks';
 import { BoardView } from '../BoardView';
 import { TeamActivityView } from '../TeamActivityView';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
 
-const useStyles = makeStyles((theme: Theme) => ({
+const useStyles = makeStyles({
   toolbar: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    marginBottom: theme.spacing(2),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    paddingBottom: theme.spacing(1),
+    gap: 'var(--bui-space-4)',
+    marginBottom: 'var(--bui-space-4)',
   },
   filters: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(1.5),
     marginLeft: 'auto',
+    flexWrap: 'wrap',
   },
   filter: {
-    minWidth: 150,
+    minWidth: 170,
   },
-  viewBody: {
-    paddingTop: theme.spacing(1),
-  },
-}));
+});
 
 const ALL = '';
+
+/** The "Any kind" option's key: a select option needs a non-empty one. */
+const ANY = 'any';
 
 /**
  * Hive's "all teams" scope (`?team=all`), and the old page's explicit
@@ -75,14 +63,15 @@ export function RoadmapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: schema, isLoading, error } = useSchema();
 
-  const tab = searchParams.get('view') === 'activity' ? 'activity' : 'board';
+  const view = searchParams.get('view') === 'activity' ? 'activity' : 'board';
 
   // The configured default team scopes the initial view; an explicit
   // `team=` (Hive's header writes it) wins, "all" meaning every team.
   const defaultTeam = schema?.defaultTeams[0] ?? ALL;
   const filters: RoadmapItemFilters = useMemo(() => {
+    const teamParam = searchParams.get('team');
     const result: RoadmapItemFilters = {};
-    const team = searchParams.get('team') ?? defaultTeam;
+    const team = teamParam === null ? defaultTeam : teamParam;
     if (!ALL_TEAMS_PARAMS.has(team)) {
       result.team = team;
     }
@@ -134,50 +123,48 @@ export function RoadmapPage() {
 
   return (
     <Content>
-      <Box className={classes.toolbar}>
+      <div className={classes.toolbar}>
         <Tabs
-          value={tab}
-          onChange={(_, value) => setParam('view', value)}
-          indicatorColor="primary"
+          selectedKey={view}
+          onSelectionChange={(key: Key) =>
+            setParam('view', key === 'activity' ? 'activity' : ALL)
+          }
         >
-          <Tab label="Board" value="board" />
-          <Tab label="Team activity" value="activity" />
+          <TabList aria-label="Roadmap views">
+            <Tab id="board">Board</Tab>
+            <Tab id="activity">Team activity</Tab>
+          </TabList>
         </Tabs>
-        <Box className={classes.filters}>
+        <Flex className={classes.filters} gap="3" align="end">
           {FILTER_FIELDS.map(({ param, field }) => {
             const values = fieldValues(fieldByName.get(field));
             if (values.length === 0) {
               return null;
             }
             return (
-              <TextField
-                key={param}
-                className={classes.filter}
-                select
-                size="small"
-                variant="outlined"
-                label={field}
-                value={filters[param] ?? ALL}
-                onChange={event => setParam(param, event.target.value)}
-              >
-                <MenuItem value={ALL}>All {field.toLowerCase()}s</MenuItem>
-                {values.map(value => (
-                  <MenuItem key={value} value={value}>
-                    {value}
-                  </MenuItem>
-                ))}
-              </TextField>
+              <div key={param} className={classes.filter}>
+                <Select
+                  label={field}
+                  size="small"
+                  options={[
+                    { id: ANY, label: `Any ${field.toLowerCase()}` },
+                    ...values.map(value => ({ id: value, label: value })),
+                  ]}
+                  selectedKey={filters[param] ?? ANY}
+                  onSelectionChange={key =>
+                    setParam(param, key === ANY ? ALL : String(key ?? ALL))
+                  }
+                />
+              </div>
             );
           })}
-        </Box>
-      </Box>
-      <Box className={classes.viewBody}>
-        {tab === 'board' ? (
-          <BoardView filters={filters} schemaFields={fields} />
-        ) : (
-          <TeamActivityView filters={filters} />
-        )}
-      </Box>
+        </Flex>
+      </div>
+      {view === 'board' ? (
+        <BoardView filters={filters} schemaFields={fields} />
+      ) : (
+        <TeamActivityView filters={filters} />
+      )}
     </Content>
   );
 }
