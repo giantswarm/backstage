@@ -1,4 +1,4 @@
-import { magazineTarget } from '../components/HiveRedirect';
+import { magazineTarget, plansTarget } from '../components/HiveRedirect';
 import {
   ALL_TEAMS,
   matchesSearch,
@@ -47,11 +47,24 @@ describe('hive', () => {
     expect(matchesSearch(' ', ['anything'])).toBe(true);
   });
 
-  it('sends an old magazine link to its Hive tab with its parameters', () => {
-    expect(magazineTarget('?tab=history&window=weeks')).toBe(
-      'history?window=weeks',
+  it('sends an old magazine link to its moment or to Knowledge', () => {
+    const old = (search: string) => ({ splat: '', search, hash: '' });
+    expect(magazineTarget(old('?tab=history&window=weeks'))).toBe(
+      '?when=weeks',
     );
-    expect(magazineTarget('')).toBe('now');
+    expect(magazineTarget(old(''))).toBe('?when=now');
+    expect(magazineTarget(old('?tab=knowledge&doc=a%2Fb.md'))).toBe(
+      'knowledge?doc=a%2Fb.md',
+    );
+  });
+
+  it('sends an old plans link to the Plans section or the review', () => {
+    expect(plansTarget({ splat: '', search: '?repo=o%2Fr', hash: '' })).toBe(
+      '?when=now#plans',
+    );
+    expect(
+      plansTarget({ splat: 'pr/40', search: '?repo=o%2Fr', hash: '' }),
+    ).toBe('?repo=o%2Fr&pr=40');
   });
 
   it('orders the tabs, unknown ones last', () => {

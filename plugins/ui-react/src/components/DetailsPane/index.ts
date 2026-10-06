@@ -1,1 +1,1 @@
-export { DetailsPane } from './DetailsPane';
+export { DetailsDrawer, DetailsPane } from './DetailsPane';

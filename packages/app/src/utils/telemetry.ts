@@ -356,31 +356,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Product magazine' };
       break;
 
-    // Hive (`/hive`): one page name per tab, a bare `/hive` landing on Now.
-    // The board's items and the plans' reviews are details without `view`,
-    // like Roadmap item and Plan detail: the varying segment is an id.
-    case pathname === '/hive' || pathname === '/hive/now':
-      payload = { page: 'Hive now' };
+    // Hive (`/hive`): the front page, its secondary tabs and the board's
+    // item detail. The front page's moment, epic pane, plan review and
+    // knowledge pane live in query parameters, not in the path. A plan link
+    // (`/hive/pr/:n`) redirects to the review over the front page.
+    case pathname === '/hive':
+      payload = { page: 'Hive front page' };
       break;
 
-    case pathname === '/hive/history':
-      payload = { page: 'Hive history' };
+    case pathname.startsWith('/hive/pr/'):
+      payload = { page: 'Hive plan review' };
       break;
 
-    case pathname === '/hive/roadmap':
-      payload = { page: 'Hive roadmap' };
+    case pathname === '/hive/board':
+      payload = { page: 'Hive board' };
       break;
 
-    case pathname.startsWith('/hive/roadmap/'):
-      payload = { page: 'Hive roadmap item' };
-      break;
-
-    case pathname === '/hive/plans':
-      payload = { page: 'Hive plans' };
-      break;
-
-    case pathname.startsWith('/hive/plans/'):
-      payload = { page: 'Hive plan detail' };
+    case pathname.startsWith('/hive/board/'):
+      payload = { page: 'Hive board item' };
       break;
 
     case pathname === '/hive/knowledge':

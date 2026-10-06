@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { PlansApi, plansApiRef } from '../apis';
@@ -77,7 +77,9 @@ function storeTeam(team: string) {
  * follows the reader from tab to tab. `ALL_TEAMS` for every team.
  */
 export function useHiveTeam(): [string, (team: string) => void] {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { search, hash } = useLocation();
   const urlTeam = searchParams.get(TEAM_SEARCH_PARAM);
   const team = useSyncExternalStore(
     subscribeTeam,
@@ -92,19 +94,15 @@ export function useHiveTeam(): [string, (team: string) => void] {
     }
   }, [urlTeam]);
 
+  // Keeps the hash: an old `/plans` link lands on the Plans section.
   const setTeam = useCallback(
     (next: string) => {
       storeTeam(next);
-      setSearchParams(
-        prev => {
-          const params = new URLSearchParams(prev);
-          params.set(TEAM_SEARCH_PARAM, next);
-          return params;
-        },
-        { replace: true },
-      );
+      const params = new URLSearchParams(search);
+      params.set(TEAM_SEARCH_PARAM, next);
+      navigate({ search: params.toString(), hash }, { replace: true });
     },
-    [setSearchParams],
+    [navigate, search, hash],
   );
 
   return [urlTeam ?? team, setTeam];

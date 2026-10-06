@@ -1,1 +1,1 @@
-export { RoadmapRedirect } from './RoadmapRedirect';
+export { RoadmapRedirect, roadmapTarget } from './RoadmapRedirect';

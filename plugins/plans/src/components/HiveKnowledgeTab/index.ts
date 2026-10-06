@@ -1,1 +1,1 @@
-export { HiveKnowledgeTab } from './HiveKnowledgeTab';
+export { HiveKnowledgeTab, KnowledgeDocument } from './HiveKnowledgeTab';

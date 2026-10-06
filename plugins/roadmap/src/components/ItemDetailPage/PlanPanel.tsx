@@ -7,10 +7,7 @@ import {
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import {
-  plansPullExternalRouteRef,
-  plansRootExternalRouteRef,
-} from '../../routes';
+import { plansPullExternalRouteRef } from '../../routes';
 
 const useStyles = makeStyles((theme: Theme) => ({
   divider: {
@@ -55,7 +52,6 @@ export function PlanPanel({
   const classes = useStyles();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
-  const plansRoot = useRouteRef(plansRootExternalRouteRef);
   const plansPull = useRouteRef(plansPullExternalRouteRef);
 
   // The plans plugin's backend is queried directly (instead of through its
@@ -117,13 +113,9 @@ export function PlanPanel({
       </Typography>
       {merged.map(plan => (
         <Box key={`${plan.repo}/${plan.folder}`} className={classes.entry}>
-          <Link
-            to={
-              plansRoot
-                ? `${plansRoot()}?repo=${encodeURIComponent(plan.repo)}&plan=${encodeURIComponent(plan.folder)}`
-                : `https://github.com/${plan.repo}/tree/HEAD/${plan.folder}`
-            }
-          >
+          {/* A merged plan is a folder of documents; Hive reviews open
+              plans only, so it is read on GitHub. */}
+          <Link to={`https://github.com/${plan.repo}/tree/HEAD/${plan.folder}`}>
             {plan.folder}
           </Link>
         </Box>

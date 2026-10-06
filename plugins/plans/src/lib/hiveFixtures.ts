@@ -26,8 +26,15 @@ const ROADMAP = 'https://github.com/giantswarm/roadmap/issues';
 
 /** The fixture board's item detail (the roadmap plugin's fixture board). */
 function boardPath(number: number): string {
-  return `/hive/roadmap/items/fixture-${number}`;
+  return `/hive/board/items/fixture-${number}`;
 }
+
+/** A knowledge document's place in Hive, as the magazine links it. */
+function knowledgeLink(label: string, path: string) {
+  return { label, url: `/hive/knowledge?doc=${encodeURIComponent(path)}` };
+}
+
+const PLANS_PULL = 'https://github.com/example/team-plans/pull';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -49,6 +56,8 @@ type CardSeed = {
   team?: string;
   tryIt?: string;
   blocker?: MagazineCard['blocker'];
+  /** Knowledge documents behind the item: `[label, path]`. */
+  docs?: [string, string][];
 };
 
 function card(lane: MagazineClass, seed: CardSeed): MagazineCard {
@@ -70,7 +79,10 @@ function card(lane: MagazineClass, seed: CardSeed): MagazineCard {
     tryIt: seed.tryIt ? { label: 'Try it', url: seed.tryIt } : undefined,
     assignees: seed.assignees ?? [],
     updatedAt: ago(seed.updated),
-    links: [{ label: 'Board', url: boardPath(seed.number) }],
+    links: [
+      { label: 'Board', url: boardPath(seed.number) },
+      ...(seed.docs ?? []).map(([label, path]) => knowledgeLink(label, path)),
+    ],
   };
 }
 
@@ -86,6 +98,7 @@ const CUSTOMERS: CardSeed[] = [
     assignees: ['Mira Okafor', 'Jonas Weber'],
     progress: [4, 7],
     updated: 5 * HOUR,
+    docs: [['Portal sections', 'knowledge/architecture/portal-sections.md']],
   },
   {
     number: 3970,
@@ -159,6 +172,13 @@ const TOP_EPICS: CardSeed[] = [
     progress: [3, 5],
     updated: 3 * HOUR,
     tryIt: '/bot-prs',
+    docs: [
+      ['Bot PRs, explained', 'knowledge/product/marge-sweep.md'],
+      [
+        'ADR: the sweep runs per team',
+        'knowledge/decisions/2026-09-14-1000-adr-sweep-per-team.md',
+      ],
+    ],
   },
   {
     number: 4004,
@@ -374,6 +394,8 @@ function plans(): PlanCard[] {
     epicTitle: string;
     updated: number;
     openQuestion?: string;
+    /** The plan's pull request in the fixture plans repository. */
+    pull?: number;
   }> = [
     {
       title: 'Hive: one place for Plans, Roadmap and the product overview',
@@ -381,6 +403,8 @@ function plans(): PlanCard[] {
       epic: 4039,
       epicTitle: 'Homepage greeting in Backstage',
       updated: 4 * HOUR,
+      pull: 41,
+      openQuestion: 'One page with a time control, or five tabs?',
     },
     {
       title: 'marge rescue agent: one agent per failing bot PR',
@@ -389,6 +413,7 @@ function plans(): PlanCard[] {
       epicTitle:
         'marge sweep engine: the rescue agent and the per-team weekly run',
       updated: 22 * HOUR,
+      pull: 39,
     },
     {
       title: 'Cluster creation from the portal: templates or cluster-manager',
@@ -404,6 +429,7 @@ function plans(): PlanCard[] {
       epic: 3818,
       epicTitle: 'Make it easy to access support from the developer portal',
       updated: 3 * DAY,
+      pull: 38,
     },
     {
       title: 'Branch-writing remedies and their guard rails',
@@ -413,11 +439,28 @@ function plans(): PlanCard[] {
       updated: 5 * DAY,
       openQuestion: 'Which remedies may push without a person?',
     },
+    {
+      title: 'The Bot PRs page in the developer portal',
+      state: 'merged',
+      epic: 4360,
+      epicTitle:
+        'marge sweep engine: the rescue agent and the per-team weekly run',
+      updated: 6 * DAY,
+      pull: 35,
+    },
+    {
+      title: 'Flux: the tree with its blocking conditions',
+      state: 'merged',
+      epic: 4004,
+      epicTitle: 'GitOps/Flux visibility in Backstage',
+      updated: 18 * DAY,
+      pull: 33,
+    },
   ];
   return seeds.map((seed, i) => ({
     key: `plan-${i + 1}`,
     title: seed.title,
-    url: `${ROADMAP}/${seed.epic}`,
+    url: seed.pull ? `${PLANS_PULL}/${seed.pull}` : `${ROADMAP}/${seed.epic}`,
     state: seed.state,
     epic: {
       key: `giantswarm/roadmap#${seed.epic}`,
@@ -482,6 +525,7 @@ type EntrySeed = {
   repo: string;
   author?: string;
   teaser?: string;
+  team?: string;
 };
 
 function entries(group: MagazineClass, seeds: EntrySeed[]): Entry[] {
@@ -490,7 +534,7 @@ function entries(group: MagazineClass, seeds: EntrySeed[]): Entry[] {
     at: ago(seed.at),
     class: group,
     customers: [],
-    team: BUMBLEBEE,
+    team: seed.team ?? BUMBLEBEE,
     links: [],
   }));
 }
@@ -605,6 +649,17 @@ function groupsFor(window: HistoryWindow): Group[] {
         'Jonas Weber',
       ),
       release('v2.91.0', 2 * DAY, 'App deployment with the AI Assistant step.'),
+      {
+        key: 'giantswarm/roadmap#4380',
+        title: 'gitops-template: move to HelmReleases and Envoy Gateway',
+        url: `${ROADMAP}/4380`,
+        kind: 'issue',
+        at: 1.2 * DAY,
+        repo: 'giantswarm/roadmap',
+        author: 'Noor Haddad',
+        teaser: 'Apps deployed from the portal land as HelmReleases.',
+        team: 'Honey Badger 🦡',
+      },
     ]),
   };
   const flux: Group = {
@@ -629,6 +684,17 @@ function groupsFor(window: HistoryWindow): Group[] {
         2.2 * DAY,
         'Flux: one installation scope in the header.',
       ),
+      {
+        key: 'giantswarm/flux-app@v1.6.0',
+        title: 'flux-app v1.6.0',
+        url: 'https://github.com/giantswarm/flux-app/releases',
+        kind: 'release',
+        at: 1.8 * DAY,
+        repo: 'giantswarm/flux-app',
+        author: 'Kai Lindqvist',
+        teaser: 'Flux reports why a Kustomization waits on a dependency.',
+        team: 'Atlas 🗺️',
+      },
     ]),
   };
   const chat: Group = {
@@ -742,7 +808,10 @@ export function fixtureHistory(window: HistoryWindow): History {
     groups,
     highlights: {
       customers: [{ name: 'Customer A', keys: ['giantswarm/roadmap#4264'] }],
-      outsideTeam: [{ team: 'Atlas 🗺️', keys: [] }],
+      outsideTeam: [
+        { team: 'Atlas 🗺️', keys: ['giantswarm/flux-app@v1.6.0'] },
+        { team: 'Honey Badger 🦡', keys: ['giantswarm/roadmap#4380'] },
+      ],
     },
     chores: {
       count: STATS[window].merged - groups.length * 3,
@@ -757,14 +826,15 @@ export function fixtureHistory(window: HistoryWindow): History {
 const KNOWLEDGE: Record<string, string> = {
   'knowledge/product/hive.md': `# Hive
 
-Hive is the team's one place for its work: what it does **now**, what moved in
-the last days, weeks and months, the **roadmap** board, the **plans** under
-review and what the team **knows**.
+Hive is the team's one place for its work, read like a front page: what it
+does **now**, and with one control what moved in the last **3 days**,
+**3 weeks** or **3 months**.
 
-- **Now** ranks the work: customers first, then the top epics, setup and chores.
-- **History** tells what moved, epic by epic, with a link to try what shipped.
-- **Roadmap** is the board; every epic opens the same detail page.
-- **Plans** are reviewed where they are written.
+- The sections stay the same at every moment: for customers, top epics,
+  setup and chores, plans, other teams.
+- An epic, a plan's review and a knowledge document open over the page;
+  Escape returns to where you were.
+- The **board** and the **knowledge** reader are a tab away.
 `,
   'knowledge/product/marge-sweep.md': `# Bot PRs
 

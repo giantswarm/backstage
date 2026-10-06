@@ -41,7 +41,8 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-function KnowledgeDocument(props: { path: string }) {
+/** One knowledge document, rendered; its own progress and error. */
+export function KnowledgeDocument(props: { path: string }) {
   const { data, isLoading, error } = useHiveKnowledgeDoc(props.path);
   if (data === undefined) {
     return (

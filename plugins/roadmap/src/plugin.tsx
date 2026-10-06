@@ -22,17 +22,17 @@ import {
   rootRouteRef,
 } from './routes';
 
-// The board is Hive's Roadmap tab (`/hive/roadmap`): a sub-page attached to
-// the plans plugin's Hive page by node id, the way muster attaches its tabs
-// to the Agent Platform. It owns `rootRouteRef`, so an item's detail
+// The board is Hive's Board tab (`/hive/board`): a sub-page attached to the
+// plans plugin's Hive page by node id, the way muster attaches its tabs to
+// the Agent Platform. It owns `rootRouteRef`, so an item's full detail
 // (`itemRouteRef`) opens inside Hive. Hive is disabled by default (internal
 // only); this tab follows its page.
 const hiveRoadmapSubPage = SubPageBlueprint.make({
   name: 'hive',
   attachTo: { id: 'page:plans/hive', input: 'pages' },
   params: {
-    path: 'roadmap',
-    title: 'Roadmap',
+    path: 'board',
+    title: 'Board',
     routeRef: rootRouteRef,
     loader: async () => {
       const { RoadmapProviders } =
@@ -48,7 +48,8 @@ const hiveRoadmapSubPage = SubPageBlueprint.make({
 });
 
 // The old page stays as a nav-less redirect, so every shared link resolves:
-// `/roadmap/items/:id?…` → `/hive/roadmap/items/:id?…`.
+// `/roadmap?…` → the board (`/hive/board?…`), `/roadmap/items/:id` → the
+// epic opened on Hive's front page (`/hive?item=:id`).
 const roadmapPage = PageBlueprint.make({
   disabled: true,
   params: {

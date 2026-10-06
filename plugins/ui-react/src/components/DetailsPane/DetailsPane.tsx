@@ -1,5 +1,7 @@
+import { ReactNode, useEffect } from 'react';
 import { makeStyles, createStyles, Theme } from '@material-ui/core/styles';
-import { Box, Drawer, IconButton, Typography } from '@material-ui/core';
+import { Drawer } from '@material-ui/core';
+import { ButtonIcon, Text } from '@backstage/ui';
 import { useDetailsPane } from '../../hooks';
 import CloseIcon from '@material-ui/icons/Close';
 
@@ -37,13 +39,8 @@ const useDrawerContentStyles = makeStyles((theme: Theme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       marginBottom: theme.spacing(2),
-    },
-    title: {
-      ...theme.typography.h5,
-      marginBottom: 0,
-    },
-    icon: {
-      fontSize: 20,
+      // Clear of the close button in the corner.
+      paddingRight: theme.spacing(5),
     },
   }),
 );
@@ -53,30 +50,82 @@ const DrawerContent = ({
   children,
   onClose,
 }: {
-  title?: string;
+  title?: ReactNode;
   children?: React.ReactNode;
   onClose: () => void;
 }) => {
   const classes = useDrawerContentStyles();
 
   return (
-    <Box className={classes.root}>
-      <IconButton
+    <div className={classes.root}>
+      <ButtonIcon
         className={classes.closeButton}
-        title="Close the drawer"
         aria-label="Close the drawer"
-        onClick={onClose}
-      >
-        <CloseIcon />
-      </IconButton>
+        icon={<CloseIcon />}
+        variant="tertiary"
+        onPress={onClose}
+      />
       {title && (
         <div className={classes.header}>
-          <Typography className={classes.title}>{title}</Typography>
+          <Text as="h2" variant="title-small" weight="bold">
+            {title}
+          </Text>
         </div>
       )}
 
       <div>{children}</div>
-    </Box>
+    </div>
+  );
+};
+
+type DetailsDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  title?: ReactNode;
+  children?: ReactNode;
+};
+
+/**
+ * The right-anchored details drawer `DetailsPane` renders, for any content:
+ * a pane whose open state lives elsewhere (a page's own query parameter).
+ * Escape closes it, unless an overlay inside it (a menu, a dialog) handled
+ * the key first.
+ */
+export const DetailsDrawer = ({
+  open,
+  onClose,
+  title,
+  children,
+}: DetailsDrawerProps) => {
+  const classes = useDrawerStyles();
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
+  return (
+    <Drawer
+      classes={{
+        paper: classes.paper,
+      }}
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      variant="persistent"
+    >
+      <DrawerContent title={title} onClose={onClose}>
+        {children}
+      </DrawerContent>
+    </Drawer>
   );
 };
 
@@ -101,8 +150,6 @@ export const DetailsPane = ({
   title,
   render,
 }: DetailsPaneProps) => {
-  const classes = useDrawerStyles();
-
   const { isOpen, getParams, close } = useDetailsPane(paneId, { prefix });
   const { cluster, clusterName, kind, namespace, name } = getParams();
 
@@ -126,18 +173,8 @@ export const DetailsPane = ({
     typeof title === 'function' ? title(renderProps) : title;
 
   return (
-    <Drawer
-      classes={{
-        paper: classes.paper,
-      }}
-      anchor="right"
-      open={isOpen}
-      onClose={handleClose}
-      variant="persistent"
-    >
-      <DrawerContent title={resolvedTitle} onClose={handleClose}>
-        {render(renderProps)}
-      </DrawerContent>
-    </Drawer>
+    <DetailsDrawer open={isOpen} onClose={handleClose} title={resolvedTitle}>
+      {render(renderProps)}
+    </DetailsDrawer>
   );
 };

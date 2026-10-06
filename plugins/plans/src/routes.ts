@@ -5,15 +5,13 @@ import {
 } from '@backstage/frontend-plugin-api';
 
 /**
- * The plans: Hive's Plans tab (`/hive/plans`), so a plan review
- * (`pullRouteRef`) opens inside Hive.
+ * Hive (`/hive`): the front page, read top to bottom for a moment in time
+ * (`?when=`), with the board and the knowledge as secondary tabs. The
+ * plugin's root, so the page header's title links back to it.
  */
 export const rootRouteRef = createRouteRef();
 
-/** The Hive section (`/hive`) and its tabs. */
-export const hiveRouteRef = createRouteRef();
-export const hiveNowRouteRef = createRouteRef();
-export const hiveHistoryRouteRef = createRouteRef();
+/** Hive's knowledge reader (`/hive/knowledge`). */
 export const hiveKnowledgeRouteRef = createRouteRef();
 
 /** The old Plans page (`/plans`), now a redirect into Hive. */
@@ -22,6 +20,10 @@ export const legacyPlansRouteRef = createRouteRef();
 /** The old product magazine page (`/product`), now a redirect into Hive. */
 export const magazineRouteRef = createRouteRef();
 
+/**
+ * A plan's review (`/hive/pr/:number`), for links from outside the front
+ * page (the roadmap's PlanPanel): it opens the review overlay (`?pr=`).
+ */
 export const pullRouteRef = createSubRouteRef({
   path: '/pr/:number',
   parent: rootRouteRef,

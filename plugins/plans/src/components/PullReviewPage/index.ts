@@ -1,1 +1,1 @@
-export { PullReviewPage } from './PullReviewPage';
+export { PlanReview, PullReviewPage } from './PullReviewPage';

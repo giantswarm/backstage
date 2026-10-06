@@ -66,12 +66,21 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: theme.spacing(3),
+    // Phones: the document nav above the reading column.
+    [theme.breakpoints.down('xs')]: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
   nav: {
     width: NAV_WIDTH,
     flexShrink: 0,
     position: 'sticky',
     top: theme.spacing(2),
+    [theme.breakpoints.down('xs')]: {
+      width: '100%',
+      position: 'static',
+    },
   },
   statusDot: {
     display: 'inline-block',
@@ -262,6 +271,8 @@ function DocumentPanel(props: {
   file: PlanPullFile;
   comments: PlanReviewComment[];
   onCreate: (comment: NewReviewComment) => Promise<unknown>;
+  /** Offer full screen; not inside an overlay that already is one. */
+  fullscreenToggle: boolean;
 }) {
   const { repo, branch, pullNumber, file, comments, onCreate } = props;
   const classes = useStyles();
@@ -403,20 +414,22 @@ function DocumentPanel(props: {
         <span className={classes.deletions}>−{file.deletions}</span>
         <div className={classes.toolbarSpacer} />
         <Link to={githubUrl}>View on GitHub</Link>
-        <Button
-          size="small"
-          variant="tertiary"
-          iconStart={
-            fullscreen ? (
-              <FullscreenExitIcon fontSize="small" />
-            ) : (
-              <FullscreenIcon fontSize="small" />
-            )
-          }
-          onPress={() => setFullscreen(current => !current)}
-        >
-          {fullscreen ? 'Exit full screen' : 'Full screen'}
-        </Button>
+        {props.fullscreenToggle && (
+          <Button
+            size="small"
+            variant="tertiary"
+            iconStart={
+              fullscreen ? (
+                <FullscreenExitIcon fontSize="small" />
+              ) : (
+                <FullscreenIcon fontSize="small" />
+              )
+            }
+            onPress={() => setFullscreen(current => !current)}
+          >
+            {fullscreen ? 'Exit full screen' : 'Full screen'}
+          </Button>
+        )}
       </div>
       <div className={fullscreen ? classes.fullscreenBody : undefined}>
         {body}
@@ -433,16 +446,37 @@ function DocumentPanel(props: {
  * positions are shareable, like the page URL itself.
  */
 export function PullReviewPage() {
+  const { number } = useParams();
+  return (
+    <Content>
+      <PlanReview pullNumber={Number(number)} docParam="doc" />
+    </Content>
+  );
+}
+
+/**
+ * One plan PR's review: the document nav and the reading column. The page
+ * above renders it on its own route; Hive's front page renders it in its
+ * review overlay (`overlay`), which has its own title bar and full screen,
+ * and keeps the selected document in `?file=` because `?doc=` names a
+ * knowledge document there.
+ */
+export function PlanReview(props: {
+  pullNumber: number;
+  /** The query parameter that holds the selected document. */
+  docParam: 'doc' | 'file';
+  overlay?: boolean;
+}) {
+  const { pullNumber, docParam, overlay = false } = props;
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
   const rootLink = useRouteRef(rootRouteRef);
-  const { number } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const number = String(pullNumber);
 
-  const pullNumber = Number(number);
   const repoParam = searchParams.get('repo') ?? undefined;
-  const doc = searchParams.get('doc') ?? OVERVIEW;
+  const doc = searchParams.get(docParam) ?? OVERVIEW;
 
   const reposQuery = useQuery({
     queryKey: ['plans', 'repos'],
@@ -533,44 +567,36 @@ export function PullReviewPage() {
   }, [reviewComments]);
 
   if (reposQuery.isLoading || pullsQuery.isLoading || filesQuery.isLoading) {
-    return (
-      <Content>
-        <Progress />
-      </Content>
-    );
+    return <Progress />;
   }
   const loadError = reposQuery.error ?? pullsQuery.error ?? filesQuery.error;
   if (loadError) {
     return (
-      <Content>
-        <PlansErrorAlert
-          title="Failed to load pull request"
-          error={loadError as Error}
-        />
-      </Content>
+      <PlansErrorAlert
+        title="Failed to load pull request"
+        error={loadError as Error}
+      />
     );
   }
   if (!repo || !pull) {
     return (
-      <Content>
-        <EmptyState
-          missing="content"
-          title="Pull request not found"
-          description={`There is no open pull request #${number}${
-            repo ? ` in ${repo}` : ''
-          }. It may have been merged or closed.`}
-          action={<Link to={plansPath}>Back to plans</Link>}
-        />
-      </Content>
+      <EmptyState
+        missing="content"
+        title="Pull request not found"
+        description={`There is no open pull request #${number}${
+          repo ? ` in ${repo}` : ''
+        }. It may have been merged or closed.`}
+        action={<Link to={plansPath}>Back to plans</Link>}
+      />
     );
   }
 
   const selectDoc = (next: string) => {
     const params = new URLSearchParams(searchParams);
     if (next === OVERVIEW) {
-      params.delete('doc');
+      params.delete(docParam);
     } else {
-      params.set('doc', next);
+      params.set(docParam, next);
     }
     setSearchParams(params);
   };
@@ -592,12 +618,14 @@ export function PullReviewPage() {
     ) : null;
 
   return (
-    <Content>
+    <>
       <div className={classes.header}>
-        <Link className={classes.backLink} to={plansPath}>
-          <ArrowBackIcon fontSize="inherit" /> All plans
-        </Link>
-        <Text as="h4" variant="title-medium">
+        {!overlay && (
+          <Link className={classes.backLink} to={plansPath}>
+            <ArrowBackIcon fontSize="inherit" /> All plans
+          </Link>
+        )}
+        <Text as={overlay ? 'h2' : 'h4'} variant="title-medium">
           {pull.title}
         </Text>
         <div className={classes.headerMeta}>
@@ -666,6 +694,7 @@ export function PullReviewPage() {
                 file={selectedFile}
                 comments={commentsByFile.get(selectedFile.filename) ?? []}
                 onCreate={comment => createReviewComment.mutateAsync(comment)}
+                fullscreenToggle={!overlay}
               />
             ) : (
               <OverviewPanel repo={repo} pull={pull} />
@@ -673,6 +702,6 @@ export function PullReviewPage() {
           </div>
         </div>
       </div>
-    </Content>
+    </>
   );
 }

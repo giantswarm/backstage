@@ -1,1 +1,1 @@
-export { HiveRedirect, magazineTarget } from './HiveRedirect';
+export { HiveRedirect, magazineTarget, plansTarget } from './HiveRedirect';

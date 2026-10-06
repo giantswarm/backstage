@@ -1,14 +1,11 @@
 /**
- * Hive's tabs in the order the row shows them, by extension id. The page
- * sorts its attached sub-pages by this list rather than by attach order,
- * which depends on feature registration and on any deployment's
- * `app.extensions`. The first tab is where a bare `/hive` lands.
+ * Hive's secondary tabs in the order the row shows them after the front
+ * page, by extension id. The page sorts its attached sub-pages by this list
+ * rather than by attach order, which depends on feature registration and on
+ * any deployment's `app.extensions`.
  */
 export const HIVE_TAB_ORDER = [
-  'sub-page:plans/hive-now',
-  'sub-page:plans/hive-history',
   'sub-page:roadmap/hive',
-  'sub-page:plans/hive-plans',
   'sub-page:plans/hive-knowledge',
 ] as const;
 

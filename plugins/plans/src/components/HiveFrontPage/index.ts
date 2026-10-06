@@ -1,0 +1,1 @@
+export { HiveFrontPage } from './HiveFrontPage';
