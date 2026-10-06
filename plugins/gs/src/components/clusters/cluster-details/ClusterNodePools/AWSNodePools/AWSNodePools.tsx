@@ -1,13 +1,18 @@
 import { useMemo } from 'react';
 import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useNodePoolsForAWSCluster } from '../../../../hooks';
+import {
+  useMachineTypeCatalog,
+  useNodePoolsForAWSCluster,
+} from '../../../../hooks';
+import {
+  buildAWSNodePoolRows,
+  resolveAWSNodePoolInfra,
+} from '../../../nodePools';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
 import { AWSNodePoolDetails } from '../AWSNodePoolDetails';
 import { AWSNodePoolsTable } from '../AWSNodePoolsTable';
-import { AWSNodePoolRow } from '../AWSNodePoolsTable/columns';
-import { resolveAWSNodePoolInfra } from './helpers';
 
 export const AWSNodePools = () => {
   const { installationName, cluster } = useCurrentCluster();
@@ -24,33 +29,18 @@ export const AWSNodePools = () => {
   const { selectedNodePool, setSelectedNodePool, clearSelectedNodePool } =
     useSelectedNodePool();
 
-  const data: AWSNodePoolRow[] = useMemo(() => {
-    return machinePools.map(pool => {
-      const { type, awsMachinePool, karpenterMachinePool } =
-        resolveAWSNodePoolInfra(pool, awsMachinePools, karpenterMachinePools);
+  const { catalog } = useMachineTypeCatalog('aws');
 
-      return {
-        id: pool.getName(),
-        name: pool.getName(),
-        type,
-        desiredReplicas: pool.getDesiredReplicas(),
-        readyReplicas: pool.getReadyReplicas(),
-        instanceType: awsMachinePool?.getInstanceType(),
-        availabilityZones: awsMachinePool?.getAvailabilityZones(),
-        minSize: awsMachinePool?.getMinSize(),
-        maxSize: awsMachinePool?.getMaxSize(),
-        // `undefined` means the CR was not read; `{}` means it sets no
-        // limits. `getLimits()` collapses both to `undefined`, so the
-        // distinction has to be made here, where we still know whether the CR
-        // itself came back.
-        limits: karpenterMachinePool
-          ? (karpenterMachinePool.getLimits() ?? {})
-          : undefined,
-        phase: pool.getPhase(),
-        created: pool.getCreatedTimestamp(),
-      };
-    });
-  }, [machinePools, awsMachinePools, karpenterMachinePools]);
+  const data = useMemo(
+    () =>
+      buildAWSNodePoolRows(
+        machinePools,
+        awsMachinePools,
+        karpenterMachinePools,
+        catalog,
+      ),
+    [machinePools, awsMachinePools, karpenterMachinePools, catalog],
+  );
 
   const selected = useMemo(() => {
     if (!selectedNodePool) {

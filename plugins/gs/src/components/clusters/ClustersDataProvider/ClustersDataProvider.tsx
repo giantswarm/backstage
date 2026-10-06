@@ -11,9 +11,11 @@ import { FiltersData, useFilters } from '@giantswarm/backstage-plugin-ui-react';
 import { clusterAccessStatusApiRef } from '../../../apis/clusterAccessStatus';
 import { useMutedInstallations } from '../../../apis/mutedInstallations';
 import {
+  getClusterKey,
   useControlPlanesForClusters,
   useProviderClustersForClusters,
   useProviderClusterIdentitiesForProviderClusters,
+  useWorkerCapacity,
 } from '../../hooks';
 import {
   AppVersionFilter,
@@ -144,6 +146,18 @@ export const ClustersDataProvider = ({
     },
   );
 
+  const workerCapacityRequired =
+    visibleColumns.includes(ClusterColumns.workerCpu) ||
+    visibleColumns.includes(ClusterColumns.workerMemory);
+
+  const { capacities: workerCapacities, errors: workerCapacityErrors } =
+    useWorkerCapacity(clusterResources, {
+      enabled:
+        workerCapacityRequired &&
+        !isLoadingClusters &&
+        clusterResources.length > 0,
+    });
+
   // Only block the table while the primary cluster list has produced nothing
   // yet. Once any installation resolves, its rows render immediately and the
   // remaining (or hung, timed-out) installations resolve in the background --
@@ -158,12 +172,14 @@ export const ClustersDataProvider = ({
       ...controlPlaneErrors,
       ...providerClusterErrors,
       ...providerClusterIdentityErrors,
+      ...workerCapacityErrors,
     ];
   }, [
     clusterErrors,
     controlPlaneErrors,
     providerClusterErrors,
     providerClusterIdentityErrors,
+    workerCapacityErrors,
   ]);
 
   // A 404 (`NotFoundError`) means the installation doesn't serve the API
@@ -249,6 +265,13 @@ export const ClustersDataProvider = ({
         controlPlane,
         providerCluster,
         awsClusterRoleIdentity,
+        workerCapacity: workerCapacities.get(
+          getClusterKey({
+            installationName: cluster.cluster,
+            namespace: cluster.getNamespace(),
+            name: cluster.getName(),
+          }),
+        ),
       });
     });
   }, [
@@ -256,6 +279,7 @@ export const ClustersDataProvider = ({
     controlPlaneResources,
     providerClusterResources,
     providerClusterIdentityResources,
+    workerCapacities,
   ]);
 
   const contextValue: ClustersData = useMemo(() => {

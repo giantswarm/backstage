@@ -67,3 +67,28 @@ export function semverCompareSort<T>(
     return direction * versionA.compare(versionB);
   };
 }
+
+/**
+ * Returns a comparator that sorts items by the number `fn` reads from them,
+ * smallest first. Items without a number sort last.
+ */
+export function numberCompareSort<T>(fn: (item: T) => number | undefined) {
+  return (a: T, b: T) => {
+    const numberA = fn(a);
+    const numberB = fn(b);
+
+    if (numberA === undefined && numberB === undefined) {
+      return 0;
+    }
+
+    if (numberA === undefined) {
+      return 1;
+    }
+
+    if (numberB === undefined) {
+      return -1;
+    }
+
+    return numberA - numberB;
+  };
+}

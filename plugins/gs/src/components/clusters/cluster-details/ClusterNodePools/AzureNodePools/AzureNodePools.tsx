@@ -1,12 +1,18 @@
 import { useMemo } from 'react';
 import { useShowErrors } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useNodePoolsForAzureCluster } from '../../../../hooks';
+import {
+  useMachineTypeCatalog,
+  useNodePoolsForAzureCluster,
+} from '../../../../hooks';
+import {
+  buildMachineDeploymentNodePoolRows,
+  describeAzureMachineTemplate,
+} from '../../../nodePools';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
 import { NodePoolDetailsLayout } from '../NodePoolDetailsLayout';
 import { useSelectedNodePool } from '../useSelectedNodePool';
 import { AzureNodePoolDetails } from '../AzureNodePoolDetails';
 import { AzureNodePoolsTable } from '../AzureNodePoolsTable';
-import { AzureNodePoolRow } from '../AzureNodePoolsTable/columns';
 
 export const AzureNodePools = () => {
   const { installationName, cluster } = useCurrentCluster();
@@ -18,33 +24,24 @@ export const AzureNodePools = () => {
   const { selectedNodePool, setSelectedNodePool, clearSelectedNodePool } =
     useSelectedNodePool();
 
-  const data: AzureNodePoolRow[] = useMemo(() => {
-    return machineDeployments.map(deployment => {
-      const infraName = deployment.getInfrastructureRef()?.name;
-      const template = infraName
-        ? azureMachineTemplates.find(t => t.getName() === infraName)
-        : undefined;
+  const { catalog } = useMachineTypeCatalog('azure');
 
-      return {
-        id: deployment.getName(),
-        name: deployment.getName(),
-        desiredReplicas: deployment.getDesiredReplicas(),
-        readyReplicas: deployment.getReadyReplicas(),
-        vmSize: template?.getVmSize(),
-        phase: deployment.getPhase(),
-        created: deployment.getCreatedTimestamp(),
-      };
-    });
-  }, [machineDeployments, azureMachineTemplates]);
+  const data = useMemo(
+    () =>
+      buildMachineDeploymentNodePoolRows(
+        machineDeployments,
+        azureMachineTemplates,
+        describeAzureMachineTemplate(catalog),
+      ),
+    [machineDeployments, azureMachineTemplates, catalog],
+  );
 
   const selectedDeployment = selectedNodePool
     ? machineDeployments.find(d => d.getName() === selectedNodePool)
     : undefined;
-
-  const selectedInfraName = selectedDeployment?.getInfrastructureRef()?.name;
-  const selectedTemplate = selectedInfraName
-    ? azureMachineTemplates.find(t => t.getName() === selectedInfraName)
-    : undefined;
+  const selectedTemplate = data.find(
+    row => row.name === selectedNodePool,
+  )?.infrastructure;
 
   const details =
     selectedNodePool && selectedDeployment ? (

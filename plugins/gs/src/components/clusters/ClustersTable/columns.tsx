@@ -3,7 +3,9 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link, SubvalueCell, TableColumn } from '@backstage/core-components';
 import { clusterDetailsRouteRef } from '../../../routes';
 import {
+  AsyncValue,
   isTableColumnHidden,
+  numberCompareSort,
   semverCompareSort,
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -23,6 +25,28 @@ import {
   ClusterTypeWorkloadIcon,
 } from '../../../assets/icons/CustomIcons';
 import { ClusterData } from '../ClustersDataProvider';
+import { WorkerCapacity } from '../WorkerCapacity';
+
+function renderWorkerCapacity(row: ClusterData, show: 'cpu' | 'memory') {
+  const workerCapacity = row.workerCapacity;
+
+  return (
+    <AsyncValue
+      // Undefined until the provider starts reading for a column just shown.
+      isLoading={workerCapacity?.isLoading ?? true}
+      errorMessage={workerCapacity?.errorMessage}
+      value={
+        workerCapacity?.capacity && (
+          <WorkerCapacity
+            capacity={workerCapacity.capacity}
+            metricsStatus={workerCapacity.metricsStatus}
+            show={show}
+          />
+        )
+      }
+    />
+  );
+}
 
 export const renderClusterType = (clusterType: string) => {
   if (clusterType === ClusterTypes.Management) {
@@ -54,6 +78,8 @@ export const ClusterColumns = {
   kubernetesVersion: 'kubernetesVersion',
   location: 'location',
   awsAccountId: 'awsAccountId',
+  workerCpu: 'workerCpu',
+  workerMemory: 'workerMemory',
   created: 'created',
   status: 'status',
 } as const;
@@ -200,6 +226,22 @@ export const getInitialColumns = ({
           )
         );
       },
+    },
+    {
+      title: 'Worker CPU',
+      field: ClusterColumns.workerCpu,
+      hidden: true,
+      render: row => renderWorkerCapacity(row, 'cpu'),
+      customSort: numberCompareSort(row => row.workerCapacity?.capacity?.vcpus),
+    },
+    {
+      title: 'Worker memory',
+      field: ClusterColumns.workerMemory,
+      hidden: true,
+      render: row => renderWorkerCapacity(row, 'memory'),
+      customSort: numberCompareSort(
+        row => row.workerCapacity?.capacity?.memoryBytes,
+      ),
     },
     {
       title: 'Created',

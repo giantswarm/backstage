@@ -1,21 +1,15 @@
 import { TableColumn } from '@backstage/core-components';
 import { Link, Tooltip } from '@material-ui/core';
-import { getVmSizeTooltip } from '../azureVmTypeInfo';
+import { AzureMachineTemplate } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { DateComponent, NotAvailable } from '../../../../UI';
+import { MachineDeploymentNodePoolRow } from '../../../nodePools';
 
-export type AzureNodePoolRow = {
-  id: string;
-  name: string;
-  desiredReplicas: number | undefined;
-  readyReplicas: number | undefined;
-  vmSize: string | undefined;
-  phase: string | undefined;
-  created: string | undefined;
-};
+export type AzureNodePoolRow =
+  MachineDeploymentNodePoolRow<AzureMachineTemplate>;
 
 const AzureNodePoolColumns = {
   name: 'name',
@@ -73,13 +67,13 @@ export function getInitialColumns({
     {
       title: 'VM size',
       field: AzureNodePoolColumns.vmSize,
+      ...sortAndFilterOptions(row => row.machineType),
       render: row => {
-        if (!row.vmSize) return <NotAvailable />;
-        const tip = getVmSizeTooltip(row.vmSize);
-        if (!tip) return row.vmSize;
+        if (!row.machineType) return <NotAvailable />;
+        if (!row.machineTypeDescription) return row.machineType;
         return (
-          <Tooltip title={tip} arrow>
-            <span>{row.vmSize}</span>
+          <Tooltip title={row.machineTypeDescription} arrow>
+            <span>{row.machineType}</span>
           </Tooltip>
         );
       },

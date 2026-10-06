@@ -37,3 +37,4 @@ export { MachinePool } from './MachinePool';
 export { ProviderCluster } from './ProviderCluster';
 export { VCDCluster } from './VCDCluster';
 export { VSphereCluster } from './VSphereCluster';
+export { VSphereMachineTemplate } from './VSphereMachineTemplate';
