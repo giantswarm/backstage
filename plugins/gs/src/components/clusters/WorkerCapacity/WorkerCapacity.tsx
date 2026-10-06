@@ -20,6 +20,9 @@ const useStyles = makeStyles(theme => ({
     flexWrap: 'wrap',
     columnGap: theme.spacing(0.5),
   },
+  figure: {
+    whiteSpace: 'nowrap',
+  },
   note: {
     fontWeight: 'normal',
     color: theme.palette.text.secondary,
@@ -80,11 +83,18 @@ export const WorkerCapacity = ({
   } else if (resourcesUnknown) {
     value = formatWorkerNodes(capacity.nodes);
   } else {
+    // The summary wraps between figures, never inside one.
     value = (
       <>
-        {formatWorkerNodes(capacity.nodes)} <span aria-hidden="true">·</span>{' '}
-        {formatWorkerCpu(capacity.vcpus)} <span aria-hidden="true">·</span>{' '}
-        {formatWorkerMemory(capacity.memoryBytes)} RAM
+        <span className={classes.figure}>
+          {formatWorkerNodes(capacity.nodes)} <span aria-hidden="true">·</span>
+        </span>{' '}
+        <span className={classes.figure}>
+          {formatWorkerCpu(capacity.vcpus)} <span aria-hidden="true">·</span>
+        </span>{' '}
+        <span className={classes.figure}>
+          {formatWorkerMemory(capacity.memoryBytes)} RAM
+        </span>
       </>
     );
   }

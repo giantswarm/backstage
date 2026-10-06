@@ -525,10 +525,15 @@ describe('ClusterAboutCard', () => {
       await renderCard(api);
 
       await waitFor(() => {
-        expect(workerCapacityField().getByText(/4 nodes/).textContent).toMatch(
-          /^4 nodes\s+·\s+32 vCPUs\s+·\s+128 GiB RAM$/,
-        );
+        expect(
+          workerCapacityField()
+            .getByText(/4 nodes/)
+            .closest('p')?.textContent,
+        ).toMatch(/^4 nodes\s+·\s+32 vCPUs\s+·\s+128 GiB RAM$/);
       });
+      expect(
+        workerCapacityField().getByText('128 GiB RAM'),
+      ).toBeInTheDocument();
       expect(mimirApi.query).not.toHaveBeenCalled();
     });
 
@@ -646,10 +651,13 @@ describe('ClusterAboutCard', () => {
       await renderCard(api);
 
       await waitFor(() => {
-        expect(workerCapacityField().getByText(/3 nodes/).textContent).toMatch(
-          /^3 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/,
-        );
+        expect(
+          workerCapacityField()
+            .getByText(/3 nodes/)
+            .closest('p')?.textContent,
+        ).toMatch(/^3 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/);
       });
+      expect(workerCapacityField().getByText('48 GiB RAM')).toBeInTheDocument();
       expect(mimirApi.query).toHaveBeenCalledWith(
         expect.objectContaining({
           installationName: INSTALLATION,
