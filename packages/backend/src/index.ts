@@ -7,6 +7,7 @@ import {
   rootLogger,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
+import { telemetryConfigPlugin } from './telemetry';
 
 // global-agent never reaches native fetch, which the catalog, the scaffolder
 // and most plugins read URLs with: give it the same GLOBAL_AGENT_* proxy.
@@ -81,6 +82,9 @@ backend.add(import('@backstage/plugin-signals-backend'));
 
 // branding plugin (decoupled from gs so it works in deployments without gs)
 backend.add(brandingPlugin);
+
+// warns at startup when telemetry is enabled without an app ID
+backend.add(telemetryConfigPlugin);
 
 // giantswarm plugin
 backend.add(import('@giantswarm/backstage-plugin-gs-backend'));

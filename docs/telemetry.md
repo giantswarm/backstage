@@ -5,6 +5,12 @@ when an installation configures `app.telemetrydeck`, and nothing otherwise. Each
 signal carries a salted, hashed user identifier, never the user's name or email,
 and the portal's release version.
 
+An installation turns telemetry on with its own `app.telemetrydeck.appID`. The
+base config leaves the app ID empty; a portal started with `app.telemetrydeck`
+set and an empty app ID sends no usage data and its backend logs one warning at
+startup saying so. `app.telemetrydeck: null` turns telemetry off without the
+warning.
+
 ## Page views
 
 Every navigation sends one `pageview` signal with the page's name (for example
