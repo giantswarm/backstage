@@ -30,7 +30,7 @@ declared locally (`kagentApi.ts`) until `@giantswarm/k8s-types` publishes them.
 **agent-platform-backend.** The kagent client speaks `SessionService`; a create names
 the Agent and no longer picks a Harness, and an Agent without a ready revision is a
 409 naming it. The generated stubs are pinned to `giantswarm/kagent-upstream`
-`a8353a0ace648252e4d0886795406c121117839f`.
+`f7bf3dafd6a8c21e084015a9310f4692778ebaeb`.
 
 **agent-platform.** An agent's extra egress origins (`Agent.spec.egress`, kagent-dev/kagent#3019) are typed on
 the create form and the edit page, carried as agent-manager's `egress`, and listed on

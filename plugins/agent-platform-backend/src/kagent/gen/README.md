@@ -16,7 +16,7 @@ the protos.
 The protos are taken from the kagent line the platform consumes,
 `github.com/giantswarm/kagent-upstream`, at commit
 
-    a8353a0ace648252e4d0886795406c121117839f
+    f7bf3dafd6a8c21e084015a9310f4692778ebaeb
 
 (upstream `kagent-dev/kagent` `bf8afa56`; the `api.kagent.dev/v1alpha3` Agent
 line). Pin a commit SHA, never a branch: the consumed branch of the line is
@@ -28,7 +28,7 @@ publishes it.
 
 ```bash
 # Export the protos of the pinned commit into a scratch directory.
-git -C <kagent-upstream checkout> archive a8353a0ace648252e4d0886795406c121117839f proto \
+git -C <kagent-upstream checkout> archive f7bf3dafd6a8c21e084015a9310f4692778ebaeb proto \
   | tar -x -C <scratch>
 
 # Generate into this directory (buf resolves the buf.build deps named in buf.yaml).

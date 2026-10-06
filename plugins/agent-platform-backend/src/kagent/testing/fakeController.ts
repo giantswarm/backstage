@@ -864,7 +864,7 @@ export function createFakeController(
       },
       getVersion(_request, ctx) {
         record('SystemService', 'GetVersion', ctx);
-        return { kagentVersion: 'fake', gitCommit: 'a8353a0a', buildDate: '' };
+        return { kagentVersion: 'fake', gitCommit: 'f7bf3daf', buildDate: '' };
       },
     });
 
