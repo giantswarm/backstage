@@ -49,11 +49,33 @@ const COMMIT = {
 const IN_GIT =
   'HelmRelease org-acme/demo1 is in Flux Kustomization flux-giantswarm/inst-1-clusters-demo1’s inventory: remove it from git, a live delete would be undone';
 
+/** delete_cluster's answer once nothing of the cluster is left, as the muster client throws it. */
+function nothingLeftError() {
+  return Object.assign(
+    new Error('cluster org-acme/demo1 (nothing of it is left) not found'),
+    {
+      details: [
+        JSON.stringify({
+          notFound: {
+            cluster: 'demo1',
+            namespace: 'org-acme',
+            nothingLeft: true,
+          },
+        }),
+      ],
+    },
+  );
+}
+
 type Scenario = {
   /** delete_cluster in mode apply refuses: git owns the cluster. */
   inGit?: boolean;
   /** Both modes refuse: the installation's own cluster. */
   ownCluster?: boolean;
+  /** Nothing of the cluster is left from the start. */
+  gone?: boolean;
+  /** The second call finds nothing left to remove. */
+  nothingLeftOnSecondCall?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -62,6 +84,9 @@ function makeMusterApi(scenario: Scenario = {}) {
     async (name: string, args: Record<string, unknown>) => {
       if (name !== 'x_cluster-manager_delete_cluster') {
         throw new Error(`unexpected tool ${name}`);
+      }
+      if (scenario.gone) {
+        throw nothingLeftError();
       }
       if (scenario.ownCluster) {
         throw new Error(
@@ -89,6 +114,9 @@ function makeMusterApi(scenario: Scenario = {}) {
         return DRY_RUN;
       }
       applies += 1;
+      if (scenario.nothingLeftOnSecondCall && applies === 2) {
+        throw nothingLeftError();
+      }
       return {
         ...DRY_RUN,
         dryRun: false,
@@ -215,5 +243,46 @@ describe('DeleteClusterDialog', () => {
     await waitFor(() =>
       expect(callTool.mock.calls.length).toBeGreaterThan(before),
     );
+  });
+
+  it('reads nothing left after Finish removal as the removal complete', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderDialog(
+      { nothingLeftOnSecondCall: true },
+      false,
+    );
+    await screen.findByTestId('what-goes');
+    await user.type(screen.getByLabelText(/Type demo1 to confirm/), 'demo1');
+    await user.click(screen.getByRole('button', { name: 'Delete cluster' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Finish removal' }),
+    );
+
+    expect(await screen.findByTestId('delete-complete')).toHaveTextContent(
+      'demo1 is removed: nothing of it is left',
+    );
+    expect(writesOf(callTool)).toHaveLength(2);
+    expect(screen.queryByText('cluster-manager refused')).toBeNull();
+    expect(screen.queryByText(NEXT_STEP)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Finish removal' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a cluster with nothing left as already removed', async () => {
+    const { callTool } = await renderDialog({ gone: true });
+
+    expect(await screen.findByTestId('delete-complete')).toHaveTextContent(
+      'demo1 is already removed: nothing of it is left',
+    );
+    expect(screen.queryByTestId('delete-refused')).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Delete cluster' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Cancel' }),
+    ).not.toBeInTheDocument();
+    expect(writesOf(callTool)).toHaveLength(0);
   });
 });

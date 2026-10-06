@@ -861,7 +861,11 @@ function cacheClaimsOf(value: unknown): CacheClaimsRefusal | undefined {
 }
 
 /** The `refused` block among a tool error's further text blocks, if any. */
-export function parseRefusal(details: string[]): Refusal | undefined {
+/** The first object a further text block of a tool error carries under `key`. */
+function detailBlock(
+  details: string[],
+  key: string,
+): Record<string, unknown> | undefined {
   for (const detail of details) {
     let parsed: unknown;
     try {
@@ -869,23 +873,52 @@ export function parseRefusal(details: string[]): Refusal | undefined {
     } catch {
       continue;
     }
-    const refused = (parsed as { refused?: unknown } | null)?.refused;
-    if (refused && typeof refused === 'object') {
-      const block = refused as Record<string, unknown>;
-      const cacheZone = cacheZoneOf(block.cacheZone);
-      const cacheClaims = cacheClaimsOf(block.cacheClaims);
-      const cacheOn = cacheOnOf(block.cacheOn);
-      return {
-        nodes: strings(block.nodes),
-        models: strings(block.models),
-        hint: typeof block.hint === 'string' ? block.hint : '',
-        ...(cacheZone ? { cacheZone } : {}),
-        ...(cacheClaims ? { cacheClaims } : {}),
-        ...(cacheOn ? { cacheOn } : {}),
-      };
+    const block = (parsed as Record<string, unknown> | null)?.[key];
+    if (block && typeof block === 'object') {
+      return block as Record<string, unknown>;
     }
   }
   return undefined;
+}
+
+export function parseRefusal(details: string[]): Refusal | undefined {
+  const block = detailBlock(details, 'refused');
+  if (!block) {
+    return undefined;
+  }
+  const cacheZone = cacheZoneOf(block.cacheZone);
+  const cacheClaims = cacheClaimsOf(block.cacheClaims);
+  const cacheOn = cacheOnOf(block.cacheOn);
+  return {
+    nodes: strings(block.nodes),
+    models: strings(block.models),
+    hint: typeof block.hint === 'string' ? block.hint : '',
+    ...(cacheZone ? { cacheZone } : {}),
+    ...(cacheClaims ? { cacheClaims } : {}),
+    ...(cacheOn ? { cacheOn } : {}),
+  };
+}
+
+/**
+ * `delete_cluster`'s not-found answer: the cluster it looked for, and
+ * `nothingLeft` once nothing of it is left, the removal complete.
+ */
+export type NotFound = {
+  cluster: string;
+  namespace: string;
+  nothingLeft: boolean;
+};
+
+export function parseNotFound(details: string[]): NotFound | undefined {
+  const block = detailBlock(details, 'notFound');
+  if (!block) {
+    return undefined;
+  }
+  return {
+    cluster: optionalString(block.cluster) ?? '',
+    namespace: optionalString(block.namespace) ?? '',
+    nothingLeft: block.nothingLeft === true,
+  };
 }
 
 /**
@@ -978,10 +1011,13 @@ export class ClusterManagerError extends Error {
   readonly name = 'ClusterManagerError';
   /** The structured refusal, when the answer carried one. */
   readonly refused?: Refusal;
+  /** The structured not-found answer, when the answer carried one. */
+  readonly notFound?: NotFound;
 
-  constructor(message: string, refused?: Refusal) {
+  constructor(message: string, refused?: Refusal, notFound?: NotFound) {
     super(message);
     this.refused = refused;
+    this.notFound = notFound;
   }
 }
 
@@ -1010,9 +1046,11 @@ export function classifyClusterManagerError(error: unknown): Error {
   if (looksNotConnected(message)) {
     return new ClusterManagerNotConnectedError(message);
   }
+  const details = toolErrorDetails(error);
   return new ClusterManagerError(
     message,
-    parseRefusal(toolErrorDetails(error)),
+    parseRefusal(details),
+    parseNotFound(details),
   );
 }
 
@@ -1021,6 +1059,8 @@ export type NodePoolWriteFailure = {
   message: string;
   /** The structured refusal (the nodes and models of a delete, the model cache of a create), when the answer carried one. */
   refused?: Refusal;
+  /** `delete_cluster`'s not-found answer, when the answer carried one. */
+  notFound?: NotFound;
 };
 
 export function classifyNodePoolWriteFailure(
@@ -1034,7 +1074,15 @@ export function classifyNodePoolWriteFailure(
     kind: 'refused',
     message,
     refused: error instanceof ClusterManagerError ? error.refused : undefined,
+    notFound: error instanceof ClusterManagerError ? error.notFound : undefined,
   };
+}
+
+/** Whether cluster-manager answered that nothing of the cluster is left: the removal is complete. */
+export function isNothingLeft(
+  failure: NodePoolWriteFailure | undefined,
+): boolean {
+  return failure?.notFound?.nothingLeft === true;
 }
 
 /** A manifest's file name in the review: `<kind>-<name>.yaml`. */
