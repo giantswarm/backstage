@@ -1,27 +1,12 @@
 import { TableColumn } from '@backstage/core-components';
 import { Link, Tooltip } from '@material-ui/core';
-import { getInstanceTypeTooltip } from '../awsInstanceTypeInfo';
 import { formatLimits } from '../karpenter';
 import {
   isTableColumnHidden,
   sortAndFilterOptions,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { DateComponent, NotAvailable } from '../../../../UI';
-
-export type AWSNodePoolRow = {
-  id: string;
-  name: string;
-  type: 'ASG' | 'Karpenter';
-  desiredReplicas: number | undefined;
-  readyReplicas: number | undefined;
-  instanceType: string | undefined;
-  availabilityZones: string[] | undefined;
-  minSize: number | undefined;
-  maxSize: number | undefined;
-  limits: Record<string, number | string> | undefined;
-  phase: string | undefined;
-  created: string | undefined;
-};
+import { AWSNodePoolRow } from '../../../nodePools';
 
 const AWSNodePoolColumns = {
   name: 'name',
@@ -88,10 +73,9 @@ export function getInitialColumns({
       field: AWSNodePoolColumns.instanceType,
       render: row => {
         if (!row.instanceType) return <NotAvailable />;
-        const tip = getInstanceTypeTooltip(row.instanceType);
-        if (!tip) return row.instanceType;
+        if (!row.machineTypeDescription) return row.instanceType;
         return (
-          <Tooltip title={tip} arrow>
+          <Tooltip title={row.machineTypeDescription} arrow>
             <span>{row.instanceType}</span>
           </Tooltip>
         );

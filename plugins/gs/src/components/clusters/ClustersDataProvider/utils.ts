@@ -19,6 +19,7 @@ import {
   isNotFoundError,
   ProviderCluster,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { ClusterWorkerCapacity } from '../../hooks/useWorkerCapacity';
 
 export type ClusterData = {
   installationName: string;
@@ -40,6 +41,8 @@ export type ClusterData = {
   awsAccountId?: string;
   awsAccountUrl?: string;
   labels?: string[];
+  /** Set while a worker capacity column is visible. */
+  workerCapacity?: ClusterWorkerCapacity;
 };
 
 export function collectClusterData({
@@ -48,12 +51,14 @@ export function collectClusterData({
   controlPlane,
   providerCluster,
   awsClusterRoleIdentity,
+  workerCapacity,
 }: {
   installationName: string;
   cluster: Cluster;
   controlPlane?: AnyControlPlane | null;
   providerCluster?: ProviderCluster | null;
   awsClusterRoleIdentity?: AWSClusterRoleIdentity | null;
+  workerCapacity?: ClusterWorkerCapacity;
 }): ClusterData {
   const name = cluster.getName();
   const namespace = cluster.getNamespace();
@@ -110,6 +115,7 @@ export function collectClusterData({
     awsAccountId,
     awsAccountUrl,
     labels,
+    workerCapacity,
   };
 }
 
