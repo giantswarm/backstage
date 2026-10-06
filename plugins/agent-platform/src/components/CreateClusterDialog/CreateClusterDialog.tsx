@@ -151,7 +151,10 @@ export function CreateClusterDialog({
   const organizations = useResources(target ?? [], Organization, undefined, {
     enabled: Boolean(target) && isOpen,
   });
-  const awsIdentity = AWS_IDENTITY_PROVIDERS.includes(provider ?? '');
+  // The provider line in effect: the person's choice, else the first line
+  // `list_releases` offers, which the form shows preselected.
+  const line = provider ?? releases.providers[0];
+  const awsIdentity = AWS_IDENTITY_PROVIDERS.includes(line ?? '');
   const identities = useResources(
     target ?? [],
     AWSClusterRoleIdentity,
@@ -159,7 +162,6 @@ export function CreateClusterDialog({
     { enabled: Boolean(target) && isOpen && awsIdentity },
   );
 
-  const line = provider ?? releases.providers[0];
   const chosenRelease = release ?? defaultRelease(releases.releases, line);
   const lineReleases = releases.releases.filter(
     candidate => candidate.provider === line,
