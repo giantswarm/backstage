@@ -236,6 +236,17 @@ describe('CreateClusterDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers the cloud identities of the preselected aws line by name', async () => {
+    const user = userEvent.setup();
+    await renderDialog();
+    await user.click(
+      await screen.findByRole('button', { name: /The chart's default/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: 'default-identity' }),
+    ).toBeInTheDocument();
+  });
+
   it('commits where git owns the organization, and shows the pull request', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderDialog({ commit: true });
