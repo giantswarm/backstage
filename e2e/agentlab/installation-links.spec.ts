@@ -7,7 +7,8 @@ import { lab } from './lab';
  * (giantswarm/roadmap#3830), and stays plain text where it has none, as in a
  * customer portal. The default lab enables no Installations page; set
  * AGENTLAB_INSTALLATIONS_PAGE=1 against a lab whose Backstage enables
- * `page:gs/installations` and lists the installation as a catalog Resource.
+ * `page:gs/installations` and lists the installation as a catalog Resource
+ * of type `installation`.
  */
 const INSTALLATIONS_PAGE = Boolean(process.env.AGENTLAB_INSTALLATIONS_PAGE);
 
@@ -35,10 +36,19 @@ test('the Deployments table names the installation of each deployment', async ({
   );
 
   if (INSTALLATIONS_PAGE) {
+    const link = cell.getByRole('link', { name: lab.installation });
     await expect(
-      cell.getByRole('link', { name: lab.installation }),
+      link,
       'the name links to the installation catalog page',
     ).toHaveAttribute('href', `/catalog/default/resource/${lab.installation}`);
+    await link.click();
+    await expect(admin).toHaveURL(
+      new RegExp(`/catalog/default/resource/${lab.installation}$`),
+    );
+    await expect(
+      admin.getByRole('heading', { level: 2, name: lab.installation }),
+      'one click reaches the installation page',
+    ).toBeVisible();
   } else {
     await expect(
       cell.getByRole('link'),
