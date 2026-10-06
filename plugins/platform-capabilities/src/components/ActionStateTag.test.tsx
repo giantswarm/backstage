@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { ActionStateName } from '../apis';
-import { ACTION_STATE_WORDS, ActionStateTag } from './ActionStateTag';
+import { ActionStateTag } from './ActionStateTag';
 
 describe('ActionStateTag', () => {
   it.each<[ActionStateName, string, string | null]>([
@@ -19,7 +19,32 @@ describe('ActionStateTag', () => {
     expect(tag).toHaveTextContent(words);
     expect(tag).not.toHaveTextContent(/unknown/i);
     expect(tag.getAttribute('data-mark')).toBe(mark);
-    expect(ACTION_STATE_WORDS[state]).toBe(words);
+  });
+
+  it('reads a word of its own for every state an action can be in', () => {
+    const states: ActionStateName[] = [
+      'pending approval',
+      'ready to merge',
+      'rolling out',
+      'waiting for the customer',
+      'enabled',
+      'drifted',
+      'failed',
+      'refused',
+      'denied',
+      'reverted',
+      'withdrawn',
+      'removed',
+    ];
+    const words = states.map(state => {
+      const { unmount } = render(<ActionStateTag state={state} />);
+      const text = screen.getByTestId('action-state').textContent;
+      unmount();
+      return text;
+    });
+    expect(words.join(' ')).not.toMatch(/unknown/i);
+    // No two of the action's states look alike.
+    expect(new Set(words).size).toBe(states.length);
   });
 
   it('says on the tooltip that a ready to merge action is the actor’s to merge', () => {

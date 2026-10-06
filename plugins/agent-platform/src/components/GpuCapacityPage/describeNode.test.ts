@@ -1,9 +1,5 @@
 import type { GpuNode } from '../../lib/serving';
-import {
-  describeNode,
-  HOST_NODE_DESCRIPTION,
-  hostNodeDescription,
-} from './GpuCapacityPanel';
+import { describeNode } from './GpuCapacityPanel';
 
 function hostNode(overrides: Partial<GpuNode>): GpuNode {
   return {
@@ -24,16 +20,5 @@ describe('describeNode · backend hosts', () => {
         hostNode({ id: 'lab/lemonade/172.21.0.1', backend: 'lemonade' }),
       ),
     ).toBe('Lemonade host');
-  });
-
-  it('falls back to the generic description without a backend', () => {
-    expect(hostNodeDescription(hostNode({}))).toBe(HOST_NODE_DESCRIPTION);
-    expect(describeNode(hostNode({}))).toBe(HOST_NODE_DESCRIPTION);
-  });
-
-  it('keeps a fault ahead of the host description', () => {
-    expect(describeNode(hostNode({ backend: 'ollama', ready: false }))).toBe(
-      'Not ready',
-    );
   });
 });

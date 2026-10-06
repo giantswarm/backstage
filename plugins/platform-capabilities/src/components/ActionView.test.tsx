@@ -1,6 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
-import { Action, ActionStateName } from '../apis';
+import { Action } from '../apis';
 import {
   AGENT_PLATFORM_DEFINITION,
   DENIED_ACTION,
@@ -11,7 +11,6 @@ import {
   REVERTED_ACTION,
   WITHDRAWN_ACTION,
 } from '../fixtures/fakeApi';
-import { ACTION_STATE_WORDS } from './ActionStateTag';
 import { ActionView } from './ActionView';
 
 const FILE = 'installations/rowan/config.yaml.patch';
@@ -158,34 +157,5 @@ describe('ActionView', () => {
       'https://github.com/example/example-configs/pull/7',
     );
     expect(record).not.toHaveTextContent(/unknown|pending/i);
-  });
-
-  it('has a word of its own for every state an action can be in', () => {
-    const states: ActionStateName[] = [
-      'pending approval',
-      'ready to merge',
-      'rolling out',
-      'waiting for the customer',
-      'enabled',
-      'drifted',
-      'failed',
-      'refused',
-      'denied',
-      'reverted',
-      'withdrawn',
-      'removed',
-    ];
-    for (const state of states) {
-      expect(ACTION_STATE_WORDS[state]).not.toBe('Unknown');
-    }
-    expect(ACTION_STATE_WORDS.refused).toBe('Refused');
-    expect(ACTION_STATE_WORDS.denied).toBe('Denied');
-    expect(ACTION_STATE_WORDS.reverted).toBe('Reverted');
-    expect(ACTION_STATE_WORDS.withdrawn).toBe('Withdrawn');
-    expect(ACTION_STATE_WORDS.removed).toBe('Removed');
-    // Every state reads its own word: no two of the action's states look alike.
-    expect(new Set(states.map(s => ACTION_STATE_WORDS[s])).size).toBe(
-      states.length,
-    );
   });
 });

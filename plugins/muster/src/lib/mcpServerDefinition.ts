@@ -472,19 +472,6 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
 }
 
 /**
- * Human-readable validation problems, in form order. Empty when the state is
- * valid. Mirrors the CRD's structural rules so nothing fails later at apply
- * time; the auth mutual exclusions are handled by {@link authFieldAvailability}
- * instead, since the wizard's exclusive auth modes make them unreachable rather
- * than merely invalid.
- */
-export function validateNewMcpServerForm(
-  state: NewMcpServerFormState,
-): string[] {
-  return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
-}
-
-/**
  * The composed definition as an MCPServer manifest — the review step's manual
  * fallback for users who prefer to commit the CR to a GitOps repo instead of
  * registering live. Same namespace default as the GitOps dialog's

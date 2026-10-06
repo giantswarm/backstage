@@ -86,10 +86,10 @@ const HOST_NO_GPU_FIGURES =
  * several servers on one machine lists one row per backend for the same
  * address, and the description is what tells them apart.
  */
-export const HOST_NODE_DESCRIPTION = 'Backend host';
+const HOST_NODE_DESCRIPTION = 'Backend host';
 
 /** The description of a backend host row: the server's name when known. */
-export function hostNodeDescription(node: GpuNode): string {
+function hostNodeDescription(node: GpuNode): string {
   return node.backend
     ? `${backendServerName(node.backend)} host`
     : HOST_NODE_DESCRIPTION;

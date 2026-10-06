@@ -13,9 +13,9 @@ import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline } from '../../lib/kagentTimeline';
 import {
-  deriveSessionState,
   normalizeSessionDetail,
   normalizeTaskList,
+  readNewestTaskState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionDetailPage } from './SessionDetailPage';
 
@@ -239,7 +239,7 @@ const detail = normalizeSessionDetail(detailV099, 'gazelle').detail!;
 const loadedView: SessionDetailView = {
   detail,
   timeline,
-  state: deriveSessionState(tasks),
+  state: readNewestTaskState(tasks)?.state,
   // The fixture's newest task is `working`. Its timestamp is long past the
   // staleness bound, so the real hook would call it stale — set explicitly here so
   // these tests describe a live turn rather than depending on a fixture's age.

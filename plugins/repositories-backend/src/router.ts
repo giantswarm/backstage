@@ -117,7 +117,7 @@ function singleQueryValue(value: unknown, name: string): string | undefined {
 }
 
 /** Reads the tool arguments out of a request's query string, typed. */
-export function listArguments(
+function listArguments(
   query: Record<string, unknown>,
 ): Record<string, unknown> {
   const args: Record<string, unknown> = {};
@@ -162,7 +162,7 @@ function isKind(value: unknown, kind: ArgumentKind): boolean {
  * tool does not take or a value of the wrong type is refused; `null` and
  * `undefined` are dropped. The values themselves are handed on unchanged.
  */
-export function bodyArguments(
+function bodyArguments(
   body: unknown,
   tool: keyof typeof BODY_ARGUMENTS,
 ): Record<string, unknown> {

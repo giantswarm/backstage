@@ -83,14 +83,6 @@ const MARK: Record<CapabilityStateName, SyncMark> = {
   unknown: 'unknown',
 };
 
-/** The page's word for each state an action can be in; nothing reads Unknown for a known state. */
-export const ACTION_STATE_WORDS: Record<ActionStateName, string> = {
-  ...STATE_WORDS,
-  ...(Object.fromEntries(
-    Object.entries(OWN_STATES).map(([state, { words }]) => [state, words]),
-  ) as Record<OwnState, string>),
-};
-
 function isOwn(state: ActionStateName): state is OwnState {
   return state in OWN_STATES;
 }
