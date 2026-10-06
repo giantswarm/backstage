@@ -13,7 +13,6 @@ import type { AgentRow } from './helpers';
 import {
   getAgentsRefetchInterval,
   resolveModelConfig,
-  resolveModelLabel,
   sortAgentRows,
   sortAgentsBy,
   toAgentRow,
@@ -193,51 +192,6 @@ const readyHarness = (ageMs = 0) =>
       ageMs,
     ),
   ]);
-
-describe('resolveModelLabel', () => {
-  it('resolves to the ModelConfig display name when found', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-a',
-        displayName: 'Claude Sonnet 4.6',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('Claude Sonnet 4.6');
-  });
-
-  it('falls back to the model when the ModelConfig has no display-name annotation', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6' });
-    const modelConfigs = [makeModelConfig({ name: 'sonnet-4-6' })];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('claude-sonnet-4-6');
-  });
-
-  it('falls back to the raw reference when no ModelConfig matches', () => {
-    const agent = makeAgent({ modelConfig: 'default-model-config' });
-
-    expect(resolveModelLabel(agent, [])).toBe('default-model-config');
-  });
-
-  it('only matches ModelConfigs in the same namespace', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-b',
-        displayName: 'Wrong namespace',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('sonnet-4-6');
-  });
-
-  it('returns undefined when the agent references no model', () => {
-    expect(resolveModelLabel(makeAgent({}), [])).toBeUndefined();
-  });
-});
 
 describe('toAgentRow', () => {
   it('maps an agent to a plain row', () => {

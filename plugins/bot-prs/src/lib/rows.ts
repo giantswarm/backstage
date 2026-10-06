@@ -135,31 +135,6 @@ export function groupRank(row: BotPrRow): number {
   return GROUP_ORDER[row.group];
 }
 
-/**
- * The PR's age in whole days, from `created_at`. The engine leaves `age_days`
- * out of the JSON when it is zero, so a PR opened today would read as unknown
- * if the field alone decided; the timestamp is always there.
- */
-export function ageDays(
-  row: Pick<BotPrRow, 'created_at' | 'age_days'>,
-  now = Date.now(),
-): number | undefined {
-  if (row.created_at) {
-    const created = Date.parse(row.created_at);
-    if (!Number.isNaN(created)) {
-      return Math.max(0, Math.floor((now - created) / 86_400_000));
-    }
-  }
-  return row.age_days;
-}
-
-export function formatAge(days: number | undefined): string {
-  if (days === undefined) {
-    return '—';
-  }
-  return days === 0 ? 'today' : `${days} d`;
-}
-
 export type QueueStats = {
   /** Every row in view. */
   total: number;
