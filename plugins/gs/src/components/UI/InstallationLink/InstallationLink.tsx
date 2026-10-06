@@ -1,7 +1,7 @@
-import { Link } from '@backstage/ui';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { useEntityRefLink } from '@backstage/plugin-catalog-react';
+import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { installationsRouteRef } from '../../../routes';
+import { useInstallationEntityNames } from '../../hooks/useInstallationEntityNames';
 
 type InstallationLinkProps = {
   installationName: string;
@@ -10,24 +10,28 @@ type InstallationLinkProps = {
 export const InstallationLink = ({
   installationName,
 }: InstallationLinkProps) => {
-  // The installations page can be disabled (a customer portal), in which case
-  // the catalog has no installation entities to link to.
+  // The installations page can be disabled (a customer portal); and where it
+  // is enabled, not every configured installation has a catalog entity.
   const installationsRouteLink = useRouteRef(installationsRouteRef);
-  const entityRefLink = useEntityRefLink();
+  const { installationEntityNames } = useInstallationEntityNames({
+    enabled: Boolean(installationsRouteLink),
+  });
 
-  if (!installationsRouteLink) {
+  if (
+    !installationsRouteLink ||
+    !installationEntityNames?.has(installationName)
+  ) {
     return <>{installationName}</>;
   }
 
   return (
-    <Link
-      href={entityRefLink({
+    <EntityRefLink
+      entityRef={{
         kind: 'resource',
         namespace: 'default',
         name: installationName,
-      })}
-    >
-      {installationName}
-    </Link>
+      }}
+      title={installationName}
+    />
   );
 };

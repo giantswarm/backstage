@@ -18,6 +18,7 @@ export * from './useHelmChartTagManifest';
 export * from './useHelmChartTags';
 export * from './useHelmChartValuesSchema';
 export * from './useHelmChartValuesYaml';
+export * from './useInstallationEntityNames';
 export * from './useInstallationsInfo';
 export * from './useLayoutTabs';
 export * from './useK8sVersionEOLDate';
