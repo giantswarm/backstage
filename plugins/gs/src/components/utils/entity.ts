@@ -1,6 +1,9 @@
 import { ANNOTATION_SOURCE_LOCATION, Entity } from '@backstage/catalog-model';
 import { formatVersion } from './helpers';
-import { parseChartRef } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  Annotations,
+  parseChartRef,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 export const GS_ICON_URL = 'giantswarm.io/icon-url';
 export const GS_INGRESS_HOST = 'giantswarm.io/ingress-host';
@@ -20,7 +23,7 @@ export const GS_CHART_METADATA_STYLE = 'giantswarm.io/chart-metadata-style';
 export const GS_BUILD_STATUS = 'giantswarm.io/build-status';
 export const GS_BUILD_FAILING_CHECKS = 'giantswarm.io/build-failing-checks';
 export const GS_BUILD_STATUS_CHECKED = 'giantswarm.io/build-status-checked';
-export const GS_DEFAULT_BRANCH = 'giantswarm.io/default-branch';
+export const GS_DEFAULT_BRANCH = Annotations.annotationDefaultBranch;
 export const GS_ARCHITECT_ORB_VERSION = 'giantswarm.io/architect-orb-version';
 export const GS_ARCHITECT_ORB_REF = 'giantswarm.io/architect-orb-ref';
 export const GS_APP_BUILD_SUITE_VERSION =

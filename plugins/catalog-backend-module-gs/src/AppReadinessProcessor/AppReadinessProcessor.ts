@@ -35,6 +35,7 @@ import {
   type LatestRelease,
 } from '../util/githubReleases';
 import { resolveGithubToken } from '../util/githubToken';
+import { parseProjectSlug } from '../util/projectSlug';
 import { type Cached, TtlCache } from '../util/TtlCache';
 
 // Re-exported for callers that reached the cache through this module.
@@ -218,7 +219,7 @@ export class AppReadinessProcessor implements CatalogProcessor {
 
     const annotations = entity.metadata.annotations ?? {};
     const refs = parseHelmChartsAnnotation(entity);
-    const slug = parseSlug(annotations[PROJECT_SLUG_ANNOTATION]);
+    const slug = parseProjectSlug(annotations[PROJECT_SLUG_ANNOTATION]);
     if (refs.length === 0 || !slug) {
       return entity;
     }
@@ -553,24 +554,6 @@ function parseHelmChartsAnnotation(entity: Entity): ChartRef[] {
     refs.push({ registry: parsed.registry, repository: parsed.repository });
   }
   return refs;
-}
-
-/**
- * Strict, as in the sibling processors: a slug with extra segments — a pasted
- * URL path like `giantswarm/my-repo/tree/main`, or `giantswarm/sub/repo` —
- * would otherwise silently resolve to a different repo, and we would publish a
- * confident verdict derived from a repo that is not this component. No verdict
- * beats a wrong one.
- */
-function parseSlug(slug?: string): { owner: string; repo: string } | undefined {
-  if (!slug) {
-    return undefined;
-  }
-  const segments = slug.split('/');
-  if (segments.length !== 2 || !segments[0] || !segments[1]) {
-    return undefined;
-  }
-  return { owner: segments[0], repo: segments[1] };
 }
 
 /**

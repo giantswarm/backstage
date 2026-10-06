@@ -16,6 +16,7 @@ import { AppReadinessProcessor } from './AppReadinessProcessor';
 import { BuildStatusProcessor } from './BuildStatusProcessor';
 import { LatestReleaseProcessor } from './LatestReleaseProcessor';
 import { PagerDutyAnnotationProcessor } from './PagerDutyAnnotationProcessor';
+import { RepoContentProcessor } from './RepoContent';
 import { SbomDependencyProcessor } from './SbomDependencyProcessor';
 
 export const catalogModuleGS = createBackendModule({
@@ -57,6 +58,22 @@ export const catalogModuleGS = createBackendModule({
         if (sbomEnabled) {
           catalog.addProcessor(
             await SbomDependencyProcessor.create({
+              config,
+              database,
+              logger,
+              catalogApi,
+              scheduler,
+              auth,
+            }),
+          );
+        }
+
+        const repoContentEnabled = config.getOptionalBoolean(
+          'catalog.processors.repoContent.enabled',
+        );
+        if (repoContentEnabled) {
+          catalog.addProcessor(
+            await RepoContentProcessor.create({
               config,
               database,
               logger,

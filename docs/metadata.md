@@ -18,6 +18,8 @@ In our case, this is expected to provide the URL of the source code repository o
 
 See [upstream documentation](https://backstage.io/docs/features/software-catalog/well-known-annotations/#backstageiotechdocs-ref).
 
+Can be set manually, or populated automatically by the `RepoContentProcessor` for components with `github.com/project-slug`, as `url:https://github.com/<slug>/tree/<default branch>` when the default branch has a `README.md`. Once the processor has a record for the repository it removes a reference the repository no longer supports.
+
 ### giantswarm.io/app-test-suite-version-source
 
 Where the version in the `giantswarm.io/app-test-suite-version` label comes from: `repo` when the repository passes its own `app-test-suite_container_tag` to `run-tests-with-ats`, `orb-default` when it relies on the default of the architect orb release it uses. Only set together with that label.
@@ -33,6 +35,10 @@ Build toolchain metadata, see `giantswarm.io/architect-orb-version`.
 ### giantswarm.io/base
 
 Base domain of a Giant Swarm installation.
+
+### giantswarm.io/default-branch
+
+Name of the default branch of the component's repository. Populated automatically by the `RepoContentProcessor` from `github.com/project-slug`. A repository whose default branch is `master` also gets the `defaultbranch:master` tag.
 
 ### giantswarm.io/custom-ca
 

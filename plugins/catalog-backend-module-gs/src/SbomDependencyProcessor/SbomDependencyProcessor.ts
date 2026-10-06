@@ -6,10 +6,7 @@ import type {
   CatalogService,
 } from '@backstage/plugin-catalog-node';
 import type { LocationSpec } from '@backstage/plugin-catalog-common';
-import {
-  readSchedulerServiceTaskScheduleDefinitionFromConfig,
-  resolvePackagePath,
-} from '@backstage/backend-plugin-api';
+import { readSchedulerServiceTaskScheduleDefinitionFromConfig } from '@backstage/backend-plugin-api';
 import type {
   AuthService,
   DatabaseService,
@@ -22,14 +19,10 @@ import {
   ScmIntegrations,
 } from '@backstage/integration';
 import type { Knex } from 'knex';
+import { getMigratedClient } from '../util/database';
 import { createSbomRefreshTask } from './sbomScheduledTask';
 
 const GITHUB_PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
-
-const migrationsDir = resolvePackagePath(
-  '@giantswarm/backstage-plugin-catalog-backend-module-gs',
-  'migrations',
-);
 
 const EXISTING_COMPONENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -56,14 +49,7 @@ export class SbomDependencyProcessor implements CatalogProcessor {
   }): Promise<SbomDependencyProcessor> {
     const { config, database, logger, catalogApi, scheduler, auth } = options;
 
-    const db = await database.getClient();
-
-    if (!database.migrations?.skip) {
-      await db.migrate.latest({
-        directory: migrationsDir,
-        tableName: 'knex_migrations_catalog_module_gs',
-      });
-    }
+    const db = await getMigratedClient(database);
 
     const integrations = ScmIntegrations.fromConfig(config);
     const credentialsProvider =

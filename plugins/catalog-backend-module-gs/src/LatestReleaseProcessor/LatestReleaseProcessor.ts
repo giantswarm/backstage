@@ -21,6 +21,7 @@ import {
   listLatestReleasesByPrefix,
 } from '../util/githubReleases';
 import { resolveGithubToken } from '../util/githubToken';
+import { parseProjectSlug } from '../util/projectSlug';
 
 const PROJECT_SLUG_ANNOTATION = 'github.com/project-slug';
 const RELEASE_TAG_PREFIX_ANNOTATION = 'giantswarm.io/release-tag-prefix';
@@ -102,7 +103,7 @@ export class LatestReleaseProcessor implements CatalogProcessor {
     if (!slug) {
       return entity;
     }
-    const parsed = parseSlug(slug);
+    const parsed = parseProjectSlug(slug);
     if (!parsed) {
       return entity;
     }
@@ -191,14 +192,6 @@ export class LatestReleaseProcessor implements CatalogProcessor {
       label,
     });
   }
-}
-
-function parseSlug(slug: string): { owner: string; repo: string } | undefined {
-  const segments = slug.split('/');
-  if (segments.length !== 2 || !segments[0] || !segments[1]) {
-    return undefined;
-  }
-  return { owner: segments[0], repo: segments[1] };
 }
 
 function withReleaseAnnotations(
