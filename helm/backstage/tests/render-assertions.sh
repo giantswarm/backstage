@@ -25,6 +25,9 @@
 # * the server shutdown delay, without which every rollout answers the
 #   requests the gateway still routes to the stopping pod with Envoy's
 #   "upstream connect error or disconnect/reset before headers".
+# * the CNPG PodMonitor gated on its toggle and on the cluster serving the
+#   kind, without which an install on a cluster without the Prometheus
+#   Operator CRDs fails and rolls back the database with it.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -261,6 +264,18 @@ if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.ya
   echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
   failed=1
 fi
+
+echo "--> CNPG PodMonitor: rendered with the tenant label when on and the cluster serves the kind, absent otherwise"
+render podmonitor-default --set database.engine=postgresql --api-versions monitoring.coreos.com/v1/PodMonitor
+expect podmonitor-default 'kind: PodMonitor'
+expect podmonitor-default 'observability.giantswarm.io/tenant: giantswarm'
+expect podmonitor-default 'kind: Cluster'
+render podmonitor-off --set database.engine=postgresql --set database.postgresql.podMonitor.enabled=false --api-versions monitoring.coreos.com/v1/PodMonitor
+refute podmonitor-off 'kind: PodMonitor'
+expect podmonitor-off 'kind: Cluster'
+render podmonitor-no-crd --set database.engine=postgresql
+refute podmonitor-no-crd 'kind: PodMonitor'
+expect podmonitor-no-crd 'kind: Cluster'
 
 echo "--> database.engine=sqlite (default): no pg config, mount or flag"
 refute sqlite 'backstage-database-config'
