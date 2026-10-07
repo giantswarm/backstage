@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
+import type { Page } from '@playwright/test';
+
 import { expect, open, test } from './fixtures';
 
 /**
@@ -21,6 +23,17 @@ const branch =
 const TEMPLATE = 'e2e-slash-branch';
 const TEMPLATE_URL = `https://github.com/giantswarm/backstage/blob/${branch}/e2e/agentlab/templates/slash-branch/template.yaml`;
 
+/** The Backstage token the page sends with its own catalog reads. */
+async function backstageToken(page: Page): Promise<string> {
+  const read = page.waitForRequest(
+    request =>
+      request.url().includes('/api/catalog/') &&
+      Boolean(request.headers()['x-backstage-token']),
+  );
+  await page.goto('/catalog');
+  return (await read).headers()['x-backstage-token'];
+}
+
 test.describe('a template on a branch with a slash', () => {
   test.skip(
     !branch.includes('/'),
@@ -30,32 +43,74 @@ test.describe('a template on a branch with a slash', () => {
   test('registers and runs, its skeleton fetched from the branch', async ({
     admin,
   }) => {
-    await open(admin, '/catalog-import');
-    await admin.getByRole('textbox', { name: /URL/ }).fill(TEMPLATE_URL);
-    await admin.getByRole('button', { name: 'Analyze' }).click();
-    // A location the lab registered in an earlier run offers Refresh.
-    const register = admin.getByRole('button', { name: /^(Import|Refresh)$/ });
-    await expect(register).toBeVisible({ timeout: 30_000 });
-    await expect(admin.getByText(`template:default/${TEMPLATE}`)).toBeVisible();
-    await register.click();
-    await expect(
-      admin.getByRole('button', { name: 'Register another' }),
-    ).toBeVisible({ timeout: 30_000 });
+    await open(admin, '/catalog');
+    const headers = { 'X-Backstage-Token': await backstageToken(admin) };
 
-    const message = `slash branch ${Date.now()}`;
-    await open(admin, `/create/templates/default/${TEMPLATE}`);
-    await admin.getByRole('textbox', { name: 'Message' }).fill(message);
-    await admin.getByRole('button', { name: 'Review' }).click();
-    await admin.getByRole('button', { name: 'Create' }).click();
+    // What the catalog import page sends: the portal has no such page, so
+    // the location is analyzed and registered through the same catalog API
+    // as the admin. The dry run reads the template at once.
+    const location = { type: 'url', target: TEMPLATE_URL };
+    const analyzed = await admin.request.post(
+      '/api/catalog/locations?dryRun=true',
+      { headers, data: location },
+    );
+    expect(analyzed.status(), await analyzed.text()).toBe(201);
+    expect(
+      (await analyzed.json()).entities
+        .filter((e: { kind: string }) => e.kind === 'Template')
+        .map((e: { metadata: { name: string } }) => e.metadata.name),
+      'the template was read from the branch',
+    ).toEqual([TEMPLATE]);
 
-    await expect(admin).toHaveURL(/\/create\/tasks\//);
-    await expect(admin.getByText(message).first()).toBeVisible({
-      timeout: 60_000,
+    const registered = await admin.request.post('/api/catalog/locations', {
+      headers,
+      data: location,
     });
-    await admin.getByRole('button', { name: /Show Logs/i }).click();
-    await expect(
-      admin.getByText('slash-branch-skeleton.txt').first(),
-      'the skeleton was fetched from the branch',
-    ).toBeVisible();
+    expect(registered.status(), await registered.text()).toBe(201);
+    const { id } = (await registered.json()).location;
+    try {
+      const message = `slash branch ${Date.now()}`;
+      await expect(async () => {
+        await open(admin, `/create/templates/default/${TEMPLATE}`);
+        await expect(
+          admin.getByRole('textbox', { name: 'Message' }),
+        ).toBeVisible();
+      }).toPass({ timeout: 90_000 });
+      await admin.getByRole('textbox', { name: 'Message' }).fill(message);
+      await admin.getByRole('button', { name: 'Review' }).click();
+      await admin.getByRole('button', { name: 'Create' }).click();
+
+      await expect(admin).toHaveURL(/\/create\/tasks\//);
+      const task = admin.url().split('/').pop();
+      // The task ends completed, or failed with the read error in its log.
+      await expect
+        .poll(
+          async () =>
+            (
+              await (
+                await admin.request.get(`/api/scaffolder/v2/tasks/${task}`, {
+                  headers,
+                })
+              ).json()
+            ).status,
+          { timeout: 120_000 },
+        )
+        .toMatch(/^(completed|failed)$/);
+      const events = await admin.request.get(
+        `/api/scaffolder/v2/tasks/${task}/events`,
+        { headers },
+      );
+      const log = (await events.json())
+        .map((e: { body: { message?: string } }) => e.body.message ?? '')
+        .join('\n');
+      expect(log, 'the skeleton was fetched from the branch').toContain(
+        'slash-branch-skeleton.txt',
+      );
+      expect(log).toContain(message);
+    } finally {
+      await admin.request.delete(`/api/catalog/locations/${id}`, {
+        headers,
+      });
+    }
   });
 });
