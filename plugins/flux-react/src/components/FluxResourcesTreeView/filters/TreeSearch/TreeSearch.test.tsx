@@ -123,4 +123,29 @@ describe('TreeSearch', () => {
     await user.keyboard('{Control>}{Shift>}g{/Shift}{/Control}');
     expect(data.navigateToPreviousMatch).toHaveBeenCalledTimes(1);
   });
+
+  it('leaves Ctrl/Cmd+F and Ctrl/Cmd+G alone while focus is in a dialog', async () => {
+    const user = userEvent.setup();
+    const data = setData({ searchQuery: 'app', totalMatches: 2 });
+
+    await renderInTestApp(
+      <>
+        <TreeSearch />
+        <div role="dialog" aria-label="Manifest">
+          <button>Inside the dialog</button>
+        </div>
+      </>,
+    );
+
+    const dialogButton = screen.getByRole('button', {
+      name: 'Inside the dialog',
+    });
+    dialogButton.focus();
+
+    await user.keyboard('{Control>}f{/Control}');
+    expect(dialogButton).toHaveFocus();
+
+    await user.keyboard('{Control>}g{/Control}');
+    expect(data.navigateToNextMatch).not.toHaveBeenCalled();
+  });
 });

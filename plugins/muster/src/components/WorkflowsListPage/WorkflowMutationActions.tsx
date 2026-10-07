@@ -22,6 +22,7 @@ import {
   ALERT_MESSAGE_STYLE,
   ConfirmDialog,
   GitOpsManagedLabel,
+  ManifestDialog,
   useOnDialogOpen,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -55,53 +56,32 @@ function GitOpsManifestDialog({
   const releaseId = provenanceReleaseId(readProvenance(workflow));
   const manifest = toManifestYaml(workflow);
 
-  const copy = () => {
-    navigator.clipboard?.writeText(manifest).catch(() => undefined);
-  };
-
   return (
-    <Dialog
+    <ManifestDialog
       isOpen={open}
       onOpenChange={next => {
         if (!next) {
           onClose();
         }
       }}
-      width="min(90vw, 860px)"
-    >
-      <DialogHeader>Workflow manifest — {workflow.getName()}</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          <Text as="p" variant="body-medium">
-            This workflow is <strong>GitOps-managed</strong>
-            {releaseId ? (
-              <>
-                {' '}
-                by HelmRelease <code>{releaseId}</code>
-              </>
-            ) : null}
-            . Live changes would be reverted by the reconciler, so they are
-            read-only here. To change it, edit its manifest in the
-            management-clusters GitOps repo and open a PR.
-          </Text>
-          <YamlEditorFormField
-            label="Current manifest"
-            value={manifest}
-            readOnly
-            height={360}
-            maxHeight={360}
-          />
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button variant="secondary" onPress={copy}>
-          Copy manifest
-        </Button>
-        <Button variant="primary" onPress={onClose}>
-          Close
-        </Button>
-      </DialogFooter>
-    </Dialog>
+      title={<>Workflow manifest — {workflow.getName()}</>}
+      manifest={manifest}
+      label="Current manifest"
+      description={
+        <>
+          This workflow is <strong>GitOps-managed</strong>
+          {releaseId ? (
+            <>
+              {' '}
+              by HelmRelease <code>{releaseId}</code>
+            </>
+          ) : null}
+          . Live changes would be reverted by the reconciler, so they are
+          read-only here. To change it, edit its manifest in the
+          management-clusters GitOps repo and open a PR.
+        </>
+      }
+    />
   );
 }
 

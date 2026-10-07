@@ -26,6 +26,7 @@ import { HelmReleaseDetails } from '../HelmReleaseDetails';
 import { RepositoryDetails } from '../RepositoryDetails';
 import { ImageAutomationDetails } from '../ImageAutomationDetails';
 import { FluxOperatorDetails } from '../FluxOperatorDetails';
+import { ResourceManifestDialogProvider } from '../ResourceManifestDialogProvider';
 
 type DetailsProps = {
   resourceRef: {
@@ -40,7 +41,7 @@ type DetailsProps = {
   isLoadingResources: boolean;
 };
 
-export const Details = ({
+const DetailsContent = ({
   resourceRef,
   resource,
   resources,
@@ -146,3 +147,13 @@ export const Details = ({
     </Box>
   );
 };
+
+/**
+ * The manifest dialog's provider wraps every state of the panel, so an open
+ * dialog stays open when its resource is selected away or disappears.
+ */
+export const Details = (props: DetailsProps) => (
+  <ResourceManifestDialogProvider>
+    <DetailsContent {...props} />
+  </ResourceManifestDialogProvider>
+);

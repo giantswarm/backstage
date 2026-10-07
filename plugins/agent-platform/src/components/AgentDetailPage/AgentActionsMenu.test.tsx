@@ -92,7 +92,9 @@ describe('AgentActionsMenu', () => {
     await waitFor(() => {
       expect(screen.getByText('Agent manifest')).toBeInTheDocument();
     });
-    expect(screen.getByText('pr-reviewer.yaml')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Copy manifest' }),
+    ).toBeInTheDocument();
   });
 
   it('offers Edit, Update skills and Delete when the installation has agent-manager, and asks the page to open them', async () => {

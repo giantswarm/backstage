@@ -1,8 +1,9 @@
-import { Dialog, DialogBody, DialogHeader, Text } from '@backstage/ui';
-import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
-
-import { CodeBlock } from '../CodeBlock';
-import { toAgentManifestYaml } from './helpers';
+import { useMemo } from 'react';
+import {
+  Agent,
+  toKubectlYaml,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import { ManifestDialog } from '@giantswarm/backstage-plugin-ui-react';
 
 export type AgentManifestDialogProps = {
   agent: Agent;
@@ -26,25 +27,21 @@ export function AgentManifestDialog({
   isOpen,
   onOpenChange,
 }: AgentManifestDialogProps) {
+  const manifest = useMemo(() => toKubectlYaml(agent), [agent]);
+
   return (
-    <Dialog
+    <ManifestDialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      width="min(90vw, 860px)"
-    >
-      <DialogHeader>Agent manifest</DialogHeader>
-      <DialogBody>
-        <Text variant="body-small" color="secondary">
-          The resource as stored, minus server-side-apply bookkeeping. Read-only
-          — this view never writes.
-        </Text>
-        <CodeBlock
-          content={toAgentManifestYaml(agent)}
-          filename={`${agent.getName()}.yaml`}
-          path={`${agent.cluster} · ${agent.getNamespace() ?? ''}`}
-          language="yaml"
-        />
-      </DialogBody>
-    </Dialog>
+      title="Agent manifest"
+      manifest={manifest}
+      description={
+        <>
+          The resource as stored on cluster <strong>{agent.cluster}</strong>,
+          minus server-side-apply bookkeeping. Read-only — this view never
+          writes.
+        </>
+      }
+    />
   );
 }

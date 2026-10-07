@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
 import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
 import CheckIcon from '@material-ui/icons/Check';
 import { ButtonIcon, Tooltip, TooltipTrigger } from '@backstage/ui';
-import { errorApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core/styles';
 import classNames from 'classnames';
-import useCopyToClipboard from 'react-use/esm/useCopyToClipboard';
+import { useCopyWithFeedback } from '../../hooks/useCopyWithFeedback';
 
 const useStyles = makeStyles({
   // bui's small ButtonIcon is 32px square, oversized next to text-sized content
@@ -46,37 +44,8 @@ export const CopyButton = ({
   className,
 }: CopyButtonProps) => {
   const classes = useStyles();
-  const errorApi = useApi(errorApiRef);
-  const [copied, setCopied] = useState(false);
-  const [{ error }, copyToClipboard] = useCopyToClipboard();
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-
-  // Surface a copy failure the same way Backstage's CopyTextButton does, rather
-  // than silently reverting to the label.
-  useEffect(() => {
-    if (error) {
-      errorApi.post(error);
-    }
-  }, [error, errorApi]);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = () => {
-    copyToClipboard(text);
-    setCopied(true);
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
-    timeoutRef.current = setTimeout(() => setCopied(false), 1500);
-  };
-
-  const showCopied = copied && !error;
+  const { copied, copy } = useCopyWithFeedback();
+  const handleCopy = () => copy(text);
 
   return (
     <TooltipTrigger>
@@ -87,11 +56,11 @@ export const CopyButton = ({
         )}
         variant="tertiary"
         size="small"
-        aria-label={showCopied ? 'Copied' : label}
-        icon={showCopied ? <CheckIcon /> : <FileCopyOutlinedIcon />}
+        aria-label={copied ? 'Copied' : label}
+        icon={copied ? <CheckIcon /> : <FileCopyOutlinedIcon />}
         onPress={handleCopy}
       />
-      <Tooltip>{showCopied ? 'Copied' : label}</Tooltip>
+      <Tooltip>{copied ? 'Copied' : label}</Tooltip>
     </TooltipTrigger>
   );
 };

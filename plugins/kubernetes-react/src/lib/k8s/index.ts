@@ -85,6 +85,7 @@ export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
 export { matchesLabelSelector } from './labelSelector';
+export { toKubectlYaml } from './kubectlYaml';
 export type { LabelSelector } from './labelSelector';
 export { ResourceSet } from './ResourceSet';
 export type { InputProviderRef } from './ResourceSet';
