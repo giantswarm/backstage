@@ -50,6 +50,16 @@ def kubectl(*args: str, timeout: int = 900) -> str:
     return run("kubectl", "--namespace", NAMESPACE, *args, timeout=timeout)
 
 
+def apply(manifest: dict) -> None:
+    logger.info("applying: %s %s", manifest["kind"], manifest["metadata"]["name"])
+    result = subprocess.run(
+        ["kubectl", "--namespace", NAMESPACE, "apply", "-f", "-"],
+        input=json.dumps(manifest), capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise AssertionError(f"kubectl apply failed:\n{result.stdout}\n{result.stderr}")
+
+
 def install_cnpg_operator() -> None:
     run("kubectl", "apply", "--server-side", "--force-conflicts", "-f", CNPG_MANIFEST)
     run(
@@ -65,10 +75,13 @@ def upgrade_to_postgresql(token: str) -> None:
         "metadata": {"name": ENTITY_NAME},
         "spec": {"type": "service", "lifecycle": "experimental", "owner": "ats"},
     }
-    kubectl(
-        "create", "configmap", "ats-catalog",
-        f"--from-literal=entities.yaml={json.dumps(entity)}",
-    )
+    configmap = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {"name": "ats-catalog"},
+        "data": {"entities.yaml": json.dumps(entity)},
+    }
+    apply(configmap)
     values = {
         # The engine as ci/ci-values-case1.yaml sets it, sized for kind.
         "database": {
@@ -76,7 +89,8 @@ def upgrade_to_postgresql(token: str) -> None:
             "postgresql": {"clusterNameSuffix": "cnpg", "instances": 1, "storageSize": "1Gi"},
         },
         "backstage": {
-            "appConfig": {
+            # The chart takes inline config as a YAML string; JSON is YAML.
+            "appConfig": json.dumps({
                 "backend": {
                     "auth": {
                         "externalAccess": [
@@ -98,7 +112,7 @@ def upgrade_to_postgresql(token: str) -> None:
                         }
                     }
                 },
-            },
+            }),
             "extraVolumes": [{"name": "ats-catalog", "configMap": {"name": "ats-catalog"}}],
             "extraVolumeMounts": [{"name": "ats-catalog", "mountPath": "/ats-catalog"}],
         },
