@@ -8,6 +8,7 @@ import {
   DialogHeader,
   Flex,
 } from '@backstage/ui';
+import { dialogDismissLock } from '../../utils/dialogDismissLock';
 
 /**
  * For an error message inside a bui `Alert`, which neither keeps line breaks
@@ -93,14 +94,7 @@ export function ConfirmDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here as well: DialogHeader's close button ignores isDismissable.
-      onOpenChange={next => {
-        if (next || !isBusy) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(isBusy, onOpenChange)}
       width={width}
     >
       <DialogHeader>{title}</DialogHeader>

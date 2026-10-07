@@ -5,10 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
-import {
-  MusterInstance,
-  MusterInstanceContext,
-} from '../MusterInstanceProvider';
+import { MusterInstanceContext } from '../MusterInstanceProvider';
+import { makeTestMusterInstance } from '../MusterInstanceProvider/testInstance';
 import {
   WorkflowDialog,
   WorkflowDialogs,
@@ -77,26 +75,6 @@ function makeWorkflow(options: {
   );
 }
 
-/** Minimal provider value for tests that assert the post-mutation refresh. */
-function makeInstance(retry: () => void): MusterInstance {
-  return {
-    installations: ['gazelle'],
-    isLoadingInstallations: false,
-    installationInfos: [],
-    activeInstallation: 'gazelle',
-    scope: 'gazelle',
-    homeInstallation: 'gazelle',
-    isSingleInstallation: false,
-    activeInstallationInfo: undefined,
-    setActiveInstallation: jest.fn(),
-    mcpServers: [],
-    workflows: [],
-    isLoading: false,
-    retry,
-    refreshInventory: jest.fn(),
-  };
-}
-
 async function renderActions(
   workflow: MusterWorkflow,
   options: {
@@ -119,7 +97,9 @@ async function renderActions(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
         {options.retry ? (
-          <MusterInstanceContext.Provider value={makeInstance(options.retry)}>
+          <MusterInstanceContext.Provider
+            value={makeTestMusterInstance({ retry: options.retry })}
+          >
             {actions}
           </MusterInstanceContext.Provider>
         ) : (

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,6 +10,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import {
+  dialogDismissLock,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
@@ -74,13 +78,7 @@ export function SessionRenameDialog({
   // dialog whenever the session is renamed elsewhere — kagent's own UI, another
   // tab, another device. Depending on it here would replace whatever the user
   // has typed, mid-sentence and with no indication anything happened.
-  const wasOpen = useRef(isOpen);
-  useEffect(() => {
-    if (isOpen && !wasOpen.current) {
-      setValue(title);
-    }
-    wasOpen.current = isOpen;
-  }, [isOpen, title]);
+  useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
   const isValid =
@@ -96,19 +94,10 @@ export function SessionRenameDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`, which reach the outside click and Escape but
-      // not `DialogHeader`'s own close button — bui renders that unconditionally,
-      // and it routes through this callback. Without the gate, closing mid-flight
-      // leaves the mutation running with nowhere to report a failure, and the user
-      // looking at the old title believing the rename worked.
-      onOpenChange={next => {
-        if (!isRenaming) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isRenaming}
-      isKeyboardDismissDisabled={isRenaming}
+      // While the rename is in flight, closing would leave the mutation
+      // running with nowhere to report a failure, and the user looking at the
+      // old title believing the rename worked.
+      {...dialogDismissLock(isRenaming, onOpenChange)}
       width="min(90vw, 520px)"
     >
       <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>
