@@ -7,6 +7,7 @@ import {
   MusterInstance,
   MusterInstanceContext,
 } from '../MusterInstanceProvider';
+import { makeTestMusterInstance } from '../MusterInstanceProvider/testInstance';
 import { McpUsageSection } from './McpUsageSection';
 
 // The section brings its own MusterProviders so it can be mounted anywhere;
@@ -58,22 +59,13 @@ function instance(): MusterInstance {
       reason: 'no answer within 3000 ms',
     },
   ];
-  return {
+  return makeTestMusterInstance({
     installations: ['gazelle', 'wombat'],
     installationInfos,
-    isLoadingInstallations: false,
     activeInstallation: 'wombat',
     scope: 'wombat',
-    homeInstallation: 'gazelle',
-    isSingleInstallation: false,
     activeInstallationInfo: installationInfos[1],
-    setActiveInstallation: jest.fn(),
-    mcpServers: [],
-    workflows: [],
-    isLoading: false,
-    retry: jest.fn(),
-    refreshInventory: jest.fn(),
-  };
+  });
 }
 
 describe('McpUsageSection on an installation the portal cannot reach', () => {

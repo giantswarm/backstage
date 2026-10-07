@@ -9,6 +9,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { musterApiRef } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
+import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { DefinitionEditorDialog } from '../shared';
@@ -145,13 +146,14 @@ export function AdHocServerDialog({
       description="Edit the muster server."
       seed={() => JSON.stringify(toMcpServerDefinition(server), null, 2)}
       parse={parseJsonDefinition}
-      renderEditor={({ value, onChange }) => (
+      renderEditor={({ value, onChange, invalid }) => (
         <TextAreaField
           label="Server definition (JSON)"
           className={classes.editField}
           rows={12}
           value={value}
           onChange={onChange}
+          isInvalid={invalid}
         />
       )}
       validateTool="core_mcpserver_validate"
@@ -160,14 +162,6 @@ export function AdHocServerDialog({
       savedMessage="Saved. The server list has been refreshed."
     />
   );
-}
-
-function parseJsonDefinition(value: string): Record<string, unknown> {
-  try {
-    return JSON.parse(value);
-  } catch (e) {
-    throw new Error(`Invalid JSON: ${(e as Error).message}`);
-  }
 }
 
 /**

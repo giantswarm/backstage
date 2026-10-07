@@ -10,7 +10,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { useOnDialogOpen } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  useOnDialogOpen,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
@@ -91,19 +94,10 @@ export function SessionRenameDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`, which reach the outside click and Escape but
-      // not `DialogHeader`'s own close button — bui renders that unconditionally,
-      // and it routes through this callback. Without the gate, closing mid-flight
-      // leaves the mutation running with nowhere to report a failure, and the user
-      // looking at the old title believing the rename worked.
-      onOpenChange={next => {
-        if (!isRenaming) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isRenaming}
-      isKeyboardDismissDisabled={isRenaming}
+      // While the rename is in flight, closing would leave the mutation
+      // running with nowhere to report a failure, and the user looking at the
+      // old title believing the rename worked.
+      {...dialogDismissLock(isRenaming, onOpenChange)}
       width="min(90vw, 520px)"
     >
       <form onSubmit={handleSubmit} style={DIALOG_FORM_STYLE}>

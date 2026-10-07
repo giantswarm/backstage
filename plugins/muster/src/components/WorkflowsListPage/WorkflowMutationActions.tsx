@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { dump, load } from 'js-yaml';
+import { dump } from 'js-yaml';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
@@ -26,6 +26,7 @@ import {
   toWorkflowDefinition,
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
+import { parseYamlDefinition } from '../../lib/definitionParsers';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 import { DefinitionEditorDialog } from '../shared';
 
@@ -204,24 +205,6 @@ export function AdHocWorkflowDialog({
       savedMessage="Saved. The workflow list has been refreshed; availability may take a few seconds to settle."
     />
   );
-}
-
-function parseYamlDefinition(value: string): Record<string, unknown> {
-  let obj: unknown;
-  try {
-    obj = load(value);
-  } catch (e) {
-    // js-yaml v5 throws on empty/comment-only input (v4 returned undefined),
-    // so those land here and are reported as invalid YAML.
-    throw new Error(`Invalid YAML: ${(e as Error).message}`);
-  }
-  // A scalar or array is a valid YAML document but not a valid workflow
-  // definition. Reject non-mappings explicitly so the editor doesn't silently
-  // no-op.
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-    throw new Error('Workflow definition must be a YAML mapping.');
-  }
-  return obj as Record<string, unknown>;
 }
 
 export interface WorkflowMutationActionsProps {

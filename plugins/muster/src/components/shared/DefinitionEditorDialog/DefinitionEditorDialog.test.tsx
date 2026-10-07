@@ -4,33 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { musterApiRef } from '../../../apis';
-import {
-  MusterInstance,
-  MusterInstanceContext,
-} from '../../MusterInstanceProvider';
+import { MusterInstanceContext } from '../../MusterInstanceProvider';
+import { makeTestMusterInstance } from '../../MusterInstanceProvider/testInstance';
 import {
   DefinitionEditorDialog,
   DefinitionEditorDialogProps,
 } from './DefinitionEditorDialog';
-
-function makeInstance(retry: () => void): MusterInstance {
-  return {
-    installations: ['gazelle'],
-    isLoadingInstallations: false,
-    installationInfos: [],
-    activeInstallation: 'gazelle',
-    scope: 'gazelle',
-    homeInstallation: 'gazelle',
-    isSingleInstallation: false,
-    activeInstallationInfo: undefined,
-    setActiveInstallation: jest.fn(),
-    mcpServers: [],
-    workflows: [],
-    isLoading: false,
-    retry,
-    refreshInventory: jest.fn(),
-  };
-}
 
 function parseJson(value: string): Record<string, unknown> {
   try {
@@ -44,9 +23,11 @@ function parseJson(value: string): Record<string, unknown> {
 function Harness({
   onClose,
   seedRef,
+  parse = parseJson,
 }: {
   onClose: jest.Mock;
   seedRef: { current: string };
+  parse?: DefinitionEditorDialogProps['parse'];
 }) {
   const [open, setOpen] = useState(false);
   const props: DefinitionEditorDialogProps = {
@@ -59,7 +40,7 @@ function Harness({
     title: 'Edit thing',
     description: 'Edit the thing.',
     seed: () => seedRef.current,
-    parse: parseJson,
+    parse,
     renderEditor: ({ value, onChange, invalid }) => (
       <textarea
         aria-label="Definition"
@@ -83,7 +64,10 @@ function Harness({
   );
 }
 
-async function renderDialog(callTool: jest.Mock = jest.fn(async () => ({}))) {
+async function renderDialog(
+  callTool: jest.Mock = jest.fn(async () => ({})),
+  parse?: DefinitionEditorDialogProps['parse'],
+) {
   const retry = jest.fn();
   const onClose = jest.fn();
   const seedRef = { current: '{"name":"a"}' };
@@ -93,8 +77,10 @@ async function renderDialog(callTool: jest.Mock = jest.fn(async () => ({}))) {
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, { callTool }]]}>
       <QueryClientProvider client={queryClient}>
-        <MusterInstanceContext.Provider value={makeInstance(retry)}>
-          <Harness onClose={onClose} seedRef={seedRef} />
+        <MusterInstanceContext.Provider
+          value={makeTestMusterInstance({ retry })}
+        >
+          <Harness onClose={onClose} seedRef={seedRef} parse={parse} />
         </MusterInstanceContext.Provider>
       </QueryClientProvider>
     </TestApiProvider>,
@@ -156,6 +142,20 @@ describe('DefinitionEditorDialog', () => {
 
     expect(await screen.findByText('boom')).toBeInTheDocument();
     expect(screen.queryByText('Saved the thing.')).not.toBeInTheDocument();
+    // A failed call says nothing about the definition.
+    expect(editor()).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it("drops the last call's success when the text no longer parses", async () => {
+    await renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+    expect(await screen.findByText('Definition is valid.')).toBeInTheDocument();
+    await userEvent.type(editor(), ' broken');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText(/Invalid JSON/)).toBeInTheDocument();
+    expect(screen.queryByText('Definition is valid.')).not.toBeInTheDocument();
   });
 
   it('cannot be dismissed while a call is in flight', async () => {
@@ -191,5 +191,19 @@ describe('DefinitionEditorDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'open' }));
     expect(editor()).toHaveValue('{"name":"b"}');
     expect(screen.queryByText(/Invalid JSON/)).not.toBeInTheDocument();
+  });
+
+  it('says the definition could not be parsed when parse throws no message', async () => {
+    const callTool = jest.fn();
+    await renderDialog(callTool, () => {
+      throw new Error('');
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+
+    expect(
+      await screen.findByText('The definition could not be parsed.'),
+    ).toBeInTheDocument();
+    expect(callTool).not.toHaveBeenCalled();
   });
 });

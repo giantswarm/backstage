@@ -11,6 +11,7 @@ import {
 } from '@backstage/ui';
 import {
   ALERT_MESSAGE_STYLE,
+  dialogDismissLock,
   useOnDialogOpen,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/core-plugin-api';
@@ -22,7 +23,10 @@ import { useMusterMutationRefresh } from '../../MusterInstanceProvider';
 export type DefinitionEditorProps = {
   value: string;
   onChange: (value: string) => void;
-  /** Whether the dialog currently shows an error. */
+  /**
+   * The text did not parse: the dialog shows the parse error. A tool's
+   * refusal or a failed call (an expired session, the network) is not this.
+   */
   invalid: boolean;
 };
 
@@ -78,6 +82,7 @@ export function DefinitionEditorDialog({
   const refresh = useMusterMutationRefresh(installation);
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | undefined>();
+  const [parseFailed, setParseFailed] = useState(false);
   const [message, setMessage] = useState<string | undefined>();
 
   const onError = (e: Error) => setError(mutationErrorMessage(e));
@@ -112,6 +117,7 @@ export function DefinitionEditorDialog({
   useOnDialogOpen(open, () => {
     setValue(seed());
     setError(undefined);
+    setParseFailed(false);
     setMessage(undefined);
   });
 
@@ -120,10 +126,16 @@ export function DefinitionEditorDialog({
     try {
       def = parse(value);
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        (e instanceof Error && e.message) ||
+          'The definition could not be parsed.',
+      );
+      setParseFailed(true);
+      setMessage(undefined);
       return;
     }
     setError(undefined);
+    setParseFailed(false);
     setMessage(undefined);
     mutation.mutate(def);
   };
@@ -131,14 +143,11 @@ export function DefinitionEditorDialog({
   return (
     <Dialog
       isOpen={open}
-      // Gated here as well: DialogHeader's close button ignores isDismissable.
-      onOpenChange={next => {
-        if (!next && !busy) {
+      {...dialogDismissLock(Boolean(busy), next => {
+        if (!next) {
           onClose();
         }
-      }}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={Boolean(busy)}
+      })}
       width="min(90vw, 860px)"
     >
       <DialogHeader>{title}</DialogHeader>
@@ -148,7 +157,7 @@ export function DefinitionEditorDialog({
             {description} Validate before saving; both run as live mutations
             against installation <code>{installation}</code>.
           </Text>
-          {renderEditor({ value, onChange: setValue, invalid: Boolean(error) })}
+          {renderEditor({ value, onChange: setValue, invalid: parseFailed })}
           {error && (
             <Alert
               status="danger"
