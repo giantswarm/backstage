@@ -2509,7 +2509,7 @@
                 },
                 "args": {
                     "type": "array",
-                    "description": "Additional command arguments passed to the Backstage container",
+                    "description": "Arguments passed to the Backstage container, the base layer of the backend's configuration: by default the image's bundled config files, as in the image's `CMD` (`command` replaces the `CMD`, so the chart restates them here). The chart's own `--config` flags (database, appConfig, extraAppConfig, branding) follow these, so they override the bundled values. An installation that sets `args` replaces this list and keeps the bundled files only if it names them",
                     "items": {
                         "type": "string"
                     }
@@ -2720,6 +2720,16 @@
                         "operatorNamespace": {
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
+                        },
+                        "podMonitor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Render a Prometheus Operator `PodMonitor` for the CNPG cluster, with the `observability.giantswarm.io/tenant` label. It also renders only when the cluster serves `monitoring.coreos.com/v1/PodMonitor` (`helm template` needs `--api-versions monitoring.coreos.com/v1/PodMonitor`), so an install on a cluster without the Prometheus Operator CRDs succeeds; set `false` to drop it everywhere"
+                                }
+                            }
                         },
                         "storageSize": {
                             "type": "string",
