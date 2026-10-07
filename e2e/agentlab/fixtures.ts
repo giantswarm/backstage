@@ -306,11 +306,14 @@ export async function deleteAgentInPortal(
 /**
  * On an agent's detail page: waits for the agent to become ready on the
  * platform Harness, then starts a session with `prompt` from the page and
- * resolves on the new session's page.
+ * resolves on the new session's page. `whileStarting` runs against the New
+ * session dialog while the create is held on its way to kagent, and the
+ * create goes on once it returns.
  */
 export async function startSessionOnReadyAgent(
   page: Page,
   prompt: string,
+  whileStarting?: (dialog: Locator) => Promise<void>,
 ): Promise<void> {
   // The header's verdict — the page's own derivation from the template's
   // harness status, `Pending` until the golden boot is done. Tagged, since
@@ -333,8 +336,29 @@ export async function startSessionOnReadyAgent(
   const promptBox = page.getByRole('textbox', { name: 'Prompt' });
   await expect(promptBox).toBeVisible();
   await promptBox.fill(prompt);
+  let release: () => void = () => {};
+  let reached: () => void = () => {};
+  const held = new Promise<void>(resolve => (release = resolve));
+  const onItsWay = new Promise<void>(resolve => (reached = resolve));
+  const createSession = /\/api\/agent-platform\/kagent\/sessions\?/;
+  if (whileStarting) {
+    await page.route(createSession, async route => {
+      reached();
+      await held;
+      await route.continue();
+    });
+  }
   // Exact: the page header's "Start a session" is a button too.
   await page.getByRole('button', { name: 'Start', exact: true }).click();
+  if (whileStarting) {
+    try {
+      await onItsWay;
+      await whileStarting(page.getByRole('dialog', { name: 'New session' }));
+    } finally {
+      // Released, the route passes every later call straight through.
+      release();
+    }
+  }
   await expect(page).toHaveURL(
     new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
     { timeout: 60_000 },
