@@ -5,6 +5,7 @@ import {
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirRangeQueryResponse } from '../../apis/mimir/types';
 import { useMimirAvailable } from './useMimirAvailable';
@@ -68,7 +69,10 @@ export function useMimirRangeQuery(options: {
     enabled && installationName && query && start && end && step,
   );
 
-  const { data, isLoading, error } = useQuery<MimirRangeQueryResponse, Error>({
+  const { data, error, isPending, fetchStatus } = useQuery<
+    MimirRangeQueryResponse,
+    Error
+  >({
     queryKey: ['mimir-range-query', installationName, query, start, end, step],
     queryFn: async () => {
       const cluster = await kubernetesApi.getCluster(installationName);
@@ -104,6 +108,7 @@ export function useMimirRangeQuery(options: {
     refetchInterval,
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(
     () => ({

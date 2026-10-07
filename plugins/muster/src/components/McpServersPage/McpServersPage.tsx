@@ -7,6 +7,7 @@ import { Alert, Button, Flex, Link, SearchField, Text } from '@backstage/ui';
 import {
   LoadingIndicator,
   useProvidePageHeaderActions,
+  isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { newMcpServerRouteRef } from '../../routes';
 import { MUSTER_SERVER_KEY } from '../../lib/serverGrouping';
@@ -78,7 +79,7 @@ export function McpServersPage() {
   let catalogueState: CatalogueState = 'unavailable';
   if (catalogue.data) {
     catalogueState = 'loaded';
-  } else if (catalogue.isLoading) {
+  } else if (isAwaitingData(catalogue)) {
     catalogueState = 'loading';
   } else if (catalogue.error) {
     catalogueState = 'failed';

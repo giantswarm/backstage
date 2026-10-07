@@ -9,7 +9,10 @@ import {
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { StackedBarChart } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  StackedBarChart,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { WorkflowStatsPerDay } from '../../apis';
 import { formatDuration } from '../../lib/formatDuration';
@@ -167,11 +170,12 @@ export function WorkflowStatsPanel({
   const theme = useTheme();
   const musterApi = useApi(musterApiRef);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'workflow-stats', installation, name],
     queryFn: () => musterApi.getWorkflowStats(name, installation),
     enabled: name !== '',
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;

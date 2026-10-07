@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   isListableSession,
   SessionStateEntry,
@@ -123,7 +124,7 @@ export function useSessionSwitcher(
     unreadableCount,
     skippedCount,
     isPartial: unreadableCount > 0 || skippedCount > 0,
-    isLoading: sessions.isLoading,
+    isLoading: isAwaitingData(sessions),
     isStatesLoading,
     isError: (sessions.isError && sessions.data === undefined) || isStatesError,
     now,

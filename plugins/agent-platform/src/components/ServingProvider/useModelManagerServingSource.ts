@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import type {
@@ -210,7 +211,10 @@ export function useModelManagerServingSource(
   });
 
   const modelsSignature = modelQueries
-    .map(query => `${query.status}:${query.isLoading}:${query.dataUpdatedAt}`)
+    .map(
+      query =>
+        `${query.status}:${isAwaitingData(query)}:${query.dataUpdatedAt}`,
+    )
     .join('|');
 
   const nodeQueries = useQueries({
@@ -231,7 +235,10 @@ export function useModelManagerServingSource(
   });
 
   const nodesSignature = nodeQueries
-    .map(query => `${query.status}:${query.isLoading}:${query.dataUpdatedAt}`)
+    .map(
+      query =>
+        `${query.status}:${isAwaitingData(query)}:${query.dataUpdatedAt}`,
+    )
     .join('|');
 
   return useMemo<ServingSourceSnapshot>(() => {
@@ -357,9 +364,9 @@ export function useModelManagerServingSource(
     return {
       isLoading:
         isListing ||
-        backendQueries.some(query => query.isLoading) ||
-        modelQueries.some(query => query.isLoading) ||
-        nodeQueries.some(query => query.isLoading),
+        backendQueries.some(query => isAwaitingData(query)) ||
+        modelQueries.some(query => isAwaitingData(query)) ||
+        nodeQueries.some(query => isAwaitingData(query)),
       installations: active,
       backends: backendByInstallation,
       sourceBackends,

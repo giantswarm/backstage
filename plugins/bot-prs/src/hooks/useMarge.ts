@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   ALL_INSTALLATIONS,
@@ -293,7 +294,7 @@ export function useBotPrs(
       team,
       result: answer?.result,
       readAt: query.data?.readAt,
-      isLoading: enabled && query.isLoading,
+      isLoading: enabled && isAwaitingData(query),
       error: failure ?? (answer?.error ? new Error(answer.error) : null),
     };
   });
@@ -305,7 +306,7 @@ export function useBotPrs(
 
   return {
     queues,
-    isLoading: enabled && query.isLoading,
+    isLoading: enabled && isAwaitingData(query),
     isClassifying: classifyRun.isPending,
     classifying,
     classifyError:

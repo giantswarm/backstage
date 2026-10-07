@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { MimirQueryResponse } from '../../apis/mimir/types';
 import { useMimirAvailable } from './useMimirAvailable';
 import { useMimirQueryFn } from './useMimirQueryFn';
@@ -38,7 +39,10 @@ export function useMimirQuery(options: {
 
   const wanted = Boolean(enabled && installationName && query);
 
-  const { data, isLoading, error } = useQuery<MimirQueryResponse, Error>({
+  const { data, error, isPending, fetchStatus } = useQuery<
+    MimirQueryResponse,
+    Error
+  >({
     queryKey: ['mimir-query', installationName, query],
     queryFn: () => queryMimir(installationName, query),
     enabled: wanted && isAvailable === true,
@@ -46,6 +50,7 @@ export function useMimirQuery(options: {
     refetchInterval,
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(
     () => ({

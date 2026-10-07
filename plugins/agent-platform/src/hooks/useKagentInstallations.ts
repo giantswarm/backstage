@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
   isKagentInstallationList,
@@ -66,7 +67,7 @@ export type KagentInstallations = {
 export function useKagentInstallations(): KagentInstallations {
   const kagentApi = useApi(kagentApiRef);
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isError, refetch, isPending, fetchStatus } = useQuery({
     queryKey: kagentInstallationsQueryKey(),
     queryFn: () => kagentApi.listInstallations(),
     staleTime: query =>
@@ -78,6 +79,7 @@ export function useKagentInstallations(): KagentInstallations {
         ? REFETCH_WHILE_UNKNOWN_MS
         : false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   // The cache is persisted across releases, so guard the rehydrated shape: a
   // foreign entry under this key reads as "not answered yet" and is fetched

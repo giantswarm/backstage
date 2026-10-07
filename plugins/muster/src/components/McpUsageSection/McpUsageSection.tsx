@@ -20,6 +20,7 @@ import {
   DataBar,
   SectionHeader,
   StackedBarChart,
+  isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
@@ -437,7 +438,7 @@ function McpUsageBody() {
   const session = useMusterSession();
   const unreachable = isUnreachableSession(session);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'mcp-usage', activeInstallation, WINDOW_HOURS],
     queryFn: () =>
       musterApi.getMcpUsage({
@@ -446,6 +447,7 @@ function McpUsageBody() {
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   let body;
   if (unreachable) {

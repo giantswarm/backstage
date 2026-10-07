@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { McpServerRuntime } from '@giantswarm/backstage-plugin-muster';
 
 import { musterServersQueryKey } from '../lib/queryKeys';
@@ -108,7 +109,7 @@ export function useMusterServerAvailability(
         query.error,
       );
       const registered = registeredIn(query.data?.mcpServers, serverName);
-      return `${installation}:${presence}:${query.isLoading ? 'l' : ''}:${
+      return `${installation}:${presence}:${isAwaitingData(query) ? 'l' : ''}:${
         registered ?? ''
       }`;
     })

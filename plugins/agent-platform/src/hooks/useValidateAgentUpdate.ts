@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentUpdate } from '../lib/agentManager';
 import { musterValidateAgentUpdateQueryKey } from '../lib/queryKeys';
@@ -23,13 +24,14 @@ export function useValidateAgentUpdate(
   const signature = update ? JSON.stringify(update) : '';
   const enabled = Boolean(client) && Boolean(update);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterValidateAgentUpdateQueryKey(installation ?? '', signature),
     enabled,
     queryFn: () => client!.validateUpdate(update!),
     // A refused dry run stays refused; retrying only delays the message.
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return {
     result: data,

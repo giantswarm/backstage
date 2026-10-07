@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { MimirMetricSample } from '../../apis/mimir';
 import {
   KubeDeploymentSpecReplicas,
@@ -261,7 +262,8 @@ export function useMimirWorkloads(options: { installations: string[] }): {
     })),
   });
 
-  const isLoading = isLoadingConfig || queryResults.some(q => q.isLoading);
+  const isLoading =
+    isLoadingConfig || queryResults.some(q => isAwaitingData(q));
 
   const errors = useMemo(
     () =>

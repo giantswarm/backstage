@@ -4,7 +4,10 @@ import { Content, Link, LinkButton } from '@backstage/core-components';
 import { Box, Tab, Tabs, Typography } from '@material-ui/core';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { FiltersLayout } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FiltersLayout,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { LIST_LIMIT, ListFilters, repositoriesApiRef, Scope } from '../../apis';
 import {
   filtersFromParams,
@@ -83,12 +86,12 @@ export function RepositoriesPage() {
   const listing = useQuery({
     queryKey: ['repositories', 'list', filters],
     queryFn: () => api.listRepositories(filters),
-    enabled: !info.isLoading,
+    enabled: !isAwaitingData(info),
   });
   const inventory = useQuery({
     queryKey: ['repositories', 'list', inventoryFilters],
     queryFn: () => api.listRepositories(inventoryFilters),
-    enabled: !info.isLoading,
+    enabled: !isAwaitingData(info),
   });
 
   const rows = useMemo(() => listing.data?.repositories ?? [], [listing.data]);
@@ -178,7 +181,7 @@ export function RepositoriesPage() {
               <Box pl={{ lg: 2 }}>
                 <RepositoriesTable
                   rows={rows}
-                  isLoading={info.isLoading || listing.isLoading}
+                  isLoading={isAwaitingData(info) || isAwaitingData(listing)}
                 />
               </Box>
             </FiltersLayout.Content>
