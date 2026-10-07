@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, open, test, watchPageErrors } from './fixtures';
+import { contextOptions } from './lab';
 
 /**
  * Hive (`/hive`): one sidebar entry with the tabs Now, History, Roadmap,
@@ -88,6 +89,10 @@ const now = {
   upcoming: [card(30, { title: 'Other team work', team: 'Other team' })],
 };
 
+// Generated titles carry unbroken paths, links and code.
+const UNBROKEN_TITLE =
+  'giantswarm/cluster-api-provider-aws/controllers/awsmachinepool_controller_reconcile_launch_template_versions';
+
 const history = {
   window: 'weeks',
   from: '2026-07-05T00:00:00Z',
@@ -115,6 +120,30 @@ const history = {
           repo: 'giantswarm/example',
           class: 'top-epic',
           customers: ['acme'],
+          links: [],
+        },
+      ],
+    },
+    {
+      key: 'group-unbroken',
+      title: UNBROKEN_TITLE,
+      url: 'https://github.com/giantswarm/roadmap/issues/2',
+      kind: 'area',
+      teaser:
+        'Pinned in https://github.com/giantswarm/example/blob/main/controllers/awsmachinepool_controller.go#L412-L468 via `kubectl get awsmachinepools.infrastructure.cluster.x-k8s.io --output=jsonpath={.items[*].status.launchTemplateVersion}`.',
+      class: 'setup',
+      customers: [],
+      entries: [
+        {
+          key: 'giantswarm/example#101',
+          title:
+            'Reconcile_LaunchTemplateVersions_when_the_AWSMachinePool_spec_changes_without_a_rolling_update',
+          url: 'https://github.com/giantswarm/example/issues/101',
+          kind: 'issue',
+          at: NOW,
+          repo: 'giantswarm/example',
+          class: 'setup',
+          customers: [],
           links: [],
         },
       ],
@@ -318,6 +347,46 @@ test.describe('Hive', () => {
       await expect(admin.getByText(label, { exact: true })).toHaveCount(0);
     }
   });
+
+  for (const width of [1280, 768]) {
+    test(`History at ${width} px: long titles, links and code stay in their card`, async ({
+      admin,
+    }) => {
+      await admin.setViewportSize({ width, height: 900 });
+      try {
+        await open(admin, '/hive/history?team=all');
+        await expect(admin.getByText(UNBROKEN_TITLE)).toBeVisible();
+        const layout = await admin.evaluate(() => {
+          const page = document.scrollingElement!;
+          const section = document.querySelector(
+            'section[aria-labelledby="hive-history-moved"]',
+          )!;
+          const area = section.getBoundingClientRect();
+          const cards = [
+            ...section.querySelectorAll<HTMLElement>('[class*="bui-Card"]'),
+          ].filter(card => !card.parentElement?.closest('[class*="bui-Card"]'));
+          return {
+            pageOverflow: page.scrollWidth - page.clientWidth,
+            cards: cards.length,
+            outside: cards.filter(
+              card => card.getBoundingClientRect().right > area.right + 0.5,
+            ).length,
+            scrolling: cards.filter(
+              card => card.scrollWidth > card.clientWidth + 1,
+            ).length,
+          };
+        });
+        expect(layout.cards, 'both history cards render').toBe(2);
+        expect(layout.pageOverflow, 'no horizontal page scroll').toBe(0);
+        expect(layout.outside, 'every card ends within the content area').toBe(
+          0,
+        );
+        expect(layout.scrolling, 'no card scrolls sideways').toBe(0);
+      } finally {
+        await admin.setViewportSize(contextOptions.viewport);
+      }
+    });
+  }
 
   test('Roadmap: the board with the header team and search', async ({
     admin,

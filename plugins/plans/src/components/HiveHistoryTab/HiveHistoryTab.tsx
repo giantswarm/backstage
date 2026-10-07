@@ -40,6 +40,10 @@ const useStyles = makeStyles({
     margin: 0,
     paddingLeft: 'var(--bui-space-5)',
   },
+  // Generated teasers carry links, paths and commands without a break.
+  wrap: {
+    overflowWrap: 'anywhere',
+  },
 });
 
 const GROUP_KIND_LABELS: Record<Group['kind'], string> = {
@@ -51,6 +55,7 @@ const GROUP_KIND_LABELS: Record<Group['kind'], string> = {
 /** One epic or area: what it is, how far it moved, the stories that moved it. */
 function GroupCard(props: { group: Group }) {
   const { group } = props;
+  const classes = useStyles();
   const stories = group.entries.length;
   return (
     <InfoCard
@@ -84,7 +89,7 @@ function GroupCard(props: { group: Group }) {
             </TagGroup>
           )}
         </Flex>
-        <Text as="p" variant="body-medium">
+        <Text as="p" variant="body-medium" className={classes.wrap}>
           {group.teaser}
         </Text>
         {group.progress && group.progress.to.total > 0 && (
@@ -163,7 +168,9 @@ function HistoryView(props: { history: History; query: string }) {
         <ul className={classes.summary} aria-label="Summary">
           {history.summary.map(line => (
             <li key={line}>
-              <Text variant="body-medium">{line}</Text>
+              <Text variant="body-medium" className={classes.wrap}>
+                {line}
+              </Text>
             </li>
           ))}
         </ul>
