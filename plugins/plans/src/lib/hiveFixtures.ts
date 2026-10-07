@@ -655,7 +655,28 @@ function historyGroups(): Group[] {
       ),
     ]),
   };
-  return [marge, apps, flux, chat];
+  // Generated titles carry unbroken paths, links and code: the card wraps
+  // them inside its column instead of widening the page.
+  const unbroken: Group = {
+    key: 'giantswarm/roadmap#4402',
+    title:
+      'giantswarm/cluster-api-provider-aws/controllers/awsmachinepool_controller_reconcile_launch_template_versions',
+    url: boardPath(4402),
+    kind: 'area',
+    teaser:
+      'Pinned in https://github.com/giantswarm/cluster-api-provider-aws/blob/main/controllers/awsmachinepool_controller.go#L412-L468 via `kubectl get awsmachinepools.infrastructure.cluster.x-k8s.io --all-namespaces --output=jsonpath={.items[*].status.launchTemplateVersion}`.',
+    class: 'setup',
+    customers: [],
+    entries: entries('setup', [
+      issue(
+        4403,
+        'Reconcile_LaunchTemplateVersions_when_the_AWSMachinePool_spec_changes_without_a_rolling_update_of_the_instances',
+        3 * DAY,
+        'Lukas Brandt',
+      ),
+    ]),
+  };
+  return [marge, apps, flux, chat, unbroken];
 }
 
 /** Hive's history: the last three weeks (15 work days). */
