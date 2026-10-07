@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,6 +10,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { useOnDialogOpen } from '@giantswarm/backstage-plugin-ui-react';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
 
 /**
@@ -74,13 +75,7 @@ export function SessionRenameDialog({
   // dialog whenever the session is renamed elsewhere — kagent's own UI, another
   // tab, another device. Depending on it here would replace whatever the user
   // has typed, mid-sentence and with no indication anything happened.
-  const wasOpen = useRef(isOpen);
-  useEffect(() => {
-    if (isOpen && !wasOpen.current) {
-      setValue(title);
-    }
-    wasOpen.current = isOpen;
-  }, [isOpen, title]);
+  useOnDialogOpen(isOpen, () => setValue(title));
 
   const trimmed = value.trim();
   const isValid =

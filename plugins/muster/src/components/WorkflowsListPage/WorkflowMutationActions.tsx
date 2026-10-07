@@ -1,15 +1,6 @@
 import { useState } from 'react';
 import { dump, load } from 'js-yaml';
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import Edit from '@material-ui/icons/Edit';
 import DeleteOutline from '@material-ui/icons/DeleteOutline';
 import Add from '@material-ui/icons/Add';
@@ -19,7 +10,6 @@ import Tooltip from '@material-ui/core/Tooltip';
 import { useApi } from '@backstage/core-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
-  ALERT_MESSAGE_STYLE,
   ConfirmDialog,
   GitOpsManagedLabel,
   ManifestDialog,
@@ -37,6 +27,7 @@ import {
 } from '../../lib/gitops';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
+import { DefinitionEditorDialog } from '../shared';
 
 /**
  * GitOps "manifest to commit" dialog: GitOps-managed workflows are read-only in
@@ -158,12 +149,9 @@ const NEW_WORKFLOW_TEMPLATE = {
 };
 
 /**
- * Ad-hoc workflow dialog: a JSON editor validated via `core_workflow_validate`
+ * Ad-hoc workflow dialog: a YAML editor validated via `core_workflow_validate`
  * and saved via `core_workflow_create` (when `workflow` is absent) or
- * `core_workflow_update` (editing an existing ad-hoc workflow). Both calls go
- * through the `/call` proxy. The MCP-server edit dialog (`AdHocServerDialog`
- * in the server page's `serverActions`) follows the same shape, for editing
- * only.
+ * `core_workflow_update` (editing an existing ad-hoc workflow).
  */
 export function AdHocWorkflowDialog({
   installation,
@@ -176,161 +164,64 @@ export function AdHocWorkflowDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const musterApi = useApi(musterApiRef);
-  const isEdit = Boolean(workflow);
-  const target = workflow?.cluster ?? installation;
-  const refresh = useMusterMutationRefresh(target);
-  const [value, setValue] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const [message, setMessage] = useState<string | undefined>();
-
-  const onError = (e: Error) => setError(mutationErrorMessage(e));
-  const validation = useTrackedMutation({
-    event: null,
-    untrackedReason: 'A validation that writes nothing.',
-    mutationFn: (def: Record<string, unknown>) =>
-      musterApi.callTool('core_workflow_validate', def, target),
-    onSuccess: () => setMessage('Definition is valid.'),
-    onError,
-  });
-  const save = useTrackedMutation({
-    event: null,
-    untrackedReason: 'Workflows are not a tracked portal action yet.',
-    mutationFn: (def: Record<string, unknown>) =>
-      musterApi.callTool(
-        isEdit ? 'core_workflow_update' : 'core_workflow_create',
-        def,
-        target,
-      ),
-    onSuccess: () => {
-      // muster writes the CR synchronously, so refetching now shows the new
-      // or updated workflow instead of waiting for the next 30s poll; the
-      // reconciler-trailing availability badge settles on the follow-up read.
-      refresh();
-      setMessage(
-        'Saved. The workflow list has been refreshed; availability may take a few seconds to settle.',
-      );
-    },
-    onError,
-  });
-  let busy: 'validate' | 'save' | undefined;
-  if (validation.isPending) {
-    busy = 'validate';
-  } else if (save.isPending) {
-    busy = 'save';
-  }
-
-  // Seeded on open only: `workflow` is polled, and re-seeding on every
-  // refetch would overwrite what the user is typing.
-  useOnDialogOpen(open, () => {
-    setValue(
-      dump(workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE, {
-        lineWidth: 120,
-        noRefs: true,
-      }),
-    );
-    setError(undefined);
-    setMessage(undefined);
-  });
-
-  const parsed = (): Record<string, unknown> | undefined => {
-    let obj: unknown;
-    try {
-      obj = load(value);
-    } catch (e) {
-      // js-yaml v5 throws on empty/comment-only input (v4 returned undefined),
-      // so those land here and are reported as invalid YAML.
-      setError(`Invalid YAML: ${(e as Error).message}`);
-      return undefined;
-    }
-    // A scalar or array is a valid YAML document but not a valid workflow
-    // definition. Reject non-mappings explicitly so the editor doesn't silently
-    // no-op.
-    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-      setError('Workflow definition must be a YAML mapping.');
-      return undefined;
-    }
-    setError(undefined);
-    return obj as Record<string, unknown>;
-  };
-
-  const submit = (mutation: typeof validation) => {
-    const def = parsed();
-    if (def) {
-      setMessage(undefined);
-      mutation.mutate(def);
-    }
-  };
-
   return (
-    <Dialog
-      isOpen={open}
-      // Gated here as well: DialogHeader's close button ignores isDismissable.
-      onOpenChange={next => {
-        if (!next && !busy) {
-          onClose();
-        }
-      }}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={Boolean(busy)}
-      width="min(90vw, 860px)"
-    >
-      <DialogHeader>
-        {isEdit
-          ? `Edit ad-hoc workflow — ${workflow?.getName()}`
-          : 'Create workflow'}
-      </DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          <Text as="p" variant="body-medium">
-            {isEdit ? 'Edit' : 'Define'} the muster workflow (name, optional
-            description/args, and steps). Validate before saving; both run as
-            live mutations against installation <code>{target}</code>.
-          </Text>
-          <YamlEditorFormField
-            label="Workflow definition (YAML)"
-            value={value}
-            onChange={setValue}
-            height={360}
-            maxHeight={360}
-            error={Boolean(error)}
-          />
-          {error && (
-            <Alert
-              status="danger"
-              description={<span style={ALERT_MESSAGE_STYLE}>{error}</span>}
-            />
-          )}
-          {message && <Alert status="success" description={message} />}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="secondary"
-          isDisabled={Boolean(busy)}
-          onPress={onClose}
-        >
-          Close
-        </Button>
-        <Button
-          variant="secondary"
-          isDisabled={Boolean(busy)}
-          isPending={busy === 'validate'}
-          onPress={() => submit(validation)}
-        >
-          Validate
-        </Button>
-        <Button
-          variant="primary"
-          isDisabled={Boolean(busy)}
-          isPending={busy === 'save'}
-          onPress={() => submit(save)}
-        >
-          Save
-        </Button>
-      </DialogFooter>
-    </Dialog>
+    <DefinitionEditorDialog
+      open={open}
+      onClose={onClose}
+      installation={workflow?.cluster ?? installation}
+      title={
+        workflow
+          ? `Edit ad-hoc workflow — ${workflow.getName()}`
+          : 'Create workflow'
+      }
+      description={`${
+        workflow ? 'Edit' : 'Define'
+      } the muster workflow (name, optional description/args, and steps).`}
+      seed={() =>
+        dump(
+          workflow ? toWorkflowDefinition(workflow) : NEW_WORKFLOW_TEMPLATE,
+          {
+            lineWidth: 120,
+            noRefs: true,
+          },
+        )
+      }
+      parse={parseYamlDefinition}
+      renderEditor={({ value, onChange, invalid }) => (
+        <YamlEditorFormField
+          label="Workflow definition (YAML)"
+          value={value}
+          onChange={onChange}
+          height={360}
+          maxHeight={360}
+          error={invalid}
+        />
+      )}
+      validateTool="core_workflow_validate"
+      saveTool={workflow ? 'core_workflow_update' : 'core_workflow_create'}
+      saveUntrackedReason="Workflows are not a tracked portal action yet."
+      // The reconciler-trailing availability badge settles on the follow-up read.
+      savedMessage="Saved. The workflow list has been refreshed; availability may take a few seconds to settle."
+    />
   );
+}
+
+function parseYamlDefinition(value: string): Record<string, unknown> {
+  let obj: unknown;
+  try {
+    obj = load(value);
+  } catch (e) {
+    // js-yaml v5 throws on empty/comment-only input (v4 returned undefined),
+    // so those land here and are reported as invalid YAML.
+    throw new Error(`Invalid YAML: ${(e as Error).message}`);
+  }
+  // A scalar or array is a valid YAML document but not a valid workflow
+  // definition. Reject non-mappings explicitly so the editor doesn't silently
+  // no-op.
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('Workflow definition must be a YAML mapping.');
+  }
+  return obj as Record<string, unknown>;
 }
 
 export interface WorkflowMutationActionsProps {
