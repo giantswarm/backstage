@@ -13,6 +13,7 @@ import {
 import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import {
   BACKEND_KIND_LABEL,
   MODEL_MANAGER_SERVER,
@@ -54,6 +55,7 @@ export function RemoveModelBackendDialog({
   const [plan, setPlan] = useState<RemoveBackendResult>();
   const [removed, setRemoved] = useState<RemoveBackendResult>();
   const write = useBackendWrite(installation);
+  const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
 
   useEffect(() => {
@@ -64,9 +66,14 @@ export function RemoveModelBackendDialog({
       write.reset();
       return;
     }
+    const isCurrent = startAnswer();
     write
       .dryRunRemove(kind)
-      .then(setPlan)
+      .then(answer => {
+        if (isCurrent()) {
+          setPlan(answer);
+        }
+      })
       .catch(() => {
         // Shown from `write.failure`; the confirm stays disabled.
       });
@@ -91,7 +98,10 @@ export function RemoveModelBackendDialog({
   const unwired = plan?.modelConfigs ?? [];
 
   return (
-    <Dialog isOpen={isOpen} {...dialogDismissLock(isBusy, onOpenChange)}>
+    <Dialog
+      isOpen={isOpen}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
+    >
       <form
         onSubmit={event => {
           event.preventDefault();
@@ -174,7 +184,7 @@ export function RemoveModelBackendDialog({
             <Button
               variant="secondary"
               onPress={() => onOpenChange(false)}
-              isDisabled={isBusy}
+              isDisabled={write.isWriting}
             >
               {removed ? 'Close' : 'Cancel'}
             </Button>

@@ -219,8 +219,13 @@ describe('ImportModelDialog', () => {
     ).toHaveTextContent('Best node');
   });
 
-  it('cannot be dismissed while the download is starting', async () => {
-    pullModel.mockReturnValue(new Promise(() => {}));
+  it('cannot be dismissed while the download is starting, and closes once it started', async () => {
+    let land: (answer: unknown) => void = () => {};
+    pullModel.mockReturnValue(
+      new Promise(resolve => {
+        land = resolve;
+      }),
+    );
     await render();
     await search('qwen3');
     await userEvent.click(
@@ -234,6 +239,8 @@ describe('ImportModelDialog', () => {
     await userEvent.keyboard('{Escape}');
 
     expect(onOpenChange).not.toHaveBeenCalled();
+    land({ job: { id: 'j1' }, created: true });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
   it('stays open with the refusal when model-manager rejects the download', async () => {

@@ -16,6 +16,7 @@ const write: jest.Mocked<BackendWriteState> = {
   dryRunRemove: jest.fn(),
   remove: jest.fn(),
   isBusy: false,
+  isWriting: false,
   failure: undefined,
   reset: jest.fn(),
 };
@@ -121,6 +122,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   write.failure = undefined;
   write.isBusy = false;
+  write.isWriting = false;
 });
 
 describe('toAddBackendInput', () => {

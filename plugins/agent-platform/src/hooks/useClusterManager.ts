@@ -308,6 +308,8 @@ export type NodePoolWriteState = {
     options: { mode: WriteMode; dryRun?: boolean },
   ) => Promise<NodePoolWriteResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: NodePoolWriteFailure | undefined;
   reset: () => void;
 };
@@ -434,6 +436,10 @@ export function useNodePoolWrite(
       [removeCacheAsync],
     ),
     isBusy: [dryRun, create, remove, removeCache].some(m => m.isPending),
+    isWriting:
+      create.isPending ||
+      remove.isPending ||
+      (removeCache.isPending && !removeCache.variables?.options.dryRun),
     failure,
     reset,
   };
@@ -469,6 +475,8 @@ export type ClusterWriteState = {
     options: { mode: WriteMode; dryRun?: boolean },
   ) => Promise<ClusterWriteResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: NodePoolWriteFailure | undefined;
   reset: () => void;
 };
@@ -527,6 +535,9 @@ export function useClusterWrite(
       [removeAsync],
     ),
     isBusy: create.isPending || remove.isPending,
+    isWriting: [create, remove].some(
+      m => m.isPending && !m.variables?.options.dryRun,
+    ),
     failure,
     reset,
   };

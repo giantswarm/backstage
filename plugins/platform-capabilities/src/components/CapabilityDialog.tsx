@@ -164,6 +164,9 @@ export function CapabilityDialog({
   });
 
   const busy = review.isPending || commit.isPending;
+  // A dry run writes nothing: the dialog can be left while it runs, and its
+  // answer goes nowhere once the dialog is gone.
+  const isWriting = commit.isPending;
   const failure = (commit.error ?? review.error) as Error | null;
   const missing = missingRequired(form, values);
   // The definition's reason over the commit's copy of it.
@@ -260,7 +263,7 @@ export function CapabilityDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      {...dialogDismissLock(busy, open => {
+      {...dialogDismissLock(isWriting, open => {
         if (!open) {
           onClose();
         }
@@ -395,7 +398,11 @@ export function CapabilityDialog({
               <span />
             )}
             <Flex gap="2" justify="end">
-              <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+              <Button
+                variant="secondary"
+                onPress={onClose}
+                isDisabled={isWriting}
+              >
                 {done ? 'Close' : 'Cancel'}
               </Button>
               {editing && (

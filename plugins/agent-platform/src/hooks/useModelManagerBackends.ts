@@ -126,6 +126,8 @@ export type BackendWriteState = {
   /** `remove_backend` as the person. */
   remove: (kind: BackendKind, mode: WriteMode) => Promise<RemoveBackendResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: BackendWriteFailure | undefined;
   reset: () => void;
 };
@@ -145,7 +147,7 @@ export function useBackendWrite(
   const queryClient = useQueryClient();
   const [failure, setFailure] = useState<BackendWriteFailure>();
 
-  const { mutateAsync, isPending } = useTrackedMutation({
+  const { mutateAsync, isPending, variables } = useTrackedMutation({
     event: null,
     untrackedReason: 'Model configuration is not a tracked portal action yet.',
     mutationFn: ({
@@ -219,6 +221,8 @@ export function useBackendWrite(
     dryRunRemove,
     remove,
     isBusy: isPending,
+    // Only a write invalidates the reads; a dry run does not.
+    isWriting: isPending && Boolean(variables?.invalidate),
     failure,
     reset: useCallback(() => setFailure(undefined), []),
   };

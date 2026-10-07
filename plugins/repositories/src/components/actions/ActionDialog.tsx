@@ -101,6 +101,9 @@ export function ActionDialog<TPlan, TDone>({
   }, [isOpen, reviewsOnOpen, startReview]);
 
   const busy = review.isPending || write.isPending;
+  // A dry run writes nothing: the dialog can be left while it runs, and its
+  // answer goes nowhere once the dialog is gone.
+  const isWriting = write.isPending;
   const failure = (write.error ?? review.error) as Error | null;
   const commitText =
     typeof commitLabel === 'function' ? commitLabel(plan) : commitLabel;
@@ -127,7 +130,7 @@ export function ActionDialog<TPlan, TDone>({
   return (
     <Dialog
       isOpen={isOpen}
-      {...dialogDismissLock(busy, open => {
+      {...dialogDismissLock(isWriting, open => {
         if (!open) {
           onClose();
         }
@@ -162,7 +165,11 @@ export function ActionDialog<TPlan, TDone>({
         </DialogBody>
         <DialogFooter>
           <Flex gap="2" justify="end">
-            <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+            <Button
+              variant="secondary"
+              onPress={onClose}
+              isDisabled={isWriting}
+            >
               {done ? 'Close' : 'Cancel'}
             </Button>
             {!done && awaitsPlan && !reviewsOnOpen && (

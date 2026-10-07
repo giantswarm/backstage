@@ -16,6 +16,7 @@ import {
 import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useClusterWrite } from '../../hooks/useClusterManager';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import {
   CLUSTER_MANAGER_SERVER,
   isNothingLeft,
@@ -73,14 +74,19 @@ export function DeleteClusterDialog({
   const [removed, setRemoved] = useState<ClusterWriteResult>();
   const [committed, setCommitted] = useState<ClusterWriteResult>();
   const input: DeleteClusterInput = { organization, name };
+  const startAnswer = useOpenGeneration(isOpen);
 
   /** The dry runs, again after a refusal the person has dealt with. */
   const check = async () => {
     setVerdicts(undefined);
+    const isCurrent = startAnswer();
     const judged = await judgeModes(
       dryRunMode => write.remove(input, { mode: dryRunMode, dryRun: true }),
       commitOffered,
     );
+    if (!isCurrent()) {
+      return;
+    }
     write.reset();
     setVerdicts(judged);
     setMode(preferredMode(judged));
@@ -134,7 +140,7 @@ export function DeleteClusterDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      {...dialogDismissLock(write.isBusy, onOpenChange)}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 720px)"
     >
       <DialogHeader>Delete cluster {name}?</DialogHeader>
@@ -337,7 +343,7 @@ export function DeleteClusterDialog({
           <Button
             variant="secondary"
             onPress={() => onOpenChange(false)}
-            isDisabled={write.isBusy}
+            isDisabled={write.isWriting}
           >
             {started || nothingLeft ? 'Close' : 'Cancel'}
           </Button>

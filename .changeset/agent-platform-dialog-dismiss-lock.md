@@ -1,7 +1,5 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': patch
-'@giantswarm/backstage-plugin-platform-capabilities': patch
-'@giantswarm/backstage-plugin-repositories': patch
 ---
 
-The Load, Pull and Import model dialogs can no longer be closed by their header's close button while their request is on its way; Escape and an outside click already could not. Every dialog that holds itself open during a request now does so through ui-react's `dialogDismissLock`.
+A dialog holds itself open only while a write is on its way. The Load, Pull and Import model dialogs can no longer be closed by their header's close button mid-request; the Add GPU node pool dialog no longer lets go of a Deploy or Commit when its review reruns; and the Create cluster, Delete cluster, Add model backend and Remove model backend dialogs can be left while their dry run is still out, since it writes nothing.

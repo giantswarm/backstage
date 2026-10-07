@@ -422,7 +422,7 @@ export function AddGpuNodePoolDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      {...dialogDismissLock(isBusy, onOpenChange)}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -663,7 +663,7 @@ export function AddGpuNodePoolDialog({
             <Button
               variant="secondary"
               onPress={() => onOpenChange(false)}
-              isDisabled={isBusy}
+              isDisabled={write.isWriting}
             >
               {done ? 'Close' : 'Cancel'}
             </Button>

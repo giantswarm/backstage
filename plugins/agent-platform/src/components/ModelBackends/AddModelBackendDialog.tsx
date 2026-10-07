@@ -15,6 +15,7 @@ import {
 import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import {
   BACKEND_KIND_LABEL,
   BACKEND_KINDS,
@@ -161,6 +162,7 @@ export function AddModelBackendDialog({
   const [applied, setApplied] = useState<AddBackendResult>();
   const [committed, setCommitted] = useState<AddBackendResult>();
   const write = useBackendWrite(installation);
+  const startAnswer = useOpenGeneration(isOpen);
 
   useEffect(() => {
     if (!installation && installations.length > 0) {
@@ -213,8 +215,12 @@ export function AddModelBackendDialog({
     if (!input) {
       return;
     }
+    const isCurrent = startAnswer();
     try {
-      setReview(await write.dryRunAdd(input));
+      const reviewed = await write.dryRunAdd(input);
+      if (isCurrent()) {
+        setReview(reviewed);
+      }
     } catch {
       // Shown from `write.failure`.
     }
@@ -255,7 +261,7 @@ export function AddModelBackendDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      {...dialogDismissLock(isBusy, onOpenChange)}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -464,7 +470,7 @@ export function AddModelBackendDialog({
             <Button
               variant="secondary"
               onPress={() => onOpenChange(false)}
-              isDisabled={isBusy}
+              isDisabled={write.isWriting}
             >
               {done ? 'Close' : 'Cancel'}
             </Button>
