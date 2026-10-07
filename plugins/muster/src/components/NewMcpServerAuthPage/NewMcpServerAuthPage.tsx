@@ -21,6 +21,7 @@ import { newMcpServerRouteRef, newMcpServerReviewRouteRef } from '../../routes';
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
   SIGV4_TRANSPORT_REQUIREMENT,
+  wizardAuthModeLabel,
   type McpServerAuthMode,
 } from '../../lib/mcpServerDefinition';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
@@ -60,30 +61,25 @@ const useStyles = makeStyles(theme => ({
 // exclusive choices; see lib/mcpServerDefinition).
 const AUTH_CHOICES: Array<{
   value: McpServerAuthMode;
-  title: string;
   description: string;
 }> = [
   {
     value: 'none',
-    title: 'No authentication',
     description:
       'The server is public or trusted on the network. Muster connects without credentials.',
   },
   {
     value: 'own-account',
-    title: 'Sign in with your own account',
     description:
       'The backend runs its own authorization server (GitHub-style). Each user completes a one-time sign-in; muster acts as the OAuth client.',
   },
   {
     value: 'platform-sso',
-    title: 'Platform SSO',
     description:
       'The backend is administered by your platform team and accepts the platform identity token directly.',
   },
   {
     value: 'sigv4',
-    title: 'AWS request signing (SigV4)',
     description:
       "The backend is AWS-hosted and takes no token. Muster signs every request with its own AWS identity — shared by all users, not the caller's.",
   },
@@ -246,15 +242,16 @@ export function NewMcpServerAuthPage() {
                     choice.value === 'sigv4' &&
                     state.authMode !== 'sigv4' &&
                     state.transport !== 'streamable-http';
+                  const title = wizardAuthModeLabel(choice.value);
                   return (
                     <SelectableCard
                       key={choice.value}
                       selected={state.authMode === choice.value}
-                      ariaLabel={choice.title}
+                      ariaLabel={title}
                       disabled={unavailable}
                       onSelect={() => setAuthMode(choice.value)}
                     >
-                      <Text weight="bold">{choice.title}</Text>
+                      <Text weight="bold">{title}</Text>
                       <Text variant="body-small" color="secondary">
                         {choice.description}
                       </Text>

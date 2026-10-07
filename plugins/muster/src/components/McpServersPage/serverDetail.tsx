@@ -18,7 +18,8 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
-import { serverAuthMode } from '../../lib/serverAuthMode';
+import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
+import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -194,14 +195,23 @@ function authTypeLabel(auth: MCPServerAuth): string {
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
+  const mode = serverAuthMode(server);
 
-  if (!auth || serverAuthMode(server) === 'anonymous') {
-    return <Note>No authentication configured (anonymous).</Note>;
+  // Anonymous with nothing else set reads as one line; any other key of
+  // `spec.auth` is shown, since the wizard's edit gate reports it too.
+  if (
+    !auth ||
+    (mode === 'anonymous' && Object.keys(withoutCrdDefaults(auth)).length === 0)
+  ) {
+    return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
+  const facts: Fact[] = [
+    { label: 'Mode', value: AUTH_MODE_LABELS[mode] },
+    { label: 'Type', value: authTypeLabel(auth) },
+  ];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },

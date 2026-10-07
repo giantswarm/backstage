@@ -96,8 +96,11 @@ function renderWizard(path: string) {
   );
 }
 
-/** Walks the real flow: details → auth → review. */
-async function renderReviewStep() {
+/**
+ * Walks the real flow: details → auth → review, answering the auth question
+ * with `answer` when given.
+ */
+async function renderReviewStep(answer?: () => Promise<void>) {
   const result = await renderWizard('/agent-platform/mcp-servers/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
@@ -106,6 +109,7 @@ async function renderReviewStep() {
   );
   await userEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
   await screen.findByText('Step 2 of 4: Authentication');
+  await answer?.();
   await userEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
   await screen.findByText('Step 3 of 4: Review & register');
   return result;
@@ -154,6 +158,30 @@ describe('NewMcpServerReviewPage', () => {
     expect(
       screen.getByText(/muster create mcpserver weather/),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    ['Own account (OAuth sign-in)', async () => {}],
+    ['Platform SSO (forwarded token)', async () => {}],
+    [
+      'AWS request signing (SigV4, shared identity)',
+      async () => {
+        await userEvent.type(
+          screen.getByLabelText(/Signing region/),
+          'eu-central-1',
+        );
+      },
+    ],
+  ])('names the %s answer in the summary', async (label, details) => {
+    await renderReviewStep(async () => {
+      await userEvent.click(screen.getByRole('radio', { name: label }));
+      await details();
+    });
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(
+      screen.queryAllByText(/All users of this server share one AWS identity/),
+    ).toHaveLength(label.includes('SigV4') ? 1 : 0);
   });
 
   it('validates (dry-run) before creating, then moves on to verify', async () => {
