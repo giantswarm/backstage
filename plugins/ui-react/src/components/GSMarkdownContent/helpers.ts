@@ -1,7 +1,7 @@
 import GithubSlugger from 'github-slugger';
 
-// rehype-sanitize prefixes ids and names from raw HTML (and footnotes) with
-// this, as GitHub does; a `#name` link still finds `user-content-name`.
+// rehype-sanitize prefixes ids from raw HTML (and footnotes) with this, as
+// GitHub does; a `#name` link still finds `user-content-name`.
 const CLOBBER_PREFIX = 'user-content-';
 
 const HEADINGS = 'h1, h2, h3, h4, h5, h6';
@@ -35,9 +35,11 @@ export function getInPageFragment(
 
 /**
  * Finds the element a `#fragment` link in rendered markdown points to, the way
- * GitHub resolves it: an element with that id or name, with or without the
+ * GitHub resolves it: an element with that id, with or without the
  * sanitizer's prefix, or else the heading whose GitHub slug it is. Headings
  * are matched by slug only, since `MarkdownContent` gives them ids of its own.
+ * Links lose their ids and names in `MarkdownContent`, so `<a name>` anchors
+ * and footnote back-references have nothing to land on.
  * Returns `'top'` for `#` and `#top` when nothing else matches.
  */
 export function findAnchorTarget(
@@ -48,12 +50,9 @@ export function findAnchorTarget(
   const candidates = [name, `${CLOBBER_PREFIX}${name}`];
 
   const named = Array.from(
-    container.querySelectorAll<HTMLElement>('[id], a[name]'),
+    container.querySelectorAll<HTMLElement>('[id]'),
   ).find(
-    element =>
-      !element.matches(HEADINGS) &&
-      (candidates.includes(element.id) ||
-        candidates.includes(element.getAttribute('name') ?? '')),
+    element => !element.matches(HEADINGS) && candidates.includes(element.id),
   );
   if (named) {
     return named;

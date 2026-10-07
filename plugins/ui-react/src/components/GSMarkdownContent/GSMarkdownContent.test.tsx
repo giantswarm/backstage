@@ -141,34 +141,29 @@ describe('GSMarkdownContent', () => {
       await waitFor(() => expect(scrolledTo).toEqual([second]));
     });
 
-    it('jumps to an anchor from raw HTML', async () => {
+    it('jumps to an id from raw HTML', async () => {
       await renderMarkdown(
-        ['[Install](#install)', '', '<a name="install"></a>Install it.'].join(
+        ['[Install](#install)', '', '<div id="install">Install it.</div>'].join(
           '\n',
         ),
       );
 
       fireEvent.click(screen.getByRole('link', { name: 'Install' }));
 
-      const anchor = document.activeElement;
-      expect(anchor).toHaveAttribute('name', 'user-content-install');
+      const anchor = screen.getByText('Install it.');
+      expect(anchor).toHaveAttribute('id', 'user-content-install');
+      expect(anchor).toHaveFocus();
       await waitFor(() => expect(scrolledTo).toEqual([anchor]));
     });
 
-    it('jumps to a footnote and back', async () => {
+    it('jumps to a footnote', async () => {
       await renderMarkdown('A claim[^1].\n\n[^1]: The source.');
 
-      const reference = screen.getByRole('link', { name: '1' });
-      fireEvent.click(reference);
+      fireEvent.click(screen.getByRole('link', { name: '1' }));
 
       const note = document.activeElement;
       expect(note).toHaveTextContent('The source.');
       await waitFor(() => expect(scrolledTo).toEqual([note]));
-
-      fireEvent.click(screen.getByRole('link', { name: /back to content/i }));
-
-      expect(reference).toHaveFocus();
-      await waitFor(() => expect(scrolledTo).toEqual([note, reference]));
     });
 
     it.each(['#', '#top'])(
