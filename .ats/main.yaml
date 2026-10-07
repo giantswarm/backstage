@@ -11,8 +11,9 @@
 # dev image). The chart's dev image tag matches the pushed tag, so the smoke
 # validates the chart against the just-built image on every PR.
 #
-# functional and upgrade steps are skipped (no functional tests defined; the
-# hand-written pipeline skipped them too via `--skip-steps upgrade functional`).
+# The functional test (tests/ats/test_search_restart.py) upgrades the release to
+# the postgresql engine with the CloudNativePG operator and proves the search
+# index survives a backend restart. The upgrade step stays skipped.
 app-tests-deploy-namespace: default
 
-skip-steps: [functional,upgrade]
+skip-steps: [upgrade]
