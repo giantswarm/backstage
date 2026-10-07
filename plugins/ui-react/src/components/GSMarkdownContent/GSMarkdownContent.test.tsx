@@ -1,6 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/test-utils';
+import { useLocation } from 'react-router-dom';
 import { GSMarkdownContent } from './GSMarkdownContent';
+
+const LocationHash = () => <output>{`hash:${useLocation().hash}`}</output>;
 
 describe('GSMarkdownContent', () => {
   it('renders markdown content', () => {
@@ -73,5 +76,164 @@ describe('GSMarkdownContent', () => {
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.getByText('click')).toBeInTheDocument();
+  });
+
+  describe('in-page anchors', () => {
+    const RealScrollIntoView = Element.prototype.scrollIntoView;
+    let scrolledTo: Element[];
+
+    beforeAll(() => {
+      // jsdom does not scroll.
+      Element.prototype.scrollIntoView = function scrollIntoView(
+        this: Element,
+      ) {
+        scrolledTo.push(this);
+      };
+    });
+
+    afterAll(() => {
+      Element.prototype.scrollIntoView = RealScrollIntoView;
+    });
+
+    beforeEach(() => {
+      scrolledTo = [];
+    });
+
+    async function renderMarkdown(content: string) {
+      await renderInTestApp(
+        <>
+          <GSMarkdownContent content={content} />
+          <LocationHash />
+        </>,
+      );
+    }
+
+    it('jumps to a heading by its GitHub slug', async () => {
+      await renderMarkdown(
+        [
+          '- [Values](#valuesyaml)',
+          '- [Upgrading](#upgrading-to-v2)',
+          '',
+          '## values.yaml',
+          '',
+          '## Upgrading to v2',
+        ].join('\n'),
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: 'Values' }));
+
+      const heading = screen.getByRole('heading', { name: 'values.yaml' });
+      expect(heading).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
+      // The router does not see the click.
+      expect(screen.getByText('hash:')).toBeInTheDocument();
+    });
+
+    it('numbers repeated headings the way GitHub does', async () => {
+      await renderMarkdown(
+        ['[Second](#example-1)', '', '## Example', '', '## Example'].join('\n'),
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: 'Second' }));
+
+      const second = screen.getAllByRole('heading', { name: 'Example' })[1];
+      expect(second).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([second]));
+    });
+
+    it('jumps to an id from raw HTML', async () => {
+      await renderMarkdown(
+        ['[Install](#install)', '', '<div id="install">Install it.</div>'].join(
+          '\n',
+        ),
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: 'Install' }));
+
+      const anchor = screen.getByText('Install it.');
+      expect(anchor).toHaveAttribute('id', 'user-content-install');
+      expect(anchor).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([anchor]));
+    });
+
+    it('jumps to a footnote', async () => {
+      await renderMarkdown('A claim[^1].\n\n[^1]: The source.');
+
+      fireEvent.click(screen.getByRole('link', { name: '1' }));
+
+      const note = document.activeElement;
+      expect(note).toHaveTextContent('The source.');
+      await waitFor(() => expect(scrolledTo).toEqual([note]));
+    });
+
+    it.each(['#', '#top'])(
+      'scrolls to the top of the document on %s',
+      async href => {
+        await renderMarkdown(`## Intro\n\n[Back to top](${href})`);
+
+        fireEvent.click(screen.getByRole('link', { name: 'Back to top' }));
+
+        expect(scrolledTo).toHaveLength(1);
+        expect(scrolledTo[0]).toContainElement(
+          screen.getByRole('heading', { name: 'Intro' }),
+        );
+        expect(screen.getByText('hash:')).toBeInTheDocument();
+      },
+    );
+
+    it('scrolls to the top on # even past a heading without text', async () => {
+      await renderMarkdown('## ![](diagram.png)\n\n[Back to top](#)');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Back to top' }));
+
+      expect(scrolledTo).toHaveLength(1);
+      expect(scrolledTo[0]).toContainElement(screen.getByRole('heading'));
+      expect(screen.getByRole('heading')).not.toHaveFocus();
+    });
+
+    it('finds a heading by the id it is rendered with', async () => {
+      await renderMarkdown('[Values](#values-yaml)\n\n## values.yaml');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Values' }));
+
+      const heading = screen.getByRole('heading', { name: 'values.yaml' });
+      expect(heading).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
+    });
+
+    it('does nothing for an anchor that is not in the document', async () => {
+      await renderMarkdown('[Missing](#missing)');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Missing' }));
+
+      expect(scrolledTo).toEqual([]);
+      expect(screen.getByText('hash:')).toBeInTheDocument();
+    });
+
+    it('leaves links to other pages to the router', async () => {
+      await renderMarkdown(
+        '[Elsewhere](/catalog/default/component/other#install)\n\n## Install',
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: 'Elsewhere' }));
+
+      expect(scrolledTo).toEqual([]);
+      expect(
+        screen.getByRole('heading', { name: 'Install' }),
+      ).not.toHaveFocus();
+    });
+
+    it('leaves a modified click to the browser', async () => {
+      await renderMarkdown('[Install](#install)\n\n## Install');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Install' }), {
+        ctrlKey: true,
+      });
+
+      expect(scrolledTo).toEqual([]);
+      expect(
+        screen.getByRole('heading', { name: 'Install' }),
+      ).not.toHaveFocus();
+    });
   });
 });

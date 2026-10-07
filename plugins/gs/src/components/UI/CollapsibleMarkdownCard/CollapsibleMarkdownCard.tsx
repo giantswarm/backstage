@@ -1,4 +1,11 @@
-import { useState, useRef, useEffect, useCallback, ReactNode } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  FocusEvent,
+  ReactNode,
+} from 'react';
 import { Progress } from '@backstage/core-components';
 import {
   GSMarkdownContent,
@@ -18,6 +25,11 @@ const COLLAPSED_MAX_HEIGHT = 250;
 const useStyles = makeStyles(theme => ({
   contentWrapper: {
     position: 'relative',
+  },
+  // `clip`, not `hidden`: the collapse is no scroll container, so neither
+  // focus nor `scrollIntoView` can scroll the content inside the cut.
+  collapse: {
+    overflow: 'clip',
   },
   fadeOverlay: {
     position: 'absolute',
@@ -130,6 +142,20 @@ export const CollapsibleMarkdownCard = ({
     setExpanded(prev => !prev);
   };
 
+  // Focus past the cut, from the keyboard or a `#heading` link, would land on
+  // something hidden under the fade; show everything instead.
+  const revealFocused = (event: FocusEvent<HTMLDivElement>) => {
+    if (expanded || !needsExpansion) {
+      return;
+    }
+    const offset =
+      event.target.getBoundingClientRect().bottom -
+      event.currentTarget.getBoundingClientRect().top;
+    if (offset > collapsedSize) {
+      setExpanded(true);
+    }
+  };
+
   const renderBody = () => {
     if (isLoading) {
       return <Progress />;
@@ -153,8 +179,9 @@ export const CollapsibleMarkdownCard = ({
 
     return (
       <>
-        <Box className={classes.contentWrapper}>
+        <Box className={classes.contentWrapper} onFocus={revealFocused}>
           <Collapse
+            className={classes.collapse}
             in={expanded || !needsExpansion}
             collapsedSize={collapsedSize}
           >
