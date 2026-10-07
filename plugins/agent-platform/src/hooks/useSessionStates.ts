@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionStatesQueryKey } from '../lib/queryKeys';
@@ -73,7 +74,7 @@ export function useSessionStates(installation: string): SessionStatesView {
     // `isLoading` only on the first load. A failed *refetch* keeps the previous
     // states, so the rail goes on rendering what it last knew rather than
     // collapsing to a notice for one bad poll.
-    isLoading: query.isLoading,
+    isLoading: isAwaitingData(query),
     isError: query.isError && query.data === undefined,
     refetch: query.refetch,
   };

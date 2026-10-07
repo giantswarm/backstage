@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { modelManagerApiRef } from '../apis';
@@ -66,7 +67,7 @@ export function useRegisteredBackends(installations: string[]) {
   });
 
   const signature = queries
-    .map(query => `${query.dataUpdatedAt}:${query.isLoading ? 'l' : ''}`)
+    .map(query => `${query.dataUpdatedAt}:${isAwaitingData(query) ? 'l' : ''}`)
     .join('|');
 
   return useMemo(() => {
@@ -90,7 +91,7 @@ export function useRegisteredBackends(installations: string[]) {
           backend =>
             backend.installation === installation && backend.kind === kind,
         ),
-      isLoading: queries.some(query => query.isLoading),
+      isLoading: queries.some(query => isAwaitingData(query)),
     };
     // `installations` and `queries` are captured by the signature.
     // eslint-disable-next-line react-hooks/exhaustive-deps

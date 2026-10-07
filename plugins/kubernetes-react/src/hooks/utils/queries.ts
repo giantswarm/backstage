@@ -1,4 +1,5 @@
 import { UseQueryResult } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { IncompatibilityState } from '../../lib/k8s/VersionTypes';
 
 /**
@@ -68,7 +69,7 @@ export const mapQueriesToClusters = <T>(
     }),
   );
 
-  const isLoading = queries.some(query => query.isLoading);
+  const isLoading = queries.some(isAwaitingData);
   const retry = () => {
     for (const query of queries) {
       query.refetch();

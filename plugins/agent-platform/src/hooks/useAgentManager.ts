@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import {
@@ -48,13 +49,14 @@ export function useAgentManagerInfo(
   installation: string | undefined,
 ): AgentManagerInfoState {
   const client = useAgentManagerClient(installation);
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterAgentManagerInfoQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.getInfo(),
     staleTime: 60_000,
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
     info: data,
     isLoading: Boolean(client) && isLoading,

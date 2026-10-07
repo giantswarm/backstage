@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { MusterInstallationInfo } from '../../apis/types';
 
@@ -64,7 +65,7 @@ export type MusterInstallations = {
 export function useMusterInstallations(): MusterInstallations {
   const musterApi = useApi(musterApiRef);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, fetchStatus } = useQuery({
     queryKey: musterInstallationsQueryKey(),
     queryFn: () => musterApi.listInstallations(),
     refetchInterval: query =>
@@ -72,6 +73,7 @@ export function useMusterInstallations(): MusterInstallations {
         ? INSTALLATIONS_REFETCH_WHILE_UNKNOWN_MS
         : false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const installations = useMemo(() => data?.installations ?? [], [data]);
 

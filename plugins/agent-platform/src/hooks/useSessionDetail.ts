@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
   KagentSessionDetail,
@@ -289,7 +290,9 @@ export function useSessionDetail(
     //
     // `isLoading`, deliberately, not `isFetching`: it is false during a refetch,
     // which is what keeps a poll from flashing the spinner over a rendered page.
-    isLoading: !isNotFound && (sessionQuery.isLoading || tasksQuery.isLoading),
+    isLoading:
+      !isNotFound &&
+      (isAwaitingData(sessionQuery) || isAwaitingData(tasksQuery)),
     isNotFound,
     error,
   };

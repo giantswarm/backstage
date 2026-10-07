@@ -4,7 +4,11 @@ import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FactList,
+  type Fact,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
@@ -388,10 +392,11 @@ export function RuntimeState({ server }: { server: MCPServer }) {
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -563,10 +568,11 @@ export function ServerTools({
   const prefix = prefixOverride ?? server.getToolNamePrefix();
   const pattern = `${prefix}_*`;
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-tools', installation, pattern],
     queryFn: () => musterApi.filterTools({ installation, pattern, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -681,11 +687,12 @@ export function ServerResources({
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-resources', installation, name],
     queryFn: () =>
       musterApi.filterResources({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -746,11 +753,12 @@ export function ServerPrompts({
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-prompts', installation, name],
     queryFn: () =>
       musterApi.filterPrompts({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;

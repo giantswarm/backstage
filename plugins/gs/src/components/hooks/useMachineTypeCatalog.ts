@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { NON_PERSISTED_QUERY_META } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   AwsInstanceTypeData,
@@ -40,7 +41,7 @@ export function useMachineTypeCatalog(
 ): { catalog: MachineTypeCatalog | undefined; isLoading: boolean } {
   const { load, toCatalog } = catalogs[provider];
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, fetchStatus } = useQuery({
     queryKey: ['machine-type-catalog', provider],
     queryFn: load,
     select: toCatalog as (data: unknown) => MachineTypeCatalog,
@@ -49,6 +50,7 @@ export function useMachineTypeCatalog(
     gcTime: Infinity,
     meta: { ...NON_PERSISTED_QUERY_META },
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return { catalog: data, isLoading: enabled && isLoading };
 }

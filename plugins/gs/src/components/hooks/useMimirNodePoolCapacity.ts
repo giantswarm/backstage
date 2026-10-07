@@ -4,6 +4,7 @@ import {
   keepPreviousData,
   useQueries,
 } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { MimirMetricSample } from '../../apis/mimir';
 import {
   KubeNodeLabels,
@@ -130,9 +131,10 @@ export function useMimirNodePoolCapacity(
         });
       }
       withMimir.forEach((installationName, index) => {
-        const { data, isLoading, error } = results[index];
+        const result = results[index];
+        const { data, error } = result;
         let status: NodePoolMetricsStatus = 'ok';
-        if (isLoading) {
+        if (isAwaitingData(result)) {
           status = 'loading';
         } else if (error || !data) {
           status = 'error';

@@ -21,6 +21,7 @@ import {
 import {
   dialogDismissLock,
   StatusLabel,
+  isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import LockIcon from '@material-ui/icons/Lock';
 
@@ -352,7 +353,7 @@ export function ImportModelDialog({
               description={(search.error as Error).message}
             />
           )}
-          {search.isLoading && (
+          {isAwaitingData(search) && (
             <Text variant="body-medium" color="secondary">
               Searching…
             </Text>
@@ -458,7 +459,7 @@ export function ImportModelDialog({
                 </Grid.Item>
               </Grid.Root>
 
-              {fit.isLoading && (
+              {isAwaitingData(fit) && (
                 <Text variant="body-medium" color="secondary">
                   Resolving the size and checking the fit…
                 </Text>
