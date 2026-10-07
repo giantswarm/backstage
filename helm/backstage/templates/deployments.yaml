@@ -129,6 +129,11 @@ spec:
             # files, never the image's app-config.yaml.
             - name: APP_CONFIG_app_releaseVersion
               value: "{{ .Chart.AppVersion }}"
+            {{- if .Values.backstage.serverShutdownDelay }}
+            # Keeps serving while the gateway drops the terminating pod.
+            - name: APP_CONFIG_backend_lifecycle_serverShutdownDelay
+              value: {{ .Values.backstage.serverShutdownDelay | quote }}
+            {{- end }}
             {{- if eq .Values.database.engine "postgresql" }}
             - name: POSTGRES_HOST
               valueFrom:

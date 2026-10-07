@@ -2581,6 +2581,10 @@
                     "items": {
                         "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Container"
                     }
+                },
+                "serverShutdownDelay": {
+                    "type": "string",
+                    "description": "How long the backend keeps serving after SIGTERM, with its readiness at 503, before it stops its server (`backend.lifecycle.serverShutdownDelay`). Covers the time the gateway takes to drop a terminating pod from its endpoints; without it every rollout answers requests still routed to the old pod with the gateway's \"upstream connect error\". Must stay below the pod's termination grace period (30 s)"
                 }
             }
         },

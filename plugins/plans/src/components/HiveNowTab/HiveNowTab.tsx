@@ -375,7 +375,7 @@ export function HiveNowTab() {
   const classes = useStyles();
   const [team] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data: now, isLoading, error } = useHiveNow(team);
+  const { data: now, isLoading, isFetching, error, refetch } = useHiveNow(team);
 
   if (!now) {
     return (
@@ -383,6 +383,8 @@ export function HiveNowTab() {
         isLoading={isLoading}
         error={error}
         what="what the team works on now"
+        onRetry={refetch}
+        isFetching={isFetching}
       />
     );
   }

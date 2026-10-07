@@ -22,6 +22,9 @@
 #   Pending, or lands on any pool when only the toleration renders;
 # * the startupProbe, without which a backend that never finishes starting
 #   (its database unreachable) stays unready and is never restarted.
+# * the server shutdown delay, without which every rollout answers the
+#   requests the gateway still routes to the stopping pod with Envoy's
+#   "upstream connect error or disconnect/reset before headers".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -168,6 +171,15 @@ if [ -z "${app_version}" ] ||
   echo "FAIL: release-version: APP_CONFIG_app_releaseVersion is not \"${app_version}\""
   failed=1
 fi
+
+echo "--> the backend keeps serving while the gateway drops a stopping pod"
+if ! grep -A1 -- 'name: APP_CONFIG_backend_lifecycle_serverShutdownDelay' "${work_dir}/no-fragment.yaml" |
+  grep -q -- 'value: "10s"'; then
+  echo "FAIL: shutdown-delay: APP_CONFIG_backend_lifecycle_serverShutdownDelay is not \"10s\""
+  failed=1
+fi
+render no-shutdown-delay --set backstage.serverShutdownDelay=
+refute no-shutdown-delay 'APP_CONFIG_backend_lifecycle_serverShutdownDelay'
 
 echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm
