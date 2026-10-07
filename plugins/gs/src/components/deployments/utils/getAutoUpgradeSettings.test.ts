@@ -196,6 +196,40 @@ describe('deriveAutoUpgradeSettings', () => {
     );
   });
 
+  it.each([
+    // Upper bounds
+    ['>=1.0.0 <3.0.0', '2.4.1'],
+    ['>=1.0.0-0 <3.0.0', '2.4.1'],
+    ['>=0.0.0-0 || 1.x', undefined],
+    // Shapes the mode's operator does not write
+    ['1.2.x', '1.2.3'],
+    ['~1', '1.4.0'],
+    ['^0.1.0', '0.1.2'],
+    // A range that admits no newer version
+    ['1.2.3', undefined],
+  ])('passes %s on to the custom range mode', (semver, currentVersion) => {
+    expect(
+      deriveAutoUpgradeSettings({ semver }, currentVersion).semverRange,
+    ).toBe(semver);
+  });
+
+  it.each([
+    ['~1.2.3', '1.2.3'],
+    ['^1.2.3', '1.2.5'],
+    ['>=1.2.3', undefined],
+    ['>= 1.2.3', undefined],
+    ['>=3.2.3-rc.1', '3.2.3-rc.1'],
+    // The floor moves to the current version; Flux upgrades as before
+    ['>=0.0.0-0', '3.2.3'],
+  ])(
+    'leaves %s to the fixed modes, which write the same upgrades back',
+    (semver, currentVersion) => {
+      expect(
+        deriveAutoUpgradeSettings({ semver }, currentVersion).semverRange,
+      ).toBeUndefined();
+    },
+  );
+
   it('ignores an empty filter', () => {
     expect(
       deriveAutoUpgradeSettings({ semver: '>=0.0.0-0', semverFilter: '' })

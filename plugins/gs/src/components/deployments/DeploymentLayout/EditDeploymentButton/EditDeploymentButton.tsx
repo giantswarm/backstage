@@ -75,7 +75,10 @@ export function EditDeploymentButton({
     return getTemplateUrl({
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
-      automaticUpgrades: autoUpgrades?.mode ?? 'no-upgrades',
+      automaticUpgrades: autoUpgrades?.semverRange
+        ? 'custom-range'
+        : (autoUpgrades?.mode ?? 'no-upgrades'),
+      semverRange: autoUpgrades?.semverRange,
       semverFilter: autoUpgrades?.semverFilter,
       includePrereleases: autoUpgrades?.includePrereleases,
       installation: { installationName },
