@@ -481,6 +481,21 @@ grafana:
       domain: https://grafana.example.com
 ```
 
+## GitHub Actions and Pull Requests tabs
+
+The GitHub Actions and Pull Requests tabs of a Component, and the GitHub
+Actions recent-runs card, read GitHub as the signed-in person. A portal offers
+them only where it has a GitHub login:
+
+- `gs.github`: the person's GitHub grant in muster, or
+- `auth.providers.github`: Backstage's own GitHub provider.
+
+A portal with neither shows none of them, without any `app.extensions` entry:
+their login dialog could not succeed there, since the auth backend has no
+GitHub provider to start. `app.extensions` still turns them off where a GitHub
+login exists (`entity-content:github-actions: false`,
+`entity-content:catalog/pull-requests: false`).
+
 ## Component dependency fetching
 
 For the Giant Swarm devportal, we can enable asynchronous fetching of dependencies between components, based on the GitHub SBOM API. This will start updating dependency info once daily.
