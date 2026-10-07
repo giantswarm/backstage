@@ -2,6 +2,7 @@ import {
   fixtureHistory,
   fixtureKnowledgeDoc,
   fixtureKnowledgeTree,
+  fixtureMeta,
   fixtureNow,
 } from '../lib/hiveFixtures';
 import { HIVE_HISTORY_WINDOW, magazineFile } from '../lib/magazine';
@@ -30,7 +31,8 @@ import {
  * the plans are made up. New comments last until the page reloads.
  */
 
-const PLANS_REPO = 'example/team-plans';
+// The fixture magazine's team's plans repository (`<team>-plans`).
+const PLANS_REPO = 'example/bumblebee-plans';
 const MAGAZINE_REPO = 'example/team-magazine';
 const DAY = 86_400_000;
 
@@ -126,8 +128,11 @@ const PULL_FILES: Record<number, string[]> = {
 const MERGED = ['hive/README.md', 'marge-rescue/README.md'];
 
 function magazineContent(path: string): string | undefined {
-  if (path === 'magazine/now.json') {
+  if (path === magazineFile('now')) {
     return JSON.stringify(fixtureNow());
+  }
+  if (path === magazineFile('meta')) {
+    return JSON.stringify(fixtureMeta());
   }
   if (path === magazineFile(HIVE_HISTORY_WINDOW)) {
     return JSON.stringify(fixtureHistory());

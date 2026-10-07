@@ -6,6 +6,7 @@
  */
 
 import {
+  Entry,
   History,
   isPortalPath,
   Lane,
@@ -38,41 +39,106 @@ export function teamName(team: string): string {
   return team.replace(/[^\p{L}\p{N}\s-]/gu, '').trim();
 }
 
-function cardInTeam(card: MagazineCard, team: string): boolean {
-  return team === ALL_TEAMS || !card.team || card.team === team;
+/**
+ * Whether two names are the same team, emoji and case aside: the magazine
+ * writes "Phoenix" where the board's option is "Phoenix 🔥".
+ */
+export function sameTeam(a: string, b: string): boolean {
+  return teamName(a).toLowerCase() === teamName(b).toLowerCase();
 }
 
 /**
- * Now, scoped to one team: its lanes and blockers. "Other teams, coming up"
- * keeps only the other teams' work, and is empty across all teams.
+ * Whether the magazine follows this scope: its own team (`meta.json`'s
+ * `sources.team`) or all teams. Only then are its summary, its figures and
+ * its plans the scope's.
  */
-export function nowForTeam(now: Now, team: string): Now {
+export function followsTeam(team: string, magazineTeam: string): boolean {
+  return team === ALL_TEAMS || sameTeam(team, magazineTeam);
+}
+
+/** An item without a `team` is the magazine's own team's. */
+function inTeam(
+  item: MagazineCard | Entry,
+  team: string,
+  magazineTeam: string,
+): boolean {
+  return team === ALL_TEAMS || sameTeam(item.team ?? magazineTeam, team);
+}
+
+/**
+ * Now, scoped to one team: its lanes and blockers, and its plans and summary
+ * when the magazine follows it. "Other teams, coming up" keeps only the
+ * other teams' work, and is empty across all teams.
+ */
+export function nowForTeam(now: Now, team: string, magazineTeam: string): Now {
+  if (team === ALL_TEAMS) {
+    return { ...now, upcoming: [] };
+  }
+  const follows = followsTeam(team, magazineTeam);
+  // A lane keeps its ranked `total` until the scope drops one of its cards.
   const lanes: Lane[] = now.lanes.map(lane => {
-    const cards = lane.cards.filter(card => cardInTeam(card, team));
-    return { ...lane, cards, total: cards.length };
+    const cards = lane.cards.filter(card => inTeam(card, team, magazineTeam));
+    return cards.length === lane.cards.length
+      ? lane
+      : { ...lane, cards, total: cards.length };
   });
   return {
     ...now,
+    summary: follows ? now.summary : [],
     lanes,
-    blocked: now.blocked.filter(card => cardInTeam(card, team)),
-    upcoming:
-      team === ALL_TEAMS
-        ? []
-        : now.upcoming.filter(card => card.team && card.team !== team),
+    reviews: follows ? now.reviews : [],
+    blocked: now.blocked.filter(card => inTeam(card, team, magazineTeam)),
+    upcoming: now.upcoming.filter(card => !inTeam(card, team, magazineTeam)),
   };
 }
 
-/** History, scoped to one team: groups whose team is that team or unset. */
-export function historyForTeam(history: History, team: string): History {
+/**
+ * History, scoped to one team: each group keeps the team's entries and drops
+ * out without any; a group without entries is the magazine's own team's. The
+ * summary and the chores are the magazine's team's.
+ */
+export function historyForTeam(
+  history: History,
+  team: string,
+  magazineTeam: string,
+): History {
   if (team === ALL_TEAMS) {
     return history;
   }
-  const groups = history.groups.filter(
-    group =>
-      group.entries.length === 0 ||
-      group.entries.some(entry => !entry.team || entry.team === team),
+  const follows = followsTeam(team, magazineTeam);
+  const groups = history.groups
+    .map(group => ({
+      group,
+      entries: group.entries.filter(entry => inTeam(entry, team, magazineTeam)),
+    }))
+    .filter(({ group, entries }) =>
+      group.entries.length === 0 ? follows : entries.length > 0,
+    )
+    .map(({ group, entries }) => ({ ...group, entries }));
+  return {
+    ...history,
+    summary: follows ? history.summary : [],
+    groups,
+    chores: follows ? history.chores : { count: 0, repos: 0, sample: [] },
+  };
+}
+
+/**
+ * A team's plans repositories: each team keeps its plans in `<team>-plans`,
+ * its name in lower case without spaces ("Honey Badger 🦡" →
+ * `honeybadger-plans`). All teams: every repository.
+ */
+export function plansRepositoriesForTeam(
+  repositories: string[],
+  team: string,
+): string[] {
+  if (team === ALL_TEAMS) {
+    return repositories;
+  }
+  const name = `${teamName(team).toLowerCase().replace(/\s+/g, '')}-plans`;
+  return repositories.filter(
+    repository => repository.split('/')[1]?.toLowerCase() === name,
   );
-  return { ...history, groups };
 }
 
 export interface NowFigures {

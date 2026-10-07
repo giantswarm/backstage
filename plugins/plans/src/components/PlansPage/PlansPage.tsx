@@ -6,6 +6,8 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
+import { useHiveTeam } from '../../hooks/useHive';
+import { plansRepositoriesForTeam, teamName } from '../../lib/hive';
 import { ProposedTab } from '../ProposedTab';
 import { MergedTab } from '../MergedTab';
 import { PlansErrorAlert } from '../PlansErrorAlert';
@@ -13,10 +15,13 @@ import { PlansErrorAlert } from '../PlansErrorAlert';
 /**
  * Plans viewer: proposed plans (open PRs, rendered from their head branch)
  * and merged plans (documents on the default branch), for the plan
- * repositories configured in `plans.repositories`.
+ * repositories configured in `plans.repositories`. Each team has its own
+ * repository, so Hive's team picks it; a repository picker appears only when
+ * the scope spans several (all teams).
  */
 export function PlansPage() {
   const plansApi = useApi(plansApiRef);
+  const [team] = useHiveTeam();
   // The selected repository lives in `?repo=` (the same param the review
   // page uses), so it survives navigating into a PR and back and the list
   // URL is shareable.
@@ -49,7 +54,11 @@ export function PlansPage() {
     queryFn: () => plansApi.listRepos(),
   });
 
-  const repositories = useMemo(() => data?.repositories ?? [], [data]);
+  const configured = useMemo(() => data?.repositories ?? [], [data]);
+  const repositories = useMemo(
+    () => plansRepositoriesForTeam(configured, team),
+    [configured, team],
+  );
   const activeRepo =
     repo && repositories.includes(repo) ? repo : repositories[0];
 
@@ -59,7 +68,7 @@ export function PlansPage() {
   // clears automatically when this page unmounts.
   const headerActions = useMemo(
     () =>
-      repositories.length > 0 ? (
+      repositories.length > 1 ? (
         <Select
           aria-label="Repository"
           options={repositories.map(repository => ({
@@ -92,13 +101,25 @@ export function PlansPage() {
     );
   }
 
-  if (repositories.length === 0) {
+  if (configured.length === 0) {
     return (
       <Content>
         <EmptyState
           missing="content"
           title="No plan repositories configured"
           description="Set plans.repositories in the app configuration to point this page at one or more plan repositories."
+        />
+      </Content>
+    );
+  }
+
+  if (repositories.length === 0) {
+    return (
+      <Content>
+        <EmptyState
+          missing="content"
+          title={`Team ${teamName(team)} has no plans here`}
+          description={`This portal reads the plans of ${configured.join(', ')}. Choose another team, or all teams, in the header.`}
         />
       </Content>
     );

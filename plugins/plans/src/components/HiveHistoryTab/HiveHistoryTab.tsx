@@ -24,7 +24,7 @@ import {
   useHiveTeam,
 } from '../../hooks/useHive';
 import { formatDate } from '../../lib/dates';
-import { linkTarget, matchesSearch } from '../../lib/hive';
+import { followsTeam, linkTarget, matchesSearch } from '../../lib/hive';
 import {
   ENTRY_KIND_LABELS,
   Group,
@@ -33,6 +33,7 @@ import {
   progressPercent,
   shortDay,
 } from '../../lib/magazine';
+import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
 
 const useStyles = makeStyles({
@@ -131,8 +132,13 @@ function GroupCard(props: { group: Group }) {
   );
 }
 
-function HistoryView(props: { history: History; query: string }) {
-  const { history, query } = props;
+function HistoryView(props: {
+  history: History;
+  query: string;
+  team: string;
+  magazineTeam: string;
+}) {
+  const { history, query, team, magazineTeam } = props;
   const classes = useStyles();
   const groups = history.groups.filter(group =>
     matchesSearch(query, [
@@ -145,24 +151,28 @@ function HistoryView(props: { history: History; query: string }) {
 
   return (
     <Flex direction="column" gap="6">
-      <Grid.Root columns={{ initial: '2', md: '4' }} gap="3">
-        <InfoCard>
-          <Stat label="Merged" value={history.stats.merged} />
-        </InfoCard>
-        <InfoCard>
-          <Stat label="Closed" value={history.stats.closed} />
-        </InfoCard>
-        <InfoCard>
-          <Stat label="Released" value={history.stats.released} />
-        </InfoCard>
-        <InfoCard>
-          <Stat
-            label="Epics moved"
-            value={history.stats.epicsMoved}
-            hint="Epics with at least one sub-issue closed in these three weeks."
-          />
-        </InfoCard>
-      </Grid.Root>
+      <HiveScopeNote team={team} magazineTeam={magazineTeam} />
+      {/* The figures count the magazine's team's work, not another team's. */}
+      {followsTeam(team, magazineTeam) && (
+        <Grid.Root columns={{ initial: '2', md: '4' }} gap="3">
+          <InfoCard>
+            <Stat label="Merged" value={history.stats.merged} />
+          </InfoCard>
+          <InfoCard>
+            <Stat label="Closed" value={history.stats.closed} />
+          </InfoCard>
+          <InfoCard>
+            <Stat label="Released" value={history.stats.released} />
+          </InfoCard>
+          <InfoCard>
+            <Stat
+              label="Epics moved"
+              value={history.stats.epicsMoved}
+              hint="Epics with at least one sub-issue closed in these three weeks."
+            />
+          </InfoCard>
+        </Grid.Root>
+      )}
 
       {history.summary.length > 0 && (
         <ul className={classes.summary} aria-label="Summary">
@@ -218,7 +228,12 @@ export function HiveHistoryTab() {
   const { data, isLoading, isFetching, error, refetch } = useHiveHistory(team);
 
   return data ? (
-    <HistoryView history={data} query={query} />
+    <HistoryView
+      history={data.view}
+      query={query}
+      team={team}
+      magazineTeam={data.magazineTeam}
+    />
   ) : (
     <HiveSourceState
       isLoading={isLoading}
