@@ -80,6 +80,12 @@ backend.add(rootLogger);
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
 
+// Postgres search engine: the index lives in the search plugin's database, so
+// it survives a restart and is one index for every replica. The module
+// registers itself only on Postgres 12 or newer; on sqlite (the dev server,
+// the lab) the in-memory engine stays.
+backend.add(import('@backstage/plugin-search-backend-module-pg'));
+
 // search collators
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));
 backend.add(import('@backstage/plugin-search-backend-module-techdocs'));
