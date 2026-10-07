@@ -25,7 +25,7 @@
 # reviewable PRs instead of appearing unannounced. Both stages must use the
 # same pinned ref so the native modules run on the exact base they were built
 # against.
-FROM node:24.21.0-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS build
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66 AS build
 
 # Set Python interpreter for `node-gyp` to use
 ENV PYTHON=/usr/bin/python3
@@ -113,7 +113,7 @@ RUN --mount=type=bind,source=packages/backend/prune-node-modules.cjs,target=/tmp
 
 # The runtime stage starts fresh from the same pinned base, leaving the apt
 # build toolchain (~370 MB) behind in the build stage.
-FROM node:24.21.0-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe
+FROM node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
 
 # Install python for `techdocs.generator.runIn: local` — the only runtime apt
 # dependency (python3-venv so the venv below can bootstrap its own pip).
