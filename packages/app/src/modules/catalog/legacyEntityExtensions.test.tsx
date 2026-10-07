@@ -1,12 +1,26 @@
+import { configApiRef } from '@backstage/core-plugin-api';
 import {
   coreExtensionData,
   createExtension,
   createExtensionInput,
 } from '@backstage/frontend-plugin-api';
-import { createExtensionTester } from '@backstage/frontend-test-utils';
-import { EntityCardBlueprint } from '@backstage/plugin-catalog-react/alpha';
+import {
+  createExtensionTester,
+  mockApis,
+} from '@backstage/frontend-test-utils';
+import {
+  EntityCardBlueprint,
+  EntityContentBlueprint,
+} from '@backstage/plugin-catalog-react/alpha';
 import { Entity } from '@backstage/catalog-model';
-import { GrafanaDashboardsEntityCard } from './legacyEntityExtensions';
+import {
+  GSAuthProvidersApi,
+  gsAuthProvidersApiRef,
+} from '@giantswarm/backstage-plugin-gs';
+import {
+  GitHubPullRequestsEntityContent,
+  GrafanaDashboardsEntityCard,
+} from './legacyEntityExtensions';
 
 // A stand-in for the catalog's overview content, the extension every entity
 // card attaches to; the tester resolves it to the real extension's id.
@@ -63,5 +77,68 @@ describe('GrafanaDashboardsEntityCard', () => {
     ).toBe(true);
     expect(filter(group({ 'grafana/dashboard-selector': '' }))).toBe(false);
     expect(filter(group())).toBe(false);
+  });
+});
+
+describe('GitHubPullRequestsEntityContent', () => {
+  function pullRequestsTab(apis: { config?: object; musterGrant?: boolean }) {
+    return createExtensionTester(GitHubPullRequestsEntityContent, {
+      apis: [
+        [configApiRef, mockApis.config({ data: apis.config ?? {} })],
+        [
+          gsAuthProvidersApiRef,
+          {
+            hasGithubAuthApi: () => apis.musterGrant ?? false,
+          } as Partial<GSAuthProvidersApi>,
+        ],
+      ],
+    });
+  }
+
+  it('keeps its name, so app.extensions entries for it still apply', () => {
+    // The catalog module namespaces it: entity-content:catalog/pull-requests.
+    expect(pullRequestsTab({}).snapshot().id).toBe(
+      'entity-content:pull-requests',
+    );
+  });
+
+  it.each([
+    ['the GitHub grant in muster', { musterGrant: true }],
+    [
+      "Backstage's own GitHub provider",
+      { config: { auth: { providers: { github: {} } } } },
+    ],
+  ])('is offered on Components with %s', (_, apis) => {
+    const tab = pullRequestsTab(apis);
+
+    expect(tab.get(EntityContentBlueprint.dataRefs.filterExpression)).toBe(
+      'kind:component',
+    );
+    expect(
+      tab.get(EntityContentBlueprint.dataRefs.filterFunction),
+    ).toBeUndefined();
+    expect(tab.get(coreExtensionData.routePath)).toBe('/pull-requests');
+    expect(tab.get(EntityContentBlueprint.dataRefs.title)).toBe(
+      'Pull Requests',
+    );
+  });
+
+  it('is not offered on a portal without a GitHub login', () => {
+    // Its login dialog could not succeed there: the auth backend has no
+    // GitHub provider for the upstream GitHub auth API's popup.
+    const tab = pullRequestsTab({});
+    const filter = tab.get(EntityContentBlueprint.dataRefs.filterFunction);
+
+    expect(
+      tab.get(EntityContentBlueprint.dataRefs.filterExpression),
+    ).toBeUndefined();
+    expect(
+      filter?.({
+        apiVersion: 'backstage.io/v1alpha1',
+        kind: 'Component',
+        metadata: { name: 'external-secrets' },
+        spec: { type: 'service' },
+      }),
+    ).toBe(false);
   });
 });

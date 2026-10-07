@@ -161,8 +161,9 @@ export const appOverrides = createFrontendModule({
      * come from the auth backend's github-token route through muster's token
      * broker, a missing grant bounces once through muster's connect, and
      * signing out revokes the grant in muster. Without it the upstream
-     * provider (`auth.providers.github`) is used as before -- customer
-     * portals are unchanged. `scm-auth` above consumes whichever it is.
+     * provider (`auth.providers.github`) is used. A portal with neither
+     * does not offer the GitHub Actions and Pull Requests tabs
+     * (`hasGithubLogin`). `scm-auth` above consumes whichever it is.
      */
     ApiBlueprint.make({
       name: 'github-auth',

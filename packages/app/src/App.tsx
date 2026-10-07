@@ -41,6 +41,7 @@ import { kubernetesPluginOverrides } from './modules/kubernetes';
 import apiDocsPlugin from '@backstage/plugin-api-docs/alpha';
 import { apiDocsPluginOverrides } from './modules/api-docs';
 import githubActionsPlugin from '@backstage-community/plugin-github-actions/alpha';
+import { githubActionsPluginOverrides } from './modules/github-actions';
 import pagerDutyPlugin from '@pagerduty/backstage-plugin/alpha';
 import signalsPlugin from '@backstage/plugin-signals/alpha';
 
@@ -98,6 +99,7 @@ const app = createApp({
     apiDocsPlugin,
     apiDocsPluginOverrides,
     githubActionsPlugin,
+    githubActionsPluginOverrides,
     pagerDutyPlugin,
     signalsPlugin,
 
