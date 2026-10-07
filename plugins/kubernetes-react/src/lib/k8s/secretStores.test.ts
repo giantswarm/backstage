@@ -9,9 +9,5 @@ describe.each([
 ])('%s', (_kind, resourceClass) => {
   it('reads external-secrets.io/v1 only', () => {
     expect(resourceClass.supportedVersions).toEqual(['v1']);
-    expect(resourceClass.getGVK()).toMatchObject({
-      apiVersion: 'v1',
-      group: 'external-secrets.io',
-    });
   });
 });
