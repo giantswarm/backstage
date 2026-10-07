@@ -110,6 +110,8 @@ export interface RoadmapItemFilters {
   updated?: string;
   repository?: string;
   keyword?: string;
+  /** A filter field (`status`, …) the items have no value in. */
+  empty?: 'team' | 'status' | 'kind' | 'availability';
 }
 
 export interface RoadmapApi {

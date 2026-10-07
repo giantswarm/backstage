@@ -13,14 +13,15 @@ import {
 import { Alert } from '@material-ui/lab';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { RoadmapItem, RoadmapItemFilters } from '../../apis';
-import { useItems } from '../../hooks';
+import { RoadmapField, RoadmapItem, RoadmapItemFilters } from '../../apis';
+import { useBoardItems, useItems } from '../../hooks';
 import { formatDate } from '../../lib/dates';
 import {
   findStatusOption,
   groupByAssignee,
   KIND_FIELD,
   STATUS_FIELD,
+  statusColumns,
 } from '../../lib/board';
 import { itemRouteRef } from '../../routes';
 
@@ -121,21 +122,25 @@ function ItemList(props: { items: RoadmapItem[] }) {
  * assignee -- with unassigned in-flight work called out as a smell -- plus
  * status counts and the items that moved in the last week.
  */
-export function TeamActivityView(props: { filters: RoadmapItemFilters }) {
-  const { filters } = props;
+export function TeamActivityView(props: {
+  filters: RoadmapItemFilters;
+  schemaFields: RoadmapField[];
+}) {
+  const { filters, schemaFields } = props;
   const classes = useStyles();
 
-  const allItems = useItems(filters);
+  // The board's own per-column reads: one cache for both views.
+  const board = useBoardItems(filters, statusColumns(schemaFields));
   const recentItems = useItems({ ...filters, updated: RECENT_WINDOW });
 
-  if (allItems.isLoading) {
+  if (board.isPending) {
     return <Progress />;
   }
-  if (allItems.error) {
-    return <Alert severity="error">{(allItems.error as Error).message}</Alert>;
+  if (board.error) {
+    return <Alert severity="error">{(board.error as Error).message}</Alert>;
   }
 
-  const items = allItems.data?.items ?? [];
+  const items = board.items;
   if (items.length === 0) {
     return (
       <EmptyState
@@ -209,11 +214,11 @@ export function TeamActivityView(props: { filters: RoadmapItemFilters }) {
             updated in the last 7 days
           </Typography>
         </Box>
-        {recentItems.isLoading && <Progress />}
+        {recentItems.isPending && <Progress />}
         {recentItems.error ? (
           <Alert severity="error">{(recentItems.error as Error).message}</Alert>
         ) : null}
-        {!recentItems.isLoading && recent.length === 0 && (
+        {recentItems.isSuccess && recent.length === 0 && (
           <Typography variant="body2" color="textSecondary">
             Nothing moved in the last week.
           </Typography>
