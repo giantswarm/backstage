@@ -648,6 +648,26 @@ describe('LoadModelDialog', () => {
     expect(screen.queryByTestId('serve-already-serving')).toBeNull();
   });
 
+  it('cannot be dismissed while the load is on its way, and closes once it lands', async () => {
+    let land: (answer: ModelManagerLoadAnswer) => void = () => {};
+    loadModel.mockReturnValue(
+      new Promise(resolve => {
+        land = resolve;
+      }),
+    );
+    await render();
+    await waitFor(() => expect(serveButton()).toBeEnabled());
+
+    await userEvent.click(serveButton());
+    await screen.findByRole('button', { name: /Serving…/ });
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    land(loaded);
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it('keeps a refused load in the dialog', async () => {
     loadModel.mockRejectedValue(
       new Error('does_not_fit: no size of the pool hosts the preset'),

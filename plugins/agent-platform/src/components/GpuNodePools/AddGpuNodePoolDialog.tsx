@@ -12,6 +12,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -413,12 +414,6 @@ export function AddGpuNodePoolDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const onForm = step === 'form';
   const groups = review ? groupManifestsByRelease(review) : [];
   const shapeList = shapes?.sizes ?? [];
@@ -427,9 +422,7 @@ export function AddGpuNodePoolDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -669,8 +662,8 @@ export function AddGpuNodePoolDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
-              isDisabled={isBusy}
+              onPress={() => onOpenChange(false)}
+              isDisabled={write.isWriting}
             >
               {done ? 'Close' : 'Cancel'}
             </Button>

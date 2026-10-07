@@ -20,6 +20,7 @@ import {
   Organization,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -45,6 +46,7 @@ import {
   previewOf,
   type ModeVerdicts,
 } from '../../lib/clusterWrites';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { DIALOG_FORM_STYLE } from '../dialogForm';
@@ -148,6 +150,7 @@ export function CreateClusterDialog({
   const releases = useClusterReleases(target);
   const clusters = useManagedClusters(target);
   const write = useClusterWrite(target);
+  const startAnswer = useOpenGeneration(isOpen);
   const organizations = useResources(target ?? [], Organization, undefined, {
     enabled: Boolean(target) && isOpen,
   });
@@ -191,6 +194,7 @@ export function CreateClusterDialog({
       setDescription('');
       setValuesText('');
       setVerdicts(undefined);
+      setJudging(false);
       setMode(undefined);
       setApplied(undefined);
       setCommitted(undefined);
@@ -223,16 +227,22 @@ export function CreateClusterDialog({
       return;
     }
     setJudging(true);
+    const isCurrent = startAnswer();
     try {
       const judged = await judgeModes(
         dryRunMode => write.create(input, { mode: dryRunMode, dryRun: true }),
         offersCommit(info, CLUSTER_MANAGER_TOOLS.createCluster),
       );
+      if (!isCurrent()) {
+        return;
+      }
       write.reset();
       setVerdicts(judged);
       setMode(preferredMode(judged));
     } finally {
-      setJudging(false);
+      if (isCurrent()) {
+        setJudging(false);
+      }
     }
   };
 
@@ -253,12 +263,6 @@ export function CreateClusterDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!write.isBusy && !judging) {
-      onOpenChange(next);
-    }
-  };
-
   const onForm = !verdicts;
   const done = Boolean((applied && !applied.partial) || committed);
   const notConnected =
@@ -275,9 +279,7 @@ export function CreateClusterDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -512,8 +514,8 @@ export function CreateClusterDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
-              isDisabled={busy}
+              onPress={() => onOpenChange(false)}
+              isDisabled={write.isWriting}
             >
               {done ? 'Close' : 'Cancel'}
             </Button>

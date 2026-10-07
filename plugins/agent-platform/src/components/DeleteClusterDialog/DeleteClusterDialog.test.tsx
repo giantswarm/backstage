@@ -128,8 +128,13 @@ function makeMusterApi(scenario: Scenario = {}) {
   return { api: { callTool } as unknown as MusterApi, callTool };
 }
 
-async function renderDialog(scenario: Scenario = {}, commitOffered = true) {
-  const { api, callTool } = makeMusterApi(scenario);
+async function renderDialog(
+  scenario: Scenario = {},
+  commitOffered = true,
+  onOpenChange: (isOpen: boolean) => void = () => {},
+  musterApi = makeMusterApi(scenario),
+) {
+  const { api, callTool } = musterApi;
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -138,7 +143,7 @@ async function renderDialog(scenario: Scenario = {}, commitOffered = true) {
       <QueryClientProvider client={queryClient}>
         <DeleteClusterDialog
           isOpen
-          onOpenChange={() => {}}
+          onOpenChange={onOpenChange}
           installation="inst-1"
           organization="acme"
           name="demo1"
@@ -267,6 +272,50 @@ describe('DeleteClusterDialog', () => {
     expect(
       screen.queryByRole('button', { name: 'Finish removal' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('can be left while its dry runs are on their way: they write nothing', async () => {
+    const onOpenChange = jest.fn();
+    const muster = makeMusterApi();
+    muster.callTool.mockImplementation(() => new Promise(() => {}));
+    await renderDialog({}, false, onOpenChange, muster);
+    await waitFor(() => expect(muster.callTool).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('cannot be dismissed while the delete is on its way, and lets go once it lands', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = jest.fn();
+    const muster = makeMusterApi();
+    const dryRunsAndApply = muster.callTool.getMockImplementation()!;
+    let land: () => void = () => {};
+    muster.callTool.mockImplementation(async (name, args) => {
+      if (!args.dryRun) {
+        await new Promise<void>(resolve => {
+          land = resolve;
+        });
+      }
+      return dryRunsAndApply(name, args);
+    });
+    await renderDialog({}, false, onOpenChange, muster);
+    await screen.findByTestId('what-goes');
+    await user.type(screen.getByLabelText(/Type demo1 to confirm/), 'demo1');
+    await user.click(screen.getByRole('button', { name: 'Delete cluster' }));
+
+    await waitFor(() => expect(writesOf(muster.callTool)).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).not.toHaveBeenCalled();
+
+    land();
+    expect(await screen.findByText(NEXT_STEP)).toBeInTheDocument();
+    // The header's X; the footer's button reads Close too once the delete landed.
+    await user.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('shows a cluster with nothing left as already removed', async () => {
