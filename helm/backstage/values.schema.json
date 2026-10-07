@@ -2721,6 +2721,16 @@
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
                         },
+                        "podMonitor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Render a Prometheus Operator `PodMonitor` for the CNPG cluster, with the `observability.giantswarm.io/tenant` label. It also renders only when the cluster serves `monitoring.coreos.com/v1/PodMonitor` (`helm template` needs `--api-versions monitoring.coreos.com/v1/PodMonitor`), so an install on a cluster without the Prometheus Operator CRDs succeeds; set `false` to drop it everywhere"
+                                }
+                            }
+                        },
                         "storageSize": {
                             "type": "string",
                             "description": "Persistent volume size for the PostgreSQL CNPG cluster"
