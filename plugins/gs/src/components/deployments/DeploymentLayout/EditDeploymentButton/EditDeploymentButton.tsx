@@ -23,7 +23,7 @@ export function EditDeploymentButton({
   const { available, getTemplateUrl } = useEditAppDeploymentTemplate();
 
   // Only fetch edit data when the template is available
-  const { chartRef, chartTag, automaticUpgrades, isLoading } =
+  const { chartRef, chartTag, automaticUpgrades, semverFilter, isLoading } =
     useEditDeploymentData(deployment, installationName, {
       enabled: available,
     });
@@ -73,6 +73,7 @@ export function EditDeploymentButton({
       chartRef: chartRef ?? '',
       chartTag: chartTag ?? '',
       automaticUpgrades: automaticUpgrades ?? 'no-upgrades',
+      semverFilter,
       installation: { installationName },
       cluster: {
         clusterName,
@@ -87,6 +88,7 @@ export function EditDeploymentButton({
     chartRef,
     chartTag,
     automaticUpgrades,
+    semverFilter,
     installationName,
     clusterName,
     clusterNamespace,

@@ -1,6 +1,7 @@
 import {
   deriveAutoUpgradeMode,
   deriveChartVersion,
+  deriveSemverFilter,
   getAutoUpgradeLabel,
   versionFromRevision,
 } from './getAutoUpgradeSettings';
@@ -175,5 +176,89 @@ describe('getAutoUpgradeLabel', () => {
     expect(getAutoUpgradeLabel('patch-upgrades')).toBe('Patch');
     expect(getAutoUpgradeLabel('minor-upgrades')).toBe('Minor and patch');
     expect(getAutoUpgradeLabel('major-upgrades')).toBe('Any');
+  });
+});
+
+describe('deriveSemverFilter', () => {
+  it('reads the filter of a semver range', () => {
+    expect(
+      deriveSemverFilter({ semver: '>=0.0.0-0', semverFilter: '.*-rc\\..*' }),
+    ).toBe('.*-rc\\..*');
+  });
+
+  it('returns undefined without a filter', () => {
+    expect(deriveSemverFilter({ semver: '>=0.0.0-0' })).toBeUndefined();
+    expect(
+      deriveSemverFilter({ semver: '>=0.0.0-0', semverFilter: '' }),
+    ).toBeUndefined();
+    expect(deriveSemverFilter(undefined)).toBeUndefined();
+  });
+
+  it('ignores the filter where Flux does: without a range or with a digest', () => {
+    expect(
+      deriveSemverFilter({ tag: '1.2.3', semverFilter: '.*-rc\\..*' }),
+    ).toBeUndefined();
+    expect(
+      deriveSemverFilter({
+        semver: '>=0.0.0-0',
+        semverFilter: '.*-rc\\..*',
+        digest: 'sha256:abc',
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('automatic upgrades of the SemVer automatic upgrades guide', () => {
+  // The seven release-stage scenarios of the guide, `semver` and
+  // `semverFilter` as it documents them.
+  it.each([
+    ['1. stable, patch only', '1.2.x', undefined, 'Patch'],
+    ['2. stable, patch or minor', '1.x', undefined, 'Minor and patch'],
+    ['3. any stable tag', '>=0.0.0', undefined, 'Any'],
+    [
+      '4. dev builds only',
+      '>=0.0.0-0',
+      '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$',
+      'Dev builds only',
+    ],
+    [
+      '5. release candidates only',
+      '>=0.0.0-0',
+      '.*-rc\\..*',
+      'Release candidates only',
+    ],
+    [
+      '6. any RC or stable tag',
+      '>=0.0.0-0',
+      '^[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$',
+      'Release candidates or stable',
+    ],
+    ['7. any tag', '>=0.0.0-0', undefined, 'Any'],
+  ])('scenario %s', (_scenario, semver, semverFilter, label) => {
+    const ref = { semver, semverFilter };
+    expect(
+      getAutoUpgradeLabel(deriveAutoUpgradeMode(ref), deriveSemverFilter(ref)),
+    ).toBe(label);
+  });
+});
+
+describe('getAutoUpgradeLabel with a semver filter', () => {
+  it('shows a filter the guide does not document as its regular expression', () => {
+    expect(getAutoUpgradeLabel('major-upgrades', '^1\\.2\\.4-rc\\..*')).toBe(
+      'Tags matching ^1\\.2\\.4-rc\\..*',
+    );
+  });
+
+  it('keeps the mode of a range narrower than any', () => {
+    expect(getAutoUpgradeLabel('minor-upgrades', '.*-rc\\..*')).toBe(
+      'Minor and patch, release candidates only',
+    );
+    expect(getAutoUpgradeLabel('patch-upgrades', '^1\\.2\\.4-rc\\..*')).toBe(
+      'Patch, tags matching ^1\\.2\\.4-rc\\..*',
+    );
+  });
+
+  it('shows None when there are no upgrades to filter', () => {
+    expect(getAutoUpgradeLabel('no-upgrades', '.*-rc\\..*')).toBe('None');
   });
 });

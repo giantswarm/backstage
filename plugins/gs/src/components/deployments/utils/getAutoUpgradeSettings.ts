@@ -10,7 +10,22 @@ const autoUpgradeLabels: Record<AutoUpgradeMode, string> = {
   'major-upgrades': 'Any',
 };
 
-type OciRepositoryRef = { semver?: string; tag?: string; digest?: string };
+type OciRepositoryRef = {
+  semver?: string;
+  semverFilter?: string;
+  tag?: string;
+  digest?: string;
+};
+
+/**
+ * The release stages of the `semverFilter` values our SemVer automatic
+ * upgrades guide documents, by the filter's exact text.
+ */
+const releaseStageFilters: Record<string, string> = {
+  '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$': 'dev builds only',
+  '.*-rc\\..*': 'release candidates only',
+  '^[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$': 'release candidates or stable',
+};
 
 /**
  * The version a semver range starts from: the version Flux currently resolves
@@ -100,6 +115,35 @@ export function versionFromRevision(
   return revision?.split(/[@/]/)[0] || undefined;
 }
 
-export function getAutoUpgradeLabel(mode: AutoUpgradeMode): string {
-  return autoUpgradeLabels[mode];
+/**
+ * The tag filter Flux applies before the semver range, if any: the
+ * OCIRepository `spec.ref.semverFilter`. Flux reads it only along with a
+ * semver range, and a digest takes precedence over both.
+ */
+export function deriveSemverFilter(
+  ref: OciRepositoryRef | undefined,
+): string | undefined {
+  if (ref?.digest || !ref?.semver) return undefined;
+  return ref.semverFilter || undefined;
+}
+
+/**
+ * The label of an automatic upgrade mode, narrowed by the tag filter Flux
+ * applies first: a documented release stage by its name, any other filter as
+ * its regular expression. Backstage has no tag list here, so it never
+ * evaluates the filter.
+ */
+export function getAutoUpgradeLabel(
+  mode: AutoUpgradeMode,
+  semverFilter?: string,
+): string {
+  const label = autoUpgradeLabels[mode];
+  if (!semverFilter || mode === 'no-upgrades') return label;
+
+  const stage =
+    releaseStageFilters[semverFilter] ?? `tags matching ${semverFilter}`;
+  if (mode === 'major-upgrades') {
+    return stage.charAt(0).toUpperCase() + stage.slice(1);
+  }
+  return `${label}, ${stage}`;
 }

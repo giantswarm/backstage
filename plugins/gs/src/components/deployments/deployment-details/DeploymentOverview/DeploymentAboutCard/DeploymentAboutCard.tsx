@@ -37,6 +37,7 @@ import { getSourceKind, getSourceName } from '../../../utils/getSource';
 import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
 import {
   deriveAutoUpgradeMode,
+  deriveSemverFilter,
   getAutoUpgradeLabel,
   versionFromRevision,
 } from '../../../utils/getAutoUpgradeSettings';
@@ -117,9 +118,10 @@ export function DeploymentAboutCard() {
     },
   );
 
+  const ociRef = ociRepository?.getReference();
   const autoUpgradeMode = needsOciRepository
     ? deriveAutoUpgradeMode(
-        ociRepository?.getReference(),
+        ociRef,
         versionFromRevision(ociRepository?.getRevision()),
       )
     : undefined;
@@ -203,7 +205,10 @@ export function DeploymentAboutCard() {
                 isLoading={isLoadingOci}
                 value={
                   autoUpgradeMode
-                    ? getAutoUpgradeLabel(autoUpgradeMode)
+                    ? getAutoUpgradeLabel(
+                        autoUpgradeMode,
+                        deriveSemverFilter(ociRef),
+                      )
                     : undefined
                 }
                 errorMessage={ociError?.message}

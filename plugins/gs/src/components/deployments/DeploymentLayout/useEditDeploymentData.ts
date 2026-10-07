@@ -7,6 +7,7 @@ import {
 import {
   deriveAutoUpgradeMode,
   deriveChartVersion,
+  deriveSemverFilter,
   versionFromRevision,
 } from '../utils/getAutoUpgradeSettings';
 
@@ -53,6 +54,7 @@ export function useEditDeploymentData(
       chartRef: deriveChartRef(ociUrl),
       chartTag: deriveChartVersion(ociRef, currentVersion),
       automaticUpgrades: deriveAutoUpgradeMode(ociRef, currentVersion),
+      semverFilter: deriveSemverFilter(ociRef),
       isLoading: needsOciRepository ? isLoadingOci : false,
     };
   }, [ociRepository, isLoadingOci, needsOciRepository]);
