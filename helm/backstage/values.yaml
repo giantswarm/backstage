@@ -367,8 +367,9 @@ backstage:
   command: ['node', 'packages/backend']
 
   # @schema item:string
-  # -- Additional command arguments passed to the Backstage container
-  args: []
+  # -- Arguments passed to the Backstage container, the base layer of the backend's configuration: by default the image's bundled config files, as in the image's `CMD` (`command` replaces the `CMD`, so the chart restates them here). The chart's own `--config` flags (database, appConfig, extraAppConfig, branding) follow these, so they override the bundled values. An installation that sets `args` replaces this list and keeps the bundled files only if it names them
+  args:
+    ['--config', 'app-config.yaml', '--config', 'app-config.production.yaml']
 
   # -- How long the backend keeps serving after SIGTERM, with its readiness at 503, before it stops its server (`backend.lifecycle.serverShutdownDelay`). Covers the time the gateway takes to drop a terminating pod from its endpoints; without it every rollout answers requests still routed to the old pod with the gateway's "upstream connect error". Must stay below the pod's termination grace period (30 s)
   serverShutdownDelay: 10s

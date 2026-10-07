@@ -25,6 +25,9 @@
 # * the server shutdown delay, without which every rollout answers the
 #   requests the gateway still routes to the stopping pod with Envoy's
 #   "upstream connect error or disconnect/reset before headers".
+# * the image's bundled config files ahead of the chart's own --config flags,
+#   without which an install that sets only appConfig exits at start with
+#   "Missing required config value";
 # * the CNPG PodMonitor gated on its toggle and on the cluster serving the
 #   kind, without which an install on a cluster without the Prometheus
 #   Operator CRDs fails and rolls back the database with it.
@@ -259,9 +262,33 @@ done
 expect postgresql 'mountPath: "/app/app-config-database.yaml"'
 # Later --config files win: the operator's appConfig and extraAppConfig come
 # after the chart's pg block, so a database block of theirs still applies.
+# The image's bundled files come first, the base layer the chart's flags
+# override.
 config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
-if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
-  echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
+if [ "${config_order}" != "app-config.yaml,app-config.production.yaml,app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
+  echo "FAIL: postgresql: the --config order is [${config_order}], want the bundled files, then the database config first"
+  failed=1
+fi
+
+echo "--> backstage.args: the image's bundled config files by default, an explicit list replaces them"
+render args-default --set-string 'backstage.appConfig=app: portal'
+got=$(container_args args-default | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config.production.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-default: the args are [${got}], want the bundled files, then the appConfig"
+  failed=1
+fi
+render args-explicit --set-string 'backstage.appConfig=app: portal' --set 'backstage.args={--config,app-config.yaml}'
+got=$(container_args args-explicit | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-explicit: the args are [${got}], want the explicit list, then the appConfig"
+  failed=1
+fi
+# The managed installations pin `args: []` to keep the bundled files out.
+printf 'backstage:\n  args: []\n' >"${work_dir}/args-empty-values.yaml"
+render args-empty --set-string 'backstage.appConfig=app: portal' --values "${work_dir}/args-empty-values.yaml"
+got=$(container_args args-empty | paste -sd, -)
+if [ "${got}" != "--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-empty: the args are [${got}], want the appConfig alone"
   failed=1
 fi
 
