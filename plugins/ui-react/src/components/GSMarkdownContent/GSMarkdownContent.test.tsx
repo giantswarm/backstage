@@ -181,6 +181,26 @@ describe('GSMarkdownContent', () => {
       },
     );
 
+    it('scrolls to the top on # even past a heading without text', async () => {
+      await renderMarkdown('## ![](diagram.png)\n\n[Back to top](#)');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Back to top' }));
+
+      expect(scrolledTo).toHaveLength(1);
+      expect(scrolledTo[0]).toContainElement(screen.getByRole('heading'));
+      expect(screen.getByRole('heading')).not.toHaveFocus();
+    });
+
+    it('finds a heading by the id it is rendered with', async () => {
+      await renderMarkdown('[Values](#values-yaml)\n\n## values.yaml');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Values' }));
+
+      const heading = screen.getByRole('heading', { name: 'values.yaml' });
+      expect(heading).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
+    });
+
     it('does nothing for an anchor that is not in the document', async () => {
       await renderMarkdown('[Missing](#missing)');
 

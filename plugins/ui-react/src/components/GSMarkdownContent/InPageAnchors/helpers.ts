@@ -37,7 +37,8 @@ export function getInPageFragment(
  * Finds the element a `#fragment` link in rendered markdown points to, the way
  * GitHub resolves it: an element with that id, with or without the
  * sanitizer's prefix, or else the heading whose GitHub slug it is. Headings
- * are matched by slug only, since `MarkdownContent` gives them ids of its own.
+ * are matched by slug first, since `MarkdownContent` gives them ids of its
+ * own; a link written against those ids still finds its heading.
  * Links lose their ids and names in `MarkdownContent`, so `<a name>` anchors
  * and footnote back-references have nothing to land on.
  * Returns `'top'` for `#` and `#top` when nothing else matches.
@@ -47,6 +48,9 @@ export function findAnchorTarget(
   fragment: string,
 ): HTMLElement | 'top' | undefined {
   const name = decodeFragment(fragment);
+  if (name === '') {
+    return 'top';
+  }
   const candidates = [name, `${CLOBBER_PREFIX}${name}`];
 
   const named = Array.from(
@@ -69,5 +73,12 @@ export function findAnchorTarget(
     return heading;
   }
 
-  return name === '' || slug === 'top' ? 'top' : undefined;
+  const byRenderedId = Array.from(
+    container.querySelectorAll<HTMLElement>(HEADINGS),
+  ).find(element => element.id === name);
+  if (byRenderedId) {
+    return byRenderedId;
+  }
+
+  return slug === 'top' ? 'top' : undefined;
 }

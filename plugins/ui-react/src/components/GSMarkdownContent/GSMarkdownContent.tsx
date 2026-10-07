@@ -1,10 +1,10 @@
-import { MouseEvent, ReactNode, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import { MarkdownContent } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
-import { useHref, useInRouterContext } from 'react-router-dom';
+import { useInRouterContext } from 'react-router-dom';
 import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
-import { findAnchorTarget, getInPageFragment } from './helpers';
+import { InPageAnchors } from './InPageAnchors';
 
 type Dialect = 'gfm' | 'common-mark';
 
@@ -53,62 +53,6 @@ const useStyles = makeStyles(theme => ({
     },
   },
 }));
-
-/**
- * A `div` whose `#heading` links inside jump to their target. Markdown links
- * render through the router, which changes the hash without scrolling, so the
- * jump is done here instead.
- */
-const InPageAnchors = ({
-  className,
-  children,
-}: {
-  className: string;
-  children: ReactNode;
-}) => {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const pageHref = useHref('#');
-
-  const jumpToAnchor = (event: MouseEvent<HTMLDivElement>) => {
-    if (
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-    const link = (event.target as Element).closest('a');
-    const fragment = link ? getInPageFragment(link, pageHref) : undefined;
-    if (fragment === undefined || !rootRef.current) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-
-    const target = findAnchorTarget(rootRef.current, fragment);
-    if (target === 'top') {
-      rootRef.current.scrollIntoView({ block: 'start' });
-      return;
-    }
-    if (!target) {
-      return;
-    }
-    if (!target.hasAttribute('tabindex')) {
-      target.tabIndex = -1;
-    }
-    target.focus({ preventScroll: true });
-    // A frame later, so a container that expands on focus has laid out.
-    requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
-  };
-
-  return (
-    <div ref={rootRef} className={className} onClickCapture={jumpToAnchor}>
-      {children}
-    </div>
-  );
-};
 
 /**
  * Shared markdown renderer for Giant Swarm plugins.

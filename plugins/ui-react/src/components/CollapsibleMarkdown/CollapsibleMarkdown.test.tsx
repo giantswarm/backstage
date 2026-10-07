@@ -198,5 +198,17 @@ describe('CollapsibleMarkdown', () => {
       'true',
     );
     await waitFor(() => expect(scrolledTo).toEqual([heading]));
+
+    // The heading keeps focus while the card collapses again, as in Safari,
+    // where clicking a button does not move focus.
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(heading).toHaveFocus();
+    fireEvent.click(screen.getByRole('link', { name: 'Upgrading' }));
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(scrolledTo).toEqual([heading, heading]));
   });
 });
