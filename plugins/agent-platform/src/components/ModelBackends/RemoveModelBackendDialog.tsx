@@ -10,6 +10,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
 import {
@@ -87,21 +88,10 @@ export function RemoveModelBackendDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const unwired = plan?.modelConfigs ?? [];
 
   return (
-    <Dialog
-      isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
-    >
+    <Dialog isOpen={isOpen} {...dialogDismissLock(isBusy, onOpenChange)}>
       <form
         onSubmit={event => {
           event.preventDefault();
@@ -183,7 +173,7 @@ export function RemoveModelBackendDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
+              onPress={() => onOpenChange(false)}
               isDisabled={isBusy}
             >
               {removed ? 'Close' : 'Cancel'}

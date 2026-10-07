@@ -14,6 +14,7 @@ import {
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import {
   CapabilityState,
   Committed,
@@ -259,9 +260,11 @@ export function CapabilityDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={open => !open && !busy && onClose()}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      {...dialogDismissLock(busy, open => {
+        if (!open) {
+          onClose();
+        }
+      })}
       width="min(90vw, 900px)"
     >
       <form

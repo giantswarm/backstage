@@ -9,6 +9,7 @@ import {
   Flex,
   Text,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
@@ -126,9 +127,11 @@ export function ActionDialog<TPlan, TDone>({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={open => !open && !busy && onClose()}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      {...dialogDismissLock(busy, open => {
+        if (!open) {
+          onClose();
+        }
+      })}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onSubmit} style={FORM_STYLE} aria-label={title}>

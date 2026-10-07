@@ -219,6 +219,23 @@ describe('ImportModelDialog', () => {
     ).toHaveTextContent('Best node');
   });
 
+  it('cannot be dismissed while the download is starting', async () => {
+    pullModel.mockReturnValue(new Promise(() => {}));
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await screen.findByText('Fits on gpu-node-1');
+
+    await userEvent.click(downloadButton());
+    await screen.findByRole('button', { name: /Starting…/ });
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
   it('stays open with the refusal when model-manager rejects the download', async () => {
     const refused = new Error(
       'model does not fit: 104.8 GiB exceed the 86.1 GiB available',

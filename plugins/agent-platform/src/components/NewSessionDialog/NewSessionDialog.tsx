@@ -1,4 +1,5 @@
 import { Dialog, DialogBody, DialogHeader } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import { NewSessionComposer } from '../NewSessionComposer';
 
@@ -38,17 +39,7 @@ export function NewSessionDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      // Gated here rather than only through `isDismissable` /
-      // `isKeyboardDismissDisabled`: those reach the outside click and Escape but
-      // not `DialogHeader`'s own close button, which bui renders unconditionally
-      // and routes through this callback.
-      onOpenChange={next => {
-        if (!isStarting) {
-          onOpenChange(next);
-        }
-      }}
-      isDismissable={!isStarting}
-      isKeyboardDismissDisabled={isStarting}
+      {...dialogDismissLock(isStarting, onOpenChange)}
       width="min(90vw, 560px)"
     >
       <DialogHeader>New session</DialogHeader>

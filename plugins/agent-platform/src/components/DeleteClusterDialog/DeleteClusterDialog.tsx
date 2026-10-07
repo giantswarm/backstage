@@ -13,6 +13,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useClusterWrite } from '../../hooks/useClusterManager';
 import {
@@ -116,12 +117,6 @@ export function DeleteClusterDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!write.isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const checking = isOpen && !verdicts;
   const confirmed = typed === name;
   const started = Boolean(removed || committed);
@@ -139,9 +134,7 @@ export function DeleteClusterDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!write.isBusy}
-      isKeyboardDismissDisabled={write.isBusy}
+      {...dialogDismissLock(write.isBusy, onOpenChange)}
       width="min(90vw, 720px)"
     >
       <DialogHeader>Delete cluster {name}?</DialogHeader>
@@ -343,7 +336,7 @@ export function DeleteClusterDialog({
         <Flex gap="2" justify="end">
           <Button
             variant="secondary"
-            onPress={() => close(false)}
+            onPress={() => onOpenChange(false)}
             isDisabled={write.isBusy}
           >
             {started || nothingLeft ? 'Close' : 'Cancel'}

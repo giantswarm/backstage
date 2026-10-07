@@ -13,6 +13,7 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { validateModelRef } from '../../lib/modelManagerServing';
@@ -158,9 +159,7 @@ export function PullModelDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(isBusy, onOpenChange)}
       width="min(90vw, 560px)"
     >
       <DialogHeader>Pull a model</DialogHeader>

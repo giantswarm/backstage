@@ -12,6 +12,7 @@ import {
   TextAreaField,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
 import {
@@ -243,12 +244,6 @@ export function AddModelBackendDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const isHost = kind ? isHostBackendKind(kind) : false;
   const endpointInvalid =
     form.endpoint.length > 0 && !isValidEndpoint(form.endpoint);
@@ -260,9 +255,7 @@ export function AddModelBackendDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(isBusy, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -470,7 +463,7 @@ export function AddModelBackendDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
+              onPress={() => onOpenChange(false)}
               isDisabled={isBusy}
             >
               {done ? 'Close' : 'Cancel'}

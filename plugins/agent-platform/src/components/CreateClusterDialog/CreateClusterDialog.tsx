@@ -20,6 +20,7 @@ import {
   Organization,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -253,12 +254,6 @@ export function CreateClusterDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!write.isBusy && !judging) {
-      onOpenChange(next);
-    }
-  };
-
   const onForm = !verdicts;
   const done = Boolean((applied && !applied.partial) || committed);
   const notConnected =
@@ -275,9 +270,7 @@ export function CreateClusterDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      {...dialogDismissLock(busy, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -512,7 +505,7 @@ export function CreateClusterDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
+              onPress={() => onOpenChange(false)}
               isDisabled={busy}
             >
               {done ? 'Close' : 'Cancel'}
