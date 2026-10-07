@@ -141,10 +141,38 @@ function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
   return /\d-[0-9A-Za-z]/.test(ref.semver);
 }
 
+const rangeOperators: Partial<Record<AutoUpgradeMode, string>> = {
+  'patch-upgrades': '~',
+  'minor-upgrades': '^',
+  'major-upgrades': '>=',
+};
+
+/**
+ * The semver range, when the edit template's fixed modes cannot write it back.
+ * They write the mode's operator (`~`, `^` or `>=`) followed by the chart
+ * version, with a `-0` floor when pre-releases are included: for a single
+ * comparator with that operator the floor moves to the current version, which
+ * leaves the upgrades Flux performs unchanged. Any other range, such as one
+ * with an upper bound (`>=1.0.0 <3.0.0`), goes to the template's custom range
+ * mode verbatim.
+ */
+function deriveCustomRange(
+  ref: OciRepositoryRef | undefined,
+  mode: AutoUpgradeMode,
+): string | undefined {
+  if (ref?.digest || !ref?.semver) return undefined;
+
+  const range = ref.semver.trim();
+  const operator = /^(~|\^|>=)\s*v?\d[^\s,|<>=~^]*$/.exec(range)?.[1];
+  return operator && operator === rangeOperators[mode] ? undefined : range;
+}
+
 export type AutoUpgradeSettings = {
   mode: AutoUpgradeMode;
   semverFilter?: string;
   includePrereleases: boolean;
+  /** The range for the edit template's custom range mode, if the fixed modes cannot write it back */
+  semverRange?: string;
 };
 
 /**
@@ -158,10 +186,12 @@ export function deriveAutoUpgradeSettings(
   ref: OciRepositoryRef | undefined,
   currentVersion?: string,
 ): AutoUpgradeSettings {
+  const mode = deriveAutoUpgradeMode(ref, currentVersion);
   return {
-    mode: deriveAutoUpgradeMode(ref, currentVersion),
+    mode,
     semverFilter: deriveSemverFilter(ref),
     includePrereleases: rangeIncludesPrereleases(ref),
+    semverRange: deriveCustomRange(ref, mode),
   };
 }
 
