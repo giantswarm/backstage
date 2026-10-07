@@ -19,7 +19,9 @@
 #   renders and the install fails with "illegal base64 data at input byte N".
 # * the arm64 node selector with the toleration for the pool's
 #   `kubernetes.io/arch=arm64:NoSchedule` taint, without which the pod stays
-#   Pending, or lands on any pool when only the toleration renders.
+#   Pending, or lands on any pool when only the toleration renders;
+# * the startupProbe, without which a backend that never finishes starting
+#   (its database unreachable) stays unready and is never restarted.
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -314,6 +316,27 @@ expect_scheduling arch-covered-equal '[{"kubernetes.io/arch":"arm64"},[{"effect"
 render arch-noexecute --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists' --set 'tolerations[0].effect=NoExecute'
 expect_scheduling arch-noexecute "[{\"kubernetes.io/arch\":\"arm64\"},[{\"effect\":\"NoExecute\",\"key\":\"kubernetes.io/arch\",\"operator\":\"Exists\"},${arm64_toleration}]]"
 render_fails arch-conflict 'architecture=arm64 conflicts with nodeSelector' --set architecture=arm64 --set-string 'nodeSelector.kubernetes\.io/arch=amd64'
+
+# The container's startupProbe in compact JSON, `null` when it does not render.
+startup_probe() {
+  yq -o=json -I=0 'select(.kind == "Deployment") | .spec.template.spec.containers[0].startupProbe' "${work_dir}/$1.yaml"
+}
+
+echo "--> startupProbe: on the readiness endpoint, ten minutes by default, timing from probes.startup"
+render startup-default
+got=$(startup_probe startup-default)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":10,"timeoutSeconds":5,"failureThreshold":60}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-default: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
+render startup-tuned --set probes.startup.periodSeconds=5 --set probes.startup.timeoutSeconds=2 --set probes.startup.failureThreshold=120
+got=$(startup_probe startup-tuned)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":120}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-tuned: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

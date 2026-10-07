@@ -4,7 +4,9 @@ import { createBackend } from '@backstage/backend-defaults';
 import {
   configureFetchProxy,
   customHttpAuthServiceFactory,
+  databaseServiceFactory,
   rootLogger,
+  startBackend,
 } from '@internal/backend-common';
 
 // global-agent never reaches native fetch, which the catalog, the scaffolder
@@ -16,6 +18,10 @@ const backend = createBackend();
 // Override default httpAuth to read tokens from X-Backstage-Token header,
 // avoiding conflicts with ingress-level Basic auth on the Authorization header.
 backend.add(customHttpAuthServiceFactory);
+
+// Retry each plugin's first database connection until the database is
+// reachable, so a backend started before its CNPG primary still starts.
+backend.add(databaseServiceFactory);
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));
@@ -38,4 +44,4 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 // custom root logger service
 backend.add(rootLogger);
 
-backend.start();
+startBackend(backend);

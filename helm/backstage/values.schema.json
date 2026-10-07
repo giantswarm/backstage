@@ -3079,7 +3079,7 @@
         },
         "probes": {
             "type": "object",
-            "description": "Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
+            "description": "Startup, liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`, startup on readiness); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
             "additionalProperties": false,
             "properties": {
                 "liveness": {
@@ -3132,6 +3132,28 @@
                         "timeoutSeconds": {
                             "type": "integer",
                             "description": "Number of seconds after which the readiness probe times out",
+                            "minimum": 1
+                        }
+                    }
+                },
+                "startup": {
+                    "type": "object",
+                    "description": "Startup probe timing, on the readiness endpoint: liveness and readiness wait until the backend has started. Sized for a backend that waits up to five minutes for its database (a CNPG primary coming up) plus its own start; one that has not started by then is restarted.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "failureThreshold": {
+                            "type": "integer",
+                            "description": "Consecutive failures before the container is restarted; with periodSeconds the time the backend has to start",
+                            "minimum": 1
+                        },
+                        "periodSeconds": {
+                            "type": "integer",
+                            "description": "How often (in seconds) to perform the startup probe",
+                            "minimum": 1
+                        },
+                        "timeoutSeconds": {
+                            "type": "integer",
+                            "description": "Number of seconds after which the startup probe times out",
                             "minimum": 1
                         }
                     }
