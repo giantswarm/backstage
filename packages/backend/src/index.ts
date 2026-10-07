@@ -4,7 +4,9 @@ import { createBackend } from '@backstage/backend-defaults';
 import {
   configureFetchProxy,
   customHttpAuthServiceFactory,
+  databaseServiceFactory,
   rootLogger,
+  startBackend,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
 import { telemetryConfigPlugin } from './telemetry';
@@ -18,6 +20,10 @@ const backend = createBackend();
 // Override default httpAuth to read tokens from X-Backstage-Token header,
 // avoiding conflicts with ingress-level Basic auth on the Authorization header.
 backend.add(customHttpAuthServiceFactory);
+
+// Retry each plugin's first database connection until the database is
+// reachable, so a backend started before its CNPG primary still starts.
+backend.add(databaseServiceFactory);
 
 backend.add(import('@backstage/plugin-app-backend'));
 backend.add(import('@backstage/plugin-proxy-backend'));
@@ -120,4 +126,4 @@ if (process.env.PAGERDUTY_TOKEN) {
   backend.add(import('@pagerduty/backstage-plugin-backend'));
 }
 
-backend.start();
+startBackend(backend);
