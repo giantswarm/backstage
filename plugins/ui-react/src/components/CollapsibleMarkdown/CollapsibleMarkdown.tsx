@@ -7,9 +7,11 @@ import { useContainerDimensions } from '../../hooks';
 const DEFAULT_COLLAPSED_HEIGHT = 250;
 
 const useStyles = makeStyles({
+  // `clip`, not `hidden`: the viewport is no scroll container, so neither
+  // focus nor `scrollIntoView` can scroll the content inside the cut.
   viewport: {
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'clip',
   },
   // The same fade bui's own scroll areas use: from the surface the component
   // sits on to transparent, so it matches any card or page background.
@@ -53,20 +55,16 @@ export const CollapsibleMarkdown = ({
   const overflows = height > collapsedHeight + 1;
   const collapsed = overflows && !expanded;
 
-  // Keyboard focus on a link past the cut would land on something hidden under
-  // the fade; show everything instead. The browser may already have scrolled
-  // the clipped viewport to the link, so its offset adds `scrollTop` back.
+  // Focus past the cut, from the keyboard or a `#heading` link, would land on
+  // something hidden under the fade; show everything instead.
   const revealFocused = (event: FocusEvent<HTMLDivElement>) => {
     if (!collapsed) {
       return;
     }
-    const viewport = event.currentTarget;
     const offset =
       event.target.getBoundingClientRect().bottom -
-      viewport.getBoundingClientRect().top +
-      viewport.scrollTop;
+      event.currentTarget.getBoundingClientRect().top;
     if (offset > collapsedHeight) {
-      viewport.scrollTop = 0;
       setExpanded(true);
     }
   };
