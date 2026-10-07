@@ -30,22 +30,25 @@ describe('MergedTab', () => {
       getContent: jest.fn(async () => ({ content: '# GPU pool' })),
     } as unknown as PlansApi;
 
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: 1, retryDelay: 0 } },
+    });
+
     await renderInTestApp(
       <TestApiProvider apis={[[plansApiRef, plansApi]]}>
-        <QueryClientProvider
-          client={
-            new QueryClient({
-              defaultOptions: { queries: { retry: 1, retryDelay: 0 } },
-            })
-          }
-        >
+        <QueryClientProvider client={client}>
           <MergedTab repo="giantswarm/plans" />
         </QueryClientProvider>
       </TestApiProvider>,
       { mountedRoutes: { '/plans': rootRouteRef } },
     );
 
-    await waitFor(() => expect(plansApi.getTree).toHaveBeenCalledTimes(1));
+    // The first read failed and its retry waits for the tab.
+    await waitFor(() =>
+      expect(
+        client.getQueryCache().findAll({ fetchStatus: 'paused' }),
+      ).not.toHaveLength(0),
+    );
     expect(screen.getByTestId('progress')).toBeInTheDocument();
     expect(screen.queryByText('No merged plans')).not.toBeInTheDocument();
 
