@@ -18,14 +18,18 @@ type OciRepositoryRef = {
 };
 
 /**
- * The release stages of the `semverFilter` values our SemVer automatic
- * upgrades guide documents, by the filter's exact text.
+ * The release stages of the `semverFilter` values the SemVer automatic
+ * upgrades guide documents (from the semver-based-automatic-upgrades RFC,
+ * https://github.com/giantswarm/rfc/tree/main/semver-based-automatic-upgrades),
+ * by the filter's exact text: a filter written differently is shown as its
+ * regular expression. Each stage takes pre-release tags, so the range must
+ * admit pre-releases for Flux to find one.
  */
-const releaseStageFilters: Record<string, string> = {
-  '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$': 'dev builds only',
-  '.*-rc\\..*': 'release candidates only',
-  '^[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$': 'release candidates or stable',
-};
+const releaseStages = new Map<string, string>([
+  ['^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$', 'Dev builds only'],
+  ['.*-rc\\..*', 'Release candidates only'],
+  ['^[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$', 'Release candidates or stable'],
+]);
 
 /**
  * The version a semver range starts from: the version Flux currently resolves
@@ -120,7 +124,7 @@ export function versionFromRevision(
  * OCIRepository `spec.ref.semverFilter`. Flux reads it only along with a
  * semver range, and a digest takes precedence over both.
  */
-export function deriveSemverFilter(
+function deriveSemverFilter(
   ref: OciRepositoryRef | undefined,
 ): string | undefined {
   if (ref?.digest || !ref?.semver) return undefined;
@@ -128,22 +132,80 @@ export function deriveSemverFilter(
 }
 
 /**
- * The label of an automatic upgrade mode, narrowed by the tag filter Flux
- * applies first: a documented release stage by its name, any other filter as
- * its regular expression. Backstage has no tag list here, so it never
- * evaluates the filter.
+ * Whether the semver range admits pre-release versions. Flux follows
+ * Masterminds/semver, which matches a pre-release only for a range with a
+ * pre-release comparator, such as `>=0.0.0-0`.
  */
-export function getAutoUpgradeLabel(
-  mode: AutoUpgradeMode,
-  semverFilter?: string,
-): string {
-  const label = autoUpgradeLabels[mode];
-  if (!semverFilter || mode === 'no-upgrades') return label;
+function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
+  if (ref?.digest || !ref?.semver) return false;
+  return /\d-[0-9A-Za-z]/.test(ref.semver);
+}
 
-  const stage =
-    releaseStageFilters[semverFilter] ?? `tags matching ${semverFilter}`;
-  if (mode === 'major-upgrades') {
-    return stage.charAt(0).toUpperCase() + stage.slice(1);
+export type AutoUpgradeSettings = {
+  mode: AutoUpgradeMode;
+  semverFilter?: string;
+  includePrereleases: boolean;
+};
+
+/**
+ * The automatic upgrades of an OCIRepository reference, as the deployment
+ * page shows them and the edit template writes them back.
+ *
+ * @param ref - The OCIRepository `spec.ref`
+ * @param currentVersion - The version Flux currently resolves the range to, if known
+ */
+export function deriveAutoUpgradeSettings(
+  ref: OciRepositoryRef | undefined,
+  currentVersion?: string,
+): AutoUpgradeSettings {
+  return {
+    mode: deriveAutoUpgradeMode(ref, currentVersion),
+    semverFilter: deriveSemverFilter(ref),
+    includePrereleases: rangeIncludesPrereleases(ref),
+  };
+}
+
+export type AutoUpgradeDescription = {
+  /** The label, ending in "tags matching" when `filter` follows it */
+  label: string;
+  /** A filter the guide does not document, to show as its regular expression */
+  filter?: string;
+};
+
+function lowerFirst(text: string) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+/**
+ * Describes automatic upgrades: the mode, narrowed by the tag filter Flux
+ * applies first (a documented release stage by its name, any other filter as
+ * its regular expression) and by whether the range admits pre-releases.
+ * Backstage has no tag list here, so it never evaluates the filter.
+ */
+export function describeAutoUpgrades({
+  mode,
+  semverFilter,
+  includePrereleases,
+}: AutoUpgradeSettings): AutoUpgradeDescription {
+  const modeLabel = autoUpgradeLabels[mode];
+  if (mode === 'no-upgrades') return { label: modeLabel };
+  const narrow = (label: string) =>
+    mode === 'major-upgrades' ? label : `${modeLabel}, ${lowerFirst(label)}`;
+
+  if (!semverFilter) {
+    return {
+      label: includePrereleases
+        ? `${modeLabel}, including pre-releases`
+        : modeLabel,
+    };
   }
-  return `${label}, ${stage}`;
+
+  const stage = releaseStages.get(semverFilter);
+  if (!stage) return { label: narrow('Tags matching'), filter: semverFilter };
+
+  return {
+    label: includePrereleases
+      ? narrow(stage)
+      : `${narrow(stage)}, but the range admits no pre-release`,
+  };
 }

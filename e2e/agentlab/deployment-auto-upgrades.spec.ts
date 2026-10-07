@@ -39,7 +39,11 @@ const SCENARIOS = [
     semverFilter: '^1\\.2\\.4-rc\\..*',
     label: 'Tags matching ^1\\.2\\.4-rc\\..*',
   },
-  { name: 'auto-upgrades-any', semverFilter: undefined, label: 'Any' },
+  {
+    name: 'auto-upgrades-any',
+    semverFilter: undefined,
+    label: 'Any, including pre-releases',
+  },
 ];
 
 /**
