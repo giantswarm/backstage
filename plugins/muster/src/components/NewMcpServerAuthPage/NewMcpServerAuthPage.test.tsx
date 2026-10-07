@@ -82,7 +82,7 @@ describe('NewMcpServerAuthPage', () => {
     const choices = screen.getAllByRole('radio');
     expect(choices.map(c => c.getAttribute('aria-label'))).toEqual([
       'No authentication',
-      'Sign in with your own account',
+      'Own account (OAuth sign-in)',
       'Platform SSO',
       'AWS request signing (SigV4)',
     ]);
@@ -95,7 +95,7 @@ describe('NewMcpServerAuthPage', () => {
     await renderAuthStep();
 
     await userEvent.click(
-      screen.getByRole('radio', { name: 'Sign in with your own account' }),
+      screen.getByRole('radio', { name: 'Own account (OAuth sign-in)' }),
     );
 
     expect(
@@ -106,7 +106,7 @@ describe('NewMcpServerAuthPage', () => {
   it('keeps scopes disabled with an explanation until an issuer override is set', async () => {
     await renderAuthStep();
     await userEvent.click(
-      screen.getByRole('radio', { name: 'Sign in with your own account' }),
+      screen.getByRole('radio', { name: 'Own account (OAuth sign-in)' }),
     );
 
     expect(screen.getByLabelText(/Scopes/)).toBeDisabled();

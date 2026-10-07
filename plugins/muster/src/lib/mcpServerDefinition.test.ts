@@ -10,6 +10,7 @@ import {
   hasUserInput,
   mergeOntoExisting,
   wizardEditBlocker,
+  wizardAuthModeLabel,
   parseMetaEntries,
   sigv4Advisories,
   toMcpServerManifestYaml,
@@ -19,6 +20,7 @@ import {
 } from './mcpServerDefinition';
 import { toMcpServerDefinition } from './gitops';
 import { MCPServer } from './k8s';
+import { AUTH_MODE_LABELS, serverAuthMode } from './serverAuthMode';
 
 function state(
   overrides: Partial<NewMcpServerFormState> = {},
@@ -1278,5 +1280,36 @@ describe('hasUserInput', () => {
         meta: [{ key: 'A', value: '' }],
       }),
     ).toBe(true);
+  });
+});
+
+describe('wizardAuthModeLabel', () => {
+  it.each([
+    ['none', state()],
+    ['own-account', state({ authMode: 'own-account' })],
+    ['platform-sso', state({ authMode: 'platform-sso' })],
+    ['sigv4', sigv4State()],
+  ])(
+    'names the %s answer as the servers table names the server it registers',
+    (_, answer) => {
+      const server = registered(
+        composeMcpServerDefinition(answer) as unknown as Record<
+          string,
+          unknown
+        >,
+      );
+
+      expect(wizardAuthModeLabel(answer.authMode)).toBe(
+        AUTH_MODE_LABELS[serverAuthMode(server)],
+      );
+    },
+  );
+
+  it('gives every answer a name of its own', () => {
+    const labels = (
+      ['none', 'own-account', 'platform-sso', 'sigv4'] as const
+    ).map(wizardAuthModeLabel);
+
+    expect(new Set(labels).size).toBe(labels.length);
   });
 });

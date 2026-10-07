@@ -174,6 +174,7 @@ describe('AuthChain', () => {
       'a forwarded token',
       { forwardToken: true, requiredAudiences: ['k'] },
       'oauth (implied by the forwarded token)',
+      'Platform SSO',
     ],
     [
       'token exchange',
@@ -182,13 +183,15 @@ describe('AuthChain', () => {
         tokenExchange: { enabled: true, connectorId: 'giantswarm' },
       },
       'oauth (implied by token exchange)',
+      'Token exchange (cross-cluster SSO)',
     ],
     [
       'token exchange and no forwarded token',
       { tokenExchange: { enabled: true, connectorId: 'giantswarm' } },
       'oauth (implied by token exchange)',
+      'Token exchange (cross-cluster SSO)',
     ],
-  ])('shows the chain of a server with %s', async (_, auth, type) => {
+  ])('shows the chain of a server with %s', async (_, auth, type, mode) => {
     // Without `type`, as the wizard writes it, and with the `type: none` and
     // `forwardToken: false` defaults the cluster returns it with.
     for (const stored of [
@@ -201,9 +204,8 @@ describe('AuthChain', () => {
         />,
       );
 
-      expect(
-        screen.queryByText(/No authentication configured/),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('No authentication')).not.toBeInTheDocument();
+      expect(screen.getByText(mode)).toBeInTheDocument();
       expect(screen.getByText(type)).toBeInTheDocument();
       expect(screen.getByText('Forward token')).toBeInTheDocument();
       unmount();
@@ -215,9 +217,7 @@ describe('AuthChain', () => {
       <AuthChain server={makeServer({ type: 'streamable-http' })} />,
     );
 
-    expect(
-      screen.getByText(/No authentication configured/),
-    ).toBeInTheDocument();
+    expect(screen.getByText('No authentication')).toBeInTheDocument();
   });
 
   it('leaves the OAuth chain untouched', async () => {

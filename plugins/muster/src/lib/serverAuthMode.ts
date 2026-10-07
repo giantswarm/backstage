@@ -15,12 +15,17 @@ export type ServerAuthMode =
   | 'anonymous'
   | 'unknown';
 
+/**
+ * The one name of each mode, wherever a mode is named: the servers table, the
+ * server detail panel, the wizard's auth and review steps (through
+ * `wizardAuthModeLabel`) and the edit-blocked tooltip.
+ */
 export const AUTH_MODE_LABELS: Record<ServerAuthMode, string> = {
-  'platform-sso': 'Platform SSO (forwarded token)',
+  'platform-sso': 'Platform SSO',
   'token-exchange': 'Token exchange (cross-cluster SSO)',
   'own-account': 'Own account (OAuth sign-in)',
-  sigv4: 'AWS SigV4 (machine identity)',
-  anonymous: 'Anonymous',
+  sigv4: 'AWS request signing (SigV4)',
+  anonymous: 'No authentication',
   unknown: 'Unrecognised authentication',
 };
 

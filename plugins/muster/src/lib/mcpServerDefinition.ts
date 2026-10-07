@@ -654,16 +654,33 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
 }
 
 /**
- * The wizard's answer for each way a registered server is reached
+ * The way a server registered with each wizard answer is reached
  * ({@link serverAuthMode}, the one classification every surface shares).
- * Token exchange has none: the wizard does not offer it.
  */
-const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
-  anonymous: 'none',
+const WIZARD_ANSWER_MODES: Record<McpServerAuthMode, ServerAuthMode> = {
+  none: 'anonymous',
   'own-account': 'own-account',
   'platform-sso': 'platform-sso',
   sigv4: 'sigv4',
 };
+
+/**
+ * The wizard's answer for each way a registered server is reached, the inverse
+ * of {@link WIZARD_ANSWER_MODES}. Token exchange has none: the wizard does not
+ * offer it.
+ */
+const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> =
+  Object.fromEntries(
+    Object.entries(WIZARD_ANSWER_MODES).map(([answer, mode]) => [mode, answer]),
+  );
+
+/**
+ * A wizard answer's name: the name of the mode it registers, so the wizard
+ * calls a mode what the servers table and detail panel call it.
+ */
+export function wizardAuthModeLabel(answer: McpServerAuthMode): string {
+  return AUTH_MODE_LABELS[WIZARD_ANSWER_MODES[answer]];
+}
 
 /**
  * The `spec.auth` keys each wizard answer composes (see `composeAuth`). A key

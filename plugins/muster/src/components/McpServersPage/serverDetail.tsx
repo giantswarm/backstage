@@ -18,7 +18,7 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
-import { serverAuthMode } from '../../lib/serverAuthMode';
+import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -194,14 +194,18 @@ function authTypeLabel(auth: MCPServerAuth): string {
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
+  const mode = serverAuthMode(server);
 
-  if (!auth || serverAuthMode(server) === 'anonymous') {
-    return <Note>No authentication configured (anonymous).</Note>;
+  if (!auth || mode === 'anonymous') {
+    return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
+  const facts: Fact[] = [
+    { label: 'Mode', value: AUTH_MODE_LABELS[mode] },
+    { label: 'Type', value: authTypeLabel(auth) },
+  ];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },

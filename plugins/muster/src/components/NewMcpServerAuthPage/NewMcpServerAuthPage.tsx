@@ -21,6 +21,7 @@ import { newMcpServerRouteRef, newMcpServerReviewRouteRef } from '../../routes';
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
   SIGV4_TRANSPORT_REQUIREMENT,
+  wizardAuthModeLabel,
   type McpServerAuthMode,
 } from '../../lib/mcpServerDefinition';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
@@ -65,25 +66,25 @@ const AUTH_CHOICES: Array<{
 }> = [
   {
     value: 'none',
-    title: 'No authentication',
+    title: wizardAuthModeLabel('none'),
     description:
       'The server is public or trusted on the network. Muster connects without credentials.',
   },
   {
     value: 'own-account',
-    title: 'Sign in with your own account',
+    title: wizardAuthModeLabel('own-account'),
     description:
       'The backend runs its own authorization server (GitHub-style). Each user completes a one-time sign-in; muster acts as the OAuth client.',
   },
   {
     value: 'platform-sso',
-    title: 'Platform SSO',
+    title: wizardAuthModeLabel('platform-sso'),
     description:
       'The backend is administered by your platform team and accepts the platform identity token directly.',
   },
   {
     value: 'sigv4',
-    title: 'AWS request signing (SigV4)',
+    title: wizardAuthModeLabel('sigv4'),
     description:
       "The backend is AWS-hosted and takes no token. Muster signs every request with its own AWS identity — shared by all users, not the caller's.",
   },
