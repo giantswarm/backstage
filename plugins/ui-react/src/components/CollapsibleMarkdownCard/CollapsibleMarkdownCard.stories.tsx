@@ -76,3 +76,32 @@ export const Failed: Story = {
     error: new Error('Could not fetch the README.'),
   },
 };
+
+export const TableOfContents: Story = {
+  args: {
+    content: [
+      '# example-app',
+      '',
+      '- [Installing](#installing)',
+      '- [values.yaml](#valuesyaml)',
+      '- [Upgrading](#upgrading)',
+      '',
+      readme
+        .split('\n')
+        .slice(2)
+        .join('\n')
+        .replace('## Configuration', '## values.yaml'),
+      '',
+      '[Back to top](#)',
+    ].join('\n'),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          'A `#heading` link jumps to its heading, matched by its GitHub ' +
+          'slug, and expands the card when the heading is past the cut.',
+      },
+    },
+  },
+};

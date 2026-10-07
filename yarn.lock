@@ -9276,6 +9276,7 @@ __metadata:
     codemirror-json-schema: "npm:^0.8.1"
     date-fns: "npm:^4.1.0"
     date-fns-tz: "npm:^3.2.0"
+    github-slugger: "npm:^2.0.0"
     json-schema: "npm:^0.4.0"
     lodash: "npm:^4.17.21"
     qs: "npm:^6.14.0"
@@ -29514,6 +29515,13 @@ __metadata:
   version: 1.5.0
   resolution: "github-slugger@npm:1.5.0"
   checksum: 10c0/116f99732925f939cbfd6f2e57db1aa7e111a460db0d103e3b3f2fce6909d44311663d4542350706cad806345b9892358cc3b153674f88eeae77f43380b3bfca
+  languageName: node
+  linkType: hard
+
+"github-slugger@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "github-slugger@npm:2.0.0"
+  checksum: 10c0/21b912b6b1e48f1e5a50b2292b48df0ff6abeeb0691b161b3d93d84f4ae6b1acd6ae23702e914af7ea5d441c096453cf0f621b72d57893946618d21dd1a1c486
   languageName: node
   linkType: hard
 
