@@ -259,7 +259,19 @@ export async function createRouter(
     const result = await cached(
       `${session.user}:items:${JSON.stringify(args)}`,
       ITEMS_TTL_MS,
-      () => session.call<{ issues?: BoardItem[] }>('list_issues', args),
+      async () => {
+        const started = Date.now();
+        const loaded = await session.call<{ issues?: BoardItem[] }>(
+          'list_issues',
+          args,
+        );
+        logger.info('Read the roadmap board', {
+          durationMs: Date.now() - started,
+          items: loaded.issues?.length ?? 0,
+          filters: JSON.stringify(args.filters),
+        });
+        return loaded;
+      },
     );
     return result.issues ?? [];
   };
@@ -366,16 +378,26 @@ export async function createRouter(
       keywordTerms.push(keyword);
     }
 
-    const items = await listItemsCached(
-      proFor(req),
-      itemsListArgs(filters, {
-        assignee: singleQueryValue(req.query.assignee, 'assignee'),
-        state: singleQueryValue(req.query.state, 'state'),
-        updated: singleQueryValue(req.query.updated, 'updated'),
-        repository: singleQueryValue(req.query.repository, 'repository'),
-        keyword: keywordTerms.length > 0 ? keywordTerms.join(' ') : undefined,
-      }),
-    );
+    const args = itemsListArgs(filters, {
+      assignee: singleQueryValue(req.query.assignee, 'assignee'),
+      state: singleQueryValue(req.query.state, 'state'),
+      updated: singleQueryValue(req.query.updated, 'updated'),
+      repository: singleQueryValue(req.query.repository, 'repository'),
+      keyword: keywordTerms.length > 0 ? keywordTerms.join(' ') : undefined,
+    });
+    // `empty=status`: the items without a value in that field, the board's
+    // column for items without a status.
+    const empty = singleQueryValue(req.query.empty, 'empty');
+    if (empty) {
+      if (!Object.hasOwn(FILTER_FIELDS, empty)) {
+        throw new InputError(
+          `empty must be one of ${Object.keys(FILTER_FIELDS).join(', ')}`,
+        );
+      }
+      args.emptyFields = [FILTER_FIELDS[empty]];
+    }
+
+    const items = await listItemsCached(proFor(req), args);
     res.json({ items });
   });
 

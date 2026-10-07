@@ -284,6 +284,49 @@ describe('createRouter', () => {
       expect(pro.calls).toHaveLength(1);
     });
 
+    it('asks pro for the items without a status', async () => {
+      pro.answers.set('list_issues', { issues: [] });
+      const res = await request(app)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝', empty: 'status' });
+      expect(res.status).toBe(200);
+      expect(pro.calls[0].args).toEqual({
+        board: 'roadmap',
+        filters: { Team: 'Bumblebee🐝' },
+        emptyFields: ['Status'],
+      });
+    });
+
+    it('rejects an empty filter on an unknown field', async () => {
+      for (const empty of ['nope', 'constructor']) {
+        const res = await request(app).get('/items').query({ empty });
+        expect(res.status).toBe(400);
+      }
+      expect(pro.calls).toHaveLength(0);
+    });
+
+    it('logs how long a board read took, once per read', async () => {
+      const logger = mockServices.logger.mock();
+      app = await buildApp(undefined, { logger });
+      pro.answers.set('list_issues', { issues: [ITEM] });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+      await request(app).get('/items').query({ team: 'Bumblebee🐝' });
+
+      const reads = logger.info.mock.calls.filter(
+        ([message]) => message === 'Read the roadmap board',
+      );
+      expect(reads).toEqual([
+        [
+          'Read the roadmap board',
+          {
+            durationMs: expect.any(Number),
+            items: 1,
+            filters: JSON.stringify({ Team: 'Bumblebee🐝' }),
+          },
+        ],
+      ]);
+    });
+
     it('rejects repeated query parameters', async () => {
       const res = await request(app).get('/items?team=a&team=b');
       expect(res.status).toBe(400);

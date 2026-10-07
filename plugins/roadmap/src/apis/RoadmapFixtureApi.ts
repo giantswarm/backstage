@@ -202,11 +202,19 @@ function makeItems(): RoadmapItem[] {
   }));
 }
 
+const FIELD_NAMES = {
+  team: 'Team',
+  status: 'Status',
+  kind: 'Kind',
+  availability: 'Availability',
+};
+
 function matches(item: RoadmapItem, filters: RoadmapItemFilters): boolean {
   const field = (name: string, value?: string) =>
     !value || item.fields[name] === value;
   const keyword = filters.keyword?.toLowerCase();
   return (
+    (!filters.empty || !item.fields[FIELD_NAMES[filters.empty]]) &&
     field('Team', filters.team) &&
     field('Status', filters.status) &&
     field('Kind', filters.kind) &&
