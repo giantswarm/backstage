@@ -90,7 +90,7 @@ resources:
   # -- Vertical Pod Autoscaler settings
   verticalPodAutoscaler:
     # @schema type:boolean
-    # -- Enable the VerticalPodAutoscaler resource for automatic resource adjustment
+    # -- Render a `VerticalPodAutoscaler` for automatic resource adjustment. It also renders only when the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler` (`helm template` needs `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler`), so an install on a cluster without the VPA CRD succeeds; set `false` to drop it everywhere
     enabled: true
   # -- CPU and memory resource requests
   requests:

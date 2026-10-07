@@ -31,6 +31,9 @@
 # * the CNPG PodMonitor gated on its toggle and on the cluster serving the
 #   kind, without which an install on a cluster without the Prometheus
 #   Operator CRDs fails and rolls back the database with it.
+# * the VerticalPodAutoscaler gated on its toggle and on the cluster serving
+#   the kind, without which a default install on a cluster without the VPA
+#   CRD fails with "no matches for kind VerticalPodAutoscaler".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -303,6 +306,15 @@ expect podmonitor-off 'kind: Cluster'
 render podmonitor-no-crd --set database.engine=postgresql
 refute podmonitor-no-crd 'kind: PodMonitor'
 expect podmonitor-no-crd 'kind: Cluster'
+
+echo "--> VerticalPodAutoscaler: rendered when on and the cluster serves the kind, absent otherwise"
+render vpa-default --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+expect vpa-default 'kind: VerticalPodAutoscaler'
+render vpa-off --set resources.verticalPodAutoscaler.enabled=false --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+refute vpa-off 'kind: VerticalPodAutoscaler'
+render vpa-no-crd
+refute vpa-no-crd 'kind: VerticalPodAutoscaler'
+expect vpa-no-crd 'kind: Deployment'
 
 echo "--> database.engine=sqlite (default): no pg config, mount or flag"
 refute sqlite 'backstage-database-config'

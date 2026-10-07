@@ -96,7 +96,7 @@ names the value. `githubAppCredentials`, `google.credentialsJson` and
 | registry.domain | string | `"gsoci.azurecr.io"` | Container image registry domain prepended to image.repository |
 | resources | object | `{"limits":{"cpu":"500m","memory":"1Gi"},"requests":{"cpu":"20m","memory":"512Mi"},"verticalPodAutoscaler":{"enabled":true}}` | Resource requests, limits, and autoscaler settings for the Backstage container |
 | resources.verticalPodAutoscaler | object | `{"enabled":true}` | Vertical Pod Autoscaler settings |
-| resources.verticalPodAutoscaler.enabled | bool | `true` | Enable the VerticalPodAutoscaler resource for automatic resource adjustment |
+| resources.verticalPodAutoscaler.enabled | bool | `true` | Render a `VerticalPodAutoscaler` for automatic resource adjustment. It also renders only when the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler` (`helm template` needs `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler`), so an install on a cluster without the VPA CRD succeeds; set `false` to drop it everywhere |
 | resources.requests | object | `{"cpu":"20m","memory":"512Mi"}` | CPU and memory resource requests |
 | resources.requests.cpu | string | `"20m"` | CPU resource request for the Backstage container |
 | resources.requests.memory | string | `"512Mi"` | Memory resource request for the Backstage container. Sized to the backend's steady state: it idles at about 500 MiB RSS under the default limit, because Node sizes its heap from the container's memory limit (see `resources.limits.memory`) and V8 uses that room |
