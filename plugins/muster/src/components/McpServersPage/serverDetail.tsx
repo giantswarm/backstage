@@ -18,6 +18,7 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
+import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
@@ -196,7 +197,12 @@ export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
   const mode = serverAuthMode(server);
 
-  if (!auth || mode === 'anonymous') {
+  // Anonymous with nothing else set reads as one line; any other key of
+  // `spec.auth` is shown, since the wizard's edit gate reports it too.
+  if (
+    !auth ||
+    (mode === 'anonymous' && Object.keys(withoutCrdDefaults(auth)).length === 0)
+  ) {
     return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 

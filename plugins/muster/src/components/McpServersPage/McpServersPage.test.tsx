@@ -222,7 +222,7 @@ describe('McpServersPage', () => {
         'aws-root',
         'Connected',
         '1',
-        'AWS request signing (SigV4)',
+        'AWS request signing (SigV4, shared identity)',
         'User-registered server',
       ],
       [
@@ -236,7 +236,7 @@ describe('McpServersPage', () => {
         'kubernetesFamily',
         '1 of 2 instances healthy',
         '2',
-        'Platform SSO',
+        'Platform SSO (forwarded token)',
         'Fleet server',
       ],
       ['musterCore', '—', '1', 'Muster session', 'muster'],

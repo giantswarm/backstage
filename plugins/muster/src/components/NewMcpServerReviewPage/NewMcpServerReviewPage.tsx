@@ -12,6 +12,7 @@ import {
   newMcpServerVerifyRouteRef,
 } from '../../routes';
 import {
+  SIGV4_SHARED_IDENTITY_WARNING,
   toMcpServerManifestYaml,
   toMusterCliCommand,
   wizardAuthModeLabel,
@@ -263,6 +264,13 @@ export function NewMcpServerReviewPage() {
             </Text>
           </SummaryItem>
         </div>
+        {/* The last screen before Register: say once more whose identity a
+            sigv4 server acts as. */}
+        {state.authMode === 'sigv4' && (
+          <Text as="p" variant="body-small" color="secondary">
+            {SIGV4_SHARED_IDENTITY_WARNING}
+          </Text>
+        )}
 
         <Flex direction="column" gap="4">
           <Card>

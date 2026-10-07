@@ -174,7 +174,7 @@ describe('AuthChain', () => {
       'a forwarded token',
       { forwardToken: true, requiredAudiences: ['k'] },
       'oauth (implied by the forwarded token)',
-      'Platform SSO',
+      'Platform SSO (forwarded token)',
     ],
     [
       'token exchange',
@@ -218,6 +218,21 @@ describe('AuthChain', () => {
     );
 
     expect(screen.getByText('No authentication')).toBeInTheDocument();
+  });
+
+  it('shows the settings an anonymous server still carries', async () => {
+    await renderInTestApp(
+      <AuthChain
+        server={makeServer({
+          type: 'streamable-http',
+          auth: { type: 'none', forwardToken: false, requiredAudiences: ['k'] },
+        })}
+      />,
+    );
+
+    expect(screen.getByText('No authentication')).toBeInTheDocument();
+    expect(screen.getByText('Required audiences')).toBeInTheDocument();
+    expect(screen.getByText('k')).toBeInTheDocument();
   });
 
   it('leaves the OAuth chain untouched', async () => {

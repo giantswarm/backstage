@@ -10,7 +10,7 @@ import { lab } from './lab';
 
 const OWN_ACCOUNT = 'Own account (OAuth sign-in)';
 
-test('the servers table and the server page name the auth mode alike', async ({
+test('MCP servers: the servers table and the server page name the auth mode alike', async ({
   admin,
 }) => {
   await open(

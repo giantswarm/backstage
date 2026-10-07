@@ -11,6 +11,8 @@ import {
   mergeOntoExisting,
   wizardEditBlocker,
   wizardAuthModeLabel,
+  WIZARD_ANSWER_MODES,
+  WIZARD_AUTH_MODES,
   parseMetaEntries,
   sigv4Advisories,
   toMcpServerManifestYaml,
@@ -1304,6 +1306,12 @@ describe('wizardAuthModeLabel', () => {
       );
     },
   );
+
+  it('maps every answer to a mode and back to itself', () => {
+    for (const [answer, mode] of Object.entries(WIZARD_ANSWER_MODES)) {
+      expect(WIZARD_AUTH_MODES[mode]).toBe(answer);
+    }
+  });
 
   it('gives every answer a name of its own', () => {
     const labels = (

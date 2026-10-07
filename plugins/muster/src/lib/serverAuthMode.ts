@@ -21,10 +21,10 @@ export type ServerAuthMode =
  * `wizardAuthModeLabel`) and the edit-blocked tooltip.
  */
 export const AUTH_MODE_LABELS: Record<ServerAuthMode, string> = {
-  'platform-sso': 'Platform SSO',
+  'platform-sso': 'Platform SSO (forwarded token)',
   'token-exchange': 'Token exchange (cross-cluster SSO)',
   'own-account': 'Own account (OAuth sign-in)',
-  sigv4: 'AWS request signing (SigV4)',
+  sigv4: 'AWS request signing (SigV4, shared identity)',
   anonymous: 'No authentication',
   unknown: 'Unrecognised authentication',
 };
