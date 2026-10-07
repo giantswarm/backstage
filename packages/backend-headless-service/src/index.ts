@@ -5,6 +5,7 @@ import {
   configureFetchProxy,
   customHttpAuthServiceFactory,
   databaseServiceFactory,
+  githubUrlReaderFactory,
   rootLogger,
   startBackend,
 } from '@internal/backend-common';
@@ -22,6 +23,10 @@ backend.add(customHttpAuthServiceFactory);
 // Retry each plugin's first database connection until the database is
 // reachable, so a backend started before its CNPG primary still starts.
 backend.add(databaseServiceFactory);
+
+// Read GitHub files and trees from branches with a slash in their name
+// (`blob/feat/x/...`), which the default GitHub reader splits wrongly.
+backend.add(githubUrlReaderFactory);
 
 // auth plugin
 backend.add(import('@backstage/plugin-auth-backend'));

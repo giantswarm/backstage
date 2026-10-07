@@ -9706,6 +9706,8 @@ __metadata:
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
+    "@backstage/errors": "backstage:^"
+    "@backstage/integration": "backstage:^"
     undici: "npm:^8.10.2"
     winston: "npm:^3.17.0"
     winston-sentry-log: "npm:^1.0.26"
