@@ -1,15 +1,22 @@
 import { UrlReaderService } from '@backstage/backend-plugin-api';
 import { ConfigReader } from '@backstage/config';
 import { NotFoundError } from '@backstage/errors';
-import { GithubCredentialsProvider } from '@backstage/integration';
 import {
-  BRANCH_CACHE_TTL_MS,
-  GithubBranchResolver,
-  SlashBranchGithubUrlReader,
-} from './githubUrlReader';
+  GithubCredentialsProvider,
+  ScmIntegrations,
+} from '@backstage/integration';
+import { GithubRefResolver, SlashRefGithubUrlReader } from './githubUrlReader';
 
 const SHA = 'a'.repeat(40);
 const OTHER_SHA = 'b'.repeat(40);
+const TAG_OBJECT = 'c'.repeat(40);
+const API = 'https://api.github.com/repos/o/r';
+
+const integration = ScmIntegrations.fromConfig(
+  new ConfigReader({
+    integrations: { github: [{ host: 'github.com', token: 't' }] },
+  }),
+).github.byHost('github.com')!;
 
 const credentialsProvider: GithubCredentialsProvider = {
   getCredentials: jest.fn(async () => ({
@@ -19,70 +26,65 @@ const credentialsProvider: GithubCredentialsProvider = {
   })),
 };
 
-function matchingRefs(...refs: [string, string][]) {
+function ref(name: string, sha: string, type = 'commit') {
+  return { ref: `refs/${name}`, object: { sha, type, url: `${API}/${sha}` } };
+}
+
+/** A fetch answering each URL from `routes`, an empty list for any other. */
+function github(routes: Record<string, () => Response> = {}) {
   return jest.fn(
-    async (_url: string | URL | Request, _init?: RequestInit) =>
-      new Response(
-        JSON.stringify(
-          refs.map(([name, sha]) => ({
-            ref: `refs/heads/${name}`,
-            object: { sha, type: 'commit' },
-          })),
-        ),
-      ),
+    async (url: string | URL | Request, _init?: RequestInit) =>
+      routes[String(url)]?.() ?? new Response('[]'),
   );
 }
 
-function resolver(fetch: jest.Mock, now: () => number = Date.now) {
-  return new GithubBranchResolver({
-    apiBaseUrl: 'https://api.github.com',
+function json(body: unknown, init?: ResponseInit) {
+  return () => new Response(JSON.stringify(body), init);
+}
+
+function resolver(fetch: jest.Mock) {
+  return new GithubRefResolver({
+    integration,
     credentialsProvider,
     fetch: fetch as unknown as typeof globalThis.fetch,
-    now,
   });
 }
 
-function innerReader(): jest.Mocked<UrlReaderService> {
-  return {
-    readUrl: jest.fn(async (_url: string, _options?: object) => ({
-      buffer: async () => Buffer.from(''),
-    })),
-    readTree: jest.fn(async (_url: string, _options?: object) => ({}) as any),
-    search: jest.fn(async (url: string, _options?: object) => ({
-      files: [{ url, content: async () => Buffer.from('') }],
-      etag: SHA,
-    })),
-  };
-}
+const featX = github({
+  [`${API}/git/matching-refs/heads/feat/`]: json([ref('heads/feat/x', SHA)]),
+});
 
-describe('GithubBranchResolver', () => {
-  it('replaces a branch with a slash by its head commit', async () => {
-    const fetch = matchingRefs(['feat', OTHER_SHA], ['feat/x', SHA]);
+beforeEach(() => jest.clearAllMocks());
 
-    const resolved = await resolver(fetch).resolve(
+describe('GithubRefResolver', () => {
+  it('replaces a branch with a slash by its commit', async () => {
+    const signal = new AbortController().signal;
+
+    const resolved = await resolver(featX).resolve(
       'https://github.com/o/r/blob/feat/x/templates/t/template.yaml',
+      { signal },
     );
 
     expect(resolved?.url).toBe(
       `https://github.com/o/r/blob/${SHA}/templates/t/template.yaml`,
     );
-    expect(fetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/o/r/git/matching-refs/heads/feat',
-      {
-        headers: {
-          Authorization: 'Bearer app-token',
-          Accept: 'application/vnd.github+json',
-        },
+    expect(featX).toHaveBeenCalledWith(`${API}/git/matching-refs/heads/feat/`, {
+      headers: {
+        Authorization: 'Bearer app-token',
+        Accept: 'application/vnd.github+json',
       },
-    );
+      signal,
+    });
   });
 
   it('picks the longest branch the path starts with', async () => {
-    const fetch = matchingRefs(
-      ['feat/x', OTHER_SHA],
-      ['feat/x/y', SHA],
-      ['feat/xy', OTHER_SHA],
-    );
+    const fetch = github({
+      [`${API}/git/matching-refs/heads/feat/`]: json([
+        ref('heads/feat/x', OTHER_SHA),
+        ref('heads/feat/x/y', SHA),
+        ref('heads/feat/xy', OTHER_SHA),
+      ]),
+    });
 
     const resolved = await resolver(fetch).resolve(
       'https://github.com/o/r/tree/feat/x/y/templates',
@@ -92,127 +94,219 @@ describe('GithubBranchResolver', () => {
   });
 
   it('resolves a tree URL that names only the branch', async () => {
-    const fetch = matchingRefs(['feat/x', SHA]);
-
-    const resolved = await resolver(fetch).resolve(
+    const resolved = await resolver(featX).resolve(
       'https://github.com/o/r/tree/feat/x',
     );
 
     expect(resolved?.url).toBe(`https://github.com/o/r/tree/${SHA}`);
   });
 
-  it('leaves a branch without a slash to the upstream reader', async () => {
-    const fetch = matchingRefs(['main', SHA], ['main-old', OTHER_SHA]);
+  it('resolves a branch whose slash is encoded', async () => {
+    const resolved = await resolver(featX).resolve(
+      'https://github.com/o/r/blob/feat%2Fx/templates/t.yaml',
+    );
 
+    expect(resolved).toEqual({
+      url: `https://github.com/o/r/blob/${SHA}/templates/t.yaml`,
+      refPrefix: '/o/r/blob/feat/x',
+      shaPrefix: `/o/r/blob/${SHA}`,
+    });
+  });
+
+  it('resolves a tag with a slash to the commit it points at', async () => {
+    const fetch = github({
+      [`${API}/git/matching-refs/tags/release/`]: json([
+        ref('tags/release/1.0', TAG_OBJECT, 'tag'),
+      ]),
+      [`${API}/${TAG_OBJECT}`]: json({
+        object: { sha: SHA, type: 'commit', url: '' },
+      }),
+    });
+
+    const resolved = await resolver(fetch).resolve(
+      'https://github.com/o/r/blob/release/1.0/catalog-info.yaml',
+    );
+
+    expect(resolved?.url).toBe(
+      `https://github.com/o/r/blob/${SHA}/catalog-info.yaml`,
+    );
+  });
+
+  it('follows the pages of the refs', async () => {
+    const fetch = github({
+      [`${API}/git/matching-refs/heads/feat/`]: json(
+        [ref('heads/feat/a', OTHER_SHA)],
+        { headers: { link: `<${API}/page2>; rel="next"` } },
+      ),
+      [`${API}/page2`]: json([ref('heads/feat/x', SHA)]),
+    });
+
+    const resolved = await resolver(fetch).resolve(
+      'https://github.com/o/r/blob/feat/x/a.yaml',
+    );
+
+    expect(resolved?.url).toBe(`https://github.com/o/r/blob/${SHA}/a.yaml`);
+  });
+
+  it('finds nothing when no ref matches', async () => {
     await expect(
-      resolver(fetch).resolve('https://github.com/o/r/blob/main/a/b.yaml'),
+      resolver(github()).resolve('https://github.com/o/r/blob/main/a/b.yaml'),
     ).resolves.toBeUndefined();
   });
 
-  it('asks nothing for a commit or a URL without a file path', async () => {
-    const fetch = matchingRefs();
+  it('asks nothing for a commit, a URL without a file path or a broken escape', async () => {
+    const fetch = github();
     const r = resolver(fetch);
 
-    await expect(
-      r.resolve(`https://github.com/o/r/blob/${SHA}/a.yaml`),
-    ).resolves.toBeUndefined();
-    await expect(r.resolve('https://github.com/o/r')).resolves.toBeUndefined();
-    await expect(
-      r.resolve('https://github.com/o/r/pulls/feat/x'),
-    ).resolves.toBeUndefined();
+    for (const url of [
+      `https://github.com/o/r/blob/${SHA}/a.yaml`,
+      'https://github.com/o/r',
+      'https://github.com/o/r/pulls/feat/x',
+      'https://github.com/o/r/blob/feat/docs/100%/a.md',
+    ]) {
+      await expect(r.resolve(url)).resolves.toBeUndefined();
+    }
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("reads the branches with the caller's token", async () => {
-    const fetch = matchingRefs(['feat/x', SHA]);
+  it("reads the refs with the caller's token", async () => {
+    await resolver(featX).resolve('https://github.com/o/r/blob/feat/x/a.yaml', {
+      token: 'user-token',
+    });
 
-    await resolver(fetch).resolve(
-      'https://github.com/o/r/blob/feat/x/a.yaml',
-      'user-token',
-    );
-
-    expect(fetch.mock.calls[0][1]?.headers).toMatchObject({
+    expect(featX.mock.calls[0][1]?.headers).toMatchObject({
       Authorization: 'Bearer user-token',
     });
   });
 
-  it('reuses the branches until the cache expires', async () => {
-    const fetch = matchingRefs(['feat/x', SHA]);
-    let now = 0;
-    const r = resolver(fetch, () => now);
-    const url = 'https://github.com/o/r/blob/feat/x/a.yaml';
-
-    await r.resolve(url);
-    now = BRANCH_CACHE_TTL_MS - 1;
-    await r.resolve(url);
-    expect(fetch).toHaveBeenCalledTimes(1);
-
-    now = BRANCH_CACHE_TTL_MS;
-    await r.resolve(url);
-    expect(fetch).toHaveBeenCalledTimes(2);
-  });
-
   it('reports a repository it cannot see as not found', async () => {
-    const fetch = jest.fn(async () => new Response('', { status: 404 }));
+    const fetch = github({
+      [`${API}/git/matching-refs/heads/feat/`]: () =>
+        new Response('', { status: 404 }),
+    });
 
     await expect(
       resolver(fetch).resolve('https://github.com/o/r/blob/feat/x/a.yaml'),
     ).rejects.toThrow(NotFoundError);
   });
+
+  it('names a rate limit, never the repository, in its error', async () => {
+    const fetch = github({
+      [`${API}/git/matching-refs/heads/feat/`]: () =>
+        new Response('', {
+          status: 403,
+          statusText: 'Forbidden',
+          headers: { 'x-ratelimit-remaining': '0' },
+        }),
+    });
+
+    await expect(
+      resolver(fetch).resolve('https://github.com/o/r/blob/feat/x/a.yaml'),
+    ).rejects.toThrow(
+      'Reading the refs of a GitHub repository failed, 403 Forbidden (rate limit exceeded)',
+    );
+  });
 });
 
-describe('SlashBranchGithubUrlReader', () => {
+describe('SlashRefGithubUrlReader', () => {
   const url = 'https://github.com/o/r/blob/feat/x/templates/t/template.yaml';
   const resolvedUrl = `https://github.com/o/r/blob/${SHA}/templates/t/template.yaml`;
+  const notFound = new NotFoundError('not found');
 
-  it('reads a file and a tree from a branch with a slash', async () => {
-    const inner = innerReader();
-    const reader = new SlashBranchGithubUrlReader(
-      inner,
-      resolver(matchingRefs(['feat/x', SHA])),
-    );
+  /** An upstream reader that finds only URLs naming a commit. */
+  function upstream(): jest.Mocked<UrlReaderService> {
+    const found = (u: string) => u.includes(SHA);
+    return {
+      readUrl: jest.fn(async (u: string, _options?: object) => {
+        if (!found(u)) throw notFound;
+        return { buffer: async () => Buffer.from('') };
+      }),
+      readTree: jest.fn(async (u: string, _options?: object) => {
+        if (!found(u)) throw notFound;
+        return {} as any;
+      }),
+      search: jest.fn(async (u: string, _options?: object) => ({
+        files: found(u)
+          ? [{ url: u, content: async () => Buffer.from('') }]
+          : [],
+        etag: '',
+      })),
+    };
+  }
+
+  it('reads an ordinary URL without asking for refs', async () => {
+    const inner = upstream();
+    inner.readUrl.mockResolvedValueOnce({
+      buffer: async () => Buffer.from(''),
+    });
+    const fetch = github();
+    const reader = new SlashRefGithubUrlReader(inner, resolver(fetch));
+
+    await reader.readUrl('https://github.com/o/r/blob/main/catalog-info.yaml');
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('reads a file and a tree upstream finds nothing at from the resolved ref', async () => {
+    const inner = upstream();
+    const reader = new SlashRefGithubUrlReader(inner, resolver(featX));
 
     await reader.readUrl(url, { etag: 'e' });
     await reader.readTree('https://github.com/o/r/tree/feat/x/templates/t');
 
-    expect(inner.readUrl).toHaveBeenCalledWith(resolvedUrl, { etag: 'e' });
-    expect(inner.readTree).toHaveBeenCalledWith(
+    expect(inner.readUrl).toHaveBeenLastCalledWith(resolvedUrl, { etag: 'e' });
+    expect(inner.readTree).toHaveBeenLastCalledWith(
       `https://github.com/o/r/tree/${SHA}/templates/t`,
       undefined,
     );
   });
 
-  it('names the files it finds by the branch', async () => {
-    const inner = innerReader();
-    const reader = new SlashBranchGithubUrlReader(
-      inner,
-      resolver(matchingRefs(['feat/x', SHA])),
-    );
+  it("throws upstream's not found when no ref matches or the repository is hidden", async () => {
+    const hidden = github({
+      [`${API}/git/matching-refs/heads/feat/`]: () =>
+        new Response('', { status: 404 }),
+    });
+
+    for (const fetch of [github(), hidden]) {
+      const reader = new SlashRefGithubUrlReader(upstream(), resolver(fetch));
+      await expect(reader.readUrl(url)).rejects.toBe(notFound);
+      await expect(reader.readTree(url)).rejects.toBe(notFound);
+    }
+  });
+
+  it('passes any other upstream error through without asking for refs', async () => {
+    const inner = upstream();
+    const failure = new Error('rate limit exceeded');
+    inner.readUrl.mockRejectedValueOnce(failure);
+    const fetch = github();
+    const reader = new SlashRefGithubUrlReader(inner, resolver(fetch));
+
+    await expect(reader.readUrl(url)).rejects.toBe(failure);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('names the files it finds on a resolved ref by the ref', async () => {
+    const inner = upstream();
+    const reader = new SlashRefGithubUrlReader(inner, resolver(featX));
 
     const response = await reader.search(url);
 
-    expect(inner.search).toHaveBeenCalledWith(resolvedUrl, undefined);
+    expect(inner.search).toHaveBeenLastCalledWith(resolvedUrl, undefined);
     expect(response.files.map(f => f.url)).toEqual([url]);
-    expect(response.etag).toBe(SHA);
   });
 
-  it('passes every other URL through unchanged', async () => {
-    const inner = innerReader();
-    const reader = new SlashBranchGithubUrlReader(
-      inner,
-      resolver(matchingRefs(['main', SHA])),
-    );
-    const mainUrl = 'https://github.com/o/r/blob/main/catalog-info.yaml';
+  it("keeps upstream's empty search result, or its not found, when no ref matches", async () => {
+    const inner = upstream();
+    const reader = new SlashRefGithubUrlReader(inner, resolver(github()));
 
-    await reader.readUrl(mainUrl);
-    const response = await reader.search(mainUrl);
+    await expect(reader.search(url)).resolves.toEqual({ files: [], etag: '' });
 
-    expect(inner.readUrl).toHaveBeenCalledWith(mainUrl, undefined);
-    expect(response.files.map(f => f.url)).toEqual([mainUrl]);
+    inner.search.mockRejectedValueOnce(notFound);
+    await expect(reader.search(url)).rejects.toBe(notFound);
   });
 
   it('serves every configured GitHub host', () => {
-    const tuples = SlashBranchGithubUrlReader.factory({
+    const tuples = SlashRefGithubUrlReader.factory({
       config: new ConfigReader({
         integrations: {
           github: [
@@ -237,6 +331,6 @@ describe('SlashBranchGithubUrlReader', () => {
       [true, false],
       [false, true],
     ]);
-    expect(tuples[0].reader).toBeInstanceOf(SlashBranchGithubUrlReader);
+    expect(tuples[0].reader).toBeInstanceOf(SlashRefGithubUrlReader);
   });
 });
