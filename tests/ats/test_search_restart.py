@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 import pytest
@@ -32,7 +33,9 @@ SELECTOR = "app=backstage,component=backstage"
 
 RELEASE = os.environ.get("ATS_RELEASE_NAME", "backstage")
 NAMESPACE = os.environ.get("ATS_RELEASE_NAMESPACE", "default")
-CHART = os.environ.get("ATS_CHART_PATH", "")
+# ATS passes the chart relative to the repository root, its working directory;
+# pytest runs in tests/ats.
+CHART = str(Path(__file__).resolve().parents[2] / os.environ.get("ATS_CHART_PATH", ""))
 
 
 def run(*args: str, timeout: int = 900) -> str:
