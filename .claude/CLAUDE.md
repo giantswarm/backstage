@@ -96,7 +96,7 @@ yarn prettier:fix > /dev/null
 yarn prettier:check
 
 # Type checking
-yarn tsc                # With incremental mode
+yarn tsc                # With incremental mode; heap set in scripts/tsc.sh
 yarn tsc:full           # Full check without skipping lib checks
 ```
 
