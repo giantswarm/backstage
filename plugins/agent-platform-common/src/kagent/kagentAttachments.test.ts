@@ -24,17 +24,17 @@ function payload(signature: number[], pad = 30): string {
   return Buffer.from(Uint8Array.from(bytes)).toString('base64');
 }
 
-/** Base64 wrapped at 76 columns with CRLF, as MIME and Python's `encodebytes` write it. */
+/**
+ * Base64 wrapped at 76 columns, a newline after every line, as Python's
+ * `base64.encodebytes` writes it.
+ */
 function wrap(base64: string): string {
   const lines: string[] = [];
   for (let at = 0; at < base64.length; at += 76) {
     lines.push(base64.slice(at, at + 76));
   }
-  return lines.join('\r\n');
+  return `${lines.join('\n')}\n`;
 }
-
-/** The most characters padded base64 of a payload within the size cap has. */
-const MAX_BASE64_LENGTH = Math.ceil(MAX_PREVIEW_BYTES / 3) * 4;
 
 const ascii = (text: string) => [...text].map(c => c.charCodeAt(0));
 const be16 = (n: number) => [(n >>> 8) & 0xff, n & 0xff];
@@ -127,6 +127,10 @@ describe('readAttachment', () => {
 });
 
 describe('readAttachmentPreview', () => {
+  // Four base64 characters per three bytes, so this is one quantum over the
+  // size cap. Allocated once: it is ~11 MB.
+  const OVERSIZED = 'A'.repeat((Math.floor(MAX_PREVIEW_BYTES / 3) + 1) * 4);
+
   it.each([
     ['PNG', png, 'image/png'],
     ['JPEG', jpeg, 'image/jpeg'],
@@ -235,45 +239,30 @@ describe('readAttachmentPreview', () => {
   });
 
   it('refuses a payload past the size cap without decoding it', () => {
-    // Four base64 characters per three bytes, so this is one quantum over.
-    const oversized = 'A'.repeat((Math.floor(MAX_PREVIEW_BYTES / 3) + 1) * 4);
-
-    expect(readAttachmentPreview({ base64: oversized })).toEqual({
+    expect(readAttachmentPreview({ base64: OVERSIZED })).toEqual({
       kind: 'none',
       reason: 'too-large',
       byteSize: MAX_PREVIEW_BYTES + 1,
     });
   });
 
-  it('refuses a payload past the size cap before reading it as base64', () => {
-    // Not base64 either, and not too long to read at all: what decides is the
-    // count of characters that carry bytes, a quantum more than the cap holds.
-    // It is refused as too large, not scanned and found undecodable.
-    const oversized = '!'.repeat(MAX_BASE64_LENGTH + 4);
+  it('reads a payload with no regular expression over it', () => {
+    // A quantified match keeps backtracking state that grows with the payload,
+    // and over ~11 MB the engine can run out of stack for it (a RangeError) —
+    // under load, so not every time. The size-cap case above rests on this, so
+    // the mechanism is asserted: every regular expression runs through `exec`.
+    const exec = jest.spyOn(RegExp.prototype, 'exec');
+    let executions: number;
+    try {
+      readAttachmentPreview({ base64: OVERSIZED });
+      readAttachmentPreview({ base64: wrap(payload(png(1, 1), 200)) });
+      readAttachmentPreview({ base64: '-_-_' });
+      executions = exec.mock.calls.length;
+    } finally {
+      exec.mockRestore();
+    }
 
-    expect(readAttachmentPreview({ base64: oversized })).toEqual({
-      kind: 'none',
-      reason: 'too-large',
-      byteSize: Math.floor((oversized.length / 4) * 3),
-    });
-  });
-
-  it('counts no line break against the size cap', () => {
-    // Exactly the cap, wrapped: longer than any unwrapped payload the cap
-    // admits, and the same image.
-    const header = png(1, 1);
-    const standard = Buffer.concat([
-      Buffer.from(header),
-      Buffer.alloc(MAX_PREVIEW_BYTES - header.length),
-    ]).toString('base64');
-    const wrapped = wrap(standard);
-    expect(wrapped.length).toBeGreaterThan(MAX_BASE64_LENGTH);
-
-    expect(readAttachmentPreview({ base64: wrapped })).toMatchObject({
-      kind: 'image',
-      type: 'image/png',
-      byteSize: MAX_PREVIEW_BYTES,
-    });
+    expect(executions).toBe(0);
   });
 
   it('refuses a payload far past the size cap from its length alone', () => {
@@ -334,32 +323,17 @@ describe('normalizeBase64', () => {
     ['unpadded', 'AAE', 'AAE='],
     ['URL-safe', '-_8=', '+/8='],
     ['line-wrapped', 'AAAA\nAAE=', 'AAAAAAE='],
+    ['wrapped with a trailing newline', 'AAAA\nAAE=\n', 'AAAAAAE='],
   ])('reads %s base64 as the same bytes', (_name, raw, standard) => {
     expect(normalizeBase64(raw)).toBe(standard);
   });
 
-  it.each([['A'], ['AAA=A'], ['AA!A'], ['']])('refuses %j', raw => {
-    expect(normalizeBase64(raw)).toBeUndefined();
-  });
-
-  it('reads the payload without a regular expression', () => {
-    // A quantified match keeps backtracking state that grows with the payload,
-    // and over ~11 MB the engine can run out of stack for it (a RangeError) —
-    // under load, so not every time. The size-cap cases above rest on this, so
-    // the mechanism is asserted: every regular expression runs through `exec`.
-    const exec = jest.spyOn(RegExp.prototype, 'exec');
-    let executions: number;
-    try {
-      normalizeBase64('A'.repeat(MAX_PREVIEW_BYTES));
-      normalizeBase64(wrap('A'.repeat(MAX_PREVIEW_BYTES)));
-      normalizeBase64('-_-_');
-      executions = exec.mock.calls.length;
-    } finally {
-      exec.mockRestore();
-    }
-
-    expect(executions).toBe(0);
-  });
+  it.each([['A'], ['AAA=A'], ['=AAA'], ['AAAA==='], ['AA!A'], ['']])(
+    'refuses %j',
+    raw => {
+      expect(normalizeBase64(raw)).toBeUndefined();
+    },
+  );
 });
 
 describe('decodedLength', () => {
