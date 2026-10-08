@@ -10,7 +10,7 @@ import {
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { useCreateSession } from './useCreateSession';
+import { useCreateSession, type SessionEntryPoint } from './useCreateSession';
 
 const createSession = jest.fn();
 
@@ -31,7 +31,7 @@ const agent: AgentRow = {
 
 const analyticsApi = mockApis.analytics.mock();
 
-function renderWith() {
+function renderWith(entryPoint: SessionEntryPoint = 'agentDetail') {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -49,7 +49,7 @@ function renderWith() {
   );
 
   return {
-    ...renderHook(() => useCreateSession('agentDetail'), { wrapper }),
+    ...renderHook(() => useCreateSession(entryPoint), { wrapper }),
     invalidateQueries,
   };
 }
@@ -105,6 +105,21 @@ describe('useCreateSession', () => {
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
         attributes: { entryPoint: 'agentDetail' },
+      }),
+    );
+  });
+
+  it('reports a session started from the home page as such', async () => {
+    const { result } = renderWith('home');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'home' },
       }),
     );
   });

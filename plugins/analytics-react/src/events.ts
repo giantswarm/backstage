@@ -27,7 +27,7 @@ export const portalEvents = defineEvents({
   'AgentPlatform.sessionStarted': {
     description: 'A session with an agent was started.',
     attributes: {
-      entryPoint: ['sessionsList', 'agentDetail', 'sessionDetail'],
+      entryPoint: ['sessionsList', 'agentDetail', 'sessionDetail', 'home'],
     },
   },
   'AgentPlatform.clusterCreated': {

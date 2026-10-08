@@ -76,7 +76,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 const mockCreateSession = jest.fn();
 const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
-  useCreateSession: () => mockUseCreateSession(),
+  useCreateSession: (entryPoint: string) => mockUseCreateSession(entryPoint),
 }));
 
 const mockNavigate = jest.fn();
@@ -184,6 +184,7 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockCreateSession.mockReset();
   mockCreateSession.mockResolvedValue('new-session-id');
+  mockUseCreateSession.mockClear();
   mockUseCreateSession.mockReturnValue({
     createSession: mockCreateSession,
     isCreating: false,
@@ -202,6 +203,12 @@ describe('SessionsIndexPage', () => {
 
     expect(screen.getByText('Start a new session')).toBeInTheDocument();
     expect(prompt()).toBeInTheDocument();
+  });
+
+  it('reports sessions as started from the sessions list', async () => {
+    await render();
+
+    expect(mockUseCreateSession).toHaveBeenCalledWith('sessionsList');
   });
 
   it('gives the list a heading of its own, separate from the composer', async () => {

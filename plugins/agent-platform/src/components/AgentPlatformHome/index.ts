@@ -1,0 +1,1 @@
+export { AgentPlatformHome } from './AgentPlatformHome';

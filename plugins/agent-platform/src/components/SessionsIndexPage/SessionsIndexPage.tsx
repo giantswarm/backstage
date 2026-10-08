@@ -1,188 +1,22 @@
-import { useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useMemo, useRef } from 'react';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
-import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useCreateSession } from '../../hooks/useCreateSession';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
-import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import {
   HIDE_INSTALLATION,
   isSoleInstallation,
 } from '../../lib/soleInstallation';
-import { sessionDetailRouteRef } from '../../routes';
-import { AgentRow, useAgents } from '../AgentsDataProvider';
-import { FirstAgentCard } from '../FirstAgentCard';
+import { useAgents } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
-import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
+import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
-
-/**
- * Start a new session, above the list.
- *
- * Inline rather than behind a button, and with no header action, because this
- * list is the spec's "Mine" scope — the one place the prototype embeds the
- * composer instead: creating is the job of one's own-work view, so it is always
- * present. (kagent scopes sessions to the signed-in user, which is what makes
- * this list Mine; see the blurb below.)
- *
- * Withheld with a reason when the fleet offers no agent at all. An inert prompt
- * box that refuses every Start would be worse than saying why.
- *
- * With `firstRun` -- no session on the fleet yet -- the composer is the whole
- * screen rather than a strip above a list, so it comes out of its collapsed
- * strip and into the same invitation card the Agents tab uses. There is no list
- * below it to compete with.
- */
-function StartNewSession({ firstRun }: { firstRun: boolean }) {
-  const navigate = useNavigate();
-  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
-  const {
-    rows: agents,
-    installations: agentInstallations,
-    isLoading: isLoadingAgents,
-    isLoadingMore: isLoadingMoreAgents,
-    unreachableInstallations,
-  } = useAgents();
-  const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
-  const creation = useCreateSession('sessionsList');
-
-  const { createSession } = creation;
-  const onStart = useCallback(
-    async (agent: AgentRow, prompt: string) => {
-      let sessionId: string;
-      try {
-        sessionId = await createSession({ agent, prompt });
-      } catch {
-        // Left to the composer, which renders the hook's `error` beside the
-        // prompt the user still has.
-        return;
-      }
-
-      rememberAgent(agent);
-
-      const href = sessionDetailRoute?.({
-        installation: agent.installation,
-        sessionId,
-      });
-      if (!href) {
-        // Only reachable with the route unbound, which means the Agent Platform
-        // extension is disabled — and then this is not rendering either. The
-        // session exists regardless, so there is nothing to undo.
-        return;
-      }
-
-      // The prompt is **not** sent here. It travels with the navigation and is
-      // dispatched by the session detail page, so the user lands on the
-      // conversation immediately instead of waiting out a turn on this screen.
-      // See "Starting a session" in docs/agent-platform.md.
-      navigate(href, {
-        state: {
-          [NEW_SESSION_STATE_KEY]: {
-            text: prompt,
-            agentNamespace: agent.namespace,
-            // The technical name: it is what addresses the agent's A2A
-            // endpoint. The display name is an annotation.
-            agentName: agent.technicalName,
-          },
-        },
-      });
-    },
-    [createSession, navigate, rememberAgent, sessionDetailRoute],
-  );
-
-  if (isLoadingAgents) {
-    return null;
-  }
-
-  // The same predicate the picker filters on, so the composer is never offered with
-  // an empty dropdown and never withheld while a usable agent exists.
-  const startable = agents.filter(isStartableAgent);
-
-  if (startable.length === 0) {
-    // Nothing is deployed, the fleet answered, and there is somewhere to deploy
-    // to: this is the first-run state, and it is the Agents tab's invitation
-    // rather than a sentence about sessions -- creating an agent is the step
-    // before any session exists.
-    if (
-      agents.length === 0 &&
-      unreachableInstallations.length === 0 &&
-      agentInstallations.length > 0
-    ) {
-      return <FirstAgentCard />;
-    }
-
-    // Three distinct situations, and conflating them would tell the user to look
-    // in the wrong place: nothing could be read (look at the warning), nothing
-    // is deployed and there is nowhere to deploy to either (an installation
-    // scope that runs no kagent -- `InstallationScopeNote` says so), or
-    // something is deployed but none of it is ready (look at the Agents tab,
-    // where the reason is).
-    let reason: string;
-    if (unreachableInstallations.length > 0 && agents.length === 0) {
-      reason =
-        'No agents could be read, so there is none to start a session with. See the warning below.';
-    } else if (agents.length === 0) {
-      reason =
-        'No agents are deployed on the reachable installations, so there is none to start a session with.';
-    } else {
-      reason =
-        agents.length === 1
-          ? 'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.'
-          : `None of the ${agents.length} agents on the fleet are ready, so there is none to start a session with. The Agents tab says why.`;
-    }
-
-    return (
-      <Text variant="body-small" color="secondary">
-        {reason}
-      </Text>
-    );
-  }
-
-  const composer = (
-    <NewSessionComposer
-      agents={agents}
-      isLoadingAgents={isLoadingMoreAgents}
-      defaultAgent={lastUsedAgent}
-      // Collapsed only when it sits above a list of sessions. On first run it
-      // is the invitation, so it opens showing the agent picker and the Start
-      // button -- there is nothing for it to make room for.
-      collapsible={!firstRun}
-      isStarting={creation.isCreating}
-      error={creation.error?.message}
-      onStart={onStart}
-    />
-  );
-
-  if (firstRun) {
-    return (
-      <EmptyStateCard
-        title="Start your first session"
-        description="Pick an agent, say what you need, and the conversation opens as soon as it starts."
-      >
-        {composer}
-      </EmptyStateCard>
-    );
-  }
-
-  return (
-    <Flex direction="column" gap="2">
-      <Text as="h2" variant="title-x-small">
-        Start a new session
-      </Text>
-      {composer}
-    </Flex>
-  );
-}
 
 // Content of the "Sessions" tab. The section header + tabs come from the Agent
 // Platform page (GSPageLayout), so this renders content only. The one write it
@@ -286,7 +120,12 @@ function SessionsIndexPageContent() {
 
         {/* Withheld until the list settles, so `firstRun` is known before the
             composer mounts -- see the latch above. */}
-        {!isLoading && <StartNewSession firstRun={firstRun} />}
+        {!isLoading && (
+          <StartNewSession
+            entryPoint="sessionsList"
+            layout={firstRun ? 'firstRun' : 'inline'}
+          />
+        )}
 
         <InstallationScopeNote component="kagent" />
 
