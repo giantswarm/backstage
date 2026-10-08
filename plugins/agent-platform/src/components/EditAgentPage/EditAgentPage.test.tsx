@@ -477,22 +477,16 @@ describe('EditAgentPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('hides Commit until agent-manager reports the capability', async () => {
-    await renderPage();
+  it('offers no Commit, even when agent-manager reports the capability', async () => {
+    // A pull request goes to the GitOps repository that owns the release, and
+    // the form is only offered for an agent written live, which has none.
+    await renderPage({ info: { capabilities: { commit: true } } });
     await screen.findByDisplayValue('PR reviewer');
+
+    expect(saveButton()).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Commit/ }),
     ).not.toBeInTheDocument();
-  });
-
-  it('offers Commit under the capability flag', async () => {
-    await renderPage({ info: { capabilities: { commit: true } } });
-    await screen.findByDisplayValue('PR reviewer');
-    await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Commit/ }),
-      ).toBeInTheDocument();
-    });
   });
 
   it('says why nothing can be edited when muster lists no agent-manager', async () => {
