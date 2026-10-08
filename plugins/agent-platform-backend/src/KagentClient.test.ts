@@ -939,6 +939,69 @@ describe('KagentClient against a fake controller', () => {
   });
 
   describe('failure mapping', () => {
+    it('logs a failed session list with its call, status and request id', async () => {
+      const failing = mockServices.logger.mock();
+      const sent: Array<string | null> = [];
+      const client = new KagentClient(
+        installation,
+        failing,
+        createRouterTransport(router => {
+          router.service(
+            (
+              require('./kagent/gen/kagent/api/v1alpha1/sessions_pb') as typeof import('./kagent/gen/kagent/api/v1alpha1/sessions_pb')
+            ).SessionService,
+            {
+              listSessions(_request, context) {
+                sent.push(context.requestHeader.get('x-request-id'));
+                throw new ConnectError(
+                  'authentication failure: token uses the unknown key',
+                  Code.Unauthenticated,
+                );
+              },
+            },
+          );
+        }),
+        500,
+        500,
+      );
+
+      await expect(
+        client.listSessions({ ...USER, requestId: 'req-42' }),
+      ).rejects.toMatchObject({ name: 'AuthenticationError' });
+
+      expect(sent).toEqual(['req-42']);
+      expect(failing.warn).toHaveBeenCalledWith(
+        "kagent SessionService/ListSessions failed for installation 'gazelle' with status 401",
+        {
+          installation: 'gazelle',
+          call: 'SessionService/ListSessions',
+          status: 401,
+          code: 'Unauthenticated',
+          requestId: 'req-42',
+          error: 'authentication failure: token uses the unknown key',
+        },
+      );
+    });
+
+    it('keeps an absent kagent off the warn log', async () => {
+      const quiet = mockServices.logger.mock();
+      const client = new KagentClient(
+        { name: 'nowhere', apiBaseUrl: 'http://127.0.0.1:1' },
+        quiet,
+        undefined,
+        500,
+        500,
+      );
+      await client
+        .listSessions({ ...USER, requestId: 'req-43' })
+        .catch(() => undefined);
+      expect(quiet.warn).not.toHaveBeenCalled();
+      expect(quiet.debug).toHaveBeenCalledWith(
+        expect.stringContaining('with status 404'),
+        expect.objectContaining({ requestId: 'req-43', status: 404 }),
+      );
+    });
+
     it('reports a socket-level failure as a transport-borne 404', async () => {
       const client = new KagentClient(
         { name: 'nowhere', apiBaseUrl: 'http://127.0.0.1:1' },

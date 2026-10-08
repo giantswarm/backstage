@@ -35,4 +35,23 @@ describe('UnreachableInstallationsAlert', () => {
       screen.getByText("Couldn't read 1 installation"),
     ).toBeInTheDocument();
   });
+
+  it('names the reason and the request id per installation', async () => {
+    await renderInTestApp(
+      <UnreachableInstallationsAlert
+        installations={['gremlin', 'gauss']}
+        resourceName="Sessions"
+        failures={{
+          gremlin: { reason: 'authentication failed', requestId: 'req-1' },
+          gauss: { reason: 'timed out' },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Skipped because their Sessions couldn't be read: gremlin (authentication failed, request id req-1); gauss (timed out).",
+      ),
+    ).toBeInTheDocument();
+  });
 });

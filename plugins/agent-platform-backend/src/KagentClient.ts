@@ -33,6 +33,7 @@ import {
 import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
 import {
   ErrorContext,
+  httpStatusOf,
   isTransportFailure,
   isTurnPendingError,
   isUpstreamError,
@@ -158,6 +159,16 @@ const PAGE_SIZE = 100;
 const MAX_TASK_PAGES = 10;
 const MAX_SESSION_PAGES = 20;
 
+/**
+ * The header a request id travels in toward the controller route, and back to
+ * the browser: the id a failed read is logged with, so it can be matched with
+ * the gateway's and the controller's logs.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id';
+
+/** Longest upstream message carried into a failed-read log line. */
+const MAX_LOGGED_ERROR = 300;
+
 /** Who a call is made as. */
 export interface KagentRequestOptions {
   /**
@@ -167,6 +178,12 @@ export interface KagentRequestOptions {
    * one; everything touching a Session requires one.
    */
   userToken?: string;
+  /**
+   * Sent as {@link REQUEST_ID_HEADER} and logged with a failure. Only the
+   * session list carries one so far: its failures are what the Sessions page
+   * reports as an installation it could not read.
+   */
+  requestId?: string;
 }
 
 /** What one `ListTasks` read asks the controller to shape each task like. */
@@ -367,6 +384,7 @@ export class KagentClient {
             this.callOptions(options),
           ),
         context,
+        { call: 'SessionService/ListSessions', requestId: options.requestId },
       );
       sessions.push(...response.sessions);
       for (const session of response.sessions) {
@@ -1149,11 +1167,53 @@ export class KagentClient {
   private async call<T>(
     rpc: () => Promise<T>,
     context: ErrorContext,
+    trace?: { call: string; requestId?: string },
   ): Promise<T> {
     try {
       return await rpc();
     } catch (error) {
-      throw this.mapError(error, context);
+      const mapped = this.mapError(error, context);
+      if (trace) {
+        this.logFailedCall(trace.call, trace.requestId, error, mapped);
+      }
+      throw mapped;
+    }
+  }
+
+  /**
+   * One line per failed traced call: the call, the status the browser gets,
+   * the controller's code and message, and the request id it was sent with.
+   *
+   * A 404 is kagent absent or the resource gone, the expected answer on most
+   * installations, so it stays at `debug`; everything else is a read the page
+   * reports as failed and is logged at `warn`, where it can be attributed
+   * afterwards.
+   */
+  private logFailedCall(
+    call: string,
+    requestId: string | undefined,
+    error: unknown,
+    mapped: Error,
+  ) {
+    const connectError = ConnectError.from(error);
+    const message = connectError.rawMessage || connectError.message;
+    const status = httpStatusOf(mapped);
+    const fields = {
+      installation: this.installation.name,
+      call,
+      status,
+      code: Code[connectError.code],
+      requestId,
+      error:
+        message.length > MAX_LOGGED_ERROR
+          ? `${message.slice(0, MAX_LOGGED_ERROR)}…`
+          : message,
+    };
+    const line = `kagent ${call} failed for installation '${this.installation.name}' with status ${status}`;
+    if (status === 404) {
+      this.logger.debug(line, fields);
+    } else {
+      this.logger.warn(line, fields);
     }
   }
 
@@ -1216,7 +1276,8 @@ function renderDecision(answer: HitlAnswer): string {
  * property of one function rather than of every call site.
  */
 function bearerHeaders(options: KagentRequestOptions): Record<string, string> {
-  return options.userToken
-    ? { authorization: `Bearer ${options.userToken}` }
-    : {};
+  return {
+    ...(options.userToken && { authorization: `Bearer ${options.userToken}` }),
+    ...(options.requestId && { [REQUEST_ID_HEADER]: options.requestId }),
+  };
 }

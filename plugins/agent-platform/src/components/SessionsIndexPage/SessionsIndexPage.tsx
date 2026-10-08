@@ -197,6 +197,7 @@ function SessionsIndexPageContent() {
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
+    readFailures,
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
@@ -354,6 +355,7 @@ function SessionsIndexPageContent() {
         <UnreachableInstallationsAlert
           installations={unreachableInstallations}
           resourceName="Sessions"
+          failures={readFailures}
         />
 
         {/* Installations that run kagent but whose endpoint the portal cannot

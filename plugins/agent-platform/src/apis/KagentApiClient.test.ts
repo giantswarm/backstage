@@ -36,10 +36,15 @@ describe('KagentApiClient', () => {
     });
   }
 
-  function jsonResponse(body: unknown, status = 200) {
+  function jsonResponse(
+    body: unknown,
+    status = 200,
+    headers: Record<string, string> = {},
+  ) {
     return {
       ok: status >= 200 && status < 300,
       status,
+      headers: new Headers(headers),
       json: async () => body,
     } as Response;
   }
@@ -67,6 +72,35 @@ describe('KagentApiClient', () => {
       );
       expect(init.headers[KAGENT_AUTH_HEADER]).toBe('dex-token');
       expect(getCredentials).toHaveBeenCalledWith('oidc.oidc-gazelle');
+    });
+
+    it('carries the status, the reason and the request id of a failed read', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message: 'did not respond in time',
+              reason: 'timeout',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-5' },
+        ),
+      );
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
+        { status: 500, reason: 'timeout', requestId: 'req-5' },
+      );
+    });
+
+    it('marks a token that could not be minted', async () => {
+      getCredentials.mockResolvedValue({ token: undefined });
+
+      await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
+        { reason: 'token' },
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it('returns normalized sessions', async () => {

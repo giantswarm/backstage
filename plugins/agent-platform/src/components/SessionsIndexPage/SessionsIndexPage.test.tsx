@@ -128,6 +128,7 @@ const loadedSessions: SessionsContextValue = {
   isLoadingMore: false,
   hasInstallations: true,
   unreachableInstallations: [],
+  readFailures: {},
   notUserScopedInstallations: [],
   notReachableInstallations: [],
 };
@@ -575,6 +576,25 @@ describe('SessionsIndexPage', () => {
         'Select an agent',
       );
     });
+  });
+
+  it('names why an installation could not be read and the request id to trace it', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      unreachableInstallations: ['gazelle'],
+      readFailures: {
+        gazelle: { reason: 'authentication failed', requestId: 'req-7' },
+      },
+    });
+
+    await render();
+
+    expect(
+      screen.getByText("Couldn't read 1 installation"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
+    ).toBeInTheDocument();
   });
 
   it('names installations the portal cannot reach in a quiet note, not a warning', async () => {

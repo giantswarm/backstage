@@ -18,6 +18,14 @@ export type { KagentInstallation } from '../lib/kagentInstallations';
  */
 export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
+/**
+ * Response header carrying the request id the backend sent toward kagent, on
+ * an error too.
+ *
+ * Must match REQUEST_ID_HEADER in plugins/agent-platform-backend.
+ */
+export const REQUEST_ID_HEADER = 'x-request-id';
+
 /** The answer to a confirmation, as the answer routes take it. */
 export type ConfirmationAnswerRequest = {
   messageId: string;
