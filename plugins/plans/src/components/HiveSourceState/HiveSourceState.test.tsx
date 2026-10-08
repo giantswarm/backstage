@@ -12,7 +12,6 @@ describe('HiveSourceState', () => {
     const onRetry = jest.fn();
     await renderInTestApp(
       <HiveSourceState
-        isLoading={false}
         error={gatewayError}
         what="what moved"
         onRetry={onRetry}
@@ -31,7 +30,6 @@ describe('HiveSourceState', () => {
   it('holds "Try again" while the retry runs', async () => {
     await renderInTestApp(
       <HiveSourceState
-        isLoading={false}
         error={gatewayError}
         what="what moved"
         onRetry={jest.fn()}
@@ -42,5 +40,18 @@ describe('HiveSourceState', () => {
     expect(
       screen.getByRole('button', { name: 'Trying again…' }),
     ).toBeDisabled();
+  });
+
+  it('shows the progress bar while there is neither data nor an error', async () => {
+    await renderInTestApp(
+      <HiveSourceState
+        error={null}
+        what="what moved"
+        onRetry={jest.fn()}
+        isFetching={false}
+      />,
+    );
+
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
   });
 });

@@ -17,6 +17,7 @@ jest.mock('../MergedTab', () => ({
 }));
 const mockHeaderActions = jest.fn();
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   useProvidePageHeaderActions: (actions: unknown) => mockHeaderActions(actions),
 }));
 
