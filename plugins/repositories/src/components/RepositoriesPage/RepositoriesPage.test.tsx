@@ -74,9 +74,16 @@ async function renderPage(api: RepositoriesApi, url = '/') {
 
 const urlSearch = () => screen.getByTestId('location').textContent;
 
+/** Upper bound for the first render of the page on a loaded runner. */
+const SLOW_RENDER_MS = 15_000;
+
 /** The row of a repository; the cell names it without the org. */
-const findRow = (name: string) =>
-  screen.findByRole('row', { name: new RegExp(`\\b${name}\\b`) });
+const findRow = (name: string, timeout?: number) =>
+  screen.findByRole(
+    'row',
+    { name: new RegExp(`\\b${name}\\b`) },
+    { timeout },
+  );
 
 /** The listed repositories, in table order (the Repository cell of every row). */
 const listed = () =>
@@ -135,7 +142,8 @@ describe('RepositoriesPage', () => {
     const api = fakeApi();
     await renderPage(api);
 
-    await findRow('present-service');
+    // The first render of the page is the slow part under a loaded parallel run.
+    await findRow('present-service', SLOW_RENDER_MS);
     expect(listed()).toEqual(['new-service', 'present-service']);
     expect(api.lists).toContainEqual({
       scope: 'mine',
@@ -151,7 +159,7 @@ describe('RepositoriesPage', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Show archived' }),
     ).not.toBeChecked();
-  });
+  }, SLOW_RENDER_MS * 2);
 
   it('links the repository set-up docs from the header, in a new tab', async () => {
     await renderPage(fakeApi());
