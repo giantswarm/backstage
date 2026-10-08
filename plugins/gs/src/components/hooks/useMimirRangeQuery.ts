@@ -8,6 +8,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirRangeQueryResponse } from '../../apis/mimir/types';
+import { mimirQueryRetry } from './mimirRetry';
 import { useMimirAvailable } from './useMimirAvailable';
 
 /**
@@ -105,6 +106,7 @@ export function useMimirRangeQuery(options: {
     },
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
+    retry: mimirQueryRetry,
     refetchInterval,
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });

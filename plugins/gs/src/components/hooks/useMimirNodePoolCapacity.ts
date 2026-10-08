@@ -12,6 +12,7 @@ import {
   KubeNodeStatusCondition,
 } from '../../apis/mimir/metrics';
 import { NodePoolMetrics } from '../clusters/nodePools';
+import { mimirQueryRetry } from './mimirRetry';
 import { sanitizePromQLValue } from './promql';
 import { useMimirInstallations } from './useMimirInstallations';
 import { useMimirQueryFn } from './useMimirQueryFn';
@@ -160,6 +161,7 @@ export function useMimirNodePoolCapacity(
         // clusters come and go; the clusters already answered stay shown.
         placeholderData: keepPreviousData,
         staleTime: 30_000,
+        retry: mimirQueryRetry,
       };
     }),
     combine,
