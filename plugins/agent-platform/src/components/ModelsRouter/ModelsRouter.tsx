@@ -10,7 +10,11 @@ import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import { ServingProvider, useServing } from '../ServingProvider';
+import {
+  hasServingLayer,
+  ServingProvider,
+  useServing,
+} from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ModelConfigsPage } from '../ModelConfigsPage';
 import { NewModelPage } from '../NewModelPage';
@@ -77,11 +81,9 @@ const LegacyDetailRedirect = () => {
 const ModelsViews = () => {
   const basePath = useSplatBasePath();
   const { pathname } = useLocation();
-  const { installations, unreachableInstallations } = useServing();
-  const hasServingLayer =
-    installations.length > 0 || unreachableInstallations.length > 0;
+  const servingLayer = hasServingLayer(useServing());
   const onList = pathname.replace(/\/$/, '') === basePath;
-  const showTabs = hasServingLayer || !onList;
+  const showTabs = servingLayer || !onList;
 
   return (
     <>
@@ -102,7 +104,7 @@ const ModelsViews = () => {
               <Tab id="configs" href={basePath} matchStrategy="prefix">
                 Model configs
               </Tab>
-              {hasServingLayer &&
+              {servingLayer &&
                 SERVING_VIEWS.map(view => (
                   <Tab
                     key={view.path}

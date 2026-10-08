@@ -37,15 +37,20 @@ function isActivePath(pathname: string, href: string): boolean {
 export function RailLink({
   item,
   href,
+  currentOn = [],
   compact,
 }: {
   item: AgentShellNavItem;
   href: string;
+  /** Further paths under which the item is the current one. */
+  currentOn?: string[];
   compact: boolean;
 }) {
   const classes = useStyles();
   const { pathname } = useLocation();
-  const isActive = isActivePath(pathname, href);
+  const isActive = [href, ...currentOn].some(path =>
+    isActivePath(pathname, path),
+  );
   const Icon = item.icon;
   return (
     <li>

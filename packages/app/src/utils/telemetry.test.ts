@@ -110,6 +110,13 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it('should return correct payload for the customize page', () => {
+    expect(getTelemetryPageViewPayload('/customize')).toEqual({
+      page: 'Customize',
+      path: '/customize',
+    });
+  });
+
   it('should return correct payload for installations index page', () => {
     const result = getTelemetryPageViewPayload('/installations');
     expect(result).toEqual({
@@ -492,6 +499,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/create',
       '/create/default/template/my-template',
       '/settings',
+      '/customize',
       '/installations',
       '/clusters',
       '/clusters/installation/org-demo/demo-cluster',

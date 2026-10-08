@@ -31,6 +31,8 @@ jest.mock('../GpuCapacityPage', () => ({
 // driven per case.
 const mockUseServing = jest.fn<Partial<ServingContextValue>, []>();
 jest.mock('../ServingProvider', () => ({
+  hasServingLayer: jest.requireActual('../ServingProvider/ServingProvider')
+    .hasServingLayer,
   ServingProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   useServing: () => mockUseServing(),
 }));

@@ -10,3 +10,4 @@ export type {
   StartNewSessionProps,
 } from './components/StartNewSession';
 export { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
+export { ServingLayerGate } from './components/ServingLayerGate';

@@ -63,6 +63,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Settings' };
       break;
 
+    case pathname === '/customize':
+      payload = { page: 'Customize' };
+      break;
+
     case pathname === '/installations':
       payload = { page: 'Installations index' };
       break;

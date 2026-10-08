@@ -1,4 +1,9 @@
-import { RouteRef, useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  RouteRef,
+  routeResolutionApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import type { AgentShellNavItem } from '../../navItems';
 import { RailLink } from '../RailLink';
 
@@ -13,8 +18,24 @@ export function RouteRailLink({
   compact: boolean;
 }) {
   const route = useRouteRef(routeRef);
+  const routeResolution = useApi(routeResolutionApiRef);
   if (!route) {
     return null;
   }
-  return <RailLink item={item} href={route()} compact={compact} />;
+  const currentOn = (item.currentOn ?? []).flatMap(ref => {
+    try {
+      const path = routeResolution.resolve(ref)?.();
+      return path ? [path] : [];
+    } catch {
+      return [];
+    }
+  });
+  return (
+    <RailLink
+      item={item}
+      href={route()}
+      currentOn={currentOn}
+      compact={compact}
+    />
+  );
 }

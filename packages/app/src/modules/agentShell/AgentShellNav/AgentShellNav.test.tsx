@@ -12,7 +12,9 @@ import {
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { agentShellNav } from '../navExtension';
+import { customizeRouteRef } from '../routes';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef } = jest.requireActual(
@@ -21,9 +23,26 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   return {
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     agentPlatformPlugin: {
-      routes: { sessions: createRouteRef(), usage: createRouteRef() },
+      routes: {
+        sessions: createRouteRef(),
+        usage: createRouteRef(),
+        agents: createRouteRef(),
+        models: createRouteRef(),
+      },
     },
     RecentSessions: () => <div data-testid="recent-sessions" />,
+  };
+});
+
+jest.mock('@giantswarm/backstage-plugin-muster', () => {
+  const { createRouteRef } = jest.requireActual(
+    '@backstage/frontend-plugin-api',
+  );
+  return {
+    __esModule: true,
+    default: {
+      routes: { mcpServers: createRouteRef(), workflows: createRouteRef() },
+    },
   };
 });
 
@@ -71,7 +90,12 @@ async function renderNav({
       ...(bound && {
         mountedRoutes: {
           '/agent-platform/sessions': agentPlatformPlugin.routes.sessions,
+          '/customize': customizeRouteRef,
           '/agent-platform/usage': agentPlatformPlugin.routes.usage,
+          '/agent-platform/agents': agentPlatformPlugin.routes.agents,
+          '/agent-platform/models': agentPlatformPlugin.routes.models,
+          '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
+          '/agent-platform/workflows': musterPlugin.routes.workflows,
         },
       }),
     },
@@ -135,7 +159,6 @@ describe('AgentShellNav', () => {
     expect(railLinks()).toEqual([
       ['Agent Platform', '/'],
       ['New session', '/'],
-      ['Customize', '/customize'],
     ]);
   });
 
@@ -165,6 +188,20 @@ describe('AgentShellNav', () => {
     expect(
       screen.getByRole('link', { name: 'New session' }),
     ).not.toHaveAttribute('aria-current');
+  });
+
+  it.each([
+    '/agent-platform/agents/gazelle/kagent/sre',
+    '/agent-platform/models/serving',
+    '/agent-platform/mcp-servers',
+    '/agent-platform/workflows/deploy',
+  ])('makes Customize the current item on %s', async path => {
+    await renderNav({ path });
+
+    expect(screen.getByRole('link', { name: 'Customize' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   it('opens with a skip link to the content', async () => {
