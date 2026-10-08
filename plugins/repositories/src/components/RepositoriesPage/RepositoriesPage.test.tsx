@@ -79,11 +79,7 @@ const SLOW_RENDER_MS = 15_000;
 
 /** The row of a repository; the cell names it without the org. */
 const findRow = (name: string, timeout?: number) =>
-  screen.findByRole(
-    'row',
-    { name: new RegExp(`\\b${name}\\b`) },
-    { timeout },
-  );
+  screen.findByRole('row', { name: new RegExp(`\\b${name}\\b`) }, { timeout });
 
 /** The listed repositories, in table order (the Repository cell of every row). */
 const listed = () =>
@@ -138,28 +134,32 @@ describe('RepositoriesPage', () => {
     jest.mocked(bounceToConnect).mockClear();
   });
 
-  it('opens on My team, hides the archived repositories and lists by name', async () => {
-    const api = fakeApi();
-    await renderPage(api);
+  it(
+    'opens on My team, hides the archived repositories and lists by name',
+    async () => {
+      const api = fakeApi();
+      await renderPage(api);
 
-    // The first render of the page is the slow part under a loaded parallel run.
-    await findRow('present-service', SLOW_RENDER_MS);
-    expect(listed()).toEqual(['new-service', 'present-service']);
-    expect(api.lists).toContainEqual({
-      scope: 'mine',
-      limit: LIMIT,
-      archived: false,
-    });
-    expect(
-      screen.getByRole('tab', { name: 'My team', selected: true }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('listing-summary')).toHaveTextContent(
-      '2 of 2 matching repositories, 6 in the inventory; archived hidden; last sweep 2026-09-16 21:04Z',
-    );
-    expect(
-      screen.getByRole('checkbox', { name: 'Show archived' }),
-    ).not.toBeChecked();
-  }, SLOW_RENDER_MS * 2);
+      // The first render of the page is the slow part under a loaded parallel run.
+      await findRow('present-service', SLOW_RENDER_MS);
+      expect(listed()).toEqual(['new-service', 'present-service']);
+      expect(api.lists).toContainEqual({
+        scope: 'mine',
+        limit: LIMIT,
+        archived: false,
+      });
+      expect(
+        screen.getByRole('tab', { name: 'My team', selected: true }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('listing-summary')).toHaveTextContent(
+        '2 of 2 matching repositories, 6 in the inventory; archived hidden; last sweep 2026-09-16 21:04Z',
+      );
+      expect(
+        screen.getByRole('checkbox', { name: 'Show archived' }),
+      ).not.toBeChecked();
+    },
+    SLOW_RENDER_MS * 2,
+  );
 
   it('links the repository set-up docs from the header, in a new tab', async () => {
     await renderPage(fakeApi());
