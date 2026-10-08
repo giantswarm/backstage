@@ -13,11 +13,6 @@ const defaultLinks = [
     url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}',
   },
   {
-    label: 'Alerts',
-    icon: 'NotificationsNone',
-    url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2',
-  },
-  {
     label: 'Web UI',
     icon: 'Public',
     url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}',

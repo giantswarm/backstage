@@ -272,6 +272,8 @@ login fails with `invalid_scope` on the base set as well.
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.
 
+The default links are the Grafana cluster overview dashboard and the Web UI. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
+
 ### Configuration example
 
 Below is an example configuration for overriding the default links on the cluster details page:
@@ -282,7 +284,7 @@ gs:
     resources:
       - label: 'Alerts'
         icon: 'NotificationsNone'
-        url: 'https://grafana.${{BASE_DOMAIN}}/alerting'
+        url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2'
       - label: 'Web UI'
         icon: 'Public'
         url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}'
