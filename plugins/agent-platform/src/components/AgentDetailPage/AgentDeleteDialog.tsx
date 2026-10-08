@@ -26,6 +26,15 @@ export type AgentDeleteDialogProps = {
 };
 
 /**
+ * Whether agent-manager's commit answer settles the deletion — the pull
+ * request is open, or the request was accepted. The connect step does not:
+ * the person connects and tries again.
+ */
+export function isCommitSettled(result: CommitAgentResult): boolean {
+  return result.status !== 'auth_required';
+}
+
+/**
  * Asks before deleting an agent.
  *
  * Says one thing, because it is the only thing the person clicking cannot work
@@ -62,7 +71,8 @@ export function AgentDeleteDialog({
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       title={`Delete agent "${displayName}"?`}
-      destructive
+      // A pull request can be closed unmerged; a live delete cannot be undone.
+      destructive={!viaPullRequest}
       confirmLabel={viaPullRequest ? 'Open pull request' : 'Delete agent'}
       busyLabel={viaPullRequest ? 'Opening pull request…' : 'Deleting…'}
       isBusy={isDeleting || isCommitting}
@@ -70,12 +80,10 @@ export function AgentDeleteDialog({
       // verdict was not read for, a suspended one, the apiserver's Forbidden
       // for a viewer.
       error={failure && !notConnected ? failure.message : undefined}
-      // Done once the pull request is open; the connect step leaves the button
-      // for another try.
       isDone={
         viaPullRequest &&
         commitResult !== undefined &&
-        commitResult.status !== 'auth_required'
+        isCommitSettled(commitResult)
       }
       onConfirm={viaPullRequest ? onCommit : onConfirm}
     >

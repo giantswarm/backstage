@@ -158,15 +158,15 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Edit and Delete, not Update skills, for an agent applied from git when agent-manager can commit', async () => {
-    // Both go through a pull request in the GitOps repository then; Update
-    // skills has no commit mode.
+  it('offers only Delete for an agent applied from git when agent-manager can commit', async () => {
+    // It goes through a pull request in the GitOps repository then. Edit and
+    // Update skills have no pull request to offer.
     await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
     await openMenu();
 
     expect(
-      screen.getByRole('menuitem', { name: /Edit agent/ }),
-    ).toBeInTheDocument();
+      screen.queryByRole('menuitem', { name: /Edit agent/ }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: /Update skills/ }),
     ).not.toBeInTheDocument();

@@ -25,9 +25,11 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  *
  * `canCommit` is agent-manager's `commit` capability (`get_info`): it can open
  * a pull request as the person in the repository that owns a release. Only a
- * release applied from git has such a repository, so it is what makes Edit and
- * Delete available for a GitOps-owned agent — through a pull request instead
- * of a live write. Update skills has no commit mode and stays withheld.
+ * release applied from git has such a repository, so it is what makes Delete
+ * available for a GitOps-owned agent — through a pull request instead of a
+ * live write. Edit and Update skills stay withheld: the edit form's dry run
+ * (`validate_agent`) refuses such an agent, and Update skills has no commit
+ * mode.
  *
  * `isVerdictPending` is either read still being in flight, which is not the
  * same thing: offering the actions then would show them to everyone for a
@@ -43,8 +45,8 @@ export type AgentManagerGate = {
 };
 
 /**
- * How an agent's edit or delete is offered: written live, proposed as a pull
- * request in the GitOps repository that owns it, or not at all.
+ * How a write to an agent is offered: live, as a pull request in the GitOps
+ * repository that owns it, or not at all. Only Delete supports `commit` so far.
  */
 export type AgentWriteMode = 'apply' | 'commit' | undefined;
 
@@ -73,13 +75,13 @@ export function agentWriteMode(gate: AgentManagerGate): AgentWriteMode {
  * being read: nothing is offered then either, but there is nothing to say yet.
  */
 export function agentManagerAbsenceReason(
-  gate: AgentManagerGate,
+  gate: Omit<AgentManagerGate, 'canCommit'>,
   installation: string,
 ): string | undefined {
   if (gate.isVerdictPending) {
     return undefined;
   }
-  if (gate.isGitOpsOwned && !gate.canCommit) {
+  if (gate.isGitOpsOwned) {
     return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
   }
   if (gate.isUnavailable) {
@@ -104,9 +106,9 @@ export function agentManagerAbsenceReason(
  * by react-query — the agent-manager reads and mutations behind Delete, Edit
  * and Update skills — is called by the page and their dialogs are rendered in
  * the page body; the menu only says whether they are offered (`agentManager`:
- * agent-manager's presence, its verdict on whether the agent is written live
- * or through a pull request, and whether it can open one) and asks the page to
- * open them. What it cannot offer it simply leaves out —
+ * agent-manager's presence, its verdict on whether the agent is written live,
+ * and whether it can delete one applied from git through a pull request) and
+ * asks the page to open them. What it cannot offer it simply leaves out —
  * an explanation belongs on the page (the Overview tab's GitOps card already
  * carries the one for an agent applied from git), not as an unclickable item in
  * a list of things to do. Authorization stays the apiserver's, reached through
@@ -128,7 +130,6 @@ export function AgentActionsMenu({
 }) {
   const [isManifestOpen, setManifestOpen] = useState(false);
   const writeMode = agentWriteMode(agentManager);
-  const offered = writeMode !== undefined;
 
   return (
     <>
@@ -144,7 +145,7 @@ export function AgentActionsMenu({
           </MenuItem>
           {/* Three separate conditionals rather than one fragment: react-aria
               builds the menu's collection from its direct children. */}
-          {offered ? (
+          {writeMode === 'apply' ? (
             <MenuItem iconStart={<EditOutlinedIcon />} onAction={onEdit}>
               Edit agent…
             </MenuItem>
@@ -154,7 +155,7 @@ export function AgentActionsMenu({
               Update skills…
             </MenuItem>
           ) : null}
-          {offered ? (
+          {writeMode !== undefined ? (
             <MenuItem
               color="danger"
               iconStart={<DeleteOutlineIcon />}

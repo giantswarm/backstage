@@ -71,8 +71,8 @@ import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentCreationProgress } from '../AgentCreationProgress';
-import { AgentActionsMenu } from './AgentActionsMenu';
-import { AgentDeleteDialog } from './AgentDeleteDialog';
+import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
+import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
 import { AgentDetailTabs } from './AgentDetailTabs';
 import { AgentOverviewTab } from './AgentOverviewTab';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
@@ -348,6 +348,7 @@ function AgentDetailPageContent() {
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'apply' | 'commit'>('apply');
   const [isUpdateSkillsOpen, setUpdateSkillsOpen] = useState(false);
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
@@ -357,12 +358,22 @@ function AgentDetailPageContent() {
 
   const { reset: resetDeletion } = deletion;
   const openDelete = useCallback(() => {
+    // The menu's answer, fixed while the dialog is open, so a re-read of the
+    // verdict cannot swap its action under the cursor.
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
     // Clear a previous attempt's error, so the dialog does not open still
-    // showing it.
+    // showing it. A pull request it already opened stays: the agent is only
+    // gone once that is merged, and a second one would duplicate it.
     resetDeletion();
-    setCommitResult(undefined);
+    setCommitResult(previous =>
+      previous && isCommitSettled(previous) ? previous : undefined,
+    );
+    setDeleteMode(mode);
     setDeleteOpen(true);
-  }, [resetDeletion]);
+  }, [agentManagerGate, resetDeletion]);
   const { reset: resetUpdating } = updating;
   const openUpdateSkills = useCallback(() => {
     resetUpdating();
@@ -770,7 +781,7 @@ function AgentDetailPageContent() {
         isOpen={isDeleteOpen}
         onOpenChange={setDeleteOpen}
         deletion={deletion}
-        mode={agentManagerGate.isGitOpsOwned ? 'commit' : 'apply'}
+        mode={deleteMode}
         onConfirm={confirmDelete}
         onCommit={commitDelete}
         commitResult={commitResult}
