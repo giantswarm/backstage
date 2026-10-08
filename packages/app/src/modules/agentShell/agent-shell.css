@@ -1,0 +1,33 @@
+html[data-agent-shell] body {
+  --bui-font-regular: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+html[data-agent-shell] body[data-theme-mode='light'] {
+  --bui-fg-primary: #002645;
+  --bui-fg-secondary: #5b6c79;
+  --bui-bg-app: #ffffff;
+  --bui-border-1: #e3ebef;
+  --bui-border-2: #d6e1e7;
+  --bui-bg-solid: #002645;
+  --bui-bg-solid-hover: #001b31;
+  --bui-bg-solid-pressed: #00111f;
+  --bui-fg-solid: #ffffff;
+  --bui-accent-bg: #009fff;
+  --bui-accent-bg-hover: #0088db;
+  --bui-ring: #00609c;
+}
+
+/* Inside bui's components layer so unlayered class overrides still win. */
+@layer components {
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Link[data-color='primary'] {
+    color: #00609c;
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Link[data-color='primary']:hover {
+    color: #002645;
+  }
+}

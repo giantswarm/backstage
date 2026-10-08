@@ -7,13 +7,23 @@
  * `theme:app/dark` extensions provided by `@backstage/plugin-app`.
  */
 import { ReactNode, useMemo } from 'react';
-import { configApiRef, useApi } from '@backstage/core-plugin-api';
+import {
+  configApiRef,
+  featureFlagsApiRef,
+  useApi,
+} from '@backstage/core-plugin-api';
 import {
   createUnifiedTheme,
   palettes,
+  UnifiedThemeOptions,
   UnifiedThemeProvider,
 } from '@backstage/theme';
 import type { Config } from '@backstage/config';
+import { AGENT_SHELL_FLAG } from '../agentShell/predicates';
+import {
+  AGENT_SHELL_FONT_FAMILY,
+  agentShellLightColors,
+} from '../agentShell/theme';
 
 type Variant = 'light' | 'dark';
 
@@ -22,8 +32,13 @@ const CONFIG_KEY: Record<Variant, string> = {
   dark: 'app.branding.theme.dark',
 };
 
-export function buildPalette(configApi: Config, variant: Variant) {
-  const base = palettes[variant] as typeof palettes.dark;
+type BrandedPalette = typeof palettes.dark & { text?: { primary?: string } };
+
+export function buildPalette(
+  configApi: Config,
+  variant: Variant,
+): BrandedPalette {
+  const base = palettes[variant] as BrandedPalette;
   const root = configApi.getOptionalConfig(CONFIG_KEY[variant]);
   if (!root) {
     return base;
@@ -51,7 +66,7 @@ export function buildPalette(configApi: Config, variant: Variant) {
       background: { ...base.background, default: background },
     }),
     ...(text && {
-      text: { ...(base as { text?: object }).text, primary: text },
+      text: { ...base.text, primary: text },
     }),
     navigation: {
       ...base.navigation,
@@ -60,6 +75,35 @@ export function buildPalette(configApi: Config, variant: Variant) {
       ...(navColor && { color: navColor }),
       ...(navSelectedColor && { selectedColor: navSelectedColor }),
     },
+  };
+}
+
+function withAgentShellColors(palette: BrandedPalette) {
+  return {
+    ...palette,
+    primary: { ...palette.primary, main: agentShellLightColors.primary },
+    text: { ...palette.text, primary: agentShellLightColors.text },
+    background: {
+      ...palette.background,
+      default: agentShellLightColors.background,
+    },
+    link: agentShellLightColors.link,
+    linkHover: agentShellLightColors.linkHover,
+  };
+}
+
+export function buildThemeOptions(
+  configApi: Config,
+  variant: Variant,
+  agentShell: boolean,
+): UnifiedThemeOptions {
+  const palette = buildPalette(configApi, variant);
+  if (!agentShell) {
+    return { palette };
+  }
+  return {
+    palette: variant === 'light' ? withAgentShellColors(palette) : palette,
+    fontFamily: AGENT_SHELL_FONT_FAMILY,
   };
 }
 
@@ -95,9 +139,10 @@ function CustomThemeProvider({
   children: ReactNode;
 }) {
   const configApi = useApi(configApiRef);
+  const agentShell = useApi(featureFlagsApiRef).isActive(AGENT_SHELL_FLAG);
   const theme = useMemo(
-    () => createUnifiedTheme({ palette: buildPalette(configApi, variant) }),
-    [configApi, variant],
+    () => createUnifiedTheme(buildThemeOptions(configApi, variant, agentShell)),
+    [configApi, variant, agentShell],
   );
   const cssOverrides = getCssVariableOverrides(configApi, variant);
   return (

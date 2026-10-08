@@ -1,6 +1,11 @@
 import { ConfigReader } from '@backstage/config';
-import { palettes } from '@backstage/theme';
-import { buildPalette, getCssVariableOverrides } from './customThemes';
+import { BackstageTheme, createUnifiedTheme, palettes } from '@backstage/theme';
+import { AGENT_SHELL_FONT_FAMILY } from '../agentShell/theme';
+import {
+  buildPalette,
+  buildThemeOptions,
+  getCssVariableOverrides,
+} from './customThemes';
 
 describe('buildPalette', () => {
   it('returns the built-in palette unchanged when no overrides are configured', () => {
@@ -152,5 +157,85 @@ describe('buildPalette', () => {
     expect(buildPalette(config, 'dark').primary.main).toBe(
       palettes.dark.primary.main,
     );
+  });
+});
+
+describe('buildThemeOptions', () => {
+  const branded = new ConfigReader({
+    app: {
+      branding: {
+        theme: {
+          light: { primaryColor: '#111111', textColor: '#888888' },
+        },
+      },
+    },
+  });
+
+  it.each([
+    ['without branding', new ConfigReader({})],
+    ['with branding', branded],
+  ])(
+    'leaves the theme unchanged with the agent shell flag off (%s)',
+    (_, config) => {
+      for (const variant of ['light', 'dark'] as const) {
+        expect(buildThemeOptions(config, variant, false)).toEqual({
+          palette: buildPalette(config, variant),
+        });
+      }
+    },
+  );
+
+  it('keeps the built-in light theme values with the agent shell flag off', () => {
+    const light = createUnifiedTheme(
+      buildThemeOptions(new ConfigReader({}), 'light', false),
+    ).getTheme('v4') as BackstageTheme;
+    expect({
+      primary: light.palette.primary.main,
+      textPrimary: light.palette.text.primary,
+      backgroundDefault: light.palette.background.default,
+      link: light.palette.link,
+      linkHover: light.palette.linkHover,
+      fontFamily: light.typography.fontFamily,
+    }).toEqual({
+      primary: palettes.light.primary.main,
+      textPrimary: 'rgba(0, 0, 0, 0.87)',
+      backgroundDefault: palettes.light.background.default,
+      link: palettes.light.link,
+      linkHover: palettes.light.linkHover,
+      fontFamily: '"Helvetica Neue", Helvetica, Roboto, Arial, sans-serif',
+    });
+  });
+
+  it('applies the agent shell colours on top of the light branding', () => {
+    const off = buildThemeOptions(branded, 'light', false);
+    const on = buildThemeOptions(branded, 'light', true);
+
+    expect(on.fontFamily).toBe(AGENT_SHELL_FONT_FAMILY);
+    expect(on.palette).toMatchObject({
+      primary: { main: '#002645' },
+      text: { primary: '#002645' },
+      background: { default: '#ffffff' },
+      link: '#00609c',
+      linkHover: '#002645',
+    });
+
+    const strip = (palette: Record<string, any>) => {
+      const { link, linkHover, ...rest } = palette;
+      return {
+        ...rest,
+        primary: { ...rest.primary, main: undefined },
+        text: { ...rest.text, primary: undefined },
+        background: { ...rest.background, default: undefined },
+      };
+    };
+    expect(strip(on.palette)).toEqual(strip(off.palette));
+  });
+
+  it('only changes the font of the dark theme', () => {
+    const config = new ConfigReader({});
+    expect(buildThemeOptions(config, 'dark', true)).toEqual({
+      palette: buildPalette(config, 'dark'),
+      fontFamily: AGENT_SHELL_FONT_FAMILY,
+    });
   });
 });
