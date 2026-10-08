@@ -27,13 +27,18 @@ const defaultLinks = [
 ];
 
 export function ClusterToolsCard() {
-  const { config } = useSignedInConfig();
+  const { config, isLoading } = useSignedInConfig();
   const { cluster, installationName } = useCurrentCluster();
 
   const clusterDetailsTemplateData = useClusterDetailsTemplateData(
     installationName,
     cluster,
   );
+
+  if (isLoading) {
+    // Show the configured links or the defaults, never one after the other.
+    return null;
+  }
 
   const linksConfig = config?.getOptionalConfigArray(
     'gs.clusterDetails.resources',

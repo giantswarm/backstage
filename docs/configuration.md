@@ -276,7 +276,7 @@ The default links are the Grafana cluster overview dashboard and the Web UI. The
 
 ### Configuration example
 
-Below is an example configuration for overriding the default links on the cluster details page:
+Below is the configuration of a Giant Swarm staff instance, which adds the Alerts link to the defaults. Leave the Alerts entry out on a customer instance:
 
 ```yaml
 gs:

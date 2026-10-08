@@ -39,6 +39,12 @@ describe('ClusterToolsCard', () => {
     __resetSignedInConfigForTests();
   });
 
+  it('renders nothing while the signed-in config loads', async () => {
+    await renderInTestApp(<ClusterToolsCard />);
+
+    expect(screen.queryAllByRole('link')).toEqual([]);
+  });
+
   it('offers no Alerts link by default', async () => {
     setSignedInConfig(new ConfigReader({}));
 
