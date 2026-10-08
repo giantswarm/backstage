@@ -77,14 +77,21 @@ export const SNIFF_BYTES = 30;
 const MAX_JPEG_SEGMENTS = 64;
 
 /**
- * The longest encoded payload worth normalising: base64 of
- * {@link MAX_PREVIEW_BYTES}, with room for the line breaks of wrapped base64.
- * Anything longer is too large whatever it turns out to contain, which is
- * decided from `length` without reading the string.
+ * The most characters the normalised form of a payload within
+ * {@link MAX_PREVIEW_BYTES} can have: padded base64 of that many bytes. A
+ * payload with more characters that carry bytes is too large whatever they
+ * encode, which is decided by counting them, with nothing normalised or
+ * decoded.
  */
-const MAX_ENCODED_LENGTH = Math.ceil(
-  Math.ceil(MAX_PREVIEW_BYTES / 3) * 4 * 1.05,
-);
+const MAX_BASE64_LENGTH = Math.ceil(MAX_PREVIEW_BYTES / 3) * 4;
+
+/**
+ * The longest raw payload worth reading at all: {@link MAX_BASE64_LENGTH} with
+ * room for the line breaks of wrapped base64. Anything longer is too large
+ * whatever it turns out to contain, which is decided from `length` without
+ * reading the string.
+ */
+const MAX_ENCODED_LENGTH = Math.ceil(MAX_BASE64_LENGTH * 1.05);
 
 /** Why an attachment has no preview. */
 export type NoPreviewReason =
@@ -158,11 +165,12 @@ export function readAttachment(
  *
  * The order is deliberate, and each step is a reason not to do the next one:
  * reject a part with no payload, refuse a remote one, apply the size cap to the
- * raw length, normalise and validate the base64, apply the exact size cap, and
- * only then decode the first {@link SNIFF_BYTES} bytes to derive the type and
- * read the dimensions. Nothing outside {@link PREVIEWABLE_IMAGE_TYPES} is
- * rendered, and the type used for the `data:` URL is the sniffed one, so the
- * browser is never told a type the bytes do not support.
+ * raw length and then to the count of characters that carry bytes, normalise
+ * and validate the base64, apply the exact size cap, and only then decode the
+ * first {@link SNIFF_BYTES} bytes to derive the type and read the dimensions.
+ * Nothing outside {@link PREVIEWABLE_IMAGE_TYPES} is rendered, and the type
+ * used for the `data:` URL is the sniffed one, so the browser is never told a
+ * type the bytes do not support.
  */
 export function readAttachmentPreview(
   attachment: KagentAttachment,
@@ -176,22 +184,30 @@ export function readAttachmentPreview(
       reason: attachment.uri === undefined ? 'empty' : 'remote',
     };
   }
-  if (attachment.base64.length > MAX_ENCODED_LENGTH) {
-    // Not validated: reading the string is what this cap avoids. The size is
-    // what explains the reason, so it is estimated rather than left out.
+  const raw = attachment.base64;
+  if (
+    raw.length > MAX_ENCODED_LENGTH ||
+    payloadLengthExceeds(raw, MAX_BASE64_LENGTH)
+  ) {
+    // Not normalised, let alone decoded: the raw length first, then the
+    // characters that carry bytes, counted up to the cap and no further. The
+    // size is what explains the reason, so it is estimated rather than left
+    // out.
     return {
       kind: 'none',
       reason: 'too-large',
-      byteSize: Math.floor((attachment.base64.length / 4) * 3),
+      byteSize: Math.floor((raw.length / 4) * 3),
     };
   }
 
-  const base64 = normalizeBase64(attachment.base64);
+  const base64 = normalizeBase64(raw);
   if (base64 === undefined) {
     return { kind: 'none', reason: 'undecodable' };
   }
   const byteSize = decodedLength(base64);
   if (byteSize > MAX_PREVIEW_BYTES) {
+    // The last quantum: {@link MAX_BASE64_LENGTH} characters with no padding
+    // among them decode to one byte over the cap.
     return { kind: 'none', reason: 'too-large', byteSize };
   }
 
@@ -218,8 +234,9 @@ export function readAttachmentPreview(
   };
 }
 
-/** Padded standard base64, the form a `data:` URL needs. */
-const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const PLUS = '+'.charCodeAt(0);
+const SLASH = '/'.charCodeAt(0);
+const EQUALS = '='.charCodeAt(0);
 
 /**
  * The payload as padded standard base64, or undefined when it is not base64.
@@ -228,26 +245,111 @@ const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * (`RawStdEncoding`), URL-safe, or wrapped at 76 characters (Python's
  * `base64.encodebytes`). All of them are the same bytes, and a `data:` URL
  * needs the one form.
+ *
+ * Read with plain loops and never a regular expression: a quantified match
+ * keeps backtracking state that grows with the payload, and over ~11 MB the
+ * engine can run out of stack for it (a RangeError) — under load, so not every
+ * time — before any size cap applied to the result could step in.
  */
 export function normalizeBase64(raw: string): string | undefined {
   // What proto3 JSON writes for `bytes`, and so what nearly every payload is:
   // one pass to recognise it, and no copy of a string of up to ~11 MB.
-  if (raw.length % 4 === 0 && STANDARD_BASE64.test(raw)) {
+  if (isStandardBase64(raw)) {
     return raw;
   }
-  const compact = raw
-    .replace(/\s+/g, '')
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .replace(/={1,2}$/, '');
-  if (
-    compact === '' ||
-    compact.length % 4 === 1 ||
-    !/^[A-Za-z0-9+/]+$/.test(compact)
-  ) {
+  const compact = compactBase64(raw);
+  const end = compact.length - trailingPadding(compact);
+  if (end === 0 || end % 4 === 1 || !isBase64Alphabet(compact, end)) {
     return undefined;
   }
-  return compact + '='.repeat((4 - (compact.length % 4)) % 4);
+  return compact.slice(0, end) + '='.repeat((4 - (end % 4)) % 4);
+}
+
+/**
+ * Padded standard base64, the form a `data:` URL needs: the alphabet, then up
+ * to two `=`, in whole quanta.
+ */
+function isStandardBase64(text: string): boolean {
+  const end = text.length - trailingPadding(text);
+  return text.length % 4 === 0 && end > 0 && isBase64Alphabet(text, end);
+}
+
+/**
+ * The payload without its whitespace and in the standard alphabet. Each run
+ * between whitespace is sliced out whole, so a wrapped payload costs its lines
+ * rather than its characters.
+ */
+function compactBase64(raw: string): string {
+  const runs: string[] = [];
+  let start = -1;
+  for (let at = 0; at <= raw.length; at += 1) {
+    if (at < raw.length && !isWhitespaceAt(raw, at)) {
+      if (start < 0) {
+        start = at;
+      }
+    } else if (start >= 0) {
+      runs.push(raw.slice(start, at));
+      start = -1;
+    }
+  }
+  return runs.join('').replaceAll('-', '+').replaceAll('_', '/');
+}
+
+/**
+ * Whether more than `limit` characters of the payload carry bytes — every one
+ * but whitespace — reading up to the first past the limit and no further.
+ */
+function payloadLengthExceeds(raw: string, limit: number): boolean {
+  let length = 0;
+  for (let at = 0; at < raw.length; at += 1) {
+    if (!isWhitespaceAt(raw, at)) {
+      length += 1;
+      if (length > limit) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether the character at `at` is whitespace as `\s` has it, which is also
+ * the set `trim` removes. Printable ASCII, where every base64 character lives,
+ * is answered from the code alone.
+ */
+function isWhitespaceAt(text: string, at: number): boolean {
+  const code = text.charCodeAt(at);
+  if (code > 0x20 && code < 0x7f) {
+    return false;
+  }
+  return text[at].trim() === '';
+}
+
+/** Whether every character before `end` is in the standard base64 alphabet. */
+function isBase64Alphabet(text: string, end: number): boolean {
+  for (let at = 0; at < end; at += 1) {
+    const code = text.charCodeAt(at);
+    const letter =
+      (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a);
+    const digit = code >= 0x30 && code <= 0x39;
+    if (!letter && !digit && code !== PLUS && code !== SLASH) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The `=` characters that end the payload, at most the two padding allows. */
+function trailingPadding(text: string): number {
+  let padding = 0;
+  while (
+    padding < 2 &&
+    padding < text.length &&
+    text.charCodeAt(text.length - 1 - padding) === EQUALS
+  ) {
+    padding += 1;
+  }
+  return padding;
 }
 
 /**
@@ -256,13 +358,7 @@ export function normalizeBase64(raw: string): string | undefined {
  * Exact for the padded, unbroken base64 {@link normalizeBase64} produces.
  */
 export function decodedLength(base64: string): number {
-  let padding = 0;
-  if (base64.endsWith('==')) {
-    padding = 2;
-  } else if (base64.endsWith('=')) {
-    padding = 1;
-  }
-  return (base64.length / 4) * 3 - padding;
+  return (base64.length / 4) * 3 - trailingPadding(base64);
 }
 
 /**
