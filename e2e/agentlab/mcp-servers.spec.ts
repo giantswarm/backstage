@@ -20,6 +20,12 @@ import { lab } from './lab';
 
 const serversPath = `/agent-platform/mcp-servers?installation=${lab.installation}`;
 
+/**
+ * The family the lab's own cluster joins as `lab.mcpKubernetes`, the way every
+ * management cluster does; the table shows a family as one row.
+ */
+const KUBERNETES_FAMILY = 'kubernetes';
+
 /** A server's link in the servers table: its name, then its description. */
 function serverLink(page: Page, name: string) {
   return page.getByRole('link', { name: new RegExp(`^${name}`) });
@@ -35,8 +41,8 @@ test('lists the installation servers in one table, muster included', async ({
   ).toHaveAttribute('aria-selected', 'true');
   for (const name of [
     'agent-manager',
+    KUBERNETES_FAMILY,
     'lab-oauth-fixture',
-    'mcp-kubernetes',
     'muster',
   ]) {
     await expect(serverLink(admin, name)).toBeVisible();
@@ -118,19 +124,19 @@ test('Connect to muster opens the session, and the OAuth fixture signs in per se
   await expect(signIn).toBeVisible({ timeout: 60_000 });
 });
 
-test("a row opens its server page, with the server's tabs", async ({
+test("a family's row opens its server page, with the family's tabs", async ({
   admin,
 }) => {
   await open(admin, serversPath);
   await connectToMuster(admin, admin.getByRole('grid'));
-  await serverLink(admin, 'mcp-kubernetes').click();
+  await serverLink(admin, KUBERNETES_FAMILY).click();
 
   await expect(
-    admin.getByRole('heading', { name: 'mcp-kubernetes' }),
+    admin.getByRole('heading', { name: KUBERNETES_FAMILY, exact: true }),
   ).toBeVisible();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/mcp-kubernetes\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}\\?installation=${lab.installation}$`,
     ),
   );
   // Tools is the server page's index: a server link lands on its tools.
@@ -142,12 +148,23 @@ test("a row opens its server page, with the server's tabs", async ({
     admin.getByRole('searchbox', { name: 'Filter tools' }),
     'the Tools tab lists the server’s tools',
   ).toBeVisible({ timeout: 60_000 });
-  // Resources and Prompts show only for a server exposing any, which
-  // mcp-kubernetes may not.
+  // A family's members are its Instances: the lab's own cluster among them.
+  await admin.getByRole('tab', { name: /^Instances/ }).click();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/instances\\?installation=${lab.installation}$`,
+    ),
+  );
+  await expect(
+    admin.getByRole('link', { name: lab.mcpKubernetes, exact: true }),
+    "the lab's cluster is the family's member",
+  ).toBeVisible();
+  // Resources and Prompts show only for a server exposing any, which the
+  // family may not.
   await admin.getByRole('tab', { name: 'Details' }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/mcp-kubernetes/details\\?installation=${lab.installation}$`,
+      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/details\\?installation=${lab.installation}$`,
     ),
   );
   await expect(admin.getByText('Configuration').first()).toBeVisible();

@@ -1,4 +1,4 @@
-import { expect, open, test } from './fixtures';
+import { expect, openReadyAgent, test } from './fixtures';
 
 /**
  * A kagent API denial names its reason (giantswarm/backstage#2360).
@@ -17,22 +17,11 @@ const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 
 test('a refused kagent token shows the edge’s reason when a session does not start', async ({
   admin,
+  labAgent,
 }) => {
-  await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  await expect(grid).toBeVisible();
-  const agents = grid.getByRole('rowheader').getByRole('link');
-  await agents
-    .first()
-    .waitFor({ timeout: 30_000 })
-    .catch(() => undefined);
-  test.skip(
-    (await agents.count()) === 0,
-    'no agent on the installation — agent-lifecycle.spec.ts creates one; run it first, or create a fixture agent',
-  );
-  await agents.first().click();
+  test.setTimeout(8 * 60_000);
+  await openReadyAgent(admin, labAgent);
   const start = admin.getByRole('button', { name: 'Start a session' });
-  await expect(start).toBeVisible();
 
   const swapped: string[] = [];
   await admin.route(

@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
+import { lab } from './lab';
 
 /**
  * The Serve dialog's Node field against the lab's KServe backend
@@ -17,8 +18,8 @@ import { expect, open, test } from './fixtures';
  *   so Serve stays disabled.
  *
  * model-manager's `list_nodes` reports accelerator nodes only, and the kind
- * node has none: the spec adds the kind node (`AGENTLAB_KIND_NODE`, default
- * `agentlab-control-plane`) and a phantom second node to the kserve
+ * node has none: the spec adds the kind node (`lab.kindNode`) and a phantom
+ * second node to the kserve
  * inventory the page reads, without figures. The phantom's own `check_fit`
  * is answered with the kind node's, so it is offered like a node that fits.
  * Everything else is the lab's own: `check_fit` pinned to the node, the
@@ -31,7 +32,7 @@ import { expect, open, test } from './fixtures';
 const PRESET = 'qwen2-5-0-5b-cpu';
 const PRESET_LABEL = /Qwen2\.5 0\.5B Instruct \(CPU\)/;
 const TARGET = /· KServe$/;
-const KIND_NODE = process.env.AGENTLAB_KIND_NODE ?? 'agentlab-control-plane';
+const KIND_NODE = lab.kindNode;
 const PHANTOM_NODE = 'agentlab-phantom';
 
 function inventoryNode(name: string) {

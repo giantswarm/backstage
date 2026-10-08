@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   test as base,
   expect,
@@ -97,7 +100,26 @@ type WorkerFixtures = {
    * per worker, no copies, is the shape that stays signed in.
    */
   adminPage: Page;
+  /**
+   * An agent of the worker's own on the lab, created as the admin in the New
+   * agent wizard (agent-manager's `create_agent` through muster) the first
+   * time a test asks for it, and deleted again when the worker ends. A spec
+   * that needs an agent on the roster uses this one, never whatever earlier
+   * runs left on a shared lab; one that needs it ready opens it with
+   * {@link openReadyAgent}. A failed creation fails every later request for
+   * it in the same run at once, with the first failure's message.
+   */
+  labAgent: LabAgent;
 };
+
+/** The worker's {@link WorkerFixtures.labAgent}. */
+export interface LabAgent {
+  /** The display name the roster and the session pages show. */
+  name: string;
+  slug: string;
+  /** The agent's detail page, `/agent-platform/agents/<installation>/<ns>/<slug>`. */
+  detailPath: string;
+}
 
 type TestFixtures = {
   /** The worker's admin page; an uncaught page error during the test fails it. */
@@ -110,16 +132,84 @@ type TestFixtures = {
   signInAs: (user: LabUser) => Promise<Page>;
 };
 
+/**
+ * The plugins persist their react-query caches in localStorage, which the
+ * worker's page keeps from one test to the next: an answer a test staged at
+ * the browser would be read back from there by the next test's page load,
+ * without a request any route sees. The admin page drops both caches on the
+ * first navigation after every test, before the app runs; clearing them from
+ * the running page would race a throttled write.
+ */
+const PERSISTED_QUERY_CACHES = [
+  'agent-platform-react-query-cache',
+  'gs-react-query-cache',
+];
+const DROP_CACHES_FLAG = 'e2e-drop-persisted-caches-after-test';
+
+/** Where a worker records a failed `labAgent` setup for the rest of the run. */
+function labAgentFailureFile(outputDir: string): string {
+  return join(outputDir, 'lab-agent-setup-failed.txt');
+}
+
 export const test = base.extend<TestFixtures, WorkerFixtures>({
   adminPage: [
     async ({ browser }, use) => {
       const context = await browser.newContext(contextOptions);
       const page = await context.newPage();
+      await page.addInitScript(
+        ([keys, flag]) => {
+          if (window.sessionStorage.getItem(flag)) {
+            window.sessionStorage.removeItem(flag);
+            keys.forEach(key => window.localStorage.removeItem(key));
+          }
+        },
+        [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
+      );
       await signIn(page, lab.users.admin);
       await use(page);
       await context.close();
     },
     { scope: 'worker' },
+  ],
+
+  labAgent: [
+    async ({ adminPage }, use, workerInfo) => {
+      // One failed creation is the run's answer: a later worker fails at once
+      // instead of paying the wizard and its timeouts again.
+      const failureFile = labAgentFailureFile(workerInfo.project.outputDir);
+      if (existsSync(failureFile)) {
+        throw new Error(
+          `the fixture agent could not be created earlier in this run: ${readFileSync(failureFile, 'utf8')}`,
+        );
+      }
+      // Unique to the run, the worker and the second, so two runs against a
+      // shared lab never meet on one agent.
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 14);
+      const suffix = `${randomUUID().slice(0, 6)}-${workerInfo.workerIndex}`;
+      const name = `E2E Roster ${stamp} ${suffix.replace('-', ' ')}`;
+      const slug = `e2e-roster-${stamp}-${suffix}`;
+      let detailPath: string | undefined;
+      try {
+        try {
+          detailPath = await createAgentInWizard(adminPage, name, slug);
+        } catch (error) {
+          mkdirSync(workerInfo.project.outputDir, { recursive: true });
+          writeFileSync(failureFile, String(error));
+          throw error;
+        }
+        await use({ name, slug, detailPath });
+      } finally {
+        // Deploy may have created the agent even when the hand-off to its
+        // page failed: then the roster's link is the way to it.
+        detailPath ??= await rosterPathOf(adminPage, name).catch(
+          () => undefined,
+        );
+        if (detailPath) {
+          await deleteAgentInPortal(adminPage, detailPath, slug);
+        }
+      }
+    },
+    { scope: 'worker', timeout: 5 * 60_000 },
   ],
 
   admin: async ({ adminPage }, use) => {
@@ -128,6 +218,15 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     adminPage.on('pageerror', record);
     await use(adminPage);
     adminPage.off('pageerror', record);
+    // The page outlives the test: a route a test left behind (a swapped
+    // token, a stubbed answer) must not answer the next test's requests.
+    await adminPage.unrouteAll({ behavior: 'ignoreErrors' });
+    await adminPage
+      .evaluate(
+        flag => window.sessionStorage.setItem(flag, '1'),
+        DROP_CACHES_FLAG,
+      )
+      .catch(() => undefined);
     expect(errors, 'no uncaught errors on the page').toEqual([]);
   },
 
@@ -297,10 +396,43 @@ export async function deleteAgentInPortal(
   await expect(page).toHaveURL(/\/agent-platform\/agents$/, {
     timeout: 60_000,
   });
+  // By the href: the link's name is the display name, not the slug.
   await expect(
-    page.getByRole('link', { name: agentSlug }),
+    page.locator(`a[href$="/${agentSlug}"]`),
     'the roster no longer lists the agent',
-  ).toBeHidden({ timeout: 60_000 });
+  ).toHaveCount(0, { timeout: 60_000 });
+}
+
+/** The detail page of the roster's agent named `name`, if the roster lists it. */
+async function rosterPathOf(
+  page: Page,
+  name: string,
+): Promise<string | undefined> {
+  await open(page, '/agent-platform/agents');
+  const link = page
+    .getByRole('grid', { name: 'Data table' })
+    .getByRole('rowheader')
+    .getByRole('link', { name, exact: true });
+  await link.waitFor({ timeout: 30_000 }).catch(() => undefined);
+  return (await link.count()) === 1
+    ? ((await link.getAttribute('href')) ?? undefined)
+    : undefined;
+}
+
+/**
+ * Opens the agent's detail page and waits until it offers a session: the
+ * button follows the roster's read of the agent, offered once the golden boot
+ * on the platform Harness is done.
+ */
+export async function openReadyAgent(
+  page: Page,
+  agent: LabAgent,
+): Promise<void> {
+  await open(page, agent.detailPath);
+  await expect(
+    page.getByRole('button', { name: 'Start a session' }),
+    'the fixture agent becomes ready on the platform Harness (golden boot): `kubectl -n kagent get agents,harness,workerpools` and the kagent-controller log',
+  ).toBeVisible({ timeout: 6 * 60_000 });
 }
 
 /**
