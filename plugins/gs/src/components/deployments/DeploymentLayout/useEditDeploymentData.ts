@@ -4,7 +4,11 @@ import {
   OCIRepository,
   useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { deriveAutoUpgradeMode } from '../utils/getAutoUpgradeSettings';
+import {
+  deriveAutoUpgradeSettings,
+  deriveChartVersion,
+  versionFromRevision,
+} from '../utils/getAutoUpgradeSettings';
 
 /**
  * Derives chart reference (OCI registry path) from an OCIRepository URL.
@@ -13,27 +17,6 @@ import { deriveAutoUpgradeMode } from '../utils/getAutoUpgradeSettings';
 function deriveChartRef(ociUrl: string | undefined): string | undefined {
   if (!ociUrl) return undefined;
   return ociUrl.replace(/^oci:\/\//, '');
-}
-
-/**
- * Derives the chart tag from an OCIRepository reference.
- * For semver ranges like `>=1.2.3`, extracts the base version.
- * For exact tags like `1.2.3`, returns as-is.
- */
-function deriveChartTag(
-  ref: { semver?: string; tag?: string; digest?: string } | undefined,
-): string | undefined {
-  if (!ref) return undefined;
-
-  if (ref.tag) return ref.tag;
-
-  if (ref.semver) {
-    // Extract version from semver range, e.g. ">=1.2.3 <2.0.0" → "1.2.3"
-    const match = ref.semver.match(/(\d+\.\d+\.\d+(?:-[^\s<>]+)?)/);
-    return match ? match[1] : undefined;
-  }
-
-  return undefined;
 }
 
 export function useEditDeploymentData(
@@ -64,11 +47,14 @@ export function useEditDeploymentData(
   return useMemo(() => {
     const ociRef = ociRepository?.getReference();
     const ociUrl = ociRepository?.getURL();
+    const currentVersion = versionFromRevision(ociRepository?.getRevision());
 
     return {
       chartRef: deriveChartRef(ociUrl),
-      chartTag: deriveChartTag(ociRef),
-      automaticUpgrades: deriveAutoUpgradeMode(ociRef),
+      chartTag: deriveChartVersion(ociRef, currentVersion),
+      autoUpgrades: ociRepository
+        ? deriveAutoUpgradeSettings(ociRef, currentVersion)
+        : undefined,
       isLoading: needsOciRepository ? isLoadingOci : false,
     };
   }, [ociRepository, isLoadingOci, needsOciRepository]);

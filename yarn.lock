@@ -7830,6 +7830,7 @@ __metadata:
     "@giantswarm/backstage-plugin-gs-common": "npm:^0.21.1"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.0"
     "@material-ui/core": "npm:^4.12.2"
     "@material-ui/icons": "npm:^4.9.1"
     "@material-ui/lab": "npm:^4.0.0-alpha.60"
@@ -8140,6 +8141,13 @@ __metadata:
   version: 0.1.0
   resolution: "@giantswarm/k8s-types@https://github.com/giantswarm/k8s-typescript-types.git#commit=8946cc484f1db2f9dc765e11ccdb8f45ac05e4df"
   checksum: 10c0/53cdbd6b6f011f782c9d07cb240f5e75f7bd53f1be528d804d2e9fd4c5a0437b5974d029ba007ed3a2c351637623a9df245124069574aca59e4b5f65c3eda66f
+  languageName: node
+  linkType: hard
+
+"@giantswarm/semver-ts@github:giantswarm/semver-ts#v0.2.0":
+  version: 0.2.0
+  resolution: "@giantswarm/semver-ts@https://github.com/giantswarm/semver-ts.git#commit=09d4d84e3ba41ceb73062a9e39f2fcaf89b06c27"
+  checksum: 10c0/e24865937e2e2e0a77c3dea1857a97e733fb7de699c72ed1e428641f68d4dfc84b94cc9d6118b4991f6873d5041d8f044534acbd3c40dc3f67a0ac135c572b5b
   languageName: node
   linkType: hard
 

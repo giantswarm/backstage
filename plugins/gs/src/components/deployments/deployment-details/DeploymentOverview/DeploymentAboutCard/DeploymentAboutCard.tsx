@@ -36,8 +36,9 @@ import { getWorkloadNamespace } from '../../../utils/getWorkloadIdentifiers';
 import { getSourceKind, getSourceName } from '../../../utils/getSource';
 import { getUpdatedTimestamp } from '../../../utils/getUpdatedTimestamp';
 import {
-  deriveAutoUpgradeMode,
-  getAutoUpgradeLabel,
+  deriveAutoUpgradeSettings,
+  describeAutoUpgrades,
+  versionFromRevision,
 } from '../../../utils/getAutoUpgradeSettings';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -116,8 +117,13 @@ export function DeploymentAboutCard() {
     },
   );
 
-  const autoUpgradeMode = needsOciRepository
-    ? deriveAutoUpgradeMode(ociRepository?.getReference())
+  const autoUpgrades = needsOciRepository
+    ? describeAutoUpgrades(
+        deriveAutoUpgradeSettings(
+          ociRepository?.getReference(),
+          versionFromRevision(ociRepository?.getRevision()),
+        ),
+      )
     : undefined;
 
   return (
@@ -197,13 +203,23 @@ export function DeploymentAboutCard() {
             <AboutFieldValue>
               <AsyncValue
                 isLoading={isLoadingOci}
-                value={
-                  autoUpgradeMode
-                    ? getAutoUpgradeLabel(autoUpgradeMode)
-                    : undefined
-                }
+                value={autoUpgrades?.label}
                 errorMessage={ociError?.message}
-              />
+              >
+                {label => (
+                  <>
+                    {label}
+                    {autoUpgrades?.filter && (
+                      <>
+                        {' '}
+                        <code style={{ overflowWrap: 'anywhere' }}>
+                          {autoUpgrades.filter}
+                        </code>
+                      </>
+                    )}
+                  </>
+                )}
+              </AsyncValue>
             </AboutFieldValue>
           </AboutField>
         )}
