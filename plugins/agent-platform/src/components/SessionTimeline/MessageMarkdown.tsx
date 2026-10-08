@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@material-ui/core';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /**
  * Styling for agent prose, shared with the AI chat plugin's visual language so
@@ -288,7 +289,7 @@ function MessageMarkdownImpl({ text }: { text: string }) {
   const classes = useStyles();
   const components = useMarkdownComponents();
   return (
-    <div className={classes.root}>
+    <div className={`${STABLE_CLASS_NAMES.message} ${classes.root}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}

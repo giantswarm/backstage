@@ -213,19 +213,54 @@ describe('buildThemeOptions', () => {
     expect(on.fontFamily).toBe(AGENT_SHELL_FONT_FAMILY);
     expect(on.palette).toMatchObject({
       primary: { main: '#002645' },
-      text: { primary: '#002645' },
-      background: { default: '#ffffff' },
+      text: { primary: '#002645', secondary: '#5b6c79' },
+      background: { default: '#ffffff', paper: '#ffffff' },
+      divider: '#edf2f5',
+      border: '#e3ebef',
+      textSubtle: '#5b6c79',
       link: '#00609c',
       linkHover: '#002645',
+      status: {
+        ok: '#1f9d48',
+        warning: '#e86d00',
+        error: '#c6283a',
+        running: '#009fff',
+      },
+      warningBackground: '#ffe9d6',
+      warningText: '#8f4000',
+      infoBackground: '#dff1ff',
+      infoText: '#004a7a',
     });
 
     const strip = (palette: Record<string, any>) => {
-      const { link, linkHover, ...rest } = palette;
+      const {
+        link,
+        linkHover,
+        divider,
+        border,
+        textSubtle,
+        warningBackground,
+        warningText,
+        infoBackground,
+        infoText,
+        ...rest
+      } = palette;
       return {
         ...rest,
         primary: { ...rest.primary, main: undefined },
-        text: { ...rest.text, primary: undefined },
-        background: { ...rest.background, default: undefined },
+        text: { ...rest.text, primary: undefined, secondary: undefined },
+        background: {
+          ...rest.background,
+          default: undefined,
+          paper: undefined,
+        },
+        status: {
+          ...rest.status,
+          ok: undefined,
+          warning: undefined,
+          error: undefined,
+          running: undefined,
+        },
       };
     };
     expect(strip(on.palette)).toEqual(strip(off.palette));

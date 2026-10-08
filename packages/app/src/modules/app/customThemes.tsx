@@ -79,16 +79,36 @@ export function buildPalette(
 }
 
 function withAgentShellColors(palette: BrandedPalette) {
+  const colors = agentShellLightColors;
   return {
     ...palette,
-    primary: { ...palette.primary, main: agentShellLightColors.primary },
-    text: { ...palette.text, primary: agentShellLightColors.text },
+    primary: { ...palette.primary, main: colors.primary },
+    text: {
+      ...palette.text,
+      primary: colors.text,
+      secondary: colors.textSecondary,
+    },
     background: {
       ...palette.background,
-      default: agentShellLightColors.background,
+      default: colors.background,
+      paper: colors.surface,
     },
-    link: agentShellLightColors.link,
-    linkHover: agentShellLightColors.linkHover,
+    divider: colors.divider,
+    border: colors.border,
+    textSubtle: colors.textSecondary,
+    link: colors.link,
+    linkHover: colors.linkHover,
+    status: {
+      ...palette.status,
+      ok: colors.success,
+      warning: colors.warning,
+      error: colors.error,
+      running: colors.running,
+    },
+    warningBackground: colors.warningBackground,
+    warningText: colors.warningText,
+    infoBackground: colors.infoBackground,
+    infoText: colors.infoText,
   };
 }
 

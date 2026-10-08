@@ -13,6 +13,7 @@ import {
   needsAttention,
   pickRecentSessions,
 } from './helpers';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 const useStyles = makeStyles({
   list: {
@@ -108,6 +109,7 @@ function RecentSessionsList({
                       variant="body-small"
                       weight={waiting ? 'bold' : 'regular'}
                       truncate
+                      className={STABLE_CLASS_NAMES.recentSessionTitle}
                     >
                       {row.title}
                     </Text>

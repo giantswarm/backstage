@@ -29,6 +29,7 @@ import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { isSendKey } from '../../lib/sendKey';
 import { AgentAvatar } from '../AgentAvatar';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
@@ -377,6 +378,7 @@ export function NewSessionComposer({
         )}
 
         <ComposerFrame
+          className={STABLE_CLASS_NAMES.composer}
           minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
           maxRows={MAX_ROWS}
           input={

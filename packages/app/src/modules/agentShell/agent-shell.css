@@ -2,10 +2,14 @@ html[data-agent-shell] body {
   --bui-font-regular: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+/* Repeats agentShellLightColors in theme.ts. */
 html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-fg-primary: #002645;
   --bui-fg-secondary: #5b6c79;
   --bui-bg-app: #ffffff;
+  --bui-bg-neutral-1: #ffffff;
+  --bui-bg-neutral-2: #f0f4f6;
+  --bui-bg-neutral-4: #f0f4f6;
   --bui-border-1: #e3ebef;
   --bui-border-2: #d6e1e7;
   --bui-bg-solid: #002645;
@@ -15,10 +19,45 @@ html[data-agent-shell] body[data-theme-mode='light'] {
   --bui-accent-bg: #009fff;
   --bui-accent-bg-hover: #0088db;
   --bui-ring: #00609c;
+  --bui-shadow: 0 12px 32px rgba(0, 38, 69, 0.14);
+  --bui-fg-success: #1f9d48;
+  --bui-bg-success: #ddf5e3;
+  --bui-fg-success-on-bg: #14612a;
+  --bui-fg-warning: #e86d00;
+  --bui-bg-warning: #ffe9d6;
+  --bui-fg-warning-on-bg: #8f4000;
+  --bui-border-warning: #f2c9a3;
+  --bui-fg-danger: #c6283a;
+  --bui-bg-info: #dff1ff;
+  --bui-fg-info-on-bg: #004a7a;
+
+  --agent-shell-rail-bg: #f0f7f9;
+  --agent-shell-rail-item-hover: #e2ecf0;
+  --agent-shell-rail-item-active: #ffffff;
+  --agent-shell-rail-item-active-border: #dfe7ec;
+  --agent-shell-rail-item-active-bar: #00609c;
+  --agent-shell-avatar-bg: #002645;
+  --agent-shell-avatar-fg: #ffffff;
+  --agent-shell-avatar-ring: none;
+
+  --agent-platform-state-dot-success: #9fb2c0;
+  --agent-platform-state-dot-neutral: #9fb2c0;
+}
+
+/* Native fields that draw their own focus outline take the ring's colour. */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  :is(input, textarea, select):focus {
+  outline-color: #00609c;
 }
 
 /* Inside bui's components layer so unlayered class overrides still win. */
 @layer components {
+  html[data-agent-shell] body[data-theme-mode='light'] .bui-Badge,
+  html[data-agent-shell] body[data-theme-mode='light'] .bui-Tag {
+    color: #30475a;
+  }
+
   html[data-agent-shell]
     body[data-theme-mode='light']
     .bui-Link[data-color='primary'] {
@@ -30,4 +69,64 @@ html[data-agent-shell] body[data-theme-mode='light'] {
     .bui-Link[data-color='primary']:hover {
     color: #002645;
   }
+}
+
+/*
+ * The agent-platform plugin's own elements, by the stable class names in its
+ * lib/stableClassNames.ts. Unlayered, like the plugin's own styles.
+ */
+html[data-agent-shell] body[data-theme-mode='light'] .agent-platform-composer {
+  box-shadow:
+    0 1px 2px rgba(0, 38, 69, 0.04),
+    0 8px 24px rgba(0, 38, 69, 0.06);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-selectable-card:hover:not(:has(> [aria-checked='true'])) {
+  border-color: #c4d3dc;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-recent-session-title {
+  color: #30475a;
+}
+
+html[data-agent-shell] body[data-theme-mode='light'] .agent-platform-message {
+  color: #1b3850;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter {
+  flex-wrap: wrap;
+  gap: var(--bui-space-2);
+  overflow: visible;
+  box-shadow: none;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled]) {
+  border: 1px solid;
+  border-color: #dfe7ec;
+  border-radius: 999px;
+  color: #30475a;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled]):not([data-selected])[data-hovered] {
+  border-color: #b9c8d2;
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .agent-platform-state-filter
+  > .bui-ToggleButton:not([data-disabled])[data-selected] {
+  border-color: #002645;
+  color: #ffffff;
 }

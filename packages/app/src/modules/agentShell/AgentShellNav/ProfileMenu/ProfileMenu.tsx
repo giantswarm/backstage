@@ -16,6 +16,14 @@ import type { AgentShellNavItem } from '../../navItems';
 import { useProfile } from './useProfile';
 
 const useStyles = makeStyles({
+  avatar: {
+    color: 'var(--agent-shell-avatar-fg, var(--bui-fg-primary))',
+    background: 'var(--agent-shell-avatar-bg, var(--bui-bg-neutral-2))',
+    '& .bui-AvatarFallback': {
+      boxShadow:
+        'var(--agent-shell-avatar-ring, inset 0 0 0 1px var(--bui-border-2))',
+    },
+  },
   button: {
     width: '100%',
     justifyContent: 'flex-start',
@@ -40,6 +48,7 @@ export function ProfileMenu({
       name={name || item.title}
       size="small"
       purpose="decoration"
+      className={classes.avatar}
     />
   );
 

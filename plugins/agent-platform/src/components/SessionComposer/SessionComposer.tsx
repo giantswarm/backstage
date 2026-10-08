@@ -11,6 +11,7 @@ import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import StopIcon from '@material-ui/icons/Stop';
 import { ComposerFrame } from '@giantswarm/backstage-plugin-ui-react';
 import { isSendKey } from '../../lib/sendKey';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /**
  * Longest message this composer will submit.
@@ -314,6 +315,7 @@ export function SessionComposer({
         )}
 
         <ComposerFrame
+          className={STABLE_CLASS_NAMES.composer}
           minRows={MIN_ROWS}
           maxRows={MAX_ROWS}
           isDisabled={isDisabled}

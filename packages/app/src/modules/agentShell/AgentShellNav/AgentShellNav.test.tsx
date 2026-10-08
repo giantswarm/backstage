@@ -95,6 +95,7 @@ describe('AgentShellNav', () => {
     await renderNav();
 
     expect(railLinks()).toEqual([
+      ['Agent Platform', '/'],
       ['New session', '/'],
       ['Sessions', '/agent-platform/sessions'],
       ['Customize', '/customize'],
@@ -132,9 +133,26 @@ describe('AgentShellNav', () => {
     await renderNav({ bound: false });
 
     expect(railLinks()).toEqual([
+      ['Agent Platform', '/'],
       ['New session', '/'],
       ['Customize', '/customize'],
     ]);
+  });
+
+  it('links the logo to the home page', async () => {
+    await renderNav();
+
+    const logo = screen.getByRole('link', { name: 'Agent Platform' });
+    expect(logo).toHaveAttribute('href', '/');
+    expect(within(logo).getByText('Agent Platform')).toBeInTheDocument();
+  });
+
+  it('keeps only the logo mark when unpinned', async () => {
+    await renderNav({ isPinned: false });
+
+    const logo = screen.getByRole('link', { name: 'Agent Platform' });
+    expect(logo).toHaveAttribute('href', '/');
+    expect(logo).toHaveTextContent('');
   });
 
   it('highlights the item of the current location', async () => {

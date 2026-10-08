@@ -12,12 +12,18 @@ const useStyles = makeStyles({
     textDecoration: 'none',
     whiteSpace: 'nowrap',
     '&:hover': {
-      background: 'var(--bui-bg-neutral-2)',
+      background: 'var(--agent-shell-rail-item-hover, var(--bui-bg-neutral-2))',
       textDecoration: 'none',
     },
   },
+  // The bar, not the background, is what tells the current item apart: the
+  // shell's active background is close to the rail's own.
   active: {
-    background: 'var(--bui-bg-neutral-3)',
+    background: 'var(--agent-shell-rail-item-active, var(--bui-bg-neutral-3))',
+    boxShadow: [
+      'inset 3px 0 0 var(--agent-shell-rail-item-active-bar, var(--bui-ring))',
+      '0 0 0 1px var(--agent-shell-rail-item-active-border, transparent)',
+    ].join(', '),
   },
 });
 

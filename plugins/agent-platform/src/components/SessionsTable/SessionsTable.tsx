@@ -51,6 +51,7 @@ import {
   sessionAgentOptions,
 } from './filters';
 import { AgentAvatar } from '../AgentAvatar';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
 const ROW_AVATAR_SIZE: AvatarSize = 48;
@@ -164,7 +165,10 @@ function StateCell({
             height: 8,
             borderRadius: '50%',
             flexShrink: 0,
-            backgroundColor: toneColor(cell.state.tone, theme),
+            // An app stylesheet may recolour a tone through the variable.
+            backgroundColor: `var(--agent-platform-state-dot-${
+              cell.state.tone
+            }, ${toneColor(cell.state.tone, theme)})`,
           }}
         />
         <Text variant="body-medium" truncate style={{ minWidth: 0 }}>
@@ -368,6 +372,7 @@ function SessionsFilterBar({
     <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
       {showStates && (
         <ToggleButtonGroup
+          className={STABLE_CLASS_NAMES.stateFilter}
           aria-label="Filter by state"
           selectionMode="single"
           disallowEmptySelection

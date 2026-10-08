@@ -1,11 +1,12 @@
 import { Fragment } from 'react';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
-import { Box, ButtonIcon, Flex, SearchField } from '@backstage/ui';
+import { Box, ButtonIcon, Flex, Link, SearchField, Text } from '@backstage/ui';
 import { RecentSessions } from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
 import { makeStyles } from '@material-ui/core/styles';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import { LogoIcon } from '../../nav/LogoIcon';
 import { agentShellNavItems } from '../navItems';
 import { RailItem } from './RailItem';
 import { SkipLink } from './SkipLink';
@@ -17,7 +18,7 @@ const useStyles = makeStyles({
     left: 0,
     bottom: 0,
     zIndex: 1000,
-    background: 'var(--bui-bg-neutral-1)',
+    background: 'var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
     borderRight: '1px solid var(--bui-border-1)',
     overflow: 'hidden',
     boxSizing: 'border-box',
@@ -33,7 +34,7 @@ const useStyles = makeStyles({
     bottom: 0,
     zIndex: 1000,
     height: sidebarConfig.mobileSidebarHeight,
-    background: 'var(--bui-bg-neutral-1)',
+    background: 'var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
     borderTop: '1px solid var(--bui-border-1)',
   },
   list: {
@@ -49,6 +50,15 @@ const useStyles = makeStyles({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
+  },
+  logo: {
+    color: 'var(--bui-fg-primary)',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    '&:hover': {
+      color: 'var(--bui-fg-primary)',
+      textDecoration: 'none',
+    },
   },
   recent: {
     minHeight: 0,
@@ -101,7 +111,24 @@ function AgentShellRail() {
     <nav aria-label="Main" className={classes.rail} style={{ width }}>
       <SkipLink />
       <Flex direction="column" gap="4" py="3" px="2" className={classes.column}>
-        <Flex justify={compact ? 'center' : 'end'}>
+        <Flex
+          direction={compact ? 'column' : 'row'}
+          align="center"
+          justify="between"
+          gap="2"
+          pl={compact ? undefined : '2'}
+          pr={compact ? undefined : '1'}
+        >
+          <Link href="/" aria-label="Agent Platform" className={classes.logo}>
+            <Flex align="center" gap="2">
+              <LogoIcon />
+              {!compact && (
+                <Text variant="body-large" weight="bold">
+                  Agent Platform
+                </Text>
+              )}
+            </Flex>
+          </Link>
           <ButtonIcon
             variant="tertiary"
             size="small"

@@ -5,6 +5,7 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import CheckBoxIcon from '@material-ui/icons/CheckBox';
 import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank';
+import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 // Shared styling + markup for the selectable option cards used by the model and
 // skill pickers. bui's Card button variant renders a collapsed 1px overlay
@@ -208,7 +209,11 @@ export function SelectableCard({
   const Indicator = selected ? SelectedIcon : UnselectedIcon;
 
   return (
-    <div className={`${classes.shell} ${selected ? classes.selected : ''}`}>
+    <div
+      className={`${STABLE_CLASS_NAMES.selectableCard} ${classes.shell} ${
+        selected ? classes.selected : ''
+      }`}
+    >
       <button
         type="button"
         role={role}
