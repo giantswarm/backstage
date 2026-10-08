@@ -578,9 +578,10 @@ describe('BuildStatusProcessor', () => {
     expect(
       result.metadata.annotations?.['giantswarm.io/build-failing-checks'],
     ).toBe('["ci/circleci: build"]');
-    expect(result.metadata.annotations?.['giantswarm.io/default-branch']).toBe(
-      'main',
-    );
+    // RepoContentProcessor owns the default branch.
+    expect(
+      result.metadata.annotations?.['giantswarm.io/default-branch'],
+    ).toBeUndefined();
     expect(
       result.metadata.annotations?.['giantswarm.io/build-status-checked'],
     ).toMatch(/^\d{4}-\d{2}-\d{2}T/);
