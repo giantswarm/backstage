@@ -15,11 +15,19 @@ jest.setTimeout(60_000);
 // The search plugin with the engine module the backend wires, on the databases
 // the backend runs on: sqlite always; Postgres where
 // BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING names one (no container
-// is started, the CI job has no Docker).
+// is started; CI runs a Postgres service beside the job, .circleci/custom.yml).
 const databases = TestDatabases.create({
   ids: ['SQLITE_3', 'POSTGRES_18'],
   disableDocker: true,
 });
+
+// CI provides the database, so there a missing one fails the run instead of
+// skipping every Postgres case unseen.
+if (process.env.CI && !databases.supports('POSTGRES_18')) {
+  throw new Error(
+    'CI runs the Postgres cases: set BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING',
+  );
+}
 
 type Knex = Awaited<ReturnType<TestDatabases['init']>>;
 
@@ -127,6 +135,13 @@ describe('the search engine', () => {
   (databases.supports('POSTGRES_18') ? describe : describe.skip)(
     'on Postgres',
     () => {
+      // Jest names no passing test outside --verbose, which the CI log limit
+      // rules out; this line is the job log's proof the cases ran.
+      beforeAll(() => {
+        // eslint-disable-next-line no-console
+        console.info('searchEngine.test.ts runs the POSTGRES_18 cases');
+      });
+
       it('answers an empty set, not an error, before any index', async () => {
         const knex = await databases.init('POSTGRES_18');
         const { backend } = await startSearchBackend(

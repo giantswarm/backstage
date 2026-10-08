@@ -65,6 +65,24 @@ docker run --rm -ti \
 	postgres:17.5
 ```
 
+### Tests on Postgres
+
+A test declaring `POSTGRES_18` in `TestDatabases.create` (for example
+`packages/backend/src/searchEngine.test.ts`) runs its Postgres cases only
+where `BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING` names a database;
+elsewhere it runs on sqlite alone. CI sets it to a Postgres 18 service beside
+the `node-build` job (`.circleci/custom.yml`), and under `CI` a missing
+variable fails the test instead of skipping. To run the Postgres cases
+locally:
+
+```bash
+docker run --rm -d --name backstage-test-postgres \
+  -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:18
+BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING=postgresql://postgres:postgres@localhost:55432 \
+  yarn test packages/backend/src/searchEngine.test.ts
+docker stop backstage-test-postgres
+```
+
 ## Running the app locally
 
 ### Loading `.env`
