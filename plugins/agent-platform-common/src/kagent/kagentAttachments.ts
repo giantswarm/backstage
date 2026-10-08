@@ -218,8 +218,11 @@ export function readAttachmentPreview(
   };
 }
 
-/** Padded standard base64, the form a `data:` URL needs. */
-const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const PLUS = '+'.charCodeAt(0);
+const SLASH = '/'.charCodeAt(0);
+const EQUALS = '='.charCodeAt(0);
+const HYPHEN = '-'.charCodeAt(0);
+const UNDERSCORE = '_'.charCodeAt(0);
 
 /**
  * The payload as padded standard base64, or undefined when it is not base64.
@@ -228,26 +231,109 @@ const STANDARD_BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * (`RawStdEncoding`), URL-safe, or wrapped at 76 characters (Python's
  * `base64.encodebytes`). All of them are the same bytes, and a `data:` URL
  * needs the one form.
+ *
+ * One pass over the code units, ending at the first that is not base64, and
+ * no regular expression: a quantified match keeps backtracking state that
+ * grows with the payload, and over ~11 MB the engine can run out of stack for
+ * it (a RangeError) — under load, so not every time — before any size cap
+ * applied to the result could step in.
  */
 export function normalizeBase64(raw: string): string | undefined {
-  // What proto3 JSON writes for `bytes`, and so what nearly every payload is:
-  // one pass to recognise it, and no copy of a string of up to ~11 MB.
-  if (raw.length % 4 === 0 && STANDARD_BASE64.test(raw)) {
-    return raw;
+  // What proto3 JSON writes for `bytes`, and so what nearly every payload is,
+  // is standard as it is and handed back without a copy. The code units are
+  // gathered — base64 is ASCII, so a byte each — from the first one that
+  // departs from that form.
+  let gathered: Uint8Array | undefined;
+  let length = 0;
+  let padding = 0;
+  for (let at = 0; at < raw.length; at += 1) {
+    const code = raw.charCodeAt(at);
+    const standard = standardCode(code);
+    if (standard !== undefined) {
+      if (padding > 0) {
+        return undefined;
+      }
+      if (gathered === undefined && (standard !== code || length !== at)) {
+        gathered = gather(raw, at);
+      }
+      if (gathered !== undefined) {
+        gathered[length] = standard;
+      }
+      length += 1;
+    } else if (code === EQUALS) {
+      padding += 1;
+      if (padding > 2) {
+        return undefined;
+      }
+    } else if (!isWhitespace(code)) {
+      return undefined;
+    }
   }
-  const compact = raw
-    .replace(/\s+/g, '')
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-    .replace(/={1,2}$/, '');
-  if (
-    compact === '' ||
-    compact.length % 4 === 1 ||
-    !/^[A-Za-z0-9+/]+$/.test(compact)
-  ) {
+  if (length === 0 || length % 4 === 1) {
     return undefined;
   }
-  return compact + '='.repeat((4 - (compact.length % 4)) % 4);
+  const pad = '='.repeat((4 - (length % 4)) % 4);
+  if (gathered === undefined) {
+    return length + padding === raw.length && padding === pad.length
+      ? raw
+      : raw.slice(0, length) + pad;
+  }
+  return new TextDecoder().decode(gathered.subarray(0, length)) + pad;
+}
+
+/**
+ * The code unit as the standard alphabet has it: itself, the standard
+ * counterpart of a URL-safe `-` or `_`, or undefined outside the alphabet.
+ */
+function standardCode(code: number): number | undefined {
+  if (
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code === PLUS ||
+    code === SLASH
+  ) {
+    return code;
+  }
+  if (code === HYPHEN) {
+    return PLUS;
+  }
+  if (code === UNDERSCORE) {
+    return SLASH;
+  }
+  return undefined;
+}
+
+/**
+ * Whitespace as `\s` has it — WhiteSpace and LineTerminator — answered from
+ * the code unit, with nothing allocated per character.
+ */
+function isWhitespace(code: number): boolean {
+  return (
+    (code >= 0x09 && code <= 0x0d) ||
+    code === 0x20 ||
+    code === 0xa0 ||
+    code === 0x1680 ||
+    (code >= 0x2000 && code <= 0x200a) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    code === 0x202f ||
+    code === 0x205f ||
+    code === 0x3000 ||
+    code === 0xfeff
+  );
+}
+
+/**
+ * Room for every code unit of `raw`, with the first `count` of them copied
+ * in: all standard, or they would have been gathered sooner.
+ */
+function gather(raw: string, count: number): Uint8Array {
+  const gathered = new Uint8Array(raw.length);
+  for (let at = 0; at < count; at += 1) {
+    gathered[at] = raw.charCodeAt(at);
+  }
+  return gathered;
 }
 
 /**
