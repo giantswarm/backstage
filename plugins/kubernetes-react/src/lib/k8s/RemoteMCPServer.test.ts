@@ -5,7 +5,7 @@ function makeServer(
 ): RemoteMCPServer {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
@@ -21,7 +21,7 @@ function makeServer(
 
 describe('RemoteMCPServer', () => {
   it('is the v1alpha3 RemoteMCPServer, single version', () => {
-    expect(RemoteMCPServer.group).toBe('kagent.dev');
+    expect(RemoteMCPServer.group).toBe('api.kagent.dev');
     expect(RemoteMCPServer.kind).toBe('RemoteMCPServer');
     expect(RemoteMCPServer.plural).toBe('remotemcpservers');
     expect(RemoteMCPServer.supportedVersions).toEqual(['v1alpha3']);

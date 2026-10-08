@@ -70,10 +70,10 @@ describe('useAgentDeletion', () => {
     // The roster and the detail read are re-read rather than edited: the cache
     // is persisted, so a stale template could otherwise be rehydrated.
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['cluster', 'gazelle', 'list', 'kagent.dev'],
+      queryKey: ['cluster', 'gazelle', 'list', 'api.kagent.dev'],
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['cluster', 'gazelle', 'get', 'kagent.dev'],
+      queryKey: ['cluster', 'gazelle', 'get', 'api.kagent.dev'],
     });
   });
 

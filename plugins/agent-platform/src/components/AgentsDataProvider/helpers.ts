@@ -2,7 +2,7 @@ import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   AgentReadiness,
-  AgentTemplateInterface,
+  AgentInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
   isAgentTransitional,
@@ -61,7 +61,7 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * a *permanently* broken agent on the same terms — see
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
-function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
+function isAgentConverging(json: AgentInterface, now: number): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
     return false;
   }
@@ -84,7 +84,7 @@ function isAgentConverging(json: AgentTemplateInterface, now: number): boolean {
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
-  const json = query.state.data as AgentTemplateInterface | undefined;
+  const json = query.state.data as AgentInterface | undefined;
   if (!json) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
@@ -127,9 +127,9 @@ export function getAgentsRefetchInterval(
 
   const now = Date.now();
 
-  // This query lists AgentTemplates, so its items are template JSON — narrow
-  // to read the harness statuses the shared derivation expects.
-  const isConverging = (items as AgentTemplateInterface[]).some(json =>
+  // This query lists Agents, so its items are Agent JSON — narrow to read
+  // the conditions the shared derivation expects.
+  const isConverging = (items as AgentInterface[]).some(json =>
     isAgentConverging(json, now),
   );
 
@@ -174,17 +174,17 @@ export type AgentRow = {
    */
   modelName?: string;
   skillCount: number;
-  /** Readiness derived from the template's Harness entries. */
+  /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
-   * Detail explaining a non-ready readiness (the Harness's reconcile error, the
-   * unresolved reference, or why no Harness admits the template), for the
+   * Detail explaining a non-ready readiness (the Harness's reconcile error or
+   * the unresolved reference), for the
    * status's info icon. `undefined` when there is nothing to explain.
    */
   readinessMessage?: string;
   /**
-   * Compile downgrades the admitting Harnesses report — features they could not
-   * honour. Independent of readiness: a ready agent can carry them.
+   * Compile downgrades the Harness reports — features it could not honour.
+   * Independent of readiness: a ready agent can carry them.
    */
   warnings?: string[];
   /**
@@ -268,7 +268,7 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
 }
 
 /**
- * Flatten an `AgentTemplate` into a plain {@link AgentRow}. With a
+ * Flatten an `Agent` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
@@ -332,7 +332,6 @@ export function sortAgentRows(rows: AgentRow[], home?: string): AgentRow[] {
  * never resolves on its own.
  */
 const READINESS_SEVERITY: Record<AgentReadiness, number> = {
-  notAdmitted: 0,
   failed: 1,
   notReady: 2,
   pending: 3,

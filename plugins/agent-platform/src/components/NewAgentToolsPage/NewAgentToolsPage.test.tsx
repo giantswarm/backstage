@@ -86,7 +86,7 @@ function agentWithToolset(name: string, toolset: string) {
   CARRIERS.push(
     new RemoteMCPServer(
       {
-        apiVersion: 'kagent.dev/v1alpha3',
+        apiVersion: 'api.kagent.dev/v1alpha3',
         kind: 'RemoteMCPServer',
         metadata: { name, namespace: 'kagent' },
         spec: {
@@ -100,16 +100,19 @@ function agentWithToolset(name: string, toolset: string) {
   );
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name,
         namespace: 'kagent',
         annotations: { 'ui.giantswarm.io/display-name': 'Existing agent' },
       },
       spec: {
-        modelConfig: { name: 'opus' },
-        tools: [{ mcp: { server: { kind: 'RemoteMCPServer', name } } }],
+        harnessRef: { name: 'kagent' },
+        template: {
+          modelConfig: { name: 'opus' },
+          tools: [{ mcp: { server: { kind: 'RemoteMCPServer', name } } }],
+        },
       },
     } as never,
     'gazelle',

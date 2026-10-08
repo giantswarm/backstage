@@ -315,17 +315,17 @@ export async function startSessionOnReadyAgent(
   prompt: string,
   whileStarting?: (dialog: Locator) => Promise<void>,
 ): Promise<void> {
-  // The header's verdict — the page's own derivation from the template's
-  // harness status, `Pending` until the golden boot is done. Tagged, since
+  // The header's verdict — the page's own derivation from the Agent's
+  // conditions, `Pending` until the golden boot is done. Tagged, since
   // the Status card's conditions list carries a `Ready` condition too.
   await expect(
     page.getByTestId('agent-readiness').getByText('Ready', { exact: true }),
-    'the agent becomes ready on the platform Harness (golden boot) — a Pending that never ends means the lab Harness is not admitting: `kubectl -n kagent get harness,workerpools` and the kagent-controller log',
+    'the agent becomes ready on the platform Harness (golden boot) — a Pending that never ends means the lab Harness is not compiling it: `kubectl -n kagent get agents,harness,workerpools` and the kagent-controller log',
   ).toBeVisible({ timeout: 6 * 60_000 });
 
   // --- Start a session from the agent's page and get an answer -----------
   // The button follows the roster's own read of the agent (`readiness`),
-  // polled apart from the header's harness status above, so it can trail
+  // polled apart from the header's conditions above, so it can trail
   // the header's Ready by more than an action timeout.
   const startSession = page.getByRole('button', { name: 'Start a session' });
   await expect(

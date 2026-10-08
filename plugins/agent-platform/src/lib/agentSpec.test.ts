@@ -23,6 +23,7 @@ const state: NewAgentFormState = {
   harness: undefined,
   droppedHarness: undefined,
   systemMessage: 'You review pull requests.',
+  egressText: '',
   selectedSkills: [skill],
   toolset: ['preset:read-only'],
 };
@@ -43,16 +44,32 @@ describe('skillEntryOf', () => {
 });
 
 describe('agentSpecOf', () => {
-  it('names the Harness picked by the label value it admits, and none for the platform Harness', () => {
+  it('sends the extra egress origins as typed, one per line, and none when empty', () => {
     expect(
       agentSpecOf(
         {
           ...state,
-          harness: { name: 'claude-go', admits: 'go', runtime: 'claude' },
+          egressText:
+            ' https://github.com:443 \n\nhttps://*.githubusercontent.com\n',
+        },
+        { toolset: ['preset:read-only'] },
+      ).egress,
+    ).toEqual(['https://github.com:443', 'https://*.githubusercontent.com']);
+    expect(
+      agentSpecOf(state, { toolset: ['preset:read-only'] }),
+    ).not.toHaveProperty('egress');
+  });
+
+  it('names the Harness picked, and none for the platform Harness', () => {
+    expect(
+      agentSpecOf(
+        {
+          ...state,
+          harness: { name: 'claude-go', runtime: 'claude' },
         },
         { toolset: [] },
       ).harness,
-    ).toBe('go');
+    ).toBe('claude-go');
     expect(agentSpecOf(state, { toolset: [] })).not.toHaveProperty('harness');
   });
 

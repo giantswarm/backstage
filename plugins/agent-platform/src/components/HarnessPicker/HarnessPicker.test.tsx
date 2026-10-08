@@ -24,15 +24,11 @@ jest.mock('../../hooks/useAgentManager', () => ({
 function harness(
   name: string,
   runtime: 'kagent' | 'claude',
-  {
-    namespace = 'kagent',
-    displayName = undefined as string | undefined,
-    admits = name,
-  } = {},
+  { namespace = 'kagent', displayName = undefined as string | undefined } = {},
 ): Harness {
   return new Harness(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'Harness',
       metadata: {
         name,
@@ -42,11 +38,6 @@ function harness(
         }),
       },
       spec: {
-        allowedAgentTemplates: {
-          selector: {
-            matchLabels: { 'agent-platform.giantswarm.io/harness': admits },
-          },
-        },
         [runtime]: {},
         workload: { image: `registry.example/${name}-harness@sha256:0123` },
       },
@@ -64,7 +55,7 @@ function Probe() {
     selectModelConfig('opus', 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  formHarness = state.harness?.admits;
+  formHarness = state.harness?.name;
   return (
     <button type="button" onClick={() => selectModelConfig('sonnet', 'demo')}>
       Pick a model in demo
@@ -209,48 +200,24 @@ describe('HarnessPicker', () => {
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
-  it('selects only the clicked card when two Harnesses admit the same value', async () => {
+  it('selects only the clicked card when two Harnesses share a runtime', async () => {
     mockUseResources.mockReturnValue(
       listing([
         harness('kagent', 'kagent'),
-        harness('claude-go', 'claude', { admits: 'claude' }),
-        harness('claude-rust', 'claude', { admits: 'claude' }),
+        harness('claude-go', 'claude'),
+        harness('claude-rust', 'claude'),
       ]),
     );
     const user = userEvent.setup();
     await render();
 
     await user.click(screen.getByRole('radio', { name: /Harness claude-go/ }));
-    expect(formHarness).toBe('claude');
+    expect(formHarness).toBe('claude-go');
     expect(
       screen.getByRole('radio', { name: /Harness claude-go/ }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(
       screen.getByRole('radio', { name: /Harness claude-rust/ }),
-    ).toHaveAttribute('aria-checked', 'false');
-    expect(
-      screen.getByRole('radio', { name: /Harness claude-go/ }),
-    ).toHaveAccessibleDescription(
-      'Admits the same agents as claude-rust: the agent runs on both.',
-    );
-  });
-
-  it('treats a second Harness admitting the platform value as its own pick', async () => {
-    mockUseResources.mockReturnValue(
-      listing([
-        harness('kagent', 'kagent'),
-        harness('kagent-canary', 'kagent', { admits: 'kagent' }),
-      ]),
-    );
-    const user = userEvent.setup();
-    await render();
-
-    const canary = screen.getByRole('radio', { name: /Harness kagent-canary/ });
-    await user.click(canary);
-    expect(formHarness).toBe('kagent');
-    expect(canary).toHaveAttribute('aria-checked', 'true');
-    expect(
-      screen.getByRole('radio', { name: /Harness kagent,/ }),
     ).toHaveAttribute('aria-checked', 'false');
   });
 

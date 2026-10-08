@@ -13,13 +13,16 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
 
 const agent = new Agent(
   {
-    apiVersion: 'kagent.dev/v1alpha3',
-    kind: 'AgentTemplate',
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'Agent',
     metadata: { name: 'pr-reviewer', namespace: 'kagent' },
     spec: {
-      tools: [
-        { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
-      ],
+      harnessRef: { name: 'kagent' },
+      template: {
+        tools: [
+          { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
+        ],
+      },
     },
   } as never,
   'gazelle',
@@ -28,7 +31,7 @@ const agent = new Agent(
 function carrier(toolset?: string) {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {

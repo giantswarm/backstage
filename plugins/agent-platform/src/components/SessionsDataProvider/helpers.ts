@@ -83,8 +83,8 @@ export type SessionRow = {
  *
  * We match on this *encode* side rather than decoding an `agent_id`, because
  * encoding is lossless and decoding is not. The one encoder is shared with
- * `normalizeAgentInstance`, which derives a session's `agentId` from its
- * template the same way, so the two sides of the join cannot drift.
+ * `normalizeSessionRecord`, which derives a session's `agentId` from its
+ * Agent the same way, so the two sides of the join cannot drift.
  */
 export function toAgentIdentifier(namespace: string, name: string): string {
   return encodeKagentAgentId(namespace, name);

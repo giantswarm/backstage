@@ -19,16 +19,16 @@ import {
 export type AgentWriteFailure = CreateAgentFailure;
 
 /**
- * What `update_agent` returned, plus the template generation as it stood
+ * What `update_agent` returned, plus the Agent's generation as it stood
  * immediately *before* the write.
  *
  * The detail page's progress needs that baseline to tell this write's verdict
  * from the one that was already there: agent-manager writes the HelmRelease and
- * returns, and helm-controller re-renders the AgentTemplate seconds later, so
+ * returns, and helm-controller re-renders the Agent seconds later, so
  * the first status read after saving an agent that was already `ready` answers
  * `ready` for the revision before the write. Nothing in agent-manager's own
- * response carries it — it writes the release, not the template, so it cannot
- * know the generation the template will land on — which is why it is read here
+ * response carries it — it writes the release, not the Agent, so it cannot
+ * know the generation the Agent will land on — which is why it is read here
  * rather than taken from the result.
  */
 export type AgentUpdateOutcome = UpdateAgentResult & {
@@ -80,13 +80,13 @@ export function useUpdateAgent(
         return Promise.resolve();
       }
       return Promise.all([
-        // Every kagent.dev read on this installation, keyed the way the
-        // kubernetes-react hooks key them: the template's spec changes.
+        // Every api.kagent.dev read on this installation, keyed the way the
+        // kubernetes-react hooks key them: the Agent's spec changes.
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, 'list', 'kagent.dev'],
+          queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
         }),
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, 'get', 'kagent.dev'],
+          queryKey: ['cluster', installation, 'get', 'api.kagent.dev'],
         }),
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerAgentQueryKey(
@@ -116,7 +116,7 @@ export function useUpdateAgent(
           update.namespace,
           update.name,
         );
-        fromGeneration = before.template?.generation;
+        fromGeneration = before.agent?.generation;
       } catch {
         fromGeneration = undefined;
       }

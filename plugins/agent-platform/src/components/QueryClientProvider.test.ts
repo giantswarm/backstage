@@ -72,14 +72,7 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
     ],
     [
       'fleet agents',
-      [
-        'cluster',
-        'gazelle',
-        'list',
-        'kagent.dev',
-        'v1alpha3',
-        'agenttemplates',
-      ],
+      ['cluster', 'gazelle', 'list', 'api.kagent.dev', 'v1alpha3', 'agents'],
     ],
     [
       'fleet toolset carriers',
@@ -87,14 +80,21 @@ describe('shouldDehydrateAgentPlatformQuery', () => {
         'cluster',
         'gazelle',
         'list',
-        'kagent.dev',
+        'api.kagent.dev',
         'v1alpha3',
         'remotemcpservers',
       ],
     ],
     [
       'fleet model configs',
-      ['cluster', 'gazelle', 'list', 'kagent.dev', 'v1alpha3', 'modelconfigs'],
+      [
+        'cluster',
+        'gazelle',
+        'list',
+        'api.kagent.dev',
+        'v1alpha3',
+        'modelconfigs',
+      ],
     ],
     [
       // The gs hook's key (`installationInventoryQueryKey`): which platform
@@ -148,8 +148,8 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
       'gazelle',
       'list',
       'kagent.dev',
-      'v1alpha2',
-      'agents',
+      'v1alpha3',
+      'agenttemplates',
     ];
     const now = Date.now();
     return {
@@ -202,7 +202,7 @@ describe('AGENT_PLATFORM_CACHE_BUSTER', () => {
   }
 
   it('names the API version the readers expect', () => {
-    expect(AGENT_PLATFORM_CACHE_BUSTER).toBe('kagent.dev/v1alpha3');
+    expect(AGENT_PLATFORM_CACHE_BUSTER).toBe('api.kagent.dev/v1alpha3');
   });
 
   // The upgrade case: a browser holding the previous release's blob. Its rows

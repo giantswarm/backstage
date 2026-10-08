@@ -41,6 +41,7 @@ describe('editStateOf', () => {
       modelConfig: 'opus-4-7',
       toolset: ['preset:read-only'],
       skills: [PR_REVIEW, OCI_SKILL],
+      egressText: '',
     });
     // No runtime: every agent runs on the platform Harness.
     expect(Object.keys(editStateOf(agent()))).not.toContain('runtime');
@@ -70,6 +71,30 @@ describe('editStateOf', () => {
 });
 
 describe('updateOf', () => {
+  it('replaces the whole egress list, and clears it with an empty list', () => {
+    const withEgress = agent({ egress: ['https://github.com:443'] });
+    expect(editStateOf(withEgress).egressText).toBe('https://github.com:443');
+    expect(
+      updateOf(withEgress, {
+        ...editStateOf(withEgress),
+        egressText: 'https://github.com:443\nhttps://*.githubusercontent.com',
+      }),
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
+    });
+    expect(
+      updateOf(withEgress, { ...editStateOf(withEgress), egressText: ' \n' }),
+    ).toEqual({ namespace: 'kagent', name: 'pr-reviewer', egress: [] });
+    expect(
+      changedFields(withEgress, {
+        ...editStateOf(withEgress),
+        egressText: '  https://github.com:443  ',
+      }),
+    ).toEqual([]);
+  });
+
   it('sends nothing but the identity when nothing changed', () => {
     const current = agent();
     const update = updateOf(current, editStateOf(current));

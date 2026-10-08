@@ -52,6 +52,7 @@ import {
   MAX_SYSTEM_MESSAGE_LENGTH,
   systemMessageProblem,
 } from '../../lib/systemMessage';
+import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isMounted, SkillPicker } from '../SkillPicker';
 import { agentManagerAbsenceReason } from '../AgentDetailPage/AgentActionsMenu';
 import { EditAgentToolsetField } from './EditAgentToolsetField';
@@ -237,9 +238,11 @@ function EditAgentForm({
   );
   const violations = dryRun.result?.errors ?? [];
   const promptProblem = systemMessageProblem(edit.systemMessage);
+  const egressIssue = egressProblem(parseEgressText(edit.egressText));
   const canWrite =
     dirty &&
     !promptProblem &&
+    !egressIssue &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
     !dryRun.failure;
@@ -385,6 +388,15 @@ function EditAgentForm({
                   </Text>
                 )}
               </Flex>
+              <TextAreaField
+                label="Extra egress origins"
+                description="Hosts the agent may reach beyond its model, MCP servers, skill and plugin sources and telemetry. One http(s) origin per line, such as https://github.com:443; a leading * matches one host label. Empty removes every extra origin."
+                value={edit.egressText}
+                onChange={value => set('egressText', value)}
+                rows={3}
+                mono
+                error={egressIssue}
+              />
             </Flex>
           </CardBody>
         </Card>

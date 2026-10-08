@@ -14,7 +14,7 @@ import type { AgentWriteFailure } from './useUpdateAgent';
 export type AgentDeletionState = {
   /**
    * `delete_agent` as the person: agent-manager deletes the HelmRelease that
-   * owns the agent (helm-controller uninstalls the template and the agent's
+   * owns the agent (helm-controller uninstalls the Agent and the agent's
    * RemoteMCPServer with it) and the shared chart source only when nothing
    * else references it. Never `force`: a GitOps-owned or suspended release
    * is refused with agent-manager's reason, which the dialog shows as given.
@@ -67,11 +67,11 @@ export function useAgentDeletion(
     // Invalidate rather than edit the cache: the plugin's QueryClient is
     // persisted to localStorage, so a stale pre-deletion template could
     // otherwise be rehydrated on reload. Prefixes of the kubernetes-react keys,
-    // so one entry per operation covers every kagent.dev list and instance.
+    // so one entry per operation covers every api.kagent.dev list and instance.
     return Promise.all(
       ['list', 'get'].map(operation =>
         queryClient.invalidateQueries({
-          queryKey: ['cluster', installation, operation, 'kagent.dev'],
+          queryKey: ['cluster', installation, operation, 'api.kagent.dev'],
         }),
       ),
     ).then(() => undefined);

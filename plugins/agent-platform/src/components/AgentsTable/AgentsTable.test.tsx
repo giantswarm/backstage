@@ -159,31 +159,6 @@ describe('AgentsTable', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('labels a template no Harness admits distinctly, with the reason', async () => {
-    await renderTable(
-      <AgentsTable
-        rows={[
-          {
-            ...rows[0],
-            readiness: 'notAdmitted',
-            readinessMessage:
-              'No Harness admits this agent: it carries no agent-platform.giantswarm.io/harness label.',
-          },
-        ]}
-      />,
-    );
-
-    expect(screen.getByText('Not admitted')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', {
-        name: 'Why Incident triager is not admitted',
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('info-hint')).toHaveTextContent(
-      /carries no .*harness label/,
-    );
-  });
-
   it('shows the declared toolset, and the two loud states, in the Toolset column', async () => {
     await renderTable(
       <AgentsTable

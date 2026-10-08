@@ -31,6 +31,7 @@ import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
 import { TextAreaField } from './TextAreaField';
+import { egressProblem, parseEgressText } from '../../lib/egress';
 import {
   MAX_SYSTEM_MESSAGE_LENGTH,
   systemMessageProblem,
@@ -83,6 +84,7 @@ function NewAgentPageContent() {
     setSlug,
     setDescription,
     setSystemMessage,
+    setEgressText,
     validationErrors,
   } = useNewAgentForm();
 
@@ -229,6 +231,19 @@ function NewAgentPageContent() {
                 />
                 <ModelConfigPicker />
                 <HarnessPicker />
+                <TextAreaField
+                  label="Extra egress origins"
+                  secondaryLabel="optional"
+                  value={state.egressText}
+                  onChange={setEgressText}
+                  rows={3}
+                  mono
+                  placeholder={
+                    'https://github.com:443\nhttps://*.githubusercontent.com'
+                  }
+                  description="Hosts the agent may reach beyond what it already has: its model, its MCP servers, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
+                  error={egressProblem(parseEgressText(state.egressText))}
+                />
               </Flex>
             </CardBody>
           </Card>

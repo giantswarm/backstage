@@ -122,9 +122,11 @@ export interface ErrorContext {
   timeoutIsPending?: boolean;
   /** What a rejected request means for this call; the generic upstream failure otherwise. */
   invalidArgument?: (reason: string) => Error;
+  /** What a `FailedPrecondition` means for this call; a generic conflict otherwise. */
+  failedPrecondition?: (reason: string) => Error;
   /**
    * What an `Unimplemented`/`Unknown` failure carrying an A2A *unsupported
-   * operation* means for this call. The A2A gateway reports "the instance
+   * operation* means for this call. The A2A gateway reports "the session
    * already has an active task" that way; only the send paths care.
    */
   unsupportedOperation?: (reason: string) => Error;
@@ -211,8 +213,14 @@ export function mapConnectError(
         : upstreamError(
             `The kagent API for installation '${installationName}' rejected the request: ${reason}`,
           );
-    case Code.AlreadyExists:
     case Code.FailedPrecondition:
+      if (context.failedPrecondition) {
+        return context.failedPrecondition(reason);
+      }
+      return new ConflictError(
+        `The kagent API for installation '${installationName}' reported a conflict: ${reason}`,
+      );
+    case Code.AlreadyExists:
     case Code.Aborted:
       return new ConflictError(
         `The kagent API for installation '${installationName}' reported a conflict: ${reason}`,

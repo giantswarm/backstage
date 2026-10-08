@@ -133,7 +133,7 @@ function topBy<T>(
  * read every session's whole conversation. That is megabytes to answer with a
  * couple of kilobytes, which belongs on this side of the wire.
  *
- * **This can only ever be personal.** `ListAgentInstances` answers for the
+ * **This can only ever be personal.** `ListSessions` answers for the
  * caller the gateway identified and nothing else (the cross-creator flag needs
  * an authorization this plugin does not ask for), so no fleet or team view grows
  * out of this route — that needs a different data source entirely, and the

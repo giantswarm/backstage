@@ -1,4 +1,3 @@
-import BlockIcon from '@material-ui/icons/Block';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
@@ -24,8 +23,7 @@ import type { AgentRow } from '../AgentsDataProvider';
  *
  * `pending` is deliberately `neutral` rather than a warning: it means the
  * controller has not caught up with the current spec yet, which is "not known
- * yet", not "broken". `notAdmitted` is negative: no Harness will ever run this
- * agent until its labels change, and the info icon says which label is missing.
+ * yet", not "broken".
  */
 /** How one readiness is shown: its label, the label's intent and its icon. */
 export type ReadinessPresentation = {
@@ -41,7 +39,6 @@ export const READINESS_PRESENTATION: Record<
   ready: { label: 'Ready', intent: 'positive', icon: CheckCircleIcon },
   notReady: { label: 'Not ready', intent: 'warning', icon: ReportProblemIcon },
   failed: { label: 'Failed', intent: 'negative', icon: ErrorIcon },
-  notAdmitted: { label: 'Not admitted', intent: 'negative', icon: BlockIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };
 

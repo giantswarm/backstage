@@ -22,18 +22,16 @@ import {
   type Task,
 } from '../gen/a2a_pb';
 import {
-  AgentInstanceSchema,
-  AgentInstanceService,
-  AgentInstanceState,
-  type AgentInstance,
-  type CreateAgentInstanceRequest,
-  type ListAgentInstancesRequest,
-} from '../gen/kagent/api/v1alpha1/agent_instances_pb';
+  RuntimeOperation,
+  RuntimeState,
+} from '../gen/kagent/api/v1alpha1/runtime_pb';
 import {
-  AgentTemplateSchema,
-  AgentTemplateService,
-  type AgentTemplate,
-} from '../gen/kagent/api/v1alpha1/agent_templates_pb';
+  SessionSchema,
+  SessionService,
+  type CreateSessionRequest,
+  type ListSessionsRequest,
+  type Session,
+} from '../gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from '../gen/kagent/api/v1alpha1/system_pb';
 import {
   A2A_EXTENSIONS_HEADER,
@@ -47,9 +45,8 @@ import {
 /**
  * An in-process stand-in for the kagent API v2 controller behind
  * agentgateway's JWT policy, implementing exactly the RPCs the backend uses:
- * `AgentInstanceService` (create/get/list/rename/delete),
- * `AgentTemplateService` (get/list), `SystemService` (current user/version)
- * and the A2A v1 `A2AService` (send/stream/list/get/cancel). Everything else
+ * `SessionService` (create/get/list/rename/delete), `SystemService` (current
+ * user/version) and the A2A v1 `A2AService` (send/stream/list/get/cancel). Everything else
  * answers `Unimplemented`, as a Connect router does for a method the
  * implementation leaves out.
  *
@@ -57,17 +54,23 @@ import {
  *
  * - **Identity is the bearer.** A call without `authorization` is refused
  *   `Unauthenticated`, as the gateway refuses it; the token maps to an email,
- *   which is the creator every instance is scoped by. There is no identity
+ *   which is the creator every session is scoped by. There is no identity
  *   header to send — one that arrives is recorded so a test can assert it was
  *   never sent.
  * - **Idempotent create** on `(creator, request_id)`: a repeat with the same
- *   harness and template answers the existing instance, a repeat with other
- *   parameters `AlreadyExists`.
- * - **A2A routing** by exactly one `x-kagent-agent-instance-id`; a missing or
- *   doubled header is `InvalidArgument`, somebody else's instance `NotFound`.
+ *   Agent answers the existing session, a repeat with other parameters
+ *   `AlreadyExists`. An Agent the controller knows no ready revision for is
+ *   `FailedPrecondition`, as the controller answers it.
+ * - **A2A routing** as the gateway does it: the Agent from the request's
+ *   `tenant` (`<namespace>/<name>`, refused otherwise), the session from
+ *   `message.contextId` or the task named; a send with neither starts a new
+ *   session of that Agent; a context that does not match the task is
+ *   `InvalidArgument`; somebody else's session, or another Agent's, is
+ *   `NotFound`. No metadata routes anything. A session not `READY` with no
+ *   operation in flight refuses work.
  * - **HITL is negotiated**: a turn scripted to pause carries the typed request
  *   on the paused task only when the call requested the extension.
- * - **One active task per instance**: a second message during a turn is the
+ * - **One active task per session**: a second message during a turn is the
  *   gateway's *unsupported operation* refusal.
  * - **Cancel** ends a long turn server-side and records the task canceled.
  *
@@ -81,6 +84,8 @@ export type RecordedCall = {
   method: string;
   /** Every request header, lower-cased names, as the server received them. */
   headers: Record<string, string>;
+  /** The A2A request's `tenant`, when the call carried one. */
+  tenant?: string;
 };
 
 /** What a scripted turn does once the message is accepted. */
@@ -119,15 +124,11 @@ export type TurnScript =
 export type FakeControllerOptions = {
   /** Bearer token → the email the gateway would derive. */
   users?: Record<string, string>;
-  /** The templates the controller knows, with the harnesses admitting each. */
-  templates?: {
-    namespace: string;
-    name: string;
-    harnesses: { name: string; ready: boolean }[];
-  }[];
+  /** The Agents the controller knows, and whether each has a ready revision. */
+  agents?: { namespace: string; name: string; ready: boolean }[];
   /** How the agent answers a fresh message. Defaults to a short reply. */
   turn?: (input: {
-    instance: AgentInstance;
+    session: Session;
     message: Message;
     hitlActivated: boolean;
   }) => TurnScript;
@@ -144,9 +145,9 @@ type StoredTask = {
 export type FakeController = {
   routes: (router: ConnectRouter) => void;
   calls: RecordedCall[];
-  /** Instances by id, as the controller holds them. */
-  instances: Map<string, AgentInstance>;
-  /** Tasks by instance id, oldest first. */
+  /** Sessions by id, as the controller holds them. */
+  sessions: Map<string, Session>;
+  /** Tasks by session id, oldest first. */
   tasks: Map<string, StoredTask[]>;
 };
 
@@ -173,53 +174,33 @@ export function createFakeController(
 ): FakeController {
   const users: Record<string, string> = options.users ?? DEFAULT_USERS;
   const now = options.now ?? (() => new Date());
-  const templates = new Map<string, AgentTemplate>();
-  for (const seed of options.templates ?? []) {
-    templates.set(
-      `${seed.namespace}/${seed.name}`,
-      create(AgentTemplateSchema, {
-        ref: { namespace: seed.namespace, name: seed.name },
-        description: `Template ${seed.name}`,
-        modelConfigRef: {
-          namespace: seed.namespace,
-          name: 'default-model-config',
-        },
-        admittingHarnesses: seed.harnesses.map(h => h.name),
-        resource: {
-          apiVersion: 'kagent.dev/v1alpha3',
-          kind: 'AgentTemplate',
-          value: {
-            metadata: { name: seed.name, namespace: seed.namespace },
-            status: {
-              harnesses: seed.harnesses.map(h => ({
-                harness: h.name,
-                conditions: [
-                  { type: 'Accepted', status: 'True' },
-                  { type: 'Ready', status: h.ready ? 'True' : 'False' },
-                ],
-              })),
-            },
-          },
-        },
-      }),
-    );
+  const agents = new Map<string, boolean>();
+  for (const seed of options.agents ?? []) {
+    agents.set(`${seed.namespace}/${seed.name}`, seed.ready);
   }
   const turnScript =
     options.turn ??
     ((): TurnScript => ({ kind: 'reply', text: 'Hello from the fake agent.' }));
 
   const calls: RecordedCall[] = [];
-  const instances = new Map<string, AgentInstance>();
+  const sessions = new Map<string, Session>();
+  /** Session id by task id, the gateway's way from a task to its session. */
+  const taskSessions = new Map<string, string>();
   const creators = new Map<string, string>();
   const requests = new Map<string, string>();
   const tasks = new Map<string, StoredTask[]>();
 
-  function record(service: string, method: string, ctx: HandlerContext) {
+  function record(
+    service: string,
+    method: string,
+    ctx: HandlerContext,
+    tenant?: string,
+  ) {
     const headers: Record<string, string> = {};
     ctx.requestHeader.forEach((value, name) => {
       headers[name.toLowerCase()] = value;
     });
-    calls.push({ service, method, headers });
+    calls.push({ service, method, headers, ...(tenant && { tenant }) });
   }
 
   function creatorOf(ctx: HandlerContext): string {
@@ -236,21 +217,107 @@ export function createFakeController(
     return now().toISOString();
   }
 
-  /** The instance an A2A call is routed to, scoped to the caller. */
-  function routed(ctx: HandlerContext): AgentInstance {
-    const creator = creatorOf(ctx);
-    const header = ctx.requestHeader.get('x-kagent-agent-instance-id');
-    if (!header || header.includes(',')) {
+  /** The Agent an A2A request names, as the gateway parses the `tenant`. */
+  function agentOf(tenant: string): { namespace: string; name: string } {
+    const [namespace, name, ...rest] = tenant.split('/');
+    if (!namespace || !name || rest.length > 0) {
       throw new ConnectError(
-        'exactly one x-kagent-agent-instance-id header is required',
+        'Agent tenant must be namespace/name',
         Code.InvalidArgument,
       );
     }
-    const instance = instances.get(header);
-    if (!instance || creators.get(instance.id) !== creator) {
-      throw new ConnectError('AgentInstance not found', Code.NotFound);
+    return { namespace, name };
+  }
+
+  function sameAgent(
+    session: Session,
+    agent: { namespace: string; name: string },
+  ): boolean {
+    return (
+      session.agent?.namespace === agent.namespace &&
+      session.agent?.name === agent.name
+    );
+  }
+
+  /** The session a task belongs to, for the caller and the Agent named. */
+  function taskSession(
+    ctx: HandlerContext,
+    tenant: string,
+    taskId: string,
+  ): Session {
+    const creator = creatorOf(ctx);
+    const agent = agentOf(tenant);
+    const sessionId = taskSessions.get(taskId);
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (
+      !session ||
+      creators.get(session.id) !== creator ||
+      !sameAgent(session, agent)
+    ) {
+      throw new ConnectError('task not found', Code.NotFound);
     }
-    return instance;
+    return session;
+  }
+
+  /** The session a context names, for the caller and the Agent named. */
+  function contextSession(
+    ctx: HandlerContext,
+    tenant: string,
+    contextId: string,
+  ): Session {
+    const creator = creatorOf(ctx);
+    const agent = agentOf(tenant);
+    const session = sessions.get(contextId);
+    if (
+      !session ||
+      creators.get(session.id) !== creator ||
+      !sameAgent(session, agent)
+    ) {
+      throw new ConnectError('Session not found', Code.NotFound);
+    }
+    return session;
+  }
+
+  /**
+   * The session a send is for: the task's when the message names one, the
+   * context's when it names one, else a new session of the Agent — exactly
+   * the gateway's resolution. A context that does not match the task is
+   * refused, and so is a session that cannot take work.
+   */
+  function sendSession(
+    ctx: HandlerContext,
+    tenant: string,
+    message: Message,
+  ): Session {
+    let session: Session;
+    if (message.taskId) {
+      session = taskSession(ctx, tenant, message.taskId);
+    } else if (message.contextId) {
+      session = contextSession(ctx, tenant, message.contextId);
+    } else {
+      const agent = agentOf(tenant);
+      session = createSession(ctx, {
+        agent,
+        requestId: `a2a/${tenant}/${message.messageId}`,
+        name: '',
+      } as CreateSessionRequest);
+    }
+    if (message.contextId && message.contextId !== session.contextId) {
+      throw new ConnectError(
+        'message context does not match task',
+        Code.InvalidArgument,
+      );
+    }
+    if (
+      session.state !== RuntimeState.READY ||
+      session.operation !== RuntimeOperation.NONE
+    ) {
+      throw new ConnectError(
+        'Session cannot accept work during a lifecycle operation',
+        Code.Unimplemented,
+      );
+    }
+    return session;
   }
 
   function hitlActivated(ctx: HandlerContext): boolean {
@@ -265,13 +332,13 @@ export function createFakeController(
     return active;
   }
 
-  function owned(ctx: HandlerContext, id: string): AgentInstance {
+  function owned(ctx: HandlerContext, id: string): Session {
     const creator = creatorOf(ctx);
-    const instance = instances.get(id);
-    if (!instance || creators.get(id) !== creator) {
-      throw new ConnectError('AgentInstance not found', Code.NotFound);
+    const session = sessions.get(id);
+    if (!session || creators.get(id) !== creator) {
+      throw new ConnectError('Session not found', Code.NotFound);
     }
-    return instance;
+    return session;
   }
 
   function validName(name: string) {
@@ -283,10 +350,10 @@ export function createFakeController(
     }
   }
 
-  function createInstance(
+  function createSession(
     ctx: HandlerContext,
-    request: CreateAgentInstanceRequest,
-  ): AgentInstance {
+    request: CreateSessionRequest,
+  ): Session {
     const creator = creatorOf(ctx);
     const requestId = request.requestId;
     if (
@@ -300,65 +367,51 @@ export function createFakeController(
       );
     }
     validName(request.name);
-    if (!request.harness || !request.agentTemplate) {
-      throw new ConnectError(
-        'harness and agent_template are required',
-        Code.InvalidArgument,
-      );
+    if (!request.agent) {
+      throw new ConnectError('agent is required', Code.InvalidArgument);
     }
     const key = `${creator}:${requestId}`;
     const existingId = requests.get(key);
     if (existingId) {
-      const existing = instances.get(existingId)!;
+      const existing = sessions.get(existingId)!;
       const same =
-        existing.harness?.name === request.harness.name &&
-        existing.harness?.namespace === request.harness.namespace &&
-        existing.agentTemplate?.name === request.agentTemplate.name &&
-        existing.agentTemplate?.namespace === request.agentTemplate.namespace;
+        existing.agent?.name === request.agent.name &&
+        existing.agent?.namespace === request.agent.namespace;
       if (!same) {
         throw new ConnectError(
-          'request_id was already used for a different AgentInstance',
+          'request_id was already used for a different Session',
           Code.AlreadyExists,
         );
       }
       return existing;
     }
-    const template = templates.get(
-      `${request.agentTemplate.namespace}/${request.agentTemplate.name}`,
-    );
-    if (
-      !template ||
-      !template.admittingHarnesses.includes(request.harness.name)
-    ) {
+    if (!agents.get(`${request.agent.namespace}/${request.agent.name}`)) {
       throw new ConnectError(
-        'AgentTemplate and Harness do not have a ready prepared revision',
+        'Agent does not have a ready prepared revision',
         Code.FailedPrecondition,
       );
     }
     const at = timestampFromDate(now());
-    const instance = create(AgentInstanceSchema, {
+    const session = create(SessionSchema, {
       id: randomUUID(),
       creator,
-      harness: request.harness,
-      agentTemplate: request.agentTemplate,
+      agent: request.agent,
       preparedRevision: 'rev-1',
-      state: AgentInstanceState.READY,
+      state: RuntimeState.READY,
+      operation: RuntimeOperation.NONE,
       createdAt: at,
       updatedAt: at,
       name: request.name,
-      contextId: randomUUID(),
     });
-    instances.set(instance.id, instance);
-    creators.set(instance.id, creator);
-    requests.set(key, instance.id);
-    tasks.set(instance.id, []);
-    return instance;
+    session.contextId = session.id;
+    sessions.set(session.id, session);
+    creators.set(session.id, creator);
+    requests.set(key, session.id);
+    tasks.set(session.id, []);
+    return session;
   }
 
-  function listInstances(
-    ctx: HandlerContext,
-    request: ListAgentInstancesRequest,
-  ) {
+  function listSessions(ctx: HandlerContext, request: ListSessionsRequest) {
     const creator = creatorOf(ctx);
     if (request.allCreators) {
       throw new ConnectError(
@@ -366,37 +419,36 @@ export function createFakeController(
         Code.PermissionDenied,
       );
     }
-    let mine = [...instances.values()].filter(
-      instance => creators.get(instance.id) === creator,
+    let mine = [...sessions.values()].filter(
+      session => creators.get(session.id) === creator,
     );
-    if (request.agentTemplate) {
+    if (request.agent) {
       mine = mine.filter(
-        instance =>
-          instance.agentTemplate?.namespace ===
-            request.agentTemplate!.namespace &&
-          instance.agentTemplate?.name === request.agentTemplate!.name,
+        session =>
+          session.agent?.namespace === request.agent!.namespace &&
+          session.agent?.name === request.agent!.name,
       );
     }
     const limit = request.page?.limit || 50;
     const offset = Number(request.page?.pageToken || '0');
     const slice = mine.slice(offset, offset + limit);
     const next = offset + limit < mine.length ? String(offset + limit) : '';
-    return { agentInstances: slice, page: { nextPageToken: next } };
+    return { sessions: slice, page: { nextPageToken: next } };
   }
 
-  /** Bump `updatedAt` on the instance, as the controller does on every turn. */
-  function touch(instance: AgentInstance) {
-    const touched = clone(AgentInstanceSchema, instance);
+  /** Bump `updatedAt` on the session, as the controller does on every turn. */
+  function touch(session: Session) {
+    const touched = clone(SessionSchema, session);
     touched.updatedAt = timestampFromDate(now());
-    instances.set(instance.id, touched);
+    sessions.set(session.id, touched);
   }
 
-  function storedTasks(instance: AgentInstance): StoredTask[] {
-    return tasks.get(instance.id) ?? [];
+  function storedTasks(session: Session): StoredTask[] {
+    return tasks.get(session.id) ?? [];
   }
 
-  function taskOf(instance: AgentInstance, id: string): StoredTask {
-    const stored = storedTasks(instance).find(entry => entry.task.id === id);
+  function taskOf(session: Session, id: string): StoredTask {
+    const stored = storedTasks(session).find(entry => entry.task.id === id);
     if (!stored) {
       throw new ConnectError('task not found', Code.NotFound);
     }
@@ -456,25 +508,19 @@ export function createFakeController(
    */
   async function* runTurn(
     ctx: HandlerContext,
-    instance: AgentInstance,
+    session: Session,
     request: SendMessageRequest,
   ): AsyncGenerator<StreamResponse> {
     const message = request.message;
     if (!message || !message.messageId) {
       throw new ConnectError('message ID is required', Code.InvalidArgument);
     }
-    if (message.contextId && message.contextId !== instance.contextId) {
-      throw new ConnectError(
-        'message context does not match AgentInstance',
-        Code.InvalidArgument,
-      );
-    }
     const activated = hitlActivated(ctx);
-    const list = storedTasks(instance);
+    const list = storedTasks(session);
 
     // A reply to a paused task resumes it.
     if (message.taskId) {
-      const stored = taskOf(instance, message.taskId);
+      const stored = taskOf(session, message.taskId);
       if (stored.task.status?.state !== TaskState.INPUT_REQUIRED) {
         throw new ConnectError(
           'reply does not match the pending input request',
@@ -483,7 +529,7 @@ export function createFakeController(
       }
       validateHitlResponse(stored.task, message);
       const user = clone(MessageSchema, message);
-      user.contextId = instance.contextId;
+      user.contextId = session.contextId;
       user.role = Role.USER;
       user.metadata = { ...message.metadata, [TIMELINE_POSITION_KEY]: stamp() };
       const resumed = clone(TaskSchema, stored.task);
@@ -511,17 +557,17 @@ export function createFakeController(
       );
       const completed = withStatus(resumed, TaskState.COMPLETED);
       stored.task = completed;
-      touch(instance);
+      touch(session);
       yield statusUpdate(withStatus(resumed, TaskState.WORKING));
       yield statusUpdate(completed);
       return;
     }
 
     if (list.some(entry => !terminal(entry.task) && !entry.cancelled)) {
-      // The gateway's one-active-task-per-instance refusal, as a2a-go reports an
+      // The gateway's one-active-task-per-session refusal, as a2a-go reports an
       // unsupported operation over gRPC.
       throw new ConnectError(
-        `AgentInstance ${instance.id} already has an active task`,
+        `Session ${session.id} already has an active task`,
         Code.Unimplemented,
       );
     }
@@ -529,19 +575,19 @@ export function createFakeController(
       list.some(entry => entry.task.status?.state === TaskState.INPUT_REQUIRED)
     ) {
       throw new ConnectError(
-        `AgentInstance ${instance.id} already has an active task`,
+        `Session ${session.id} already has an active task`,
         Code.Unimplemented,
       );
     }
 
     const user = clone(MessageSchema, message);
-    user.contextId = instance.contextId;
+    user.contextId = session.contextId;
     user.taskId = randomUUID();
     user.role = Role.USER;
     user.metadata = { ...message.metadata, [TIMELINE_POSITION_KEY]: stamp() };
     let task = create(TaskSchema, {
       id: user.taskId,
-      contextId: instance.contextId,
+      contextId: session.contextId,
       status: {
         state: TaskState.SUBMITTED,
         timestamp: timestampFromDate(now()),
@@ -550,8 +596,9 @@ export function createFakeController(
     });
     const stored: StoredTask = { task };
     list.push(stored);
-    tasks.set(instance.id, list);
-    touch(instance);
+    tasks.set(session.id, list);
+    taskSessions.set(task.id, session.id);
+    touch(session);
 
     yield create(StreamResponseSchema, {
       payload: { case: 'task', value: task },
@@ -561,7 +608,7 @@ export function createFakeController(
     yield statusUpdate(task);
 
     const script = turnScript({
-      instance,
+      session,
       message: user,
       hitlActivated: activated,
     });
@@ -600,7 +647,7 @@ export function createFakeController(
         ];
         const finished = withStatus(withArtifact, TaskState.COMPLETED);
         stored.task = finished;
-        touch(instance);
+        touch(session);
         yield statusUpdate(finished);
         return;
       }
@@ -626,7 +673,7 @@ export function createFakeController(
         });
         const paused = withStatus(task, TaskState.INPUT_REQUIRED, prompt);
         stored.task = paused;
-        touch(instance);
+        touch(session);
         yield statusUpdate(paused);
         return;
       }
@@ -662,7 +709,7 @@ export function createFakeController(
           }),
         );
         stored.task = failed;
-        touch(instance);
+        touch(session);
         yield statusUpdate(failed);
         return;
       }
@@ -772,63 +819,41 @@ export function createFakeController(
   }
 
   const routes = (router: ConnectRouter) => {
-    router.service(AgentInstanceService, {
-      createAgentInstance(request, ctx) {
-        record('AgentInstanceService', 'CreateAgentInstance', ctx);
-        return { agentInstance: createInstance(ctx, request) };
+    router.service(SessionService, {
+      createSession(request, ctx) {
+        record('SessionService', 'CreateSession', ctx);
+        return { session: createSession(ctx, request) };
       },
-      getAgentInstance(request, ctx) {
-        record('AgentInstanceService', 'GetAgentInstance', ctx);
-        return { agentInstance: owned(ctx, request.agentInstanceId) };
+      getSession(request, ctx) {
+        record('SessionService', 'GetSession', ctx);
+        return { session: owned(ctx, request.sessionId) };
       },
-      listAgentInstances(request, ctx) {
-        record('AgentInstanceService', 'ListAgentInstances', ctx);
-        return listInstances(ctx, request);
+      listSessions(request, ctx) {
+        record('SessionService', 'ListSessions', ctx);
+        return listSessions(ctx, request);
       },
-      updateAgentInstanceName(request, ctx) {
-        record('AgentInstanceService', 'UpdateAgentInstanceName', ctx);
-        const instance = owned(ctx, request.agentInstanceId);
+      updateSessionName(request, ctx) {
+        record('SessionService', 'UpdateSessionName', ctx);
+        const session = owned(ctx, request.sessionId);
         validName(request.name);
-        const renamed = clone(AgentInstanceSchema, instance);
+        const renamed = clone(SessionSchema, session);
         renamed.name = request.name;
         renamed.updatedAt = timestampFromDate(now());
-        instances.set(instance.id, renamed);
-        return { agentInstance: renamed };
+        sessions.set(session.id, renamed);
+        return { session: renamed };
       },
-      deleteAgentInstance(request, ctx) {
-        record('AgentInstanceService', 'DeleteAgentInstance', ctx);
-        const instance = owned(ctx, request.agentInstanceId);
-        instances.delete(instance.id);
-        creators.delete(instance.id);
-        tasks.delete(instance.id);
-        const deleting = clone(AgentInstanceSchema, instance);
-        deleting.state = AgentInstanceState.DELETING;
-        return { agentInstance: deleting };
-      },
-    });
-
-    router.service(AgentTemplateService, {
-      getAgentTemplate(request, ctx) {
-        record('AgentTemplateService', 'GetAgentTemplate', ctx);
-        creatorOf(ctx);
-        const template = templates.get(
-          `${request.ref?.namespace}/${request.ref?.name}`,
-        );
-        if (!template) {
-          throw new ConnectError('AgentTemplate not found', Code.NotFound);
+      deleteSession(request, ctx) {
+        record('SessionService', 'DeleteSession', ctx);
+        const session = owned(ctx, request.sessionId);
+        sessions.delete(session.id);
+        creators.delete(session.id);
+        for (const entry of tasks.get(session.id) ?? []) {
+          taskSessions.delete(entry.task.id);
         }
-        return { agentTemplate: template };
-      },
-      listAgentTemplates(request, ctx) {
-        record('AgentTemplateService', 'ListAgentTemplates', ctx);
-        creatorOf(ctx);
-        return {
-          agentTemplates: [...templates.values()].filter(
-            template =>
-              !request.namespace ||
-              template.ref?.namespace === request.namespace,
-          ),
-        };
+        tasks.delete(session.id);
+        const deleting = clone(SessionSchema, session);
+        deleting.state = RuntimeState.DELETING;
+        return { session: deleting };
       },
     });
 
@@ -839,36 +864,49 @@ export function createFakeController(
       },
       getVersion(_request, ctx) {
         record('SystemService', 'GetVersion', ctx);
-        return { kagentVersion: 'fake', gitCommit: '0ac52403', buildDate: '' };
+        return { kagentVersion: 'fake', gitCommit: 'f7bf3daf', buildDate: '' };
       },
     });
 
     router.service(A2AService, {
       async sendMessage(request, ctx) {
-        record('A2AService', 'SendMessage', ctx);
-        const instance = routed(ctx);
+        record('A2AService', 'SendMessage', ctx, request.tenant);
+        const message = request.message;
+        if (!message || !message.messageId) {
+          throw new ConnectError(
+            'message ID is required',
+            Code.InvalidArgument,
+          );
+        }
+        const session = sendSession(ctx, request.tenant, message);
         let last: Task | undefined;
-        for await (const event of runTurn(ctx, instance, request)) {
+        for await (const event of runTurn(ctx, session, request)) {
           if (event.payload.case === 'task') {
             last = event.payload.value;
           }
         }
-        const taskId = last?.id ?? request.message?.taskId;
-        const stored = taskId ? taskOf(instance, taskId) : undefined;
+        const taskId = last?.id ?? message.taskId;
+        const stored = taskId ? taskOf(session, taskId) : undefined;
         return {
           payload: stored
             ? { case: 'task', value: stored.task }
-            : { case: 'message', value: request.message! },
+            : { case: 'message', value: message },
         };
       },
       async *sendStreamingMessage(request, ctx) {
-        record('A2AService', 'SendStreamingMessage', ctx);
-        const instance = routed(ctx);
-        yield* runTurn(ctx, instance, request);
+        record('A2AService', 'SendStreamingMessage', ctx, request.tenant);
+        const message = request.message;
+        if (!message || !message.messageId) {
+          throw new ConnectError(
+            'message ID is required',
+            Code.InvalidArgument,
+          );
+        }
+        const session = sendSession(ctx, request.tenant, message);
+        yield* runTurn(ctx, session, request);
       },
       listTasks(request, ctx) {
-        record('A2AService', 'ListTasks', ctx);
-        const instance = routed(ctx);
+        record('A2AService', 'ListTasks', ctx, request.tenant);
         const pageSize = request.pageSize || 50;
         if (pageSize < 1 || pageSize > 100) {
           throw new ConnectError(
@@ -876,10 +914,19 @@ export function createFakeController(
             Code.InvalidArgument,
           );
         }
-        if (request.contextId && request.contextId !== instance.contextId) {
-          return { tasks: [], pageSize, nextPageToken: '', totalSize: 0 };
-        }
-        const all = storedTasks(instance).map(entry => entry.task);
+        const creator = creatorOf(ctx);
+        const agent = agentOf(request.tenant);
+        // The caller's sessions of the Agent, narrowed to one by context.
+        const scope = request.contextId
+          ? [contextSession(ctx, request.tenant, request.contextId)]
+          : [...sessions.values()].filter(
+              session =>
+                creators.get(session.id) === creator &&
+                sameAgent(session, agent),
+            );
+        const all = scope.flatMap(session =>
+          storedTasks(session).map(entry => entry.task),
+        );
         const offset = Number(request.pageToken || '0');
         const page = all.slice(offset, offset + pageSize);
         return {
@@ -897,28 +944,28 @@ export function createFakeController(
         };
       },
       getTask(request, ctx) {
-        record('A2AService', 'GetTask', ctx);
-        const instance = routed(ctx);
+        record('A2AService', 'GetTask', ctx, request.tenant);
+        const session = taskSession(ctx, request.tenant, request.id);
         return shape(
-          taskOf(instance, request.id).task,
+          taskOf(session, request.id).task,
           request.historyLength,
           true,
         );
       },
       cancelTask(request, ctx) {
-        record('A2AService', 'CancelTask', ctx);
-        const instance = routed(ctx);
-        const stored = taskOf(instance, request.id);
+        record('A2AService', 'CancelTask', ctx, request.tenant);
+        const session = taskSession(ctx, request.tenant, request.id);
+        const stored = taskOf(session, request.id);
         if (terminal(stored.task)) {
           return stored.task;
         }
         stored.task = withStatus(stored.task, TaskState.CANCELED);
         stored.cancel?.();
-        touch(instance);
+        touch(session);
         return stored.task;
       },
     });
   };
 
-  return { routes, calls, instances, tasks };
+  return { routes, calls, sessions, tasks };
 }
