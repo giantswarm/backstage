@@ -25,11 +25,14 @@ test('the roster shows the agent table with its columns', async ({
     'Toolset',
     'Skills',
   ]);
+  // Deploy writes the agent's HelmRelease; the roster lists the Agent once
+  // Flux has rendered it, a poll or two later.
   await expect(
     grid
       .getByRole('rowheader')
       .getByRole('link', { name: labAgent.name, exact: true }),
-  ).toBeVisible();
+    'the roster lists the fixture agent',
+  ).toBeVisible({ timeout: 2 * 60_000 });
   await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
 });
 
@@ -42,6 +45,9 @@ test('an agent in the roster opens its detail page', async ({
   const agent = grid
     .getByRole('rowheader')
     .getByRole('link', { name: labAgent.name, exact: true });
+  await expect(agent, 'the roster lists the fixture agent').toBeVisible({
+    timeout: 2 * 60_000,
+  });
 
   // The link shows the display name; the URL carries the slug — the href is
   // the contract, not the text.
