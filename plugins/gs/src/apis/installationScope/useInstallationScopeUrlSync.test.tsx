@@ -1,5 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { act, render, screen } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  MemoryRouter,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
 import {
   __resetInstallationScopeForTests,
   ALL_INSTALLATIONS,
@@ -13,9 +19,28 @@ let navigate: ReturnType<typeof useNavigate>;
 
 function Probe() {
   useInstallationScopeUrlSync();
-  const { pathname, search } = useLocation();
+  const { pathname, search, state } = useLocation();
   navigate = useNavigate();
-  return <div data-testid="url">{`${pathname}${search}`}</div>;
+  return (
+    <>
+      <div data-testid="url">{`${pathname}${search}`}</div>
+      <div data-testid="state">{JSON.stringify(state)}</div>
+    </>
+  );
+}
+
+/** Clears its state once on arrival, the way a page consumes a handoff. */
+function HandoffConsumer() {
+  const { pathname, search, state } = useLocation();
+  const navigateTo = useNavigate();
+  const cleared = useRef(false);
+  useEffect(() => {
+    if (state && !cleared.current) {
+      cleared.current = true;
+      navigateTo(`${pathname}${search}`, { replace: true, state: null });
+    }
+  }, [state, pathname, search, navigateTo]);
+  return null;
 }
 
 function renderAt(url: string) {
@@ -27,6 +52,7 @@ function renderAt(url: string) {
 }
 
 const url = () => screen.getByTestId('url').textContent;
+const routerState = () => screen.getByTestId('state').textContent;
 
 describe('useInstallationScopeUrlSync', () => {
   beforeEach(() => {
@@ -75,6 +101,45 @@ describe('useInstallationScopeUrlSync', () => {
 
     expect(getInstallationScopeSnapshot().scope).toBe('wombat');
     expect(url()).toBe('/agent-platform/sessions?installation=wombat');
+  });
+
+  it('keeps the router state when it writes the pin into the URL', () => {
+    renderAt('/agent-platform/agents');
+    act(() => setInstallationScope('wombat'));
+
+    act(() =>
+      navigate('/agent-platform/sessions/wombat/s1', {
+        state: { newSession: 'hello' },
+      }),
+    );
+
+    expect(url()).toBe(
+      '/agent-platform/sessions/wombat/s1?installation=wombat',
+    );
+    expect(routerState()).toBe('{"newSession":"hello"}');
+  });
+
+  it('does not bring back a state cleared earlier in the same commit', () => {
+    window.history.replaceState(null, '', '/agent-platform/agents');
+    render(
+      <BrowserRouter>
+        <HandoffConsumer />
+        <Probe />
+      </BrowserRouter>,
+    );
+    act(() => setInstallationScope('wombat'));
+
+    act(() =>
+      navigate('/agent-platform/sessions/wombat/s1', {
+        state: { newSession: 'hello' },
+      }),
+    );
+
+    expect(url()).toBe(
+      '/agent-platform/sessions/wombat/s1?installation=wombat',
+    );
+    expect(routerState()).toBe('null');
+    expect(window.history.state.usr).toBeNull();
   });
 
   it('follows a parameter that changes under it (back button, another picker)', () => {

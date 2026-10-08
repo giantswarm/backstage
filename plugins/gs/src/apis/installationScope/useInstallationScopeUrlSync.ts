@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
@@ -7,6 +7,7 @@ import {
   setInstallationScope,
   subscribeInstallationScope,
 } from './installationScopeStore';
+import { liveRouterState } from './routerState';
 
 /**
  * Keeps the installation scope and the URL's `?installation=` in step.
@@ -33,6 +34,7 @@ import {
  */
 export function useInstallationScopeUrlSync(): void {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { state: routerState } = useLocation();
   const { scope, restored } = useSyncExternalStore(
     subscribeInstallationScope,
     getInstallationScopeSnapshot,
@@ -70,8 +72,8 @@ export function useInstallationScopeUrlSync(): void {
           }
           return next;
         },
-        { replace: true },
+        { replace: true, state: liveRouterState(routerState) },
       );
     }
-  }, [url, scope, restored, setSearchParams]);
+  }, [url, scope, restored, setSearchParams, routerState]);
 }

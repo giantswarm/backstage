@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import type { InstallationInventoryEntry } from '../installationInventory/types';
 import { useInstallationInventory } from '../installationInventory/useInstallationInventory';
 import { useInstallations } from '../installations/useInstallations';
@@ -12,6 +12,7 @@ import {
   subscribeInstallationScope,
   type InstallationScope,
 } from './installationScopeStore';
+import { liveRouterState } from './routerState';
 import { selectPlatformInstallations } from './scopeSelection';
 
 export type UseInstallationScopeResult = {
@@ -56,6 +57,7 @@ export type UseInstallationScopeResult = {
  */
 export function useInstallationScope(): UseInstallationScopeResult {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { state: routerState } = useLocation();
   const urlScope = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
   const state = useSyncExternalStore(
     subscribeInstallationScope,
@@ -113,10 +115,10 @@ export function useInstallationScope(): UseInstallationScopeResult {
           }
           return params;
         },
-        { replace: true },
+        { replace: true, state: liveRouterState(routerState) },
       );
     },
-    [setSearchParams],
+    [setSearchParams, routerState],
   );
 
   // Forget the pin for real -- store, localStorage and the URL alike -- so a
