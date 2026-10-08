@@ -58,6 +58,9 @@ describe('useInstallationScopeUrlSync', () => {
   beforeEach(() => {
     window.localStorage.clear();
     __resetInstallationScopeForTests();
+    // The BrowserRouter test leaves its entry in jsdom's history, which
+    // `liveRouterState` would read over a MemoryRouter's own state.
+    window.history.replaceState(null, '', '/');
   });
 
   it('adopts the parameter of a deep link into the store', () => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
@@ -7,7 +7,7 @@ import {
   setInstallationScope,
   subscribeInstallationScope,
 } from './installationScopeStore';
-import { liveRouterState } from './routerState';
+import { useWriteScopeParam } from './useWriteScopeParam';
 
 /**
  * Keeps the installation scope and the URL's `?installation=` in step.
@@ -33,8 +33,8 @@ import { liveRouterState } from './routerState';
  * the same commit the selector first renders.
  */
 export function useInstallationScopeUrlSync(): void {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { state: routerState } = useLocation();
+  const [searchParams] = useSearchParams();
+  const writeScopeParam = useWriteScopeParam();
   const { scope, restored } = useSyncExternalStore(
     subscribeInstallationScope,
     getInstallationScopeSnapshot,
@@ -62,18 +62,7 @@ export function useInstallationScopeUrlSync(): void {
     const wanted = scope === ALL_INSTALLATIONS ? null : scope;
     if (url !== wanted) {
       lastUrl.current = wanted;
-      setSearchParams(
-        previous => {
-          const next = new URLSearchParams(previous);
-          if (wanted === null) {
-            next.delete(INSTALLATION_SCOPE_SEARCH_PARAM);
-          } else {
-            next.set(INSTALLATION_SCOPE_SEARCH_PARAM, wanted);
-          }
-          return next;
-        },
-        { replace: true, state: liveRouterState(routerState) },
-      );
+      writeScopeParam(scope);
     }
-  }, [url, scope, restored, setSearchParams, routerState]);
+  }, [url, scope, restored, writeScopeParam]);
 }

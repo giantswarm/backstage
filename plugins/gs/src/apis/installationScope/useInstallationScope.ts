@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import type { InstallationInventoryEntry } from '../installationInventory/types';
 import { useInstallationInventory } from '../installationInventory/useInstallationInventory';
 import { useInstallations } from '../installations/useInstallations';
@@ -12,8 +12,8 @@ import {
   subscribeInstallationScope,
   type InstallationScope,
 } from './installationScopeStore';
-import { liveRouterState } from './routerState';
 import { selectPlatformInstallations } from './scopeSelection';
+import { useWriteScopeParam } from './useWriteScopeParam';
 
 export type UseInstallationScopeResult = {
   /** `'all'`, or the name of the pinned installation. */
@@ -56,8 +56,8 @@ export type UseInstallationScopeResult = {
  * Runs under whichever react-query client is in context, for the inventory.
  */
 export function useInstallationScope(): UseInstallationScopeResult {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { state: routerState } = useLocation();
+  const [searchParams] = useSearchParams();
+  const writeScopeParam = useWriteScopeParam();
   const urlScope = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
   const state = useSyncExternalStore(
     subscribeInstallationScope,
@@ -105,20 +105,9 @@ export function useInstallationScope(): UseInstallationScopeResult {
   const setScope = useCallback(
     (next: InstallationScope) => {
       setInstallationScope(next);
-      setSearchParams(
-        previous => {
-          const params = new URLSearchParams(previous);
-          if (next === ALL_INSTALLATIONS) {
-            params.delete(INSTALLATION_SCOPE_SEARCH_PARAM);
-          } else {
-            params.set(INSTALLATION_SCOPE_SEARCH_PARAM, next);
-          }
-          return params;
-        },
-        { replace: true, state: liveRouterState(routerState) },
-      );
+      writeScopeParam(next);
     },
-    [setSearchParams, routerState],
+    [writeScopeParam],
   );
 
   // Forget the pin for real -- store, localStorage and the URL alike -- so a
