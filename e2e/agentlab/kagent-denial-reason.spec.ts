@@ -1,4 +1,4 @@
-import { expect, open, test } from './fixtures';
+import { expect, openReadyAgent, test } from './fixtures';
 
 /**
  * A kagent API denial names its reason (giantswarm/backstage#2360).
@@ -19,9 +19,9 @@ test('a refused kagent token shows the edge’s reason when a session does not s
   admin,
   labAgent,
 }) => {
-  await open(admin, labAgent.detailPath);
+  test.setTimeout(8 * 60_000);
+  await openReadyAgent(admin, labAgent);
   const start = admin.getByRole('button', { name: 'Start a session' });
-  await expect(start).toBeVisible();
 
   const swapped: string[] = [];
   await admin.route(

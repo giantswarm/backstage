@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { renderInTestApp } from '@backstage/test-utils';
 import { CollapsibleMarkdown } from './CollapsibleMarkdown';
 
 const TOGGLE_LABELS = { expand: 'Show all', collapse: 'Show less' };
@@ -17,6 +18,7 @@ function stubBottom(element: Element, bottom: number) {
 
 describe('CollapsibleMarkdown', () => {
   const RealResizeObserver = globalThis.ResizeObserver;
+  const RealScrollIntoView = Element.prototype.scrollIntoView;
 
   beforeAll(() => {
     globalThis.ResizeObserver = class {
@@ -39,6 +41,7 @@ describe('CollapsibleMarkdown', () => {
 
   afterAll(() => {
     globalThis.ResizeObserver = RealResizeObserver;
+    Element.prototype.scrollIntoView = RealScrollIntoView;
   });
 
   it('renders the markdown', () => {
@@ -164,5 +167,48 @@ describe('CollapsibleMarkdown', () => {
     fireEvent.focusIn(link);
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('expands when a #heading link points past the cut', async () => {
+    stubContentHeight(1000);
+    const scrolledTo: Element[] = [];
+    Element.prototype.scrollIntoView = function scrollIntoView(this: Element) {
+      scrolledTo.push(this);
+    };
+
+    await renderInTestApp(
+      <CollapsibleMarkdown
+        content={'[Upgrading](#upgrading)\n\n## Upgrading\n\nRead first.'}
+        toggleLabels={TOGGLE_LABELS}
+      />,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Show all' });
+    stubBottom(
+      document.getElementById(toggle.getAttribute('aria-controls')!)!,
+      250,
+    );
+    const heading = screen.getByRole('heading', { name: 'Upgrading' });
+    stubBottom(heading, 400);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Upgrading' }));
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(scrolledTo).toEqual([heading]));
+
+    // The heading keeps focus while the card collapses again, as in Safari,
+    // where clicking a button does not move focus.
+    fireEvent.click(screen.getByRole('button', { name: 'Show less' }));
+    expect(heading).toHaveFocus();
+    fireEvent.click(screen.getByRole('link', { name: 'Upgrading' }));
+
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await waitFor(() => expect(scrolledTo).toEqual([heading, heading]));
   });
 });

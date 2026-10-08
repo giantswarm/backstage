@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { gitHubApiRef } from '../../apis/github';
 import { fetchContent } from './utils/fetchContent';
@@ -23,7 +24,8 @@ export function useHelmChartReadme(
   const {
     data: readme,
     error: readmeError,
-    isLoading: isLoadingReadme,
+    isPending,
+    fetchStatus,
   } = useQuery({
     queryKey: ['readme', readmeUrl],
     queryFn: async () => {
@@ -41,6 +43,7 @@ export function useHelmChartReadme(
     },
     enabled: Boolean(readmeUrl),
   });
+  const isLoadingReadme = isAwaitingData({ isPending, fetchStatus });
 
   const isLoading = isLoadingTagManifest || isLoadingReadme;
   const error = tagManifestError || readmeError;

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { SelectFormField } from '../../UI/SelectFormField';
+import { describeErrors } from './helpers';
 import {
   SecretStore,
   useResources,
@@ -59,7 +60,7 @@ export const SecretStoreSelector = ({
   } else if (isLoading) {
     statusText = 'Loading list of secret stores...';
   } else if (errors.length > 0) {
-    statusText = errors.join(' ');
+    statusText = describeErrors(errors, 'secret stores');
   } else if (resources.length === 0) {
     statusText = 'No secret stores found for the selected cluster.';
   }
@@ -74,7 +75,7 @@ export const SecretStoreSelector = ({
     <SelectFormField
       id={id}
       label={label}
-      helperText={statusText ?? helperText}
+      helperText={statusText || helperText}
       required={required}
       disabled={isDisabled}
       error={error || errors.length > 0}

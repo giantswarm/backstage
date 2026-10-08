@@ -1,4 +1,4 @@
-import { expect, open, test } from './fixtures';
+import { expect, open, openReadyAgent, test } from './fixtures';
 import { lab } from './lab';
 import type { Page } from '@playwright/test';
 
@@ -63,13 +63,10 @@ test('a session started in the portal reports its state on the list', async ({
   admin,
   labAgent,
 }) => {
-  test.setTimeout(6 * 60_000);
+  test.setTimeout(10 * 60_000);
 
   // --- An agent to start from --------------------------------------------
-  await open(admin, labAgent.detailPath);
-  await expect(
-    admin.getByRole('button', { name: 'Start a session' }),
-  ).toBeVisible();
+  await openReadyAgent(admin, labAgent);
 
   let sessionPath: string | undefined;
   let failure: unknown;
@@ -159,12 +156,11 @@ test('the list distinguishes the three ways a state can be missing', async ({
   // Four sessions, one per outcome the column renders differently. Both reads
   // behind the list are answered here: a failed task read and a session the
   // summary never evaluated are not states the lab can be put into.
-  const instance = (id: string, name: string) => ({
+  const session = (id: string, name: string) => ({
     id,
     creator: 'admin@lab.local',
-    harness: { namespace: 'kagent', name: 'kagent' },
-    agentTemplate: { namespace: 'kagent', name: 'e2e-state-column' },
-    state: 'AGENT_INSTANCE_STATE_READY',
+    agent: { namespace: 'kagent', name: 'e2e-state-column' },
+    state: 'RUNTIME_STATE_READY',
     createdAt: '2026-09-18T09:00:00Z',
     updatedAt: '2026-09-18T09:05:00Z',
     name,
@@ -180,11 +176,11 @@ test('the list distinguishes the three ways a state can be missing', async ({
       }
       await route.fulfill({
         json: {
-          agentInstances: [
-            instance('e2e-waiting', 'Waiting on a human'),
-            instance('e2e-idle', 'Never run'),
-            instance('e2e-unreadable', 'Could not be read'),
-            instance('e2e-unevaluated', 'Never evaluated'),
+          sessions: [
+            session('e2e-waiting', 'Waiting on a human'),
+            session('e2e-idle', 'Never run'),
+            session('e2e-unreadable', 'Could not be read'),
+            session('e2e-unevaluated', 'Never evaluated'),
           ],
         },
       });

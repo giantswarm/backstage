@@ -70,7 +70,7 @@ export type AgentsContextValue = {
 const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
 
 /**
- * Lists kagent `AgentTemplate`s across every installation in the section's
+ * Lists kagent `Agent`s across every installation in the section's
  * scope that runs kagent (all namespaces) and exposes them as plain rows. Model
  * references are resolved against the ModelConfigs queried by
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
@@ -80,7 +80,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations whose inventory has the `kagent.dev` API group and
+  // Only query installations whose inventory has the `api.kagent.dev` API group and
   // whose access is healthy, home first (gs `useInstallationInventory`, one
   // `GET /apis` per installation shared by every tab), narrowed to the
   // section's scope: every one of them under "All installations", the pinned
@@ -140,7 +140,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     ? scopedInstallations
     : scopedInstallations.filter(installation => installation === home);
 
-  // Single AgentTemplate version (v1alpha3), so skip API version discovery — it
+  // Single Agent version (v1alpha3), so skip API version discovery — it
   // adds round-trips per cluster for no benefit here. `clustersData` is the raw
   // per-cluster list result (present, and possibly empty, only for clusters that
   // responded successfully); `resources` are those hydrated into Agent instances.
@@ -221,7 +221,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [clustersData, errors]);
 
   useEffect(() => {
-    // A 404 means the kagent.dev API group isn't installed on that cluster —
+    // A 404 means the api.kagent.dev API group isn't installed on that cluster —
     // kagent was uninstalled since the (hour-long) inventory answered. Treat it
     // as a successful empty read (zero agents), not a "couldn't read" failure:
     // the cluster is reachable and we can list it, there just are no Agents.

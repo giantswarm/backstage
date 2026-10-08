@@ -1,7 +1,8 @@
 import {
   deriveAutoUpgradeMode,
+  deriveAutoUpgradeSettings,
   deriveChartVersion,
-  getAutoUpgradeLabel,
+  describeAutoUpgrades,
   versionFromRevision,
 } from './getAutoUpgradeSettings';
 
@@ -169,11 +170,165 @@ describe('versionFromRevision', () => {
   });
 });
 
-describe('getAutoUpgradeLabel', () => {
-  it('returns human-readable labels', () => {
-    expect(getAutoUpgradeLabel('no-upgrades')).toBe('None');
-    expect(getAutoUpgradeLabel('patch-upgrades')).toBe('Patch');
-    expect(getAutoUpgradeLabel('minor-upgrades')).toBe('Minor and patch');
-    expect(getAutoUpgradeLabel('major-upgrades')).toBe('Any');
+describe('deriveAutoUpgradeSettings', () => {
+  it('reads the filter and the pre-release range', () => {
+    expect(
+      deriveAutoUpgradeSettings({
+        semver: '>=0.0.0-0',
+        semverFilter: '.*-rc\\..*',
+      }),
+    ).toEqual({
+      mode: 'major-upgrades',
+      semverFilter: '.*-rc\\..*',
+      includePrereleases: true,
+    });
+  });
+
+  it.each([
+    ['>=0.0.0', false],
+    ['>=0.0.0-0', true],
+    ['^1.2.3-rc.1', true],
+    ['1.2.3 - 2.0.0', false],
+    ['~1.2.3-0 || >=2.0.0', true],
+  ])('reads whether %s admits pre-releases', (semver, includePrereleases) => {
+    expect(deriveAutoUpgradeSettings({ semver }).includePrereleases).toBe(
+      includePrereleases,
+    );
+  });
+
+  it.each([
+    // Upper bounds
+    ['>=1.0.0 <3.0.0', '2.4.1'],
+    ['>=1.0.0-0 <3.0.0', '2.4.1'],
+    ['>=0.0.0-0 || 1.x', undefined],
+    // Shapes the mode's operator does not write
+    ['1.2.x', '1.2.3'],
+    ['~1', '1.4.0'],
+    ['^0.1.0', '0.1.2'],
+    // A range that admits no newer version
+    ['1.2.3', undefined],
+  ])('passes %s on to the custom range mode', (semver, currentVersion) => {
+    expect(
+      deriveAutoUpgradeSettings({ semver }, currentVersion).semverRange,
+    ).toBe(semver);
+  });
+
+  it.each([
+    ['~1.2.3', '1.2.3'],
+    ['^1.2.3', '1.2.5'],
+    ['>=1.2.3', undefined],
+    ['>= 1.2.3', undefined],
+    ['>=3.2.3-rc.1', '3.2.3-rc.1'],
+    // The floor moves to the current version; Flux upgrades as before
+    ['>=0.0.0-0', '3.2.3'],
+  ])(
+    'leaves %s to the fixed modes, which write the same upgrades back',
+    (semver, currentVersion) => {
+      expect(
+        deriveAutoUpgradeSettings({ semver }, currentVersion).semverRange,
+      ).toBeUndefined();
+    },
+  );
+
+  it('ignores an empty filter', () => {
+    expect(
+      deriveAutoUpgradeSettings({ semver: '>=0.0.0-0', semverFilter: '' })
+        .semverFilter,
+    ).toBeUndefined();
+  });
+
+  it('ignores filter and range where Flux does: without a range or with a digest', () => {
+    const none = {
+      mode: 'no-upgrades',
+      semverFilter: undefined,
+      includePrereleases: false,
+    };
+    expect(
+      deriveAutoUpgradeSettings({ tag: '1.2.3', semverFilter: '.*-rc\\..*' }),
+    ).toEqual(none);
+    expect(
+      deriveAutoUpgradeSettings({
+        semver: '>=0.0.0-0',
+        semverFilter: '.*-rc\\..*',
+        digest: 'sha256:abc',
+      }),
+    ).toEqual(none);
+    expect(deriveAutoUpgradeSettings(undefined)).toEqual(none);
+  });
+});
+
+describe('describeAutoUpgrades', () => {
+  const describe_ = (semver: string, semverFilter?: string) =>
+    describeAutoUpgrades(deriveAutoUpgradeSettings({ semver, semverFilter }));
+
+  // The seven scenarios of the SemVer automatic upgrades guide, `semver` and
+  // `semverFilter` as it documents them.
+  it.each([
+    ['1. stable, patch only', '1.2.x', undefined, 'Patch'],
+    ['2. stable, patch or minor', '1.x', undefined, 'Minor and patch'],
+    ['3. any stable tag', '>=0.0.0', undefined, 'Any'],
+    [
+      '4. dev builds only',
+      '>=0.0.0-0',
+      '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$',
+      'Dev builds only',
+    ],
+    [
+      '5. release candidates only',
+      '>=0.0.0-0',
+      '.*-rc\\..*',
+      'Release candidates only',
+    ],
+    [
+      '6. any RC or stable tag',
+      '>=0.0.0-0',
+      '^[0-9]+\\.[0-9]+\\.[0-9]+(-rc\\.[0-9]+)?$',
+      'Release candidates or stable',
+    ],
+    ['7. any tag', '>=0.0.0-0', undefined, 'Any, including pre-releases'],
+  ])('scenario %s', (_scenario, semver, semverFilter, label) => {
+    expect(describe_(semver, semverFilter)).toEqual({ label });
+  });
+
+  it('shows a filter the guide does not document as its regular expression', () => {
+    expect(describe_('>=0.0.0-0', '^1\\.2\\.4-rc\\..*')).toEqual({
+      label: 'Tags matching',
+      filter: '^1\\.2\\.4-rc\\..*',
+    });
+    expect(describe_('~1.2.3-0', '^1\\.2\\.4-rc\\..*')).toEqual({
+      label: 'Patch, tags matching',
+      filter: '^1\\.2\\.4-rc\\..*',
+    });
+  });
+
+  it('keeps the mode of a range narrower than any', () => {
+    expect(describe_('^1.2.3-0', '.*-rc\\..*')).toEqual({
+      label: 'Minor and patch, release candidates only',
+    });
+  });
+
+  it('flags a release stage the range admits no pre-release for', () => {
+    expect(describe_('>=0.0.0', '.*-rc\\..*')).toEqual({
+      label: 'Release candidates only, but the range admits no pre-release',
+    });
+  });
+
+  it('never resolves a filter to an Object.prototype member', () => {
+    for (const filter of ['constructor', 'toString', '__proto__']) {
+      expect(describe_('>=0.0.0-0', filter)).toEqual({
+        label: 'Tags matching',
+        filter,
+      });
+    }
+  });
+
+  it('shows None when there are no upgrades to filter', () => {
+    expect(
+      describeAutoUpgrades({
+        mode: 'no-upgrades',
+        semverFilter: '.*-rc\\..*',
+        includePrereleases: true,
+      }),
+    ).toEqual({ label: 'None' });
   });
 });

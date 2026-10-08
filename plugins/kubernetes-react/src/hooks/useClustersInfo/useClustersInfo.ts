@@ -1,12 +1,13 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useIsRestoring, useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 export function useClustersInfo() {
   const isRestoring = useIsRestoring();
   const kubernetesApi = useApi(kubernetesApiRef);
 
-  const { data: clusters, isLoading: isLoadingClusters } = useQuery({
+  const clustersQuery = useQuery({
     queryKey: ['kubernetes-clusters'],
     queryFn: async () => {
       const kuberentesClusters = await kubernetesApi.getClusters();
@@ -16,7 +17,7 @@ export function useClustersInfo() {
   });
 
   return {
-    clusters: clusters ?? [],
-    isLoading: isRestoring || isLoadingClusters,
+    clusters: clustersQuery.data ?? [],
+    isLoading: isRestoring || isAwaitingData(clustersQuery),
   };
 }

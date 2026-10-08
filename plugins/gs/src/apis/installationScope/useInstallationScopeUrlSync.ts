@@ -7,6 +7,7 @@ import {
   setInstallationScope,
   subscribeInstallationScope,
 } from './installationScopeStore';
+import { useWriteScopeParam } from './useWriteScopeParam';
 
 /**
  * Keeps the installation scope and the URL's `?installation=` in step.
@@ -32,7 +33,8 @@ import {
  * the same commit the selector first renders.
  */
 export function useInstallationScopeUrlSync(): void {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const writeScopeParam = useWriteScopeParam();
   const { scope, restored } = useSyncExternalStore(
     subscribeInstallationScope,
     getInstallationScopeSnapshot,
@@ -60,18 +62,7 @@ export function useInstallationScopeUrlSync(): void {
     const wanted = scope === ALL_INSTALLATIONS ? null : scope;
     if (url !== wanted) {
       lastUrl.current = wanted;
-      setSearchParams(
-        previous => {
-          const next = new URLSearchParams(previous);
-          if (wanted === null) {
-            next.delete(INSTALLATION_SCOPE_SEARCH_PARAM);
-          } else {
-            next.set(INSTALLATION_SCOPE_SEARCH_PARAM, wanted);
-          }
-          return next;
-        },
-        { replace: true },
-      );
+      writeScopeParam(scope);
     }
-  }, [url, scope, restored, setSearchParams]);
+  }, [url, scope, restored, writeScopeParam]);
 }

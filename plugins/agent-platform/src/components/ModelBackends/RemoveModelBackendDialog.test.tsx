@@ -10,6 +10,7 @@ const write: jest.Mocked<BackendWriteState> = {
   dryRunRemove: jest.fn(),
   remove: jest.fn(),
   isBusy: false,
+  isWriting: false,
   failure: undefined,
   reset: jest.fn(),
 };

@@ -12,8 +12,10 @@ import {
   TextAreaField,
   TextField,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
+import { useOpenGeneration } from '../../hooks/useOpenGeneration';
 import {
   BACKEND_KIND_LABEL,
   BACKEND_KINDS,
@@ -160,6 +162,7 @@ export function AddModelBackendDialog({
   const [applied, setApplied] = useState<AddBackendResult>();
   const [committed, setCommitted] = useState<AddBackendResult>();
   const write = useBackendWrite(installation);
+  const startAnswer = useOpenGeneration(isOpen);
 
   useEffect(() => {
     if (!installation && installations.length > 0) {
@@ -212,8 +215,12 @@ export function AddModelBackendDialog({
     if (!input) {
       return;
     }
+    const isCurrent = startAnswer();
     try {
-      setReview(await write.dryRunAdd(input));
+      const reviewed = await write.dryRunAdd(input);
+      if (isCurrent()) {
+        setReview(reviewed);
+      }
     } catch {
       // Shown from `write.failure`.
     }
@@ -243,12 +250,6 @@ export function AddModelBackendDialog({
     }
   };
 
-  const close = (next: boolean) => {
-    if (!isBusy) {
-      onOpenChange(next);
-    }
-  };
-
   const isHost = kind ? isHostBackendKind(kind) : false;
   const endpointInvalid =
     form.endpoint.length > 0 && !isValidEndpoint(form.endpoint);
@@ -260,9 +261,7 @@ export function AddModelBackendDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={close}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
@@ -470,8 +469,8 @@ export function AddModelBackendDialog({
           <Flex gap="2" justify="end">
             <Button
               variant="secondary"
-              onPress={() => close(false)}
-              isDisabled={isBusy}
+              onPress={() => onOpenChange(false)}
+              isDisabled={write.isWriting}
             >
               {done ? 'Close' : 'Cancel'}
             </Button>

@@ -159,6 +159,34 @@ describe('PullModelDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 
+  it('cannot be dismissed while the pull is on its way', async () => {
+    // The header's X routes through onOpenChange, past isDismissable; closing
+    // mid-flight would leave the outcome with nowhere to land.
+    let answer: (value: unknown) => void = () => {};
+    pullModel.mockReturnValue(
+      new Promise(resolve => {
+        answer = resolve;
+      }),
+    );
+    await render();
+    const dialog = screen.getByRole('dialog');
+
+    await userEvent.type(
+      within(dialog).getByLabelText(/Model reference/),
+      'qwen2.5:0.5b',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await within(dialog).findByRole('button', { name: /Starting/ });
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Close' }),
+    );
+    await userEvent.keyboard('{Escape}');
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    answer({ job, created: true });
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+  });
+
   it('stays open and shows the failure when the backend refuses', async () => {
     pullModel.mockRejectedValue(
       new Error('backend_error: registry unreachable'),

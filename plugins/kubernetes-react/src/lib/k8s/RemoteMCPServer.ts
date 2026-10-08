@@ -1,7 +1,7 @@
-import { crds } from '@giantswarm/k8s-types';
 import { KubeObject } from './KubeObject';
+import { KAGENT_API_GROUP, type RemoteMCPServerInterface } from './kagentApi';
 
-export type RemoteMCPServerInterface = crds.kagent.v1alpha3.RemoteMCPServer;
+export type { RemoteMCPServerInterface } from './kagentApi';
 
 /** One `spec.headersFrom[]` entry: a header the server is called with, a literal value or a ConfigMap/Secret key. */
 export type RemoteMCPServerHeader = NonNullable<
@@ -9,7 +9,7 @@ export type RemoteMCPServerHeader = NonNullable<
 >[number];
 
 /**
- * `kagent.dev/v1alpha3 RemoteMCPServer` — an MCP server an `AgentTemplate`
+ * `api.kagent.dev/v1alpha3 RemoteMCPServer` — an MCP server an agent's template
  * binds by name in its own namespace.
  *
  * On kagent API v2 the headers an agent calls a server with live here, on
@@ -21,7 +21,7 @@ export type RemoteMCPServerHeader = NonNullable<
  */
 export class RemoteMCPServer extends KubeObject<RemoteMCPServerInterface> {
   static readonly supportedVersions = ['v1alpha3'] as const;
-  static readonly group = 'kagent.dev';
+  static readonly group = KAGENT_API_GROUP;
   static readonly kind = 'RemoteMCPServer' as const;
   static readonly plural = 'remotemcpservers';
 

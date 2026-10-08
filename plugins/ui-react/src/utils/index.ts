@@ -16,3 +16,6 @@ export {
 export { stopRowPress } from './rowPress';
 export { MENU_WIDTH } from './menuWidth';
 export { createMarkdownLinkResolver } from './resolveMarkdownLink';
+export { dialogDismissLock } from './dialogDismissLock';
+export { isAwaitingData } from './isAwaitingData';
+export { liveRouterState } from './liveRouterState';

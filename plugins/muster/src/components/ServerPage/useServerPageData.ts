@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../apis';
 import { useToolCatalogue } from '../shared';
 import { MCPServer } from '../../lib/k8s';
@@ -34,7 +35,11 @@ export function useServerTools(
   installation: string,
   { enabled }: { enabled: boolean },
 ): ServerTools {
-  const { data, isLoading, error } = useToolCatalogue(installation, enabled);
+  const { data, error, isPending, fetchStatus } = useToolCatalogue(
+    installation,
+    enabled,
+  );
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   const prefixes = useMemo(() => serverPrefixInfos(servers), [servers]);
   const tools = useMemo(

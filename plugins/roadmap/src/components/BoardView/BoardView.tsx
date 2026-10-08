@@ -10,7 +10,7 @@ import {
 import { Alert } from '@material-ui/lab';
 import { EmptyState, Progress } from '@backstage/core-components';
 import { RoadmapField, RoadmapItemFilters } from '../../apis';
-import { useItems, useUpdateStatus } from '../../hooks';
+import { useBoardItems, useUpdateStatus } from '../../hooks';
 import { groupByStatus, NO_STATUS, statusColumns } from '../../lib/board';
 import { ItemCard } from './ItemCard';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
@@ -69,18 +69,20 @@ export function BoardView(props: {
   const { filters, schemaFields } = props;
   const classes = useStyles();
   const [dropColumn, setDropColumn] = useState<string | null>(null);
-  const { data, isLoading, error } = useItems(filters);
+  const columns = statusColumns(schemaFields);
+  const board = useBoardItems(filters, columns);
   const updateStatus = useUpdateStatus();
 
-  if (isLoading) {
+  // Nothing read at all: the error says why (a missing GitHub grant offers
+  // the connect step), a board still on its way shows one progress bar.
+  const nothingRead = board.items.length === 0;
+  if (nothingRead && board.error && !board.isPending) {
+    return <RoadmapErrorAlert error={board.error as Error} />;
+  }
+  if (board.allPending) {
     return <Progress />;
   }
-  if (error) {
-    return <RoadmapErrorAlert error={error as Error} />;
-  }
-
-  const items = data?.items ?? [];
-  if (items.length === 0) {
+  if (nothingRead && !board.isPending && !board.error) {
     return (
       <EmptyState
         missing="content"
@@ -90,8 +92,7 @@ export function BoardView(props: {
     );
   }
 
-  const columns = statusColumns(schemaFields);
-  const groups = groupByStatus(items, columns);
+  const groups = groupByStatus(board.items, columns);
   // Items whose status is not a known column (or missing) still need a home.
   const extraColumns = [...groups.keys()].filter(
     column => !columns.includes(column),
@@ -117,6 +118,7 @@ export function BoardView(props: {
 
   return (
     <>
+      {board.error ? <RoadmapErrorAlert error={board.error as Error} /> : null}
       {updateStatus.error ? (
         <Alert
           className={classes.mutationError}
@@ -152,13 +154,20 @@ export function BoardView(props: {
                 <Typography className={classes.columnTitle}>
                   {column}
                 </Typography>
-                <Chip
-                  className={classes.countChip}
-                  size="small"
-                  label={columnItems.length}
-                />
+                {board.pending.has(column) ? null : (
+                  <Chip
+                    className={classes.countChip}
+                    size="small"
+                    label={
+                      board.failed.has(column)
+                        ? 'not loaded'
+                        : columnItems.length
+                    }
+                  />
+                )}
               </Box>
               <Box className={classes.columnBody}>
+                {board.pending.has(column) ? <Progress /> : null}
                 {columnItems.map(item => (
                   <ItemCard
                     key={item.id}

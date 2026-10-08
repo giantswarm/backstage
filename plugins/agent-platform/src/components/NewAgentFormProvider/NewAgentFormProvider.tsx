@@ -8,6 +8,7 @@ import {
 
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
+import { egressProblem, parseEgressText } from '../../lib/egress';
 import type { HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
@@ -36,6 +37,11 @@ export type NewAgentFormState = {
   droppedHarness: string | undefined;
   systemMessage: string;
   /**
+   * Extra HTTP(S) origins the agent may reach, one per line as typed
+   * (`Agent.spec.egress`). Empty means none beyond what its revision compiles.
+   */
+  egressText: string;
+  /**
    * Skills the user picked, in selection order, each with the commit the
    * skills step showed — the pin agent-manager writes. Optional — may be empty.
    */
@@ -60,6 +66,7 @@ export type NewAgentFormContextValue = {
   /** Undefined picks the platform Harness. */
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
+  setEgressText: (egressText: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
   /**
@@ -103,11 +110,12 @@ const initialState: NewAgentFormState = {
   // Empty means "use the chart default": the spec sent to agent-manager omits
   // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
   systemMessage: '',
+  egressText: '',
   selectedSkills: [],
   toolset: [],
 };
 
-// RFC1123 DNS label: the slug becomes the AgentTemplate name and the
+// RFC1123 DNS label: the slug becomes the Agent name and the
 // HelmRelease name, so it must be a valid k8s object name
 // (lowercase alphanumerics and hyphens, no leading/trailing hyphen, ≤63 chars).
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -133,6 +141,10 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
     const promptProblem = systemMessageProblem(state.systemMessage);
     if (promptProblem) {
       validationErrors.push(promptProblem);
+    }
+    const egressIssue = egressProblem(parseEgressText(state.egressText));
+    if (egressIssue) {
+      validationErrors.push(egressIssue);
     }
     if (!state.name.trim()) {
       validationErrors.push('Name is required');
@@ -190,8 +202,8 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      // The ModelConfig's namespace is the agent's, and a Harness admits only
-      // templates of its own namespace, so a model in another namespace drops
+      // The ModelConfig's namespace is the agent's, and an Agent names a
+      // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick.
       selectModelConfig: (name, namespace) =>
         setState(prev =>
@@ -209,6 +221,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
         setState(prev => ({ ...prev, harness, droppedHarness: undefined })),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
+      setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
       toggleToolsetSelector: selector =>
         setState(prev => ({
           ...prev,

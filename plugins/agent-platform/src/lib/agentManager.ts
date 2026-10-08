@@ -56,9 +56,9 @@ export type AgentSkillEntry =
  * omitted field keeps the chart's default. There is no per-skill credential.
  */
 export type AgentSpec = {
-  /** The ModelConfig's namespace: where the release and the template land. */
+  /** The ModelConfig's namespace: where the release and the Agent land. */
   namespace: string;
-  /** DNS-1123 technical name: the HelmRelease and AgentTemplate name. */
+  /** DNS-1123 technical name: the HelmRelease and Agent object name. */
   name: string;
   displayName: string;
   description?: string;
@@ -66,8 +66,9 @@ export type AgentSpec = {
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
   /**
-   * The harness label value of a Harness in `namespace` (chart
-   * `agent.harness`). Omitted, the platform Harness. Fixed at create.
+   * The name of a Harness in `namespace` the agent runs on (chart
+   * `agent.harness`, the Agent's `spec.harnessRef.name`). Omitted, the
+   * platform Harness. Fixed at create.
    */
   harness?: string;
   /** Avatar URL (chart `agent.iconUrl`, rendered as an annotation). */
@@ -75,6 +76,11 @@ export type AgentSpec = {
   skills?: AgentSkillEntry[];
   /** The toolset selectors exactly as the Tools step composed them. */
   toolset: string[];
+  /**
+   * HTTP(S) origins the agent may reach besides what its revision compiles
+   * (`Agent.spec.egress`), such as `https://github.com:443`.
+   */
+  egress?: string[];
 };
 
 export type AgentManagerChart = {
@@ -103,6 +109,7 @@ export type AgentManagerInfo = {
   /** `caller` when every write runs as the signed-in person. */
   identity: string;
   apiVersions: {
+    agent: string;
     agentTemplate: string;
     harness: string;
     remoteMcpServer: string;
@@ -148,9 +155,16 @@ export type ValidateAgentResult = {
 
 export type AgentStatusVerdict = 'ready' | 'progressing' | 'failed' | 'unknown';
 
-/** One admitting Harness's report on the template (`status.harnesses[]`). */
-export type HarnessStatus = {
-  harness: string;
+/**
+ * The Agent object's own status as agent-manager reads it: the Harness it
+ * names (`spec.harnessRef.name`) and the controller's verdict on it.
+ */
+export type AgentObjectStatus = {
+  /** False while the HelmRelease has not rendered the Agent yet. */
+  exists: boolean;
+  generation?: number;
+  observedGeneration?: number;
+  harness?: string;
   ready: boolean | null;
   accepted: boolean | null;
   resolvedRefs: boolean | null;
@@ -166,12 +180,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
-  template?: {
-    exists: boolean;
-    generation?: number;
-    observedGeneration?: number;
-    harnesses: HarnessStatus[];
-  };
+  agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
     ready: boolean | null;
@@ -205,8 +214,8 @@ export type CommitAgentResult = {
 };
 
 /**
- * The verdict a create is done at: the template is ready on the platform
- * Harness, or it failed. `progressing` and `unknown` keep polling.
+ * The verdict a create is done at: the Agent is ready on its Harness, or it
+ * failed. `progressing` and `unknown` keep polling.
  */
 export function isSettledVerdict(verdict: AgentStatusVerdict): boolean {
   return verdict === 'ready' || verdict === 'failed';
@@ -217,11 +226,11 @@ export function isSettledVerdict(verdict: AgentStatusVerdict): boolean {
  * that was already there.
  *
  * A verdict alone cannot say: agent-manager writes the **HelmRelease**, and
- * helm-controller re-renders the AgentTemplate a few seconds later, so the
+ * helm-controller re-renders the Agent a few seconds later, so the
  * first `get_agent_status` after an `update_agent` on an agent that was already
  * `ready` answers `ready` — for the revision before the write. Comparing
  * against the generation read immediately before the write is what tells them
- * apart: the template's generation has to have moved past it, and the
+ * apart: the Agent's generation has to have moved past it, and the
  * controller has to have caught up with the new one.
  *
  * `observedGeneration` is optional in the status (the same caveat the Agent
@@ -240,11 +249,11 @@ export function hasReachedWrittenRevision(
   if (fromGeneration === undefined) {
     return true;
   }
-  const generation = status?.template?.generation;
+  const generation = status?.agent?.generation;
   if (typeof generation !== 'number' || generation <= fromGeneration) {
     return false;
   }
-  const observed = status?.template?.observedGeneration;
+  const observed = status?.agent?.observedGeneration;
   return typeof observed !== 'number' || observed >= generation;
 }
 
@@ -359,7 +368,7 @@ export function helmInstallCommand(
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
  * desired state lives in git and a live write is refused; `none` — a bare
- * `AgentTemplate` with no release behind it, refused as well.
+ * `Agent` object with no release behind it, refused as well.
  */
 export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
 
@@ -379,13 +388,13 @@ export type AgentHelmReleaseRef = {
 /**
  * `get_agent`: one agent as agent-manager reads it back — the fields the edit
  * form is pre-filled from, the skills as pinned (a git commit or an OCI
- * digest), the declared toolset, the per-Harness status and the HelmRelease
+ * digest), the declared toolset, the Agent object's status and the HelmRelease
  * values (the chart contract). Mirrors `Agent` in `internal/agents/types.go`.
  */
 export type AgentManagerAgent = {
   name: string;
   namespace: string;
-  /** False while the release has not rendered the template (yet). */
+  /** False while the release has not rendered the Agent object (yet). */
   exists: boolean;
   displayName?: string;
   description?: string;
@@ -398,7 +407,11 @@ export type AgentManagerAgent = {
   /** No toolset declared, muster bound: sees every tool the gateway exposes. */
   implicitFullAccess?: boolean;
   ready: boolean | null;
-  harnesses?: HarnessStatus[];
+  /** The Harness that runs the agent (`spec.harnessRef.name`). */
+  harness?: string;
+  /** The extra HTTP(S) origins the agent may reach (`spec.egress`). */
+  egress?: string[];
+  status?: AgentObjectStatus;
   managed: AgentManagedBy;
   helmRelease?: AgentHelmReleaseRef;
   /** The HelmRelease's inline values, when a release owns the agent. */
@@ -433,6 +446,8 @@ export type AgentUpdate = {
   iconUrl?: string;
   skills?: AgentSkillEntry[];
   toolset?: string[];
+  /** Replaces the whole list; an empty list clears it. */
+  egress?: string[];
   refreshSkills?: boolean;
 };
 
@@ -462,7 +477,7 @@ export type DeleteAgentResult = {
   name: string;
   namespace: string;
   helmReleaseDeleted: boolean;
-  agentTemplateDeleted?: boolean;
+  agentDeleted?: boolean;
   remoteMcpServerDeleted?: boolean;
   ociRepositoryDeleted: boolean;
   ociRepositoryKept?: string;

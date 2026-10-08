@@ -22,6 +22,7 @@ import classNames from 'classnames';
 import { AIChatButton } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { CopyCommandMenu } from './CopyCommandMenu';
 import { FluxResourceActions } from './FluxResourceActions';
+import { ManifestButton } from './ManifestButton';
 import { ResourceMetadata } from './ResourceMetadata';
 import { buildResourceAiChatPrompt } from './utils/buildResourceAiChatPrompt';
 import { makeResourceCardColorVariants } from './utils/makeResourceCardColorVariants';
@@ -275,6 +276,7 @@ export const ResourceCard = ({
             <Flex align="center" mt="2" gap="2">
               <FluxResourceActions resource={resource} />
               <CopyCommandMenu resource={resource} />
+              <ManifestButton resource={resource} />
               <AIChatButton
                 troubleshoot={aiChatPrompt.troubleshoot}
                 items={[{ message: aiChatPrompt.message }]}

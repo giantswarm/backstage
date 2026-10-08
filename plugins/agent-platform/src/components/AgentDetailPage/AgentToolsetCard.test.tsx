@@ -58,16 +58,19 @@ type ToolEntry = {
 function makeAgent(tools: ToolEntry[]) {
   return new Agent(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {
-        modelConfig: { name: 'opus' },
-        tools: tools.map(tool => ({
-          mcp: {
-            server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name },
-          },
-        })),
+        harnessRef: { name: 'kagent' },
+        template: {
+          modelConfig: { name: 'opus' },
+          tools: tools.map(tool => ({
+            mcp: {
+              server: { kind: 'RemoteMCPServer', name: tool.mcpServer.name },
+            },
+          })),
+        },
       },
     } as never,
     'gazelle',
@@ -82,7 +85,7 @@ const GATEWAY = { name: 'pr-reviewer' };
 function carrier(toolset?: string) {
   return new RemoteMCPServer(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
+      apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'RemoteMCPServer',
       metadata: { name: 'pr-reviewer', namespace: 'kagent' },
       spec: {

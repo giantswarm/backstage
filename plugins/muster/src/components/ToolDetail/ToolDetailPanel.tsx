@@ -10,7 +10,10 @@ import {
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  YamlEditorFormField,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
 import {
@@ -86,7 +89,9 @@ export function ToolDetailPanel({
     setFieldErrors({});
   }, [storageKey]);
 
-  const { data, isLoading, error } = useToolDescription(name, installation);
+  const description = useToolDescription(name, installation);
+  const { data, error } = description;
+  const isLoading = isAwaitingData(description);
 
   const fields = useMemo(() => schemaFields(data?.inputSchema), [data]);
 

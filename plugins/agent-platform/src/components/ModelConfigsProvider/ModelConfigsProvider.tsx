@@ -75,7 +75,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
 
-  // Only query installations whose inventory has the `kagent.dev` API group and
+  // Only query installations whose inventory has the `api.kagent.dev` API group and
   // whose access is healthy, home first (gs `useInstallationInventory`),
   // narrowed to the section's scope: the fleet-wide query fans out neither to
   // clusters without kagent (a 404 per installation per tab before) nor to
@@ -156,7 +156,7 @@ export function ModelConfigsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ModelConfigsContextValue>(() => {
     const withModels = new Set(resources.map(mc => mc.cluster));
 
-    // A 404 means the kagent.dev API group has gone since the (hour-long)
+    // A 404 means the api.kagent.dev API group has gone since the (hour-long)
     // inventory answered, so the cluster simply has no ModelConfigs — not a
     // "couldn't read" failure. Only genuine failures (403 forbidden,
     // unreachable) that produced no models are surfaced.

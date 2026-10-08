@@ -67,7 +67,7 @@ describe('useUpdateAgent', () => {
       requestedBy: 'admin@lab.local',
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['cluster', 'gazelle', 'get', 'kagent.dev'],
+      queryKey: ['cluster', 'gazelle', 'get', 'api.kagent.dev'],
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: [
@@ -115,7 +115,7 @@ describe('useUpdateAgent', () => {
     });
   });
 
-  it('reads the template generation before writing, and hands it back', async () => {
+  it('reads the Agent generation before writing, and hands it back', async () => {
     // The progress on the detail page needs it to tell this write's verdict
     // from the one that was already there.
     callTool
@@ -124,7 +124,7 @@ describe('useUpdateAgent', () => {
         namespace: 'kagent',
         verdict: 'ready',
         summary: 'Ready.',
-        template: { exists: true, generation: 7, observedGeneration: 7 },
+        agent: { exists: true, generation: 7, observedGeneration: 7 },
       })
       .mockResolvedValue({
         agent: { name: 'pr-reviewer', namespace: 'kagent' },

@@ -1,5 +1,6 @@
 import type { AgentSkillEntry, AgentSpec } from './agentManager';
 import type { DiscoveredSkill } from './skills';
+import { parseEgressText } from './egress';
 import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
@@ -43,13 +44,17 @@ export function agentSpecOf(
     spec.systemMessage = state.systemMessage;
   }
   if (state.harness) {
-    spec.harness = state.harness.admits;
+    spec.harness = state.harness.name;
   }
   if (options.iconUrl) {
     spec.iconUrl = options.iconUrl;
   }
   if (state.selectedSkills.length > 0) {
     spec.skills = state.selectedSkills.map(skillEntryOf);
+  }
+  const egress = parseEgressText(state.egressText);
+  if (egress.length > 0) {
+    spec.egress = egress;
   }
   return spec;
 }

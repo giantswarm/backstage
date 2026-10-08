@@ -18,6 +18,7 @@ import {
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTemplateSecrets } from '@backstage/plugin-scaffolder-react';
 import { isManagedByFlux } from '@giantswarm/backstage-plugin-flux-react';
 import { MultiSourceDeploymentPickerProps } from './schema';
@@ -162,7 +163,7 @@ export const MultiSourceDeploymentPicker = ({
   });
 
   const resourceQueriesLoading =
-    resourceQueries.length > 0 && resourceQueries.some(q => q.isLoading);
+    resourceQueries.length > 0 && resourceQueries.some(q => isAwaitingData(q));
   const isLoading = enabled && (helmReleaseLoading || resourceQueriesLoading);
 
   // Build currentValueSources from fetched resources

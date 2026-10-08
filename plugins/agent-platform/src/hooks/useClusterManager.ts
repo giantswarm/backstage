@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
@@ -74,13 +75,14 @@ export function useClusterManagerInfo(
   installation: string | undefined,
 ): ClusterManagerInfoState {
   const client = useClusterManagerClient(installation);
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterClusterManagerInfoQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.getInfo(),
     staleTime: 60_000,
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
     info: data,
     isLoading: Boolean(client) && isLoading,
@@ -95,13 +97,14 @@ export function useClusterManagerInfo(
  */
 export function useManagedClusters(installation: string | undefined) {
   const client = useClusterManagerClient(installation);
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, error, refetch, isPending, fetchStatus } = useQuery({
     queryKey: musterClustersQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.listClusters(),
     staleTime: 30_000,
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
     clusters: data?.clusters ?? [],
     clusterApiNote: clusterApiNote(data?.clusterApi),
@@ -126,13 +129,14 @@ export function useCreateNodePoolSchema(
   installation: string | undefined,
 ): CreateNodePoolSchemaState {
   const client = useClusterManagerClient(installation);
-  const { data, isLoading } = useQuery({
+  const { data, isPending, fetchStatus } = useQuery({
     queryKey: musterCreateNodePoolSchemaQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.createNodePoolSchema(),
     staleTime: 5 * 60_000,
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
   return { schema: data, isLoading: Boolean(client) && isLoading };
 }
 
@@ -252,7 +256,8 @@ export function useGpuNodePools(installations: string[]) {
     caches,
     notes,
     errors,
-    isLoading: Boolean(musterApi) && queries.some(query => query.isLoading),
+    isLoading:
+      Boolean(musterApi) && queries.some(query => isAwaitingData(query)),
   };
 }
 
@@ -308,6 +313,8 @@ export type NodePoolWriteState = {
     options: { mode: WriteMode; dryRun?: boolean },
   ) => Promise<NodePoolWriteResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: NodePoolWriteFailure | undefined;
   reset: () => void;
 };
@@ -434,6 +441,10 @@ export function useNodePoolWrite(
       [removeCacheAsync],
     ),
     isBusy: [dryRun, create, remove, removeCache].some(m => m.isPending),
+    isWriting:
+      create.isPending ||
+      remove.isPending ||
+      (removeCache.isPending && !removeCache.variables?.options.dryRun),
     failure,
     reset,
   };
@@ -442,13 +453,14 @@ export function useNodePoolWrite(
 /** `list_releases` on one installation: what the Create cluster dialog offers. */
 export function useClusterReleases(installation: string | undefined) {
   const client = useClusterManagerClient(installation);
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterClusterReleasesQueryKey(installation ?? ''),
     enabled: Boolean(client),
     queryFn: () => client!.listReleases(),
     staleTime: 5 * 60_000,
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
     providers: data?.providers ?? [],
     releases: data?.releases ?? [],
@@ -469,6 +481,8 @@ export type ClusterWriteState = {
     options: { mode: WriteMode; dryRun?: boolean },
   ) => Promise<ClusterWriteResult>;
   isBusy: boolean;
+  /** A write that changes something is on its way; a dry run is not one. */
+  isWriting: boolean;
   failure: NodePoolWriteFailure | undefined;
   reset: () => void;
 };
@@ -527,6 +541,9 @@ export function useClusterWrite(
       [removeAsync],
     ),
     isBusy: create.isPending || remove.isPending,
+    isWriting: [create, remove].some(
+      m => m.isPending && !m.variables?.options.dryRun,
+    ),
     failure,
     reset,
   };

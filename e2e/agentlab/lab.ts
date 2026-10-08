@@ -37,7 +37,7 @@ export const lab = {
    */
   mcpKubernetes: `${cluster}-mcp-kubernetes`,
   /** The lab's kind node, the one the platform's workloads run on. */
-  kindNode: `${cluster}-control-plane`,
+  kindNode: process.env.AGENTLAB_KIND_NODE ?? `${cluster}-control-plane`,
   /**
    * The lab's Ollama as model-manager reaches it from the kind node: the
    * host on the kind docker network (`docker network inspect kind`, the

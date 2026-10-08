@@ -82,9 +82,9 @@ describe('NewMcpServerAuthPage', () => {
     const choices = screen.getAllByRole('radio');
     expect(choices.map(c => c.getAttribute('aria-label'))).toEqual([
       'No authentication',
-      'Sign in with your own account',
-      'Platform SSO',
-      'AWS request signing (SigV4)',
+      'Own account (OAuth sign-in)',
+      'Platform SSO (forwarded token)',
+      'AWS request signing (SigV4, shared identity)',
     ]);
     expect(
       screen.getByRole('radio', { name: 'No authentication' }),
@@ -95,7 +95,7 @@ describe('NewMcpServerAuthPage', () => {
     await renderAuthStep();
 
     await userEvent.click(
-      screen.getByRole('radio', { name: 'Sign in with your own account' }),
+      screen.getByRole('radio', { name: 'Own account (OAuth sign-in)' }),
     );
 
     expect(
@@ -106,7 +106,7 @@ describe('NewMcpServerAuthPage', () => {
   it('keeps scopes disabled with an explanation until an issuer override is set', async () => {
     await renderAuthStep();
     await userEvent.click(
-      screen.getByRole('radio', { name: 'Sign in with your own account' }),
+      screen.getByRole('radio', { name: 'Own account (OAuth sign-in)' }),
     );
 
     expect(screen.getByLabelText(/Scopes/)).toBeDisabled();
@@ -125,7 +125,9 @@ describe('NewMcpServerAuthPage', () => {
   it('warns about token exposure and the new-audience caveat for Platform SSO', async () => {
     await renderAuthStep();
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Platform SSO' }));
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
+    );
 
     expect(
       screen.getByText(
@@ -147,7 +149,9 @@ describe('NewMcpServerAuthPage', () => {
     await renderAuthStep();
 
     await userEvent.click(
-      screen.getByRole('radio', { name: 'AWS request signing (SigV4)' }),
+      screen.getByRole('radio', {
+        name: 'AWS request signing (SigV4, shared identity)',
+      }),
     );
 
     // The point of the choice: it is a shared machine identity, not SSO.
@@ -174,7 +178,9 @@ describe('NewMcpServerAuthPage', () => {
   it('advises about the operating region a SigV4 server silently guesses', async () => {
     await renderAuthStep();
     await userEvent.click(
-      screen.getByRole('radio', { name: 'AWS request signing (SigV4)' }),
+      screen.getByRole('radio', {
+        name: 'AWS request signing (SigV4, shared identity)',
+      }),
     );
     await userEvent.type(
       screen.getByLabelText(/Signing region/),
@@ -203,7 +209,7 @@ describe('NewMcpServerAuthPage', () => {
     await screen.findByText('Step 2 of 4: Authentication');
 
     const sigv4 = screen.getByRole('radio', {
-      name: 'AWS request signing (SigV4)',
+      name: 'AWS request signing (SigV4, shared identity)',
     });
     expect(sigv4).toHaveAttribute('aria-disabled', 'true');
     expect(
@@ -225,7 +231,7 @@ describe('NewMcpServerAuthPage', () => {
     it('keeps them when the already-selected choice is clicked again', async () => {
       await renderAuthStep();
       await userEvent.click(
-        screen.getByRole('radio', { name: 'Platform SSO' }),
+        screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
       );
       await userEvent.type(
         screen.getByLabelText(/Required audiences/),
@@ -233,7 +239,7 @@ describe('NewMcpServerAuthPage', () => {
       );
 
       await userEvent.click(
-        screen.getByRole('radio', { name: 'Platform SSO' }),
+        screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
       );
 
       expect(screen.getByLabelText(/Required audiences/)).toHaveValue(
@@ -244,7 +250,7 @@ describe('NewMcpServerAuthPage', () => {
     it('clears the text with the state when the choice changes', async () => {
       await renderAuthStep();
       await userEvent.click(
-        screen.getByRole('radio', { name: 'Platform SSO' }),
+        screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
       );
       await userEvent.type(
         screen.getByLabelText(/Required audiences/),
@@ -255,7 +261,7 @@ describe('NewMcpServerAuthPage', () => {
         screen.getByRole('radio', { name: 'No authentication' }),
       );
       await userEvent.click(
-        screen.getByRole('radio', { name: 'Platform SSO' }),
+        screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
       );
 
       expect(screen.getByLabelText(/Required audiences/)).toHaveValue('');
@@ -290,7 +296,7 @@ describe('NewMcpServerAuthPage', () => {
         screen.getByRole('radio', { name: 'No authentication' }),
       );
       await userEvent.click(
-        screen.getByRole('radio', { name: 'Platform SSO' }),
+        screen.getByRole('radio', { name: 'Platform SSO (forwarded token)' }),
       );
 
       expect(screen.getByLabelText(/Required audiences/)).toHaveValue(

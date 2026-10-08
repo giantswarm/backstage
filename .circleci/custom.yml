@@ -28,8 +28,23 @@ jobs:
   # jobs.node-build; scalars from custom.yml win, so `docker`/`steps` stay as
   # generated and only the executor size changes. Bumped from large (4 vCPU /
   # 8 GB) to xlarge (8 vCPU / 16 GB) to speed up install/verify/build.
+  #
+  # The `docker` list appends to the generated one, so the Postgres 18
+  # container runs as a service beside the primary cimg/node container and
+  # answers on localhost. TestDatabases (@backstage/backend-test-utils) reads
+  # the connection string and runs every test declaring POSTGRES_18 against
+  # it; the job has no Docker of its own, so without the variable those cases
+  # would not run. Under CI a test file declaring POSTGRES_18 fails when the
+  # variable is missing instead of skipping.
   node-build:
     resource_class: xlarge
+    docker:
+    - image: cimg/postgres:18.6
+      environment:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+    environment:
+      BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
 
 workflows:
   build:

@@ -1,5 +1,6 @@
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionUsageQueryKey } from '../lib/queryKeys';
@@ -53,7 +54,7 @@ export function useSessionUsage(
 
   return {
     usage: query.data,
-    isLoading: enabled && query.isLoading,
+    isLoading: enabled && isAwaitingData(query),
     isError: query.isError && query.data === undefined && !isNotDeployed,
     isNotDeployed: query.isError && isNotDeployed,
     error: (query.error as Error | null) ?? undefined,

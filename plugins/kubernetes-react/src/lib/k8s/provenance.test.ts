@@ -16,8 +16,8 @@ function makeObject(
 ): KubeObject {
   return new KubeObject(
     {
-      apiVersion: 'kagent.dev/v1alpha3',
-      kind: 'AgentTemplate',
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
       metadata: {
         name: 'pr-reviewer',
         namespace: 'agent-platform',

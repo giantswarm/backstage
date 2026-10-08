@@ -11,10 +11,11 @@ import {
  * The whole journey a person takes through the Dev Portal's Agent Platform,
  * as the lab admin: create an agent in the wizard (Details → Skills → Tools →
  * Review → Deploy), watch it become ready on the platform Harness, start a
- * session from its page, get an answer to a first message, and delete the
- * agent again. Each step is the portal's own path: the review is
- * agent-manager's dry run, Deploy its `create_agent`, both through muster as
- * the person; the turn streams from kagent.
+ * session from its page (the dialog cannot be dismissed while the create is
+ * on its way), get an answer to a first message, and delete the agent again.
+ * Each step is the portal's own path: the review is agent-manager's dry run,
+ * Deploy its `create_agent`, both through muster as the person; the turn
+ * streams from kagent.
  *
  * Seconds on a warm lab (the Go ADK boots an agent in about twenty), minutes
  * on a cold worker — the waits allow for the latter. `--grep-invert lifecycle`
@@ -61,7 +62,14 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
 
   let failure: unknown;
   try {
-    await startSessionOnReadyAgent(admin, prompt);
+    await startSessionOnReadyAgent(admin, prompt, async dialog => {
+      await admin.keyboard.press('Escape');
+      await dialog.getByRole('button', { name: 'Close' }).click();
+      await expect(
+        dialog,
+        'neither Escape nor the header’s X closes the dialog while the create is on its way',
+      ).toBeVisible();
+    });
     await expect(
       admin.getByTestId('timeline-user-message').getByText(prompt),
       "the person's message is on the timeline",

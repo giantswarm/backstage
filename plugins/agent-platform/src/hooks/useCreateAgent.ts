@@ -72,11 +72,11 @@ export function useCreateAgent(
     if (!installation) {
       return Promise.resolve();
     }
-    // Every kagent.dev list on this installation, keyed the way the
+    // Every api.kagent.dev list on this installation, keyed the way the
     // kubernetes-react read hooks key them; the roster re-reads on its next
     // render and the detail page reads fresh anyway.
     return queryClient.invalidateQueries({
-      queryKey: ['cluster', installation, 'list', 'kagent.dev'],
+      queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
     });
   }, [queryClient, installation]);
 

@@ -18,7 +18,11 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { StatusLabel } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  StatusLabel,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import LockIcon from '@material-ui/icons/Lock';
 
 import { modelManagerApiRef } from '../../apis';
@@ -285,9 +289,7 @@ export function ImportModelDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(isBusy, onOpenChange)}
       width="min(90vw, 720px)"
     >
       <DialogHeader>Import a model from Hugging Face</DialogHeader>
@@ -351,7 +353,7 @@ export function ImportModelDialog({
               description={(search.error as Error).message}
             />
           )}
-          {search.isLoading && (
+          {isAwaitingData(search) && (
             <Text variant="body-medium" color="secondary">
               Searching…
             </Text>
@@ -457,7 +459,7 @@ export function ImportModelDialog({
                 </Grid.Item>
               </Grid.Root>
 
-              {fit.isLoading && (
+              {isAwaitingData(fit) && (
                 <Text variant="body-medium" color="secondary">
                   Resolving the size and checking the fit…
                 </Text>

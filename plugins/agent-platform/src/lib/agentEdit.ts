@@ -4,6 +4,7 @@ import type {
   AgentUpdate,
 } from './agentManager';
 import { declaredToolset, normalizeSelection } from './toolset';
+import { egressTextOf, parseEgressText, sameEgress } from './egress';
 
 /**
  * The edit form's model: the fields of an agent a person changes from the
@@ -25,6 +26,8 @@ export type AgentEditState = {
   toolset: string[];
   /** The skills as pinned; adding one pins it to the commit chosen at selection. */
   skills: AgentSkillEntry[];
+  /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
+  egressText: string;
 };
 
 /** The fields an update can carry, in the order the form shows them. */
@@ -35,6 +38,7 @@ export const AGENT_EDIT_FIELDS = [
   'modelConfig',
   'toolset',
   'skills',
+  'egress',
 ] as const;
 
 export type AgentEditField = (typeof AGENT_EDIT_FIELDS)[number];
@@ -48,6 +52,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     modelConfig: agent.modelConfig ?? '',
     toolset: normalizeSelection(agent.toolset ?? []),
     skills: [...(agent.skills ?? [])],
+    egressText: egressTextOf(agent.egress),
   };
 }
 
@@ -114,6 +119,9 @@ export function changedFields(
   if (!sameSkills(edit.skills, baseline.skills)) {
     changed.push('skills');
   }
+  if (!sameEgress(parseEgressText(edit.egressText), agent.egress ?? [])) {
+    changed.push('egress');
+  }
   return changed;
 }
 
@@ -122,7 +130,8 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `toolset` and `skills` replace their whole list; the empty selection is sent
+ * `toolset`, `skills` and `egress` replace their whole list (an empty
+ * `egress` clears it); the empty selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
  * Nothing else is ever sent — no `force`, no runtime.
  */
@@ -147,6 +156,9 @@ export function updateOf(
       case 'skills':
         update.skills = edit.skills;
         break;
+      case 'egress':
+        update.egress = parseEgressText(edit.egressText);
+        break;
       default:
         break;
     }
@@ -167,4 +179,5 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   modelConfig: 'Model',
   toolset: 'Toolset',
   skills: 'Skills',
+  egress: 'Egress',
 };

@@ -11,7 +11,7 @@ const EARLIEST_PLAUSIBLE_YEAR = 1971;
  * anything implausibly old, so callers can render a dash instead.
  *
  * The proto3 JSON of a `google.protobuf.Timestamp` is RFC 3339 too, so the
- * AgentInstance and A2A v1 shapes go through the same check.
+ * Session record and A2A v1 shapes go through the same check.
  */
 export function normalizeTimestamp(
   value: string | undefined,

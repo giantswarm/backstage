@@ -1,7 +1,10 @@
 import { Box, makeStyles, Theme } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import { Progress } from '@backstage/core-components';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  GSMarkdownContent,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../apis';
@@ -49,12 +52,13 @@ export function PlanFileContent(props: {
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
 
-  const { data, isLoading, error } = useQuery({
+  const content = useQuery({
     queryKey: ['plans', 'content', repo, refName, path],
     queryFn: () => plansApi.getContent(path, refName, repo),
   });
+  const { data, error } = content;
 
-  if (isLoading) {
+  if (isAwaitingData(content)) {
     return <Progress />;
   }
   if (error) {

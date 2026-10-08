@@ -22,7 +22,10 @@ import {
   sidebarConfig,
   useSidebarPinState,
 } from '@backstage/core-components';
-import { GSMarkdownContent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  GSMarkdownContent,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
@@ -193,10 +196,11 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
   const queryClient = useQueryClient();
 
   const commentsQueryKey = ['plans', 'pull-comments', repo, pull.number];
-  const { data, isLoading, error } = useQuery({
+  const comments = useQuery({
     queryKey: commentsQueryKey,
     queryFn: () => plansApi.listPullComments(pull.number, repo),
   });
+  const { data, error } = comments;
 
   const createComment = useTrackedMutation({
     event: null,
@@ -218,7 +222,7 @@ function OverviewPanel(props: { repo: string; pull: PlanPull }) {
       <Text as="h6" variant="title-small" className={classes.discussionTitle}>
         Discussion
       </Text>
-      {isLoading && <Progress />}
+      {isAwaitingData(comments) && <Progress />}
       {error ? (
         <PlansErrorAlert
           title="Failed to load discussion"
@@ -308,11 +312,12 @@ function DocumentPanel(props: {
         bottom: 0,
       };
 
-  const { data, isLoading, error } = useQuery({
+  const content = useQuery({
     queryKey: ['plans', 'content', repo, branch, file.filename],
     queryFn: () => plansApi.getContent(file.filename, branch, repo),
     enabled: renderable,
   });
+  const { data, error } = content;
 
   const githubUrl =
     file.status === 'removed' || !branch
@@ -321,7 +326,7 @@ function DocumentPanel(props: {
 
   let body;
   if (view === 'rendered' && renderable) {
-    if (isLoading) {
+    if (isAwaitingData(content)) {
       body = <Progress />;
     } else if (error) {
       body = (
@@ -532,7 +537,11 @@ export function PullReviewPage() {
     return map;
   }, [reviewComments]);
 
-  if (reposQuery.isLoading || pullsQuery.isLoading || filesQuery.isLoading) {
+  if (
+    isAwaitingData(reposQuery) ||
+    isAwaitingData(pullsQuery) ||
+    isAwaitingData(filesQuery)
+  ) {
     return (
       <Content>
         <Progress />

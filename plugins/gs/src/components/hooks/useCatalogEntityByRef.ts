@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { catalogApiRef } from '@backstage/plugin-catalog-react';
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 export function useCatalogEntityByRef(
   entityRef?:
@@ -14,7 +15,7 @@ export function useCatalogEntityByRef(
 ) {
   const catalogApi = useApi(catalogApiRef);
 
-  const { data, isLoading } = useQuery({
+  const { data, isPending, fetchStatus } = useQuery({
     queryKey: ['catalog-entity', entityRef],
     queryFn: async () => {
       if (!entityRef) {
@@ -25,6 +26,7 @@ export function useCatalogEntityByRef(
     },
     enabled: Boolean(entityRef),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   return useMemo(() => {
     return {

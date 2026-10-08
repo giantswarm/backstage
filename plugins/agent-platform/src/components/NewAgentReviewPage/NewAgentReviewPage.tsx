@@ -36,6 +36,7 @@ import {
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
 import { harnessTitle } from '../../lib/harnesses';
+import { parseEgressText } from '../../lib/egress';
 import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
@@ -515,6 +516,7 @@ export function NewAgentReviewPage() {
   // The Harness the person picked, else the platform Harness agent-manager
   // composes when the request names none.
   const harnessName = state.harness?.name ?? info?.harness?.name;
+  const egressOrigins = parseEgressText(state.egressText);
   const valuesYaml = dryRun ? dump(dryRun.manifests.values, YAML_OPTS) : '';
 
   return (
@@ -607,6 +609,13 @@ export function NewAgentReviewPage() {
               <span className={classes.code}>{declared.join(', ')}</span>
             </Text>
           </SummaryItem>
+          {egressOrigins.length > 0 && (
+            <SummaryItem label="Extra egress">
+              <Text variant="body-small">
+                <span className={classes.code}>{egressOrigins.join(', ')}</span>
+              </Text>
+            </SummaryItem>
+          )}
           {/* Named here, not just buried in the values YAML — skills are chosen
               on their own step, so this is the only compact confirmation of
               what that step produced: each skill at the commit it is pinned to. */}

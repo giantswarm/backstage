@@ -9,6 +9,7 @@ import {
   Flex,
   Text,
 } from '@backstage/ui';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import { RepositoriesErrorAlert } from '../RepositoriesErrorAlert';
 
 /** The manager's answer to a write it does not accept, shown as its own. */
@@ -100,6 +101,9 @@ export function ActionDialog<TPlan, TDone>({
   }, [isOpen, reviewsOnOpen, startReview]);
 
   const busy = review.isPending || write.isPending;
+  // A dry run writes nothing: the dialog can be left while it runs, and its
+  // answer goes nowhere once the dialog is gone.
+  const isWriting = write.isPending;
   const failure = (write.error ?? review.error) as Error | null;
   const commitText =
     typeof commitLabel === 'function' ? commitLabel(plan) : commitLabel;
@@ -126,9 +130,11 @@ export function ActionDialog<TPlan, TDone>({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={open => !open && !busy && onClose()}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      {...dialogDismissLock(isWriting, open => {
+        if (!open) {
+          onClose();
+        }
+      })}
       width="min(90vw, 860px)"
     >
       <form onSubmit={onSubmit} style={FORM_STYLE} aria-label={title}>
@@ -159,7 +165,11 @@ export function ActionDialog<TPlan, TDone>({
         </DialogBody>
         <DialogFooter>
           <Flex gap="2" justify="end">
-            <Button variant="secondary" onPress={onClose} isDisabled={busy}>
+            <Button
+              variant="secondary"
+              onPress={onClose}
+              isDisabled={isWriting}
+            >
               {done ? 'Close' : 'Cancel'}
             </Button>
             {!done && awaitsPlan && !reviewsOnOpen && (

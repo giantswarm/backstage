@@ -56,7 +56,7 @@ export function agentToolsetSources(
 /**
  * *Start from an existing agent's toolset*: copies another agent's selector
  * list into the step (D4 — reuse is a copy in the wizard; shared toolsets are
- * the follow-up). Reads the installation's AgentTemplates and RemoteMCPServers
+ * the follow-up). Reads the installation's Agents and RemoteMCPServers
  * the way the agents list does; only agents with a declared toolset are
  * offered, since an agent with implicit full access has nothing to copy.
  */

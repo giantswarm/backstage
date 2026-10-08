@@ -12,9 +12,10 @@ import {
   newMcpServerVerifyRouteRef,
 } from '../../routes';
 import {
+  SIGV4_SHARED_IDENTITY_WARNING,
   toMcpServerManifestYaml,
   toMusterCliCommand,
-  type McpServerAuthMode,
+  wizardAuthModeLabel,
 } from '../../lib/mcpServerDefinition';
 import { mutationErrorMessage } from '../../lib/authError';
 import { useMusterSession } from '../MusterInstanceProvider';
@@ -77,13 +78,6 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.5),
   },
 }));
-
-const AUTH_MODE_LABELS: Record<McpServerAuthMode, string> = {
-  none: 'No authentication',
-  'own-account': 'Sign in with your own account (OAuth)',
-  'platform-sso': 'Platform SSO (token forwarding)',
-  sigv4: "AWS request signing (SigV4, muster's shared identity)",
-};
 
 function SummaryItem({
   label,
@@ -265,9 +259,18 @@ export function NewMcpServerReviewPage() {
             <span className={classes.code}>{definition.type}</span>
           </SummaryItem>
           <SummaryItem label="Authentication">
-            <Text variant="body-small">{AUTH_MODE_LABELS[state.authMode]}</Text>
+            <Text variant="body-small">
+              {wizardAuthModeLabel(state.authMode)}
+            </Text>
           </SummaryItem>
         </div>
+        {/* The last screen before Register: say once more whose identity a
+            sigv4 server acts as. */}
+        {state.authMode === 'sigv4' && (
+          <Text as="p" variant="body-small" color="secondary">
+            {SIGV4_SHARED_IDENTITY_WARNING}
+          </Text>
+        )}
 
         <Flex direction="column" gap="4">
           <Card>

@@ -42,13 +42,14 @@ const useStyles = makeStyles((theme: Theme) => ({
 }));
 
 function KnowledgeDocument(props: { path: string }) {
-  const { data, isLoading, error } = useHiveKnowledgeDoc(props.path);
+  const { data, isFetching, error, refetch } = useHiveKnowledgeDoc(props.path);
   if (data === undefined) {
     return (
       <HiveSourceState
-        isLoading={isLoading}
         error={error}
         what="the document"
+        onRetry={refetch}
+        isFetching={isFetching}
       />
     );
   }
@@ -64,14 +65,15 @@ export function HiveKnowledgeTab() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [query] = useHiveSearch();
-  const { data: docs, isLoading, error } = useHiveKnowledgeDocs();
+  const { data: docs, isFetching, error, refetch } = useHiveKnowledgeDocs();
 
   if (!docs) {
     return (
       <HiveSourceState
-        isLoading={isLoading}
         error={error}
         what="the knowledge documents"
+        onRetry={refetch}
+        isFetching={isFetching}
       />
     );
   }

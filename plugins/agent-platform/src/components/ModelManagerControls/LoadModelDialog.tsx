@@ -17,6 +17,7 @@ import {
 } from '@backstage/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
 import { useInvalidateModelManagerReads } from '../../hooks/useServedModelAction';
@@ -470,9 +471,7 @@ export function LoadModelDialog({
   return (
     <Dialog
       isOpen={isOpen}
-      onOpenChange={onOpenChange}
-      isDismissable={!isBusy}
-      isKeyboardDismissDisabled={isBusy}
+      {...dialogDismissLock(isBusy, onOpenChange)}
       width="min(90vw, 600px)"
     >
       <DialogHeader>Serve model</DialogHeader>

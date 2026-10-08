@@ -14,8 +14,14 @@ import { bounceAllowed, bounceToConnect } from './connectBounce';
  * click. Only when that bounce did not produce a grant does the alert stay
  * and offer the connect as a button.
  */
-export function PlansErrorAlert(props: { title: string; error: Error }) {
-  const { title, error } = props;
+export function PlansErrorAlert(props: {
+  title: string;
+  error: Error;
+  /** Offers "Try again" when given; `retrying` while the retry runs. */
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
+  const { title, error, onRetry, retrying } = props;
   if (
     error instanceof MusterServerNotConnectedError ||
     error.name === 'MusterServerNotConnectedError'
@@ -24,7 +30,31 @@ export function PlansErrorAlert(props: { title: string; error: Error }) {
       <ConnectGithubAlert error={error as MusterServerNotConnectedError} />
     );
   }
-  return <Alert status="danger" title={title} description={error.message} />;
+  return (
+    <Alert
+      status="danger"
+      title={title}
+      description={
+        onRetry ? (
+          <Flex direction="column" gap="2">
+            <Text>{error.message}</Text>
+            <div>
+              <Button
+                variant="secondary"
+                size="small"
+                onPress={onRetry}
+                isDisabled={retrying}
+              >
+                {retrying ? 'Trying again…' : 'Try again'}
+              </Button>
+            </div>
+          </Flex>
+        ) : (
+          error.message
+        )
+      }
+    />
+  );
 }
 
 function ConnectGithubAlert({

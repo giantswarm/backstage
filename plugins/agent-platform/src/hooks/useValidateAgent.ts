@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   AgentManagerError,
@@ -40,13 +41,14 @@ export function useValidateAgent(
   const signature = spec ? JSON.stringify(spec) : '';
   const enabled = Boolean(client) && Boolean(spec);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterValidateAgentQueryKey(installation ?? '', signature),
     enabled,
     queryFn: () => client!.validateAgent(spec!),
     // A refused validation stays refused; retrying only delays the message.
     retry: false,
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   let failure: ValidateAgentState['failure'];
   if (error) {

@@ -202,7 +202,8 @@ export interface Config {
      * they already authorized at their login -- never a "Login Required"
      * dialog. Signing out of GitHub in the settings revokes the grant in
      * muster for every session. Unset keeps the upstream GitHub auth
-     * provider (`auth.providers.github`).
+     * provider (`auth.providers.github`); a portal with neither does not
+     * offer the GitHub Actions and Pull Requests tabs.
      */
     github?: {
       /**

@@ -2509,7 +2509,7 @@
                 },
                 "args": {
                     "type": "array",
-                    "description": "Additional command arguments passed to the Backstage container",
+                    "description": "Arguments passed to the Backstage container, the base layer of the backend's configuration: by default the image's bundled config files, as in the image's `CMD` (`command` replaces the `CMD`, so the chart restates them here). The chart's own `--config` flags (database, appConfig, extraAppConfig, branding) follow these, so they override the bundled values. An installation that sets `args` replaces this list and keeps the bundled files only if it names them",
                     "items": {
                         "type": "string"
                     }
@@ -2581,6 +2581,10 @@
                     "items": {
                         "$ref": "#/$defs/_definitions.json/definitions/io.k8s.api.core.v1.Container"
                     }
+                },
+                "serverShutdownDelay": {
+                    "type": "string",
+                    "description": "How long the backend keeps serving after SIGTERM, with its readiness at 503, before it stops its server (`backend.lifecycle.serverShutdownDelay`). Covers the time the gateway takes to drop a terminating pod from its endpoints; without it every rollout answers requests still routed to the old pod with the gateway's \"upstream connect error\". Must stay below the pod's termination grace period (30 s)"
                 }
             }
         },
@@ -2716,6 +2720,16 @@
                         "operatorNamespace": {
                             "type": "string",
                             "description": "Namespace the CloudNativePG operator runs in. The network policy admits it on the instance status port, so the operator can extract instance status and start replica creation."
+                        },
+                        "podMonitor": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "enabled": {
+                                    "type": "boolean",
+                                    "description": "Render a Prometheus Operator `PodMonitor` for the CNPG cluster, with the `observability.giantswarm.io/tenant` label. It also renders only when the cluster serves `monitoring.coreos.com/v1/PodMonitor` (`helm template` needs `--api-versions monitoring.coreos.com/v1/PodMonitor`), so an install on a cluster without the Prometheus Operator CRDs succeeds; set `false` to drop it everywhere"
+                                }
+                            }
                         },
                         "storageSize": {
                             "type": "string",
@@ -3079,7 +3093,7 @@
         },
         "probes": {
             "type": "object",
-            "description": "Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
+            "description": "Startup, liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`, startup on readiness); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).",
             "additionalProperties": false,
             "properties": {
                 "liveness": {
@@ -3132,6 +3146,28 @@
                         "timeoutSeconds": {
                             "type": "integer",
                             "description": "Number of seconds after which the readiness probe times out",
+                            "minimum": 1
+                        }
+                    }
+                },
+                "startup": {
+                    "type": "object",
+                    "description": "Startup probe timing, on the readiness endpoint: liveness and readiness wait until the backend has started. Sized for a backend that waits up to five minutes for its database (a CNPG primary coming up) plus its own start; one that has not started by then is restarted.",
+                    "additionalProperties": false,
+                    "properties": {
+                        "failureThreshold": {
+                            "type": "integer",
+                            "description": "Consecutive failures before the container is restarted; with periodSeconds the time the backend has to start",
+                            "minimum": 1
+                        },
+                        "periodSeconds": {
+                            "type": "integer",
+                            "description": "How often (in seconds) to perform the startup probe",
+                            "minimum": 1
+                        },
+                        "timeoutSeconds": {
+                            "type": "integer",
+                            "description": "Number of seconds after which the startup probe times out",
                             "minimum": 1
                         }
                     }
@@ -3199,7 +3235,7 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean",
-                            "description": "Enable the VerticalPodAutoscaler resource for automatic resource adjustment"
+                            "description": "Render a `VerticalPodAutoscaler` for automatic resource adjustment. It also renders only when the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler` (`helm template` needs `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler`), so an install on a cluster without the VPA CRD succeeds; set `false` to drop it everywhere"
                         }
                     }
                 }

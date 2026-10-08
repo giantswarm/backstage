@@ -32,7 +32,7 @@ export function AgentSessionBlocker({
     return null;
   }
 
-  if (readiness === 'failed' || readiness === 'notAdmitted') {
+  if (readiness === 'failed') {
     const failure = agent.getFailure();
     const isPlatform = failure?.field === 'platform';
     const reason = failure?.message ?? agent.getReadinessMessage();
@@ -41,12 +41,10 @@ export function AgentSessionBlocker({
     let description = reason;
     if (isPlatform) {
       description = `${sentence}. This is a problem with the platform, not with the agent: a platform admin has to fix it.`;
-    } else if (isGitOpsOwned && readiness === 'failed') {
+    } else if (isGitOpsOwned) {
       description = `${sentence}. This agent is deployed from a GitOps repository, so it is fixed there.`;
     }
-    // The admission label is not on the edit page, so a not-admitted agent
-    // has nothing there to fix.
-    const canFix = onEdit && readiness === 'failed' && !isPlatform;
+    const canFix = onEdit && !isPlatform;
 
     return (
       <Alert

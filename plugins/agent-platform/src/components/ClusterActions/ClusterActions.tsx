@@ -3,6 +3,7 @@ import { Button } from '@backstage/ui';
 import {
   useClusterPageTarget,
   useInstallations,
+  type ClusterPageTarget,
 } from '@giantswarm/backstage-plugin-gs';
 
 import {
@@ -54,28 +55,47 @@ export function CreateClusterAction() {
 }
 
 /**
- * **Delete** beside a cluster's header, where the installation's
- * cluster-manager offers `delete_cluster`; never on the installation's own
- * cluster, which it refuses.
+ * A cluster create_cluster made — rendered by a HelmRelease of its own name in
+ * its organization's namespace — and not the installation's own: the only kind
+ * `delete_cluster` removes.
  */
-export function DeleteClusterAction() {
-  const target = useClusterPageTarget();
-  const { presenceOf } = useClusterManagerAvailability(
-    target ? [target.installationName] : [],
-  );
-  const reachable =
-    Boolean(target) && presenceOf(target!.installationName) === 'available';
-  const { info } = useClusterManagerInfo(
-    reachable ? target!.installationName : undefined,
-  );
-  const [isOpen, setOpen] = useState(false);
-
+function isDeletable(
+  target: ClusterPageTarget | undefined,
+): target is ClusterPageTarget {
   if (
     !target ||
     target.isManagementCluster ||
-    !target.organization ||
-    !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster)
+    target.name === target.installationName ||
+    !target.organization
   ) {
+    return false;
+  }
+  const namespace = `org-${target.organization}`;
+  return (
+    target.namespace === namespace &&
+    target.helmRelease?.name === target.name &&
+    target.helmRelease?.namespace === namespace
+  );
+}
+
+/**
+ * **Delete** beside a cluster's header, where the installation's
+ * cluster-manager offers `delete_cluster` and the cluster is one it removes.
+ */
+export function DeleteClusterAction() {
+  const target = useClusterPageTarget();
+  const deletable = isDeletable(target);
+  const { presenceOf } = useClusterManagerAvailability(
+    deletable ? [target.installationName] : [],
+  );
+  const reachable =
+    deletable && presenceOf(target.installationName) === 'available';
+  const { info } = useClusterManagerInfo(
+    reachable ? target.installationName : undefined,
+  );
+  const [isOpen, setOpen] = useState(false);
+
+  if (!deletable || !offersTool(info, CLUSTER_MANAGER_TOOLS.deleteCluster)) {
     return null;
   }
   return (

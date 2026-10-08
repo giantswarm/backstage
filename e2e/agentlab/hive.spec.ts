@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, open, test, watchPageErrors } from './fixtures';
+import { contextOptions } from './lab';
 
 /**
  * Hive (`/hive`): one sidebar entry with the tabs Now, History, Roadmap,
@@ -65,7 +66,20 @@ const now = {
       total: 1,
       cards: [card(10, { class: 'top-epic', title: 'Top epic story' })],
     },
-    { id: 'setup', title: 'Setup', summary: '', total: 0, cards: [] },
+    // Another team's card: the magazine names it, without the emoji.
+    {
+      id: 'setup',
+      title: 'Setup',
+      summary: '',
+      total: 1,
+      cards: [
+        card(40, {
+          class: 'setup',
+          title: 'Phoenix setup work',
+          team: 'Phoenix',
+        }),
+      ],
+    },
   ],
   reviews: [
     {
@@ -87,6 +101,10 @@ const now = {
   ],
   upcoming: [card(30, { title: 'Other team work', team: 'Other team' })],
 };
+
+// Generated titles carry unbroken paths, links and code.
+const UNBROKEN_TITLE =
+  'giantswarm/cluster-api-provider-aws/controllers/awsmachinepool_controller_reconcile_launch_template_versions';
 
 const history = {
   window: 'weeks',
@@ -117,6 +135,42 @@ const history = {
           customers: ['acme'],
           links: [],
         },
+        {
+          key: 'giantswarm/example#102',
+          title: 'Phoenix shipped in weeks',
+          url: 'https://github.com/giantswarm/example/pull/102',
+          kind: 'pr',
+          at: NOW,
+          repo: 'giantswarm/example',
+          class: 'top-epic',
+          customers: [],
+          team: 'Phoenix',
+          links: [],
+        },
+      ],
+    },
+    {
+      key: 'group-unbroken',
+      title: UNBROKEN_TITLE,
+      url: 'https://github.com/giantswarm/roadmap/issues/2',
+      kind: 'area',
+      teaser:
+        'Pinned in https://github.com/giantswarm/example/blob/main/controllers/awsmachinepool_controller.go#L412-L468 via `kubectl get awsmachinepools.infrastructure.cluster.x-k8s.io --output=jsonpath={.items[*].status.launchTemplateVersion}`.',
+      class: 'setup',
+      customers: [],
+      entries: [
+        {
+          key: 'giantswarm/example#101',
+          title:
+            'Reconcile_LaunchTemplateVersions_when_the_AWSMachinePool_spec_changes_without_a_rolling_update',
+          url: 'https://github.com/giantswarm/example/issues/101',
+          kind: 'issue',
+          at: NOW,
+          repo: 'giantswarm/example',
+          class: 'setup',
+          customers: [],
+          links: [],
+        },
       ],
     },
   ],
@@ -139,7 +193,20 @@ const tree = {
   ],
 };
 
+// The magazine follows one team: an item without a `team` is this team's.
+const meta = {
+  version: 1,
+  generatedAt: NOW,
+  sources: { board: 273, team: 'Bumblebee' },
+};
+
+const PLANS_REPOSITORIES = [
+  'giantswarm/bumblebee-plans',
+  'giantswarm/honeybadger-plans',
+];
+
 const documents: Record<string, string> = {
+  'magazine/meta.json': JSON.stringify(meta),
   'magazine/now.json': JSON.stringify(now),
   'magazine/history-weeks.json': JSON.stringify(history),
   'knowledge/product/overview.md': '# Product overview\n\nWhat we build.',
@@ -165,6 +232,32 @@ async function mockPlansBackend(page: Page) {
     }
     if (path === '/tree') {
       await route.fulfill({ json: tree });
+      return;
+    }
+    if (path === '/repos') {
+      await route.fulfill({ json: { repositories: PLANS_REPOSITORIES } });
+      return;
+    }
+    if (path === '/pulls') {
+      const repo = url.searchParams.get('repo') ?? '';
+      await route.fulfill({
+        json: {
+          pulls: [
+            {
+              number: 1,
+              title: `A plan in ${repo}`,
+              author: 'someone',
+              draft: false,
+              updatedAt: NOW,
+              body: '',
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (path === '/epics') {
+      await route.fulfill({ json: { merged: [], pulls: [] } });
       return;
     }
     if (path === '/content') {
@@ -317,6 +410,91 @@ test.describe('Hive', () => {
     for (const label of ['3 days', '3 weeks', '3 months']) {
       await expect(admin.getByText(label, { exact: true })).toHaveCount(0);
     }
+  });
+
+  for (const width of [1280, 768]) {
+    test(`History at ${width} px: long titles, links and code stay in their card`, async ({
+      admin,
+    }) => {
+      await admin.setViewportSize({ width, height: 900 });
+      try {
+        await open(admin, '/hive/history?team=all');
+        await expect(admin.getByText(UNBROKEN_TITLE)).toBeVisible();
+        const layout = await admin.evaluate(() => {
+          const page = document.scrollingElement!;
+          const section = document.querySelector(
+            'section[aria-labelledby="hive-history-moved"]',
+          )!;
+          const area = section.getBoundingClientRect();
+          const cards = [
+            ...section.querySelectorAll<HTMLElement>('[class*="bui-Card"]'),
+          ].filter(card => !card.parentElement?.closest('[class*="bui-Card"]'));
+          return {
+            pageOverflow: page.scrollWidth - page.clientWidth,
+            cards: cards.length,
+            outside: cards.filter(
+              card => card.getBoundingClientRect().right > area.right + 0.5,
+            ).length,
+            scrolling: cards.filter(
+              card => card.scrollWidth > card.clientWidth + 1,
+            ).length,
+          };
+        });
+        expect(layout.cards, 'both history cards render').toBe(2);
+        expect(layout.pageOverflow, 'no horizontal page scroll').toBe(0);
+        expect(layout.outside, 'every card ends within the content area').toBe(
+          0,
+        );
+        expect(layout.scrolling, 'no card scrolls sideways').toBe(0);
+      } finally {
+        await admin.setViewportSize(contextOptions.viewport);
+      }
+    });
+  }
+
+  test('the header team narrows Now and History', async ({ admin }) => {
+    const phoenix = encodeURIComponent('Phoenix 🔥');
+    const bumblebee = encodeURIComponent('Bumblebee🐝');
+
+    await open(admin, `/hive/now?team=${phoenix}`);
+    await expect(admin.getByText('Hive follows Team Bumblebee')).toBeVisible();
+    await expect(admin.getByText('Phoenix setup work')).toBeVisible();
+    await expect(admin.getByText('Customer request 1')).toHaveCount(0);
+    await expect(admin.getByText('Two customer requests move')).toHaveCount(0);
+
+    await open(admin, `/hive/now?team=${bumblebee}`);
+    await expect(admin.getByText('Customer request 1')).toBeVisible();
+    await expect(admin.getByText('Phoenix setup work')).toHaveCount(0);
+    await expect(admin.getByText('Hive follows Team Bumblebee')).toHaveCount(0);
+
+    await open(admin, `/hive/history?team=${phoenix}`);
+    await expect(admin.getByText('Epic of the weeks')).toBeVisible();
+    await expect(admin.getByText(UNBROKEN_TITLE)).toHaveCount(0);
+    await expect(admin.getByText('Digest of the weeks window.')).toHaveCount(0);
+
+    await open(admin, `/hive/history?team=${bumblebee}`);
+    await expect(admin.getByText(UNBROKEN_TITLE)).toBeVisible();
+    await expect(admin.getByText('Digest of the weeks window.')).toBeVisible();
+  });
+
+  test('Plans: the header team picks its plans repository', async ({
+    admin,
+  }) => {
+    await open(
+      admin,
+      `/hive/plans?team=${encodeURIComponent('Honey Badger 🦡')}`,
+    );
+    await expect(
+      admin.getByText('A plan in giantswarm/honeybadger-plans'),
+    ).toBeVisible();
+    await expect(admin.getByRole('button', { name: /Repository/ })).toHaveCount(
+      0,
+    );
+
+    await open(admin, `/hive/plans?team=${encodeURIComponent('Phoenix 🔥')}`);
+    await expect(
+      admin.getByText('Team Phoenix has no plans here'),
+    ).toBeVisible();
   });
 
   test('Roadmap: the board with the header team and search', async ({

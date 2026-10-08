@@ -4,7 +4,10 @@ import { createBackend } from '@backstage/backend-defaults';
 import {
   configureFetchProxy,
   customHttpAuthServiceFactory,
+  databaseServiceFactory,
+  githubUrlReaderFactory,
   rootLogger,
+  startBackend,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
 import { telemetryConfigPlugin } from './telemetry';
@@ -18,6 +21,14 @@ const backend = createBackend();
 // Override default httpAuth to read tokens from X-Backstage-Token header,
 // avoiding conflicts with ingress-level Basic auth on the Authorization header.
 backend.add(customHttpAuthServiceFactory);
+
+// Retry each plugin's first database connection until the database is
+// reachable, so a backend started before its CNPG primary still starts.
+backend.add(databaseServiceFactory);
+
+// Read GitHub files and trees from branches with a slash in their name
+// (`blob/feat/x/...`), which the default GitHub reader splits wrongly.
+backend.add(githubUrlReaderFactory);
 
 backend.add(import('@backstage/plugin-app-backend'));
 backend.add(import('@backstage/plugin-proxy-backend'));
@@ -68,6 +79,12 @@ backend.add(rootLogger);
 
 // search plugin
 backend.add(import('@backstage/plugin-search-backend'));
+
+// Postgres search engine: the index lives in the search plugin's database, so
+// it survives a restart and is one index for every replica. The module
+// registers itself only on Postgres 12 or newer; on sqlite (the dev server,
+// the lab) the in-memory engine stays.
+backend.add(import('@backstage/plugin-search-backend-module-pg'));
 
 // search collators
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));
@@ -120,4 +137,4 @@ if (process.env.PAGERDUTY_TOKEN) {
   backend.add(import('@pagerduty/backstage-plugin-backend'));
 }
 
-backend.start();
+startBackend(backend);

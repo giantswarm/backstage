@@ -159,8 +159,8 @@ test("a family's row opens its server page, with the family's tabs", async ({
     admin.getByRole('link', { name: lab.mcpKubernetes, exact: true }),
     "the lab's cluster is the family's member",
   ).toBeVisible();
-  // Resources and Prompts show only for a server exposing any, which
-  // mcp-kubernetes may not.
+  // Resources and Prompts show only for a server exposing any, which the
+  // family may not.
   await admin.getByRole('tab', { name: 'Details' }).click();
   await expect(admin).toHaveURL(
     new RegExp(

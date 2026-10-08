@@ -38,7 +38,7 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
     name: 'pr-reviewer',
     namespace: 'kagent',
     verdict,
-    summary: `The template is ${verdict}.`,
+    summary: `Agent is ${verdict}.`,
     ...extra,
   };
 }
@@ -88,7 +88,7 @@ describe('AgentCreationProgress', () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValueOnce(status('progressing')).mockResolvedValue(
       status('ready', {
-        template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+        agent: { exists: true, harness: 'kagent' },
       }),
     );
 
@@ -119,7 +119,7 @@ describe('AgentCreationProgress', () => {
   }, 10_000);
 
   // The defect this guards: agent-manager writes the HelmRelease and returns,
-  // helm-controller re-renders the template seconds later, so the first status
+  // helm-controller re-renders the Agent seconds later, so the first status
   // read after saving an agent that was already `ready` answers `ready` — for
   // the revision before the write. Reported as success, that is a green alert
   // for something the Harness has not compiled.
@@ -132,21 +132,21 @@ describe('AgentCreationProgress', () => {
 
     /** The pre-write revision: settled, and at the generation of the baseline. */
     const beforeTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 4,
         observedGeneration: 4,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
     /** The write's own revision, compiled by the Harness. */
     const afterTheWrite = status('ready', {
-      template: {
+      agent: {
         exists: true,
         generation: 5,
         observedGeneration: 5,
-        harnesses: [{ harness: 'kagent' }],
+        harness: 'kagent',
       },
     });
 
@@ -165,11 +165,9 @@ describe('AgentCreationProgress', () => {
       await waitFor(() => expect(callTool).toHaveBeenCalled());
       expect(screen.queryByText('Ready')).not.toBeInTheDocument();
       // And the pre-write revision's own summary is not put under it: "The
-      // template is ready." below "Saving…" is the message this exists to
+      // Agent is ready." below "Saving…" is the message this exists to
       // withhold until the write has actually landed.
-      expect(
-        screen.queryByText('The template is ready.'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Agent is ready.')).not.toBeInTheDocument();
       expect(
         screen.getByText(/waiting for its Harness to compile/),
       ).toBeInTheDocument();
@@ -202,10 +200,10 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
       callTool.mockResolvedValue(
         status('ready', {
-          template: {
+          agent: {
             exists: true,
             generation: 5,
-            harnesses: [{ harness: 'kagent' }],
+            harness: 'kagent',
           },
         }),
       );
@@ -254,7 +252,7 @@ describe('AgentCreationProgress', () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
       callTool.mockResolvedValue(
         status('ready', {
-          template: { exists: true, harnesses: [{ harness: 'kagent' }] },
+          agent: { exists: true, harness: 'kagent' },
         }),
       );
 
@@ -264,7 +262,7 @@ describe('AgentCreationProgress', () => {
     });
   });
 
-  it("shows agent-manager's reason when the template fails", async () => {
+  it("shows agent-manager's reason when the agent fails", async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValue({
       ...status('failed'),

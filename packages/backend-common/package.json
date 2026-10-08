@@ -23,8 +23,7 @@
     "postpack": "backstage-cli package postpack"
   },
   "devDependencies": {
-    "@backstage/cli": "backstage:^",
-    "@backstage/config": "backstage:^"
+    "@backstage/cli": "backstage:^"
   },
   "files": [
     "dist"
@@ -32,6 +31,9 @@
   "dependencies": {
     "@backstage/backend-defaults": "backstage:^",
     "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/config": "backstage:^",
+    "@backstage/errors": "backstage:^",
+    "@backstage/integration": "backstage:^",
     "undici": "^8.10.2",
     "winston": "^3.17.0",
     "winston-sentry-log": "^1.0.26"

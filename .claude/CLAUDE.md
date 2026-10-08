@@ -538,7 +538,9 @@ reach Sentry.
     turns conventional-commit PR titles into a tag + GitHub Release
     (`zz_generated.auto_release.yaml`), which triggers the CircleCI architect
     pipeline. The tagger does not bump `package.json`, so the root `version`
-    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it.
+    (0.138.0) lags the tags (v0.220.x) by design — don't "fix" it. The
+    generated notes of a final release are then curated by hand with the
+    **`release-notes`** skill.
   - **Plugin packages**: changeset-managed, but that axis is dormant — nothing is
     published to npm and nothing consumes `.changeset/*.md` today (see #1772).
     Still add one for any user-facing `plugins/*` change (`minor` for a new

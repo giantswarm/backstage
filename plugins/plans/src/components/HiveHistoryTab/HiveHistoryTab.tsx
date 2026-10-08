@@ -24,7 +24,7 @@ import {
   useHiveTeam,
 } from '../../hooks/useHive';
 import { formatDate } from '../../lib/dates';
-import { linkTarget, matchesSearch } from '../../lib/hive';
+import { followsTeam, linkTarget, matchesSearch } from '../../lib/hive';
 import {
   ENTRY_KIND_LABELS,
   Group,
@@ -33,12 +33,17 @@ import {
   progressPercent,
   shortDay,
 } from '../../lib/magazine';
+import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
 
 const useStyles = makeStyles({
   summary: {
     margin: 0,
     paddingLeft: 'var(--bui-space-5)',
+  },
+  // Generated teasers carry links, paths and commands without a break.
+  wrap: {
+    overflowWrap: 'anywhere',
   },
 });
 
@@ -51,6 +56,7 @@ const GROUP_KIND_LABELS: Record<Group['kind'], string> = {
 /** One epic or area: what it is, how far it moved, the stories that moved it. */
 function GroupCard(props: { group: Group }) {
   const { group } = props;
+  const classes = useStyles();
   const stories = group.entries.length;
   return (
     <InfoCard
@@ -84,7 +90,7 @@ function GroupCard(props: { group: Group }) {
             </TagGroup>
           )}
         </Flex>
-        <Text as="p" variant="body-medium">
+        <Text as="p" variant="body-medium" className={classes.wrap}>
           {group.teaser}
         </Text>
         {group.progress && group.progress.to.total > 0 && (
@@ -126,8 +132,13 @@ function GroupCard(props: { group: Group }) {
   );
 }
 
-function HistoryView(props: { history: History; query: string }) {
-  const { history, query } = props;
+function HistoryView(props: {
+  history: History;
+  query: string;
+  team: string;
+  magazineTeam: string;
+}) {
+  const { history, query, team, magazineTeam } = props;
   const classes = useStyles();
   const groups = history.groups.filter(group =>
     matchesSearch(query, [
@@ -140,30 +151,36 @@ function HistoryView(props: { history: History; query: string }) {
 
   return (
     <Flex direction="column" gap="6">
-      <Grid.Root columns={{ initial: '2', md: '4' }} gap="3">
-        <InfoCard>
-          <Stat label="Merged" value={history.stats.merged} />
-        </InfoCard>
-        <InfoCard>
-          <Stat label="Closed" value={history.stats.closed} />
-        </InfoCard>
-        <InfoCard>
-          <Stat label="Released" value={history.stats.released} />
-        </InfoCard>
-        <InfoCard>
-          <Stat
-            label="Epics moved"
-            value={history.stats.epicsMoved}
-            hint="Epics with at least one sub-issue closed in these three weeks."
-          />
-        </InfoCard>
-      </Grid.Root>
+      <HiveScopeNote team={team} magazineTeam={magazineTeam} />
+      {/* The figures count the magazine's team's work, not another team's. */}
+      {followsTeam(team, magazineTeam) && (
+        <Grid.Root columns={{ initial: '2', md: '4' }} gap="3">
+          <InfoCard>
+            <Stat label="Merged" value={history.stats.merged} />
+          </InfoCard>
+          <InfoCard>
+            <Stat label="Closed" value={history.stats.closed} />
+          </InfoCard>
+          <InfoCard>
+            <Stat label="Released" value={history.stats.released} />
+          </InfoCard>
+          <InfoCard>
+            <Stat
+              label="Epics moved"
+              value={history.stats.epicsMoved}
+              hint="Epics with at least one sub-issue closed in these three weeks."
+            />
+          </InfoCard>
+        </Grid.Root>
+      )}
 
       {history.summary.length > 0 && (
         <ul className={classes.summary} aria-label="Summary">
           {history.summary.map(line => (
             <li key={line}>
-              <Text variant="body-medium">{line}</Text>
+              <Text variant="body-medium" className={classes.wrap}>
+                {line}
+              </Text>
             </li>
           ))}
         </ul>
@@ -208,11 +225,21 @@ function HistoryView(props: { history: History; query: string }) {
 export function HiveHistoryTab() {
   const [team] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data, isLoading, error } = useHiveHistory(team);
+  const { data, isFetching, error, refetch } = useHiveHistory(team);
 
   return data ? (
-    <HistoryView history={data} query={query} />
+    <HistoryView
+      history={data.view}
+      query={query}
+      team={team}
+      magazineTeam={data.magazineTeam}
+    />
   ) : (
-    <HiveSourceState isLoading={isLoading} error={error} what="what moved" />
+    <HiveSourceState
+      error={error}
+      what="what moved"
+      onRetry={refetch}
+      isFetching={isFetching}
+    />
   );
 }

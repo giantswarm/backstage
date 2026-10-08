@@ -654,16 +654,37 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
 }
 
 /**
- * The wizard's answer for each way a registered server is reached
+ * The way a server registered with each wizard answer is reached
  * ({@link serverAuthMode}, the one classification every surface shares).
- * Token exchange has none: the wizard does not offer it.
+ * One mode per answer: the inverse below needs it injective.
  */
-const WIZARD_AUTH_MODES: Partial<Record<ServerAuthMode, McpServerAuthMode>> = {
-  anonymous: 'none',
+export const WIZARD_ANSWER_MODES: Record<McpServerAuthMode, ServerAuthMode> = {
+  none: 'anonymous',
   'own-account': 'own-account',
   'platform-sso': 'platform-sso',
   sigv4: 'sigv4',
 };
+
+/**
+ * The wizard's answer for each way a registered server is reached, the inverse
+ * of {@link WIZARD_ANSWER_MODES}. Token exchange has none: the wizard does not
+ * offer it.
+ */
+export const WIZARD_AUTH_MODES: Partial<
+  Record<ServerAuthMode, McpServerAuthMode>
+> = Object.fromEntries(
+  (
+    Object.entries(WIZARD_ANSWER_MODES) as [McpServerAuthMode, ServerAuthMode][]
+  ).map(([answer, mode]) => [mode, answer] as const),
+);
+
+/**
+ * A wizard answer's name: the name of the mode it registers, so the wizard
+ * calls a mode what the servers table and detail panel call it.
+ */
+export function wizardAuthModeLabel(answer: McpServerAuthMode): string {
+  return AUTH_MODE_LABELS[WIZARD_ANSWER_MODES[answer]];
+}
 
 /**
  * The `spec.auth` keys each wizard answer composes (see `composeAuth`). A key
@@ -690,7 +711,9 @@ const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
  * carries them whatever it was created with, and they mean the same as the
  * key being absent.
  */
-function withoutCrdDefaults(auth: MCPServerAuth): Record<string, unknown> {
+export function withoutCrdDefaults(
+  auth: MCPServerAuth,
+): Record<string, unknown> {
   const rest: Record<string, unknown> = { ...auth };
   if (rest.type === 'none') {
     delete rest.type;

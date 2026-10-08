@@ -222,7 +222,7 @@ describe('McpServersPage', () => {
         'aws-root',
         'Connected',
         '1',
-        'AWS SigV4 (machine identity)',
+        'AWS request signing (SigV4, shared identity)',
         'User-registered server',
       ],
       [

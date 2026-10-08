@@ -39,7 +39,7 @@ const ALL_TEAMS_PARAMS = new Set([ALL, 'all']);
 
 /** The filter fields the toolbar offers, in display order. */
 const FILTER_FIELDS: Array<{
-  param: keyof RoadmapItemFilters;
+  param: 'kind' | 'quarter' | 'availability';
   field: string;
 }> = [
   { param: 'kind', field: 'Kind' },
@@ -61,7 +61,7 @@ function fieldValues(field: RoadmapField | undefined): string[] {
 export function RoadmapPage() {
   const classes = useStyles();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data: schema, isLoading, error } = useSchema();
+  const { data: schema, isPending, error } = useSchema();
 
   const view = searchParams.get('view') === 'activity' ? 'activity' : 'board';
 
@@ -103,7 +103,9 @@ export function RoadmapPage() {
       { replace: true },
     );
 
-  if (isLoading) {
+  // Pending, not loading: a retry that waits while the tab is in the
+  // background is pending without fetching, and has no data yet.
+  if (isPending) {
     return (
       <Content>
         <Progress />
@@ -163,7 +165,7 @@ export function RoadmapPage() {
       {view === 'board' ? (
         <BoardView filters={filters} schemaFields={fields} />
       ) : (
-        <TeamActivityView filters={filters} />
+        <TeamActivityView filters={filters} schemaFields={fields} />
       )}
     </Content>
   );

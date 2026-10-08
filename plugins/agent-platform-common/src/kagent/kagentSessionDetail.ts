@@ -4,11 +4,11 @@ import {
   toWireTask,
 } from './kagentA2aV1';
 import {
-  agentInstanceEnvelopeWireSchema,
-  isAgentInstanceEnvelope,
-  normalizeAgentInstance,
-  parseAgentInstanceWire,
-} from './kagentAgentInstance';
+  isSessionRecordEnvelope,
+  normalizeSessionRecord,
+  parseSessionRecordWire,
+  sessionRecordEnvelopeWireSchema,
+} from './kagentSessionRecord';
 import {
   a2aTaskWireSchema,
   A2aTaskWire,
@@ -49,8 +49,8 @@ export type NormalizedSessionDetail = {
 };
 
 /**
- * Parse a raw session detail: a `GetAgentInstanceResponse` (`{agentInstance}`,
- * the API v2 line) or a 0.10 `GET /api/sessions/:id` body.
+ * Parse a raw session detail: a `GetSessionResponse` (`{session}` as proto3
+ * JSON, the API v2 line) or a 0.10 `GET /api/sessions/:id` body.
  *
  * Never throws. `detail` is absent only when the body carried no usable session
  * at all, which callers treat as "not found" rather than as an error — the
@@ -60,22 +60,22 @@ export function normalizeSessionDetail(
   raw: unknown,
   installation: string,
 ): NormalizedSessionDetail {
-  if (isAgentInstanceEnvelope(raw)) {
-    const envelope = agentInstanceEnvelopeWireSchema.safeParse(raw);
+  if (isSessionRecordEnvelope(raw)) {
+    const envelope = sessionRecordEnvelopeWireSchema.safeParse(raw);
     const wire = envelope.success
-      ? parseAgentInstanceWire(envelope.data.agentInstance)
+      ? parseSessionRecordWire(envelope.data.session)
       : undefined;
     if (!wire?.id) {
       return {
         drift: {
           kind: 'missing-payload',
-          message: 'the response carried no readable AgentInstance',
+          message: 'the response carried no readable Session',
         },
       };
     }
-    // Instances carry no read-only flag: sharing an instance is a separate
-    // grant the portal does not use, so its own sessions are never read-only.
-    return { detail: { session: normalizeAgentInstance(wire, installation) } };
+    // Records carry no read-only flag: sharing a session is a separate grant
+    // the portal does not use, so its own sessions are never read-only.
+    return { detail: { session: normalizeSessionRecord(wire, installation) } };
   }
 
   const parsed = kagentSessionDetailSchema.safeParse(raw);
@@ -209,7 +209,7 @@ export function normalizeTaskList(raw: unknown): NormalizedTaskList {
 /**
  * The API v2 half of {@link normalizeTaskList}: each task translated then
  * validated one at a time, so one malformed turn costs itself rather than the
- * page. An absent `tasks` is an instance that has not run yet, never drift.
+ * page. An absent `tasks` is a session that has not run yet, never drift.
  */
 function normalizeA2aV1TaskList(raw: unknown): NormalizedTaskList {
   const parsed = a2aV1TaskListWireSchema.safeParse(raw);

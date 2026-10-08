@@ -4,7 +4,11 @@ import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import { FactList, type Fact } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  FactList,
+  type Fact,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
@@ -18,7 +22,8 @@ import {
   provenanceReleaseId,
 } from '../../lib/gitops';
 import { decodeDexSubject } from '../../lib/dexSubject';
-import { serverAuthMode } from '../../lib/serverAuthMode';
+import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
+import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import {
   formatRelativeTime,
   formatTimestamp,
@@ -194,14 +199,23 @@ function authTypeLabel(auth: MCPServerAuth): string {
  */
 export function AuthChain({ server }: { server: MCPServer }) {
   const auth = server.getAuth();
+  const mode = serverAuthMode(server);
 
-  if (!auth || serverAuthMode(server) === 'anonymous') {
-    return <Note>No authentication configured (anonymous).</Note>;
+  // Anonymous with nothing else set reads as one line; any other key of
+  // `spec.auth` is shown, since the wizard's edit gate reports it too.
+  if (
+    !auth ||
+    (mode === 'anonymous' && Object.keys(withoutCrdDefaults(auth)).length === 0)
+  ) {
+    return <Note>{AUTH_MODE_LABELS.anonymous}</Note>;
   }
 
   const { tokenExchange, localMint, authorizationServer, sigv4 } = auth;
 
-  const facts: Fact[] = [{ label: 'Type', value: authTypeLabel(auth) }];
+  const facts: Fact[] = [
+    { label: 'Mode', value: AUTH_MODE_LABELS[mode] },
+    { label: 'Type', value: authTypeLabel(auth) },
+  ];
   if (sigv4) {
     facts.push(
       { label: 'Signing region', value: <Mono>{sigv4.region}</Mono> },
@@ -378,10 +392,11 @@ export function RuntimeState({ server }: { server: MCPServer }) {
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'servers', installation],
     queryFn: () => musterApi.listServers(installation),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -553,10 +568,11 @@ export function ServerTools({
   const prefix = prefixOverride ?? server.getToolNamePrefix();
   const pattern = `${prefix}_*`;
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-tools', installation, pattern],
     queryFn: () => musterApi.filterTools({ installation, pattern, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -671,11 +687,12 @@ export function ServerResources({
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-resources', installation, name],
     queryFn: () =>
       musterApi.filterResources({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;
@@ -736,11 +753,12 @@ export function ServerPrompts({
   const installation = server.cluster;
   const name = server.getName();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-prompts', installation, name],
     queryFn: () =>
       musterApi.filterPrompts({ installation, server: name, limit: 200 }),
   });
+  const isLoading = isAwaitingData({ isPending, fetchStatus });
 
   if (isLoading) {
     return <Progress />;

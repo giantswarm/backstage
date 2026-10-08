@@ -39,7 +39,7 @@ export type AgentStatusState = {
   isSettling: boolean;
   /**
    * agent-manager answered `not_found`: by its contract, neither an
-   * AgentTemplate nor a HelmRelease of that name exists. Right after a create
+   * Agent object nor a HelmRelease of that name exists. Right after a create
    * this is transient and polled through (see {@link isSettling}); on a page
    * reached any other way it is the difference between "not yet" and "not
    * there".
@@ -51,10 +51,10 @@ export type AgentStatusState = {
 /**
  * `get_agent_status` for one agent, polled until the agent's Harness has a
  * verdict: `ready`, or `failed` with the reason. On API v2 that verdict comes
- * from the template's `status.harnesses[]` entry for the Harness it names —
+ * from the Agent object's `status.conditions` —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
- * template yet, and is polled through like `progressing`.
+ * Agent yet, and is polled through like `progressing`.
  */
 export function useAgentStatus(
   installation: string | undefined,

@@ -19,7 +19,21 @@
 #   renders and the install fails with "illegal base64 data at input byte N".
 # * the arm64 node selector with the toleration for the pool's
 #   `kubernetes.io/arch=arm64:NoSchedule` taint, without which the pod stays
-#   Pending, or lands on any pool when only the toleration renders.
+#   Pending, or lands on any pool when only the toleration renders;
+# * the startupProbe, without which a backend that never finishes starting
+#   (its database unreachable) stays unready and is never restarted.
+# * the server shutdown delay, without which every rollout answers the
+#   requests the gateway still routes to the stopping pod with Envoy's
+#   "upstream connect error or disconnect/reset before headers".
+# * the image's bundled config files ahead of the chart's own --config flags,
+#   without which an install that sets only appConfig exits at start with
+#   "Missing required config value";
+# * the CNPG PodMonitor gated on its toggle and on the cluster serving the
+#   kind, without which an install on a cluster without the Prometheus
+#   Operator CRDs fails and rolls back the database with it.
+# * the VerticalPodAutoscaler gated on its toggle and on the cluster serving
+#   the kind, without which a default install on a cluster without the VPA
+#   CRD fails with "no matches for kind VerticalPodAutoscaler".
 set -euo pipefail
 
 chart_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -167,6 +181,15 @@ if [ -z "${app_version}" ] ||
   failed=1
 fi
 
+echo "--> the backend keeps serving while the gateway drops a stopping pod"
+if ! grep -A1 -- 'name: APP_CONFIG_backend_lifecycle_serverShutdownDelay' "${work_dir}/no-fragment.yaml" |
+  grep -q -- 'value: "10s"'; then
+  echo "FAIL: shutdown-delay: APP_CONFIG_backend_lifecycle_serverShutdownDelay is not \"10s\""
+  failed=1
+fi
+render no-shutdown-delay --set backstage.serverShutdownDelay=
+refute no-shutdown-delay 'APP_CONFIG_backend_lifecycle_serverShutdownDelay'
+
 echo "--> observability.otel.endpoint set: the OTLP variables render"
 render otel --set observability.otel.endpoint=http://otlp-gateway.kube-system.svc:4317 --set observability.otel.headers=X-Scope-OrgID=giantswarm
 expect otel 'value: "http://otlp-gateway.kube-system.svc:4317"'
@@ -242,11 +265,56 @@ done
 expect postgresql 'mountPath: "/app/app-config-database.yaml"'
 # Later --config files win: the operator's appConfig and extraAppConfig come
 # after the chart's pg block, so a database block of theirs still applies.
+# The image's bundled files come first, the base layer the chart's flags
+# override.
 config_order=$(container_args postgresql | grep -v -- '^--config$' | paste -sd, -)
-if [ "${config_order}" != "app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
-  echo "FAIL: postgresql: the --config order is [${config_order}], want the database config first"
+if [ "${config_order}" != "app-config.yaml,app-config.production.yaml,app-config-database.yaml,app-config-from-configmap.yaml,app-config.fragment.yaml" ]; then
+  echo "FAIL: postgresql: the --config order is [${config_order}], want the bundled files, then the database config first"
   failed=1
 fi
+
+echo "--> backstage.args: the image's bundled config files by default, an explicit list replaces them"
+render args-default --set-string 'backstage.appConfig=app: portal'
+got=$(container_args args-default | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config.production.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-default: the args are [${got}], want the bundled files, then the appConfig"
+  failed=1
+fi
+render args-explicit --set-string 'backstage.appConfig=app: portal' --set 'backstage.args={--config,app-config.yaml}'
+got=$(container_args args-explicit | paste -sd, -)
+if [ "${got}" != "--config,app-config.yaml,--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-explicit: the args are [${got}], want the explicit list, then the appConfig"
+  failed=1
+fi
+# The managed installations pin `args: []` to keep the bundled files out.
+printf 'backstage:\n  args: []\n' >"${work_dir}/args-empty-values.yaml"
+render args-empty --set-string 'backstage.appConfig=app: portal' --values "${work_dir}/args-empty-values.yaml"
+got=$(container_args args-empty | paste -sd, -)
+if [ "${got}" != "--config,app-config-from-configmap.yaml" ]; then
+  echo "FAIL: args-empty: the args are [${got}], want the appConfig alone"
+  failed=1
+fi
+
+echo "--> CNPG PodMonitor: rendered with the tenant label when on and the cluster serves the kind, absent otherwise"
+render podmonitor-default --set database.engine=postgresql --api-versions monitoring.coreos.com/v1/PodMonitor
+expect podmonitor-default 'kind: PodMonitor'
+expect podmonitor-default 'observability.giantswarm.io/tenant: giantswarm'
+expect podmonitor-default 'kind: Cluster'
+render podmonitor-off --set database.engine=postgresql --set database.postgresql.podMonitor.enabled=false --api-versions monitoring.coreos.com/v1/PodMonitor
+refute podmonitor-off 'kind: PodMonitor'
+expect podmonitor-off 'kind: Cluster'
+render podmonitor-no-crd --set database.engine=postgresql
+refute podmonitor-no-crd 'kind: PodMonitor'
+expect podmonitor-no-crd 'kind: Cluster'
+
+echo "--> VerticalPodAutoscaler: rendered when on and the cluster serves the kind, absent otherwise"
+render vpa-default --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+expect vpa-default 'kind: VerticalPodAutoscaler'
+render vpa-off --set resources.verticalPodAutoscaler.enabled=false --api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler
+refute vpa-off 'kind: VerticalPodAutoscaler'
+render vpa-no-crd
+refute vpa-no-crd 'kind: VerticalPodAutoscaler'
+expect vpa-no-crd 'kind: Deployment'
 
 echo "--> database.engine=sqlite (default): no pg config, mount or flag"
 refute sqlite 'backstage-database-config'
@@ -314,6 +382,27 @@ expect_scheduling arch-covered-equal '[{"kubernetes.io/arch":"arm64"},[{"effect"
 render arch-noexecute --set architecture=arm64 --set 'tolerations[0].key=kubernetes\.io/arch' --set 'tolerations[0].operator=Exists' --set 'tolerations[0].effect=NoExecute'
 expect_scheduling arch-noexecute "[{\"kubernetes.io/arch\":\"arm64\"},[{\"effect\":\"NoExecute\",\"key\":\"kubernetes.io/arch\",\"operator\":\"Exists\"},${arm64_toleration}]]"
 render_fails arch-conflict 'architecture=arm64 conflicts with nodeSelector' --set architecture=arm64 --set-string 'nodeSelector.kubernetes\.io/arch=amd64'
+
+# The container's startupProbe in compact JSON, `null` when it does not render.
+startup_probe() {
+  yq -o=json -I=0 'select(.kind == "Deployment") | .spec.template.spec.containers[0].startupProbe' "${work_dir}/$1.yaml"
+}
+
+echo "--> startupProbe: on the readiness endpoint, ten minutes by default, timing from probes.startup"
+render startup-default
+got=$(startup_probe startup-default)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":10,"timeoutSeconds":5,"failureThreshold":60}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-default: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
+render startup-tuned --set probes.startup.periodSeconds=5 --set probes.startup.timeoutSeconds=2 --set probes.startup.failureThreshold=120
+got=$(startup_probe startup-tuned)
+want='{"httpGet":{"path":"/.backstage/health/v1/readiness","port":7007},"periodSeconds":5,"timeoutSeconds":2,"failureThreshold":120}'
+if [ "${got}" != "${want}" ]; then
+  echo "FAIL: startup-tuned: startupProbe is ${got}, want ${want}"
+  failed=1
+fi
 
 if [ "${failed}" -ne 0 ]; then
   exit 1

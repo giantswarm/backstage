@@ -2,7 +2,7 @@ import { expect, open, test } from './fixtures';
 
 /**
  * The Agents tab as the admin reads it: the roster from the installation's
- * `AgentTemplate`s, an agent's detail page, and the first step of the New
+ * `Agent`s, an agent's detail page, and the first step of the New
  * agent wizard. The roster and the detail page read the worker's own agent
  * (`labAgent`); the whole journey of one is `agent-lifecycle.spec.ts`.
  */
@@ -26,7 +26,9 @@ test('the roster shows the agent table with its columns', async ({
     'Skills',
   ]);
   await expect(
-    grid.getByRole('rowheader').getByRole('link', { name: labAgent.name }),
+    grid
+      .getByRole('rowheader')
+      .getByRole('link', { name: labAgent.name, exact: true }),
   ).toBeVisible();
   await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
 });
@@ -39,7 +41,7 @@ test('an agent in the roster opens its detail page', async ({
   const grid = admin.getByRole('grid', { name: 'Data table' });
   const agent = grid
     .getByRole('rowheader')
-    .getByRole('link', { name: labAgent.name });
+    .getByRole('link', { name: labAgent.name, exact: true });
 
   // The link shows the display name; the URL carries the slug — the href is
   // the contract, not the text.

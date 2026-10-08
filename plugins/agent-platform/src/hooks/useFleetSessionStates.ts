@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionStatesQueryKey } from '../lib/queryKeys';
@@ -128,7 +129,7 @@ export function useFleetSessionStates(
       // Only while nothing is in yet. One slow installation must not blank the
       // column for the rows that already have a state — the same rule the
       // sessions fan-out itself follows.
-      isLoading: results.every(result => result.isLoading),
+      isLoading: results.every(result => isAwaitingData(result)),
       // A failed *refetch* keeps the previous answer, so this is the harder
       // claim: every installation asked failed and none has data to fall back
       // on.

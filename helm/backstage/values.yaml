@@ -37,7 +37,7 @@ image:
 # -- Container port for the Backstage backend, also used for the Service and Ingress backend
 port: 7007
 
-# -- Liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).
+# -- Startup, liveness and readiness probe timing for the Backstage container. The HTTP path/port are fixed (`/.backstage/health/v1/{liveness,readiness}` on `port`, startup on readiness); only the timing fields are tunable. `timeoutSeconds` defaults to 5 (k8s default is 1) because the Backstage backend can take >1s to answer the health endpoint under CPU pressure (CPU limit is 500m by default and event-loop stalls during plugin startup, GC, or DB reconnects produce `context deadline exceeded` warnings with the k8s default).
 probes:
   # -- Liveness probe timing
   liveness:
@@ -67,6 +67,17 @@ probes:
     # @schema type:integer;minimum:1
     # -- Consecutive failures required to mark the container NotReady
     failureThreshold: 3
+  # -- Startup probe timing, on the readiness endpoint: liveness and readiness wait until the backend has started. Sized for a backend that waits up to five minutes for its database (a CNPG primary coming up) plus its own start; one that has not started by then is restarted.
+  startup:
+    # @schema type:integer;minimum:1
+    # -- How often (in seconds) to perform the startup probe
+    periodSeconds: 10
+    # @schema type:integer;minimum:1
+    # -- Number of seconds after which the startup probe times out
+    timeoutSeconds: 5
+    # @schema type:integer;minimum:1
+    # -- Consecutive failures before the container is restarted; with periodSeconds the time the backend has to start
+    failureThreshold: 60
 
 # -- Container image registry settings
 registry:
@@ -79,7 +90,7 @@ resources:
   # -- Vertical Pod Autoscaler settings
   verticalPodAutoscaler:
     # @schema type:boolean
-    # -- Enable the VerticalPodAutoscaler resource for automatic resource adjustment
+    # -- Render a `VerticalPodAutoscaler` for automatic resource adjustment. It also renders only when the cluster serves `autoscaling.k8s.io/v1/VerticalPodAutoscaler` (`helm template` needs `--api-versions autoscaling.k8s.io/v1/VerticalPodAutoscaler`), so an install on a cluster without the VPA CRD succeeds; set `false` to drop it everywhere
     enabled: true
   # -- CPU and memory resource requests
   requests:
@@ -328,6 +339,11 @@ database:
     # -- Placement for the CNPG instance pods. This is CloudNativePG's own `AffinityConfiguration`, not a core Kubernetes `Affinity`: the keys are `enablePodAntiAffinity`, `topologyKey`, `podAntiAffinityType`, `nodeSelector`, `tolerations`, `nodeAffinity`, `additionalPodAffinity` and `additionalPodAntiAffinity`.
     affinity: {}
 
+    podMonitor:
+      # @schema type:boolean
+      # -- Render a Prometheus Operator `PodMonitor` for the CNPG cluster, with the `observability.giantswarm.io/tenant` label. It also renders only when the cluster serves `monitoring.coreos.com/v1/PodMonitor` (`helm template` needs `--api-versions monitoring.coreos.com/v1/PodMonitor`), so an install on a cluster without the Prometheus Operator CRDs succeeds; set `false` to drop it everywhere
+      enabled: true
+
 # -- Custom branding/UI asset settings (logos and favicons served by the branding backend plugin)
 branding:
   # @schema type:boolean
@@ -351,8 +367,12 @@ backstage:
   command: ['node', 'packages/backend']
 
   # @schema item:string
-  # -- Additional command arguments passed to the Backstage container
-  args: []
+  # -- Arguments passed to the Backstage container, the base layer of the backend's configuration: by default the image's bundled config files, as in the image's `CMD` (`command` replaces the `CMD`, so the chart restates them here). The chart's own `--config` flags (database, appConfig, extraAppConfig, branding) follow these, so they override the bundled values. An installation that sets `args` replaces this list and keeps the bundled files only if it names them
+  args:
+    ['--config', 'app-config.yaml', '--config', 'app-config.production.yaml']
+
+  # -- How long the backend keeps serving after SIGTERM, with its readiness at 503, before it stops its server (`backend.lifecycle.serverShutdownDelay`). Covers the time the gateway takes to drop a terminating pod from its endpoints; without it every rollout answers requests still routed to the old pod with the gateway's "upstream connect error". Must stay below the pod's termination grace period (30 s)
+  serverShutdownDelay: 10s
 
   # @schema item:object;itemProperties:{"filename":{"type":"string"},"configMapRef":{"type":"string"},"checksum":{"type":"string"}}
   # -- Extra app configuration files to inline into command arguments, each referencing a ConfigMap. Backstage reads them at start and the chart does not render the ConfigMaps, so a change to one rolls the pod only through the entry's optional `checksum`: whoever renders the ConfigMap sets it to a hash of the ConfigMap's data, and the pod template's `checksum/extra-app-config` annotation changes with it

@@ -24,10 +24,7 @@ import { dump } from 'js-yaml';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
-import {
-  useAgentManagerAvailability,
-  useAgentManagerInfo,
-} from '../../hooks/useAgentManager';
+import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -44,19 +41,18 @@ import {
 import type {
   AgentManagerAgent,
   AgentSkillEntry,
-  CommitAgentResult,
 } from '../../lib/agentManager';
 import { skillEntryOf } from '../../lib/agentSpec';
 import type { DiscoveredSkill } from '../../lib/skills';
 import { agentDetailRouteRef, agentsRouteRef } from '../../routes';
 import { CodeBlock } from '../CodeBlock';
-import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { TextAreaField } from '../NewAgentPage/TextAreaField';
 import {
   MAX_SYSTEM_MESSAGE_LENGTH,
   systemMessageProblem,
 } from '../../lib/systemMessage';
+import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isMounted, SkillPicker } from '../SkillPicker';
 import { agentManagerAbsenceReason } from '../AgentDetailPage/AgentActionsMenu';
 import { EditAgentToolsetField } from './EditAgentToolsetField';
@@ -202,8 +198,6 @@ function EditAgentForm({
     failure: modelsFailure,
   } = useAgentManagerModelConfigs(installation, agent.namespace);
   const catalog = useSkillCatalog();
-  const { info } = useAgentManagerInfo(installation);
-  const canCommit = info?.capabilities?.commit === true;
 
   const toggleSkill = useCallback(
     (skill: DiscoveredSkill) =>
@@ -244,18 +238,18 @@ function EditAgentForm({
   );
   const violations = dryRun.result?.errors ?? [];
   const promptProblem = systemMessageProblem(edit.systemMessage);
+  const egressIssue = egressProblem(parseEgressText(edit.egressText));
   const canWrite =
     dirty &&
     !promptProblem &&
+    !egressIssue &&
     Boolean(dryRun.result) &&
     violations.length === 0 &&
     !dryRun.failure;
 
   const updating = useUpdateAgent(installation);
-  const [commitResult, setCommitResult] = useState<CommitAgentResult>();
 
   const onSave = useCallback(async () => {
-    setCommitResult(undefined);
     updating.reset();
     let result;
     try {
@@ -282,20 +276,7 @@ function EditAgentForm({
     }
   }, [updating, update, detailHref, navigate, installation, agent]);
 
-  const onCommit = useCallback(async () => {
-    // `update_agent` with `mode: commit` (giantswarm/agent-manager#24) is
-    // offered only under the capability gate; agent-manager answers the pull
-    // request or the connect step.
-    setCommitResult(undefined);
-    updating.reset();
-    try {
-      setCommitResult(await updating.commit(update));
-    } catch {
-      // Left to `updating.failure`.
-    }
-  }, [updating, update]);
-
-  const isBusy = updating.isUpdating || updating.isCommitting;
+  const isBusy = updating.isUpdating;
   const actions = useMemo(
     () => (
       <Flex gap="2">
@@ -306,15 +287,6 @@ function EditAgentForm({
         >
           Cancel
         </Button>
-        {canCommit && (
-          <Button
-            variant="secondary"
-            isDisabled={isBusy || !canWrite}
-            onPress={onCommit}
-          >
-            {updating.isCommitting ? 'Committing…' : 'Commit'}
-          </Button>
-        )}
         <Button
           variant="primary"
           isDisabled={isBusy || !canWrite}
@@ -324,17 +296,7 @@ function EditAgentForm({
         </Button>
       </Flex>
     ),
-    [
-      isBusy,
-      canWrite,
-      canCommit,
-      detailHref,
-      navigate,
-      onCommit,
-      onSave,
-      updating.isCommitting,
-      updating.isUpdating,
-    ],
+    [isBusy, canWrite, detailHref, navigate, onSave, updating.isUpdating],
   );
   useProvidePageHeaderActions(actions);
 
@@ -426,6 +388,15 @@ function EditAgentForm({
                   </Text>
                 )}
               </Flex>
+              <TextAreaField
+                label="Extra egress origins"
+                description="Hosts the agent may reach beyond its model, MCP servers, skill and plugin sources and telemetry. One http(s) origin per line, such as https://github.com:443; a leading * matches one host label. Empty removes every extra origin."
+                value={edit.egressText}
+                onChange={value => set('egressText', value)}
+                rows={3}
+                mono
+                error={egressIssue}
+              />
             </Flex>
           </CardBody>
         </Card>
@@ -536,11 +507,6 @@ function EditAgentForm({
                 failure={updating.failure}
                 action="Agents are edited"
               />
-            </Box>
-          )}
-          {commitResult && (
-            <Box mt="2">
-              <CommitOutcome result={commitResult} />
             </Box>
           )}
         </Flex>
@@ -662,8 +628,7 @@ function EditAgentPageContent() {
  * review as `validate_agent`'s dry run of the update, Save as `update_agent`
  * with only the changed fields. An agent applied from git never reaches the
  * form — agent-manager refuses every write to it. A suspended agent's dry run
- * comes back as agent-manager's refusal and Save stays locked. Commit
- * (`mode: commit`) appears only when `get_info` reports the capability.
+ * comes back as agent-manager's refusal and Save stays locked.
  */
 export function EditAgentPage() {
   return (

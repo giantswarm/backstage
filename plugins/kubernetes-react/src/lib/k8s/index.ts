@@ -11,29 +11,28 @@ export {
   Agent,
   AGENT_CONDITION_STAGE_ORDER,
   AgentConditionType,
-  decidingHarnessStatus,
   deriveAgentReadiness,
-  deriveHarnessReadiness,
   failureFieldOf,
   getAgentStatusChangedAt,
-  HARNESS_LABEL,
   isAgentStatusStale,
   isAgentTransitional,
 } from './Agent';
 export type {
+  AgentCondition,
   AgentFailure,
   AgentFailureField,
-  AgentHarness,
-  AgentHarnessCondition,
-  AgentHarnessStatus,
+  AgentInterface,
   AgentMcpBinding,
   AgentReadiness,
   AgentSkill,
+  AgentStatus,
+  AgentSubAgentBinding,
   AgentTemplateInterface,
-  AgentToolAgentRef,
+  AgentTemplateSpec,
   AgentToolBinding,
-  HarnessReadiness,
 } from './Agent';
+export { KAGENT_API_GROUP, KAGENT_API_VERSION } from './kagentApi';
+export type { ModelConfigInterface } from './kagentApi';
 export { RemoteMCPServer } from './RemoteMCPServer';
 export type {
   RemoteMCPServerHeader,
@@ -69,7 +68,11 @@ export type { NodeInterface } from './Node';
 export { Pod } from './Pod';
 export type { PodContainerStatus, PodInterface, PodPendingState } from './Pod';
 export { Harness } from './Harness';
-export type { HarnessAgentTemplateSelector, HarnessRuntime } from './Harness';
+export type {
+  ClaudeHarnessLimits,
+  HarnessInterface,
+  HarnessRuntime,
+} from './Harness';
 export { FluxInstance } from './FluxInstance';
 export {
   FLUX_OPERATOR_RECONCILE_ANNOTATION,
@@ -85,6 +88,7 @@ export { ImageRepository } from './ImageRepository';
 export { ImageUpdateAutomation } from './ImageUpdateAutomation';
 export { Kustomization } from './Kustomization';
 export { matchesLabelSelector } from './labelSelector';
+export { toKubectlYaml } from './kubectlYaml';
 export type { LabelSelector } from './labelSelector';
 export { ResourceSet } from './ResourceSet';
 export type { InputProviderRef } from './ResourceSet';

@@ -71,8 +71,8 @@ import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { AgentCreationProgress } from '../AgentCreationProgress';
-import { AgentActionsMenu } from './AgentActionsMenu';
-import { AgentDeleteDialog } from './AgentDeleteDialog';
+import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
+import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
 import { AgentDetailTabs } from './AgentDetailTabs';
 import { AgentOverviewTab } from './AgentOverviewTab';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
@@ -90,7 +90,7 @@ const AVATAR_SIZE: AvatarSize = 96;
 
 /**
  * The header label for an agent whose HelmRelease exists but whose
- * AgentTemplate has not been rendered yet — before there is a readiness to
+ * Agent has not been rendered yet — before there is a readiness to
  * derive. Same neutral hourglass as "Pending", which is the state it becomes.
  */
 const DEPLOYING_PRESENTATION: ReadinessPresentation = {
@@ -101,7 +101,7 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 
 /**
  * The page header: avatar, name, the derived readiness, the installation it
- * runs on, its `namespace/name` and — once the template exists — what it is
+ * runs on, its `namespace/name` and — once the Agent exists — what it is
  * for. Everything else about the agent is in the Overview, once. It also names
  * the agent in the document title; `GSPageLayout` appends the app title.
  */
@@ -194,9 +194,9 @@ function AgentDetailPageContent() {
   // Same two tiers as the list: tighten while the agent is converging, relax
   // once it settles or stays broken. This page is where someone watches an
   // agent come up, so the fast tier earns its keep here — and it starts before
-  // the template exists: while agent-manager says the agent's HelmRelease is
+  // the Agent exists: while agent-manager says the agent's HelmRelease is
   // there (`isDeploying` below), the read that will eventually find the
-  // template polls at the fast tier too, instead of the 60 s the helper gives
+  // Agent polls at the fast tier too, instead of the 60 s the helper gives
   // "no data". A ref, because the flag is derived from this read's own outcome
   // and react-query re-evaluates the interval after every fetch.
   const isDeployingRef = useRef(false);
@@ -221,31 +221,30 @@ function AgentDetailPageContent() {
   );
 
   // "Not yet" against "not there". agent-manager's `create_agent` applies the
-  // HelmRelease and returns; helm-controller renders the AgentTemplate a few
+  // HelmRelease and returns; helm-controller renders the Agent a few
   // seconds later, and the create flow navigates here in between — so a 404 on
-  // the template alone does not mean the agent is missing. agent-manager's
+  // the Agent alone does not mean the agent is missing. agent-manager's
   // `get_agent_status` is the HelmRelease-aware read: by its contract it
-  // answers `not_found` only when neither the template nor the HelmRelease
+  // answers `not_found` only when neither the Agent nor the HelmRelease
   // exists; otherwise it reports the release and its verdict. It is the read
   // the creation progress polls after Deploy anyway, runs as the signed-in
   // person (so it needs no Kubernetes read on HelmReleases), and survives a
-  // reload of this URL. Asked only once the template read has come back empty;
+  // reload of this URL. Asked only once the Agent read has come back empty;
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
-  const isTemplateMissing =
-    !isLoading && !agent && errors.some(isNotFoundError);
+  const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
   const release = useAgentStatus(installation, namespace, name, {
-    enabled: isTemplateMissing,
+    enabled: isAgentMissing,
   });
   const isDeploying =
-    isTemplateMissing &&
+    isAgentMissing &&
     (release.status?.helmRelease?.exists === true ||
-      release.status?.template?.exists === true);
+      release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
   const isAskingAgentManager =
-    isTemplateMissing &&
+    isAgentMissing &&
     release.isSettling &&
     !release.status &&
     !release.isNotFound;
@@ -292,9 +291,9 @@ function AgentDetailPageContent() {
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
+  const presence = availability.presenceOf(installation);
   const isAgentManagerReachable =
-    !availability.isUnavailable &&
-    availability.presenceOf(installation) === 'available';
+    !availability.isUnavailable && presence === 'available';
 
   // Whether a live write is possible at all, in agent-manager's own words:
   // `managed: 'gitops'` means the agent's HelmRelease is applied by a Flux
@@ -311,14 +310,32 @@ function AgentDetailPageContent() {
       enabled: isAgentManagerReachable,
     });
 
+  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
+  // when agent-manager reports the capability — the only way to edit or delete
+  // an agent applied from git, and meaningless for any other: a pull request
+  // goes to the repository that owns the release, and only those have one.
+  const { info: agentManagerInfo, isLoading: isReadingManagerInfo } =
+    useAgentManagerInfo(presence === 'available' ? installation : undefined);
+  const isGitOpsOwned = managerAgent?.managed === 'gitops';
+  const canCommit = agentManagerInfo?.capabilities?.commit === true;
+
   const agentManagerGate = useMemo(
     () => ({
-      presence: availability.presenceOf(installation),
+      presence,
       isUnavailable: availability.isUnavailable,
-      isGitOpsOwned: managerAgent?.managed === 'gitops',
-      isVerdictPending: isReadingManagerAgent,
+      isGitOpsOwned,
+      canCommit,
+      isVerdictPending:
+        isReadingManagerAgent || (isGitOpsOwned && isReadingManagerInfo),
     }),
-    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
+    [
+      presence,
+      availability.isUnavailable,
+      isGitOpsOwned,
+      canCommit,
+      isReadingManagerAgent,
+      isReadingManagerInfo,
+    ],
   );
 
   /** Every live write the page offers is gated on this. */
@@ -326,16 +343,11 @@ function AgentDetailPageContent() {
     isAgentManagerReachable &&
     !agentManagerGate.isVerdictPending &&
     !agentManagerGate.isGitOpsOwned;
-  const { info: agentManagerInfo } = useAgentManagerInfo(
-    agentManagerGate.presence === 'available' ? installation : undefined,
-  );
-  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
-  // shows only when agent-manager reports the capability.
-  const canCommit = agentManagerInfo?.capabilities?.commit === true;
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<'apply' | 'commit'>('apply');
   const [isUpdateSkillsOpen, setUpdateSkillsOpen] = useState(false);
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
@@ -345,12 +357,22 @@ function AgentDetailPageContent() {
 
   const { reset: resetDeletion } = deletion;
   const openDelete = useCallback(() => {
+    // The menu's answer, fixed while the dialog is open, so a re-read of the
+    // verdict cannot swap its action under the cursor.
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
     // Clear a previous attempt's error, so the dialog does not open still
-    // showing it.
+    // showing it. A pull request it already opened stays: the agent is only
+    // gone once that is merged, and a second one would duplicate it.
     resetDeletion();
-    setCommitResult(undefined);
+    setCommitResult(previous =>
+      previous && isCommitSettled(previous) ? previous : undefined,
+    );
+    setDeleteMode(mode);
     setDeleteOpen(true);
-  }, [resetDeletion]);
+  }, [agentManagerGate, resetDeletion]);
   const { reset: resetUpdating } = updating;
   const openUpdateSkills = useCallback(() => {
     resetUpdating();
@@ -583,10 +605,10 @@ function AgentDetailPageContent() {
   // Every branch below is gated on there being no agent to show. With one in hand
   // the page renders, whatever the last read did.
   if (!agent) {
-    // The HelmRelease exists, the template does not yet: the agent right after
+    // The HelmRelease exists, the Agent does not yet: the agent right after
     // Deploy. The header shows what is known — the name the release was
     // created under and its avatar — and agent-manager's own summary of where
-    // the release stands, until the template read finds it (polled at the fast
+    // the release stands, until the Agent read finds it (polled at the fast
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Start a session": there is nothing to start one on yet.
     if (isDeploying) {
@@ -607,11 +629,11 @@ function AgentDetailPageContent() {
               title={
                 failed
                   ? 'The agent’s release did not become ready'
-                  : 'Deploying — waiting for kagent to render the template'
+                  : 'Deploying — waiting for kagent to render the agent'
               }
               description={
                 release.status?.summary ??
-                'agent-manager applied the Helm release; Flux and kagent have not rendered the AgentTemplate yet.'
+                'agent-manager applied the Helm release; Flux and kagent have not rendered the Agent object yet.'
               }
             />
           </Flex>
@@ -622,7 +644,7 @@ function AgentDetailPageContent() {
     // A 404 is an expected outcome here — a stale bookmark, a deleted or renamed
     // agent — so it gets an explanation rather than an error banner. Also covers
     // "no kagent API v2 on this installation": no kagent, or a kagent still on
-    // 0.10, answers 404 for the `agenttemplates` resource.
+    // kagent.dev, answers 404 for the `agents` resource.
     if (errors.some(isNotFoundError)) {
       return (
         <Content>
@@ -758,7 +780,7 @@ function AgentDetailPageContent() {
         isOpen={isDeleteOpen}
         onOpenChange={setDeleteOpen}
         deletion={deletion}
-        canCommit={canCommit}
+        mode={deleteMode}
         onConfirm={confirmDelete}
         onCommit={commitDelete}
         commitResult={commitResult}
