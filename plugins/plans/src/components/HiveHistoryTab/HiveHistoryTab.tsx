@@ -225,7 +225,7 @@ function HistoryView(props: {
 export function HiveHistoryTab() {
   const [team] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data, isLoading, isFetching, error, refetch } = useHiveHistory(team);
+  const { data, isFetching, error, refetch } = useHiveHistory(team);
 
   return data ? (
     <HistoryView
@@ -236,7 +236,6 @@ export function HiveHistoryTab() {
     />
   ) : (
     <HiveSourceState
-      isLoading={isLoading}
       error={error}
       what="what moved"
       onRetry={refetch}

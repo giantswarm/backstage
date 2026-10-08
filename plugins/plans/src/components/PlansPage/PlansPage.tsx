@@ -2,7 +2,10 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Box, Select, Tab, TabList, TabPanel, Tabs } from '@backstage/ui';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { plansApiRef } from '../../apis';
@@ -49,10 +52,11 @@ export function PlansPage() {
     [setSearchParams],
   );
 
-  const { data, isLoading, error } = useQuery({
+  const repos = useQuery({
     queryKey: ['plans', 'repos'],
     queryFn: () => plansApi.listRepos(),
   });
+  const { data, error } = repos;
 
   const configured = useMemo(() => data?.repositories ?? [], [data]);
   const repositories = useMemo(
@@ -83,7 +87,7 @@ export function PlansPage() {
   );
   useProvidePageHeaderActions(headerActions);
 
-  if (isLoading) {
+  if (isAwaitingData(repos)) {
     return (
       <Content>
         <Progress />
