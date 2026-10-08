@@ -276,6 +276,11 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       // The complete response message (Go executor), or the closing sentinel
       // (whose text, when present, is the complete message — Python flow).
       const isComplete = partial === false || event.lastChunk === true;
+      // What the poll keys this output by on API v2, where the agent's output
+      // lands in `Task.artifacts` and each artifact reads back as a message
+      // under its id (`artifactToWireMessage`). Without it the page cannot
+      // recognise the polled copy, and renders the reply twice.
+      const artifactId = event.artifact?.artifactId ?? undefined;
 
       let text = '';
       /**
@@ -305,7 +310,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
           next,
           'agent-message',
           text,
-          repeats ? live?.messageId : undefined,
+          (repeats ? live?.messageId : undefined) ?? artifactId,
           repeats ? live?.author : undefined,
         );
         text = '';
@@ -339,7 +344,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (isComplete) {
           emitComplete();
         }
-        ingestDataPart(next, part, undefined, undefined);
+        ingestDataPart(next, part, undefined, artifactId);
       }
 
       if (isComplete) {
