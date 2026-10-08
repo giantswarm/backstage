@@ -49,6 +49,11 @@ export const AWAITING_INPUT_STATES = new Set([
   'auth-required',
 ]);
 
+/** Whether a described session state is waiting on a person: input or authentication. */
+export function isAwaitingInput(state: SessionState | undefined): boolean {
+  return state !== undefined && AWAITING_INPUT_STATES.has(state.key);
+}
+
 /**
  * The terminal states in which a turn ended in error.
  *

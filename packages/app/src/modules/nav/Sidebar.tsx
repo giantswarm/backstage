@@ -13,6 +13,7 @@ import { NavContentBlueprint } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
+import { agentShellOff } from '../agentShell/predicates';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import FolderIcon from '@material-ui/icons/Folder';
 import MenuIcon from '@material-ui/icons/Menu';
@@ -85,6 +86,7 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
 }
 
 export const SidebarContent = NavContentBlueprint.make({
+  if: agentShellOff,
   params: {
     component: ({ navItems }) => {
       const searchItem = navItems.take('page:search');

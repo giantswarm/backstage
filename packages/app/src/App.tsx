@@ -3,6 +3,7 @@ import { createApp } from '@backstage/frontend-defaults';
 // App-level and nav modules:
 import { appOverrides } from './modules/app';
 import { navModule } from './modules/nav';
+import { agentShellModule } from './modules/agentShell';
 
 // GS plugins:
 import gsPlugin from '@giantswarm/backstage-plugin-gs';
@@ -57,6 +58,7 @@ const app = createApp({
     appOverrides,
     // Nav sidebar layout:
     navModule,
+    agentShellModule,
 
     // GS plugins:
     gsPlugin,

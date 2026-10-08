@@ -1,5 +1,5 @@
 import {
-  AWAITING_INPUT_STATES,
+  isAwaitingInput,
   describeSessionState,
   SessionStateEntry,
   SessionStateTone,
@@ -141,9 +141,7 @@ export function groupActiveSessions(
       continue;
     }
 
-    const key: RailGroupKey = AWAITING_INPUT_STATES.has(state.key)
-      ? 'waiting'
-      : 'running';
+    const key: RailGroupKey = isAwaitingInput(state) ? 'waiting' : 'running';
     buckets[key].push({ row, changedAt: entry?.changedAt });
   }
 

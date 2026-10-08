@@ -3,6 +3,7 @@ import {
   deriveSessionState,
   describeSessionState,
   isAgentWorking,
+  isAwaitingInput,
   readNewestTaskState,
   readTurnProgress,
 } from './kagentSessionState';
@@ -297,5 +298,18 @@ describe('describeSessionState normalisation', () => {
       raw: 'Quantum-Superposition',
       key: 'quantum-superposition',
     });
+  });
+});
+
+describe('isAwaitingInput', () => {
+  it('is true for the states that wait on a person', () => {
+    expect(isAwaitingInput(describeSessionState('input-required'))).toBe(true);
+    expect(isAwaitingInput(describeSessionState('Auth-Required'))).toBe(true);
+  });
+
+  it('is false for every other state and for no state', () => {
+    expect(isAwaitingInput(describeSessionState('working'))).toBe(false);
+    expect(isAwaitingInput(describeSessionState('completed'))).toBe(false);
+    expect(isAwaitingInput(undefined)).toBe(false);
   });
 });
