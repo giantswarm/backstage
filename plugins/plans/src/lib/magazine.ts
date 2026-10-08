@@ -110,6 +110,17 @@ export interface Group {
   entries: Entry[];
 }
 
+/**
+ * `magazine/meta.json`: the board and the team the magazine follows. An
+ * item's `team` is set only when it belongs to another team, so an item
+ * without one is this team's.
+ */
+export interface Meta {
+  version: number;
+  generatedAt: string;
+  sources: { board: number; team: string };
+}
+
 export type HistoryWindow = 'days' | 'weeks' | 'months';
 
 export interface History {
@@ -151,8 +162,10 @@ export const HIVE_HISTORY_WINDOW: HistoryWindow = 'weeks';
 export const LANE_PREVIEW = 4;
 
 /** The data file of a magazine view on the data ref. */
-export function magazineFile(view: 'now' | HistoryWindow): string {
-  return view === 'now' ? 'magazine/now.json' : `magazine/history-${view}.json`;
+export function magazineFile(view: 'now' | 'meta' | HistoryWindow): string {
+  return view === 'now' || view === 'meta'
+    ? `magazine/${view}.json`
+    : `magazine/history-${view}.json`;
 }
 
 /** Lanes in priority order (customer, top-epic, setup, chore). */

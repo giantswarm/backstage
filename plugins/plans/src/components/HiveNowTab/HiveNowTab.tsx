@@ -48,6 +48,7 @@ import {
   progressPercent,
   sortLanes,
 } from '../../lib/magazine';
+import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
 
 const useStyles = makeStyles({
@@ -375,9 +376,9 @@ export function HiveNowTab() {
   const classes = useStyles();
   const [team] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data: now, isLoading, isFetching, error, refetch } = useHiveNow(team);
+  const { data, isLoading, isFetching, error, refetch } = useHiveNow(team);
 
-  if (!now) {
+  if (!data) {
     return (
       <HiveSourceState
         isLoading={isLoading}
@@ -389,12 +390,14 @@ export function HiveNowTab() {
     );
   }
 
+  const { view: now, magazineTeam } = data;
   const figures = nowFigures(now);
   const lanes = sortLanes(now.lanes);
   const scope = team === ALL_TEAMS ? 'all teams' : teamName(team);
 
   return (
     <Flex direction="column" gap="6">
+      <HiveScopeNote team={team} magazineTeam={magazineTeam} />
       <Grid.Root columns={{ initial: '2', md: '4' }} gap="3">
         <FigureCard
           label="Open for customers"

@@ -11,6 +11,7 @@ import {
   KnowledgeDoc,
   knowledgeDocs,
   magazineFile,
+  Meta,
   Now,
 } from '../lib/magazine';
 
@@ -138,13 +139,37 @@ export function useHiveSearch(): [string, (query: string) => void] {
 // through the plans API: the generated `magazine/*.json` on its data ref and
 // the `knowledge/**` documents on its knowledge ref.
 
+/** A magazine view scoped to a team, with the team the magazine follows. */
+export interface ScopedView<T> {
+  view: T;
+  magazineTeam: string;
+}
+
+/**
+ * A magazine file with the team the magazine follows (`meta.json`), which
+ * every item without a `team` belongs to.
+ */
+async function readScoped<T>(
+  plansApi: PlansApi,
+  path: string,
+): Promise<ScopedView<T>> {
+  const [view, meta] = await Promise.all([
+    readMagazineJson<T>(plansApi, path),
+    readMagazineJson<Meta>(plansApi, magazineFile('meta')),
+  ]);
+  return { view, magazineTeam: meta.sources.team };
+}
+
 /** Now (`magazine/now.json`), scoped to a team. */
 export function useHiveNow(team: string) {
   const plansApi = useApi(plansApiRef);
   return useQuery({
     queryKey: ['plans', 'hive', 'now'],
-    queryFn: () => readMagazineJson<Now>(plansApi, magazineFile('now')),
-    select: now => nowForTeam(now, team),
+    queryFn: () => readScoped<Now>(plansApi, magazineFile('now')),
+    select: ({ view, magazineTeam }): ScopedView<Now> => ({
+      view: nowForTeam(view, team, magazineTeam),
+      magazineTeam,
+    }),
   });
 }
 
@@ -154,8 +179,11 @@ export function useHiveHistory(team: string) {
   return useQuery({
     queryKey: ['plans', 'hive', 'history'],
     queryFn: () =>
-      readMagazineJson<History>(plansApi, magazineFile(HIVE_HISTORY_WINDOW)),
-    select: history => historyForTeam(history, team),
+      readScoped<History>(plansApi, magazineFile(HIVE_HISTORY_WINDOW)),
+    select: ({ view, magazineTeam }): ScopedView<History> => ({
+      view: historyForTeam(view, team, magazineTeam),
+      magazineTeam,
+    }),
   });
 }
 

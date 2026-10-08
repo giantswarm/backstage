@@ -66,7 +66,20 @@ const now = {
       total: 1,
       cards: [card(10, { class: 'top-epic', title: 'Top epic story' })],
     },
-    { id: 'setup', title: 'Setup', summary: '', total: 0, cards: [] },
+    // Another team's card: the magazine names it, without the emoji.
+    {
+      id: 'setup',
+      title: 'Setup',
+      summary: '',
+      total: 1,
+      cards: [
+        card(40, {
+          class: 'setup',
+          title: 'Phoenix setup work',
+          team: 'Phoenix',
+        }),
+      ],
+    },
   ],
   reviews: [
     {
@@ -122,6 +135,18 @@ const history = {
           customers: ['acme'],
           links: [],
         },
+        {
+          key: 'giantswarm/example#102',
+          title: 'Phoenix shipped in weeks',
+          url: 'https://github.com/giantswarm/example/pull/102',
+          kind: 'pr',
+          at: NOW,
+          repo: 'giantswarm/example',
+          class: 'top-epic',
+          customers: [],
+          team: 'Phoenix',
+          links: [],
+        },
       ],
     },
     {
@@ -168,7 +193,20 @@ const tree = {
   ],
 };
 
+// The magazine follows one team: an item without a `team` is this team's.
+const meta = {
+  version: 1,
+  generatedAt: NOW,
+  sources: { board: 273, team: 'Bumblebee' },
+};
+
+const PLANS_REPOSITORIES = [
+  'giantswarm/bumblebee-plans',
+  'giantswarm/honeybadger-plans',
+];
+
 const documents: Record<string, string> = {
+  'magazine/meta.json': JSON.stringify(meta),
   'magazine/now.json': JSON.stringify(now),
   'magazine/history-weeks.json': JSON.stringify(history),
   'knowledge/product/overview.md': '# Product overview\n\nWhat we build.',
@@ -194,6 +232,32 @@ async function mockPlansBackend(page: Page) {
     }
     if (path === '/tree') {
       await route.fulfill({ json: tree });
+      return;
+    }
+    if (path === '/repos') {
+      await route.fulfill({ json: { repositories: PLANS_REPOSITORIES } });
+      return;
+    }
+    if (path === '/pulls') {
+      const repo = url.searchParams.get('repo') ?? '';
+      await route.fulfill({
+        json: {
+          pulls: [
+            {
+              number: 1,
+              title: `A plan in ${repo}`,
+              author: 'someone',
+              draft: false,
+              updatedAt: NOW,
+              body: '',
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (path === '/epics') {
+      await route.fulfill({ json: { merged: [], pulls: [] } });
       return;
     }
     if (path === '/content') {
@@ -387,6 +451,51 @@ test.describe('Hive', () => {
       }
     });
   }
+
+  test('the header team narrows Now and History', async ({ admin }) => {
+    const phoenix = encodeURIComponent('Phoenix 🔥');
+    const bumblebee = encodeURIComponent('Bumblebee🐝');
+
+    await open(admin, `/hive/now?team=${phoenix}`);
+    await expect(admin.getByText('Hive follows Team Bumblebee')).toBeVisible();
+    await expect(admin.getByText('Phoenix setup work')).toBeVisible();
+    await expect(admin.getByText('Customer request 1')).toHaveCount(0);
+    await expect(admin.getByText('Two customer requests move')).toHaveCount(0);
+
+    await open(admin, `/hive/now?team=${bumblebee}`);
+    await expect(admin.getByText('Customer request 1')).toBeVisible();
+    await expect(admin.getByText('Phoenix setup work')).toHaveCount(0);
+    await expect(admin.getByText('Hive follows Team Bumblebee')).toHaveCount(0);
+
+    await open(admin, `/hive/history?team=${phoenix}`);
+    await expect(admin.getByText('Epic of the weeks')).toBeVisible();
+    await expect(admin.getByText(UNBROKEN_TITLE)).toHaveCount(0);
+    await expect(admin.getByText('Digest of the weeks window.')).toHaveCount(0);
+
+    await open(admin, `/hive/history?team=${bumblebee}`);
+    await expect(admin.getByText(UNBROKEN_TITLE)).toBeVisible();
+    await expect(admin.getByText('Digest of the weeks window.')).toBeVisible();
+  });
+
+  test('Plans: the header team picks its plans repository', async ({
+    admin,
+  }) => {
+    await open(
+      admin,
+      `/hive/plans?team=${encodeURIComponent('Honey Badger 🦡')}`,
+    );
+    await expect(
+      admin.getByText('A plan in giantswarm/honeybadger-plans'),
+    ).toBeVisible();
+    await expect(admin.getByRole('button', { name: /Repository/ })).toHaveCount(
+      0,
+    );
+
+    await open(admin, `/hive/plans?team=${encodeURIComponent('Phoenix 🔥')}`);
+    await expect(
+      admin.getByText('Team Phoenix has no plans here'),
+    ).toBeVisible();
+  });
 
   test('Roadmap: the board with the header team and search', async ({
     admin,

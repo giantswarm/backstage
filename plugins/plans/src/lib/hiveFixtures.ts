@@ -16,11 +16,13 @@ import {
   Lane,
   MagazineCard,
   MagazineClass,
+  Meta,
   Now,
   PlanCard,
 } from './magazine';
 
-const BUMBLEBEE = 'Bumblebee🐝';
+/** The team the fixture magazine follows; its items carry no `team`. */
+const MAGAZINE_TEAM = 'Bumblebee';
 const ROADMAP = 'https://github.com/giantswarm/roadmap/issues';
 
 /** The fixture board's item detail (the roadmap plugin's fixture board). */
@@ -45,13 +47,13 @@ type CardSeed = {
   assignees?: string[];
   progress?: [number, number];
   updated: number;
+  /** Another team's item, by its name without the emoji, as generated. */
   team?: string;
   tryIt?: string;
   blocker?: MagazineCard['blocker'];
 };
 
 function card(lane: MagazineClass, seed: CardSeed): MagazineCard {
-  const team = seed.team ?? BUMBLEBEE;
   return {
     key: `giantswarm/roadmap#${seed.number}`,
     title: seed.title,
@@ -61,7 +63,7 @@ function card(lane: MagazineClass, seed: CardSeed): MagazineCard {
     class: lane,
     teaser: seed.teaser,
     customers: seed.customers ?? [],
-    team,
+    team: seed.team,
     progress: seed.progress
       ? { done: seed.progress[0], total: seed.progress[1] }
       : undefined,
@@ -316,7 +318,7 @@ const UPCOMING: CardSeed[] = [
       '[EPIC] Grafana on-behalf-of authentication for mcp-observability-platform',
     status: 'Up Next ➡️',
     teaser: 'The observability MCP acts as the person, not a shared admin.',
-    team: 'Atlas 🗺️',
+    team: 'Atlas',
     updated: 2 * DAY,
   },
   {
@@ -325,7 +327,7 @@ const UPCOMING: CardSeed[] = [
       'cluster-aks: support Azure CNI Overlay, custom pod CIDR, UDR outbound and ACNS',
     status: 'In Progress ⛏️',
     teaser: 'More AKS network shapes for workload clusters.',
-    team: 'Phoenix 🔥',
+    team: 'Phoenix',
     updated: 20 * HOUR,
   },
   {
@@ -334,7 +336,7 @@ const UPCOMING: CardSeed[] = [
     status: 'Up Next ➡️',
     teaser:
       'The GitOps template follows the platform’s current building blocks.',
-    team: 'Honey Badger 🦡',
+    team: 'Honey Badger',
     updated: 4 * DAY,
   },
   {
@@ -342,7 +344,7 @@ const UPCOMING: CardSeed[] = [
     title: 'Kubernetes `v1.35`',
     status: 'In Progress ⛏️',
     teaser: 'The next Kubernetes minor across the providers.',
-    team: 'Planeteers 🪐',
+    team: 'Planeteers',
     updated: 1 * DAY,
   },
   {
@@ -350,7 +352,7 @@ const UPCOMING: CardSeed[] = [
     title: "Manage customers' dex instances using dex-operator",
     status: 'Backlog 📦',
     teaser: 'Customer identity connectors reconciled like the platform’s own.',
-    team: 'Shield 🛡️',
+    team: 'Shield',
     updated: 9 * DAY,
   },
 ];
@@ -481,6 +483,7 @@ type EntrySeed = {
   repo: string;
   author?: string;
   teaser?: string;
+  team?: string;
 };
 
 function entries(group: MagazineClass, seeds: EntrySeed[]): Entry[] {
@@ -489,7 +492,6 @@ function entries(group: MagazineClass, seeds: EntrySeed[]): Entry[] {
     at: ago(seed.at),
     class: group,
     customers: [],
-    team: BUMBLEBEE,
     links: [],
   }));
 }
@@ -611,6 +613,15 @@ function historyGroups(): Group[] {
     progress: { from: { done: 4, total: 9 }, to: { done: 6, total: 9 } },
     tryIt: { label: 'Try it', url: '/flux' },
     entries: entries('top-epic', [
+      {
+        ...issue(
+          4011,
+          'Flux: the observability dashboards per Kustomization',
+          1.2 * DAY,
+          'Nina Berg',
+        ),
+        team: 'Atlas',
+      },
       release(
         'v2.90.0',
         20 * HOUR,
@@ -679,6 +690,15 @@ function historyGroups(): Group[] {
   return [marge, apps, flux, chat, unbroken];
 }
 
+/** `magazine/meta.json`: the board and the team the magazine follows. */
+export function fixtureMeta(): Meta {
+  return {
+    version: 1,
+    generatedAt: ago(12 * 60_000),
+    sources: { board: 273, team: MAGAZINE_TEAM },
+  };
+}
+
 /** Hive's history: the last three weeks (15 work days). */
 export function fixtureHistory(): History {
   const groups = historyGroups();
@@ -697,7 +717,7 @@ export function fixtureHistory(): History {
     groups,
     highlights: {
       customers: [{ name: 'Customer A', keys: ['giantswarm/roadmap#4264'] }],
-      outsideTeam: [{ team: 'Atlas 🗺️', keys: [] }],
+      outsideTeam: [{ team: 'Atlas', keys: ['giantswarm/roadmap#4011'] }],
     },
     chores: {
       count: stats.merged - groups.length * 3,
