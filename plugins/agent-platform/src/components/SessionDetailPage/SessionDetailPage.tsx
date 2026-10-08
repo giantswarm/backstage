@@ -42,6 +42,7 @@ import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
@@ -179,7 +180,9 @@ function BackToSessions({ children }: { children: ReactNode }) {
  * states would strand the reader on a dead page with only the back link.
  *
  * The rail is not rendered below `sm`, rather than hidden with CSS, so a narrow
- * viewport does not pay for its two queries and their polling.
+ * viewport does not pay for its two queries and their polling. Nor is it
+ * rendered inside the agent-platform shell, whose own rail lists the recent
+ * sessions.
  */
 function Shell({
   installation,
@@ -195,7 +198,8 @@ function Shell({
 }) {
   const classes = useStyles();
   const theme = useTheme();
-  const showRail = useMediaQuery(theme.breakpoints.up('sm'));
+  const agentShell = useAgentShell();
+  const showRail = useMediaQuery(theme.breakpoints.up('sm')) && !agentShell;
 
   return (
     <Content className={classes.page}>

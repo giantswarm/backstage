@@ -9,3 +9,4 @@ export type {
   StartNewSessionLayout,
   StartNewSessionProps,
 } from './components/StartNewSession';
+export { AGENT_SHELL_FLAG } from './hooks/useAgentShell';

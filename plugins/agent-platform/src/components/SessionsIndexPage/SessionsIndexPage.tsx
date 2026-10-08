@@ -4,6 +4,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import {
   HIDE_INSTALLATION,
@@ -38,6 +39,7 @@ function SessionsIndexPageContent() {
   // The agents fan-out is a second, independent load: the sessions can settle
   // long before it, and on first run the composer is all there is to show.
   const { isLoading: isLoadingAgents } = useAgents();
+  const agentShell = useAgentShell();
   // Only the installations that actually returned a session. An installation
   // with no row has no state to ask after, and each pass costs it one task read
   // per session it does hold — so the fan-out is bounded by what is on screen
@@ -120,7 +122,7 @@ function SessionsIndexPageContent() {
 
         {/* Withheld until the list settles, so `firstRun` is known before the
             composer mounts -- see the latch above. */}
-        {!isLoading && (
+        {!isLoading && !agentShell && (
           <StartNewSession
             entryPoint="sessionsList"
             layout={firstRun ? 'firstRun' : 'inline'}
@@ -158,15 +160,18 @@ function SessionsIndexPageContent() {
                 the extra room above it, keep the search box from reading as
                 part of "Start a new session". */}
             <Flex direction="column" gap="2" mt="4">
-              <Text as="h2" variant="title-x-small">
-                {notUserScopedInstallations.length > 0
-                  ? 'Sessions'
-                  : 'Your sessions'}
-              </Text>
+              {!agentShell && (
+                <Text as="h2" variant="title-x-small">
+                  {notUserScopedInstallations.length > 0
+                    ? 'Sessions'
+                    : 'Your sessions'}
+                </Text>
+              )}
               <SessionsTable
                 rows={rows}
                 sessionStates={sessionStates}
                 hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
+                showFilters
               />
             </Flex>
           </>

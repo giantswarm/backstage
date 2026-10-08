@@ -1,4 +1,5 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { FeatureFlagState } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
@@ -17,6 +18,7 @@ import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { SessionDetailPage } from './SessionDetailPage';
 
 import {
@@ -266,8 +268,15 @@ const emptyTimeline = {
   skippedMessages: 0,
 };
 
-async function render() {
+async function render({
+  agentShell = FeatureFlagState.None,
+}: { agentShell?: FeatureFlagState } = {}) {
   await renderInTestApp(<SessionDetailPage />, {
+    apis: [
+      mockApis.featureFlags({
+        initialStates: { [AGENT_SHELL_FLAG]: agentShell },
+      }),
+    ],
     // `agentsRouteRef` is here for the link on the agent's name, which resolves
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
@@ -1877,6 +1886,21 @@ describe('SessionDetailPage', () => {
       expect(screen.getByTestId('session-switcher-rail')).toHaveAttribute(
         'data-current-state',
         'completed',
+      );
+    });
+
+    it('renders while the agent shell flag is off', async () => {
+      await render({ agentShell: FeatureFlagState.None });
+
+      expect(screen.getByTestId('session-switcher-rail')).toBeInTheDocument();
+    });
+
+    it('is not rendered inside the agent shell, whose rail lists the sessions', async () => {
+      await render({ agentShell: FeatureFlagState.Active });
+
+      expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
+      expect(screen.getByTestId('installation-chip')).toHaveTextContent(
+        'gazelle',
       );
     });
 

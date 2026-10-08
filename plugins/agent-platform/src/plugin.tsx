@@ -6,6 +6,7 @@ import {
   createFrontendPlugin,
   ExtensionBoundary,
   discoveryApiRef,
+  featureFlagsApiRef,
   fetchApiRef,
   PageBlueprint,
   PluginHeaderActionBlueprint,
@@ -17,6 +18,8 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import AndroidIcon from '@material-ui/icons/Android';
 import { orderTabs } from './lib/tabOrder';
+import { AgentPlatformPageRoutes } from './components/AgentPlatformPageRoutes';
+import { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -62,18 +65,38 @@ import {
 // alone cannot interleave two plugins' tabs, and an extension a deployment
 // names in its own `app.extensions` attaches first. The first tab is also
 // where a bare `/agent-platform` lands.
+//
+// Inside the agent-platform shell the page drops its header and tab strip:
+// the shell's rail navigates between the tabs, and each tab titles itself. The
+// flag is read when the app tree is built, as the shell's own extensions are,
+// so turning it on or off takes effect on the next load.
 const agentPlatformPage = PageBlueprint.makeWithOverrides({
   disabled: true,
-  factory(originalFactory, { inputs }) {
-    return originalFactory(
-      {
-        title: 'Agent Platform',
-        icon: <AndroidIcon />,
-        path: '/agent-platform',
-        routeRef: rootRouteRef,
-      },
-      { inputs: { pages: orderTabs(inputs.pages, page => page.node.spec.id) } },
-    );
+  factory(originalFactory, { apis, inputs }) {
+    const params = {
+      title: 'Agent Platform',
+      icon: <AndroidIcon />,
+      path: '/agent-platform',
+      routeRef: rootRouteRef,
+    };
+    const pages = orderTabs(inputs.pages, page => page.node.spec.id);
+    if (!apis.get(featureFlagsApiRef)?.isActive(AGENT_SHELL_FLAG)) {
+      return originalFactory(params, { inputs: { pages } });
+    }
+    return originalFactory({
+      ...params,
+      noHeader: true,
+      loader: async () => (
+        <AgentPlatformPageRoutes
+          pageTitle={params.title}
+          pages={pages.map(page => ({
+            path: page.get(coreExtensionData.routePath),
+            title: page.get(coreExtensionData.title),
+            element: page.get(coreExtensionData.reactElement),
+          }))}
+        />
+      ),
+    });
   },
 });
 

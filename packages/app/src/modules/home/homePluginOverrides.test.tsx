@@ -19,6 +19,7 @@ jest.mock('./RootPage', () => ({
 }));
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => ({
+  AGENT_SHELL_FLAG: 'agent-platform-shell',
   AgentPlatformHome: () => <div data-testid="agent-shell-home" />,
 }));
 

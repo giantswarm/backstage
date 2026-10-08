@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
   Badge,
@@ -7,9 +7,12 @@ import {
   ColumnConfig,
   Flex,
   SearchField,
+  Select,
   Skeleton,
   Table,
   Text,
+  ToggleButton,
+  ToggleButtonGroup,
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
@@ -33,8 +36,20 @@ import {
 import {
   SessionTableRow,
   sortSessionsByState,
+  STATE_IDLE_LABEL,
+  STATE_UNKNOWN_LABEL,
   withSessionStates,
 } from './helpers';
+import {
+  countSessionsByState,
+  filterSessions,
+  isSessionsFilterActive,
+  NO_SESSIONS_FILTER,
+  SESSION_STATE_FILTERS,
+  SessionsFilter,
+  SessionStateFilter,
+  sessionAgentOptions,
+} from './filters';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
@@ -68,10 +83,8 @@ function Unknown() {
 }
 
 /** Copy for each way a state can be missing, kept in one place. */
-const STATE_UNKNOWN_LABEL = 'Unknown';
 const STATE_UNKNOWN_TITLE =
   'kagent could not be read for this session, so its state is not known. This is not the same as finished.';
-const STATE_IDLE_LABEL = 'No activity yet';
 const STATE_IDLE_TITLE =
   'This session was started and has no turn that reported a state.';
 const STATE_UNEVALUATED_LABEL = 'Not loaded';
@@ -309,6 +322,103 @@ function getColumnConfig(
   ];
 }
 
+const ALL_AGENTS = '';
+
+/**
+ * The State chips, each with how many of the rows the search matched it would
+ * show, and the agent picker over every loaded row. A fleet still loading
+ * counts what has arrived.
+ */
+function SessionsFilterBar({
+  rows,
+  searchedRows,
+  isLoading,
+  filter,
+  onChange,
+  showStates,
+  showAgents,
+}: {
+  rows: SessionTableRow[];
+  searchedRows: SessionTableRow[];
+  isLoading: boolean;
+  filter: SessionsFilter;
+  onChange: (filter: SessionsFilter) => void;
+  showStates: boolean;
+  showAgents: boolean;
+}) {
+  const counts = useMemo(
+    () => countSessionsByState(searchedRows, filter.agent),
+    [searchedRows, filter.agent],
+  );
+  const agentOptions = useMemo(() => sessionAgentOptions(rows), [rows]);
+
+  // A picked agent whose sessions are gone (deleted, or another installation
+  // scope) would leave the list empty behind a picker that no longer offers it.
+  const pickedAgentGone =
+    !isLoading &&
+    filter.agent !== undefined &&
+    !agentOptions.some(option => option.id === filter.agent);
+  useEffect(() => {
+    if (pickedAgentGone) {
+      onChange({ ...filter, agent: undefined });
+    }
+  }, [pickedAgentGone, filter, onChange]);
+
+  return (
+    <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+      {showStates && (
+        <ToggleButtonGroup
+          aria-label="Filter by state"
+          selectionMode="single"
+          disallowEmptySelection
+          selectedKeys={[filter.state]}
+          onSelectionChange={keys => {
+            const next = [...keys][0];
+            if (SESSION_STATE_FILTERS.some(({ id }) => id === next)) {
+              onChange({ ...filter, state: next as SessionStateFilter });
+            }
+          }}
+        >
+          {SESSION_STATE_FILTERS.map(({ id, label }) => (
+            <ToggleButton key={id} id={id} size="small">
+              {`${label} ${counts[id]}`}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      )}
+      {showAgents && (
+        <Select
+          aria-label="Filter by agent"
+          size="small"
+          options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
+          selectedKey={filter.agent ?? ALL_AGENTS}
+          onSelectionChange={key => {
+            const agent = key === null ? ALL_AGENTS : String(key);
+            onChange({
+              ...filter,
+              agent: agent === ALL_AGENTS ? undefined : agent,
+            });
+          }}
+          style={{ minWidth: 200 }}
+        />
+      )}
+    </Flex>
+  );
+}
+
+function emptyText(
+  searchTerm: string,
+  filtered: boolean,
+  emptyMessage: string,
+): string {
+  if (searchTerm) {
+    return filtered
+      ? `No sessions match "${searchTerm}" and the filters.`
+      : `No sessions match "${searchTerm}".`;
+  }
+  return filtered ? 'No sessions match the filters.' : emptyMessage;
+}
+
 /** Columns an embedding page may drop because its context already implies them. */
 export type HideableSessionColumn = 'agentName' | 'installation';
 
@@ -339,6 +449,11 @@ export type SessionsTableProps = {
   showPagination?: boolean;
   /** Replaces the default "No sessions found." message. */
   emptyMessage?: string;
+  /**
+   * Whether to render the State chips (when states are given) and the agent
+   * picker (when the Agent column shows).
+   */
+  showFilters?: boolean;
 };
 
 /**
@@ -357,6 +472,7 @@ export function SessionsTable({
   showSearch = true,
   showPagination = true,
   emptyMessage = 'No sessions found.',
+  showFilters = false,
 }: SessionsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
@@ -429,7 +545,14 @@ export function SessionsTable({
     return `Search by ${rest} or ${last}`;
   }, [hiddenKey]);
 
-  const { tableProps, search } = useTable<SessionTableRow>({
+  const showStateFilter = showFilters && hasStates;
+  const showAgentFilter =
+    showFilters && !hiddenKey.split(',').includes('agentName');
+
+  const { tableProps, search, filter } = useTable<
+    SessionTableRow,
+    SessionsFilter
+  >({
     mode: 'complete',
     // `undefined` rather than `[]` while loading: an empty array renders the
     // empty state, so the skeleton would never show and "No sessions found."
@@ -437,6 +560,8 @@ export function SessionsTable({
     data: isLoading ? undefined : stateRows,
     searchFn: sessionSearchFn,
     searchDebounceMs,
+    initialFilter: NO_SESSIONS_FILTER,
+    filterFn: filterSessions,
     sortFn,
     initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: showPagination
@@ -445,14 +570,33 @@ export function SessionsTable({
   });
 
   // The term the rows are filtered by: `useTable` debounces the search and
-  // does not hand the debounced value back, so the empty state keeps its own.
+  // does not hand the debounced value back, so the empty state and
+  // the chip counts keep their own.
   const [searchTerm, setSearchTerm] = useState('');
   useDebounce(() => setSearchTerm(search.value.trim()), searchDebounceMs, [
     search.value,
   ]);
+  const searchedRows = useMemo(
+    () => sessionSearchFn(stateRows, searchTerm),
+    [stateRows, searchTerm],
+  );
+
+  const activeFilter = filter.value ?? NO_SESSIONS_FILTER;
+  const filtered = isSessionsFilterActive(activeFilter);
 
   return (
     <Flex direction="column" gap="3">
+      {(showStateFilter || showAgentFilter) && (
+        <SessionsFilterBar
+          rows={stateRows}
+          searchedRows={searchedRows}
+          isLoading={Boolean(isLoading)}
+          filter={activeFilter}
+          onChange={filter.onChange}
+          showStates={showStateFilter}
+          showAgents={showAgentFilter}
+        />
+      )}
       {showSearch && (
         <SearchField
           aria-label="Search sessions"
@@ -477,7 +621,7 @@ export function SessionsTable({
         }}
         emptyState={
           <Text variant="body-medium" color="secondary">
-            {searchTerm ? `No sessions match "${searchTerm}".` : emptyMessage}
+            {emptyText(searchTerm, filtered, emptyMessage)}
           </Text>
         }
       />

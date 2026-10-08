@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { useState } from 'react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
@@ -406,5 +407,201 @@ describe('SessionsTable — the State column', () => {
 
     const cells = screen.getAllByRole('rowheader');
     expect(cells[0]).toHaveTextContent('Chat');
+  });
+});
+
+describe('SessionsTable — filters', () => {
+  const filterRows: SessionRow[] = [
+    ['a', 'issue-tracker', 'Issue tracker', 'Triage the backlog'],
+    ['b', 'issue-tracker', 'Issue tracker', 'Close stale issues'],
+    ['c', 'sre-agent', 'SRE Agent', 'Why is gazelle paging'],
+    ['d', 'sre-agent', 'SRE Agent', 'Restart the ingress'],
+    ['e', 'sre-agent', 'SRE Agent', 'Rotate the certificate'],
+  ].map(([id, technicalName, agentName, title]) => ({
+    id: `gazelle/${id}`,
+    sessionId: id,
+    installation: 'gazelle',
+    title,
+    agentName,
+    agentNamespace: 'agents',
+    agentTechnicalName: technicalName,
+  }));
+
+  const filterStates: FleetSessionStatesView = {
+    states: new Map<string, SessionStateEntry>([
+      ['gazelle/a', { sessionId: 'a', state: 'input-required' }],
+      ['gazelle/b', { sessionId: 'b', state: 'completed' }],
+      ['gazelle/c', { sessionId: 'c', state: 'input-required' }],
+      ['gazelle/d', { sessionId: 'd', state: 'failed' }],
+    ]),
+    unreadable: new Set<string>(['gazelle/e']),
+    failedInstallations: new Set<string>(),
+    skippedCount: 0,
+    isLoading: false,
+    isError: false,
+  };
+
+  function Swappable({ showFilters }: { showFilters: boolean }) {
+    const [shown, setShown] = useState(filterRows);
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() =>
+            setShown(filterRows.filter(r => r.agentName !== 'SRE Agent'))
+          }
+        >
+          Drop the SRE sessions
+        </button>
+        <SessionsTable
+          rows={shown}
+          sessionStates={filterStates}
+          searchDebounceMs={0}
+          showFilters={showFilters}
+        />
+      </>
+    );
+  }
+
+  async function renderFiltered(showFilters = true) {
+    await renderInTestApp(<Swappable showFilters={showFilters} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+  }
+
+  const titles = () =>
+    screen.getAllByRole('rowheader').map(cell => cell.textContent);
+
+  const chipLabels = () =>
+    within(screen.getByRole('radiogroup', { name: 'Filter by state' }))
+      .getAllByRole('radio')
+      .map(chip => chip.textContent);
+
+  async function pickAgent(
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ) {
+    await user.click(screen.getByRole('button', { name: /Filter by agent/ }));
+    await user.click(await screen.findByRole('option', { name }));
+  }
+
+  it('is left out unless the caller asks for it', async () => {
+    await renderFiltered(false);
+
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by state' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Filter by agent')).not.toBeInTheDocument();
+  });
+
+  it('counts the loaded rows on each state chip', async () => {
+    await renderFiltered();
+
+    expect(chipLabels()).toEqual([
+      'All 5',
+      'Waiting for input 2',
+      'Working 0',
+      'Failed 1',
+      'Completed 1',
+      'No activity yet 0',
+      'Unknown 1',
+    ]);
+  });
+
+  it('counts only the rows the search matched', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
+      'the',
+    );
+
+    expect(await screen.findByRole('radio', { name: 'All 3' })).toBeVisible();
+    expect(chipLabels()).toEqual([
+      'All 3',
+      'Waiting for input 1',
+      'Working 0',
+      'Failed 1',
+      'Completed 0',
+      'No activity yet 0',
+      'Unknown 1',
+    ]);
+  });
+
+  it('shows only the rows of the picked state', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await user.click(
+      screen.getByRole('radio', { name: 'Waiting for input 2' }),
+    );
+
+    expect([...titles()].sort()).toEqual([
+      'Triage the backlog',
+      'Why is gazelle paging',
+    ]);
+  });
+
+  it('reaches an unreadable session through the Unknown chip', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await user.click(screen.getByRole('radio', { name: 'Unknown 1' }));
+
+    expect(titles()).toEqual(['Rotate the certificate']);
+  });
+
+  it('narrows to one agent and recounts the chips for it', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await pickAgent(user, 'SRE Agent');
+
+    expect(titles()).toHaveLength(3);
+    expect(chipLabels()).toEqual([
+      'All 3',
+      'Waiting for input 1',
+      'Working 0',
+      'Failed 1',
+      'Completed 0',
+      'No activity yet 0',
+      'Unknown 1',
+    ]);
+
+    await user.click(screen.getByRole('radio', { name: 'Failed 1' }));
+
+    expect(titles()).toEqual(['Restart the ingress']);
+  });
+
+  it('lets go of a picked agent whose sessions are gone', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await pickAgent(user, 'SRE Agent');
+    expect(titles()).toHaveLength(3);
+
+    await user.click(
+      screen.getByRole('button', { name: 'Drop the SRE sessions' }),
+    );
+
+    expect([...titles()].sort()).toEqual([
+      'Close stale issues',
+      'Triage the backlog',
+    ]);
+    expect(
+      screen.getByRole('button', { name: /Filter by agent/ }),
+    ).toHaveTextContent('All agents');
+  });
+
+  it('says when the filters leave nothing', async () => {
+    const user = userEvent.setup();
+    await renderFiltered();
+
+    await user.click(screen.getByRole('radio', { name: 'Working 0' }));
+
+    expect(
+      screen.getByText('No sessions match the filters.'),
+    ).toBeInTheDocument();
   });
 });

@@ -53,6 +53,11 @@ export const STATE_RANKS = {
   unevaluated: 6,
 } as const;
 
+/** The State cell's words for a session that could not be read. */
+export const STATE_UNKNOWN_LABEL = 'Unknown';
+/** The State cell's words for a session no turn reported a state for. */
+export const STATE_IDLE_LABEL = 'No activity yet';
+
 /** The rank a cell sorts at. */
 export function stateRank(cell: SessionStateCell): number {
   switch (cell.kind) {

@@ -8,6 +8,11 @@ import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionsContextValue } from '../SessionsDataProvider';
 import { SessionsIndexPage } from './SessionsIndexPage';
 
+const mockUseAgentShell = jest.fn(() => false);
+jest.mock('../../hooks/useAgentShell', () => ({
+  useAgentShell: () => mockUseAgentShell(),
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
@@ -33,13 +38,16 @@ jest.mock('../SessionsTable', () => ({
   SessionsTable: ({
     rows,
     hideColumns,
+    showFilters,
   }: {
     rows: unknown[];
     hideColumns?: string[];
+    showFilters?: boolean;
   }) => (
     <div
       data-testid="sessions-table"
       data-hidden={hideColumns?.join(',') ?? ''}
+      data-filters={String(Boolean(showFilters))}
     >
       {rows.length}
     </div>
@@ -193,6 +201,7 @@ beforeEach(() => {
   });
   mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
   mockUseAgents.mockReturnValue(loadedAgents);
+  mockUseAgentShell.mockReturnValue(false);
 });
 
 describe('SessionsIndexPage', () => {
@@ -203,6 +212,19 @@ describe('SessionsIndexPage', () => {
 
     expect(screen.getByText('Start a new session')).toBeInTheDocument();
     expect(prompt()).toBeInTheDocument();
+  });
+
+  it('leaves the composer and the list heading to the shell inside the agent shell', async () => {
+    mockUseAgentShell.mockReturnValue(true);
+    await render();
+
+    expect(screen.queryByText('Start a new session')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Prompt' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'Your sessions' }),
+    ).not.toBeInTheDocument();
   });
 
   it('reports sessions as started from the sessions list', async () => {
@@ -689,6 +711,15 @@ describe('SessionsIndexPage under "All installations" on a multi-installation po
     expect(screen.getByTestId('sessions-table')).toHaveAttribute(
       'data-hidden',
       '',
+    );
+  });
+
+  it('asks the table for its state and agent filters', async () => {
+    await render();
+
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-filters',
+      'true',
     );
   });
 
