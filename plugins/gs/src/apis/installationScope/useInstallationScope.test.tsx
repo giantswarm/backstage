@@ -69,12 +69,17 @@ function configure(names: string[]) {
   );
 }
 
-function renderScope(url = '/agent-platform/agents') {
+function renderScope(
+  url: string | { pathname: string; state: unknown } = '/agent-platform/agents',
+) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
   );
   return renderHook(
-    () => ({ scope: useInstallationScope(), search: useLocation().search }),
+    () => {
+      const { search, state } = useLocation();
+      return { scope: useInstallationScope(), search, state };
+    },
     { wrapper },
   );
 }
@@ -135,6 +140,19 @@ describe('useInstallationScope', () => {
     expect(
       window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
     ).toBeNull();
+  });
+
+  it('keeps the router state when setScope writes the URL', () => {
+    configure(['golem', 'wombat', 'snail']);
+    const { result } = renderScope({
+      pathname: '/agent-platform/sessions/wombat/s1',
+      state: { newSession: 'hello' },
+    });
+
+    act(() => result.current.scope.setScope('wombat'));
+
+    expect(result.current.search).toBe('?installation=wombat');
+    expect(result.current.state).toEqual({ newSession: 'hello' });
   });
 
   it('lets the URL win while it carries the parameter', () => {
