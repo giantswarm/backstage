@@ -2681,7 +2681,7 @@
             "properties": {
                 "engine": {
                     "type": "string",
-                    "description": "Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it",
+                    "description": "Database engine to use. `postgresql` deploys a CNPG cluster and points the backend at it (`backend.database` with `client: pg`, schema division mode, TLS verified against the cluster's CA mounted at `/app/database-ca-certificate/ca.crt`); a `backend.database` block in `backstage.appConfig` or `backstage.extraAppConfig` still overrides it and carries its own `connection.ssl` (`ca: {$file: /app/database-ca-certificate/ca.crt}`, `rejectUnauthorized: true`), since CNPG also accepts plaintext clients",
                     "enum": [
                         "sqlite",
                         "postgresql"

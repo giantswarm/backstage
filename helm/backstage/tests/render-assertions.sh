@@ -14,7 +14,9 @@
 # * the metrics port, env and network policy leg, without which the backend
 #   starts with metrics on but nothing can scrape it;
 # * the pg config with the postgresql engine, without which the backend
-#   silently runs on in-memory sqlite beside an idle CNPG cluster;
+#   silently runs on in-memory sqlite beside an idle CNPG cluster, and its TLS
+#   against the mounted CNPG CA, without which the backend connects in clear
+#   text and CNPG accepts it;
 # * the base64 guard on the `data` Secrets, without which a plaintext value
 #   renders and the install fails with "illegal base64 data at input byte N".
 # * the arm64 node selector with the toleration for the pool's
@@ -263,6 +265,18 @@ for want in 'client: pg' 'pluginDivisionMode: schema' 'host: ${POSTGRES_HOST}' '
   fi
 done
 expect postgresql 'mountPath: "/app/app-config-database.yaml"'
+# The CA path is relative to the config file: both must stay in /app.
+database_ssl=$(yq -o=json -I=0 '.backend.database.connection.ssl' <<<"${database_config}")
+if [ "${database_ssl}" != '{"ca":{"$file":"database-ca-certificate/ca.crt"},"rejectUnauthorized":true}' ]; then
+  echo "FAIL: postgresql: connection.ssl is ${database_ssl}, want the mounted CA with rejectUnauthorized"
+  failed=1
+fi
+expect postgresql 'mountPath: /app/database-ca-certificate/ca.crt'
+ca_secret=$(yq -r 'select(.kind == "Deployment") | .spec.template.spec.volumes[] | select(.name == "database-server-ca") | .secret.secretName' "${work_dir}/postgresql.yaml")
+if [ "${ca_secret}" != "backstage-cnpg-ca" ]; then
+  echo "FAIL: postgresql: the database-server-ca volume mounts [${ca_secret}], want the CNPG cluster's CA Secret backstage-cnpg-ca"
+  failed=1
+fi
 # Later --config files win: the operator's appConfig and extraAppConfig come
 # after the chart's pg block, so a database block of theirs still applies.
 # The image's bundled files come first, the base layer the chart's flags
@@ -319,6 +333,7 @@ expect vpa-no-crd 'kind: Deployment'
 echo "--> database.engine=sqlite (default): no pg config, mount or flag"
 refute sqlite 'backstage-database-config'
 refute sqlite 'app-config-database.yaml'
+refute sqlite 'database-ca-certificate'
 
 echo "--> base64 values in the data Secrets: rendered as they are"
 render base64 --set authSessionSecret=c2Vzc2lvbg== --set sentry.backend.dsn=ZHNu --set dexAuthCredentials.gazelle.clientID=YmFja3N0YWdl --set dexAuthCredentials.gazelle.clientSecret=c2VjcmV0

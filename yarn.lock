@@ -9797,6 +9797,7 @@ __metadata:
     "@backstage/backend-plugin-api": "backstage:^"
     "@backstage/cli": "backstage:^"
     "@backstage/config": "backstage:^"
+    "@backstage/config-loader": "backstage:^"
     "@backstage/errors": "backstage:^"
     "@backstage/integration": "backstage:^"
     undici: "npm:^8.10.2"
