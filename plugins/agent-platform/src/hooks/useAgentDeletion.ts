@@ -24,7 +24,8 @@ export type AgentDeletionState = {
   /**
    * `delete_agent` with `mode: commit` (giantswarm/agent-manager#24): a pull
    * request that removes the agent's files from the owning GitOps repository.
-   * Offered only when `get_info` reports the `commit` capability.
+   * Offered only for an agent applied from git, and only when `get_info`
+   * reports the `commit` capability.
    */
   commit: () => Promise<CommitAgentResult>;
   isCommitting: boolean;

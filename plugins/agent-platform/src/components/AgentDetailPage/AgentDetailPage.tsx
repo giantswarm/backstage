@@ -292,9 +292,9 @@ function AgentDetailPageContent() {
   const availability = useAgentManagerAvailability(
     installation ? [installation] : [],
   );
+  const presence = availability.presenceOf(installation);
   const isAgentManagerReachable =
-    !availability.isUnavailable &&
-    availability.presenceOf(installation) === 'available';
+    !availability.isUnavailable && presence === 'available';
 
   // Whether a live write is possible at all, in agent-manager's own words:
   // `managed: 'gitops'` means the agent's HelmRelease is applied by a Flux
@@ -311,14 +311,32 @@ function AgentDetailPageContent() {
       enabled: isAgentManagerReachable,
     });
 
+  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
+  // when agent-manager reports the capability — the only way to edit or delete
+  // an agent applied from git, and meaningless for any other: a pull request
+  // goes to the repository that owns the release, and only those have one.
+  const { info: agentManagerInfo, isLoading: isReadingManagerInfo } =
+    useAgentManagerInfo(presence === 'available' ? installation : undefined);
+  const isGitOpsOwned = managerAgent?.managed === 'gitops';
+  const canCommit = agentManagerInfo?.capabilities?.commit === true;
+
   const agentManagerGate = useMemo(
     () => ({
-      presence: availability.presenceOf(installation),
+      presence,
       isUnavailable: availability.isUnavailable,
-      isGitOpsOwned: managerAgent?.managed === 'gitops',
-      isVerdictPending: isReadingManagerAgent,
+      isGitOpsOwned,
+      canCommit,
+      isVerdictPending:
+        isReadingManagerAgent || (isGitOpsOwned && isReadingManagerInfo),
     }),
-    [availability, installation, managerAgent?.managed, isReadingManagerAgent],
+    [
+      presence,
+      availability.isUnavailable,
+      isGitOpsOwned,
+      canCommit,
+      isReadingManagerAgent,
+      isReadingManagerInfo,
+    ],
   );
 
   /** Every live write the page offers is gated on this. */
@@ -326,12 +344,6 @@ function AgentDetailPageContent() {
     isAgentManagerReachable &&
     !agentManagerGate.isVerdictPending &&
     !agentManagerGate.isGitOpsOwned;
-  const { info: agentManagerInfo } = useAgentManagerInfo(
-    agentManagerGate.presence === 'available' ? installation : undefined,
-  );
-  // Commit (a pull request instead of a live write, giantswarm/agent-manager#24)
-  // shows only when agent-manager reports the capability.
-  const canCommit = agentManagerInfo?.capabilities?.commit === true;
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
@@ -758,7 +770,7 @@ function AgentDetailPageContent() {
         isOpen={isDeleteOpen}
         onOpenChange={setDeleteOpen}
         deletion={deletion}
-        canCommit={canCommit}
+        mode={agentManagerGate.isGitOpsOwned ? 'commit' : 'apply'}
         onConfirm={confirmDelete}
         onCommit={commitDelete}
         commitResult={commitResult}

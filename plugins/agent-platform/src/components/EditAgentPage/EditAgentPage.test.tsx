@@ -129,6 +129,12 @@ const AGENT: AgentManagerAgent = {
   },
 };
 
+const GITOPS_AGENT: AgentManagerAgent = {
+  ...AGENT,
+  managed: 'gitops',
+  helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
+};
+
 const INFO: Partial<AgentManagerInfo> = {
   capabilities: { commit: false },
   harness: { name: 'kagent' },
@@ -422,17 +428,11 @@ describe('EditAgentPage', () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it('never offers the form for an agent applied from git', async () => {
-    // agent-manager refuses every write to it, so the page says so instead of
-    // pre-filling a form whose Save can only be refused. The detail page
+  it('never offers the form for an agent applied from git without Commit', async () => {
+    // agent-manager refuses every live write to it, so the page says so instead
+    // of pre-filling a form whose Save can only be refused. The detail page
     // withholds Edit for the same agent; this is the deep link's answer.
-    await renderPage({
-      agent: {
-        ...AGENT,
-        managed: 'gitops',
-        helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
-      },
-    });
+    await renderPage({ agent: GITOPS_AGENT });
 
     expect(
       await screen.findByText(/This agent is applied from git/),
@@ -477,22 +477,47 @@ describe('EditAgentPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('hides Commit until agent-manager reports the capability', async () => {
-    await renderPage();
+  it('offers no Commit for an agent written live, even under the capability flag', async () => {
+    // A pull request goes to the GitOps repository that owns the release; an
+    // agent written live has none.
+    await renderPage({ info: { capabilities: { commit: true } } });
     await screen.findByDisplayValue('PR reviewer');
+
+    expect(saveButton()).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /Commit/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('offers Commit under the capability flag', async () => {
-    await renderPage({ info: { capabilities: { commit: true } } });
-    await screen.findByDisplayValue('PR reviewer');
-    await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Commit/ }),
-      ).toBeInTheDocument();
+  it('offers Commit instead of Save for an agent applied from git', async () => {
+    const { callTool } = await renderPage({
+      agent: GITOPS_AGENT,
+      info: { capabilities: { commit: true } },
     });
+    const description = await screen.findByDisplayValue(
+      'Reviews pull requests.',
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^Save/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Commit to the GitOps repository'),
+    ).toBeInTheDocument();
+
+    await userEvent.type(description, ' Again.');
+    const [commit] = screen.getAllByRole('button', { name: 'Commit' });
+    await waitFor(() => expect(commit).toBeEnabled());
+    await userEvent.click(commit);
+
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_update_agent',
+        expect.objectContaining({ mode: 'commit' }),
+        'gazelle',
+      ),
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('says why nothing can be edited when muster lists no agent-manager', async () => {

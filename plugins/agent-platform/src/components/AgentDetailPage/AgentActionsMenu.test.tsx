@@ -40,6 +40,7 @@ const AVAILABLE: AgentManagerGate = {
   presence: 'available',
   isUnavailable: false,
   isGitOpsOwned: false,
+  canCommit: false,
   isVerdictPending: false,
 };
 
@@ -122,6 +123,7 @@ describe('AgentActionsMenu', () => {
       presence: 'missing',
       isUnavailable: false,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();
@@ -156,6 +158,24 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers Edit and Delete, not Update skills, for an agent applied from git when agent-manager can commit', async () => {
+    // Both go through a pull request in the GitOps repository then; Update
+    // skills has no commit mode.
+    await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
+    await openMenu();
+
+    expect(
+      screen.getByRole('menuitem', { name: /Edit agent/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: /Update skills/ }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Delete agent/ }),
+    );
+    expect(onDelete).toHaveBeenCalledTimes(1);
+  });
+
   it("withholds the actions while agent-manager's verdict is still in flight", async () => {
     // Offering them for a muster round-trip and then taking them away is the
     // one window where a GitOps-owned agent could still be written to.
@@ -173,6 +193,7 @@ describe('AgentActionsMenu', () => {
       presence: 'unknown',
       isUnavailable: true,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();
@@ -189,6 +210,7 @@ describe('AgentActionsMenu', () => {
       presence: 'unknown',
       isUnavailable: false,
       isGitOpsOwned: false,
+      canCommit: false,
       isVerdictPending: false,
     });
     await openMenu();

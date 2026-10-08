@@ -23,17 +23,44 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  * session is not connected — in which case the actions stay offered and
  * agent-manager refuses in its own words, as it did before this gate existed.
  *
- * `isVerdictPending` is that read still being in flight, which is not the same
- * thing: offering the actions then would show them to everyone for a muster
- * round-trip and take them away from exactly the people this gate exists for,
- * with a click in between opening the dialog it exists to prevent.
+ * `canCommit` is agent-manager's `commit` capability (`get_info`): it can open
+ * a pull request as the person in the repository that owns a release. Only a
+ * release applied from git has such a repository, so it is what makes Edit and
+ * Delete available for a GitOps-owned agent — through a pull request instead
+ * of a live write. Update skills has no commit mode and stays withheld.
+ *
+ * `isVerdictPending` is either read still being in flight, which is not the
+ * same thing: offering the actions then would show them to everyone for a
+ * muster round-trip and take them away from exactly the people this gate exists
+ * for, with a click in between opening the dialog it exists to prevent.
  */
 export type AgentManagerGate = {
   presence: AgentManagerPresence;
   isUnavailable: boolean;
   isGitOpsOwned: boolean;
+  canCommit: boolean;
   isVerdictPending: boolean;
 };
+
+/**
+ * How an agent's edit or delete is offered: written live, proposed as a pull
+ * request in the GitOps repository that owns it, or not at all.
+ */
+export type AgentWriteMode = 'apply' | 'commit' | undefined;
+
+export function agentWriteMode(gate: AgentManagerGate): AgentWriteMode {
+  if (
+    gate.isUnavailable ||
+    gate.presence !== 'available' ||
+    gate.isVerdictPending
+  ) {
+    return undefined;
+  }
+  if (!gate.isGitOpsOwned) {
+    return 'apply';
+  }
+  return gate.canCommit ? 'commit' : undefined;
+}
 
 /**
  * Why the write actions are not offered, in one sentence — for a page to show,
@@ -52,7 +79,7 @@ export function agentManagerAbsenceReason(
   if (gate.isVerdictPending) {
     return undefined;
   }
-  if (gate.isGitOpsOwned) {
+  if (gate.isGitOpsOwned && !gate.canCommit) {
     return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
   }
   if (gate.isUnavailable) {
@@ -77,8 +104,9 @@ export function agentManagerAbsenceReason(
  * by react-query — the agent-manager reads and mutations behind Delete, Edit
  * and Update skills — is called by the page and their dialogs are rendered in
  * the page body; the menu only says whether they are offered (`agentManager`:
- * agent-manager's presence, and its verdict that the agent is writable at all)
- * and asks the page to open them. What it cannot offer it simply leaves out —
+ * agent-manager's presence, its verdict on whether the agent is written live
+ * or through a pull request, and whether it can open one) and asks the page to
+ * open them. What it cannot offer it simply leaves out —
  * an explanation belongs on the page (the Overview tab's GitOps card already
  * carries the one for an agent applied from git), not as an unclickable item in
  * a list of things to do. Authorization stays the apiserver's, reached through
@@ -99,11 +127,8 @@ export function AgentActionsMenu({
   onDelete: () => void;
 }) {
   const [isManifestOpen, setManifestOpen] = useState(false);
-  const offered =
-    !agentManager.isUnavailable &&
-    agentManager.presence === 'available' &&
-    !agentManager.isVerdictPending &&
-    !agentManager.isGitOpsOwned;
+  const writeMode = agentWriteMode(agentManager);
+  const offered = writeMode !== undefined;
 
   return (
     <>
@@ -124,7 +149,7 @@ export function AgentActionsMenu({
               Edit agent…
             </MenuItem>
           ) : null}
-          {offered ? (
+          {writeMode === 'apply' ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
               Update skills…
             </MenuItem>

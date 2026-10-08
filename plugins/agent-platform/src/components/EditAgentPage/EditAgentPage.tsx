@@ -58,7 +58,10 @@ import {
   systemMessageProblem,
 } from '../../lib/systemMessage';
 import { isMounted, SkillPicker } from '../SkillPicker';
-import { agentManagerAbsenceReason } from '../AgentDetailPage/AgentActionsMenu';
+import {
+  agentManagerAbsenceReason,
+  agentWriteMode,
+} from '../AgentDetailPage/AgentActionsMenu';
 import { EditAgentToolsetField } from './EditAgentToolsetField';
 
 const useStyles = makeStyles(theme => ({
@@ -158,13 +161,19 @@ function WriteFailure({
  * edit state; everything derived from it — the changed fields, the update to
  * send, the dry run — is computed from the baseline and the state, so Save
  * carries exactly what changed and nothing else.
+ *
+ * `mode` is how the change is written: `apply` saves it live, `commit` — the
+ * only way for an agent applied from git — opens a pull request in the GitOps
+ * repository that owns it.
  */
 function EditAgentForm({
   installation,
   agent,
+  mode,
 }: {
   installation: string;
   agent: AgentManagerAgent;
+  mode: 'apply' | 'commit';
 }) {
   const classes = useStyles();
   const navigate = useNavigate();
@@ -202,8 +211,6 @@ function EditAgentForm({
     failure: modelsFailure,
   } = useAgentManagerModelConfigs(installation, agent.namespace);
   const catalog = useSkillCatalog();
-  const { info } = useAgentManagerInfo(installation);
-  const canCommit = info?.capabilities?.commit === true;
 
   const toggleSkill = useCallback(
     (skill: DiscoveredSkill) =>
@@ -283,9 +290,8 @@ function EditAgentForm({
   }, [updating, update, detailHref, navigate, installation, agent]);
 
   const onCommit = useCallback(async () => {
-    // `update_agent` with `mode: commit` (giantswarm/agent-manager#24) is
-    // offered only under the capability gate; agent-manager answers the pull
-    // request or the connect step.
+    // `update_agent` with `mode: commit` (giantswarm/agent-manager#24);
+    // agent-manager answers the pull request or the connect step.
     setCommitResult(undefined);
     updating.reset();
     try {
@@ -306,28 +312,29 @@ function EditAgentForm({
         >
           Cancel
         </Button>
-        {canCommit && (
+        {mode === 'commit' ? (
           <Button
-            variant="secondary"
+            variant="primary"
             isDisabled={isBusy || !canWrite}
             onPress={onCommit}
           >
             {updating.isCommitting ? 'Committing…' : 'Commit'}
           </Button>
+        ) : (
+          <Button
+            variant="primary"
+            isDisabled={isBusy || !canWrite}
+            onPress={onSave}
+          >
+            {updating.isUpdating ? 'Saving…' : 'Save'}
+          </Button>
         )}
-        <Button
-          variant="primary"
-          isDisabled={isBusy || !canWrite}
-          onPress={onSave}
-        >
-          {updating.isUpdating ? 'Saving…' : 'Save'}
-        </Button>
       </Flex>
     ),
     [
       isBusy,
       canWrite,
-      canCommit,
+      mode,
       detailHref,
       navigate,
       onCommit,
@@ -552,12 +559,25 @@ function EditAgentForm({
           <CardBody>
             <Flex justify="between" align="center" gap="4">
               <Flex direction="column" gap="1">
-                <Text weight="bold">Save to {installation}</Text>
-                <Text variant="body-small" color="secondary">
-                  Updates the release's values through agent-manager, as you.
-                  The agent's page then shows the new revision becoming ready on
-                  its Harness.
-                </Text>
+                {mode === 'commit' ? (
+                  <>
+                    <Text weight="bold">Commit to the GitOps repository</Text>
+                    <Text variant="body-small" color="secondary">
+                      This agent is applied from git, so agent-manager opens a
+                      pull request as you that rewrites its file. The change
+                      reaches {installation} once the pull request is merged.
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text weight="bold">Save to {installation}</Text>
+                    <Text variant="body-small" color="secondary">
+                      Updates the release's values through agent-manager, as
+                      you. The agent's page then shows the new revision becoming
+                      ready on its Harness.
+                    </Text>
+                  </>
+                )}
               </Flex>
               {actions}
             </Flex>
@@ -588,16 +608,22 @@ function EditAgentPageContent() {
     { enabled: presence === 'available' },
   );
 
-  // An agent applied from git is refused by agent-manager, so the form is never
-  // offered — the same sentence the detail page's actions menu gives, in the
-  // same place this page already explains a missing agent-manager. While the
-  // read is in flight there is no verdict and no reason; that lands on the
+  // An agent applied from git is refused a live write by agent-manager, so its
+  // form is offered only when agent-manager can open a pull request instead —
+  // otherwise this page gives the same sentence the detail page's actions menu
+  // does, in the same place it already explains a missing agent-manager. While
+  // a read is in flight there is no verdict and no reason; that lands on the
   // progress branch below.
+  const { info, isLoading: isLoadingInfo } = useAgentManagerInfo(
+    presence === 'available' ? installation : undefined,
+  );
+  const isGitOpsOwned = agent?.managed === 'gitops';
   const gate = {
     presence,
     isUnavailable: availability.isUnavailable,
-    isGitOpsOwned: agent?.managed === 'gitops',
-    isVerdictPending: isLoading,
+    isGitOpsOwned,
+    canCommit: info?.capabilities?.commit === true,
+    isVerdictPending: isLoading || (isGitOpsOwned && isLoadingInfo),
   };
   const reason = agentManagerAbsenceReason(gate, installation);
 
@@ -615,7 +641,7 @@ function EditAgentPageContent() {
       />
     );
   }
-  if (gate.presence === 'unknown' || isLoading) {
+  if (gate.presence === 'unknown' || gate.isVerdictPending) {
     return <Progress aria-label="Loading agent" />;
   }
   if (failure) {
@@ -652,7 +678,13 @@ function EditAgentPageContent() {
       />
     );
   }
-  return <EditAgentForm installation={installation} agent={agent} />;
+  return (
+    <EditAgentForm
+      installation={installation}
+      agent={agent}
+      mode={agentWriteMode(gate) ?? 'apply'}
+    />
+  );
 }
 
 /**
@@ -660,10 +692,12 @@ function EditAgentPageContent() {
  * person: the form pre-filled from `get_agent` (display name, description,
  * system prompt, model, toolset, skills with their pins — no runtime), the
  * review as `validate_agent`'s dry run of the update, Save as `update_agent`
- * with only the changed fields. An agent applied from git never reaches the
- * form — agent-manager refuses every write to it. A suspended agent's dry run
- * comes back as agent-manager's refusal and Save stays locked. Commit
- * (`mode: commit`) appears only when `get_info` reports the capability.
+ * with only the changed fields. An agent applied from git is refused every live
+ * write, so its form offers Commit (`update_agent` with `mode: commit`, a pull
+ * request in the repository that owns it) instead of Save — and only when
+ * `get_info` reports the capability; without it the form is not offered. A
+ * suspended agent's dry run comes back as agent-manager's refusal and Save
+ * stays locked.
  */
 export function EditAgentPage() {
   return (
