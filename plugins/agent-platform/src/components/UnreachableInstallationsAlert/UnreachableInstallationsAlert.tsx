@@ -1,4 +1,5 @@
 import { Alert } from '@backstage/ui';
+import type { ReadFailure } from '../../lib/readFailure';
 
 export type UnreachableInstallationsAlertProps = {
   /** Installations whose kagent resources couldn't be read. */
@@ -8,6 +9,11 @@ export type UnreachableInstallationsAlertProps = {
    * "Agents"). Defaults to a generic "kagent resources".
    */
   resourceName?: string;
+  /**
+   * Why each installation could not be read. When given, the banner names the
+   * reason and request id per installation instead of guessing at both.
+   */
+  failures?: Record<string, ReadFailure>;
 };
 
 /**
@@ -20,6 +26,7 @@ export type UnreachableInstallationsAlertProps = {
 export function UnreachableInstallationsAlert({
   installations,
   resourceName = 'kagent resources',
+  failures,
 }: UnreachableInstallationsAlertProps) {
   if (installations.length === 0) {
     return null;
@@ -31,9 +38,28 @@ export function UnreachableInstallationsAlert({
     <Alert
       status="warning"
       title={`Couldn't read ${count} installation${count === 1 ? '' : 's'}`}
-      description={`Skipped because their ${resourceName} couldn't be read — the installation may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
-        ', ',
-      )}.`}
+      description={
+        failures
+          ? `Skipped because their ${resourceName} couldn't be read: ${installations
+              .map(installation =>
+                describe(installation, failures[installation]),
+              )
+              .join('; ')}.`
+          : `Skipped because their ${resourceName} couldn't be read — the installation may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
+              ', ',
+            )}.`
+      }
     />
   );
+}
+
+/** `gremlin (timed out, request id 3f2c…)`, or the bare name with no failure. */
+function describe(installation: string, failure: ReadFailure | undefined) {
+  if (!failure) {
+    return installation;
+  }
+  const requestId = failure.requestId
+    ? `, request id ${failure.requestId}`
+    : '';
+  return `${installation} (${failure.reason}${requestId})`;
 }

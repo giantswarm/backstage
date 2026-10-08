@@ -23,10 +23,43 @@ import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
  * actionable, and its sessions silently vanishing from the fleet-merged list would
  * be the worse failure.
  */
-export function upstreamError(message: string): Error {
+export function upstreamError(
+  message: string,
+  reason: UpstreamReason = 'server-error',
+): Error {
   const error = new Error(message);
   error.name = 'UpstreamError';
+  // An own enumerable property, so Backstage's error serializer carries it to
+  // the browser beside the name: a timeout and a 5xx share the status.
+  (error as Error & { reason: UpstreamReason }).reason = reason;
   return error;
+}
+
+/**
+ * Why kagent, reachable, did not answer: what the portal tells a person whose
+ * installation it could not read. Authentication and permission need no
+ * reason; their statuses say it.
+ */
+export type UpstreamReason = 'timeout' | 'unavailable' | 'server-error';
+
+/** The HTTP status `MiddlewareFactory.error()` answers a mapped error with. */
+export function httpStatusOf(error: Error): number {
+  switch (error.name) {
+    case 'InputError':
+      return 400;
+    case 'AuthenticationError':
+      return 401;
+    case 'NotAllowedError':
+      return 403;
+    case 'NotFoundError':
+      return 404;
+    case 'ConflictError':
+      return 409;
+    case 'ServiceUnavailableError':
+      return 503;
+    default:
+      return 500;
+  }
 }
 
 export function isUpstreamError(error: unknown): boolean {
@@ -238,6 +271,7 @@ export function mapConnectError(
       }
       return upstreamError(
         `The kagent API for installation '${installationName}' did not respond in time.`,
+        'timeout',
       );
     case Code.Unavailable:
       // A gateway or kagent answering 5xx: deployed and unwell, not absent.
@@ -247,6 +281,7 @@ export function mapConnectError(
       );
       return upstreamError(
         `The kagent API for installation '${installationName}' is unavailable: ${reason}`,
+        'unavailable',
       );
     default:
       if (context.unsupportedOperation && isUnsupportedOperation(reason)) {

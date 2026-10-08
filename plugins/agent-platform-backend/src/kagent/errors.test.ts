@@ -67,3 +67,16 @@ describe('mapConnectError', () => {
     );
   });
 });
+
+describe('the reason an upstream failure carries', () => {
+  it.each([
+    [Code.DeadlineExceeded, 'timeout'],
+    [Code.Unavailable, 'unavailable'],
+    [Code.Internal, 'server-error'],
+  ])('%s is %s', (code, reason) => {
+    expect(map(new ConnectError('boom', code))).toMatchObject({
+      name: 'UpstreamError',
+      reason,
+    });
+  });
+});

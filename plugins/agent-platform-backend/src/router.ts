@@ -24,6 +24,7 @@ import {
   KagentInstallationConfig,
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
+  REQUEST_ID_HEADER,
   REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
@@ -713,10 +714,21 @@ export async function createRouter(
     res.json(result);
   });
 
+  /**
+   * The caller's sessions on one installation.
+   *
+   * Each read carries a fresh request id toward the controller route, logged
+   * with a failure and answered in {@link REQUEST_ID_HEADER} — on an error too,
+   * which is the point: the Sessions page names it beside an installation it
+   * could not read, so the failure can be found in the gateway's logs.
+   */
   router.get('/kagent/sessions', async (req, res) => {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
     const { client } = resolveInstallation(req);
     const result = await client.listSessions({
       userToken: readUserToken(req, { required: true }),
+      requestId,
     });
     res.json(result);
   });

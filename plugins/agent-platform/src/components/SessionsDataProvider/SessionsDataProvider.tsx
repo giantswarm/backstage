@@ -14,6 +14,7 @@ import { sessionsQueryKey } from '../../lib/queryKeys';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useKagentInstallations } from '../../hooks/useKagentInstallations';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
+import { describeReadFailure, type ReadFailure } from '../../lib/readFailure';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
@@ -48,6 +49,11 @@ export type SessionsContextValue = {
    * common case across the fleet and not something a user can act on.
    */
   unreachableInstallations: string[];
+  /**
+   * Why each of `unreachableInstallations` could not be read, and the request
+   * id the backend sent its call with, so the page can name the cause.
+   */
+  readFailures: Record<string, ReadFailure>;
   /**
    * Installations that reported a session list which is **not** scoped to the
    * signed-in user, because their kagent runs in `unsecure` mode. Rows are still
@@ -202,15 +208,18 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
   const readSignature = targets
     .map((installation, index) => {
       const query = sessionQueries[index];
+      // `errorUpdatedAt` too: a later failure with another reason or request
+      // id keeps the error's name.
       return `${installation}:${query?.status}:${query?.dataUpdatedAt}:${
-        (query?.error as Error | null)?.name ?? ''
-      }`;
+        query?.errorUpdatedAt
+      }:${(query?.error as Error | null)?.name ?? ''}`;
     })
     .join('|');
 
   const value = useMemo<SessionsContextValue>(() => {
     const rows: SessionRow[] = [];
     const unreachable: string[] = [];
+    const readFailures: Record<string, ReadFailure> = {};
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -253,6 +262,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
         errorName === 'ServiceUnavailableError';
       if (!notDeployed) {
         unreachable.push(installation);
+        readFailures[installation] = describeReadFailure(query.error);
       }
     });
 
@@ -298,6 +308,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       isLoadingMore: isBusy && rows.length > 0,
       hasInstallations,
       unreachableInstallations: unreachable,
+      readFailures,
       notUserScopedInstallations,
       notReachableInstallations,
     };

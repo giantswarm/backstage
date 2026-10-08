@@ -12,6 +12,7 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
+import { upstreamError } from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -720,7 +721,29 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual(body);
-      expect(listSessions).toHaveBeenCalledWith({ userToken: 'user-token' });
+      expect(listSessions).toHaveBeenCalledWith({
+        userToken: 'user-token',
+        requestId: response.headers['x-request-id'],
+      });
+    });
+
+    it('answers a failed read with the request id it sent and the failure reason', async () => {
+      listSessions.mockRejectedValue(
+        upstreamError('kagent did not respond in time.', 'timeout'),
+      );
+
+      const response = await request(app)
+        .get('/kagent/sessions')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(500);
+      expect(response.body.error.reason).toBe('timeout');
+      const requestId = response.headers['x-request-id'];
+      expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(listSessions).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId }),
+      );
     });
 
     it('routes to the requested installation', async () => {

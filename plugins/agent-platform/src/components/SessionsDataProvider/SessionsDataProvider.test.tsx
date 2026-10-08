@@ -388,6 +388,28 @@ describe('SessionsDataProvider', () => {
       expect(result.current.rows).toHaveLength(1);
     });
 
+    it('carries why each installation could not be read', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.resolve([session()])
+          : Promise.reject(
+              Object.assign(namedError('UpstreamError'), {
+                status: 500,
+                reason: 'timeout',
+                requestId: 'req-9',
+              }),
+            ),
+      );
+
+      const { result } = renderProvider();
+
+      await waitFor(() =>
+        expect(result.current.readFailures).toEqual({
+          golem: { reason: 'timed out', requestId: 'req-9' },
+        }),
+      );
+    });
+
     it('does not let one failing installation empty the table', async () => {
       listSessions.mockImplementation((installation: string) =>
         installation === 'gazelle'

@@ -8,6 +8,7 @@ import {
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
+import type { KagentRequestErrorFields } from '../lib/readFailure';
 import {
   KagentInstallation,
   parseKagentInstallations,
@@ -33,6 +34,7 @@ import {
   KAGENT_AUTH_HEADER,
   KagentApi,
   KagentIdentity,
+  REQUEST_ID_HEADER,
 } from './types';
 
 export const kagentApiRef = createApiRef<KagentApi>({
@@ -764,11 +766,17 @@ export class KagentApiClient implements KagentApi {
     required: boolean,
   ): Promise<string | undefined> {
     if (required) {
-      return getInstallationOidcToken(
-        this.kubernetesApi,
-        this.kubernetesAuthProvidersApi,
-        installation,
-      );
+      try {
+        return await getInstallationOidcToken(
+          this.kubernetesApi,
+          this.kubernetesAuthProvidersApi,
+          installation,
+        );
+      } catch (error) {
+        // The request never left the browser: say so, rather than let the
+        // failure read like one of the backend's.
+        throw Object.assign(error as Error, { reason: 'token' });
+      }
     }
     try {
       return await getInstallationOidcToken(
@@ -809,10 +817,19 @@ export class KagentApiClient implements KagentApi {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      const { message: bodyMessage, reason } =
+        (errorData as { error?: { message?: string; reason?: string } })
+          ?.error ?? {};
       const message =
-        (errorData as { error?: { message?: string } })?.error?.message ??
-        `kagent request failed with status ${response.status}`;
-      const error = new Error(message);
+        bodyMessage ?? `kagent request failed with status ${response.status}`;
+      // What `describeReadFailure` turns into the page's words: the status,
+      // the backend's failure reason and the request id it sent toward kagent.
+      const fields: KagentRequestErrorFields = {
+        status: response.status,
+        reason,
+        requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+      };
+      const error = Object.assign(new Error(message), fields);
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
       // raises InputError for a name outside the allowlist). That allowlist is
