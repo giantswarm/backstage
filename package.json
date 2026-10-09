@@ -128,8 +128,8 @@
     "undici@npm:^8.4.1": "8.10.2",
     "minimatch@npm:3.1.2": "3.1.5",
     "buffer-equal-constant-time@npm:1.0.1": "patch:buffer-equal-constant-time@npm%3A1.0.1#~/.yarn/patches/buffer-equal-constant-time-npm-1.0.1-41826f3419.patch",
-    "@yarnpkg/core@npm:^4.9.1": "4.9.2",
-    "@yarnpkg/cli@npm:^4.7.0": "4.18.1",
+    "@yarnpkg/core@npm:^4.9.1": "4.9.1",
+    "@yarnpkg/cli@npm:^4.7.0": "4.18.0",
     "@backstage/backend-defaults@backstage:^": "patch:@backstage/backend-defaults@npm%3A0.18.0#~/.yarn/patches/@backstage-backend-defaults-npm-0.18.0-38f210e7c4.patch"
   },
   "jest": {
