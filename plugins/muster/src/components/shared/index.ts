@@ -2,6 +2,8 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
+export { EffectBadge } from './EffectBadge';
+export type { EffectBadgeProps } from './EffectBadge';
 export { AvailabilityBadge } from './AvailabilityBadge';
 export type { AvailabilityBadgeProps } from './AvailabilityBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.

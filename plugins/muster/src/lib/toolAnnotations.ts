@@ -30,3 +30,20 @@ export function isDestructive(tool: {
     tool.annotations?.readOnlyHint !== true
   );
 }
+
+/**
+ * What running a tool does, in the two kinds a person approves differently:
+ * it only reads, or it changes things.
+ */
+export type ToolEffect = 'reads' | 'changes';
+
+/**
+ * A tool reads only when its server annotates it read-only. Without the
+ * annotation it changes things: the MCP spec defaults `readOnlyHint` to false,
+ * and a tool that might write must not be presented as harmless.
+ */
+export function toolEffect(tool: {
+  annotations?: ToolAnnotations;
+}): ToolEffect {
+  return isReadOnly(tool) ? 'reads' : 'changes';
+}

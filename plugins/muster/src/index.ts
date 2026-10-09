@@ -42,7 +42,8 @@ export type {
   WorkflowArgDefinition,
   WorkflowStep,
 } from './lib/k8s';
-export { isReadOnly, isDestructive } from './lib/toolAnnotations';
+export { isReadOnly, isDestructive, toolEffect } from './lib/toolAnnotations';
+export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
   installationErrorLine,
@@ -60,6 +61,7 @@ export type {
 export {
   SectionHeader,
   StateBadge,
+  EffectBadge,
   Stat,
   DisclosureAccordion,
   ToolTable,
@@ -75,6 +77,7 @@ export {
 export type {
   SectionHeaderProps,
   StateBadgeProps,
+  EffectBadgeProps,
   StatProps,
   DisclosureAccordionProps,
   ToolTableProps,
@@ -86,3 +89,4 @@ export type {
   Tone,
   ToneColors,
 } from './components/shared';
+export { useAgentShell } from './hooks/useAgentShell';
