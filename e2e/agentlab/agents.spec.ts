@@ -1,40 +1,37 @@
-import { expect, open, test } from './fixtures';
+import { expect, open, rosterLinkOf, test } from './fixtures';
 
 /**
  * The Agents tab as the admin reads it: the roster from the installation's
  * `Agent`s, an agent's detail page, and the first step of the New
  * agent wizard. The roster and the detail page read the worker's own agent
  * (`labAgent`); the whole journey of one is `agent-lifecycle.spec.ts`.
+ *
+ * Deploy writes the agent's HelmRelease; the roster lists the Agent once Flux
+ * has rendered it and the roster's 60 s poll has read it, up to two minutes
+ * after Deploy. Until then a lab without other agents shows the "No agents
+ * yet" empty state, without search or table, so the fixture agent's row comes
+ * first, and the test's budget outlasts the config's 90 s.
  */
+const rosterWait = 2 * 60_000;
 
 test('the roster shows the agent table with its columns', async ({
   admin,
   labAgent,
 }) => {
+  test.setTimeout(rosterWait + 60_000);
   await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  // Deploy writes the agent's HelmRelease; the roster lists the Agent once
-  // Flux has rendered it, a poll or two later. Until then a lab without other
-  // agents shows the "No agents yet" empty state, without search or table, so
-  // the fixture agent's row comes first.
   await expect(
-    grid
-      .getByRole('rowheader')
-      .getByRole('link', { name: labAgent.name, exact: true }),
+    rosterLinkOf(admin, labAgent.name),
     'the roster lists the fixture agent',
-  ).toBeVisible({ timeout: 2 * 60_000 });
+  ).toBeVisible({ timeout: rosterWait });
   await expect(
     admin.getByRole('searchbox', { name: 'Search agents' }),
   ).toBeVisible();
-  // The lab is one installation with its agents in one namespace, so neither
-  // column would tell a row apart.
-  await expect(grid.getByRole('columnheader')).toHaveText([
-    'Agent',
-    'Status',
-    'Model',
-    'Toolset',
-    'Skills',
-  ]);
+  // The Namespace and Installation columns join only when the rows span more
+  // than one, which depends on what else the lab runs.
+  await expect(
+    admin.getByRole('grid', { name: 'Data table' }).getByRole('columnheader'),
+  ).toContainText(['Agent', 'Status', 'Model', 'Toolset', 'Skills']);
   await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
 });
 
@@ -42,13 +39,11 @@ test('an agent in the roster opens its detail page', async ({
   admin,
   labAgent,
 }) => {
+  test.setTimeout(rosterWait + 60_000);
   await open(admin, '/agent-platform/agents');
-  const grid = admin.getByRole('grid', { name: 'Data table' });
-  const agent = grid
-    .getByRole('rowheader')
-    .getByRole('link', { name: labAgent.name, exact: true });
+  const agent = rosterLinkOf(admin, labAgent.name);
   await expect(agent, 'the roster lists the fixture agent').toBeVisible({
-    timeout: 2 * 60_000,
+    timeout: rosterWait,
   });
 
   // The link shows the display name; the URL carries the slug — the href is
