@@ -17,6 +17,8 @@ type Scenario = {
   name: string;
   semver?: string;
   semverFilter?: string;
+  /** The version Flux resolved the range to, written to the fixture's status */
+  revision?: string;
   label: string;
 };
 
@@ -48,7 +50,6 @@ const SCENARIOS: Scenario[] = [
   },
   {
     name: 'auto-upgrades-any',
-    semverFilter: undefined,
     label: 'Any, including pre-releases',
   },
   {
@@ -66,16 +67,36 @@ const SCENARIOS: Scenario[] = [
     semver: '^0.7.1',
     label: 'Patch',
   },
+  // Read from the current version: minor and patch from 1.0.0, patch at 1.4.x
+  {
+    name: 'auto-upgrades-bounded-current',
+    semver: '>=1.0.0 <1.5.0',
+    revision: '1.4.2',
+    label: 'Patch',
+  },
+  // Any from 1.0.0-0, minor and patch at 2.x
+  {
+    name: 'auto-upgrades-bounded-prerelease',
+    semver: '>=1.0.0-0 <3.0.0',
+    revision: '2.4.1',
+    label: 'Minor and patch, including pre-releases',
+  },
 ];
+
+/** A value as a single-quoted YAML scalar. */
+function quoted(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
 
 /**
  * A suspended HelmRelease and OCIRepository per scenario, so the lab's
  * controllers never fetch or install anything: the objects exist for the
- * portal to read.
+ * portal to read. A scenario's revision is written to the OCIRepository's
+ * status afterwards, where Flux records the version it resolved.
  */
 function fixture({ name, semver = '>=0.0.0-0', semverFilter }: Scenario) {
   const filter = semverFilter
-    ? `\n    semverFilter: '${semverFilter.replace(/'/g, "''")}'`
+    ? `\n    semverFilter: ${quoted(semverFilter)}`
     : '';
   return `
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -88,7 +109,7 @@ spec:
   interval: 10m
   url: oci://gsoci.azurecr.io/charts/giantswarm/hello-world
   ref:
-    semver: '${semver}'${filter}
+    semver: ${quoted(semver)}${filter}
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -123,6 +144,27 @@ test.describe("a deployment's automatic upgrades", () => {
 
   test.beforeAll(async () => {
     await kubectl(['apply', '-f', '-'], SCENARIOS.map(fixture).join('\n---\n'));
+    for (const { name, revision } of SCENARIOS) {
+      if (!revision) continue;
+      const artifact = {
+        revision: `${revision}@sha256:${'0'.repeat(64)}`,
+        digest: `sha256:${'0'.repeat(64)}`,
+        lastUpdateTime: new Date().toISOString(),
+        path: `ocirepository/${NAMESPACE}/${name}.tar.gz`,
+        url: `http://source-controller.invalid/${name}.tar.gz`,
+      };
+      await kubectl([
+        '-n',
+        NAMESPACE,
+        'patch',
+        'ocirepository',
+        name,
+        '--subresource=status',
+        '--type=merge',
+        '-p',
+        JSON.stringify({ status: { artifact } }),
+      ]);
+    }
   });
 
   test.afterAll(async () => {
