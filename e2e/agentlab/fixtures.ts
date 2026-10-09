@@ -403,16 +403,21 @@ export async function deleteAgentInPortal(
   ).toHaveCount(0, { timeout: 60_000 });
 }
 
+/** The roster's link to the agent named `name`, on the open Agents tab. */
+export function rosterLinkOf(page: Page, name: string): Locator {
+  return page
+    .getByRole('grid', { name: 'Data table' })
+    .getByRole('rowheader')
+    .getByRole('link', { name, exact: true });
+}
+
 /** The detail page of the roster's agent named `name`, if the roster lists it. */
 async function rosterPathOf(
   page: Page,
   name: string,
 ): Promise<string | undefined> {
   await open(page, '/agent-platform/agents');
-  const link = page
-    .getByRole('grid', { name: 'Data table' })
-    .getByRole('rowheader')
-    .getByRole('link', { name, exact: true });
+  const link = rosterLinkOf(page, name);
   await link.waitFor({ timeout: 30_000 }).catch(() => undefined);
   return (await link.count()) === 1
     ? ((await link.getAttribute('href')) ?? undefined)
