@@ -2,16 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Box,
-  Button,
-  ButtonLink,
-  Card,
-  CardBody,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { dump } from 'js-yaml';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
@@ -52,6 +43,7 @@ import {
 } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
+import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -254,63 +246,6 @@ function ConnectAgentManager({
           />
         </Flex>
       }
-    />
-  );
-}
-
-/** What `mode: commit` answered: the pull request, or the connect step. */
-function CommitOutcome({ result }: { result: CommitAgentResult }) {
-  if (result.pullRequestUrl) {
-    return (
-      <Alert
-        status="success"
-        title="Pull request opened"
-        description={
-          <ButtonLink
-            href={result.pullRequestUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="small"
-          >
-            Open the pull request ↗
-          </ButtonLink>
-        }
-      />
-    );
-  }
-  if (result.status === 'auth_required') {
-    return (
-      <Alert
-        status="warning"
-        title="Connect the repository first"
-        description={
-          <Flex direction="column" gap="2">
-            <Text variant="body-small">
-              {result.message ??
-                'agent-manager has no grant to open pull requests as you yet.'}
-            </Text>
-            {result.authUrl && (
-              <ButtonLink
-                href={result.authUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="secondary"
-                size="small"
-              >
-                Connect ↗
-              </ButtonLink>
-            )}
-          </Flex>
-        }
-      />
-    );
-  }
-  return (
-    <Alert
-      status="info"
-      title="Commit requested"
-      description={result.message ?? 'agent-manager accepted the request.'}
     />
   );
 }

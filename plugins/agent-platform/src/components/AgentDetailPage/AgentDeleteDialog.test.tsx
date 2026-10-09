@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 
 import type { AgentDeletionState } from '../../hooks/useAgentDeletion';
 import type { CommitAgentResult } from '../../lib/agentManager';
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import { AgentDeleteDialog } from './AgentDeleteDialog';
 
 const DELETION: AgentDeletionState = {
@@ -75,9 +76,10 @@ describe('AgentDeleteDialog', () => {
   });
 
   it('links the pull request once it is open, with nothing left to confirm', async () => {
-    await renderDialog('commit', {
-      pullRequestUrl: 'https://github.com/giantswarm/agents/pull/7',
-    });
+    await renderDialog(
+      'commit',
+      committedTo('https://github.com/giantswarm/agents/pull/7'),
+    );
 
     expect(
       screen.getByRole('link', { name: /Open the pull request/ }),
@@ -88,13 +90,30 @@ describe('AgentDeleteDialog', () => {
   });
 
   it('keeps the button for another try after the connect step', async () => {
-    await renderDialog('commit', {
-      status: 'auth_required',
-      authUrl: 'https://github.com/login/oauth/authorize',
-    });
+    // agent-manager refuses a commit without the person's GitHub
+    // authorization with `auth_required`: a refusal, shown as the error.
+    await renderInTestApp(
+      <AgentDeleteDialog
+        installation="gazelle"
+        displayName="PR reviewer"
+        isOpen
+        onOpenChange={jest.fn()}
+        deletion={{
+          ...DELETION,
+          failure: {
+            kind: 'refused',
+            code: 'auth_required',
+            message: 'sign in to GitHub through muster first',
+          },
+        }}
+        mode="commit"
+        onConfirm={onConfirm}
+        onCommit={onCommit}
+      />,
+    );
 
     expect(
-      screen.getByText('Connect the repository first'),
+      screen.getByText('sign in to GitHub through muster first'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Open pull request' }),

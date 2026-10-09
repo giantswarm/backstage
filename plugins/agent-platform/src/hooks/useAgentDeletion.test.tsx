@@ -8,6 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useAgentDeletion } from './useAgentDeletion';
+import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
@@ -121,9 +122,9 @@ describe('useAgentDeletion', () => {
   });
 
   it('commits through delete_agent with mode: commit', async () => {
-    callTool.mockResolvedValue({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/9',
-    });
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/9'),
+    );
     const { result } = renderWith();
 
     let outcome;
@@ -136,9 +137,9 @@ describe('useAgentDeletion', () => {
       { namespace: 'kagent', name: 'pr-reviewer', mode: 'commit' },
       'gazelle',
     );
-    expect(outcome).toEqual({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/9',
-    });
+    expect(outcome).toEqual(
+      committedTo('https://github.com/org/gitops/pull/9'),
+    );
   });
 
   it('reports a not-connected session as such', async () => {

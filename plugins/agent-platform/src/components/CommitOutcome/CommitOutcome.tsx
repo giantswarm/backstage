@@ -1,65 +1,24 @@
-import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
+import { Alert } from '@backstage/ui';
 
 import type { CommitAgentResult } from '../../lib/agentManager';
+import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 
 /**
  * What agent-manager's `mode: commit` answered (giantswarm/agent-manager#24):
- * the pull request it opened as the person, the connect step when it has no
- * grant to open one yet, or its acknowledgement. Shared by every write that
- * offers Commit — create, edit and delete.
+ * the pull request it opened as the person, in the shape every manager answers
+ * it. Shared by every agent write that offers Commit — create, edit and
+ * delete. The connect step (`auth_required`) is a refusal, shown as the
+ * write's failure, never here.
  */
 export function CommitOutcome({ result }: { result: CommitAgentResult }) {
-  if (result.pullRequestUrl) {
+  if (!result.commit) {
     return (
       <Alert
-        status="success"
-        title="Pull request opened"
-        description={
-          <ButtonLink
-            href={result.pullRequestUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="secondary"
-            size="small"
-          >
-            Open the pull request ↗
-          </ButtonLink>
-        }
+        status="info"
+        title="Commit requested"
+        description="agent-manager accepted the request and named no pull request."
       />
     );
   }
-  if (result.status === 'auth_required') {
-    return (
-      <Alert
-        status="warning"
-        title="Connect the repository first"
-        description={
-          <Flex direction="column" gap="2">
-            <Text variant="body-small">
-              {result.message ??
-                'agent-manager has no grant to open pull requests as you yet.'}
-            </Text>
-            {result.authUrl && (
-              <ButtonLink
-                href={result.authUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="secondary"
-                size="small"
-              >
-                Connect ↗
-              </ButtonLink>
-            )}
-          </Flex>
-        }
-      />
-    );
-  }
-  return (
-    <Alert
-      status="info"
-      title="Commit requested"
-      description={result.message ?? 'agent-manager accepted the request.'}
-    />
-  );
+  return <ClusterManagerCommitOutcome commit={result.commit} />;
 }

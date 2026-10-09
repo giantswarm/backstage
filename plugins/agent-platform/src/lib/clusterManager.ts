@@ -15,7 +15,7 @@
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
 
-import { looksNotConnected } from './agentManager';
+import { looksNotConnected, type GitOpsCommit } from './agentManager';
 
 /** The MCPServer name muster registers cluster-manager under. */
 export const CLUSTER_MANAGER_SERVER = 'cluster-manager';
@@ -547,31 +547,8 @@ export type NodePoolWriteResult = {
   commit?: ClusterManagerCommit;
 };
 
-/** One file of a commit: shown on a dry run, never for a secret. */
-export type CommitFile = {
-  path: string;
-  action: string;
-  content?: string;
-};
-
-/**
- * A write in mode `commit`: the repository owning the organization, the
- * directory and files, and — not on a dry run — the pull request opened as
- * the person; `liveSteps` are what the merge alone does not do.
- */
-export type ClusterManagerCommit = {
-  repository: string;
-  base: string;
-  directory: string;
-  kustomization: string;
-  prune: boolean;
-  branch: string;
-  files: CommitFile[];
-  pullRequest?: string;
-  number?: number;
-  author?: string;
-  liveSteps?: string[];
-};
+/** A write in mode `commit`: the repository owning the organization. */
+export type ClusterManagerCommit = GitOpsCommit;
 
 /** `list_releases`: one Release CR of the installation. */
 export type ClusterRelease = {
