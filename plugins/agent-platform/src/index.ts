@@ -11,3 +11,4 @@ export type {
 } from './components/StartNewSession';
 export { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
 export { ServingLayerGate } from './components/ServingLayerGate';
+export type { AgentPlatformHomeProps } from './components/AgentPlatformHome';

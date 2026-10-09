@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
+import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { AgentPlatformHome } from './AgentPlatformHome';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
@@ -42,6 +44,12 @@ jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => mockUseAgents(),
 }));
 
+const mockSessions = jest.fn<SessionRow[], []>(() => []);
+jest.mock('../SessionsDataProvider', () => ({
+  SessionsDataProvider: mockPassThrough,
+  useSessions: () => ({ rows: mockSessions() }),
+}));
+
 const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
   useCreateSession: (entryPoint: string) => mockUseCreateSession(entryPoint),
@@ -58,6 +66,41 @@ const sre: AgentRow = {
   readiness: 'ready',
 };
 
+const research: AgentRow = {
+  ...sre,
+  id: 'gazelle/research/research-agent',
+  namespace: 'research',
+  name: 'Research Agent',
+  technicalName: 'research-agent',
+  description: 'Finds things out',
+  model: 'Sonnet 4.5',
+  toolset: {
+    state: 'declared',
+    carrier: 'research-agent',
+    selectors: ['server:confluence', 'server:slack'],
+  },
+};
+
+const docs: AgentRow = {
+  ...sre,
+  id: 'gazelle/kagent/docs-agent',
+  name: 'Docs Agent',
+  technicalName: 'docs-agent',
+};
+
+function sessionWith(agent: AgentRow, createdAt: string): SessionRow {
+  return {
+    id: `gazelle/${agent.technicalName}-${createdAt}`,
+    sessionId: `${agent.technicalName}-${createdAt}`,
+    installation: agent.installation,
+    title: 'Chat',
+    agentName: agent.name,
+    agentTechnicalName: agent.technicalName,
+    agentNamespace: agent.namespace,
+    createdAt,
+  };
+}
+
 const loadedAgents: AgentsContextValue = {
   rows: [sre],
   scope: 'all',
@@ -71,23 +114,31 @@ const loadedAgents: AgentsContextValue = {
 function render({
   bound = true,
   displayName = 'Jane Doe',
-}: { bound?: boolean; displayName?: string } = {}) {
-  return renderInTestApp(<AgentPlatformHome />, {
-    apis: [
-      [
-        identityApiRef,
-        mockApis.identity.mock({
-          getProfileInfo: async () => ({ displayName }),
-        }),
+  manageAgentsHref,
+}: {
+  bound?: boolean;
+  displayName?: string;
+  manageAgentsHref?: string;
+} = {}) {
+  return renderInTestApp(
+    <AgentPlatformHome manageAgentsHref={manageAgentsHref} />,
+    {
+      apis: [
+        [
+          identityApiRef,
+          mockApis.identity.mock({
+            getProfileInfo: async () => ({ displayName }),
+          }),
+        ],
       ],
-    ],
-    ...(bound && {
-      mountedRoutes: {
-        '/agent-platform/sessions': sessionsRouteRef,
-        '/agent-platform/agents': agentsRouteRef,
-      },
-    }),
-  });
+      ...(bound && {
+        mountedRoutes: {
+          '/agent-platform/sessions': sessionsRouteRef,
+          '/agent-platform/agents': agentsRouteRef,
+        },
+      }),
+    },
+  );
 }
 
 beforeEach(() => {
@@ -102,6 +153,7 @@ beforeEach(() => {
     reset: jest.fn(),
   });
   mockUseAgents.mockReturnValue(loadedAgents);
+  mockSessions.mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -171,5 +223,86 @@ describe('AgentPlatformHome', () => {
       screen.queryByRole('textbox', { name: 'Prompt' }),
     ).not.toBeInTheDocument();
     expect(mockUseAgents).not.toHaveBeenCalled();
+  });
+
+  describe('choosing an agent', () => {
+    beforeEach(() => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [sre, research, docs],
+      });
+      mockSessions.mockReturnValue([
+        sessionWith(sre, '2026-10-06T10:00:00Z'),
+        sessionWith(research, '2026-10-08T10:00:00Z'),
+        sessionWith(sre, '2026-10-07T10:00:00Z'),
+      ]);
+    });
+
+    it('offers the recent agents, newest first, until one is chosen', async () => {
+      await render();
+
+      const chips = within(
+        screen.getByRole('group', {
+          name: 'Or pick one of your recent agents',
+        }),
+      ).getAllByRole('button');
+      expect(chips).toHaveLength(2);
+      expect(chips[0]).toHaveAccessibleName('Research Agent');
+      expect(chips[1]).toHaveAccessibleName('SRE Agent');
+      expect(
+        screen.getByText(
+          'Choose an agent to work with, then tell it what you need.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Required to start')).toBeInTheDocument();
+    });
+
+    it('names the chosen agent, its model and what it can use', async () => {
+      await render();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+
+      expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveAttribute(
+        'placeholder',
+        'What can Research Agent help you with?',
+      );
+      expect(
+        screen.getByText("You're starting a session with Research Agent."),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Sonnet 4.5')).toBeInTheDocument();
+      expect(
+        screen.getByText('Can use confluence and slack'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('group', {
+          name: 'Or pick one of your recent agents',
+        }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('groups the picker by namespace behind the recent agents', async () => {
+      await render();
+
+      const picker = screen
+        .getAllByRole('button')
+        .find(button => button.getAttribute('aria-haspopup') === 'listbox');
+      await userEvent.click(picker!);
+
+      expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: 'kagent' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('group', { name: 'research' }),
+      ).toBeInTheDocument();
+    });
+
+    it('links to the agents under Customize', async () => {
+      await render({ manageAgentsHref: '/customize/agents' });
+
+      expect(
+        screen.getByRole('link', { name: 'Manage agents' }),
+      ).toHaveAttribute('href', '/customize/agents');
+    });
   });
 });
