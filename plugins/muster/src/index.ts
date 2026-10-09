@@ -90,3 +90,5 @@ export type {
   ToneColors,
 } from './components/shared';
 export { useAgentShell } from './hooks/useAgentShell';
+export { useConnectorPageTarget } from './components/ConnectorPage';
+export type { ConnectorPageTarget } from './components/ConnectorPage';
