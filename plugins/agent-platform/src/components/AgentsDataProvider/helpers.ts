@@ -173,6 +173,11 @@ export type AgentRow = {
    * this; a table column wants the other.
    */
   modelName?: string;
+  /**
+   * The same-namespace Harness the agent runs on (`spec.harnessRef.name`).
+   * `undefined` for an inline Harness.
+   */
+  harness?: string;
   skillCount: number;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
@@ -297,6 +302,7 @@ export function toAgentRow(
     description: agent.getDescription() ?? '',
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
+    harness: agent.getHarnessName(),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
@@ -386,7 +392,7 @@ export function sortAgentsBy(
 
 /**
  * Free-text search over what a reader looks an agent up by: its display and
- * technical name, what it is for, and the installation it runs on.
+ * technical name, what it is for, the installation it runs on and its Harness.
  */
 export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
   const needle = search.trim().toLowerCase();
@@ -394,8 +400,12 @@ export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
     return rows;
   }
   return rows.filter(row =>
-    [row.name, row.technicalName, row.description, row.installation].some(
-      field => field.toLowerCase().includes(needle),
-    ),
+    [
+      row.name,
+      row.technicalName,
+      row.description,
+      row.installation,
+      row.harness ?? '',
+    ].some(field => field.toLowerCase().includes(needle)),
   );
 }

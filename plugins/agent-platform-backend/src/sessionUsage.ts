@@ -110,6 +110,9 @@ function addInto(target: UsageTally, source: UsageTally): void {
   target.outputTokens += source.outputTokens;
   target.totalTokens += source.totalTokens;
   target.toolCalls += source.toolCalls;
+  if (source.costUsd !== undefined) {
+    target.costUsd = (target.costUsd ?? 0) + source.costUsd;
+  }
 }
 
 /** Descending by count, then by name, so the answer is not Map order. */
@@ -350,6 +353,7 @@ export class SessionUsageReader {
         turns: tally.turns,
         inputTokens: tally.inputTokens,
         outputTokens: tally.outputTokens,
+        ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
       }))
       .sort(
         (a, b) =>

@@ -2,6 +2,8 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import {
   Agent,
   AGENT_CONDITION_STAGE_ORDER,
+  Harness,
+  useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ConditionsList,
@@ -9,6 +11,7 @@ import {
   SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { HarnessLimits } from '../HarnessLimits';
 import { shortPin } from './helpers';
 
 /** Identifiers that may run to 64 characters with nowhere to break. */
@@ -49,21 +52,42 @@ function CompilingRevision({ agent }: { agent: Agent }) {
 }
 
 /**
- * The Harness the agent names: where its sessions run once it is ready. The
- * page header already carries the verdict.
+ * The Harness the agent names: where its sessions run once it is ready, and
+ * the limits it sets on every agent. The page header already carries the
+ * verdict.
+ *
+ * The limits come from a read of the Harness itself. A read that fails or is
+ * refused shows no limits rather than an error: the line above still says
+ * where the agent runs, which is what this card is about.
  */
 function HarnessLine({ agent, isReady }: { agent: Agent; isReady: boolean }) {
   const harness = agent.getHarnessName();
+  const { resource: harnessObject } = useResource(
+    agent.cluster,
+    Harness,
+    {
+      name: harness ?? '',
+      namespace: agent.getNamespace(),
+      enableDiscovery: false,
+    },
+    { enabled: Boolean(harness) },
+  );
   if (!harness) {
     return null;
   }
   return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-medium">
-        {isReady ? 'Sessions run on ' : 'Runs on '}
-        <span style={MONO}>{harness}</span>
-      </Text>
-      <CompilingRevision agent={agent} />
+    <Flex direction="column" gap="2">
+      <Flex direction="column" gap="1">
+        <Text variant="body-medium">
+          {isReady ? 'Sessions run on ' : 'Runs on '}
+          <span style={MONO}>{harness}</span>
+        </Text>
+        <CompilingRevision agent={agent} />
+      </Flex>
+      <HarnessLimits
+        limits={harnessObject?.getLimits()}
+        harnessName={harness}
+      />
     </Flex>
   );
 }

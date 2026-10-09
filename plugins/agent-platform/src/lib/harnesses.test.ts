@@ -1,6 +1,7 @@
 import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   harnessChoicesOf,
+  harnessLimitEntries,
   harnessTitle,
   imageNameOf,
   runtimeLabel,
@@ -68,6 +69,61 @@ describe('harnessChoicesOf', () => {
         name: 'go',
         displayName: 'Claude Code with Go',
       }),
+    ]);
+  });
+});
+
+describe('harnessChoicesOf limits', () => {
+  it('carries the limits a Claude Code Harness sets', () => {
+    const [choice] = harnessChoicesOf(
+      [
+        harness('claude', {
+          claude: { limits: { budgetUSD: '5', maxTurns: 30 } },
+        }),
+      ],
+      'kagent',
+      'kagent',
+    );
+
+    expect(choice.limits).toEqual({ budgetUSD: '5', maxTurns: 30 });
+  });
+
+  it('carries no limits when the Harness sets none', () => {
+    const choices = harnessChoicesOf(
+      [
+        harness('claude', { claude: {} }),
+        harness('empty', { claude: { limits: {} } }),
+        harness('kagent', { kagent: {} }),
+      ],
+      'kagent',
+      'kagent',
+    );
+
+    for (const choice of choices) {
+      expect(choice).not.toHaveProperty('limits');
+    }
+  });
+});
+
+describe('harnessLimitEntries', () => {
+  it('lists the set limits, the budget as configured', () => {
+    expect(harnessLimitEntries({ budgetUSD: '0.50', maxTurns: 1200 })).toEqual([
+      { label: 'Budget per turn', value: '$0.50' },
+      { label: 'Max turns', value: '1,200' },
+    ]);
+  });
+
+  it('leaves out what is unset or unusable', () => {
+    expect(harnessLimitEntries(undefined)).toEqual([]);
+    expect(harnessLimitEntries({ budgetUSD: ' ', maxTurns: 0 })).toEqual([]);
+    expect(harnessLimitEntries({ maxTurns: 3 })).toEqual([
+      { label: 'Max turns', value: '3' },
+    ]);
+  });
+
+  it('shows a budget that is not a plain number as written', () => {
+    expect(harnessLimitEntries({ budgetUSD: '5e' })).toEqual([
+      { label: 'Budget per turn', value: '5e USD' },
     ]);
   });
 });

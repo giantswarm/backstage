@@ -158,4 +158,35 @@ describe('normalizeSessionUsage', () => {
     // The rest of the body still survives.
     expect(usage.daily).toHaveLength(2);
   });
+
+  it('carries a reported cost on the totals and each agent', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: { ...body().totals, costUsd: 1.25 },
+        byAgent: [
+          { agentId: 'kagent__NS__coder', inputTokens: 10, costUsd: 1.25 },
+          { agentId: 'kagent__NS__sre_agent', inputTokens: 5 },
+        ],
+      }),
+    );
+
+    expect(usage.totals.costUsd).toBe(1.25);
+    expect(usage.byAgent[0].costUsd).toBe(1.25);
+    expect(usage.byAgent[1]).not.toHaveProperty('costUsd');
+  });
+
+  it('leaves an absent or unusable reported cost undefined, never zero', () => {
+    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty('costUsd');
+
+    for (const costUsd of [null, 'one dollar', -1, Number.NaN]) {
+      const usage = normalizeSessionUsage(
+        body({
+          totals: { ...body().totals, costUsd },
+          byAgent: [{ agentId: 'kagent__NS__coder', costUsd }],
+        }),
+      );
+      expect(usage.totals.costUsd).toBeUndefined();
+      expect(usage.byAgent[0].costUsd).toBeUndefined();
+    }
+  });
 });

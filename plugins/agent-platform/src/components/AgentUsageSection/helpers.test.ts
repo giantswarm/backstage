@@ -87,6 +87,24 @@ describe('toByAgentRows', () => {
     expect(row.agentName).toBe('Unattributed');
     expect(row.href).toBeUndefined();
   });
+
+  it('carries a reported cost, and leaves an unreported one undefined', () => {
+    const [reported, unreported, unattributed] = toByAgentRows(
+      [
+        { ...entry, costUsd: 0.4 },
+        entry,
+        { ...entry, agentId: null, costUsd: 0.1 },
+      ],
+      'gazelle',
+      [agent()],
+      hrefFor,
+      'Unattributed',
+    );
+
+    expect(reported.costUsd).toBe(0.4);
+    expect(unreported).not.toHaveProperty('costUsd');
+    expect(unattributed.costUsd).toBe(0.1);
+  });
 });
 
 describe('fillMissingDays', () => {

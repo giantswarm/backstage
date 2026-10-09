@@ -93,6 +93,10 @@ export function ByAgentTable({
     [rows, rates],
   );
 
+  // Only some runtimes report a cost; with none in the window the column
+  // would read "Not reported" on every row, so it is left out.
+  const hasReportedCost = rows.some(row => row.costUsd !== undefined);
+
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
       id: 'agentName',
@@ -192,6 +196,21 @@ export function ByAgentTable({
         );
       },
     },
+    ...(hasReportedCost
+      ? [
+          {
+            id: 'costUsd',
+            label: 'Reported cost',
+            isSortable: true,
+            cell: (row: ByAgentRow) =>
+              row.costUsd === undefined ? (
+                <CellText title="Not reported" color="secondary" />
+              ) : (
+                <CellText title={formatUsd(row.costUsd)} />
+              ),
+          },
+        ]
+      : []),
   ];
 
   const { tableProps } = useTable<ByAgentRow>({
@@ -246,6 +265,14 @@ export function ByAgentTable({
             {installation ?? 'this installation'}&apos;s gateway metrics, so
             there is nothing to price your token counts at. The counts
             themselves are unaffected.
+          </>
+        )}
+        {hasReportedCost && (
+          <>
+            {' '}
+            Reported cost is what each agent&apos;s runtime reported for its
+            turns, summed; an agent whose runtime reports none reads Not
+            reported.
           </>
         )}
       </div>

@@ -14,6 +14,8 @@ export type ByAgentRow = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /** The cost the agent's runtime reported; `undefined` when it reported none. */
+  costUsd?: number;
 };
 
 /**
@@ -47,6 +49,7 @@ export function toByAgentRows(
         turns: entry.turns,
         inputTokens: entry.inputTokens,
         outputTokens: entry.outputTokens,
+        ...(entry.costUsd !== undefined && { costUsd: entry.costUsd }),
       };
     }
     const matched =
@@ -61,6 +64,7 @@ export function toByAgentRows(
       turns: entry.turns,
       inputTokens: entry.inputTokens,
       outputTokens: entry.outputTokens,
+      ...(entry.costUsd !== undefined && { costUsd: entry.costUsd }),
     };
   });
 }

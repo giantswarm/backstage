@@ -11,6 +11,7 @@ import {
 import type { ServedModel } from '../../lib/serving';
 import type { AgentRow } from './helpers';
 import {
+  agentSearchFn,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
@@ -26,6 +27,8 @@ function makeAgent(
     displayName?: string;
     description?: string;
     modelConfig?: string;
+    /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
+    harness?: string | null;
     skills?: number;
     /** Bindings to same-namespace RemoteMCPServers, by name. */
     servers?: string[];
@@ -43,6 +46,7 @@ function makeAgent(
     displayName,
     description,
     modelConfig,
+    harness = 'kagent',
     skills = 0,
     servers = [],
     status,
@@ -65,7 +69,7 @@ function makeAgent(
     },
     status: status ? { ...status, observedGeneration } : undefined,
     spec: {
-      harnessRef: { name: 'kagent' },
+      ...(harness !== null && { harnessRef: { name: harness } }),
       template: {
         description,
         modelConfig: modelConfig ? { name: modelConfig } : undefined,
@@ -264,6 +268,7 @@ describe('toAgentRow', () => {
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      harness: 'kagent',
       skillCount: 3,
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
@@ -308,6 +313,15 @@ describe('toAgentRow', () => {
     expect(row.readinessMessage).toBe(
       'Harness "kagent" runs no Claude templates',
     );
+  });
+
+  it('carries the Harness the agent runs on', () => {
+    expect(toAgentRow(makeAgent({ harness: 'claude-go' }), []).harness).toBe(
+      'claude-go',
+    );
+    expect(
+      toAgentRow(makeAgent({ harness: null }), []).harness,
+    ).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {
@@ -718,5 +732,25 @@ describe('toAgentRow model fields', () => {
 
     expect(row.model).toBe('somewhere-else');
     expect(row.modelName).toBeUndefined();
+  });
+});
+
+describe('agentSearchFn', () => {
+  const rows = [
+    toAgentRow(makeAgent({ name: 'coder', harness: 'claude-go' }), []),
+    toAgentRow(makeAgent({ name: 'triager' }), []),
+    toAgentRow(makeAgent({ name: 'inline', harness: null }), []),
+  ];
+
+  it('finds an agent by its Harness', () => {
+    expect(agentSearchFn(rows, 'CLAUDE-go').map(row => row.name)).toEqual([
+      'coder',
+    ]);
+  });
+
+  it('still matches an agent without a Harness reference by name', () => {
+    expect(agentSearchFn(rows, 'inline').map(row => row.name)).toEqual([
+      'inline',
+    ]);
   });
 });

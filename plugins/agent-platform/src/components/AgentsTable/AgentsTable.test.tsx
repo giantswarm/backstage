@@ -57,6 +57,7 @@ const rows: AgentRow[] = [
     technicalName: 'incident-triager',
     description: 'Triages incidents',
     model: 'Claude Sonnet 4.6',
+    harness: 'kagent',
     skillCount: 3,
     readiness: 'ready',
     toolset: {
@@ -73,6 +74,7 @@ const rows: AgentRow[] = [
     technicalName: 'chat-only-agent',
     description: '',
     model: undefined,
+    harness: 'kagent',
     skillCount: 0,
     readiness: 'notReady',
     readinessMessage: 'Compiling revision rev-2',
@@ -92,6 +94,7 @@ describe('AgentsTable', () => {
     expect(screen.getByText('Installation')).toBeInTheDocument();
     expect(screen.getByText('Namespace')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
+    expect(screen.getByText('Harness')).toBeInTheDocument();
     expect(screen.getByText('Toolset')).toBeInTheDocument();
     expect(screen.getByText('Skills')).toBeInTheDocument();
     expect(screen.getByText('Status')).toBeInTheDocument();
@@ -245,7 +248,10 @@ describe('AgentsTable', () => {
 
   it('leaves out the columns the page hides', async () => {
     await renderTable(
-      <AgentsTable rows={rows} hideColumns={['installation', 'namespace']} />,
+      <AgentsTable
+        rows={rows}
+        hideColumns={['installation', 'namespace', 'harness']}
+      />,
     );
 
     expect(
@@ -457,5 +463,103 @@ describe('AgentsTable model serving', () => {
 
     expect(screen.getByText('Claude Sonnet 4.6')).toBeInTheDocument();
     expect(screen.queryByTestId('agent-model-serving')).not.toBeInTheDocument();
+  });
+});
+
+describe('AgentsTable Harness', () => {
+  const coder: AgentRow = {
+    ...rows[0],
+    id: 'inst-1/sre-team/coder',
+    name: 'Go coder',
+    technicalName: 'go-coder',
+    description: 'Writes Go',
+    harness: 'claude-go',
+  };
+  const mixed = [...rows, coder];
+
+  const bodyRowCount = () =>
+    within(screen.getAllByRole('rowgroup')[1]).getAllByRole('row').length;
+
+  it('shows each agent’s Harness in its own column', async () => {
+    await renderTable(<AgentsTable rows={mixed} />);
+
+    expect(
+      screen.getByRole('columnheader', { name: /Harness/ }),
+    ).toBeInTheDocument();
+    const body = screen.getAllByRole('rowgroup')[1];
+    expect(within(body).getByText('claude-go')).toBeInTheDocument();
+    expect(within(body).getAllByText('kagent')).toHaveLength(2);
+  });
+
+  it('filters by Harness, every Harness by default', async () => {
+    const user = userEvent.setup();
+    await renderTable(<AgentsTable rows={mixed} />);
+
+    const filter = screen.getByRole('button', { name: /Filter by Harness/ });
+    expect(filter).toHaveTextContent('All Harnesses');
+    expect(bodyRowCount()).toBe(3);
+
+    await user.click(filter);
+    await user.click(await screen.findByRole('option', { name: 'claude-go' }));
+
+    expect(bodyRowCount()).toBe(1);
+    expect(screen.getByText('Go coder')).toBeInTheDocument();
+    expect(screen.queryByText('Incident triager')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Filter by Harness/ }));
+    await user.click(
+      await screen.findByRole('option', { name: 'All Harnesses' }),
+    );
+
+    expect(bodyRowCount()).toBe(3);
+  });
+
+  it('names the Harness when the filter and the search leave nothing', async () => {
+    const user = userEvent.setup();
+    await renderTable(<AgentsTable rows={mixed} searchDebounceMs={0} />);
+
+    await user.click(screen.getByRole('button', { name: /Filter by Harness/ }));
+    await user.click(await screen.findByRole('option', { name: 'claude-go' }));
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+      'triages',
+    );
+
+    expect(
+      await screen.findByText(
+        'No agents on Harness claude-go match "triages".',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('finds an agent by its Harness in the search', async () => {
+    await renderTable(<AgentsTable rows={mixed} searchDebounceMs={0} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+      'claude-go',
+    );
+
+    expect(bodyRowCount()).toBe(1);
+    expect(screen.getByText('Go coder')).toBeInTheDocument();
+  });
+
+  it('leaves out the column and the filter when the page hides the Harness', async () => {
+    await renderTable(<AgentsTable rows={mixed} hideColumns={['harness']} />);
+
+    expect(
+      screen.queryByRole('columnheader', { name: /Harness/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Filter by Harness/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no filter when every agent runs on one Harness', async () => {
+    await renderTable(<AgentsTable rows={rows} />);
+
+    expect(
+      screen.queryByRole('button', { name: /Filter by Harness/ }),
+    ).not.toBeInTheDocument();
   });
 });

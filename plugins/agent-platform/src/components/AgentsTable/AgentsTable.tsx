@@ -6,13 +6,14 @@ import {
   ColumnConfig,
   Flex,
   SearchField,
+  Select,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AgentRow, agentSearchFn, sortAgentsBy } from '../AgentsDataProvider';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { agentDetailRouteRef } from '../../routes';
@@ -36,6 +37,12 @@ const BY_INSTALLATION = {
   direction: 'ascending',
 } as const;
 const BY_NAME = { column: 'name', direction: 'ascending' } as const;
+
+/** The Harness filter's URL parameter. */
+const HARNESS_PARAM = 'harness';
+
+/** The Harness filter's "no filter" option; `*` is never a Harness name. */
+const ALL_HARNESSES = '*';
 
 /**
  * The avatar spans roughly two lines of text (`large` = 40px). Request 2× that
@@ -178,6 +185,19 @@ function getColumnConfig(
       cell: row => <AgentModelCell row={row} />,
     },
     {
+      id: 'harness',
+      label: 'Harness',
+      isSortable: true,
+      defaultWidth: '1fr',
+      minWidth: 120,
+      cell: row => (
+        <CellText
+          title={row.harness ?? '—'}
+          color={isAgentRowMuted(row) ? 'secondary' : undefined}
+        />
+      ),
+    },
+    {
       id: 'toolset',
       label: 'Toolset',
       isSortable: false,
@@ -218,8 +238,22 @@ function getColumnConfig(
   ];
 }
 
+/** The empty state, naming whatever narrowed the list to nothing. */
+function emptyMessage(searchTerm: string, harness: string | undefined): string {
+  if (searchTerm && harness) {
+    return `No agents on Harness ${harness} match "${searchTerm}".`;
+  }
+  if (searchTerm) {
+    return `No agents match "${searchTerm}".`;
+  }
+  if (harness) {
+    return `No agents run on Harness ${harness}.`;
+  }
+  return 'No agents found.';
+}
+
 /** Columns the page may drop because every row would repeat the same value. */
-export type HideableAgentColumn = 'installation' | 'namespace';
+export type HideableAgentColumn = 'installation' | 'namespace' | 'harness';
 
 export type AgentsTableProps = {
   rows: AgentRow[];
@@ -230,10 +264,14 @@ export type AgentsTableProps = {
 };
 
 /**
- * Presentational table of agents, with client-side search and sorting. The page
- * owns loading (it shows a progress bar and hides the table until the first
- * agents arrive) and the unreachable-installations notice; this renders the
- * search field, the rows and the "no agents" empty state.
+ * Presentational table of agents, with client-side search, a Harness filter
+ * and sorting. The page owns loading (it shows a progress bar and hides the
+ * table until the first agents arrive) and the unreachable-installations
+ * notice; this renders the search field, the filter, the rows and the "no
+ * agents" empty state.
+ *
+ * The Harness filter shows with the Harness column: when every row shares one
+ * Harness there is nothing to choose between.
  */
 export function AgentsTable({
   rows,
@@ -258,6 +296,52 @@ export function AgentsTable({
   );
 
   const hiddenKey = hideColumns?.join(',') ?? '';
+
+  const harnesses = useMemo(
+    () =>
+      [
+        ...new Set(
+          rows.flatMap(row => (row.harness === undefined ? [] : [row.harness])),
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
+  const showsHarnessFilter =
+    !hiddenKey.split(',').includes('harness') && harnesses.length > 1;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedHarness = searchParams.get(HARNESS_PARAM);
+  // A Harness no row runs on any more (its agents deleted, or the link was
+  // shared from another fleet) filters nothing rather than everything.
+  const harnessFilter =
+    showsHarnessFilter &&
+    requestedHarness !== null &&
+    harnesses.includes(requestedHarness)
+      ? requestedHarness
+      : undefined;
+  const onHarnessChange = useCallback(
+    (key: string | number | null) => {
+      setSearchParams(
+        previous => {
+          const next = new URLSearchParams(previous);
+          if (key === null || key === ALL_HARNESSES) {
+            next.delete(HARNESS_PARAM);
+          } else {
+            next.set(HARNESS_PARAM, String(key));
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+  const filteredRows = useMemo(
+    () =>
+      harnessFilter === undefined
+        ? rows
+        : rows.filter(row => row.harness === harnessFilter),
+    [rows, harnessFilter],
+  );
   const columnConfig = useMemo(() => {
     const hidden = new Set<string>(hiddenKey ? hiddenKey.split(',') : []);
     return getColumnConfig(buildAvatarUrl, hrefFor).filter(
@@ -290,7 +374,7 @@ export function AgentsTable({
   );
   const { tableProps, search } = useTable<AgentRow>({
     mode: 'complete',
-    data: rows,
+    data: filteredRows,
     searchFn: agentSearchFn,
     searchDebounceMs,
     sortFn: sortAgentsBy,
@@ -308,12 +392,29 @@ export function AgentsTable({
 
   return (
     <Flex direction="column" gap="3">
-      <SearchField
-        aria-label="Search agents"
-        placeholder={searchPlaceholder}
-        value={search.value}
-        onChange={search.onChange}
-      />
+      <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 240px' }}>
+          <SearchField
+            aria-label="Search agents"
+            placeholder={searchPlaceholder}
+            value={search.value}
+            onChange={search.onChange}
+          />
+        </div>
+        {showsHarnessFilter && (
+          <div style={{ flex: '0 1 220px' }}>
+            <Select
+              aria-label="Filter by Harness"
+              options={[
+                { id: ALL_HARNESSES, label: 'All Harnesses' },
+                ...harnesses.map(name => ({ id: name, label: name })),
+              ]}
+              selectedKey={harnessFilter ?? ALL_HARNESSES}
+              onSelectionChange={onHarnessChange}
+            />
+          </div>
+        )}
+      </Flex>
       <Table<AgentRow>
         {...tableProps}
         columnConfig={columnConfig}
@@ -330,9 +431,7 @@ export function AgentsTable({
         }}
         emptyState={
           <Text variant="body-medium" color="secondary">
-            {searchTerm
-              ? `No agents match "${searchTerm}".`
-              : 'No agents found.'}
+            {emptyMessage(searchTerm, harnessFilter)}
           </Text>
         }
       />

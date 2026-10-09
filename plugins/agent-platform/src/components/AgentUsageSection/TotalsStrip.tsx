@@ -97,6 +97,16 @@ export function TotalsStrip({
           )
         }
       />
+      {/* Beside the estimate, never in place of it: only some runtimes report
+          a cost, so an absent figure is "not reported" and shows no stat
+          rather than "$0.00". */}
+      {totals.costUsd !== undefined && (
+        <Stat
+          label="Reported cost"
+          value={formatUsd(totals.costUsd)}
+          hint={`Reported by the agents' runtimes for each turn ${windowNote} and summed here. A turn that reported no cost, a canceled one say, or one on a runtime that reports none, is not in it.`}
+        />
+      )}
     </div>
   );
 }

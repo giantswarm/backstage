@@ -36,6 +36,11 @@ export type UsageTally = {
    */
   totalTokens: number;
   toolCalls: number;
+  /**
+   * The cost in USD the agent's runtime reported, summed over the turns that
+   * reported one. Absent when none did: "not reported" is not zero.
+   */
+  costUsd?: number;
 };
 
 export type SessionUsage = {
@@ -107,21 +112,27 @@ function bump<K>(counts: Map<K, number>, key: K): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+/** A tally's tokens and reported cost as a {@link TokenUsage} to add elsewhere. */
+function usageOf(tally: UsageTally): TokenUsage {
+  return {
+    total: tally.totalTokens,
+    prompt: tally.inputTokens,
+    completion: tally.outputTokens,
+    ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
+  };
+}
+
 function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
   if (!usage) {
     return;
   }
-  const summed = addTokenUsage(
-    {
-      total: tally.totalTokens,
-      prompt: tally.inputTokens,
-      completion: tally.outputTokens,
-    },
-    usage,
-  );
+  const summed = addTokenUsage(usageOf(tally), usage);
   tally.totalTokens = summed.total;
   tally.inputTokens = summed.prompt;
   tally.outputTokens = summed.completion;
+  if (summed.costUsd !== undefined) {
+    tally.costUsd = summed.costUsd;
+  }
 }
 
 /**
@@ -272,11 +283,7 @@ export function reduceSessionUsage(
     }
     tally.turns += turn.turns;
     tally.toolCalls += turn.toolCalls;
-    addUsage(tally, {
-      total: turn.totalTokens,
-      prompt: turn.inputTokens,
-      completion: turn.outputTokens,
-    });
+    addUsage(tally, usageOf(turn));
 
     if (atMs === undefined) {
       undatedTurns += 1;
@@ -287,11 +294,7 @@ export function reduceSessionUsage(
     const day = days.get(key) ?? emptyTally();
     day.turns += turn.turns;
     day.toolCalls += turn.toolCalls;
-    addUsage(day, {
-      total: turn.totalTokens,
-      prompt: turn.inputTokens,
-      completion: turn.outputTokens,
-    });
+    addUsage(day, usageOf(turn));
     days.set(key, day);
   }
 

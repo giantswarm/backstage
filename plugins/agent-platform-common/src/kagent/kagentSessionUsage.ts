@@ -19,6 +19,11 @@ export type SessionUsageTotals = {
    */
   totalTokens: number;
   toolCalls: number;
+  /**
+   * The cost in USD agents' runtimes reported, summed over the turns that
+   * reported one. Absent when no turn did: "not reported", never zero.
+   */
+  costUsd?: number;
 };
 
 export type UsageDayEntry = {
@@ -44,6 +49,8 @@ export type UsageAgentEntry = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /** As {@link SessionUsageTotals.costUsd}, for this agent's turns. */
+  costUsd?: number;
 };
 
 export type UsageToolEntry = { tool: string; calls: number };
@@ -109,6 +116,16 @@ function finite(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * A reported cost, or `undefined` when there is none to trust. Unlike
+ * {@link finite} it never coerces to 0: an absent cost is "not reported".
+ */
+function reportedCost(value: unknown): { costUsd?: number } {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? { costUsd: value }
+    : {};
+}
+
 const totalsSchema = z.looseObject({
   sessions: z.unknown().optional(),
   turns: z.unknown().optional(),
@@ -116,6 +133,7 @@ const totalsSchema = z.looseObject({
   outputTokens: z.unknown().optional(),
   totalTokens: z.unknown().optional(),
   toolCalls: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const dayEntrySchema = z.looseObject({
@@ -131,6 +149,7 @@ const agentEntrySchema = z.looseObject({
   turns: z.unknown().optional(),
   inputTokens: z.unknown().optional(),
   outputTokens: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const toolEntrySchema = z.looseObject({
@@ -208,6 +227,7 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
         outputTokens: finite(totalsParsed.data.outputTokens),
         totalTokens: finite(totalsParsed.data.totalTokens),
         toolCalls: finite(totalsParsed.data.toolCalls),
+        ...reportedCost(totalsParsed.data.costUsd),
       }
     : empty.totals;
 
@@ -237,6 +257,7 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
       turns: finite(entry.data.turns),
       inputTokens: finite(entry.data.inputTokens),
       outputTokens: finite(entry.data.outputTokens),
+      ...reportedCost(entry.data.costUsd),
     });
   }
 

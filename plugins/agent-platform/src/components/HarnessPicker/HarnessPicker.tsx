@@ -1,17 +1,8 @@
-import { useMemo } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
-import {
-  Harness,
-  useResources,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import {
-  DEFAULT_PLATFORM_HARNESS,
-  harnessChoicesOf,
-  harnessTitle,
-  type HarnessChoice,
-} from '../../lib/harnesses';
+import { useHarnessChoices } from '../../hooks/useHarnessChoices';
+import { harnessTitle, type HarnessChoice } from '../../lib/harnesses';
+import { HarnessLimits } from '../HarnessLimits';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
   SelectableCard,
@@ -31,6 +22,9 @@ import {
  * that could not be read, fully or in part, says so, since a choice may have
  * been missed; a pick dropped by a later model or installation change says so
  * too.
+ *
+ * Under the cards, the Limits a Claude Code Harness sets for the runtime that
+ * will run the agent, read-only: they are the Harness's, not the agent's.
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
@@ -40,23 +34,8 @@ export function HarnessPicker() {
     modelConfigNamespace: namespace,
     droppedHarness,
   } = state;
-  const { info } = useAgentManagerInfo(installation);
-  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
-
-  const { resources, errors, isLoading } = useResources(
-    installation ? [installation] : [],
-    Harness,
-    installation && namespace ? { [installation]: { namespace } } : {},
-    {
-      enabled: Boolean(installation && namespace),
-      enableDiscovery: false,
-    },
-  );
-  const choices = useMemo(
-    () =>
-      namespace ? harnessChoicesOf(resources, namespace, platformHarness) : [],
-    [resources, namespace, platformHarness],
-  );
+  const { choices, platformHarness, platformChoice, errors, isLoading } =
+    useHarnessChoices(installation, namespace);
 
   if (!installation || !namespace) {
     return null;
@@ -111,10 +90,8 @@ export function HarnessPicker() {
 
   // Picking the platform Harness sends no `harness`; any other card is sent
   // by its name.
-  const platformChoice = choices.find(
-    choice => choice.name === platformHarness,
-  );
   const selected = state.harness?.name ?? platformChoice?.name;
+  const selectedChoice = choices.find(choice => choice.name === selected);
   const content = (choice: HarnessChoice) => {
     return (
       <>
@@ -181,6 +158,13 @@ export function HarnessPicker() {
         <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
           <StaticCard>{content(choices[0])}</StaticCard>
         </SelectableCardGrid>
+      )}
+      {selectedChoice?.runtime === 'claude' && (
+        <HarnessLimits
+          limits={selectedChoice.limits}
+          harnessName={selectedChoice.name}
+          showWhenUnset
+        />
       )}
     </Flex>
   );
