@@ -1,23 +1,15 @@
-import { ReactNode, useMemo, useState } from 'react';
-import {
-  Alert,
-  Button,
-  Flex,
-  Text,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@backstage/ui';
+import { ReactNode, useMemo } from 'react';
+import { Alert, Button, Flex, Switch, Text } from '@backstage/ui';
 import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
+import { useChatTechnicalDetails } from '../../hooks/useChatTechnicalDetails';
 import { TimelineEntry } from './TimelineEntry';
 import {
-  ActivityDetail,
   authorLabel,
   groupIntoTurns,
-  hasExpandableDetail,
-  isActivityItem,
+  isTraceItem,
   isUserItem,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
@@ -205,27 +197,18 @@ export function SessionTimeline({
   isCancellingTurn = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
-  // Collapsed by default: the agent's working is why this screen is worth opening,
-  // but a wall of expanded tool payloads is unreadable.
-  const [detail, setDetail] = useState<ActivityDetail>('collapsed');
+  // Plain by default: tool calls read as what they did, via which connector,
+  // with the exact names, arguments and results one toggle away. The setting is
+  // per user and remembered across sessions — see the hook.
+  const { isTechnical, setTechnical } = useChatTechnicalDetails();
 
   const turns = useMemo(() => groupIntoTurns(timeline.items), [timeline.items]);
 
-  // Offered whenever *anything* can expand — not just when there is agent
-  // activity. An approval is excluded from `hidden` (it records the user's own
-  // decision, so hiding it would erase their action) but it still expands and
-  // collapses, so a session whose only collapsible entry is an approval must still
-  // get the control. Keying this on activity alone left such sessions with a
-  // collapsed panel and no way to open them all.
-  const hasExpandable = useMemo(
-    () => timeline.items.some(hasExpandableDetail),
-    [timeline.items],
-  );
-
-  // Whether `hidden` would actually remove anything, which decides if that option
-  // is worth offering.
-  const hasActivity = useMemo(
-    () => timeline.items.some(isActivityItem),
+  // Offered whenever the toggle would change anything — the session has a
+  // trace. A plain conversation with no tool calls, reasoning, delegations or
+  // approvals renders identically in both modes, so the control would be a lie.
+  const hasTrace = useMemo(
+    () => timeline.items.some(isTraceItem),
     [timeline.items],
   );
 
@@ -310,54 +293,25 @@ export function SessionTimeline({
         style={{ flexWrap: 'wrap' }}
       >
         <Text variant="title-small">Timeline</Text>
-        {hasExpandable && (
-          <Flex align="center" gap="2">
-            <Text variant="body-small" color="secondary">
-              Details
-            </Text>
-            <ToggleButtonGroup
-              selectionMode="single"
-              disallowEmptySelection
-              selectedKeys={[detail]}
-              onSelectionChange={keys => {
-                const next = [...keys][0];
-                if (
-                  next === 'hidden' ||
-                  next === 'collapsed' ||
-                  next === 'expanded'
-                ) {
-                  setDetail(next);
-                }
-              }}
-            >
-              {/* Only offered when it would remove something. `hidden` drops the
-                  agent's working, and approvals are not part of that — so a session
-                  whose only collapsible entry is an approval gets expand/collapse
-                  but nothing to hide. */}
-              {hasActivity && <ToggleButton id="hidden">Hidden</ToggleButton>}
-              <ToggleButton id="collapsed">Collapsed</ToggleButton>
-              <ToggleButton id="expanded">Expanded</ToggleButton>
-            </ToggleButtonGroup>
-          </Flex>
+        {hasTrace && (
+          // One toggle for the whole view, per the prototype: plain is the
+          // conversation's register, technical is the trace's.
+          <Switch
+            label="Show technical details"
+            isSelected={isTechnical}
+            onChange={setTechnical}
+          />
         )}
       </Flex>
 
       {skippedAlert}
 
       {turns.map((turn, turnIndex) => {
-        const visible =
-          detail === 'hidden'
-            ? turn.items.filter(item => !isActivityItem(item))
-            : turn.items;
-        if (visible.length === 0) {
-          return null;
-        }
-
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];
         let needsHeader = true;
-        for (const item of visible) {
+        for (const item of turn.items) {
           if (isUserItem(item)) {
             needsHeader = true;
           } else if (needsHeader) {
@@ -372,16 +326,18 @@ export function SessionTimeline({
           }
           entries.push(
             <TimelineEntry
-              // Keyed on the detail setting as well as the item: an entry's
-              // expanded state is only read on mount, so the global control
-              // takes effect by remounting the entries. An attachment has no
-              // expanded state, and remounting it would decode its image again.
+              // Keyed on the register as well as the item: an entry's expanded
+              // state is only read on mount, so flipping the toggle takes
+              // effect by remounting the entries. An attachment reads the same
+              // in both modes, and remounting it would decode its image again.
               key={
-                item.kind === 'attachment' ? item.id : `${item.id}:${detail}`
+                item.kind === 'attachment'
+                  ? item.id
+                  : `${item.id}:${isTechnical ? 'technical' : 'plain'}`
               }
               item={item}
-              defaultExpanded={detail === 'expanded'}
               isAgentWorking={isAgentWorking}
+              technical={isTechnical}
             />,
           );
         }

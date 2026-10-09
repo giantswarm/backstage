@@ -17,6 +17,7 @@ import {
   expandablePayloads,
   formatTokens,
   hasExpandableDetail,
+  humanizeToolName,
   summarizeArgs,
 } from './helpers';
 
@@ -139,6 +140,14 @@ export type TimelineEntryProps = {
    * shows "no result": nothing is coming.
    */
   isAgentWorking?: boolean;
+  /**
+   * Whether to show the technical trace. Plain (the default) renders each tool
+   * call, delegation and approval as a readable line — what it did, via which
+   * connector, and its status — with nothing to expand. Technical shows the
+   * exact tool names, with arguments and results behind the expander.
+   * Reasoning is prose either way and keeps its expander in both modes.
+   */
+  technical?: boolean;
 };
 
 /** Prose from the agent, rendered as markdown. */
@@ -200,13 +209,22 @@ function PendingMarker({
   return <Badge size="small">no result</Badge>;
 }
 
-/** The one-line header of a collapsible entry. */
+/**
+ * The one-line header of a trace entry.
+ *
+ * `technical` decides the register. Plain names what happened in words — the
+ * tool's name split into a phrase, the connector it went via, its status — and
+ * omits the argument summary, which is exactly the raw payload the plain view
+ * exists to spare the reader. Technical keeps the exact identifiers.
+ */
 function CollapsedSummary({
   item,
   isAgentWorking = false,
+  technical = false,
 }: {
   item: TimelineItem;
   isAgentWorking?: boolean;
+  technical?: boolean;
 }) {
   const classes = useStyles();
 
@@ -223,7 +241,13 @@ function CollapsedSummary({
     case 'tool-call':
       return (
         <span className={classes.triggerContent}>
-          <span className={classes.rowName}>{item.toolName}</span>
+          {technical ? (
+            <span className={classes.rowName}>{item.toolName}</span>
+          ) : (
+            <span className={classes.rowTitle}>
+              {humanizeToolName(item.toolName)}
+            </span>
+          )}
           {/* Agents reach most MCP tools through muster's `call_tool`, so the
               parser looks through that wrapper and names the real tool. The badge
               keeps the fact that it was proxied, which is otherwise lost. */}
@@ -232,7 +256,9 @@ function CollapsedSummary({
             isPending={item.isPending}
             isAgentWorking={isAgentWorking}
           />
-          <span className={classes.summary}>{summarizeArgs(item.args)}</span>
+          {technical && (
+            <span className={classes.summary}>{summarizeArgs(item.args)}</span>
+          )}
         </span>
       );
     case 'agent-call':
@@ -261,7 +287,9 @@ function CollapsedSummary({
           {/* The proposed tool names what needs approving, which is the point of
               the row. For a question it is always `ask_user` — noise. */}
           {item.asks === 'approval' && item.toolName && (
-            <span className={classes.summary}>{item.toolName}</span>
+            <span className={technical ? classes.summary : classes.rowTitle}>
+              {technical ? item.toolName : humanizeToolName(item.toolName)}
+            </span>
           )}
           <ApprovalVerdict item={item} />
         </span>
@@ -317,6 +345,7 @@ export function TimelineEntry({
   item,
   defaultExpanded = false,
   isAgentWorking = false,
+  technical = false,
 }: TimelineEntryProps) {
   const classes = useStyles();
 
@@ -418,14 +447,23 @@ export function TimelineEntry({
   }
 
   // No expander when there is nothing behind it. A disclosure that opens onto an
-  // empty panel invites a click and answers with nothing.
-  if (!hasExpandableDetail(item)) {
+  // empty panel invites a click and answers with nothing. The plain view keeps
+  // only reasoning expandable — it is prose, not payload — and renders every
+  // call and approval as a readable line, with the raw arguments and results
+  // one toggle away in the technical view.
+  const isExpandable =
+    (technical || item.kind === 'reasoning') && hasExpandableDetail(item);
+  if (!isExpandable) {
     const questions =
       item.kind === 'approval' ? (item.questions ?? []) : undefined;
     return (
       <div data-testid={`timeline-${item.kind}`}>
         <InertActivityRow>
-          <CollapsedSummary item={item} isAgentWorking={isAgentWorking} />
+          <CollapsedSummary
+            item={item}
+            isAgentWorking={isAgentWorking}
+            technical={technical}
+          />
         </InertActivityRow>
         {/* A question is the last thing the agent said, so it reads as prose in
             the conversation rather than as a payload to go looking for. Several
@@ -453,7 +491,11 @@ export function TimelineEntry({
         defaultExpanded={defaultExpanded}
         variant={item.kind === 'reasoning' ? 'plain' : 'card'}
         trigger={
-          <CollapsedSummary item={item} isAgentWorking={isAgentWorking} />
+          <CollapsedSummary
+            item={item}
+            isAgentWorking={isAgentWorking}
+            technical={technical}
+          />
         }
       >
         {item.kind === 'reasoning' ? (

@@ -14,6 +14,11 @@ export type ByAgentRow = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /**
+   * The cost this agent's runtime reported for these turns, in USD, when any
+   * turn reported one. `undefined` means "not reported", not "free".
+   */
+  reportedCostUsd?: number;
 };
 
 /**
@@ -39,6 +44,10 @@ export function toByAgentRows(
   const index = buildAgentIndex(agents);
 
   return byAgent.map((entry, position) => {
+    const reported =
+      entry.reportedCostUsd !== undefined
+        ? { reportedCostUsd: entry.reportedCostUsd }
+        : {};
     if (entry.agentId === null) {
       return {
         id: `unknown-${position}`,
@@ -47,6 +56,7 @@ export function toByAgentRows(
         turns: entry.turns,
         inputTokens: entry.inputTokens,
         outputTokens: entry.outputTokens,
+        ...reported,
       };
     }
     const matched =
@@ -61,6 +71,7 @@ export function toByAgentRows(
       turns: entry.turns,
       inputTokens: entry.inputTokens,
       outputTokens: entry.outputTokens,
+      ...reported,
     };
   });
 }

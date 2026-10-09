@@ -8,6 +8,7 @@ import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { describeCostBasis } from '../../lib/costBasis';
+import { useCurrency } from '../../lib/formatNumbers';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
@@ -153,6 +154,10 @@ export function AgentUsageSection() {
   // stop describing one.
   const hasRate = rateTier === 'installation';
 
+  // The installation's display currency (O3): estimates convert; the
+  // runtime-reported figures stay USD, because they are what was reported.
+  const currency = useCurrency(installation);
+
   // Strictly `false`. `undefined` means the probe has not resolved, or kagent
   // reported no subject at all — which is reachable on a healthy deployment —
   // and treating either as "shared" would show a working installation a claim
@@ -293,6 +298,7 @@ export function AgentUsageSection() {
           totals={usage.totals}
           windowDays={windowDays}
           rates={rates}
+          currency={currency}
           isRateLoading={isRateLoading}
           costBasis={describeCostBasis({
             tier: rateTier,
@@ -323,6 +329,7 @@ export function AgentUsageSection() {
           installation={installation}
           isRateLoading={isRateLoading}
           hasRate={hasRate}
+          currency={currency}
           emptyMessage="kagent recorded no agent for these sessions."
         />
         <div className={classes.row}>
@@ -362,8 +369,8 @@ export function AgentUsageSection() {
       {header}
       {isResolvedFromAll && installation && (
         <Text variant="body-small" color="secondary">
-          Showing {installation}. Usage is read one installation at a time — pin
-          another in the header to switch.
+          Showing {installation}. Usage is read one installation at a time —
+          pick another in the Environment control to switch.
         </Text>
       )}
       {isUserScoped === false && (

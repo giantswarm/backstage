@@ -8,7 +8,7 @@ import {
   type StackedBarChartSeries,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { foldSeries, type LlmDailySeries } from '../../../lib/llmUsage';
-import { formatUsd } from '../../../lib/formatNumbers';
+import { formatMoney, USD, type Currency } from '../../../lib/formatNumbers';
 import { formatDayTick, formatDayTooltip } from '../../../lib/formatDay';
 import { UsageCard } from '../UsageCard';
 
@@ -25,11 +25,19 @@ import { UsageCard } from '../UsageCard';
 export function CostPerDayCard({
   daily,
   note,
+  currency = USD,
 }: {
   daily: LlmDailySeries;
   note?: string;
+  /**
+   * The installation's display currency. The series stay USD — a linear
+   * conversion preserves every bar's proportion — and only the labels convert.
+   */
+  currency?: Currency;
 }) {
   const theme = useTheme();
+  const formatCost = (value: number | undefined) =>
+    formatMoney(value, currency);
 
   const { rows, series } = useMemo(() => {
     const folded = foldSeries(
@@ -63,9 +71,9 @@ export function CostPerDayCard({
         allowDecimalTicks
         formatXAxisTick={formatDayTick}
         formatTooltipLabel={formatDayTooltip}
-        formatYAxisTick={formatUsd}
+        formatYAxisTick={formatCost}
         yAxisWidth={64}
-        formatValue={formatUsd}
+        formatValue={formatCost}
       />
     </UsageCard>
   );

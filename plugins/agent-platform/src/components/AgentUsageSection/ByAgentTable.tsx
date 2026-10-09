@@ -4,7 +4,14 @@ import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
-import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
+import {
+  formatCount,
+  formatMoney,
+  formatTokens,
+  formatUsd,
+  USD,
+  type Currency,
+} from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
@@ -47,6 +54,8 @@ export type ByAgentTableProps = {
    * describe a rate as having been applied.
    */
   hasRate?: boolean;
+  /** The installation's display currency, for the estimate; USD when none. */
+  currency?: Currency;
 };
 
 /**
@@ -73,6 +82,7 @@ export function ByAgentTable({
   installation,
   isRateLoading,
   hasRate = true,
+  currency = USD,
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
@@ -89,9 +99,11 @@ export function ByAgentTable({
       cost: columnMax(rows, row =>
         estimateCost(row.inputTokens, row.outputTokens, rates),
       ),
+      reportedCostUsd: columnMax(rows, row => row.reportedCostUsd),
     }),
     [rows, rates],
   );
+  const anyReported = rows.some(row => row.reportedCostUsd !== undefined);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
@@ -181,7 +193,7 @@ export function ByAgentTable({
                 isRateLoading ? (
                   <Skeleton width={52} height={16} rounded />
                 ) : (
-                  formatUsd(estimate)
+                  formatMoney(estimate, currency)
                 )
               }
               value={estimate}
@@ -192,6 +204,44 @@ export function ByAgentTable({
         );
       },
     },
+    // Only when some runtime reported one: a column of "Not reported" teaches
+    // the reader to ignore it, while absence says the truth — no runtime in
+    // this window prices its own work.
+    ...(anyReported
+      ? [
+          {
+            id: 'reportedCostUsd',
+            label: 'Reported cost',
+            isSortable: true,
+            cell: (row: ByAgentRow) => (
+              <Cell>
+                {row.reportedCostUsd === undefined ? (
+                  // Words, not an em dash: beside a priced estimate a dash
+                  // reads as "zero-ish", and the fact is "this runtime does
+                  // not report costs".
+                  <Text
+                    as="span"
+                    variant="body-small"
+                    color="secondary"
+                    title="This agent's runtime reported no cost for these turns. Only some runtimes price their own work — the claude harness does, ADK does not."
+                  >
+                    Not reported
+                  </Text>
+                ) : (
+                  <DataBar
+                    // USD on purpose: it is what the runtime said, not a
+                    // figure we price or convert.
+                    label={formatUsd(row.reportedCostUsd)}
+                    value={row.reportedCostUsd}
+                    max={max.reportedCostUsd}
+                    color={colorFor('cost')}
+                  />
+                )}
+              </Cell>
+            ),
+          } satisfies ColumnConfig<ByAgentRow>,
+        ]
+      : []),
   ];
 
   const { tableProps } = useTable<ByAgentRow>({
@@ -216,15 +266,19 @@ export function ByAgentTable({
           input — which silently breaks every column header while leaving the
           sort indicator working. The section above renders a spinner while
           loading, so this table only ever mounts with data. */}
-      <Table<ByAgentRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* The table scrolls inside the card at phone width rather than pushing
+          the page wide — the 375px requirement. */}
+      <div style={{ overflowX: 'auto' }}>
+        <Table<ByAgentRow>
+          {...tableProps}
+          columnConfig={columnConfig}
+          emptyState={
+            <Text variant="body-medium" color="secondary">
+              {emptyMessage}
+            </Text>
+          }
+        />
+      </div>
       {/* The note has to match what the column actually shows. It described a
           rate as applied even when every cell was an em dash — on an
           installation with no Mimir, or after a failed query, that is a claim
@@ -239,6 +293,8 @@ export function ByAgentTable({
             own. The session detail page prices one session at its own
             model&apos;s rate instead, so the two will differ. Not a billed
             figure.
+            {anyReported &&
+              ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
           </>
         ) : (
           <>

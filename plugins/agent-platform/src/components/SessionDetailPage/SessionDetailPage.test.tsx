@@ -115,7 +115,7 @@ jest.mock('../../hooks/useKagentCapabilities', () => ({
 
 // Stubbed for the same reason as the write hooks below: it reaches Mimir
 // through the gs plugin's api ref, and this test mounts no APIs. An empty
-// `rates` makes the Est. cost stat read "—", which is asserted explicitly in
+// `rates` makes the estimated cost read "—", which is asserted explicitly in
 // one test rather than assumed away here.
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
@@ -404,17 +404,19 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('labels token totals as billed, since the raw number is startling', async () => {
-    // Every model call re-sends the whole context, so a short session can total
-    // millions of prompt tokens. Genuine billed usage, but it reads as a bug
-    // without the label. Shortened from "(billed, cumulative)" when the label
-    // started rendering uppercase; the full reasoning is in the component and
-    // in docs/agent-platform.md.
+  it('puts the session totals behind the header chip', async () => {
+    // The prototype's cost + memory popover: tokens, turns and costs live
+    // behind one chip in the header rather than a stats strip.
     await render();
 
-    expect(screen.getByText('Input tokens (billed)')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and memory/ }),
+    );
+
+    expect(screen.getByText('Tokens in / out')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
-    expect(screen.getByText('Output tokens')).toBeInTheDocument();
+    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
+    expect(screen.getByText('Memory used')).toBeInTheDocument();
   });
 
   it('shows the cost a claude Harness turn reported beside the estimate', async () => {
@@ -426,15 +428,25 @@ describe('SessionDetailPage', () => {
     });
     await render();
 
-    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and memory/ }),
+    );
+
+    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
     expect(screen.getByText('Reported cost')).toBeInTheDocument();
-    expect(screen.getByText('$0.131')).toBeInTheDocument();
+    // Twice on purpose: the chip leads with the reported figure, and the
+    // popover row repeats it beside its label.
+    expect(screen.getAllByText('$0.131').length).toBeGreaterThan(0);
   });
 
   it('shows no reported cost when the runtime reports none', async () => {
     await render();
 
-    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Session cost and memory/ }),
+    );
+
+    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
     expect(screen.queryByText('Reported cost')).not.toBeInTheDocument();
   });
 

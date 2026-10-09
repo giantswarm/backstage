@@ -187,21 +187,56 @@ describe('PendingConfirmationPanel', () => {
   });
 
   describe('an approval', () => {
-    it('names the tool and asks for a yes rather than an answer', () => {
-      renderPanel(approval);
+    it('renders the permission card: who asks, for what, Allow and Decline', () => {
+      renderPanel(approval, { agentName: 'Support Triage' });
 
+      // The tool's name as words — the exact identifier stays in the
+      // timeline's technical view.
       expect(
-        screen.getByText('The agent is asking permission to run delete_file.'),
+        screen.getByText('Support Triage wants to run “Delete file”'),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Approve' }),
+        screen.getByText('Nothing runs until you allow it.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Decline' }),
       ).toBeInTheDocument();
     });
 
-    it('approves with no answers attached', async () => {
+    it('carries the "changes things" accent — the reason the card interrupts', () => {
       renderPanel(approval);
 
-      await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      expect(screen.getByText('Changes things')).toBeInTheDocument();
+    });
+
+    it('says who is asking even when no agent name is known', () => {
+      renderPanel(approval);
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file”'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the connector the proposed call would go through', () => {
+      renderPanel({ ...approval, via: 'Muster' });
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file” via Muster'),
+      ).toBeInTheDocument();
+    });
+
+    it('shows the exact arguments Allow would run', () => {
+      renderPanel({ ...approval, args: { path: '/tmp/x', recursive: true } });
+
+      expect(screen.getByText(/"path": "\/tmp\/x"/)).toBeInTheDocument();
+      expect(screen.getByText(/"recursive": true/)).toBeInTheDocument();
+    });
+
+    it('allows with no answers attached', async () => {
+      renderPanel(approval);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Allow' }));
 
       expect(onAnswer).toHaveBeenCalledWith({
         taskId: 'task-1',
@@ -668,7 +703,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('is not taken by an approval, whose only controls decide a tool call', () => {
-      // A stray Enter on a focused Approve would grant a side-effecting call.
+      // A stray Enter on a focused Allow would grant a side-effecting call.
       renderPanel(approval);
 
       expect(document.body).toHaveFocus();

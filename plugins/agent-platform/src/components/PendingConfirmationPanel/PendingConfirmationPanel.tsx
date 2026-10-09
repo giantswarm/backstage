@@ -11,7 +11,9 @@ import {
   TextAreaField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import { MessageMarkdown } from '../SessionTimeline/MessageMarkdown';
+import { formatPayload, humanizeToolName } from '../SessionTimeline/helpers';
 import type {
   ConfirmationAnswer,
   PendingAnswer,
@@ -28,6 +30,67 @@ const useStyles = makeStyles(theme => ({
   panel: {
     paddingLeft: theme.spacing(1.5),
     borderLeft: `2px solid ${theme.palette.primary.main}`,
+  },
+  // An approval is the prototype's in-chat permission card: a warm-bordered
+  // surface that stands apart from the conversation, because what it asks for
+  // changes things outside it. Colours ride the shell's warning tokens with the
+  // theme as fallback, so classic chrome keeps a sensible palette.
+  approvalCard: {
+    border: '1px solid var(--bui-border-warning, #f2c9a3)',
+    backgroundColor: 'var(--agent-platform-approval-bg, #fff8f1)',
+    borderRadius: 'var(--bui-radius-3, 14px)',
+    padding: theme.spacing(2, 2.5),
+  },
+  approvalHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: theme.spacing(1.5),
+  },
+  approvalIcon: {
+    width: 30,
+    height: 30,
+    flex: 'none',
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-bg-warning, #ffe9d6)',
+    color: 'var(--bui-fg-warning-on-bg, #8a3f00)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    '& svg': {
+      width: 16,
+      height: 16,
+    },
+  },
+  // The accent for an action with effects outside the conversation — the
+  // reason the card interrupts at all.
+  changesThings: {
+    flex: 'none',
+    alignSelf: 'flex-start',
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 20,
+    padding: theme.spacing(0, 1),
+    borderRadius: 999,
+    backgroundColor: 'var(--bui-bg-warning, #ffe9d6)',
+    color: 'var(--bui-fg-warning-on-bg, #8a3f00)',
+    fontSize: '0.71875rem',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  },
+  // What Allow would run, on its own quiet surface inside the card.
+  proposedArgs: {
+    margin: 0,
+    backgroundColor: 'var(--bui-bg-neutral-1, #ffffff)',
+    border: '1px solid var(--bui-border-warning, #f0dcc8)',
+    borderRadius: 'var(--bui-radius-2, 10px)',
+    padding: theme.spacing(1.5),
+    fontFamily: 'monospace',
+    fontSize: '0.8125rem',
+    lineHeight: 1.55,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    maxHeight: 280,
+    overflowY: 'auto',
   },
   // bui's form controls are sized for dense forms — 12px labels against the
   // conversation's 16px/24px. A question's options *are* conversation, so they are
@@ -63,6 +126,11 @@ export type PendingConfirmationPanelProps = {
    * same caveat the rename and delete dialogs carry.
    */
   isUserScoped?: boolean;
+  /**
+   * Display name of the session's agent, so the permission card can say who is
+   * asking. Falls back to "The agent".
+   */
+  agentName?: string;
 };
 
 /**
@@ -105,7 +173,7 @@ export type PendingConfirmationPanelProps = {
  * The user was typing in the composer below, which is disabled while the question
  * stands, so the focus would otherwise fall to `<body>` and the answer would start
  * with a click or a Tab hunt. An **approval** takes nothing: its only controls are
- * Approve and Decline, and focusing either would let a stray Enter grant or refuse
+ * Allow and Decline, and focusing either would let a stray Enter grant or refuse
  * a side-effecting tool call.
  */
 export function PendingConfirmationPanel({
@@ -115,6 +183,7 @@ export function PendingConfirmationPanel({
   restore,
   onAnswer,
   isUserScoped,
+  agentName,
 }: PendingConfirmationPanelProps) {
   const classes = useStyles();
   const isQuestion = pending.asks === 'input' && pending.questions.length > 0;
@@ -243,14 +312,15 @@ export function PendingConfirmationPanel({
   const isReasonTooLong = reason.trim().length > MESSAGE_TEXT_MAX_LENGTH;
   const canSubmit = isComplete && !isAnswerTooLong && !isAnswering;
 
-  // "Approve" for a permission request, "Send answer" for a question: the two read
-  // completely differently, and calling a question's reply an approval would
-  // misdescribe what the button does.
+  // "Allow" for a permission request — the prototype's word, and the honest
+  // one: pressing it lets the proposed call run. "Send answer" for a question:
+  // the two read completely differently, and calling a question's reply an
+  // approval would misdescribe what the button does.
   let submitLabel: string;
   if (isAnswering) {
     submitLabel = 'Sending…';
   } else {
-    submitLabel = isQuestion ? 'Send answer' : 'Approve';
+    submitLabel = isQuestion ? 'Send answer' : 'Allow';
   }
 
   let caption: string;
@@ -258,9 +328,11 @@ export function PendingConfirmationPanel({
     caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isReasonTooLong) {
     caption = `That reason is ${reason.trim().length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
-  } else {
+  } else if (isQuestion) {
     caption =
       'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.';
+  } else {
+    caption = 'Your decision resumes the agent where it stopped.';
   }
 
   const send = () => {
@@ -311,9 +383,31 @@ export function PendingConfirmationPanel({
     }
   };
 
+  // What the card says the agent wants. The tool's name as words — the exact
+  // identifier stays in the timeline's technical view — plus the connector it
+  // would go through, which is part of what is being consented to.
+  const proposedArgs = isQuestion ? undefined : formatPayload(pending.args);
+  const asker = agentName || 'The agent';
+  let approvalTitle: string;
+  if (pending.toolName) {
+    approvalTitle = `${asker} wants to run “${humanizeToolName(pending.toolName)}”${
+      pending.via ? ` via ${pending.via}` : ''
+    }`;
+  } else {
+    approvalTitle = `${asker} is asking permission to continue`;
+  }
+
   return (
-    <form onSubmit={handleSubmit} ref={formRef}>
-      <Flex direction="column" gap="3" className={classes.panel}>
+    <form
+      onSubmit={handleSubmit}
+      ref={formRef}
+      aria-label={isQuestion ? 'Question from the agent' : 'Permission request'}
+    >
+      <Flex
+        direction="column"
+        gap="3"
+        className={isQuestion ? classes.panel : classes.approvalCard}
+      >
         {error && (
           <Alert status="danger" title="Answer not sent" description={error} />
         )}
@@ -404,11 +498,29 @@ export function PendingConfirmationPanel({
             </Flex>
           ))
         ) : (
-          <Text variant="body-medium">
-            {pending.toolName
-              ? `The agent is asking permission to run ${pending.toolName}.`
-              : 'The agent is asking permission to continue.'}
-          </Text>
+          <>
+            <div className={classes.approvalHeader}>
+              <span className={classes.approvalIcon} aria-hidden="true">
+                <SecurityIcon />
+              </span>
+              <Flex direction="column" gap="1" style={{ flex: 1, minWidth: 0 }}>
+                <Text variant="body-medium" weight="bold">
+                  {approvalTitle}
+                </Text>
+                <Text variant="body-small" color="secondary">
+                  Nothing runs until you allow it.
+                </Text>
+              </Flex>
+              {/* The accent: this call has effects outside the conversation,
+                  which is why the agent stopped to ask. */}
+              <span className={classes.changesThings}>Changes things</span>
+            </div>
+            {/* The exact arguments Allow would run — the one place they must be
+                visible whatever the timeline's plain/technical register says. */}
+            {proposedArgs && (
+              <pre className={classes.proposedArgs}>{proposedArgs}</pre>
+            )}
+          </>
         )}
 
         {showReason && (

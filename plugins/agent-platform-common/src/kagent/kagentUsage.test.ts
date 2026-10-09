@@ -132,6 +132,17 @@ describe('reduceSessionUsage', () => {
     });
   });
 
+  it('sums the costUsd a runtime reports into the tally, and omits it otherwise', () => {
+    // The claude Harness reports a per-turn `costUsd`; the fixture carries one
+    // turn's. A session whose runtime reports none (the v0.99 fixture) must
+    // yield a tally *without* the field — "not reported" is not "$0".
+    const reported = reduceSessionUsage(tasksOf(tasksClaudeHarness), WIDE);
+    const unreported = reduceSessionUsage(tasksOf(tasksV099), WIDE);
+
+    expect(reported.tally.reportedCostUsd).toBeCloseTo(0.13148115);
+    expect(unreported.tally).not.toHaveProperty('reportedCostUsd');
+  });
+
   it('counts the tools a session actually used, and their servers', () => {
     const usage = reduceSessionUsage(tasksOf(tasksV099), WIDE);
 

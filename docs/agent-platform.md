@@ -947,8 +947,9 @@ than active filtering today.
 ## The session detail page
 
 `/agent-platform/sessions/<installation>/<id>` shows one session: its metadata, a
-stats strip, and the conversation. The installation is in the path because it is
-part of the session's identity — kagent ids are only unique within one.
+cost + memory chip in the header, and the conversation. The installation is in the
+path because it is part of the session's identity — kagent ids are only unique
+within one.
 
 A session can be **deleted** from the kebab menu (see "Deleting a session"). kagent
 can also rename and continue a session, and the prototype offers both — neither is
@@ -1542,21 +1543,37 @@ session, a **linked work item**, produced **results**, and **evaluation**.
 Delegation entries are inert — the response does not reliably carry the child
 session's id, and subagent sessions are filtered out of the list anyway.
 
-### The stats strip
+### The cost + memory popover (`SessionCostPopover`)
 
-`Turns · Input tokens (billed) · Output tokens · Est. cost`, plus
-`Reported cost` when the agent's runtime reports one.
+One chip in the header — the cost, and the memory share when the model's
+context window is known — opening a popover with `Estimated cost`,
+`Reported cost` (when the runtime reports one), `Tokens in / out`, `Turns` and
+`Memory used`. It replaced the earlier stats strip, per the prototype. Costs
+show in the installation's configured currency
+(`gs.installations.<name>.currency`), USD otherwise.
 
-**Input tokens are labelled "billed" on purpose.** Every model call re-sends the
+**Token counts are cumulative billed usage.** Every model call re-sends the
 whole context, so a 4-turn session with a large tool catalogue reached **1.4M
 prompt tokens across 14 calls** (3.9k–144k each). That is genuine billed,
-cumulative usage and kagent's own UI sums it identically — but unlabelled it
-reads as a bug. The label reads "(billed)" rather than "(billed, cumulative)"
-because the strip's `Stat` renders it uppercase, where the longer form wrapped;
-this paragraph is where the full reasoning lives.
+cumulative usage and kagent's own UI sums it identically; the popover's
+footnote carries the disclosure.
 
 There is deliberately **no combined total**: input and output tokens are priced
 differently, so their sum is not a number anyone acts on.
+
+**Memory is the newest turn's prompt tokens against a configured window.**
+Nothing in the platform reports a hosted model's context window (kagent's
+ModelConfig has no such field; model-manager knows one only for self-hosted
+serving), so the denominator is the app-config table
+`agentPlatform.models.contextWindows` — model-name patterns (`*` wildcard, most
+specific match wins) to window sizes in tokens, served to the browser through
+the signed-in config. A model the table does not name shows its raw token count
+instead of a percentage: a share of an unknown window would be invented
+precision. The numerator is `buildTimeline`'s `lastTurnTokens.prompt` — the
+newest turn that reported usage, summed over that turn's model calls (kagent
+records no per-call usage) and excluding delegated agents' nested usage, which
+is another session's context — so the figure is an approximation and the
+footnote says so.
 
 One kagent quirk to know: `adk_usage_metadata` carries only `promptTokenCount` and
 `candidatesTokenCount` on some sessions — no `totalTokenCount` at all — so a total
@@ -1576,10 +1593,24 @@ the page.
 
 **Reported cost is the runtime's own figure, beside the estimate.** The claude
 Harness puts `costUsd` in the `kagent.dev/a2a/usage` bag of each turn's final
-status message, next to the token counts; the strip sums it over the session's
+status message, next to the token counts; the popover sums it over the session's
 turns, deduplicated by message id like the tokens. ADK reports no cost, so a
-session on the platform Harness shows no stat rather than `$0.00`. A turn
+session on the platform Harness shows no row rather than `$0.00`. A turn
 canceled before Claude Code reports usage is not in the sum.
+
+### Plain ⇄ technical trace
+
+The timeline's trace — tool calls, delegations, reasoning, approvals — defaults
+to the **plain** register: each tool call as a readable line (the tool's name as
+words via `humanizeToolName`, the connector it went through, its status), with
+nothing to expand. The **Show technical details** switch reveals the exact tool
+names, the argument summary and the collapsible argument/result payloads. One
+toggle for the whole view, remembered per user through the StorageApi (bucket
+`agent-platform`, key `chatTechnicalDetails` — `useChatTechnicalDetails`).
+Reasoning keeps its expander in both registers (it is prose, not payload), and
+messages, attachments and turn endings read the same in both. The pending
+approval card always shows the exact proposed arguments, whatever the register
+— they are what Allow would run.
 
 ### Timestamps are absolute here, relative in the list
 
@@ -2036,7 +2067,7 @@ before streaming existed.
 generates the `messageId` before sending, so the optimistic copy is dropped exactly
 when a poll returns a message carrying it — which happens well before the turn ends,
 and would otherwise double the message for the rest of it. `TimelineItem.messageId`
-exists for this; its `id` is positional and stable only for React. The stats strip
+exists for this; its `id` is positional and stable only for React. The cost popover
 still reports the server's turn count, so "Turns" lags by one until kagent confirms —
 which is honest, since no task exists yet.
 
@@ -3029,7 +3060,7 @@ of number, and the UI distinguishes them by name:
   **"Cost"**. The gateway prices every call from its model catalogue _as the
   call happens_; this is the sum of those. Measured, wrong only insofar as the
   catalogue is wrong.
-- **Per session** (the session detail strip) — labelled **"Est. cost"**.
+- **Per session** (the session detail's cost popover) — labelled **"Estimated cost"**.
   kagent's token counts multiplied by a $/token derived from the gateway. A
   7-day window rather than the page's 30, because a rate applied to one session
   should reflect the model mix in use now. Which rate is the whole question —
@@ -3038,7 +3069,7 @@ of number, and the UI distinguishes them by name:
   whole table: the installation's blend across every model, because the table
   is a single query and its rows span models. Its footnote says so, and points
   at the session page as the sharper number.
-- **Per session, reported** (the session detail strip, beside Est. cost) —
+- **Per session, reported** (the cost popover, beside the estimate) —
   labelled **"Reported cost"**. What the agent's runtime reported for each
   turn, summed. Only the claude Harness reports one today.
 

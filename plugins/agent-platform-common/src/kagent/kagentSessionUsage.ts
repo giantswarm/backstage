@@ -19,6 +19,13 @@ export type SessionUsageTotals = {
    */
   totalTokens: number;
   toolCalls: number;
+  /**
+   * The cost the runtimes themselves reported, in USD, summed over the turns
+   * that reported one (the claude harness does, ADK does not). Absent when no
+   * turn reported a cost — which is "not reported", not "free", so the UI
+   * renders no figure rather than `$0.00`.
+   */
+  reportedCostUsd?: number;
 };
 
 export type UsageDayEntry = {
@@ -44,6 +51,8 @@ export type UsageAgentEntry = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /** As {@link SessionUsageTotals.reportedCostUsd}, for this agent's turns. */
+  reportedCostUsd?: number;
 };
 
 export type UsageToolEntry = { tool: string; calls: number };
@@ -109,6 +118,19 @@ function finite(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * A finite non-negative number, or `undefined`.
+ *
+ * For the reported-cost fields, where absence is meaningful: coercing a missing
+ * value to `0` (as {@link finite} does for counts) would turn "no runtime
+ * reported a cost" into "this cost nothing".
+ */
+function finiteOptional(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 const totalsSchema = z.looseObject({
   sessions: z.unknown().optional(),
   turns: z.unknown().optional(),
@@ -116,6 +138,7 @@ const totalsSchema = z.looseObject({
   outputTokens: z.unknown().optional(),
   totalTokens: z.unknown().optional(),
   toolCalls: z.unknown().optional(),
+  reportedCostUsd: z.unknown().optional(),
 });
 
 const dayEntrySchema = z.looseObject({
@@ -131,6 +154,7 @@ const agentEntrySchema = z.looseObject({
   turns: z.unknown().optional(),
   inputTokens: z.unknown().optional(),
   outputTokens: z.unknown().optional(),
+  reportedCostUsd: z.unknown().optional(),
 });
 
 const toolEntrySchema = z.looseObject({
@@ -208,6 +232,9 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
         outputTokens: finite(totalsParsed.data.outputTokens),
         totalTokens: finite(totalsParsed.data.totalTokens),
         toolCalls: finite(totalsParsed.data.toolCalls),
+        ...(finiteOptional(totalsParsed.data.reportedCostUsd) !== undefined && {
+          reportedCostUsd: finiteOptional(totalsParsed.data.reportedCostUsd),
+        }),
       }
     : empty.totals;
 
@@ -231,12 +258,14 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
     if (!entry.success) {
       continue;
     }
+    const reportedCostUsd = finiteOptional(entry.data.reportedCostUsd);
     byAgent.push({
       agentId: entry.data.agentId ?? null,
       sessions: finite(entry.data.sessions),
       turns: finite(entry.data.turns),
       inputTokens: finite(entry.data.inputTokens),
       outputTokens: finite(entry.data.outputTokens),
+      ...(reportedCostUsd !== undefined && { reportedCostUsd }),
     });
   }
 

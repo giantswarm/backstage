@@ -142,9 +142,13 @@ export class MusterApiClient implements MusterApi {
     return this.get<WorkflowListResponse>('/workflows');
   }
 
-  async getWorkflow(name: string): Promise<WorkflowGetResponse> {
+  async getWorkflow(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowGetResponse> {
     return this.get<WorkflowGetResponse>(
       `/workflows/${encodeURIComponent(name)}`,
+      installation,
     );
   }
 

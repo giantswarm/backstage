@@ -36,6 +36,16 @@ export type UsageTally = {
    */
   totalTokens: number;
   toolCalls: number;
+  /**
+   * The cost the runtime itself reported for these turns, in USD, summed over
+   * the turns that reported one (`TokenUsage.costUsd` — the claude harness
+   * does, ADK does not).
+   *
+   * `undefined` when **no** turn reported a cost, which is a different fact
+   * from `0`: "this runtime does not price its own work" must not render as
+   * "this work was free". Same semantics as `addTokenUsage`.
+   */
+  reportedCostUsd?: number;
 };
 
 export type SessionUsage = {
@@ -116,12 +126,20 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
       total: tally.totalTokens,
       prompt: tally.inputTokens,
       completion: tally.outputTokens,
+      // Only set when something has been reported, so `addTokenUsage`'s
+      // undefined-preserving sum keeps "nothing reported" distinct from `$0`.
+      ...(tally.reportedCostUsd !== undefined && {
+        costUsd: tally.reportedCostUsd,
+      }),
     },
     usage,
   );
   tally.totalTokens = summed.total;
   tally.inputTokens = summed.prompt;
   tally.outputTokens = summed.completion;
+  if (summed.costUsd !== undefined) {
+    tally.reportedCostUsd = summed.costUsd;
+  }
 }
 
 /**
@@ -276,6 +294,9 @@ export function reduceSessionUsage(
       total: turn.totalTokens,
       prompt: turn.inputTokens,
       completion: turn.outputTokens,
+      ...(turn.reportedCostUsd !== undefined && {
+        costUsd: turn.reportedCostUsd,
+      }),
     });
 
     if (atMs === undefined) {
@@ -291,6 +312,9 @@ export function reduceSessionUsage(
       total: turn.totalTokens,
       prompt: turn.inputTokens,
       completion: turn.outputTokens,
+      ...(turn.reportedCostUsd !== undefined && {
+        costUsd: turn.reportedCostUsd,
+      }),
     });
     days.set(key, day);
   }

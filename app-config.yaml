@@ -421,6 +421,15 @@ aiChat:
 # Agent platform (plugins/agent-platform). The create flow is disabled by
 # default and enabled per environment via `app.extensions`.
 agentPlatform:
+  # Context-window sizes per model, in tokens, for the chat's memory indicator.
+  # Nothing in the platform reports a hosted model's window, so it is a table
+  # here: keys are model-name patterns matched (case-insensitively) against the
+  # provider's model name, '*' matches any run of characters, and the most
+  # specific matching pattern wins. A model no pattern names shows its raw
+  # token count instead of a percentage.
+  models:
+    contextWindows:
+      'claude-*': 200000
   skills:
     # GitHub repositories to discover agent skills from. Every SKILL.md file
     # defines one skill (its directory is the skill root); a selected skill

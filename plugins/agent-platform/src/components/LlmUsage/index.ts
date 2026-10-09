@@ -9,4 +9,8 @@ export {
 } from './PricingCoverageNote';
 export { ReliabilityStrip } from './ReliabilityStrip';
 export { TokensByTypeCard } from './TokensByTypeCard';
+export { TopSpendCard } from './TopSpendCard';
+export type { TopSpendRow } from './TopSpendCard';
 export { UsageCard } from './UsageCard';
+export { UsageKpiTiles } from './UsageKpiTiles';
+export type { UsageKpiSessions } from './UsageKpiTiles';

@@ -159,10 +159,11 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The "Usage" tab: your own agent usage over the backend's window (personal,
-// derived from kagent's stored conversations), plus the MCP tool calls on the
-// installation (every caller, from muster's Prometheus metrics) contributed by
-// the muster plugin through the `sections` input below.
+// The "Usage" tab: the gateway's cost and usage views (every caller), your own
+// agent usage (personal, derived from kagent's stored conversations), and a
+// Technical details view that carries the raw gateway figures plus the MCP
+// tool calls on the installation (every caller, from muster's Prometheus
+// metrics) contributed by the muster plugin through the `sections` input below.
 //
 // The last tab of the row, after muster's MCP Servers and Workflows (see
 // `agentPlatformPage`).
@@ -171,8 +172,8 @@ const sessionsSubPage = SubPageBlueprint.make({
 // list/tree filter inputs — so muster can attach its section by node id
 // (`sub-page:agent-platform/usage`, input `sections`) without either plugin
 // depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) hides
-// the "MCP tools" view's tab rather than leaving a hole.
+// to `page:agent-platform`. An empty `sections` (muster not registered) leaves
+// the Technical details view to its own gateway content.
 const usageSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'usage',
   inputs: {
@@ -185,9 +186,9 @@ const usageSubPage = SubPageBlueprint.makeWithOverrides({
       routeRef: usageRouteRef,
       loader: async () => {
         const { UsageRouter } = await import('./components/UsageRouter');
-        // Passed as the array rather than wrapped in a fragment: the router
-        // has to know whether anything was contributed at all, so it can
-        // leave the "MCP tools" tab out of the strip when nothing was.
+        // Passed as the array rather than wrapped in a fragment: the
+        // Technical details view has to know whether anything was contributed
+        // at all, so it can render its gateway content alone when nothing was.
         const sections = inputs.sections.map(section =>
           section.get(coreExtensionData.reactElement),
         );

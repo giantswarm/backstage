@@ -67,7 +67,12 @@ function currencySymbol(code: string): string | undefined {
   }
 }
 
-type ResolvedCurrency = { symbol: string; usdRate: number };
+type ResolvedCurrency = {
+  symbol: string;
+  usdRate: number;
+  /** False when the input fell back to USD. */
+  converted: boolean;
+};
 
 /**
  * The currency costs can actually be shown in: USD unless `currency` names a
@@ -76,7 +81,7 @@ type ResolvedCurrency = { symbol: string; usdRate: number };
  * amount.
  */
 function resolveCurrency(currency: Currency | undefined): ResolvedCurrency {
-  const usd = { symbol: '$', usdRate: 1 };
+  const usd = { symbol: '$', usdRate: 1, converted: false };
   if (!currency) {
     return usd;
   }
@@ -89,7 +94,7 @@ function resolveCurrency(currency: Currency | undefined): ResolvedCurrency {
     return usd;
   }
   const symbol = currencySymbol(code);
-  return symbol ? { symbol, usdRate: rate } : usd;
+  return symbol ? { symbol, usdRate: rate, converted: true } : usd;
 }
 
 /**
@@ -139,6 +144,17 @@ export function formatMoney(
 /** Format an estimated USD amount in USD; see {@link formatMoney}. */
 export function formatUsd(value: number | undefined): string {
   return formatMoney(value, USD);
+}
+
+/**
+ * Whether {@link formatMoney} would actually convert for this currency —
+ * i.e. the amounts shown are USD multiplied by a configured rate rather than
+ * the measured USD figures. A converted amount is an estimate and the copy
+ * beside it has to say so; a currency that falls back to USD must not trigger
+ * that label.
+ */
+export function isConvertedCurrency(currency: Currency | undefined): boolean {
+  return resolveCurrency(currency).converted;
 }
 
 /**

@@ -13,9 +13,11 @@ import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import {
   formatCount,
+  formatMoney,
   formatPercent,
   formatTokens,
-  formatUsd,
+  USD,
+  type Currency,
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
@@ -25,6 +27,8 @@ export type LlmByAgentTableProps = {
   rows: LlmAgentRow[];
   emptyMessage: string;
   note?: string;
+  /** The installation's display currency; USD when it has none. */
+  currency?: Currency;
 };
 
 /** The mark on a row whose agent the portal no longer knows. */
@@ -74,6 +78,7 @@ export function LlmByAgentTable({
   rows,
   emptyMessage,
   note,
+  currency = USD,
 }: LlmByAgentTableProps) {
   const colorFor = useMeasureColor();
 
@@ -133,7 +138,7 @@ export function LlmByAgentTable({
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.costUsd)}
+            label={formatMoney(row.costUsd, currency)}
             value={row.costUsd}
             max={max.cost}
             color={colorFor('cost')}
@@ -176,15 +181,19 @@ export function LlmByAgentTable({
           and passing `data` after the spread overrides them with the unsorted
           input — which silently breaks every column header while leaving the
           sort indicator working. */}
-      <Table<LlmAgentRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* The table scrolls inside the card at phone width rather than pushing
+          the page wide — the 375px requirement. */}
+      <div style={{ overflowX: 'auto' }}>
+        <Table<LlmAgentRow>
+          {...tableProps}
+          columnConfig={columnConfig}
+          emptyState={
+            <Text variant="body-medium" color="secondary">
+              {emptyMessage}
+            </Text>
+          }
+        />
+      </div>
     </UsageCard>
   );
 }

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
 import { workflowsRouteRef } from '../../routes';
-import { MusterWorkflow } from '../../lib/k8s';
+import { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from '../../lib/k8s';
 import { CustomizeWorkflowsPanel, runsLabel } from './CustomizeWorkflowsPanel';
 
 jest.mock('../QueryClientProvider', () => ({
@@ -34,14 +34,30 @@ jest.mock('../MusterInstanceProvider', () => ({
   }),
 }));
 
-function makeWorkflow(name: string, steps: number, description?: string) {
+function makeWorkflow(
+  name: string,
+  steps: number,
+  options: {
+    description?: string;
+    category?: string;
+    gitops?: boolean;
+  } = {},
+) {
   return new MusterWorkflow(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'Workflow',
-      metadata: { name },
+      metadata: {
+        name,
+        labels: {
+          ...(options.category
+            ? { [WORKFLOW_CATEGORY_LABEL]: options.category }
+            : {}),
+          ...(options.gitops ? { 'app.kubernetes.io/managed-by': 'Helm' } : {}),
+        },
+      },
       spec: {
-        description,
+        description: options.description,
         steps: Array.from({ length: steps }, (_, i) => ({
           id: `s${i}`,
           tool: 't',
@@ -75,6 +91,20 @@ const api = {
         }
       : { executions: [], total: 0, limit: 1, offset: 0, has_more: false },
   ),
+  // The honest badge comes from the catalogue's `workflow_<name>` tools: the
+  // aggregator derives readOnlyHint only when every reachable tool reads.
+  filterTools: jest.fn(async () => ({
+    total: 2,
+    filtered_count: 2,
+    truncated: false,
+    tools: [
+      {
+        name: 'workflow_ticket-report',
+        annotations: { readOnlyHint: true },
+      },
+      { name: 'workflow_upgrade-check' },
+    ],
+  })),
 };
 
 function renderPanel(search = '') {
@@ -96,16 +126,21 @@ describe('CustomizeWorkflowsPanel', () => {
   beforeEach(() => {
     mockAuthenticated = true;
     mockWorkflows = [
-      makeWorkflow('ticket-report', 4, 'Summarises the week’s tickets'),
+      makeWorkflow('ticket-report', 4, {
+        description: 'Summarises the week’s tickets',
+        category: 'support',
+        gitops: true,
+      }),
       makeWorkflow('upgrade-check', 1),
     ];
     api.listExecutions.mockClear();
+    api.filterTools.mockClear();
   });
 
   it('lists the workflows with their steps and runs, opening each', async () => {
     await renderPanel();
 
-    const report = screen.getByRole('row', { name: /^ticket-report/ });
+    const report = screen.getByRole('row', { name: /ticket-report/ });
     expect(
       within(report).getByText('Summarises the week’s tickets'),
     ).toBeInTheDocument();
@@ -118,7 +153,7 @@ describe('CustomizeWorkflowsPanel', () => {
       '/agent-platform/workflows/ticket-report?installation=gazelle',
     );
 
-    const check = screen.getByRole('row', { name: /^upgrade-check/ });
+    const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(within(check).getByText('1 step')).toBeInTheDocument();
     expect(await within(check).findByText('No runs yet')).toBeInTheDocument();
     expect(api.listExecutions).toHaveBeenCalledWith({
@@ -128,27 +163,65 @@ describe('CustomizeWorkflowsPanel', () => {
     });
   });
 
-  it('asks for a muster session before reading runs', async () => {
+  it('shows category, the honest read-only badge and the source', async () => {
+    await renderPanel();
+
+    const report = screen.getByRole('row', { name: /ticket-report/ });
+    expect(within(report).getByText('support')).toBeInTheDocument();
+    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    expect(within(report).getByText('GitOps')).toBeInTheDocument();
+
+    // Without a derived readOnlyHint the workflow can change things — the
+    // honest MCP default, never presented as harmless.
+    const check = screen.getByRole('row', { name: /upgrade-check/ });
+    expect(
+      await within(check).findByText('Can change things'),
+    ).toBeInTheDocument();
+    expect(within(check).getByText('Manually added')).toBeInTheDocument();
+  });
+
+  it('offers no create, edit or delete affordances — workflows are read-only here', async () => {
+    await renderPanel();
+
+    expect(screen.queryByRole('button', { name: /create/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+  });
+
+  it('asks for a muster session before reading runs and badges', async () => {
     mockAuthenticated = false;
     await renderPanel();
 
     expect(screen.getByText('4 steps')).toBeInTheDocument();
     expect(
-      screen.getByText(/Workflow runs are read through your muster session/),
+      screen.getByText(
+        /Workflow runs and the read-only badge are read through your muster session/,
+      ),
     ).toBeInTheDocument();
     expect(api.listExecutions).not.toHaveBeenCalled();
+    expect(api.filterTools).not.toHaveBeenCalled();
+    // No badge is claimed while the hint cannot be read.
+    expect(screen.queryByText('Only reads')).toBeNull();
+    expect(screen.queryByText('Can change things')).toBeNull();
   });
 
   it('asks for no session while one is connected', async () => {
     await renderPanel();
 
     expect(
-      screen.queryByText(/Workflow runs are read through your muster session/),
+      screen.queryByText(/read through your muster session/),
     ).not.toBeInTheDocument();
   });
 
-  it('searches names and descriptions', async () => {
+  it('searches names, descriptions and categories', async () => {
     await renderPanel('tickets');
+
+    expect(screen.getByText('ticket-report')).toBeInTheDocument();
+    expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('finds workflows by category', async () => {
+    await renderPanel('support');
 
     expect(screen.getByText('ticket-report')).toBeInTheDocument();
     expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Box, Tab, TabList, Tabs } from '@backstage/ui';
+import { Box, Flex, Tab, TabList, Tabs } from '@backstage/ui';
 import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -9,23 +9,27 @@ import { AgentsDataProvider } from '../AgentsDataProvider';
 import { UsageOverviewPage } from '../UsageOverviewPage';
 import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
-import { UsageMcpPage } from '../UsageMcpPage';
+import { UsageTechnicalPage } from '../UsageTechnicalPage';
+import { UsageScopeBar } from './UsageScopeBar';
 
-// The Usage views, as a second-level tab row under the Agent Platform page's
-// "Usage" tab — the same shape as ModelsRouter and the muster section.
-//
-// Ordered widest scope first: the two gateway-derived views cover every user,
-// then the reader's own sessions, then the MCP section. Overview is first, so
-// the tab index redirects to it.
-const GATEWAY_VIEWS = [
+// The Usage screen's views, per the prototype: Overview · Cost · Your
+// sessions · Technical details. The first three are for anyone who spends;
+// the last is the raw-numbers view for admins and platform engineers, and it
+// is also where the muster plugin's tool-call section lands.
+const VIEWS = [
   { path: 'overview', title: 'Overview' },
   { path: 'cost', title: 'Cost' },
+  { path: 'conversations', title: 'Your sessions' },
+  { path: 'technical', title: 'Technical details' },
 ] as const;
-const CONVERSATIONS_VIEW = {
-  path: 'conversations',
-  title: 'Your sessions',
-} as const;
-const MCP_VIEW = { path: 'mcp', title: 'Connectors' } as const;
+
+/**
+ * The views the screen-level time-range control scopes: the gateway-derived
+ * ones. Your sessions reads the kagent fan-out's own fixed window, which the
+ * section names itself, so the control hides there rather than claiming a
+ * scope it does not apply.
+ */
+const WINDOWED_VIEWS = new Set(['overview', 'cost', 'technical']);
 
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {
@@ -36,57 +40,78 @@ const IndexRedirect = () => {
 /**
  * The old single-page Usage tab lived at `/agent-platform/usage` with no
  * sub-routes, so nothing needs redirecting — the index handles the one URL
- * that ever existed, and the catch-all below handles a guess or a typo.
+ * that ever existed; `/usage/mcp` (the Connectors tab this screen's Technical
+ * details view absorbed) redirects below, and the catch-all handles a guess
+ * or a typo.
  *
  * The tab strip plus the routed view. The tabs are navigation links whose
  * active state follows the route (`matchStrategy`); the content is driven by
- * the router below, not by TabPanels. The MCP tab appears only when the muster
- * plugin contributed a section, the same rule ModelsRouter uses for its
- * serving views — and its route stays mounted regardless, so a deep link
- * renders the view's own explanation rather than a 404.
+ * the router below, not by TabPanels. Above the strip sit the scope controls:
+ * the Environment selector (only when more than one installation is
+ * configured) and the time window, both URL state so they survive the tab
+ * switch — which is also why each tab's href carries the current search.
  */
 const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
-  const { search } = useLocation();
-  const hasMcpSection = (sections?.length ?? 0) > 0;
-  const views = [
-    ...GATEWAY_VIEWS,
-    CONVERSATIONS_VIEW,
-    ...(hasMcpSection ? [MCP_VIEW] : []),
-  ];
+  const { pathname, search } = useLocation();
+  const activeSegment = pathname.slice(basePath.length).split('/')[1];
 
   return (
     <>
-      {/* Inset the tab strip by the page gutter so it lines up with the level-1
-          header tabs and the content below. `px="5"` is hand-matched to the
-          horizontal padding the bui PluginHeader / Content apply (bui space-5 =
-          20px), the same value ModelsRouter uses; if bui ever changes that
-          gutter both have to follow. */}
+      {/* Inset the controls and the tab strip by the page gutter so they line
+          up with the level-1 header tabs and the content below. `px="5"` is
+          hand-matched to the horizontal padding the bui PluginHeader / Content
+          apply (bui space-5 = 20px), the same value ModelsRouter uses; if bui
+          ever changes that gutter both have to follow. */}
       <Box px="5">
-        <Tabs>
-          <TabList>
-            {views.map(view => (
-              <Tab
-                key={view.path}
-                id={view.path}
-                // Absolute, from the splat base path. A *relative* bui href
-                // inside a splat route resolves against the whole current
-                // pathname, so it appends the active segment instead of
-                // replacing it.
-                href={`${basePath}/${view.path}`}
-                matchStrategy="prefix"
-              >
-                {view.title}
-              </Tab>
-            ))}
-          </TabList>
-        </Tabs>
+        <Flex
+          justify="between"
+          align="end"
+          gap="3"
+          style={{ flexWrap: 'wrap' }}
+        >
+          <Tabs>
+            <TabList>
+              {VIEWS.map(view => (
+                <Tab
+                  key={view.path}
+                  id={view.path}
+                  // Absolute, from the splat base path. A *relative* bui href
+                  // inside a splat route resolves against the whole current
+                  // pathname, so it appends the active segment instead of
+                  // replacing it. The search keeps the scope (installation,
+                  // window) across the switch.
+                  href={`${basePath}/${view.path}${search}`}
+                  matchStrategy="prefix"
+                >
+                  {view.title}
+                </Tab>
+              ))}
+            </TabList>
+          </Tabs>
+          <UsageScopeBar windowApplies={WINDOWED_VIEWS.has(activeSegment)} />
+        </Flex>
       </Box>
       <Routes>
         <Route path="overview" element={<UsageOverviewPage />} />
         <Route path="cost" element={<UsageCostPage />} />
         <Route path="conversations" element={<UsageConversationsPage />} />
-        <Route path="mcp" element={<UsageMcpPage sections={sections} />} />
+        <Route
+          path="technical"
+          element={<UsageTechnicalPage sections={sections} />}
+        />
+        {/* The Connectors tab's old address: its content lives inside
+            Technical details now, so a bookmark lands there rather than on a
+            404 or on Overview. */}
+        <Route
+          path="mcp"
+          element={
+            <Navigate
+              to={{ pathname: `${basePath}/technical`, search }}
+              replace
+            />
+          }
+        />
         {/* Anything else lands on Overview rather than on the tab strip over
             an empty page with no tab active — which is what
             `/agent-platform/usage/sessions` did, a likely guess given the tab
@@ -109,7 +134,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
 };
 
 /**
- * The Usage tab's content: providers, then the tabbed views.
+ * The Usage screen's content: providers, then the tabbed views.
  *
  * `AgentsDataProvider` (which needs `ModelConfigsProvider` above it) is mounted
  * so both by-agent tables can turn an agent reference into a display name and a
@@ -120,7 +145,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  * immediately with raw labels and the names sharpen when the CRs land.
  *
  * The providers wrap every view once, so switching views neither remounts them
- * nor refetches — which matters more here than on the Models tab: the two
+ * nor refetches — which matters more here than on the Models tab: the
  * gateway views run the same twelve Mimir queries, and they only cost one round
  * between them because the query client outlives the tab switch.
  *

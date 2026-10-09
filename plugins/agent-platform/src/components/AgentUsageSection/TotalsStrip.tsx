@@ -2,8 +2,16 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { Skeleton } from '@backstage/ui';
 import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionUsageTotals } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { estimateCost, type TokenRates } from '../../lib/costEstimate';
-import { formatCount, formatTokens, formatUsd } from '../../lib/formatNumbers';
+import { type TokenRates } from '../../lib/costEstimate';
+import { sessionSpend } from '../../lib/usageKpis';
+import {
+  formatCount,
+  formatMoney,
+  formatTokens,
+  formatUsd,
+  USD,
+  type Currency,
+} from '../../lib/formatNumbers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -40,6 +48,7 @@ export function TotalsStrip({
   rates,
   isRateLoading,
   costBasis,
+  currency = USD,
 }: {
   totals: SessionUsageTotals;
   /** The window the totals cover, as the response reports it. */
@@ -49,9 +58,12 @@ export function TotalsStrip({
   isRateLoading?: boolean;
   /** How the estimate was arrived at, from `describeCostBasis`. */
   costBasis?: string;
+  /** The installation's display currency, for the estimate; USD when none. */
+  currency?: Currency;
 }) {
   const classes = useStyles();
   const windowNote = `in the last ${windowDays} days`;
+  const spend = sessionSpend(totals, rates);
   return (
     <div className={classes.strip}>
       <Stat
@@ -91,12 +103,22 @@ export function TotalsStrip({
           isRateLoading ? (
             <Skeleton width={56} height={22} rounded />
           ) : (
-            formatUsd(
-              estimateCost(totals.inputTokens, totals.outputTokens, rates),
-            )
+            formatMoney(spend.estimatedUsd, currency)
           )
         }
       />
+      {/* Beside the estimate, never in place of it: a figure only some
+          runtimes report (the claude Harness does, ADK does not), summed over
+          the turns that reported one. Absent means not reported, so a window
+          with none shows no stat rather than "$0.00". Stays in USD — it is
+          what the runtime said, not a figure we price. */}
+      {spend.reportedUsd !== undefined && (
+        <Stat
+          label="Reported cost"
+          value={formatUsd(spend.reportedUsd)}
+          hint="Reported by the agents' runtimes for each turn and summed here. A turn that reported no cost — most runtimes report none — is not in it, so this usually covers a subset of the turns the estimate covers."
+        />
+      )}
     </div>
   );
 }

@@ -27,6 +27,10 @@ const SHELL_PAGE_HEADERS: Record<string, ShellPageHeader> = {
     description: "Every conversation you've had with an agent.",
     action: { label: 'New session', href: '/' },
   },
+  usage: {
+    description:
+      "What agents cost, how much they're used, and how healthy the platform is.",
+  },
 };
 
 const useStyles = makeStyles(theme => ({

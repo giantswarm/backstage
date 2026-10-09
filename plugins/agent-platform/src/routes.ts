@@ -86,9 +86,9 @@ export const usageRouteRef = createRouteRef();
 // cost figures understate. Overview's unpriced-models warning links here.
 //
 // The only view with a route ref: the other three (`overview`, `conversations`,
-// `mcp`) are plain routes inside `UsageRouter`, because nothing links to them
-// from outside it. Add one when something does — the tab strip builds its own
-// hrefs from the splat base path either way.
+// `technical`) are plain routes inside `UsageRouter`, because nothing links to
+// them from outside it. Add one when something does — the tab strip builds its
+// own hrefs from the splat base path either way.
 export const usageCostRouteRef = createSubRouteRef({
   path: '/cost',
   parent: usageRouteRef,

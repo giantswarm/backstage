@@ -100,4 +100,46 @@ describe('ByAgentTable', () => {
 
     expect(screen.getByText('kagent recorded no agent.')).toBeInTheDocument();
   });
+
+  it('offers a Reported cost column only when some runtime reported one', () => {
+    const { rerender } = render(
+      <ByAgentTable rows={ROWS} emptyMessage="none" />,
+    );
+
+    // No runtime reported a cost: no column, rather than a column of
+    // "Not reported" teaching the reader to ignore it.
+    expect(
+      screen.queryByRole('columnheader', { name: /Reported cost/ }),
+    ).toBeNull();
+
+    rerender(
+      <ByAgentTable
+        rows={[{ ...ROWS[0], reportedCostUsd: 1.23 }, ROWS[1], ROWS[2]]}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(
+      screen.getByRole('columnheader', { name: /Reported cost/ }),
+    ).toBeInTheDocument();
+    // What the runtime said, in USD; the rows whose runtime said nothing say so.
+    expect(screen.getByText('$1.23')).toBeInTheDocument();
+    expect(screen.getAllByText('Not reported')).toHaveLength(2);
+  });
+
+  it('shows the estimate in the installation currency, the reported cost in USD', () => {
+    render(
+      <ByAgentTable
+        rows={[{ ...ROWS[0], reportedCostUsd: 1.23 }]}
+        emptyMessage="none"
+        rates={{ blended: 3 / 1_000_000 }}
+        currency={{ code: 'EUR', usdRate: 0.5 }}
+      />,
+    );
+
+    // 7_528_800 tokens × $3/M = $22.5864 → ×0.5 = €11.29 (O3: estimates
+    // convert; the reported figure stays what the runtime said).
+    expect(screen.getByText('€11.29')).toBeInTheDocument();
+    expect(screen.getByText('$1.23')).toBeInTheDocument();
+  });
 });

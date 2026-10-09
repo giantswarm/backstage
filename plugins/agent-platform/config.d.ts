@@ -8,6 +8,25 @@ export interface Config {
    * agent-manager's to report (`get_info`) and are not configured here.
    */
   agentPlatform?: {
+    /** Model metadata the platform itself does not report. */
+    models?: {
+      /**
+       * Context-window sizes per model, in tokens, for the chat's memory
+       * indicator — nothing in the platform reports a hosted model's window
+       * (kagent's ModelConfig has no such field), so it is configured here.
+       *
+       * Keys are model-name patterns matched case-insensitively against the
+       * provider's model name (the ModelConfig's `spec.model`); `*` matches
+       * any run of characters, and the most specific matching pattern wins.
+       * Values are the window size in tokens. A model no pattern names shows
+       * its raw token count instead of a percentage.
+       *
+       * Example: `{ 'claude-*': 200000, 'gpt-5*': 400000 }`.
+       */
+      contextWindows?: {
+        [modelPattern: string]: number;
+      };
+    };
     /** Skill discovery for the create flow. */
     skills?: {
       /**

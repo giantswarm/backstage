@@ -5,35 +5,38 @@ import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 // here so this directory's public surface is unchanged.
 
 /**
- * How much of the agent's internal work the timeline shows.
- *
- * The prototype makes this a real control rather than a fixed state, because
- * seeing "what the agent actually did" is the point of the screen — but a wall of
- * expanded tool payloads is unreadable, so `collapsed` is the default.
+ * Items the plain ⇄ technical toggle changes: the agent's trace. Everything
+ * else — messages, attachments, failed turns — reads the same in both modes,
+ * so a session with none of these gets no toggle.
  */
-export type ActivityDetail = 'hidden' | 'collapsed' | 'expanded';
-
-/** Items that represent the agent's internal work rather than the conversation. */
-const ACTIVITY_KINDS = new Set<TimelineItem['kind']>([
+const TRACE_KINDS = new Set<TimelineItem['kind']>([
   'reasoning',
   'tool-call',
   'agent-call',
+  'approval',
 ]);
 
+/** Whether the toggle would change how this item renders. */
+export function isTraceItem(item: TimelineItem): boolean {
+  return TRACE_KINDS.has(item.kind);
+}
+
 /**
- * Whether an item is internal activity that `hidden` removes.
- *
- * Approvals are deliberately **not** included: an approval is a decision the user
- * was asked to make, so hiding it would remove the record of their own action, not
- * the agent's working. Nor is a failed turn: it is the outcome of the turn, and
- * hiding it would put the page back to showing a message that went unanswered for
- * no visible reason.
- *
- * Note this governs *hiding* only. Approvals still expand and collapse with the
- * control — see {@link hasExpandableDetail}.
+ * A tool's name as a readable phrase, for the plain trace: `github_search_issues`
+ * → `Github search issues`. Lossy on purpose — the exact identifier stays one
+ * toggle away in the technical view — and left alone when there is nothing to
+ * split, so an unrecognisable name still names the tool.
  */
-export function isActivityItem(item: TimelineItem): boolean {
-  return ACTIVITY_KINDS.has(item.kind);
+export function humanizeToolName(name: string): string {
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\-./]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!words) {
+    return name;
+  }
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /**

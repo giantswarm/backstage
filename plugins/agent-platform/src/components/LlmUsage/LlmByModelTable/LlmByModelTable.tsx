@@ -5,8 +5,11 @@ import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
   formatCount,
+  formatMoney,
   formatTokens,
-  formatUsd,
+  isConvertedCurrency,
+  USD,
+  type Currency,
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
@@ -16,6 +19,8 @@ export type LlmByModelTableProps = {
   rows: LlmModelRow[];
   emptyMessage: string;
   note?: string;
+  /** The installation's display currency; USD when it has none. */
+  currency?: Currency;
 };
 
 /**
@@ -41,6 +46,7 @@ export function LlmByModelTable({
   rows,
   emptyMessage,
   note,
+  currency = USD,
 }: LlmByModelTableProps) {
   const colorFor = useMeasureColor();
 
@@ -101,7 +107,7 @@ export function LlmByModelTable({
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.costUsd)}
+            label={formatMoney(row.costUsd, currency)}
             value={row.costUsd}
             max={max.cost}
             color={colorFor('cost')}
@@ -111,12 +117,12 @@ export function LlmByModelTable({
     },
     {
       id: 'usdPerMillion',
-      label: '$/1M tokens',
+      label: isConvertedCurrency(currency) ? 'Cost/1M tokens' : '$/1M tokens',
       isSortable: true,
       cell: row => (
         <Cell>
           <DataBar
-            label={formatUsd(row.usdPerMillion)}
+            label={formatMoney(row.usdPerMillion, currency)}
             value={row.usdPerMillion}
             max={max.ratio}
             color={colorFor('ratio')}
@@ -155,15 +161,19 @@ export function LlmByModelTable({
 
   return (
     <UsageCard title="By model" note={note} wide>
-      <Table<LlmModelRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage}
-          </Text>
-        }
-      />
+      {/* The table scrolls inside the card at phone width rather than pushing
+          the page wide — the 375px requirement. */}
+      <div style={{ overflowX: 'auto' }}>
+        <Table<LlmModelRow>
+          {...tableProps}
+          columnConfig={columnConfig}
+          emptyState={
+            <Text variant="body-medium" color="secondary">
+              {emptyMessage}
+            </Text>
+          }
+        />
+      </div>
     </UsageCard>
   );
 }

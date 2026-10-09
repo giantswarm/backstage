@@ -59,6 +59,8 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   'aiChat.contextWindow',
   // The repositories the agent create flow discovers skills from.
   'agentPlatform.skills.repositories',
+  // Context-window sizes per model pattern, for the chat's memory indicator.
+  'agentPlatform.models.contextWindows',
   // Link templates for the Flux sources' Git hosts.
   'flux.gitRepositoryPatterns',
 ];

@@ -60,6 +60,49 @@ describe('TotalsStrip', () => {
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
+  it('shows the reported cost beside the estimate, only when one was reported', () => {
+    // The estimate+reported pair: the estimate is derived (tokens × rate), the
+    // reported figure is what the runtimes said, in USD. Without a report the
+    // stat is absent — not "$0.00".
+    const { rerender } = render(
+      <TotalsStrip
+        totals={{ ...TOTALS, reportedCostUsd: 3.21 }}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
+    );
+
+    expect(screen.getByText('Reported cost')).toBeInTheDocument();
+    expect(screen.getByText('$3.21')).toBeInTheDocument();
+    expect(screen.getByText('$22.59')).toBeInTheDocument();
+
+    rerender(
+      <TotalsStrip
+        totals={TOTALS}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
+    );
+    expect(screen.queryByText('Reported cost')).toBeNull();
+  });
+
+  it('shows the estimate in the installation currency, and the reported cost in USD', () => {
+    // O3: estimates convert at the configured rate; the reported figure stays
+    // what the runtime said.
+    render(
+      <TotalsStrip
+        totals={{ ...TOTALS, reportedCostUsd: 3.21 }}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+        currency={{ code: 'EUR', usdRate: 0.5 }}
+      />,
+    );
+
+    // 7_528_800 tokens × $3/M = $22.5864 → ×0.5 = €11.29
+    expect(screen.getByText('€11.29')).toBeInTheDocument();
+    expect(screen.getByText('$3.21')).toBeInTheDocument();
+  });
+
   it('has no combined token total', () => {
     // Input and output are priced differently, so their sum is not a number
     // anyone acts on — the same reason the session detail strip omits it.

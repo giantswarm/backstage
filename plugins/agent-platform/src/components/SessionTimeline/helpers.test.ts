@@ -1,4 +1,4 @@
-import { groupIntoTurns } from './helpers';
+import { groupIntoTurns, humanizeToolName } from './helpers';
 import { TimelineItem } from '../../lib/kagentTimeline';
 
 describe('groupIntoTurns', () => {
@@ -38,5 +38,20 @@ describe('groupIntoTurns', () => {
 
   it('returns nothing for an empty timeline', () => {
     expect(groupIntoTurns([])).toEqual([]);
+  });
+});
+
+describe('humanizeToolName', () => {
+  it('turns identifiers into readable phrases', () => {
+    expect(humanizeToolName('github_search_issues')).toBe(
+      'Github search issues',
+    );
+    expect(humanizeToolName('post-message')).toBe('Post message');
+    expect(humanizeToolName('listClusters')).toBe('List clusters');
+  });
+
+  it('leaves a name with nothing to split as itself', () => {
+    expect(humanizeToolName('reconcile')).toBe('Reconcile');
+    expect(humanizeToolName('___')).toBe('___');
   });
 });

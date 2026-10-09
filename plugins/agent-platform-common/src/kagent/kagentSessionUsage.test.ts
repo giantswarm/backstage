@@ -55,6 +55,81 @@ describe('normalizeSessionUsage', () => {
     expect(usage.topMcpServers).toEqual([{ server: 'kubernetes', calls: 84 }]);
   });
 
+  it('reads the reported cost on the totals and per agent', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: {
+          sessions: 1,
+          turns: 2,
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          toolCalls: 0,
+          reportedCostUsd: 1.25,
+        },
+        byAgent: [
+          {
+            agentId: 'kagent__NS__sre_agent',
+            sessions: 1,
+            turns: 2,
+            inputTokens: 10,
+            outputTokens: 5,
+            reportedCostUsd: 1.25,
+          },
+        ],
+      }),
+    );
+
+    expect(usage.totals.reportedCostUsd).toBeCloseTo(1.25);
+    expect(usage.byAgent[0].reportedCostUsd).toBeCloseTo(1.25);
+  });
+
+  it('keeps an absent reported cost absent, and drops an unusable one', () => {
+    // "No runtime reported a cost" must stay distinguishable from "$0", so
+    // the field is never coerced to zero the way the counts are.
+    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty(
+      'reportedCostUsd',
+    );
+    expect(normalizeSessionUsage(body()).byAgent[0]).not.toHaveProperty(
+      'reportedCostUsd',
+    );
+
+    for (const reportedCostUsd of [-1, Number.NaN, 'free', null]) {
+      const usage = normalizeSessionUsage(
+        body({
+          totals: {
+            sessions: 1,
+            turns: 1,
+            inputTokens: 1,
+            outputTokens: 1,
+            totalTokens: 2,
+            toolCalls: 0,
+            reportedCostUsd,
+          },
+        }),
+      );
+      expect(usage.totals).not.toHaveProperty('reportedCostUsd');
+    }
+  });
+
+  it('keeps a reported zero as zero', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: {
+          sessions: 1,
+          turns: 1,
+          inputTokens: 1,
+          outputTokens: 1,
+          totalTokens: 2,
+          toolCalls: 0,
+          reportedCostUsd: 0,
+        },
+      }),
+    );
+
+    expect(usage.totals.reportedCostUsd).toBe(0);
+  });
+
   it('yields a zeroed summary for a body that is not an object', () => {
     // Rendered as "no usage in the window", which is the honest reading when
     // the backend answered and we could not understand it.

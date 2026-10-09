@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Content } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
@@ -5,15 +6,17 @@ import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usageCostRouteRef } from '../../routes';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
-import { WINDOW_DAYS } from '../../lib/llmUsageQueries';
+import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useUsageWindow } from '../../hooks/useUsageWindow';
+import { useCurrency } from '../../lib/formatNumbers';
+import type { LlmUsage } from '../../lib/llmUsage';
 import {
-  CostPerDayCard,
-  CostTotalsStrip,
   LlmUsageState,
   PricingCoverageAlert,
-  ReliabilityStrip,
-  TokensByTypeCard,
-  UsageCard,
+  TopSpendCard,
+  UsageKpiTiles,
+  type TopSpendRow,
+  type UsageKpiSessions,
 } from '../LlmUsage';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -24,39 +27,77 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-/**
- * The window, and nothing else.
- *
- * Today's bar is real spend so far — queried over elapsed-time-since-midnight
- * rather than extrapolated to a whole day — and that it therefore sits below a
- * full day needs no saying: a reader looking at a partial day already knows
- * what time it is.
- */
-const WINDOW_NOTE = `The last ${WINDOW_DAYS} days.`;
+/** The by-agent breakdown as the compact card's rows, biggest spender first. */
+function topAgentRows(usage: LlmUsage): TopSpendRow[] {
+  return [...usage.byAgent]
+    .sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0))
+    .map(row => ({
+      id: row.id,
+      label: row.label,
+      href: row.href,
+      costUsd: row.costUsd,
+      sharePct: row.sharePct,
+    }));
+}
+
+/** The by-model breakdown as the compact card's rows, biggest spender first. */
+function topModelRows(usage: LlmUsage): TopSpendRow[] {
+  return [...usage.byModel]
+    .sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0))
+    .map(row => ({
+      id: row.id,
+      label: row.model,
+      costUsd: row.costUsd,
+      sharePct: row.sharePct,
+    }));
+}
 
 /**
- * The Usage tab's at-a-glance view: what the platform's model calls cost, how
- * many tokens they moved, and whether they are going well.
+ * The Usage screen's at-a-glance view, per the prototype: the KPI tiles —
+ * spend this window against the previous one, tokens, the reader's own
+ * sessions, active agents — and the compact per-agent and per-model spend
+ * breakdowns. The full tables and the cost-over-time chart live one tab away
+ * on Cost; the raw token counts and gateway health on Technical details.
  *
- * **Everyone's traffic, not the reader's.** These come from the agentgateway
- * LLM listener, which sees every call regardless of who started it. The
- * metrics do carry a `user` label, so a per-user breakdown of them is
- * possible; no view here reads it, and the per-user view today is the Your
- * sessions tab, which is kagent's.
+ * **Everyone's traffic, not the reader's — except the one tile that says
+ * otherwise.** The gateway figures come from the agentgateway LLM listener,
+ * which sees every call regardless of who started it. The session count is
+ * kagent's, which can only answer for the caller, so its tile is labelled
+ * "Your sessions" and links the reader to that tab.
  *
  * The corollary — that an agent calling a provider directly bypasses the
  * listener and so appears nowhere here — is deliberately **not** in the
- * heading. It is a real limitation, and it is documented in
- * `docs/agent-platform.md` under "What it cannot show", but on the platform's
- * own installations every agent goes through the gateway, so leading with it
- * cast doubt on figures that are in fact complete. The empty state still says
- * it, which is the one place a reader needs it.
+ * heading. It is a real limitation, documented in `docs/agent-platform.md`
+ * under "What it cannot show", but on the platform's own installations every
+ * agent goes through the gateway, so leading with it cast doubt on figures
+ * that are in fact complete. The empty state still says it, which is the one
+ * place a reader needs it.
  */
 export function UsageOverviewPage() {
   const classes = useStyles();
-  const view = useLlmUsageView();
+  const { days } = useUsageWindow();
+  // `comparePrevious` is the one extra query the delta on the spend tile
+  // needs; only this view pays for it.
+  const view = useLlmUsageView({ days, comparePrevious: true });
   const costRoute = useRouteRef(usageCostRouteRef);
   const { usage, installation, isResolvedFromAll } = view;
+  const currency = useCurrency(installation);
+
+  // The reader's own session count, shared (same query key) with the Your
+  // sessions tab — so after either view loads, the other costs nothing. Its
+  // window is the backend's own, which the tile names when it has one.
+  const sessionUsage = useSessionUsage(installation);
+  const sessions: UsageKpiSessions | undefined =
+    sessionUsage.isNotDeployed || sessionUsage.isError
+      ? undefined
+      : {
+          count: sessionUsage.usage?.totals.sessions,
+          windowDays: sessionUsage.usage?.windowDays || undefined,
+          isLoading: sessionUsage.isLoading,
+        };
+
+  const agentRows = useMemo(() => (usage ? topAgentRows(usage) : []), [usage]);
+  const modelRows = useMemo(() => (usage ? topModelRows(usage) : []), [usage]);
 
   return (
     <Content>
@@ -69,8 +110,7 @@ export function UsageOverviewPage() {
             installation ? (
               <>
                 Every user's model calls on <strong>{installation}</strong> over
-                the last {WINDOW_DAYS} days, as seen by the agentgateway LLM
-                listener.
+                the last {days} days, as seen by the agentgateway LLM listener.
               </>
             ) : (
               `Model usage across the platform, as seen by the agentgateway LLM listener.`
@@ -81,7 +121,7 @@ export function UsageOverviewPage() {
         {isResolvedFromAll && installation && (
           <Text variant="body-small" color="secondary">
             Showing {installation}. Metrics are read one installation at a time
-            — pin another in the header to switch.
+            — pick another in the Environment control to switch.
           </Text>
         )}
 
@@ -89,7 +129,12 @@ export function UsageOverviewPage() {
 
         {view.state === 'ready' && usage && (
           <>
-            <CostTotalsStrip usage={usage} />
+            <UsageKpiTiles
+              usage={usage}
+              currency={currency}
+              windowDays={days}
+              sessions={sessions}
+            />
 
             {/* Compact here, with the detail table one tab away: the reader of
                 this page needs to know the cost figures are incomplete, not
@@ -100,22 +145,26 @@ export function UsageOverviewPage() {
             />
 
             <div className={classes.row}>
-              <CostPerDayCard daily={usage.costPerDay} note={WINDOW_NOTE} />
-            </div>
-            <div className={classes.row}>
-              <TokensByTypeCard daily={usage.tokensPerDay} note={WINDOW_NOTE} />
+              <TopSpendCard
+                title="Top agents"
+                rows={agentRows}
+                currency={currency}
+                emptyMessage="The gateway attributed no calls to an agent in this window."
+                note="Each bar is the agent's share of the window's priced spend, across every user. The Cost tab has the full table."
+              />
+              <TopSpendCard
+                title="By model"
+                rows={modelRows}
+                currency={currency}
+                emptyMessage="No model answered a call in this window."
+                note="The model that answered each call, as the gateway recorded it. The Cost tab has tokens, calls and rates per model."
+              />
             </div>
 
-            <UsageCard
-              title="Gateway health"
-              wide
-              // Each figure explains its own arithmetic in its hint now, so
-              // the note carries only what none of them says: these are the
-              // model calls, not the turns that made them.
-              note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
-            >
-              <ReliabilityStrip reliability={usage.reliability} />
-            </UsageCard>
+            <Text variant="body-small" color="secondary">
+              Tokens, model calls and gateway health are under Technical
+              details.
+            </Text>
           </>
         )}
       </Flex>

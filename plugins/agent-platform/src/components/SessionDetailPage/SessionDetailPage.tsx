@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Box, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -23,7 +23,6 @@ import {
 } from '@material-ui/core';
 import {
   DateComponent,
-  Stat,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -68,14 +67,10 @@ import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
-import {
-  formatTokens,
-  SessionTimeline,
-  StreamLossPhase,
-} from '../SessionTimeline';
+import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
+import { SessionCostPopover } from '../SessionCostPopover';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
-import { formatUsd } from '../../lib/formatNumbers';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
@@ -127,15 +122,6 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
-  },
-  stats: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2, 5),
-    paddingTop: theme.spacing(1.5),
-    paddingBottom: theme.spacing(1.5),
-    borderTop: `1px solid ${theme.palette.divider}`,
-    borderBottom: `1px solid ${theme.palette.divider}`,
   },
   // A real <button>, stripped of its chrome, rather than a click handler on the
   // heading: the title is an editing affordance, and only a button is reachable
@@ -249,9 +235,11 @@ function describeStopFailure(error: Error | null): string | undefined {
  * document for why the send lands here rather than there.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
- * cost, tokens-per-second, context-window usage, the owning team, the trigger that
- * started the session, a linked work item, produced results, and evaluation. Please
- * don't re-add them speculatively — there is no data behind them.
+ * tokens-per-second, the owning team, the trigger that started the session, a
+ * linked work item, produced results, and evaluation. Please don't re-add them
+ * speculatively — there is no data behind them. Cost (estimated + reported) and
+ * context-window usage live in the header's `SessionCostPopover`, from the
+ * data that does exist.
  */
 export function SessionDetailPage() {
   const classes = useStyles();
@@ -967,6 +955,7 @@ export function SessionDetailPage() {
         {isConfirming && (
           <PendingConfirmationPanel
             pending={pendingConfirmation!}
+            agentName={row.agentName || undefined}
             isAnswering={confirmation.isAnswering}
             error={confirmation.error?.message}
             restore={confirmation.failed}
@@ -1116,6 +1105,30 @@ export function SessionDetailPage() {
                 {RUNTIME_LOST_LABEL}
               </Badge>
             )}
+            {/* Cost and memory, per the prototype: one chip in the header with
+                the session's totals behind it. Estimated cost is labeled as
+                one and names its basis; reported cost appears only when the
+                runtime reported any; memory is a share only when the model's
+                context window is configured. The row wraps, so on a phone the
+                chip simply drops to its own line. */}
+            <div style={{ marginLeft: 'auto' }}>
+              <SessionCostPopover
+                installation={row.installation}
+                model={row.agentModel}
+                tokens={timeline.tokens}
+                lastTurnTokens={timeline.lastTurnTokens}
+                taskCount={taskCount}
+                estimatedCostUsd={estimatedCostUsd}
+                costBasis={describeCostBasis({
+                  tier: rateTier,
+                  model: row.agentModel,
+                  installation: row.installation,
+                  window: rateWindow,
+                  tokens: timeline.tokens.total,
+                })}
+                agentName={row.agentName || undefined}
+              />
+            </div>
           </Flex>
 
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
@@ -1165,61 +1178,6 @@ export function SessionDetailPage() {
             {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
           </Text>
         </Flex>
-
-        <Box className={classes.stats}>
-          <Stat
-            label="Turns"
-            value={String(taskCount)}
-            hint="One per message sent to the agent. A turn counts once however many model and tool calls the answer took."
-          />
-          {/* Labelled "billed", because the raw number is startling: every model
-              call re-sends the whole context, so a 4-turn session with a large tool
-              catalogue reached 1.4M prompt tokens across 14 calls. That is genuine
-              cumulative usage — kagent's own UI sums it the same way — but without
-              the label it reads as a bug.
-              There is deliberately no combined total: input and output are priced
-              differently, so the sum is not a number anyone acts on. */}
-          <Stat
-            label="Input tokens (billed)"
-            value={formatTokens(timeline.tokens.prompt)}
-            hint="Every token sent to a model in this session, summed over each call, delegated agents' included."
-          />
-          <Stat
-            label="Output tokens"
-            value={formatTokens(timeline.tokens.completion)}
-            hint="Every token a model generated in this session, delegated agents' included."
-          />
-          {/* Estimated, not billed, and the hint has to say *how*: the
-              gateway prices whole model calls and its metrics carry no session
-              label, so a session's cost can only ever be its tokens times an
-              observed rate. Which rate that is decides whether the figure is
-              worth anything, so `describeCostBasis` names the tier rather than
-              leaving the reader to assume the best case. Reads "—" rather than
-              "$0.00" when there is no rate to apply — zero spend and unpriced
-              spend are different facts. */}
-          <Stat
-            label="Est. cost"
-            value={formatUsd(estimatedCostUsd)}
-            hint={describeCostBasis({
-              tier: rateTier,
-              model: row.agentModel,
-              installation: row.installation,
-              window: rateWindow,
-              tokens: timeline.tokens.total,
-            })}
-          />
-          {/* Beside the estimate, never in place of it: a figure only some
-              runtimes report (the claude Harness does, ADK does not), summed
-              over the turns that reported one. Absent means not reported, so
-              a session with none shows no stat rather than "$0.00". */}
-          {timeline.tokens.costUsd !== undefined && (
-            <Stat
-              label="Reported cost"
-              value={formatUsd(timeline.tokens.costUsd)}
-              hint="Reported by the agent's runtime for each turn and summed here. A turn that reported no cost, a canceled one say, is not in it."
-            />
-          )}
-        </Box>
 
         <SessionTimeline
           timeline={timelineWithLive}

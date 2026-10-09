@@ -110,6 +110,13 @@ function addInto(target: UsageTally, source: UsageTally): void {
   target.outputTokens += source.outputTokens;
   target.totalTokens += source.totalTokens;
   target.toolCalls += source.toolCalls;
+  // Undefined-preserving, like `addTokenUsage`: only a tally that actually
+  // reported a cost contributes, so "no runtime reported one" stays absent
+  // rather than becoming `$0`.
+  if (source.reportedCostUsd !== undefined) {
+    target.reportedCostUsd =
+      (target.reportedCostUsd ?? 0) + source.reportedCostUsd;
+  }
 }
 
 /** Descending by count, then by name, so the answer is not Map order. */
@@ -350,6 +357,9 @@ export class SessionUsageReader {
         turns: tally.turns,
         inputTokens: tally.inputTokens,
         outputTokens: tally.outputTokens,
+        ...(tally.reportedCostUsd !== undefined && {
+          reportedCostUsd: tally.reportedCostUsd,
+        }),
       }))
       .sort(
         (a, b) =>

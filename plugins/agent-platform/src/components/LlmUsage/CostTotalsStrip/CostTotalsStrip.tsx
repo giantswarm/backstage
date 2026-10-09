@@ -4,9 +4,12 @@ import type { LlmUsage } from '../../../lib/llmUsage';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
 import {
   formatCount,
+  formatMoney,
   formatPercent,
   formatTokens,
-  formatUsd,
+  isConvertedCurrency,
+  USD,
+  type Currency,
 } from '../../../lib/formatNumbers';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -39,19 +42,34 @@ const useStyles = makeStyles((theme: Theme) => ({
  * `$0.00` when nothing could be priced. Read it next to the unpriced-models
  * warning, which is the only thing distinguishing the two.
  */
-export function CostTotalsStrip({ usage }: { usage: LlmUsage }) {
+export function CostTotalsStrip({
+  usage,
+  windowDays = WINDOW_DAYS,
+  currency = USD,
+}: {
+  usage: LlmUsage;
+  /** The window the figures cover, named in every hint. */
+  windowDays?: number;
+  /** The installation's display currency; USD when it has none. */
+  currency?: Currency;
+}) {
   const classes = useStyles();
   const { totals } = usage;
+  const converted = isConvertedCurrency(currency);
 
   // Not `window`: that shadows the DOM global for the whole component.
-  const windowNote = `over the last ${WINDOW_DAYS} days`;
+  const windowNote = `over the last ${windowDays} days`;
 
   return (
     <div className={classes.strip}>
       <Stat
-        label="Cost"
-        value={formatUsd(totals.costUsd)}
-        hint={`What the gateway priced every model call at as it happened, summed ${windowNote}. A model missing from its price catalogue contributes nothing.`}
+        label={converted ? 'Cost (estimated)' : 'Cost'}
+        value={formatMoney(totals.costUsd, currency)}
+        hint={`What the gateway priced every model call at as it happened, summed ${windowNote}. A model missing from its price catalogue contributes nothing.${
+          converted
+            ? " Converted from USD at this installation's configured rate — an estimate, not an invoice."
+            : ''
+        }`}
       />
       <Stat
         label="Tokens"
@@ -74,8 +92,8 @@ export function CostTotalsStrip({ usage }: { usage: LlmUsage }) {
         hint={`Distinct models that answered a call ${windowNote} — the model that replied, which need not be the one requested.`}
       />
       <Stat
-        label="Blended $/1M tokens"
-        value={formatUsd(totals.usdPerMillion)}
+        label={converted ? 'Blended cost/1M tokens' : 'Blended $/1M tokens'}
+        value={formatMoney(totals.usdPerMillion, currency)}
         hint="Cost divided by tokens, scaled to a million. A blend, not a list price: cache reads count as tokens, so heavy caching pushes it below a model's headline rate."
       />
       {/* Untoned: a low cache-read share is worth knowing but is not a fault —

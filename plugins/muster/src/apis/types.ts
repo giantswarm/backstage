@@ -543,7 +543,11 @@ export interface MusterApi {
   /** The muster installations the proxy can target. */
   listInstallations(): Promise<MusterInstallationsResponse>;
   listWorkflows(): Promise<WorkflowListResponse>;
-  getWorkflow(name: string): Promise<WorkflowGetResponse>;
+  /** Full definition + raw YAML for one workflow (one installation). */
+  getWorkflow(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowGetResponse>;
   listExecutions(
     options?: ListExecutionsOptions,
   ): Promise<WorkflowExecutionListResponse>;

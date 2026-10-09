@@ -29,6 +29,8 @@ function wireTasks(
     prompt?: number;
     completion?: number;
     tools?: string[];
+    /** Runtime-reported cost on the turn's usage bag (claude harness). */
+    costUsd?: number;
   } = {},
 ) {
   const {
@@ -36,6 +38,7 @@ function wireTasks(
     prompt = 100,
     completion = 10,
     tools = [],
+    costUsd,
   } = opts;
   return {
     error: false,
@@ -54,6 +57,7 @@ function wireTasks(
               kagent_usage_metadata: {
                 promptTokenCount: prompt,
                 candidatesTokenCount: completion,
+                ...(costUsd !== undefined && { costUsd }),
               },
             },
             parts: tools.map((name, i) => ({
@@ -116,6 +120,43 @@ describe('SessionUsageReader', () => {
     expect(result.evaluatedAt).toBe(NOW);
     expect(result.unreadable).toEqual([]);
     expect(result.skipped).toBe(0);
+  });
+
+  it('sums the runtime-reported cost, overall and per agent, only where reported', async () => {
+    // Session `a` runs on a runtime that reports its own cost (the claude
+    // harness does); `b`'s reports none. The totals carry the sum of what was
+    // reported; `b`'s agent carries no figure at all — "not reported" must
+    // stay distinct from "$0".
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('a', { agent_id: 'kagent__NS__claude_agent' }),
+        wireSession('b', { agent_id: 'kagent__NS__adk_agent' }),
+      ],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      id === 'a' ? wireTasks({ costUsd: 0.25 }) : wireTasks({}),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.totals.reportedCostUsd).toBeCloseTo(0.25);
+    const byId = new Map(result.byAgent.map(entry => [entry.agentId, entry]));
+    expect(byId.get('kagent__NS__claude_agent')?.reportedCostUsd).toBeCloseTo(
+      0.25,
+    );
+    expect(byId.get('kagent__NS__adk_agent')).not.toHaveProperty(
+      'reportedCostUsd',
+    );
+  });
+
+  it('carries no reported cost when no runtime reported one', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks({}));
+
+    const result = await reader().read('tok');
+
+    expect(result.totals).not.toHaveProperty('reportedCostUsd');
   });
 
   it('never reads tasks for an A2A subagent session', async () => {
