@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  Harness,
+  type ClaudeHarnessLimits,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -46,11 +50,42 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
-// The MCPServer CRs the toolset section groups by; nothing here is under test.
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useResources: () => ({ resources: [], isLoading: false, errors: [] }),
-}));
+// The MCPServer CRs the toolset section groups by list nothing; the Harnesses
+// are what `mockHarnessListing` returns, for the Limits the review shows.
+const mockHarnessListing = jest.fn((): unknown[] => []);
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
+  return {
+    ...actual,
+    useResources: (_installations: unknown, ResourceClass: unknown) => ({
+      resources: ResourceClass === actual.Harness ? mockHarnessListing() : [],
+      isLoading: false,
+      errors: [],
+    }),
+  };
+});
+
+/** A Harness of `kagent` on gazelle, as the namespace lists it. */
+function listedHarness(
+  name: string,
+  runtime: 'kagent' | 'claude',
+  limits?: ClaudeHarnessLimits,
+): Harness {
+  return new Harness(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Harness',
+      metadata: { name, namespace: 'kagent' },
+      spec: {
+        [runtime]: limits ? { limits } : {},
+        workload: { image: `registry.example/${name}-harness@sha256:0123` },
+      },
+    } as never,
+    'gazelle',
+  );
+}
 
 jest.mock('../../hooks/useAgentIconUrl', () => ({
   useAgentIconUrl: () => (installation: string, name: string) =>
@@ -317,6 +352,8 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockHarnessListing.mockReset();
+  mockHarnessListing.mockReturnValue([]);
 });
 
 describe('NewAgentReviewPage', () => {
@@ -404,6 +441,50 @@ describe('NewAgentReviewPage', () => {
     expect(
       screen.getByText(/Values validated against the chart's schema/),
     ).toHaveTextContent('1.0.0 (registry)');
+  });
+
+  it('shows the limits of the Claude Code Harness picked, as listed now', async () => {
+    mockHarnessListing.mockReturnValue([
+      listedHarness('kagent', 'kagent'),
+      listedHarness('claude', 'claude', { budgetUSD: '2', maxTurns: 40 }),
+    ]);
+    // Picked before an admin set the limits.
+    await renderReview({ harness: { name: 'claude', runtime: 'claude' } });
+
+    const limits = await screen.findByRole('group', { name: 'Limits' });
+    expect(limits).toHaveTextContent('Budget per turn$2');
+    expect(limits).toHaveTextContent('Max steps per turn40');
+    expect(limits).toHaveTextContent(
+      'Set on Harness claude, shared by every agent on it.',
+    );
+  });
+
+  it('shows the limits of a Claude Code platform Harness', async () => {
+    mockHarnessListing.mockReturnValue([
+      listedHarness('kagent', 'claude', { maxTurns: 25 }),
+    ]);
+    await renderReview();
+
+    const limits = await screen.findByRole('group', { name: 'Limits' });
+    expect(limits).toHaveTextContent('Max steps per turn25');
+    expect(limits).not.toHaveTextContent('Budget per turn');
+  });
+
+  it('says a Claude Code Harness sets no limits', async () => {
+    mockHarnessListing.mockReturnValue([listedHarness('kagent', 'claude')]);
+    await renderReview();
+
+    expect(
+      await screen.findByRole('group', { name: 'Limits' }),
+    ).toHaveTextContent('No limits set on Harness kagent.');
+  });
+
+  it('shows no limits for a declarative Harness', async () => {
+    mockHarnessListing.mockReturnValue([listedHarness('kagent', 'kagent')]);
+    await renderReview();
+
+    await screen.findByText('Runtime (Harness)');
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
   });
 
   it('validates and creates on the Harness picked, and names it in the review', async () => {

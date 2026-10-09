@@ -100,4 +100,31 @@ describe('ByAgentTable', () => {
 
     expect(screen.getByText('kagent recorded no agent.')).toBeInTheDocument();
   });
+
+  it('adds a Reported cost column when an agent reported one', () => {
+    render(
+      <ByAgentTable
+        rows={[{ ...ROWS[0], costUsd: 4.2 }, ROWS[1], ROWS[2]]}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(
+      screen.getByRole('columnheader', { name: /Reported cost/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: /Est. cost/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('$4.20')).toBeInTheDocument();
+    expect(screen.getAllByText('Not reported')).toHaveLength(2);
+  });
+
+  it('leaves the Reported cost column out when no agent reported one', () => {
+    render(<ByAgentTable rows={ROWS} emptyMessage="none" />);
+
+    expect(
+      screen.queryByRole('columnheader', { name: /Reported cost/ }),
+    ).toBeNull();
+    expect(screen.queryByText('Not reported')).toBeNull();
+  });
 });

@@ -5,6 +5,7 @@ import {
   AgentInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
+  Harness,
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
@@ -20,6 +21,7 @@ import {
   type DeclaredToolset,
   type ToolsetCarrier,
 } from '../../lib/toolset';
+import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -173,6 +175,10 @@ export type AgentRow = {
    * this; a table column wants the other.
    */
   modelName?: string;
+  /** `spec.harnessRef.name`; `undefined` for an inline Harness. */
+  harness?: string;
+  /** {@link harnessTitle} of that Harness, once it has been read. */
+  harnessTitle?: string;
   skillCount: number;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
@@ -272,17 +278,25 @@ function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
- * toolset read off the agent's own carrier; without them it does not.
+ * toolset read off the agent's own carrier; without them it does not. With
+ * `harnesses`, the installation's Harnesses, it carries its Harness's title.
  */
 export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
+  harnesses?: readonly Harness[],
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
   const name = agent.getName();
+  const harnessName = agent.getHarnessName();
+  const harness = harnesses?.find(
+    candidate =>
+      candidate.getNamespace() === namespace &&
+      candidate.getName() === harnessName,
+  );
   const modelConfig = resolveModelConfig(agent, modelConfigs);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
@@ -297,6 +311,8 @@ export function toAgentRow(
     description: agent.getDescription() ?? '',
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
+    harness: harnessName,
+    ...(harness && { harnessTitle: harnessTitle(harnessChoiceOf(harness)) }),
     skillCount: agent.getSkillCount(),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
@@ -376,6 +392,15 @@ export function sortAgentsBy(
       );
     }
 
+    if (column === 'harness') {
+      const harnessOf = (row: AgentRow) =>
+        `${row.harnessTitle ?? row.harness ?? ''}\u0000${row.harness ?? ''}`;
+      return (
+        harnessOf(a).localeCompare(harnessOf(b)) * factor ||
+        a.name.localeCompare(b.name)
+      );
+    }
+
     const aValue = String(a[column as keyof AgentRow] ?? '');
     const bValue = String(b[column as keyof AgentRow] ?? '');
     return (
@@ -386,7 +411,7 @@ export function sortAgentsBy(
 
 /**
  * Free-text search over what a reader looks an agent up by: its display and
- * technical name, what it is for, and the installation it runs on.
+ * technical name, what it is for, the installation it runs on and its Harness.
  */
 export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
   const needle = search.trim().toLowerCase();
@@ -394,8 +419,13 @@ export function agentSearchFn(rows: AgentRow[], search: string): AgentRow[] {
     return rows;
   }
   return rows.filter(row =>
-    [row.name, row.technicalName, row.description, row.installation].some(
-      field => field.toLowerCase().includes(needle),
-    ),
+    [
+      row.name,
+      row.technicalName,
+      row.description,
+      row.installation,
+      row.harness ?? '',
+      row.harnessTitle ?? '',
+    ].some(field => field.toLowerCase().includes(needle)),
   );
 }
