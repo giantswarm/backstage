@@ -10,4 +10,4 @@ Under the flag, the portal uses the Agent Platform look in light mode: Roboto, n
 
 Under the flag, the Agent Platform page shows no tab strip and a session's page no session switcher of its own: the rail navigates between them.
 
-Under the flag, the rail's Customize item opens `/customize`, an overview with a card per area (Agents, Models, Model hosting, MCP servers, Workflows) linking to its page and, where one exists, its create flow.
+Under the flag, the rail's Customize item opens `/customize`, a tabbed screen (`/customize/:tab`) with a tab per area — Agents, Skills, Connectors, Models and Workflows — each showing its count in the tab strip. Every tab has a search field, an Environment selector where the area is per-installation, an Organization filter on Agents and Models, and a create action where one exists (New agent, Add connector, Add model). The Skills tab hides when no skill repositories are configured, and `/customize` opens the first tab.

@@ -554,7 +554,7 @@ templates; the `agent-deployment` template no longer exists in
 ## The installation scope
 
 The six tabs of the section — Sessions, Agents, Models, the muster plugin's
-MCP Servers and Workflows, and Usage — share **one installation scope**: `'all'` (the default) or
+Connectors (MCP servers) and Workflows, and Usage — share **one installation scope**: `'all'` (the default) or
 one pinned installation. It lives in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) as a module store read through
 `useSyncExternalStore`, not as a React context: the muster section is a
@@ -567,7 +567,7 @@ a context could not cross the boundary. The store is the contract.
   the muster picker always used, so a choice made before the section shared a
   scope is honoured. A stored value naming the _home_ installation reads as
   `'all'`: the old picker wrote its default there for everyone who ever opened
-  the MCP Servers tab, and honouring it would have pinned every existing person
+  the Connectors tab (MCP Servers at the time), and honouring it would have pinned every existing person
   to one installation on their first visit. `useInstallationScopeUrlSync`,
   mounted once by the selector, reconciles drift between URL and store (a tab
   link without a query string keeps the pin; the back button to a URL with the
@@ -606,7 +606,7 @@ a context could not cross the boundary. The store is the contract.
   rows first in the flat lists.
 - **Pinning** narrows every tab (`applyInstallationScope` over the inventory's
   installations in each provider, `ServingProvider` included). Under `'all'`
-  the MCP Servers and Workflows tabs show the home muster — one muster is one
+  the Connectors and Workflows tabs show the home muster — one muster is one
   aggregator —
   and under a pinned installation that muster; `MusterInstanceProvider` reads
   the scope instead of owning `?installation=`, its picker pins the shared
@@ -2529,7 +2529,7 @@ Installation is dropped when the list comes from one installation — the pinned
 or the only one that answered once loading settles — and Namespace while every row
 shares one namespace. A search field above the table matches the name, the
 description and the installation. A pinned installation without kagent gets a card
-linking to the Installations page instead of an empty table, and "New agent" is
+linking to the Environments (installations) page instead of an empty table, and "New agent" is
 disabled there.
 
 ### Readiness
@@ -2660,7 +2660,7 @@ durable view of the same verdict.
   to the gs deployment details page, where the release's Flux status already
   lives), and the agent's tool bindings: each same-namespace `RemoteMCPServer` with
   its allowlist (`tools`) and whether calls need approval (`requireApproval`), the
-  gateway carrier linking to muster's MCP Servers tab, and each sub-agent
+  gateway carrier linking to muster's Connectors tab, and each sub-agent
   (`subAgent.templateRef`, a same-namespace `AgentTemplate` compiled into the
   agent's own runtime).
 - **System prompt** — `spec.systemPrompt`, copyable. An unset value says so
@@ -3355,7 +3355,7 @@ the view. The gateway views take theirs from `WINDOW` / `WINDOW_DAYS` in
 `llmUsageQueries.ts` — the queries and the copy read the same constant, so
 those cannot drift apart either.
 
-### Your top MCP servers is prefix-derived
+### Your top connectors is prefix-derived
 
 muster names an aggregated tool `x_{family|toolPrefix|name}_{tool}`
 (`MCPServer.getToolNamePrefix`), so the segment after `x_` is the server. That is
@@ -3377,7 +3377,7 @@ router the contributed _array_ rather than a fragment, because it has to know
 whether anything was contributed at all in order to leave the tab out. Neither
 plugin
 depends on the other, which is the same mechanism muster already uses to put its
-"MCP Servers" and "Workflows" tabs on `page:agent-platform`, one level deeper.
+"Connectors" and "Workflows" tabs on `page:agent-platform`, one level deeper.
 
 The page orders its tabs itself, by `AGENT_PLATFORM_TAB_ORDER`
 (`lib/tabOrder.ts`): attach order cannot interleave two plugins' tabs, and an
