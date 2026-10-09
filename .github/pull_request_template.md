@@ -1,23 +1,47 @@
-### What does this PR do?
+### Rationale
 
-(Please set a descriptive PR title. Use this space for additional explanations.)
+(Explain here why this pull request was made.)
 
-### What is the effect of this change to users?
+### Changes
 
-(Remove this section if no end-user facing change)
+(Use this space for a full description of the changes.
+Make sure to include what reviewers need)
 
-### How does it look like?
+### Effect to end users
 
-(Please add anything that represents the change visually. Screenshots, output, logs, ... Remove if not applicable.)
+<!-- START end-user-summary -->
 
-### Any background context you can provide?
+(Place a short summary -- ideally one sentence -- here targeting end-users of the application.
+Avoid technical language, instead use terms from the user interface.
 
-(Please link issues or summarize. Remove if not applicable.)
+Remove this section in case the PR has no changes affecting the end-user's experience.
 
-### Do the docs need to be updated?
+To allow extracting this part into release notes automatically,
+please leave the HTML comments above and below intact!)
 
-(Yes/No is sufficient. If Yes, please do this in the same PR if possible.)
+<!-- END end-user-summary -->
 
-### Should this change be mentioned in the release notes?
+### Preview
 
-- [ ] A changeset describing the change and affected packages was added. ([more info](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md))
+(Please add anything that represents the change visually.
+Screenshots, output, logs, ...
+
+Remove this section if not applicable.)
+
+### Background and context
+
+(Please reference issues, other PRs, or summarize.
+
+Remove this section if not applicable.)
+
+### Ask to reviewers
+
+(Use this section to point reviewers to certain aspects,
+e. g. feedback needed or uncertain decisions.
+
+Remove this section if not applicable.)
+
+### Checklist
+
+- In-repo documentation was updated (if applicable)
+- Changesets were created
