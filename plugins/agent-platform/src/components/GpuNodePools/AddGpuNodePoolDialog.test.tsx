@@ -702,7 +702,6 @@ describe('AddGpuNodePoolDialog', () => {
         'inst-1',
       ),
     );
-    // cluster-manager answers the pull request in `commit`, not agent-manager's `pullRequestUrl`.
     expect(
       await screen.findByRole('link', { name: /Open the pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/3');

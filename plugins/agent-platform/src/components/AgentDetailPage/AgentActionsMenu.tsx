@@ -8,6 +8,7 @@ import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { AgentManagerPresence } from '../../hooks/useAgentManager';
+import type { WriteMode } from '../../lib/agentManager';
 import { AgentManifestDialog } from './AgentManifestDialog';
 
 /**
@@ -27,9 +28,8 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  * a pull request as the person in the repository that owns a release. Only a
  * release applied from git has such a repository, so it is what makes Delete
  * available for a GitOps-owned agent — through a pull request instead of a
- * live write. Edit and Update skills stay withheld: the edit form's dry run
- * (`validate_agent`) refuses such an agent, and Update skills has no commit
- * mode.
+ * live write; the Edit agent page dry-runs and commits such an agent the same
+ * way. Update skills has no commit mode.
  *
  * `isVerdictPending` is either read still being in flight, which is not the
  * same thing: offering the actions then would show them to everyone for a
@@ -46,9 +46,10 @@ export type AgentManagerGate = {
 
 /**
  * How a write to an agent is offered: live, as a pull request in the GitOps
- * repository that owns it, or not at all. Only Delete supports `commit` so far.
+ * repository that owns it, or not at all. Delete and the Edit agent page
+ * support `commit`.
  */
-export type AgentWriteMode = 'apply' | 'commit' | undefined;
+export type AgentWriteMode = WriteMode | undefined;
 
 export function agentWriteMode(gate: AgentManagerGate): AgentWriteMode {
   if (

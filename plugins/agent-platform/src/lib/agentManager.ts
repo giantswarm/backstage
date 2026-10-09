@@ -201,16 +201,49 @@ export type CreateAgentResult = {
 };
 
 /**
- * `create_agent` with `mode: commit` (giantswarm/agent-manager#24): the
- * manifests land as a pull request in the owning GitOps repository, or the
- * person has to connect the repository first. Named here so the button and its
- * result handling exist; the flag that turns them on is agent-manager's.
+ * How agent-manager writes: `apply` live as the person, `commit` as a pull
+ * request in the GitOps repository that owns the release.
+ */
+export type WriteMode = 'apply' | 'commit';
+
+/** One file of a commit: its content shown on a dry run only. */
+export type CommitFile = {
+  path: string;
+  action: string;
+  content?: string;
+};
+
+/**
+ * A write in mode `commit` (giantswarm/agent-manager#24): the repository that
+ * owns the release, the directory and files, and — not on a dry run, and not
+ * when the repository already says so — the pull request opened as the person;
+ * `liveSteps` are what the merge alone does not do. agent-manager,
+ * cluster-manager and model-manager answer it in the same shape.
+ */
+export type GitOpsCommit = {
+  repository: string;
+  base: string;
+  directory: string;
+  /** The Flux Kustomization that lands the files; empty for a named target. */
+  kustomization?: string;
+  prune: boolean;
+  branch: string;
+  files: CommitFile[];
+  pullRequest?: string;
+  number?: number;
+  author?: string;
+  liveSteps?: string[];
+};
+
+/**
+ * What a write in mode `commit` answers: `commit`, the pull request. Without
+ * the person's GitHub authorization the write is refused with `auth_required`
+ * instead (an `AgentManagerError`), never answered here.
  */
 export type CommitAgentResult = {
-  pullRequestUrl?: string;
-  status?: 'auth_required' | string;
-  authUrl?: string;
-  message?: string;
+  mode?: string;
+  dryRun?: boolean;
+  commit?: GitOpsCommit;
 };
 
 /**
@@ -260,14 +293,18 @@ export function hasReachedWrittenRevision(
 /**
  * agent-manager's error codes, as its MCP tools prefix them
  * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a GitOps-owned or
- * suspended release, `invalid_request` a schema violation or an unpinnable
- * skill, `unsupported` an operation this installation does not offer.
+ * (a viewer's Deploy), `conflict` an existing name or a suspended release,
+ * `gitops_owned` a live write to a release applied from git,
+ * `auth_required` a write in mode `commit` without the person's GitHub
+ * authorization, `invalid_request` a schema violation or an unpinnable skill,
+ * `unsupported` an operation this installation does not offer.
  */
 export type AgentManagerErrorCode =
   | 'not_found'
   | 'invalid_request'
   | 'conflict'
+  | 'gitops_owned'
+  | 'auth_required'
   | 'forbidden'
   | 'unauthenticated'
   | 'unsupported'
@@ -278,6 +315,8 @@ const ERROR_CODES: readonly AgentManagerErrorCode[] = [
   'not_found',
   'invalid_request',
   'conflict',
+  'gitops_owned',
+  'auth_required',
   'forbidden',
   'unauthenticated',
   'unsupported',

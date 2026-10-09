@@ -15,6 +15,7 @@ import type {
   AgentSkillEntry,
   AgentUpdate,
 } from '../../lib/agentManager';
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
 
@@ -149,6 +150,14 @@ type Scenario = {
   updateError?: Error;
 };
 
+const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/42';
+
+const GITOPS_AGENT: AgentManagerAgent = {
+  ...AGENT,
+  managed: 'gitops',
+  helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
+};
+
 function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? AGENT;
   const callTool = jest.fn(
@@ -204,6 +213,9 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.updateError) {
             throw scenario.updateError;
           }
+          if (args.mode === 'commit') {
+            return committedTo(PULL_REQUEST);
+          }
           return {
             agent,
             before: agent.values,
@@ -256,6 +268,15 @@ async function renderPage(scenario: Scenario = {}) {
 /** The Save button of the footer card (the header's twin). */
 function saveButton() {
   return screen.getByRole('button', { name: /^Save/ });
+}
+
+/** The Commit button of the footer card, for an agent applied from git. */
+function commitButton() {
+  return screen.getByRole('button', { name: /^Commit/ });
+}
+
+function callsOf(callTool: jest.Mock, tool: string) {
+  return callTool.mock.calls.filter(([name]) => name === tool);
 }
 
 beforeEach(() => {
@@ -455,17 +476,11 @@ describe('EditAgentPage', () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it('never offers the form for an agent applied from git', async () => {
-    // agent-manager refuses every write to it, so the page says so instead of
-    // pre-filling a form whose Save can only be refused. The detail page
-    // withholds Edit for the same agent; this is the deep link's answer.
-    await renderPage({
-      agent: {
-        ...AGENT,
-        managed: 'gitops',
-        helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
-      },
-    });
+  it('never offers the form for an agent applied from git without the commit capability', async () => {
+    // agent-manager refuses every live write to it and cannot open a pull
+    // request here, so the page says so instead of pre-filling a form whose
+    // write can only be refused.
+    await renderPage({ agent: GITOPS_AGENT });
 
     expect(
       await screen.findByText(/This agent is applied from git/),
@@ -510,9 +525,9 @@ describe('EditAgentPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('offers no Commit, even when agent-manager reports the capability', async () => {
-    // A pull request goes to the GitOps repository that owns the release, and
-    // the form is only offered for an agent written live, which has none.
+  it('keeps only Save for an agent written live, even when agent-manager reports the capability', async () => {
+    // A pull request goes to the GitOps repository that owns the release; an
+    // agent written live has none.
     await renderPage({ info: { capabilities: { commit: true } } });
     await screen.findByDisplayValue('PR reviewer');
 
@@ -520,6 +535,103 @@ describe('EditAgentPage', () => {
     expect(
       screen.queryByRole('button', { name: /Commit/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('dry-runs an agent applied from git in mode commit and commits it as one pull request', async () => {
+    const { callTool } = await renderPage({
+      agent: GITOPS_AGENT,
+      info: { capabilities: { commit: true } },
+    });
+    const description = await screen.findByDisplayValue(
+      'Reviews pull requests.',
+    );
+    expect(
+      screen.queryByRole('button', { name: /^Save/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/This agent is applied from git/)).toBeVisible();
+
+    await userEvent.clear(description);
+    await userEvent.type(description, 'Reviews Go pull requests.');
+
+    // The review is agent-manager's dry run in the write's mode: the composed
+    // values, as for a live edit.
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('code-pr-reviewer-values.yaml'),
+      ).toHaveTextContent('description: Reviews Go pull requests.');
+    });
+    expect(
+      callsOf(callTool, 'x_agent-manager_validate_agent').at(-1)?.[1],
+    ).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      description: 'Reviews Go pull requests.',
+      update: true,
+      mode: 'commit',
+    });
+
+    await waitFor(() => expect(commitButton()).toBeEnabled());
+    await userEvent.click(commitButton());
+
+    expect(
+      await screen.findByRole('link', { name: /Open the pull request/ }),
+    ).toHaveAttribute('href', PULL_REQUEST);
+    expect(screen.getByText(/Pull request #42 opened as jane/)).toBeVisible();
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([
+      [
+        'x_agent-manager_update_agent',
+        {
+          namespace: 'kagent',
+          name: 'pr-reviewer',
+          description: 'Reviews Go pull requests.',
+          mode: 'commit',
+        },
+        'gazelle',
+      ],
+    ]);
+    // Commit is locked for this change: a second click opens no second pull
+    // request. Nothing changed live, so the page stays where it is.
+    expect(commitButton()).toHaveTextContent('Committed');
+    expect(commitButton()).toBeDisabled();
+    await userEvent.click(commitButton());
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toHaveLength(1);
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("shows the commit dry run's violations and keeps Commit locked", async () => {
+    await renderPage({
+      agent: GITOPS_AGENT,
+      info: { capabilities: { commit: true } },
+      violations: ['agent.displayName: String length must be at most 63'],
+    });
+    const name = await screen.findByDisplayValue('PR reviewer');
+    await userEvent.type(name, ' with a longer name');
+
+    expect(
+      await screen.findByText(/String length must be at most 63/),
+    ).toBeInTheDocument();
+    expect(commitButton()).toBeDisabled();
+  });
+
+  it('asks for the GitHub authorization a commit is refused without', async () => {
+    await renderPage({
+      agent: GITOPS_AGENT,
+      info: { capabilities: { commit: true } },
+      updateError: new Error(
+        'auth_required: commit mode needs your GitHub authorization: sign in to agent-manager through muster',
+      ),
+    });
+    const description = await screen.findByDisplayValue(
+      'Reviews pull requests.',
+    );
+    await userEvent.type(description, ' Again.');
+    await waitFor(() => expect(commitButton()).toBeEnabled());
+    await userEvent.click(commitButton());
+
+    expect(
+      await screen.findByText('Authorize GitHub first'),
+    ).toBeInTheDocument();
+    expect(commitButton()).toBeEnabled();
   });
 
   it('says why nothing can be edited when muster lists no agent-manager', async () => {

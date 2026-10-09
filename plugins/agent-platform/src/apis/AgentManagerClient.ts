@@ -11,6 +11,7 @@ import {
   type AgentSpec,
   type AgentStatus,
   type AgentUpdate,
+  type WriteMode,
   type CommitAgentResult,
   type CreateAgentResult,
   type DeleteAgentResult,
@@ -122,12 +123,18 @@ export class AgentManagerClient {
   /**
    * The dry run of an update: the values and manifests agent-manager would
    * write for `update` — with `refreshSkills`, every git skill re-pinned to its
-   * default-branch head — and every violation. Nothing is written.
+   * default-branch head — and every violation. Nothing is written. `commit`
+   * answers as `commitUpdateAgent` would: an agent applied from git is
+   * validated rather than refused with `gitops_owned`.
    */
-  validateUpdate(update: AgentUpdate): Promise<ValidateAgentResult> {
+  validateUpdate(
+    update: AgentUpdate,
+    mode: WriteMode = 'apply',
+  ): Promise<ValidateAgentResult> {
     return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
       ...update,
       update: true,
+      ...(mode === 'commit' ? { mode } : {}),
     });
   }
 

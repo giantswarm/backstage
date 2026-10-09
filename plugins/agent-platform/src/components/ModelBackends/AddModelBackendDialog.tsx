@@ -208,7 +208,7 @@ export function AddModelBackendDialog({
 
   const notConnected = write.failure?.kind === 'not-connected';
   const isBusy = write.isBusy;
-  const done = Boolean(applied || committed?.pullRequestUrl);
+  const done = Boolean(applied || committed?.commit?.pullRequest);
 
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
