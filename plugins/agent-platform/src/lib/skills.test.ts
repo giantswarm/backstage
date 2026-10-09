@@ -1,4 +1,8 @@
-import { canonicalRepoUrl, canonicalSkillId } from './skills';
+import {
+  canonicalRepoUrl,
+  canonicalSkillId,
+  normalizedRepoUrl,
+} from './skills';
 
 describe('canonicalRepoUrl', () => {
   it.each([
@@ -71,5 +75,13 @@ describe('canonicalSkillId', () => {
         path: '',
       }),
     ).toBe('https://github.com/giantswarm/skills#');
+  });
+});
+
+describe('normalizedRepoUrl', () => {
+  it('keeps the case a repository is written in', () => {
+    expect(normalizedRepoUrl('git@GitHub.com:GiantSwarm/Skills.git')).toBe(
+      'https://github.com/GiantSwarm/Skills',
+    );
   });
 });

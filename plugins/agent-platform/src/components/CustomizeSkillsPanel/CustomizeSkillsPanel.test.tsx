@@ -134,7 +134,7 @@ describe('CustomizeSkillsPanel', () => {
     await renderInTestApp(<CustomizeSkillsPanel search="" />);
 
     expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
-    expect(screen.getByText('giantswarm/skills')).toBeInTheDocument();
+    expect(screen.getByText('GiantSwarm/skills')).toBeInTheDocument();
   });
 
   it('says when no repository is configured', async () => {

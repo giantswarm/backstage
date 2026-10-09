@@ -7,8 +7,8 @@ import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { SERVED_MODEL_READINESS } from './serving';
 import {
-  canonicalRepoUrl,
   canonicalSkillId,
+  normalizedRepoUrl,
   type DiscoveredSkill,
   repoSlug,
 } from './skills';
@@ -181,9 +181,9 @@ export function searchSkills(
     : skills;
 }
 
-/** Where a skill comes from, as `owner/repo`. */
+/** Where a skill comes from, as `owner/repo` in the case it is written in. */
 export function skillSource(skill: Pick<DiscoveredSkill, 'repoUrl'>): string {
-  return repoSlug(canonicalRepoUrl(skill.repoUrl));
+  return repoSlug(normalizedRepoUrl(skill.repoUrl));
 }
 
 /** One entry per skill, however many ways its repository is written. */

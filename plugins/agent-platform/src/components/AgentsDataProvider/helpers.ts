@@ -178,8 +178,8 @@ export type AgentRow = {
   /**
    * The git-sourced skills the agent mounts, each as its
    * {@link canonicalSkillId} (`<repo URL>#<path>`), so a discovered skill can
-   * be matched to the agents using it whatever form either URL is written in. OCI and bucket skills have no catalog identity and
-   * are left out.
+   * be matched to the agents using it whatever form either URL is written
+   * in. OCI and bucket skills have no catalog identity and are left out.
    */
   skillIds?: string[];
   /**

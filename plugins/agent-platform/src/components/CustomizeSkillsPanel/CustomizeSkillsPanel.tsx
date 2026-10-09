@@ -13,7 +13,7 @@ import {
   uniqueSkills,
   usedByLabel,
 } from '../../lib/customize';
-import { canonicalSkillId, repoSlug } from '../../lib/skills';
+import { canonicalRepoUrl, canonicalSkillId, repoSlug } from '../../lib/skills';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
@@ -34,7 +34,8 @@ export function skillsTotalLine(
   if (unique.length === 0) {
     return undefined;
   }
-  const sources = new Set(unique.map(skillSource)).size;
+  const sources = new Set(unique.map(skill => canonicalRepoUrl(skill.repoUrl)))
+    .size;
   return `${plural(unique.length, 'skill')} from ${plural(
     sources,
     'source',

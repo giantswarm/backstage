@@ -28,13 +28,13 @@ export function skillId(
 }
 
 /**
- * One form of a skill repository's URL, whatever form an agent or the
- * configuration wrote it in: `https://`, the host lowercased, no `.git`
- * suffix, no trailing slash, an scp-like `git@host:owner/repo` and a
- * `git+`/`ssh://` prefix read as the same repository. github.com paths are
- * lowercased too, since GitHub matches them without regard to case.
+ * A skill repository's URL in one shape, whatever shape an agent or the
+ * configuration wrote it in, keeping the case it was written in: `https://`,
+ * the host lowercased, no credentials, no `.git` suffix, no trailing slash,
+ * and an scp-like `git@host:owner/repo` or a `git+`/`ssh://` prefix read as
+ * the same repository.
  */
-export function canonicalRepoUrl(repoUrl: string): string {
+export function normalizedRepoUrl(repoUrl: string): string {
   let url = repoUrl.trim().replace(/^git\+/, '');
   const scpLike = url.match(/^[\w.-]+@([^:/]+):(.+)$/);
   if (scpLike) {
@@ -46,12 +46,16 @@ export function canonicalRepoUrl(repoUrl: string): string {
     .replace(/\/+$/, '')
     .replace(/\.git$/, '');
   const parts = url.match(/^https:\/\/([^/]+)(\/.*)?$/);
-  if (!parts) {
-    return url;
-  }
-  const host = parts[1].toLowerCase();
-  const path = parts[2] ?? '';
-  return `https://${host}${host === 'github.com' ? path.toLowerCase() : path}`;
+  return parts ? `https://${parts[1].toLowerCase()}${parts[2] ?? ''}` : url;
+}
+
+/**
+ * {@link normalizedRepoUrl} for comparing repositories: github.com paths are
+ * lowercased too, since GitHub matches them without regard to case.
+ */
+export function canonicalRepoUrl(repoUrl: string): string {
+  const url = normalizedRepoUrl(repoUrl);
+  return url.startsWith('https://github.com/') ? url.toLowerCase() : url;
 }
 
 /**
