@@ -10,7 +10,11 @@ import {
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { useCreateSession, type SessionEntryPoint } from './useCreateSession';
+import {
+  useCreateSession,
+  type SessionEntryPoint,
+  type UseCreateSessionOptions,
+} from './useCreateSession';
 
 const createSession = jest.fn();
 
@@ -31,7 +35,10 @@ const agent: AgentRow = {
 
 const analyticsApi = mockApis.analytics.mock();
 
-function renderWith(entryPoint: SessionEntryPoint = 'agentDetail') {
+function renderWith(
+  entryPoint: SessionEntryPoint = 'agentDetail',
+  options?: UseCreateSessionOptions,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -49,7 +56,7 @@ function renderWith(entryPoint: SessionEntryPoint = 'agentDetail') {
   );
 
   return {
-    ...renderHook(() => useCreateSession(entryPoint), { wrapper }),
+    ...renderHook(() => useCreateSession(entryPoint, options), { wrapper }),
     invalidateQueries,
   };
 }
@@ -90,6 +97,22 @@ describe('useCreateSession', () => {
       'Why is the ingress failing?',
       // One idempotency key per submission, so a retried create is the same create.
       expect.stringMatching(/^[0-9a-f-]{36}$/),
+    );
+  });
+
+  it('titles the session with up to titleMaxLength characters of the prompt', async () => {
+    const prompt = `Investigate ${'the restarting ingress controller '.repeat(3)}`;
+    const { result } = renderWith('home', { titleMaxLength: 199 });
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt });
+    });
+
+    expect(createSession).toHaveBeenCalledWith(
+      'gazelle',
+      { namespace: 'kagent', name: 'sre-agent' },
+      prompt.trim(),
+      expect.any(String),
     );
   });
 

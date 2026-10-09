@@ -6,10 +6,11 @@
 export const DERIVED_TITLE_MAX_LENGTH = 60;
 
 /**
- * Below this, cutting back to a word boundary throws away too much to be worth
- * it — better a title that ends mid-word than one reduced to two words.
+ * Share of the clip below which cutting back to a word boundary throws away too
+ * much to be worth it — better a title that ends mid-word than one reduced to
+ * two words.
  */
-const MIN_WORD_BOUNDARY_LENGTH = Math.floor(DERIVED_TITLE_MAX_LENGTH * 0.6);
+const MIN_WORD_BOUNDARY_SHARE = 0.6;
 
 /**
  * A session title, derived from the prompt that starts it.
@@ -27,18 +28,24 @@ const MIN_WORD_BOUNDARY_LENGTH = Math.floor(DERIVED_TITLE_MAX_LENGTH * 0.6);
  *
  * Newlines and runs of whitespace collapse to single spaces: the prompt may be
  * several paragraphs, and a title is one line.
+ *
+ * `maxLength` is the longest prefix kept before the ellipsis, so a clipped title
+ * is at most `maxLength + 1` characters.
  */
-export function deriveSessionTitle(prompt: string): string {
+export function deriveSessionTitle(
+  prompt: string,
+  maxLength: number = DERIVED_TITLE_MAX_LENGTH,
+): string {
   const collapsed = prompt.replace(/\s+/g, ' ').trim();
 
-  if (collapsed.length <= DERIVED_TITLE_MAX_LENGTH) {
+  if (collapsed.length <= maxLength) {
     return collapsed;
   }
 
-  const clipped = collapsed.slice(0, DERIVED_TITLE_MAX_LENGTH);
+  const clipped = collapsed.slice(0, maxLength);
   const lastSpace = clipped.lastIndexOf(' ');
   const cut =
-    lastSpace >= MIN_WORD_BOUNDARY_LENGTH
+    lastSpace >= Math.floor(maxLength * MIN_WORD_BOUNDARY_SHARE)
       ? clipped.slice(0, lastSpace)
       : clipped;
 
