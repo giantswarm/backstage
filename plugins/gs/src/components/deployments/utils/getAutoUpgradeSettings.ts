@@ -141,30 +141,93 @@ function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
   return /\d-[0-9A-Za-z]/.test(ref.semver);
 }
 
-const rangeOperators: Partial<Record<AutoUpgradeMode, string>> = {
-  'patch-upgrades': '~',
-  'minor-upgrades': '^',
-  'major-upgrades': '>=',
-};
+/**
+ * The range the edit template writes for a fixed mode from the chart version:
+ * `~` for patch, `^` for minor and patch (`>=… <1.0.0` for a 0.x version,
+ * where `^` admits patches only) and `>=` for any upgrade, with a `-0` floor
+ * when pre-releases are included.
+ */
+function templateRange(
+  mode: AutoUpgradeMode,
+  version: Version,
+  includePrereleases: boolean,
+): string | undefined {
+  const tag = version.toOriginalString();
+  const floor = includePrereleases && !tag.includes('-') ? `${tag}-0` : tag;
+  switch (mode) {
+    case 'patch-upgrades':
+      return `~${floor}`;
+    case 'minor-upgrades':
+      return version.major === 0 ? `>=${floor} <1.0.0` : `^${floor}`;
+    case 'major-upgrades':
+      return `>=${floor}`;
+    default:
+      return undefined;
+  }
+}
 
 /**
- * The semver range, when the edit template's fixed modes cannot write it back.
- * They write the mode's operator (`~`, `^` or `>=`) followed by the chart
- * version, with a `-0` floor when pre-releases are included: for a single
- * comparator with that operator the floor moves to the current version, which
- * leaves the upgrades Flux performs unchanged. Any other range, such as one
- * with an upper bound (`>=1.0.0 <3.0.0`), goes to the template's custom range
+ * Whether a range admits, from `base` upward, exactly the upgrades of `mode`:
+ * every version up to the mode's bound (the next minor, the next major, or
+ * none) and nothing at or above it. Only a range without `||` or `!=` is
+ * read, as it admits one interval; the version just below the bound tells
+ * whether the interval reaches it.
+ */
+function admitsExactlyMode(
+  range: Constraints,
+  base: Version,
+  mode: AutoUpgradeMode,
+): boolean {
+  if (/\|\||!=/.test(range.toString())) return false;
+  if (
+    deriveAutoUpgradeMode({ semver: range.toString() }, base.toString()) !==
+    mode
+  ) {
+    return false;
+  }
+
+  const max = Number.MAX_SAFE_INTEGER;
+  const { major, minor } = base;
+  const belowBound: Partial<Record<AutoUpgradeMode, string>> = {
+    'patch-upgrades': `${major}.${minor}.${max}`,
+    'minor-upgrades': `${major}.${max}.${max}`,
+    'major-upgrades': `${max}.${max}.${max}`,
+  };
+  const probe = belowBound[mode];
+  return Boolean(probe && range.check(Version.parse(probe)));
+}
+
+/**
+ * The semver range, when the edit template's fixed modes cannot write it back:
+ * unless both the range and the template's range for its mode admit exactly
+ * that mode's upgrades from the current version. Then the floor moves to the
+ * current version, which leaves the upgrades Flux performs unchanged, so
+ * `>=5.12.0 <6.0.0`, `^5.12.0`, `>=0.2.0 <1.0.0` and `^0.7.1` (patches only)
+ * read as a fixed mode. Any other range, such as one with an upper bound
+ * inside the mode (`>=1.0.0 <3.0.0`), goes to the template's custom range
  * mode verbatim.
  */
 function deriveCustomRange(
   ref: OciRepositoryRef | undefined,
   mode: AutoUpgradeMode,
+  includePrereleases: boolean,
+  currentVersion?: string,
 ): string | undefined {
   if (ref?.digest || !ref?.semver) return undefined;
 
   const range = ref.semver.trim();
-  const operator = /^(~|\^|>=)\s*v?\d[^\s,|<>=~^]*$/.exec(range)?.[1];
-  return operator && operator === rangeOperators[mode] ? undefined : range;
+  const constraints = Constraints.tryParse(range);
+  const base = constraints ? rangeBase(constraints, currentVersion) : null;
+  const written = base && templateRange(mode, base, includePrereleases);
+  const writtenConstraints = written ? Constraints.tryParse(written) : null;
+
+  const isFixedMode =
+    constraints &&
+    base &&
+    writtenConstraints &&
+    admitsExactlyMode(constraints, base, mode) &&
+    admitsExactlyMode(writtenConstraints, base, mode);
+  return isFixedMode ? undefined : range;
 }
 
 export type AutoUpgradeSettings = {
@@ -187,11 +250,17 @@ export function deriveAutoUpgradeSettings(
   currentVersion?: string,
 ): AutoUpgradeSettings {
   const mode = deriveAutoUpgradeMode(ref, currentVersion);
+  const includePrereleases = rangeIncludesPrereleases(ref);
   return {
     mode,
     semverFilter: deriveSemverFilter(ref),
-    includePrereleases: rangeIncludesPrereleases(ref),
-    semverRange: deriveCustomRange(ref, mode),
+    includePrereleases,
+    semverRange: deriveCustomRange(
+      ref,
+      mode,
+      includePrereleases,
+      currentVersion,
+    ),
   };
 }
 
