@@ -1,7 +1,9 @@
 import {
   FormEvent,
   KeyboardEvent,
+  ReactNode,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -87,15 +89,50 @@ export function modelWarningFor(
   return serving && isServingFailure(serving.readiness) ? serving : undefined;
 }
 
+/** What {@link NewSessionComposerProps.renderFooter} receives. */
+export type NewSessionComposerFooterContext = {
+  selectedAgent?: AgentRow;
+  /** Selects a startable agent, as picking it in the picker would. */
+  selectAgent: (agent: AgentRow) => void;
+};
+
+/** Prefix of the option ids in the Recent group, which repeat agents listed below it. */
+const RECENT_OPTION_PREFIX = 'recent:';
+
 export type NewSessionComposerProps = {
   /**
-   * Agents to offer, in display order. Non-ready ones are filtered out here rather
-   * than shown disabled: a picker is for choosing, and an entry that cannot be
-   * chosen is noise in it. Readiness and its reason live on the Agents tab and on
-   * each agent's own page, which is where someone goes to find out why an agent is
-   * unavailable.
+   * Agents to offer, in display order. Non-ready ones are filtered out unless
+   * {@link NewSessionComposerProps.showUnavailable} is set.
    */
   agents: AgentRow[];
+  /**
+   * Lists non-ready agents too, as disabled options whose description is the
+   * reason (`readinessMessage`). They are never selected.
+   */
+  showUnavailable?: boolean;
+  /**
+   * Groups the options by namespace, headed by the namespace, instead of by
+   * installation.
+   */
+  groupByNamespace?: boolean;
+  /**
+   * Agent ids listed first, in this order, under a "Recent" heading, while the
+   * search box is empty. Only read with `groupByNamespace`; ids not on offer
+   * are skipped.
+   */
+  recentAgentIds?: string[];
+  /** Gives the picker a search box whatever the number of agents. */
+  searchable?: boolean;
+  /** The prompt the field starts with. */
+  initialPrompt?: string;
+  /** The field's placeholder for the selected agent, or for none. */
+  promptPlaceholder?: (agent: AgentRow | undefined) => string;
+  /** Rendered beside the agent picker. */
+  renderPickerAccessory?: (agent: AgentRow | undefined) => ReactNode;
+  /** Rendered under the composer. */
+  renderFooter?: (context: NewSessionComposerFooterContext) => ReactNode;
+  /** Called with the selected agent whenever it changes. */
+  onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
   /**
@@ -143,19 +180,29 @@ export function agentOptionLabel(
     : agent.name;
 }
 
-/** What to say about an agent under its name in the picker. */
-function describeAgent(agent: AgentRow): string | undefined {
-  if (!agent.description) {
-    return undefined;
-  }
-
-  // One line, bounded: a description is free text and a couple on an internal
-  // installation run to several sentences, which would push the other options
-  // off the screen.
-  const collapsed = agent.description.replace(/\s+/g, ' ').trim();
+/**
+ * One line, bounded: a description is free text and a couple on an internal
+ * installation run to several sentences, which would push the other options
+ * off the screen.
+ */
+function oneShortLine(text: string): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim();
   return collapsed.length > DESCRIPTION_MAX_LENGTH
     ? `${collapsed.slice(0, DESCRIPTION_MAX_LENGTH).trimEnd()}…`
     : collapsed;
+}
+
+/**
+ * What to say about an agent under its name in the picker: for one that cannot
+ * be started, why not.
+ */
+function describeAgent(agent: AgentRow): string | undefined {
+  if (!isStartableAgent(agent)) {
+    return agent.readinessMessage
+      ? `Unavailable: ${oneShortLine(agent.readinessMessage)}`
+      : 'Unavailable right now';
+  }
+  return agent.description ? oneShortLine(agent.description) : undefined;
 }
 
 /**
@@ -181,6 +228,15 @@ function describeAgent(agent: AgentRow): string | undefined {
  */
 export function NewSessionComposer({
   agents,
+  showUnavailable = false,
+  groupByNamespace = false,
+  recentAgentIds,
+  searchable,
+  initialPrompt,
+  promptPlaceholder,
+  renderPickerAccessory,
+  renderFooter,
+  onSelectedAgentChange,
   isLoadingAgents = false,
   defaultAgent,
   collapsible = false,
@@ -191,13 +247,17 @@ export function NewSessionComposer({
 }: NewSessionComposerProps) {
   const classes = useStyles();
   const buildAvatarUrl = useAgentAvatarUrl();
-  const [prompt, setPrompt] = useState('');
+  const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [searchText, setSearchText] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
   // Filtered once; every decision below reads the filtered list — what is offered,
   // what counts as a sole option, and whether a default is still valid.
   const offered = useMemo(() => agents.filter(isStartableAgent), [agents]);
+  // What the picker lists: the startable agents, or every agent when the
+  // unavailable ones are shown disabled.
+  const listed = showUnavailable ? agents : offered;
 
   /**
    * The only agent on offer, when there is exactly one.
@@ -274,36 +334,82 @@ export function NewSessionComposer({
     [buildAvatarUrl, classes.agentAvatar],
   );
 
-  // Grouped by installation only when there is more than one, since a single
+  // With `groupByNamespace`, grouped by namespace behind the Recent group, or
+  // flat when that would be a single heading. Otherwise grouped by
+  // installation only when there is more than one, since a single
   // group heading repeating the only installation's name is pure noise. Order is
   // already home-then-installation-then-name from `sortAgentRows`, so grouping
   // keeps it. With more than one installation the label itself names the
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
+  const isSearchable = searchable ?? listed.length > SEARCHABLE_THRESHOLD;
+  const isSearching = searchText.trim() !== '';
   const options = useMemo(() => {
-    const installations = [
-      ...new Set(offered.map(agent => agent.installation)),
-    ];
+    const installations = [...new Set(listed.map(agent => agent.installation))];
     const multipleInstallations = installations.length > 1;
-    const toOption = (agent: AgentRow) => ({
-      id: agent.id,
+    const toOption = (agent: AgentRow, idPrefix = '') => ({
+      id: `${idPrefix}${agent.id}`,
       label: agentOptionLabel(agent, multipleInstallations),
       description: describeAgent(agent),
       leadingIcon: renderAvatar(agent),
+      disabled: !isStartableAgent(agent),
     });
 
+    if (groupByNamespace) {
+      const recent = isSearching
+        ? []
+        : (recentAgentIds ?? [])
+            .map(id => listed.find(agent => agent.id === id))
+            .filter((agent): agent is AgentRow => agent !== undefined);
+      const namespaces = [
+        ...new Set(listed.map(agent => agent.namespace)),
+      ].sort((a, b) => a.localeCompare(b));
+      if (recent.length === 0 && namespaces.length <= 1) {
+        return listed.map(agent => toOption(agent));
+      }
+      const groups = namespaces.map(namespace => ({
+        title: namespace,
+        options: listed
+          .filter(agent => agent.namespace === namespace)
+          .map(agent => toOption(agent)),
+      }));
+      return recent.length > 0
+        ? [
+            {
+              title: 'Recent',
+              options: recent.map(agent =>
+                toOption(agent, RECENT_OPTION_PREFIX),
+              ),
+            },
+            ...groups,
+          ]
+        : groups;
+    }
+
     if (!multipleInstallations) {
-      return offered.map(toOption);
+      return listed.map(agent => toOption(agent));
     }
 
     return installations.map(installation => ({
       title: installation,
-      options: offered
+      options: listed
         .filter(agent => agent.installation === installation)
-        .map(toOption),
+        .map(agent => toOption(agent)),
     }));
-  }, [offered, renderAvatar]);
+  }, [listed, renderAvatar, groupByNamespace, recentAgentIds, isSearching]);
+
+  useEffect(() => {
+    onSelectedAgentChange?.(selectedAgent);
+  }, [onSelectedAgentChange, selectedAgent]);
+
+  const selectAgent = useCallback((agent: AgentRow) => {
+    if (!isStartableAgent(agent)) {
+      return;
+    }
+    touched.current = true;
+    setSelectedId(agent.id);
+  }, []);
 
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
@@ -384,7 +490,10 @@ export function NewSessionComposer({
           input={
             <TextAreaField
               aria-label="Prompt"
-              placeholder="What should the agent do?"
+              placeholder={
+                promptPlaceholder?.(selectedAgent) ??
+                'What should the agent do?'
+              }
               value={prompt}
               onChange={setPrompt}
               onFocus={() => setExpanded(true)}
@@ -402,25 +511,47 @@ export function NewSessionComposer({
             />
           }
           leading={
-            <Select
-              ref={agentSelectRef}
-              aria-label="Agent"
-              className={classes.agentSelect}
-              isInvalid={showAgentMissing}
-              // `leadingIcon` only reaches the options; the trigger has its own
-              // slot, and without this the chosen agent loses the avatar it had
-              // in the list.
-              icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-              options={options}
-              selectedKey={selectedId ?? null}
-              onSelectionChange={key => {
-                touched.current = true;
-                setSelectedId(key ? String(key) : undefined);
-              }}
-              placeholder="Select an agent"
-              searchable={offered.length > SEARCHABLE_THRESHOLD}
-              isDisabled={isStarting || Boolean(soleAgent)}
-            />
+            <>
+              <Select
+                ref={agentSelectRef}
+                aria-label="Agent"
+                className={classes.agentSelect}
+                isInvalid={showAgentMissing}
+                // `leadingIcon` only reaches the options; the trigger has its own
+                // slot, and without this the chosen agent loses the avatar it had
+                // in the list.
+                icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
+                options={options}
+                selectedKey={selectedId ?? null}
+                onSelectionChange={key => {
+                  touched.current = true;
+                  const id = key ? String(key) : undefined;
+                  setSelectedId(
+                    id?.startsWith(RECENT_OPTION_PREFIX)
+                      ? id.slice(RECENT_OPTION_PREFIX.length)
+                      : id,
+                  );
+                }}
+                placeholder="Select an agent"
+                // Grouped by namespace, the search text is held here so the
+                // Recent group can step aside while a search is typed.
+                {...(groupByNamespace
+                  ? isSearchable && {
+                      search: {
+                        inputValue: searchText,
+                        onInputChange: setSearchText,
+                        placeholder: `Search ${listed.length} agents`,
+                      },
+                    }
+                  : { searchable: isSearchable })}
+                // A sole startable agent is no choice, unless unavailable ones
+                // are listed beside it with their reasons.
+                isDisabled={
+                  isStarting || (Boolean(soleAgent) && listed.length === 1)
+                }
+              />
+              {renderPickerAccessory?.(selectedAgent)}
+            </>
           }
           trailing={
             <ButtonIcon
@@ -444,6 +575,7 @@ export function NewSessionComposer({
             {caption}
           </Text>
         )}
+        {renderFooter?.({ selectedAgent, selectAgent })}
       </Flex>
     </form>
   );

@@ -30,6 +30,11 @@ type NewSessionRequest = NewSession & { requestId: string };
 export type SessionEntryPoint =
   PortalEventAttributes<'AgentPlatform.sessionStarted'>['entryPoint'];
 
+export type UseCreateSessionOptions = {
+  /** Passed to `deriveSessionTitle`; its default applies when absent. */
+  titleMaxLength?: number;
+};
+
 /**
  * Start a session with an agent: create its Session.
  *
@@ -47,7 +52,10 @@ export type SessionEntryPoint =
  * the sessions list, the agent detail page and the session detail page —
  * produces the same one; `entryPoint` only says which one it was.
  */
-export function useCreateSession(entryPoint: SessionEntryPoint) {
+export function useCreateSession(
+  entryPoint: SessionEntryPoint,
+  { titleMaxLength }: UseCreateSessionOptions = {},
+) {
   const kagentApi = useApi(kagentApiRef);
   const queryClient = useQueryClient();
 
@@ -62,7 +70,7 @@ export function useCreateSession(entryPoint: SessionEntryPoint) {
         // The agent's *technical* name, the `Agent` object's name. `name` is
         // the display annotation and would not match anything.
         { namespace: agent.namespace, name: agent.technicalName },
-        deriveSessionTitle(prompt),
+        deriveSessionTitle(prompt, titleMaxLength),
         requestId,
       );
 

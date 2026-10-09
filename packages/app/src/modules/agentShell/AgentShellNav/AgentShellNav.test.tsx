@@ -264,7 +264,7 @@ describe('AgentShellNav', () => {
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
   });
 
-  it('opens the profile menu with the user name, settings links and sign out', async () => {
+  it('opens the profile menu with the user name and email, settings links and sign out', async () => {
     await renderNav();
 
     const trigger = screen.getByRole('button', {
@@ -276,6 +276,7 @@ describe('AgentShellNav', () => {
 
     const menu = await screen.findByRole('menu');
     expect(within(menu).getByText('Jane Doe')).toBeInTheDocument();
+    expect(within(menu).getByText('jane@example.com')).toBeInTheDocument();
     expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
     ).toHaveAttribute('href', '/settings');
