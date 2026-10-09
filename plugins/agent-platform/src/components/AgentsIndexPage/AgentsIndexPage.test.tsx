@@ -385,6 +385,42 @@ describe('AgentsIndexPage', () => {
     expect(columnHeaders()).toContain('Installation');
   });
 
+  it('shows the Harness column and its filter once agents run on two Harnesses', async () => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [
+        { ...triager, harness: 'kagent' },
+        { ...reviewer, harness: 'claude-go' },
+      ],
+      installations: ['inst-1', 'inst-2'],
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).toContain('Harness');
+    expect(
+      screen.getByRole('button', { name: /Filter by Harness/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('drops the Harness column and its filter while every agent shares one', async () => {
+    mockUseAgents.mockReturnValue({
+      ...baseValue,
+      rows: [
+        { ...triager, harness: 'kagent' },
+        { ...reviewer, harness: 'kagent' },
+      ],
+      installations: ['inst-1', 'inst-2'],
+    });
+
+    await renderPage();
+
+    expect(columnHeaders()).not.toContain('Harness');
+    expect(
+      screen.queryByRole('button', { name: /Filter by Harness/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it('says a pinned installation has no kagent, instead of an empty table', async () => {
     mockInventoryEntries = [
       {

@@ -97,6 +97,14 @@ export function TotalsStrip({
           )
         }
       />
+      {/* Only when some runtime reported a cost; absent is not $0.00. */}
+      {totals.costUsd !== undefined && (
+        <Stat
+          label="Reported cost"
+          value={formatUsd(totals.costUsd)}
+          hint={`Cost reported by the agents' runtimes ${windowNote}. Turns without a reported cost are not included.`}
+        />
+      )}
     </div>
   );
 }

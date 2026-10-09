@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { usePreventScroll } from 'react-aria';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
@@ -137,6 +138,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     backgroundColor: theme.palette.action.hover,
   },
   htmlFrame: {
+    // Inline, the frame sits on a text baseline and the gap below it
+    // overflows a container sized to the frame.
+    display: 'block',
     width: '100%',
     height: '75vh',
     border: `1px solid ${theme.palette.divider}`,
@@ -171,7 +175,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexGrow: 1,
     minHeight: 0,
     overflow: 'auto',
-    // Reaching the end of the document must not scroll the page underneath.
+    // The page underneath is scroll-locked (usePreventScroll); this keeps
+    // overscroll at the document's end from bouncing or pulling to refresh.
     overscrollBehavior: 'contain',
     padding: theme.spacing(2, 3, 3),
   },
@@ -298,6 +303,9 @@ function DocumentPanel(props: {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [fullscreen]);
+  // The page underneath keeps its height; without this the window shows a
+  // scrollbar for content the overlay covers.
+  usePreventScroll({ isDisabled: !fullscreen });
 
   // The overlay starts where the app's content column starts: right of the
   // sidebar (its closed or pinned-open width), or above the bottom bar the

@@ -11,6 +11,7 @@ import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-rea
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useHarnessChoices } from '../../hooks/useHarnessChoices';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -43,6 +44,7 @@ import {
 } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CodeBlock } from '../CodeBlock';
+import { HarnessLimits } from '../HarnessLimits';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
@@ -314,6 +316,15 @@ export function NewAgentReviewPage() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
+  const { choices, platformChoice } = useHarnessChoices(
+    state.installation,
+    state.modelConfigNamespace,
+  );
+  // As listed now, so the limits match what the picker step shows.
+  const runningHarness = state.harness
+    ? (choices.find(choice => choice.name === state.harness?.name) ??
+      state.harness)
+    : platformChoice;
   const validation = useValidateAgent(
     state.installation,
     isComplete && isToolsetValid ? spec : undefined,
@@ -536,6 +547,16 @@ export function NewAgentReviewPage() {
               {state.harness ? harnessTitle(state.harness) : 'Platform default'}
             </Text>
           </SummaryItem>
+          {runningHarness?.runtime === 'claude' && (
+            <SummaryItem label="Limits">
+              <HarnessLimits
+                limits={runningHarness.limits}
+                harnessName={runningHarness.name}
+                showWhenUnset
+                showTitle={false}
+              />
+            </SummaryItem>
+          )}
           <SummaryItem label="Tools">
             <Text variant="body-small">
               {toolsetSummaryLabel(shape, declared)}

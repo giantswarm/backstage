@@ -1,7 +1,9 @@
 import type {
+  ClaudeHarnessLimits,
   Harness,
   HarnessRuntime,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { formatCount } from './formatNumbers';
 
 /** agent-manager's platform Harness when `get_info` has not answered. */
 export const DEFAULT_PLATFORM_HARNESS = 'kagent';
@@ -18,6 +20,8 @@ export type HarnessChoice = {
   runtime?: HarnessRuntime;
   /** The image's repository name, without registry, tag or digest. */
   imageName?: string;
+  /** Per-turn limits; only a Claude Code Harness sets them. */
+  limits?: ClaudeHarnessLimits;
 };
 
 const RUNTIME_LABELS: Record<HarnessRuntime, string> = {
@@ -47,6 +51,18 @@ export function imageNameOf(image: string | undefined): string | undefined {
   return last?.replace(/:[^:]*$/, '') || undefined;
 }
 
+export function harnessChoiceOf(harness: Harness): HarnessChoice {
+  return {
+    name: harness.getName(),
+    ...(harness.getDisplayNameAnnotation() && {
+      displayName: harness.getDisplayNameAnnotation(),
+    }),
+    runtime: harness.getRuntime(),
+    imageName: imageNameOf(harness.getImage()),
+    limits: harness.getLimits(),
+  };
+}
+
 /**
  * The Harnesses of `namespace` an agent can be created on: every one of them,
  * since an Agent names its Harness and nothing admits by label any more. The
@@ -59,17 +75,33 @@ export function harnessChoicesOf(
 ): HarnessChoice[] {
   return harnesses
     .filter(harness => harness.getNamespace() === namespace)
-    .map(harness => ({
-      name: harness.getName(),
-      ...(harness.getDisplayNameAnnotation() && {
-        displayName: harness.getDisplayNameAnnotation(),
-      }),
-      runtime: harness.getRuntime(),
-      imageName: imageNameOf(harness.getImage()),
-    }))
+    .map(harnessChoiceOf)
     .sort(
       (a, b) =>
         Number(b.name === platformHarness) -
           Number(a.name === platformHarness) || a.name.localeCompare(b.name),
     );
+}
+
+export type HarnessLimitEntry = { label: string; value: string };
+
+/** The set limits, the budget as configured (`$0.50`, not rounded). */
+export function harnessLimitEntries(
+  limits: ClaudeHarnessLimits | undefined,
+): HarnessLimitEntry[] {
+  const entries: HarnessLimitEntry[] = [];
+  const budget = limits?.budgetUSD?.trim();
+  if (budget) {
+    entries.push({
+      label: 'Budget per turn',
+      value: Number.isFinite(Number(budget)) ? `$${budget}` : `${budget} USD`,
+    });
+  }
+  if (typeof limits?.maxTurns === 'number' && limits.maxTurns > 0) {
+    entries.push({
+      label: 'Max steps per turn',
+      value: formatCount(limits.maxTurns),
+    });
+  }
+  return entries;
 }

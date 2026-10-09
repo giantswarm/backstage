@@ -525,3 +525,57 @@ describe('reduceSessionUsage', () => {
     expect(usage.days.size).toBe(0);
   });
 });
+
+describe('reported cost', () => {
+  it('carries the claude Harness turn cost into the tally and its day', () => {
+    const usage = reduceSessionUsage(tasksOf(tasksClaudeHarness), WIDE);
+
+    expect(usage.tally.costUsd).toBeCloseTo(0.13148115, 8);
+    const [day] = [...usage.days.values()];
+    expect(day.costUsd).toBeCloseTo(0.13148115, 8);
+  });
+
+  it('sums only over the turns that reported a cost', () => {
+    const usage = reduceSessionUsage(
+      [
+        task('t1', '2026-09-04T09:00:00Z', [
+          agentUsage('m1', {
+            promptTokenCount: 10,
+            candidatesTokenCount: 1,
+            costUsd: 0.25,
+          }),
+        ]),
+        task('t2', '2026-09-04T10:00:00Z', [
+          agentUsage('m2', { promptTokenCount: 10, candidatesTokenCount: 1 }),
+        ]),
+        task('t3', '2026-09-05T10:00:00Z', [
+          agentUsage('m3', {
+            promptTokenCount: 10,
+            candidatesTokenCount: 1,
+            costUsd: 0.5,
+          }),
+        ]),
+      ],
+      WIDE,
+    );
+
+    expect(usage.tally.costUsd).toBe(0.75);
+    expect(usage.days.get('2026-09-04')?.costUsd).toBe(0.25);
+    expect(usage.days.get('2026-09-05')?.costUsd).toBe(0.5);
+  });
+
+  it('leaves the cost undefined, not zero, when no turn reported one', () => {
+    const usage = reduceSessionUsage(
+      [
+        task('t1', '2026-09-04T09:00:00Z', [
+          agentUsage('m1', { promptTokenCount: 10, candidatesTokenCount: 1 }),
+        ]),
+      ],
+      WIDE,
+    );
+
+    expect(usage.tally.costUsd).toBeUndefined();
+    expect(usage.tally).not.toHaveProperty('costUsd');
+    expect(usage.days.get('2026-09-04')?.costUsd).toBeUndefined();
+  });
+});

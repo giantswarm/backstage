@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Harness } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  Harness,
+  type ClaudeHarnessLimits,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { HarnessPicker } from './HarnessPicker';
@@ -24,7 +27,11 @@ jest.mock('../../hooks/useAgentManager', () => ({
 function harness(
   name: string,
   runtime: 'kagent' | 'claude',
-  { namespace = 'kagent', displayName = undefined as string | undefined } = {},
+  {
+    namespace = 'kagent',
+    displayName = undefined as string | undefined,
+    limits = undefined as ClaudeHarnessLimits | undefined,
+  } = {},
 ): Harness {
   return new Harness(
     {
@@ -38,7 +45,7 @@ function harness(
         }),
       },
       spec: {
-        [runtime]: {},
+        [runtime]: limits ? { limits } : {},
         workload: { image: `registry.example/${name}-harness@sha256:0123` },
       },
     } as never,
@@ -236,5 +243,52 @@ describe('HarnessPicker', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('shows the limits of a Claude Code platform Harness, read-only', async () => {
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'claude', {
+          limits: { budgetUSD: '1.50', maxTurns: 20 },
+        }),
+      ]),
+    );
+    await render();
+
+    const limits = screen.getByRole('group', { name: 'Limits' });
+    expect(limits).toHaveTextContent('Budget per turn$1.50');
+    expect(limits).toHaveTextContent('Max steps per turn20');
+    expect(limits).toHaveTextContent(
+      'Set on Harness kagent, shared by every agent on it.',
+    );
+    expect(limits.querySelector('input, button')).toBeNull();
+  });
+
+  it('follows the pick: the limits of the Claude Code Harness chosen, none for a declarative one', async () => {
+    const user = userEvent.setup();
+    mockUseResources.mockReturnValue(
+      listing([
+        harness('kagent', 'kagent'),
+        harness('claude', 'claude', { limits: { maxTurns: 8 } }),
+      ]),
+    );
+    await render();
+
+    expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
+
+    await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
+
+    expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
+      'Max steps per turn8',
+    );
+  });
+
+  it('says a Claude Code Harness sets no limits', async () => {
+    mockUseResources.mockReturnValue(listing([harness('kagent', 'claude')]));
+    await render();
+
+    expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
+      'No limits set on Harness kagent.',
+    );
   });
 });

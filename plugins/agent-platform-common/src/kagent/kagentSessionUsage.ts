@@ -19,6 +19,8 @@ export type SessionUsageTotals = {
    */
   totalTokens: number;
   toolCalls: number;
+  /** USD the runtimes reported, summed over those turns. Absent if none did. */
+  costUsd?: number;
 };
 
 export type UsageDayEntry = {
@@ -44,6 +46,8 @@ export type UsageAgentEntry = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /** As {@link SessionUsageTotals.costUsd}, for this agent's turns. */
+  costUsd?: number;
 };
 
 export type UsageToolEntry = { tool: string; calls: number };
@@ -109,6 +113,13 @@ function finite(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+/** Like {@link finite}, but a missing or invalid cost stays absent, not 0. */
+function reportedCost(value: unknown): { costUsd?: number } {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? { costUsd: value }
+    : {};
+}
+
 const totalsSchema = z.looseObject({
   sessions: z.unknown().optional(),
   turns: z.unknown().optional(),
@@ -116,6 +127,7 @@ const totalsSchema = z.looseObject({
   outputTokens: z.unknown().optional(),
   totalTokens: z.unknown().optional(),
   toolCalls: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const dayEntrySchema = z.looseObject({
@@ -131,6 +143,7 @@ const agentEntrySchema = z.looseObject({
   turns: z.unknown().optional(),
   inputTokens: z.unknown().optional(),
   outputTokens: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const toolEntrySchema = z.looseObject({
@@ -208,6 +221,7 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
         outputTokens: finite(totalsParsed.data.outputTokens),
         totalTokens: finite(totalsParsed.data.totalTokens),
         toolCalls: finite(totalsParsed.data.toolCalls),
+        ...reportedCost(totalsParsed.data.costUsd),
       }
     : empty.totals;
 
@@ -237,6 +251,7 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
       turns: finite(entry.data.turns),
       inputTokens: finite(entry.data.inputTokens),
       outputTokens: finite(entry.data.outputTokens),
+      ...reportedCost(entry.data.costUsd),
     });
   }
 

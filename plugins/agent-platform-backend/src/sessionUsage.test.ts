@@ -28,6 +28,7 @@ function wireTasks(
     timestamp?: string;
     prompt?: number;
     completion?: number;
+    costUsd?: number;
     tools?: string[];
   } = {},
 ) {
@@ -35,6 +36,7 @@ function wireTasks(
     timestamp = '2026-09-04T11:00:00Z',
     prompt = 100,
     completion = 10,
+    costUsd,
     tools = [],
   } = opts;
   return {
@@ -54,6 +56,7 @@ function wireTasks(
               kagent_usage_metadata: {
                 promptTokenCount: prompt,
                 candidatesTokenCount: completion,
+                ...(costUsd !== undefined && { costUsd }),
               },
             },
             parts: tools.map((name, i) => ({
@@ -174,6 +177,41 @@ describe('SessionUsageReader', () => {
       inputTokens: 1_000,
     });
     expect(result.byAgent.map(a => a.agentId)).toContain(null);
+  });
+
+  it('sums the reported cost over the sessions that reported one', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('a', { agent_id: 'kagent__NS__coder' }),
+        wireSession('b', { agent_id: 'kagent__NS__coder' }),
+        wireSession('c', { agent_id: 'kagent__NS__sre_agent' }),
+      ],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      wireTasks({
+        prompt: 1_000,
+        costUsd: { a: 0.5, b: 0.25 }[id as 'a' | 'b'],
+      }),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.totals.costUsd).toBe(0.75);
+    const coder = result.byAgent.find(a => a.agentId === 'kagent__NS__coder');
+    const sre = result.byAgent.find(a => a.agentId === 'kagent__NS__sre_agent');
+    expect(coder?.costUsd).toBe(0.75);
+    expect(sre).not.toHaveProperty('costUsd');
+  });
+
+  it('reports no cost, rather than zero, when no turn reported one', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks());
+
+    const result = await reader().read('tok');
+
+    expect(result.totals).not.toHaveProperty('costUsd');
+    expect(result.byAgent[0]).not.toHaveProperty('costUsd');
   });
 
   it('returns a dense day series across the whole window', async () => {
