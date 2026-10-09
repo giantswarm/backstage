@@ -1,21 +1,38 @@
 import { renderHook } from '@testing-library/react';
-import { llmUsageQueries, llmUsageRangeQueries } from '../lib/llmUsageQueries';
+import {
+  llmUsageQueries,
+  llmUsageQueriesFor,
+  llmUsageRangeQueries,
+  llmUsageRangeQueriesFor,
+} from '../lib/llmUsageQueries';
 import { useLlmUsage } from './useLlmUsage';
 
 /** Queries reported as still pending, by query string. */
 const pending = new Set<string>();
 /** Queries reported as failed, by query string. */
 const failed = new Set<string>();
+/** Every query the hook issued while enabled. */
+const issued = new Set<string>();
+/** Answers by query string; an empty vector otherwise. */
+const answers = new Map<string, unknown[]>();
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
-  useMimirQuery: ({ query }: { query: string }) => stub(query),
-  useMimirRangeQuery: ({ query }: { query: string }) => stub(query),
+  useMimirQuery: (options: { query: string; enabled?: boolean }) =>
+    stub(options),
+  useMimirRangeQuery: (options: { query: string; enabled?: boolean }) =>
+    stub(options),
 }));
 
-function stub(query: string) {
+function stub({ query, enabled = true }: { query: string; enabled?: boolean }) {
+  if (enabled) {
+    issued.add(query);
+  }
   return {
-    data: { status: 'success', data: { resultType: 'vector', result: [] } },
+    data: {
+      status: 'success',
+      data: { resultType: 'vector', result: answers.get(query) ?? [] },
+    },
     isLoading: pending.has(query),
     error: failed.has(query) ? new Error('mimir') : null,
     isAvailable: true,
@@ -34,6 +51,8 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
 beforeEach(() => {
   pending.clear();
   failed.clear();
+  issued.clear();
+  answers.clear();
 });
 
 describe('useLlmUsage', () => {
@@ -109,3 +128,58 @@ function pendingTodayQueries(): string[] {
   const queries = todayPartialQueries(todayPartialRange());
   return [queries.costByModel, queries.tokensByType];
 }
+
+describe('useLlmUsage with options', () => {
+  it('runs the installation-wide 30-day queries and no comparison by default', () => {
+    const { result } = renderHook(() => useLlmUsage('gazelle'));
+
+    expect(issued).toContain(llmUsageQueries.cost);
+    expect(issued).toContain(llmUsageRangeQueries.costPerDayByModel);
+    expect(issued).not.toContain(llmUsageQueriesFor().previousCost);
+    expect(result.current.usage?.windowDays).toBe(30);
+    expect(result.current.usage?.totals).not.toHaveProperty('previousCostUsd');
+  });
+
+  it('runs the window’s and the organization’s queries', () => {
+    const queries = llmUsageQueriesFor({ days: 7, org: 'support' });
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { days: 7, org: 'support' }),
+    );
+
+    expect(issued).toContain(queries.cost);
+    expect(issued).toContain(queries.durationP50);
+    expect(issued).toContain(
+      llmUsageRangeQueriesFor({ org: 'support' }).tokensPerDayByType,
+    );
+    expect(issued).not.toContain(llmUsageQueries.cost);
+    expect(result.current.usage?.windowDays).toBe(7);
+    expect(result.current.usage?.costPerDay.rows).toHaveLength(7);
+  });
+
+  it('reports the previous period’s spend when asked', () => {
+    const { previousCost } = llmUsageQueriesFor();
+    answers.set(previousCost, [
+      { metric: { agent: 'sre' }, value: [1757462400, '4.5'] },
+    ]);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { comparePrevious: true }),
+    );
+
+    expect(issued).toContain(previousCost);
+    expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
+  });
+
+  it('waits for the comparison it asked for', () => {
+    pending.add(llmUsageQueriesFor().previousCost);
+
+    expect(
+      renderHook(() => useLlmUsage('gazelle', { comparePrevious: true })).result
+        .current.isLoading,
+    ).toBe(true);
+    expect(
+      renderHook(() => useLlmUsage('gazelle')).result.current.isLoading,
+    ).toBe(false);
+  });
+});

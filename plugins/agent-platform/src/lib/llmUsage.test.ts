@@ -10,6 +10,7 @@ import {
   foldSeries,
   hasAnyLlmUsage,
   reduceByAgent,
+  reduceByAgentModel,
   reduceByModel,
   reduceDaily,
   reduceReliability,
@@ -621,6 +622,108 @@ describe('applyTodayPartial', () => {
   });
 });
 
+describe('reduceByAgentModel', () => {
+  const sre = { agent_namespace: 'kagent', agent: 'sre-agent' };
+  const triage = { agent_namespace: 'support', agent: 'triage' };
+
+  it('splits the vectors by agent and model, keeping the raw labels', () => {
+    const rows = reduceByAgentModel({
+      cost: [
+        sample(
+          {
+            ...sre,
+            gen_ai_response_model: 'sonnet',
+            gen_ai_token_type: 'input',
+          },
+          '2',
+        ),
+        sample(
+          {
+            ...sre,
+            gen_ai_response_model: 'sonnet',
+            gen_ai_token_type: 'output',
+          },
+          '3',
+        ),
+        sample(
+          {
+            ...triage,
+            gen_ai_response_model: 'haiku',
+            gen_ai_token_type: 'input',
+          },
+          '1',
+        ),
+      ],
+      tokens: [
+        sample(
+          {
+            ...sre,
+            gen_ai_response_model: 'sonnet',
+            gen_ai_token_type: 'input',
+          },
+          '100',
+        ),
+        sample(
+          { ...sre, gen_ai_response_model: 'gpt', gen_ai_token_type: 'input' },
+          '50',
+        ),
+        sample(
+          {
+            ...triage,
+            gen_ai_response_model: 'haiku',
+            gen_ai_token_type: 'input',
+          },
+          '40',
+        ),
+      ],
+      calls: [
+        sample({ ...sre, gen_ai_response_model: 'sonnet' }, '4'),
+        sample({ ...triage, gen_ai_response_model: 'haiku' }, '2'),
+      ],
+    });
+
+    expect(rows).toEqual([
+      {
+        id: 'kagent|sre-agent|sonnet',
+        namespace: 'kagent',
+        agent: 'sre-agent',
+        model: 'sonnet',
+        tokens: 100,
+        calls: 4,
+        costUsd: 5,
+      },
+      {
+        id: 'support|triage|haiku',
+        namespace: 'support',
+        agent: 'triage',
+        model: 'haiku',
+        tokens: 40,
+        calls: 2,
+        costUsd: 1,
+      },
+      {
+        id: 'kagent|sre-agent|gpt',
+        namespace: 'kagent',
+        agent: 'sre-agent',
+        model: 'gpt',
+        tokens: 50,
+        calls: 0,
+        costUsd: undefined,
+      },
+    ]);
+  });
+
+  it('skips unparseable samples and is empty without data', () => {
+    expect(
+      reduceByAgentModel({
+        cost: [sample({ ...sre, gen_ai_response_model: 'sonnet' }, 'NaN')],
+        tokens: undefined,
+        calls: undefined,
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe('buildLlmUsage', () => {
   const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
   const base = {
@@ -697,6 +800,43 @@ describe('buildLlmUsage', () => {
     expect(usage.rates.output).toBeCloseTo(15 / 1_000_000);
     expect(usage.byAgent[0].label).toBe('SRE Agent');
     expect(usage.byModel[0].model).toBe('sonnet');
+    expect(usage.byAgentModel).toEqual([
+      expect.objectContaining({
+        namespace: 'kagent',
+        agent: 'sre-agent',
+        model: 'sonnet',
+        costUsd: 18,
+      }),
+    ]);
+    expect(usage.windowDays).toBe(30);
+    expect(usage.totals).not.toHaveProperty('previousCostUsd');
+  });
+
+  it('reports the window it was given and the previous period’s spend', () => {
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [sample({ ...labels, gen_ai_response_model: 'sonnet' }, '18')],
+      tokens: [],
+      windowDays: 7,
+      previousCost: [
+        sample({ ...labels, gen_ai_response_model: 'sonnet' }, '10'),
+        sample({ ...labels, gen_ai_response_model: 'haiku' }, '2'),
+      ],
+    });
+
+    expect(usage.windowDays).toBe(7);
+    expect(usage.totals.previousCostUsd).toBe(12);
+  });
+
+  it('leaves the previous spend unknown when nothing was priced then', () => {
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [],
+      tokens: [],
+      previousCost: [],
+    });
+
+    expect(usage.totals).toHaveProperty('previousCostUsd', undefined);
   });
 
   it('reports only a blended rate when cost carries no token type', () => {

@@ -11,11 +11,13 @@ import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
   dailyRangeWindow,
   dailyWindowDayKeys,
-  llmUsageQueries,
-  llmUsageRangeQueries,
+  llmUsageQueriesFor,
+  llmUsageRangeQueriesFor,
   todayDayKey,
   todayPartialQueries,
   todayPartialRange,
+  WINDOW_DAYS,
+  type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
 
 export type LlmUsageView = {
@@ -29,14 +31,25 @@ export type LlmUsageView = {
   isAvailable: boolean | undefined;
 };
 
+export type LlmUsageOptions = LlmUsageQueryOptions & {
+  /**
+   * Also query the spend over the window before this one, reported as
+   * `usage.totals.previousCostUsd`. Off by default: one more query.
+   */
+  comparePrevious?: boolean;
+};
+
 /** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
 const UNKNOWN_AGENT = 'Unattributed';
 const UNKNOWN_MODEL = 'Unknown model';
 
 /**
- * Everything the Overview and Cost views read, for one installation.
+ * Everything the Overview and Cost views read, for one installation: by
+ * default its last 30 days across every organization, or the window and the
+ * organization `options` name.
  *
- * Twelve queries: ten instant and two range, written out one call at a time.
+ * Twelve queries (a thirteenth with `comparePrevious`): ten instant and two
+ * range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -55,13 +68,29 @@ const UNKNOWN_MODEL = 'Unknown model';
  * quantile Mimir refuses, say) leaves the rest of the page true, so only a
  * failure of the two load-bearing vectors counts as the page failing.
  */
-export function useLlmUsage(installation: string | undefined): LlmUsageView {
+export function useLlmUsage(
+  installation: string | undefined,
+  options: LlmUsageOptions = {},
+): LlmUsageView {
+  const {
+    days: windowDays = WINDOW_DAYS,
+    org,
+    comparePrevious = false,
+  } = options;
   const enabled = Boolean(installation);
   const installationName = installation ?? '';
+  const llmUsageQueries = useMemo(
+    () => llmUsageQueriesFor({ days: windowDays, org }),
+    [windowDays, org],
+  );
+  const llmUsageRangeQueries = useMemo(
+    () => llmUsageRangeQueriesFor({ org }),
+    [org],
+  );
 
   // Snapped to UTC midnight, so it is stable for the whole day and cannot
   // re-key the range queries on every render.
-  const range = dailyRangeWindow();
+  const range = dailyRangeWindow(Date.now(), windowDays);
   const { start, end, step } = range;
   // The charts render one bar per day of this window whether or not Mimir
   // answered for it, so the axis is the 30 days the page claims.
@@ -87,7 +116,7 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
   // (`PARTIAL_SNAP_SECONDS`), not per render — which is why these two stay out
   // of the blocking `isLoading` below.
   const todayRange = todayPartialRange();
-  const todayQueries = todayPartialQueries(todayRange);
+  const todayQueries = todayPartialQueries(todayRange, { org });
 
   const cost = useMimirQuery({
     installationName,
@@ -169,6 +198,12 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     keepPreviousAnswer: true,
   });
 
+  const previousCost = useMimirQuery({
+    installationName,
+    query: llmUsageQueries.previousCost,
+    enabled: enabled && comparePrevious,
+  });
+
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
@@ -192,7 +227,8 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     requestsByStatus.isLoading ||
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
-    tokensPerDay.isLoading;
+    tokensPerDay.isLoading ||
+    (comparePrevious && previousCost.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
   // `days` is always supplied it densifies to 30 zero rows — a chart of empty
@@ -235,6 +271,10 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
       today,
       costToday: costToday.data?.data?.result,
       tokensToday: tokensToday.data?.data?.result,
+      windowDays,
+      previousCost: comparePrevious
+        ? (previousCost.data?.data?.result ?? [])
+        : undefined,
     });
   }, [
     enabled,
@@ -257,6 +297,9 @@ export function useLlmUsage(installation: string | undefined): LlmUsageView {
     agentDetailRoute,
     days,
     today,
+    windowDays,
+    comparePrevious,
+    previousCost.data,
   ]);
 
   return { usage, isLoading, isError, isAvailable };

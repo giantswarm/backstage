@@ -1,6 +1,10 @@
 import {
   dailyRangeWindow,
   llmUsageQueries,
+  llmUsageQueriesFor,
+  llmUsageRangeQueries,
+  llmUsageRangeQueriesFor,
+  todayPartialQueries,
   dailyWindowDayKeys,
   todayDayKey,
   todayPartialRange,
@@ -114,5 +118,78 @@ describe('llmUsageQueries.outputTokensPerSecond', () => {
     expect(llmUsageQueries.outputTokensPerSecond).toBe(
       '1 / histogram_quantile(0.50, sum by (le) (rate(agentgateway_gen_ai_server_time_per_output_token_bucket[30d])))',
     );
+  });
+});
+
+describe('llmUsageQueriesFor', () => {
+  it('is the installation-wide 30-day set by default', () => {
+    const { previousCost, ...queries } = llmUsageQueriesFor();
+
+    expect(queries).toEqual(llmUsageQueries);
+    expect(previousCost).toBe(
+      'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d))',
+    );
+  });
+
+  it('covers the window it is asked for', () => {
+    const queries = llmUsageQueriesFor({ days: 7 });
+
+    expect(queries.cost).toContain('[7d]');
+    expect(queries.durationP95).toContain('[7d]');
+    expect(queries.previousCost).toContain('[7d] offset 7d');
+    expect(queries.cost).not.toContain('30d');
+  });
+
+  it.each([0, -3, NaN, 2.6])(
+    'keeps the window a positive whole number for %p',
+    days => {
+      const { cost } = llmUsageQueriesFor({ days });
+      const window = Number(/\[(\d+)d\]/.exec(cost)?.[1]);
+      expect(Number.isInteger(window)).toBe(true);
+      expect(window).toBeGreaterThanOrEqual(1);
+    },
+  );
+
+  it('restricts the gen_ai metrics to one organization', () => {
+    const queries = llmUsageQueriesFor({ org: 'support' });
+    const only = '{agent_namespace="support"}';
+
+    for (const key of [
+      'cost',
+      'tokens',
+      'calls',
+      'outputTokensPerSecond',
+      'durationP50',
+      'durationP95',
+      'previousCost',
+    ] as const) {
+      expect(queries[key]).toContain(only);
+    }
+    // Their metrics carry no namespace label.
+    expect(queries.requestsByStatus).toBe(llmUsageQueries.requestsByStatus);
+    expect(queries.unpricedLookups).toBe(llmUsageQueries.unpricedLookups);
+  });
+
+  it('escapes an organization so it cannot change the query', () => {
+    const { cost } = llmUsageQueriesFor({ org: 'a"} or vector(1) #\\' });
+
+    expect(cost).toContain('{agent_namespace="a\\"} or vector(1) #\\\\"}');
+  });
+
+  it('filters the daily and today queries the same way', () => {
+    expect(llmUsageRangeQueriesFor()).toEqual(llmUsageRangeQueries);
+    expect(llmUsageRangeQueriesFor({ org: 'support' }).costPerDayByModel).toBe(
+      'sum by (gen_ai_response_model) (increase(agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}[1d]))',
+    );
+    expect(todayPartialQueries('600s', { org: 'support' }).tokensByType).toBe(
+      'sum by (gen_ai_token_type) (increase(agentgateway_gen_ai_client_token_usage_sum{agent_namespace="support"}[600s]))',
+    );
+  });
+});
+
+describe('dailyRangeWindow over another window', () => {
+  it('stops one day short of the days it is given', () => {
+    const { start, end } = dailyRangeWindow(MIDNIGHT, 7);
+    expect((Number(end) - Number(start)) / 86_400 + 1).toBe(6);
   });
 });

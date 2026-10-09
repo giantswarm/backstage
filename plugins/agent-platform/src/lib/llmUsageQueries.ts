@@ -47,53 +47,119 @@ const BY_AGENT_MODEL_TYPE =
 /** The duration metric carries no token type, so calls group one level up. */
 const BY_AGENT_MODEL = 'agent_namespace, agent, gen_ai_response_model';
 
-export const llmUsageQueries = {
-  /** Priced spend, split every way the page needs it. */
-  cost: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${Cost.name}[${WINDOW}]))`,
-  /** Tokens, same grouping — needs no price catalogue, so always trustworthy. */
-  tokens: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${TokenUsage.name}_sum[${WINDOW}]))`,
-  /** Model calls, from the duration histogram's count. */
-  calls: `sum by (${BY_AGENT_MODEL}) (increase(${RequestDuration.name}_count[${WINDOW}]))`,
+/** What the usage queries cover. */
+export type LlmUsageQueryOptions = {
+  /** The window, in whole days. Defaults to {@link WINDOW_DAYS}. */
+  days?: number;
   /**
-   * Output speed of the **median** streamed call, as tokens per second.
-   *
-   * The histogram observes one value per streamed call — that call's own mean
-   * seconds per output token — so the window's mean (`_count / _sum`) weights
-   * a three-token reply exactly like a three-thousand-token one, and a reply
-   * that emitted a handful of tokens after a long wait is seconds *per token*.
-   * On `graveler` that put ~1% of calls at ≥ 2.5 s/token, which alone dragged
-   * the mean from the median's 16 ms to 461 ms: 63 tok/s reported as 2 tok/s.
-   * The median is the speed a call actually runs at, and it is the same idiom
-   * as the two duration quantiles beside it on the strip.
-   *
-   * Inverted in PromQL rather than in the reducer so the metric and its unit
-   * stay in one place. Both failure modes stay honest: an empty histogram
-   * quantile is `NaN`, a zero quantile makes this `+Inf`, and `sampleValue`
-   * rejects either, so the figure degrades to "—".
-   *
-   * Ungrouped, because it is one figure about the platform rather than a
-   * breakdown. A call that was not streamed observes nothing, so this
-   * describes the streamed subset of {@link llmUsageQueries.calls}.
+   * Only the traffic of agents in this organization, the Kubernetes namespace
+   * an agent runs in (`agent_namespace`). All agents when absent.
    */
-  outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) (rate(${TimePerOutputToken.name}_bucket[${WINDOW}])))`,
-  durationP50: `histogram_quantile(0.50, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
-  durationP95: `histogram_quantile(0.95, sum by (le) (rate(${RequestDuration.name}_bucket[${WINDOW}])))`,
-  requestsByStatus: `sum by (status) (increase(${Requests.name}{listener="${LLM_LISTENER}"}[${WINDOW}]))`,
-  /**
-   * Every model whose price lookup did not resolve. Empty is the healthy
-   * state, and `> 0` keeps stale zero-valued series out of the table.
-   */
-  unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) (increase(${CatalogLookups.name}{status!="Exact"}[${WINDOW}])) > 0`,
-} as const;
+  org?: string;
+};
+
+/** A positive whole number of days; anything else is the default window. */
+function windowDaysOf(days: number | undefined): number {
+  if (days === undefined || !Number.isFinite(days)) {
+    return WINDOW_DAYS;
+  }
+  return Math.max(1, Math.round(days));
+}
+
+/** A PromQL string literal's content: backslashes and quotes escaped. */
+function promqlString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
+}
 
 /**
- * The two range queries. `[1d]` rather than `[$WINDOW]`: each evaluation point
- * totals the day it closes, which is what a daily bar means.
+ * The label matcher restricting a gen_ai metric to one organization, or the
+ * empty string. The value is escaped, so a namespace read from the URL cannot
+ * change the query's shape.
  */
-export const llmUsageRangeQueries = {
-  costPerDayByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}[1d]))`,
-  tokensPerDayByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum[1d]))`,
-} as const;
+function orgSelector(org: string | undefined): string {
+  return org ? `{agent_namespace="${promqlString(org)}"}` : '';
+}
+
+/**
+ * The LLM usage queries for a window and, optionally, one organization.
+ *
+ * `previousCost` is the same spend over the window just before this one
+ * (`offset`), for the change against the previous period.
+ *
+ * `requestsByStatus` and `unpricedLookups` stay installation-wide: their
+ * metrics carry no `agent_namespace` label.
+ */
+export function llmUsageQueriesFor({ days, org }: LlmUsageQueryOptions = {}) {
+  const window = `${windowDaysOf(days)}d`;
+  const only = orgSelector(org);
+  return {
+    /** Priced spend, split every way the page needs it. */
+    cost: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${Cost.name}${only}[${window}]))`,
+    /** Tokens, same grouping — needs no price catalogue, so always trustworthy. */
+    tokens: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${TokenUsage.name}_sum${only}[${window}]))`,
+    /** Model calls, from the duration histogram's count. */
+    calls: `sum by (${BY_AGENT_MODEL}) (increase(${RequestDuration.name}_count${only}[${window}]))`,
+    /**
+     * Output speed of the **median** streamed call, as tokens per second.
+     *
+     * The histogram observes one value per streamed call — that call's own mean
+     * seconds per output token — so the window's mean (`_count / _sum`) weights
+     * a three-token reply exactly like a three-thousand-token one, and a reply
+     * that emitted a handful of tokens after a long wait is seconds *per token*.
+     * On `graveler` that put ~1% of calls at ≥ 2.5 s/token, which alone dragged
+     * the mean from the median's 16 ms to 461 ms: 63 tok/s reported as 2 tok/s.
+     * The median is the speed a call actually runs at, and it is the same idiom
+     * as the two duration quantiles beside it on the strip.
+     *
+     * Inverted in PromQL rather than in the reducer so the metric and its unit
+     * stay in one place. Both failure modes stay honest: an empty histogram
+     * quantile is `NaN`, a zero quantile makes this `+Inf`, and `sampleValue`
+     * rejects either, so the figure degrades to "—".
+     *
+     * Ungrouped, because it is one figure about the platform rather than a
+     * breakdown. A call that was not streamed observes nothing, so this
+     * describes the streamed subset of `calls`.
+     */
+    outputTokensPerSecond: `1 / histogram_quantile(0.50, sum by (le) (rate(${TimePerOutputToken.name}_bucket${only}[${window}])))`,
+    durationP50: `histogram_quantile(0.50, sum by (le) (rate(${RequestDuration.name}_bucket${only}[${window}])))`,
+    durationP95: `histogram_quantile(0.95, sum by (le) (rate(${RequestDuration.name}_bucket${only}[${window}])))`,
+    requestsByStatus: `sum by (status) (increase(${Requests.name}{listener="${LLM_LISTENER}"}[${window}]))`,
+    /**
+     * Every model whose price lookup did not resolve. Empty is the healthy
+     * state, and `> 0` keeps stale zero-valued series out of the table.
+     */
+    unpricedLookups: `sum by (gen_ai_request_model, gen_ai_response_model, status) (increase(${CatalogLookups.name}{status!="Exact"}[${window}])) > 0`,
+    /** {@link cost} over the window before this one. */
+    previousCost: `sum by (${BY_AGENT_MODEL_TYPE}) (increase(${Cost.name}${only}[${window}] offset ${window}))`,
+  };
+}
+
+/** The installation-wide queries over the default window. */
+export const llmUsageQueries = (() => {
+  const { previousCost: _previousCost, ...queries } = llmUsageQueriesFor();
+  return queries;
+})();
+
+/**
+ * The two range queries, optionally for one organization. `[1d]` rather than
+ * the window: each evaluation point totals the day it closes, which is what a
+ * daily bar means.
+ */
+export function llmUsageRangeQueriesFor({
+  org,
+}: Pick<LlmUsageQueryOptions, 'org'> = {}) {
+  const only = orgSelector(org);
+  return {
+    costPerDayByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}${only}[1d]))`,
+    tokensPerDayByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum${only}[1d]))`,
+  };
+}
+
+/** The installation-wide range queries. */
+export const llmUsageRangeQueries = llmUsageRangeQueriesFor();
 
 const DAY_SECONDS = 86400;
 
@@ -119,9 +185,12 @@ function todayMidnight(now: number): number {
  * — which it has to be, since `start`/`end`/`step` are part of
  * `useMimirRangeQuery`'s query key and a moving key refetches forever.
  */
-export function dailyRangeWindow(now: number = Date.now()): RangeWindow {
+export function dailyRangeWindow(
+  now: number = Date.now(),
+  days: number = WINDOW_DAYS,
+): RangeWindow {
   const end = todayMidnight(now);
-  const start = end - (WINDOW_DAYS - 2) * DAY_SECONDS;
+  const start = end - (windowDaysOf(days) - 2) * DAY_SECONDS;
 
   return { start: String(start), end: String(end), step: String(DAY_SECONDS) };
 }
@@ -210,10 +279,14 @@ function dayKey(epochSeconds: number): string {
  * Same grouping as the corresponding range query, so the values land in the
  * same series keys and the appended row stacks like every other.
  */
-export function todayPartialQueries(range: string) {
+export function todayPartialQueries(
+  range: string,
+  { org }: Pick<LlmUsageQueryOptions, 'org'> = {},
+) {
+  const only = orgSelector(org);
   return {
-    costByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}[${range}]))`,
-    tokensByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum[${range}]))`,
+    costByModel: `sum by (gen_ai_response_model) (increase(${Cost.name}${only}[${range}]))`,
+    tokensByType: `sum by (gen_ai_token_type) (increase(${TokenUsage.name}_sum${only}[${range}]))`,
   };
 }
 
