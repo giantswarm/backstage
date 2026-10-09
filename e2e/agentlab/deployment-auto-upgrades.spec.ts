@@ -122,10 +122,7 @@ test.describe("a deployment's automatic upgrades", () => {
   );
 
   test.beforeAll(async () => {
-    await kubectl(
-      ['apply', '-f', '-'],
-      SCENARIOS.map(fixture).join('\n---\n'),
-    );
+    await kubectl(['apply', '-f', '-'], SCENARIOS.map(fixture).join('\n---\n'));
   });
 
   test.afterAll(async () => {
