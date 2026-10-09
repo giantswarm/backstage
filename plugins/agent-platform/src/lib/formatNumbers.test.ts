@@ -245,6 +245,25 @@ describe('useCurrency', () => {
     expect(result.current).toEqual({ code: 'GBP', usdRate: 0.8 });
   });
 
+  it('formats costs in the currency the installation configures', () => {
+    publish({
+      golem: { currency: { code: 'EUR', usdRate: 0.9 } },
+      gazelle: { currency: { code: 'EUR' } },
+    });
+
+    const golem = renderHook(() => useCurrency('golem')).result.current;
+    const gazelle = renderHook(() => useCurrency('gazelle')).result.current;
+
+    expect(formatMoney(10, golem)).toBe('€9.00');
+    expect(formatMoney(10, gazelle)).toBe('$10.00');
+  });
+
+  it('returns USD for a currency configured without a code', () => {
+    publish({ golem: { currency: { usdRate: 0.9 } } });
+
+    expect(renderHook(() => useCurrency('golem')).result.current).toBe(USD);
+  });
+
   it('keeps the same object across renders', () => {
     publish({ golem: { currency: { code: 'EUR', usdRate: 0.9 } } });
     const { result, rerender } = renderHook(() => useCurrency('golem'));

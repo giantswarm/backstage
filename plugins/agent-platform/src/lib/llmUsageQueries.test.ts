@@ -172,6 +172,12 @@ describe('llmUsageQueriesFor', () => {
     expect(queries.unpricedLookups).toBe(llmUsageQueries.unpricedLookups);
   });
 
+  it('compares one organization over the window just before this one', () => {
+    expect(llmUsageQueriesFor({ days: 7, org: 'support' }).previousCost).toBe(
+      'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}[7d] offset 7d))',
+    );
+  });
+
   it('escapes an organization so it cannot change the query', () => {
     const { cost } = llmUsageQueriesFor({ org: 'a"} or vector(1) #\\' });
 
