@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider } from '../AgentsDataProvider';
@@ -21,8 +22,12 @@ import { SessionDetailRoute } from './SessionDetailRoute';
  * `AgentsDataProvider` requires `ModelConfigsProvider` above it, so the Sessions
  * tab pays for a fleet-wide ModelConfig list neither screen uses. It is cached,
  * persisted, and shared with the Agents tab, so in practice it is free.
+ *
+ * Inside the agent-platform shell the routes are a branch of their own, so the
+ * shell's sessions screens can change without touching the classic ones.
  */
 export const SessionsRouter = () => {
+  const agentShell = useAgentShell();
   return (
     <QueryClientProvider>
       <ModelConfigsProvider>
@@ -31,16 +36,26 @@ export const SessionsRouter = () => {
             model is not serving reads. */}
         <ServingProvider>
           <AgentsDataProvider>
-            <Routes>
-              <Route index element={<SessionsIndexPage />} />
-              {/* Both parameters are needed to resolve a session: kagent ids are
-                  only unique within an installation. One page instance per
-                  session, see `SessionDetailRoute`. */}
-              <Route
-                path=":installation/:sessionId"
-                element={<SessionDetailRoute />}
-              />
-            </Routes>
+            {agentShell ? (
+              <Routes>
+                <Route index element={<SessionsIndexPage />} />
+                <Route
+                  path=":installation/:sessionId"
+                  element={<SessionDetailRoute />}
+                />
+              </Routes>
+            ) : (
+              <Routes>
+                <Route index element={<SessionsIndexPage />} />
+                {/* Both parameters are needed to resolve a session: kagent ids
+                    are only unique within an installation. One page instance
+                    per session, see `SessionDetailRoute`. */}
+                <Route
+                  path=":installation/:sessionId"
+                  element={<SessionDetailRoute />}
+                />
+              </Routes>
+            )}
           </AgentsDataProvider>
         </ServingProvider>
       </ModelConfigsProvider>

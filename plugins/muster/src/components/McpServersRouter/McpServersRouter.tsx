@@ -10,6 +10,7 @@ import { NewMcpServerReviewPage } from '../NewMcpServerReviewPage';
 import { NewMcpServerVerifyPage } from '../NewMcpServerVerifyPage';
 import { ServerPage } from '../ServerPage';
 import { ToolPage } from '../ToolPage';
+import { useAgentShell } from '../../hooks/useAgentShell';
 
 /**
  * Routing within the Agent Platform's MCP Servers tab: the servers table, a
@@ -23,10 +24,14 @@ import { ToolPage } from '../ToolPage';
  * Editing a registered server runs through the same steps with `?edit=<name>`
  * (see NewMcpServerEditGate), so the routes — and their telemetry page names —
  * are the same for both.
+ *
+ * Inside the agent-platform shell a server's route is a branch of its own, so
+ * the shell's connector page can change without touching the classic one.
  */
 export const McpServersRouter = () => {
   // A wizard step, a server or a tool page opens at its top.
   useScrollToTopOnNavigation();
+  const agentShell = useAgentShell();
   return (
     <NewMcpServerFormProvider>
       <Routes>
@@ -64,7 +69,11 @@ export const McpServersRouter = () => {
           }
         />
         <Route path=":server/tools/:tool" element={<ToolPage />} />
-        <Route path=":server/*" element={<ServerPage />} />
+        {agentShell ? (
+          <Route path=":server/*" element={<ServerPage />} />
+        ) : (
+          <Route path=":server/*" element={<ServerPage />} />
+        )}
       </Routes>
     </NewMcpServerFormProvider>
   );
