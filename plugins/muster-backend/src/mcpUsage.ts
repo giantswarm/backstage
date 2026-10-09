@@ -107,12 +107,44 @@ export function pickPrometheusServer(
   return prometheusLike.find(name => name.startsWith(installation.name));
 }
 
-/** The step sizes a caller may ask for, in hours. */
-export const MCP_USAGE_STEP_HOURS = [1, 24] as const;
-export type McpUsageStepHours = (typeof MCP_USAGE_STEP_HOURS)[number];
+const HOUR_SECONDS = 3600;
+const DAY_SECONDS = 24 * HOUR_SECONDS;
 
-export function isMcpUsageStepHours(value: number): value is McpUsageStepHours {
-  return (MCP_USAGE_STEP_HOURS as readonly number[]).includes(value);
+/** What `/usage` covers: the last `n` hours, or the UTC month so far. */
+export type McpUsageRange = number | 'month';
+
+/**
+ * The window a range covers, aligned to whole steps so bucket edges are
+ * stable across reloads. Hourly up to two days, daily beyond and for the
+ * month. A daily window ends at the next UTC midnight, today included.
+ */
+export function usageWindow(
+  range: McpUsageRange,
+  nowSeconds: number,
+): { startSeconds: number; endSeconds: number; stepSeconds: number } {
+  if (range === 'month') {
+    const now = new Date(nowSeconds * 1000);
+    const endSeconds =
+      Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS + DAY_SECONDS;
+    const startSeconds =
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) / 1000;
+    return { startSeconds, endSeconds, stepSeconds: DAY_SECONDS };
+  }
+  if (range > 48) {
+    const endSeconds =
+      Math.floor(nowSeconds / DAY_SECONDS) * DAY_SECONDS + DAY_SECONDS;
+    return {
+      startSeconds: endSeconds - range * HOUR_SECONDS,
+      endSeconds,
+      stepSeconds: DAY_SECONDS,
+    };
+  }
+  const endSeconds = Math.ceil(nowSeconds / HOUR_SECONDS) * HOUR_SECONDS;
+  return {
+    startSeconds: endSeconds - range * HOUR_SECONDS,
+    endSeconds,
+    stepSeconds: HOUR_SECONDS,
+  };
 }
 
 /** Sum of every finite sample across all series (a range-query rollup). */
@@ -254,16 +286,16 @@ export async function getMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
-  hours: number,
-  options: {
-    /**
-     * The bucket size; by default hourly up to two days and daily beyond. A
-     * daily step ends the window at the next UTC midnight, so `24 * n` hours
-     * cover the last `n` UTC days, today included.
-     */
-    stepHours?: McpUsageStepHours;
-  } = {},
+  range: McpUsageRange,
 ): Promise<McpUsageResponse> {
+  const { startSeconds, endSeconds, stepSeconds } = usageWindow(
+    range,
+    Math.floor(Date.now() / 1000),
+  );
+  const hours = (endSeconds - startSeconds) / HOUR_SECONDS;
+  const stepHours = stepSeconds / HOUR_SECONDS;
+  const step = `${stepHours}h`;
+
   const listed = (await client.callTool(
     'core_mcpserver_list',
     {},
@@ -278,14 +310,6 @@ export async function getMcpUsage(
       'No prometheus MCP server is registered on this installation, so usage metrics cannot be queried.',
     );
   }
-
-  const stepHours = options.stepHours ?? (hours <= 48 ? 1 : 24);
-  const stepSeconds = stepHours * 3600;
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  // Align the window to whole steps so bucket edges are stable across reloads.
-  const endSeconds = Math.ceil(nowSeconds / stepSeconds) * stepSeconds;
-  const startSeconds = endSeconds - hours * 3600;
-  const step = `${stepHours}h`;
 
   const runQuery = async (
     tool: typeof QUERY_TOOL | typeof RANGE_TOOL,

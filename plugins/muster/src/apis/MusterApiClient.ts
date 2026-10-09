@@ -192,14 +192,14 @@ export class MusterApiClient implements MusterApi {
   }
 
   async getMcpUsage(
-    options: { installation?: string; hours?: number; stepHours?: 1 | 24 } = {},
+    options: { installation?: string; hours?: number; window?: 'month' } = {},
   ): Promise<McpUsage> {
     const searchParams = new URLSearchParams();
     if (options.hours !== undefined) {
       searchParams.set('hours', String(options.hours));
     }
-    if (options.stepHours !== undefined) {
-      searchParams.set('stepHours', String(options.stepHours));
+    if (options.window !== undefined) {
+      searchParams.set('window', options.window);
     }
     const query = searchParams.toString();
     return this.get<McpUsage>(

@@ -4,7 +4,6 @@ import {
   addedLine,
   callsLine,
   healthLine,
-  monthToDateWindow,
   runsAsCaller,
   signInLabel,
 } from './connectorFacts';
@@ -80,22 +79,6 @@ describe('connectorFacts', () => {
       ]),
     ).toBe('1 of 3 instances healthy');
   });
-
-  it.each([
-    ['2026-10-01T00:30:00Z', 24],
-    ['2026-10-01T23:59:00Z', 24],
-    ['2026-10-02T12:00:00Z', 48],
-    ['2026-10-09T08:00:00Z', 216],
-    ['2026-10-31T23:59:00Z', 744],
-  ])(
-    'asks on %s for whole UTC days back to the 1st, in daily steps',
-    (now, hours) => {
-      expect(monthToDateWindow(new Date(now))).toEqual({
-        hours,
-        stepHours: 24,
-      });
-    },
-  );
 
   it('sums the calls and errors of every name the connector goes by', () => {
     const line = callsLine(

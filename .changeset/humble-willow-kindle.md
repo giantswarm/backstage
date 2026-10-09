@@ -1,5 +1,5 @@
 ---
-'@giantswarm/backstage-plugin-muster-backend': patch
+'@giantswarm/backstage-plugin-muster-backend': minor
 ---
 
-`/usage` takes `stepHours` (1 or 24, `hours` a multiple of it) to choose the bucket size; with 24 the window ends at the next UTC midnight, so `hours=24*n` covers the last `n` UTC days. Every rollup now counts only the samples inside the window: the evaluation at the window's start, which covers the step before it, is no longer added to the totals, the per-tool and the per-server calls.
+`/usage` takes `window=month` in place of `hours`: the UTC calendar month so far by the backend's clock, in daily steps. A daily window now ends after today also at exactly midnight. Every rollup counts only the samples inside the window: the evaluation at the window's start, which covers the step before it, is no longer added to the totals, the per-tool and the per-server calls.

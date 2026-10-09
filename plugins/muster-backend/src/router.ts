@@ -26,7 +26,7 @@ import {
   reachabilityFields,
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { getMcpUsage, isMcpUsageStepHours } from './mcpUsage';
+import { getMcpUsage } from './mcpUsage';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -648,26 +648,23 @@ export async function createRouter(
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const hours = parseOptionalInt(req.query.hours, 'hours') ?? 24;
-    if (hours < 1 || hours > 24 * 90) {
-      throw new InputError('hours must be between 1 and 2160');
+    const window = req.query.window;
+    if (window !== undefined && window !== 'month') {
+      throw new InputError('window must be month');
     }
-    const stepHours = parseOptionalInt(req.query.stepHours, 'stepHours');
-    if (
-      stepHours !== undefined &&
-      (!isMcpUsageStepHours(stepHours) || hours % stepHours !== 0)
-    ) {
-      throw new InputError(
-        'stepHours must be 1 or 24, and hours a multiple of it',
-      );
+    const hours = parseOptionalInt(req.query.hours, 'hours');
+    if (window !== undefined && hours !== undefined) {
+      throw new InputError('Give hours or window, not both');
+    }
+    if (hours !== undefined && (hours < 1 || hours > 24 * 90)) {
+      throw new InputError('hours must be between 1 and 2160');
     }
     res.json(
       await getMcpUsage(
         client,
         installation,
         readCallOptions(req, installation),
-        hours,
-        { stepHours },
+        window ?? hours ?? 24,
       ),
     );
   });

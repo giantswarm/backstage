@@ -71,7 +71,6 @@ import {
   addedLine,
   callsLine,
   healthLine,
-  monthToDateWindow,
   runsAsCaller,
   signInLabel,
 } from './connectorFacts';
@@ -151,10 +150,9 @@ function useCallsThisMonth(
   enabled: boolean,
 ): string | undefined {
   const musterApi = useApi(musterApiRef);
-  const { hours, stepHours } = monthToDateWindow(new Date());
   const { data } = useQuery({
-    queryKey: ['muster', 'mcp-usage', installation, hours, stepHours],
-    queryFn: () => musterApi.getMcpUsage({ installation, hours, stepHours }),
+    queryKey: ['muster', 'mcp-usage', installation, 'month'],
+    queryFn: () => musterApi.getMcpUsage({ installation, window: 'month' }),
     enabled: enabled && serverNames.length > 0,
   });
   return data ? callsLine(data, serverNames) : undefined;

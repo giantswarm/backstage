@@ -254,8 +254,7 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
     expect(api.getMcpUsage).toHaveBeenCalledWith({
       installation: 'gazelle',
-      hours: 24 * new Date().getUTCDate(),
-      stepHours: 24,
+      window: 'month',
     });
     expect(
       within(facts).getByText('https://jira.example.test/mcp'),
