@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Alert, Flex, List, ListRow, Text } from '@backstage/ui';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConnectorPageTarget,
@@ -17,20 +16,6 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 
 const AVATAR_SIZE = 96;
-
-const useStyles = makeStyles({
-  row: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '14px 4px',
-    borderBottom: '1px solid var(--bui-border-1)',
-  },
-  name: {
-    flex: '1 1 auto',
-    minWidth: 0,
-  },
-});
 
 type UsingAgent = { row: AgentRow; access: string };
 
@@ -59,7 +44,6 @@ export function agentsUsing(
 }
 
 function UsedByList({ target }: { target: ConnectorPageTarget }) {
-  const classes = useStyles();
   const { rows, isLoading, unreachableInstallations } = useAgents();
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -88,18 +72,17 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
           No agent on {target.installation} uses this connector.
         </Text>
       ) : (
-        <ul
-          aria-label="Agents using this connector"
-          style={{ margin: 0, padding: 0, listStyle: 'none' }}
-        >
-          {using.map(({ row, access }) => {
-            const href = agentDetailRoute?.({
-              installation: row.installation,
-              namespace: row.namespace,
-              name: row.technicalName,
-            });
-            return (
-              <li key={row.id} className={classes.row}>
+        <List aria-label="Agents using this connector">
+          {using.map(({ row, access }) => (
+            <ListRow
+              key={row.id}
+              id={row.id}
+              href={agentDetailRoute?.({
+                installation: row.installation,
+                namespace: row.namespace,
+                name: row.technicalName,
+              })}
+              icon={
                 <AgentAvatar
                   size="small"
                   purpose="decoration"
@@ -110,24 +93,17 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
                     }) ?? ''
                   }
                 />
-                <span className={classes.name}>
-                  {href ? (
-                    <Link href={href} weight="bold">
-                      {row.name}
-                    </Link>
-                  ) : (
-                    <Text variant="body-medium" weight="bold">
-                      {row.name}
-                    </Text>
-                  )}
-                </span>
+              }
+              customActions={
                 <Text variant="body-small" color="secondary">
                   {access}
                 </Text>
-              </li>
-            );
-          })}
-        </ul>
+              }
+            >
+              {row.name}
+            </ListRow>
+          ))}
+        </List>
       )}
       {unresolved > 0 && (
         <Text as="p" variant="body-small" color="secondary">
