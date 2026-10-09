@@ -1,9 +1,13 @@
 import { ConfigReader } from '@backstage/config';
+import { configApiRef } from '@backstage/core-plugin-api';
+import { TestApiProvider } from '@backstage/frontend-test-utils';
 import { BackstageTheme, createUnifiedTheme, palettes } from '@backstage/theme';
+import { render } from '@testing-library/react';
 import { AGENT_SHELL_FONT_FAMILY } from '../agentShell/theme';
 import {
   buildPalette,
   buildThemeOptions,
+  DarkThemeProvider,
   getCssVariableOverrides,
 } from './customThemes';
 
@@ -266,11 +270,53 @@ describe('buildThemeOptions', () => {
     expect(strip(on.palette)).toEqual(strip(off.palette));
   });
 
-  it('only changes the font of the dark theme', () => {
+  it('builds the light agent-shell theme for the dark variant too (light-only shell)', () => {
     const config = new ConfigReader({});
-    expect(buildThemeOptions(config, 'dark', true)).toEqual({
-      palette: buildPalette(config, 'dark'),
-      fontFamily: AGENT_SHELL_FONT_FAMILY,
-    });
+    const dark = buildThemeOptions(config, 'dark', true);
+
+    // Identical to the light variant's agent-shell theme...
+    expect(dark).toEqual(buildThemeOptions(config, 'light', true));
+    // ...and marked as a light theme, which is what UnifiedThemeProvider
+    // writes into body[data-theme-mode] for bui and agent-shell.css.
+    expect(dark.palette).toMatchObject({ type: 'light', mode: 'light' });
+    const v4 = createUnifiedTheme(dark).getTheme('v4') as BackstageTheme;
+    expect(v4.palette.type).toBe('light');
+    expect(v4.palette.background.default).toBe('#ffffff');
+  });
+
+  it('builds the light agent-shell theme for the dark variant on top of light branding', () => {
+    expect(buildThemeOptions(branded, 'dark', true)).toEqual(
+      buildThemeOptions(branded, 'light', true),
+    );
+  });
+});
+
+describe('theme providers under the agent shell', () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.agentShell;
+  });
+
+  // The dark provider is what renders for a user whose theme preference is
+  // dark (or auto resolving dark); rendered directly so no test-app theme
+  // wrapper pushes its own body[data-theme-mode] on top.
+  function renderDarkProvider() {
+    return render(
+      <TestApiProvider apis={[[configApiRef, new ConfigReader({})]]}>
+        <DarkThemeProvider>
+          <div data-testid="content" />
+        </DarkThemeProvider>
+      </TestApiProvider>,
+    );
+  }
+
+  it('renders light while data-agent-shell is set, despite a dark preference', () => {
+    document.documentElement.dataset.agentShell = '';
+    renderDarkProvider();
+    expect(document.body).toHaveAttribute('data-theme-mode', 'light');
+  });
+
+  it('keeps the dark theme on classic routes (no data-agent-shell)', () => {
+    renderDarkProvider();
+    expect(document.body).toHaveAttribute('data-theme-mode', 'dark');
   });
 });

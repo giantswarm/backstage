@@ -41,7 +41,9 @@ function sourceLabel(server: MCPServer | undefined): string {
   if (!server) {
     return 'muster';
   }
-  return isGitOpsManaged(server) ? 'Fleet server' : 'User-registered server';
+  return isGitOpsManaged(server)
+    ? 'Fleet connector'
+    : 'User-registered connector';
 }
 
 /** One line, cut to the column with an ellipsis. */
@@ -205,7 +207,7 @@ export function ServersTable({
   const columns: ColumnConfig<ServerTableRow>[] = [
     {
       id: 'server',
-      label: 'Server',
+      label: 'Connector',
       isRowHeader: true,
       isSortable: true,
       // The name is what a person scans for; the other columns hold a state,
@@ -235,7 +237,7 @@ export function ServersTable({
                   truncate
                   title={
                     entry.shadowed
-                      ? `A server family (or muster) of the same name takes the page “${entry.id}”, so this server has none of its own.`
+                      ? `A connector family (or muster) of the same name takes the page “${entry.id}”, so this connector has none of its own.`
                       : entry.id
                   }
                 >

@@ -119,7 +119,7 @@ async function renderPanel(search = '') {
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
     },
   );
 }
@@ -192,7 +192,7 @@ describe('CustomizeConnectorsPanel', () => {
       within(github).getByText('Repositories and pull requests'),
     );
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/mcp-servers/github?installation=gazelle',
+      '/agent-platform/connectors/github?installation=gazelle',
       undefined,
     );
   });
@@ -212,7 +212,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(rowOf('kubernetes')).toHaveAttribute(
       'data-href',
-      '/agent-platform/mcp-servers/kubernetes?installation=gazelle',
+      '/agent-platform/connectors/kubernetes?installation=gazelle',
     );
   });
 

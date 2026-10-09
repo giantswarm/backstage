@@ -66,7 +66,7 @@ const AUTH_CHOICES: Array<{
   {
     value: 'none',
     description:
-      'The server is public or trusted on the network. Muster connects without credentials.',
+      'The connector is public or trusted on the network. Muster connects without credentials.',
   },
   {
     value: 'own-account',
@@ -227,7 +227,7 @@ export function NewMcpServerAuthPage() {
           <Card>
             <CardBody>
               <SelectableCardGrid
-                ariaLabel="How do users authenticate to this server?"
+                ariaLabel="How do users authenticate to this connector?"
                 minWidth={280}
               >
                 {AUTH_CHOICES.map(choice => {

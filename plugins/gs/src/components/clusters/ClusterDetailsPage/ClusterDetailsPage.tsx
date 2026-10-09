@@ -29,7 +29,7 @@ export const ClusterDetailsPage = ({ actions }: ClusterDetailsPageProps) => {
               <ClusterOverview />
             </ErrorsProvider>
           </ClusterLayout.Route>
-          <ClusterLayout.Route path="/deployments" title="Deployments">
+          <ClusterLayout.Route path="/deployments" title="Apps">
             <ErrorsProvider>
               <ClusterApps />
             </ErrorsProvider>

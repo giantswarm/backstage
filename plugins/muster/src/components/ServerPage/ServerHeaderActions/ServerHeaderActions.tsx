@@ -65,7 +65,7 @@ export function ServerHeaderActions({
         <MenuTrigger>
           <ButtonIcon
             icon={<MoreVertIcon />}
-            aria-label="Server actions"
+            aria-label="Connector actions"
             variant="tertiary"
           />
           <Menu maxWidth={MENU_WIDTH}>

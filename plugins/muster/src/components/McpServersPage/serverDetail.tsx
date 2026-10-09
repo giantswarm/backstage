@@ -126,7 +126,7 @@ export function DetailBlock({
 function activateHint(server: MCPServer): string {
   return isGitOpsManaged(server)
     ? ''
-    : ' Use “Activate” in the server’s actions.';
+    : ' Use “Activate” in the connector’s actions.';
 }
 
 /** CRD-sourced configuration (always available, no muster session needed). */
@@ -409,7 +409,7 @@ export function RuntimeState({ server }: { server: MCPServer }) {
 
   const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
   if (!runtime) {
-    return <Note>Server not present in the aggregator's runtime list.</Note>;
+    return <Note>Connector not present in the aggregator's runtime list.</Note>;
   }
 
   // The session rows describe this user's session, not the server: on a
@@ -500,8 +500,8 @@ export function RuntimeState({ server }: { server: MCPServer }) {
       {staleSessionNote && (
         <Text variant="body-small" color="secondary">
           {DEACTIVATED_LABEL} — the Session, Tools, Resources and Prompts rows
-          are your session's last connection to this server, not a working
-          server.
+          are your session's last connection to this connector, not a working
+          connector.
         </Text>
       )}
       <FactList facts={facts} maxWidth={null} />
@@ -526,24 +526,24 @@ export function RuntimeState({ server }: { server: MCPServer }) {
  */
 export function noToolsExplanation(server: MCPServer): string {
   if (server.getSuspended()) {
-    return `No tools exposed — this server is deactivated.${activateHint(
+    return `No tools exposed — this connector is deactivated.${activateHint(
       server,
     )}`;
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this server connects per session with your own identity; its tools appear here once your muster session has connected to it.';
+    return 'No tools exposed yet — this connector connects per session with your own identity; its tools appear here once your muster session has connected to it.';
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — your muster session is not authenticated to this server. Use “Sign in” in the server’s actions.';
+    return 'No tools exposed — your muster session is not authenticated to this connector. Use “Sign in” in the connector’s actions.';
   }
   const explanation = server.getStateExplanation();
   if (state === 'Failed' && explanation) {
     return `No tools exposed — ${explanation}`;
   }
-  return 'No tools exposed (the server may be down or unreachable).';
+  return 'No tools exposed (the connector may be down or unreachable).';
 }
 
 /**
@@ -706,7 +706,7 @@ export function ServerResources({
     return (
       <Note>
         {emptyText ??
-          'No resources exposed (server may be down or require authentication).'}
+          'No resources exposed (connector may be down or require authentication).'}
       </Note>
     );
   }
@@ -772,7 +772,7 @@ export function ServerPrompts({
     return (
       <Note>
         {emptyText ??
-          'No prompts exposed (server may be down or require authentication).'}
+          'No prompts exposed (connector may be down or require authentication).'}
       </Note>
     );
   }

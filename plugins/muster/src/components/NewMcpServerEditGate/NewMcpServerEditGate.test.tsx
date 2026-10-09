@@ -77,11 +77,11 @@ function Section({ isLoading }: { isLoading?: boolean }) {
   return (
     <MusterInstanceContext.Provider value={instance(active, isLoading)}>
       <button onClick={() => setActive('golem')}>switch to golem</button>
-      <Link to="/agent-platform/mcp-servers/new">new registration</Link>
-      <Link to="/agent-platform/mcp-servers/new?edit=miro">edit miro</Link>
+      <Link to="/agent-platform/connectors/new">new registration</Link>
+      <Link to="/agent-platform/connectors/new?edit=miro">edit miro</Link>
       <Routes>
         <Route
-          path="/agent-platform/mcp-servers/*"
+          path="/agent-platform/connectors/*"
           element={<McpServersRouter />}
         />
       </Routes>
@@ -92,43 +92,41 @@ function Section({ isLoading }: { isLoading?: boolean }) {
 function renderSection(path: string, isLoading?: boolean) {
   return renderInTestApp(<Section isLoading={isLoading} />, {
     initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+    mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
   });
 }
 
 describe('NewMcpServerEditGate', () => {
   it('seeds the wizard from ?edit on the active installation', async () => {
-    await renderSection('/agent-platform/mcp-servers/new?edit=miro');
+    await renderSection('/agent-platform/connectors/new?edit=miro');
 
-    expect(
-      await screen.findByText('Edit MCP server: miro'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Edit connector: miro')).toBeInTheDocument();
     expect(screen.getByLabelText(/^URL/)).toHaveValue('https://mcp.miro.com/');
   });
 
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
-    await renderSection('/agent-platform/mcp-servers/new?edit=github');
+    await renderSection('/agent-platform/connectors/new?edit=github');
 
     expect(
-      await screen.findByText('This server is managed in Git'),
+      await screen.findByText('This connector is managed in Git'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Back to MCP servers' }),
+      screen.getByRole('link', { name: 'Back to connectors' }),
     ).toBeInTheDocument();
   });
 
   it('waits for the server list before deciding', async () => {
-    await renderSection('/agent-platform/mcp-servers/new?edit=miro', true);
+    await renderSection('/agent-platform/connectors/new?edit=miro', true);
 
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
-    expect(screen.queryByText('Server not found')).not.toBeInTheDocument();
+    expect(screen.queryByText('Connector not found')).not.toBeInTheDocument();
   });
 
   it('ends the edit when the header switches installation', async () => {
-    await renderSection('/agent-platform/mcp-servers/new?edit=miro');
-    await screen.findByText('Edit MCP server: miro');
+    await renderSection('/agent-platform/connectors/new?edit=miro');
+    await screen.findByText('Edit connector: miro');
 
     await userEvent.click(
       screen.getByRole('button', { name: 'switch to golem' }),
@@ -139,14 +137,12 @@ describe('NewMcpServerEditGate', () => {
     await userEvent.click(
       screen.getByRole('link', { name: 'new registration' }),
     );
-    expect(
-      await screen.findByText('Register an MCP server'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Register a connector')).toBeInTheDocument();
     expect(screen.getByLabelText(/^URL/)).toHaveValue('');
   });
 
   it('brings a draft back once the edit is left', async () => {
-    await renderSection('/agent-platform/mcp-servers/new');
+    await renderSection('/agent-platform/connectors/new');
     await userEvent.type(
       screen.getByLabelText(/^URL/),
       'https://draft.example.com/mcp',
@@ -160,9 +156,7 @@ describe('NewMcpServerEditGate', () => {
     await userEvent.click(
       screen.getByRole('link', { name: 'new registration' }),
     );
-    expect(
-      await screen.findByText('Register an MCP server'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Register a connector')).toBeInTheDocument();
     expect(screen.getByLabelText(/^URL/)).toHaveValue(
       'https://draft.example.com/mcp',
     );

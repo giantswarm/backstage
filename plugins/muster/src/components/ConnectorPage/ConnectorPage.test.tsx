@@ -183,7 +183,7 @@ async function renderAt(
       <PageHeaderActionsProvider>
         <Routes>
           <Route
-            path="/agent-platform/mcp-servers/:server/*"
+            path="/agent-platform/connectors/:server/*"
             element={<ConnectorPage usedBy={usedBy} />}
           />
         </Routes>
@@ -200,7 +200,7 @@ async function renderAt(
   return api;
 }
 
-const BASE = '/agent-platform/mcp-servers';
+const BASE = '/agent-platform/connectors';
 
 beforeEach(() => {
   mockServers = makeServers();

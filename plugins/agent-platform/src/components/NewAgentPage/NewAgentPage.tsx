@@ -241,7 +241,7 @@ function NewAgentPageContent() {
                   placeholder={
                     'https://github.com:443\nhttps://*.githubusercontent.com'
                   }
-                  description="Hosts the agent may reach beyond what it already has: its model, its MCP servers, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
+                  description="Hosts the agent may reach beyond what it already has: its model, its connectors, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
                   error={egressProblem(parseEgressText(state.egressText))}
                 />
               </Flex>

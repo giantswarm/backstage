@@ -124,7 +124,7 @@ test('an empty app ID skips TelemetryDeck with one warning per page load', async
     await open(admin, '/agent-platform/agents');
     await admin
       .getByRole('navigation', { name: 'sidebar nav' })
-      .getByRole('link', { name: 'Catalog' })
+      .getByRole('link', { name: 'Software' })
       .click();
     await expect(admin).toHaveURL(/\/catalog/);
 

@@ -12,7 +12,7 @@ import { QueryClientProvider } from '../QueryClientProvider';
 /**
  * Which platform component each level-1 tab reads, by the first segment of its
  * path under `/agent-platform`. Agents, Sessions and Models are kagent's;
- * "MCP Servers" (`mcp-servers`) and "Workflows" (`workflows`) are the muster
+ * "Connectors" (`connectors`) and "Workflows" (`workflows`) are the muster
  * plugin's tabs (see `plugins/muster/src/plugin.tsx`). An unknown segment (the section index, a
  * future tab) gets no component: every platform installation is then offered
  * without a per-tab remark.
@@ -30,7 +30,7 @@ const TAB_COMPONENTS: Record<string, PlatformComponent> = {
   // either.
   usage: 'kagent',
   models: 'kagent',
-  'mcp-servers': 'muster',
+  connectors: 'muster',
   workflows: 'muster',
 };
 
@@ -50,7 +50,7 @@ function HeaderControl() {
 
   // The backends' endpoint probes (`GET /kagent/installations`, the muster
   // backend's `/installations`): an installation whose kagent (on the kagent
-  // tabs) or muster (on the MCP Servers tab) the portal cannot reach is worth
+  // tabs) or muster (on the Connectors tab) the portal cannot reach is worth
   // saying next to what the inventory knows -- this selector is the one
   // control that scopes the muster section too, and its views say the same
   // instead of offering a connect that cannot help.

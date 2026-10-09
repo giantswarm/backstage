@@ -151,7 +151,7 @@ export function NewMcpServerReviewPage() {
     navigate,
   ]);
 
-  const registerLabel = isEdit ? 'Save changes' : 'Register server';
+  const registerLabel = isEdit ? 'Save changes' : 'Register connector';
   const busyLabel = isEdit ? 'Saving…' : 'Registering…';
 
   const actions = useMemo(
@@ -232,8 +232,8 @@ export function NewMcpServerReviewPage() {
             <>
               Your changes are saved as an update to the already-registered
               server <span className={classes.code}>{registeredName}</span> on{' '}
-              <strong>{state.installation}</strong> — the same server, updated
-              in place.
+              <strong>{state.installation}</strong> — the same connector,
+              updated in place.
             </>
           ) : (
             <>
@@ -246,7 +246,7 @@ export function NewMcpServerReviewPage() {
         </Text>
 
         <div className={classes.summary}>
-          <SummaryItem label="Server">
+          <SummaryItem label="Connector">
             <span className={classes.code}>{definition.name}</span>
           </SummaryItem>
           <SummaryItem label="Installation">
@@ -345,8 +345,8 @@ export function NewMcpServerReviewPage() {
                     <Text variant="body-small" color="secondary">
                       Validates the definition first, then{' '}
                       {isEdit
-                        ? 'updates the existing server in place.'
-                        : 'creates the server and moves on to watch it connect.'}
+                        ? 'updates the existing connector in place.'
+                        : 'creates the connector and moves on to watch it connect.'}
                     </Text>
                   </Flex>
                   <Button

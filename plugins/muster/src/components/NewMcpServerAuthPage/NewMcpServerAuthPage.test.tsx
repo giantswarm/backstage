@@ -42,20 +42,20 @@ function renderWizard(path: string) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/agent-platform/mcp-servers/*"
+        path="/agent-platform/connectors/*"
         element={<McpServersRouter />}
       />
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
     },
   );
 }
 
 /** Walks the real flow: fills the details step, continues to authentication. */
 async function renderAuthStep() {
-  const result = await renderWizard('/agent-platform/mcp-servers/new');
+  const result = await renderWizard('/agent-platform/connectors/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -68,7 +68,7 @@ async function renderAuthStep() {
 
 describe('NewMcpServerAuthPage', () => {
   it('sends a deep link back to step 1 while the details are incomplete', async () => {
-    await renderWizard('/agent-platform/mcp-servers/new/auth');
+    await renderWizard('/agent-platform/connectors/new/auth');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(
@@ -286,7 +286,7 @@ describe('NewMcpServerAuthPage', () => {
           'gazelle',
         ),
       ];
-      await renderWizard('/agent-platform/mcp-servers/new/auth?edit=miro');
+      await renderWizard('/agent-platform/connectors/new/auth?edit=miro');
       await screen.findByText('Step 2 of 4: Authentication');
       expect(screen.getByLabelText(/Required audiences/)).toHaveValue(
         'aud-a, aud-b',

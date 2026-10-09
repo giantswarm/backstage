@@ -27,7 +27,8 @@ import {
 const fluxPage = PageBlueprint.make({
   disabled: true,
   params: {
-    title: 'Flux',
+    // "Delivery" to people; the route and the code keep the flux name.
+    title: 'Delivery',
     icon: <FluxIcon />,
     path: '/flux',
     routeRef: rootRouteRef,

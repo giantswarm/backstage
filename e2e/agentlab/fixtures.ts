@@ -248,7 +248,7 @@ export const agentPlatformTabs = [
   'Sessions',
   'Agents',
   'Models',
-  'MCP Servers',
+  'Connectors',
   'Workflows',
   'Usage',
 ] as const;

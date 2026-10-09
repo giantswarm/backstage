@@ -11,12 +11,12 @@ test('the sidebar links to every enabled page', async ({ admin }) => {
   await open(admin, '/');
   const nav = admin.getByRole('navigation', { name: 'sidebar nav' });
   for (const [name, href] of [
-    ['Catalog', '/catalog'],
+    ['Software', '/catalog'],
     ['Docs', '/docs'],
-    ['Deployments', '/deployments'],
+    ['Apps', '/deployments'],
     ['Clusters', '/clusters'],
     ['Agent Platform', '/agent-platform'],
-    ['Create...', '/create'],
+    ['Templates', '/create'],
     ['Settings', '/settings'],
   ] as const) {
     await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
@@ -90,9 +90,9 @@ test('the Giant Swarm pages the lab enables render their headers', async ({
   admin,
 }) => {
   for (const [path, heading] of [
-    ['/catalog', 'Catalog'],
+    ['/catalog', 'Software'],
     ['/clusters', 'Clusters'],
-    ['/deployments', 'Deployments'],
+    ['/deployments', 'Apps'],
   ] as const) {
     await open(admin, path);
     await expect(

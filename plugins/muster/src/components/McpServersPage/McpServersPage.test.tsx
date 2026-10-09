@@ -153,7 +153,7 @@ function CurrentPath() {
   return <div data-testid="path">{`${pathname}${search}`}</div>;
 }
 
-const BASE = '/agent-platform/mcp-servers';
+const BASE = '/agent-platform/connectors';
 
 async function renderPage(
   servers: MCPServer[],
@@ -188,7 +188,7 @@ async function renderPage(
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );
@@ -215,7 +215,7 @@ describe('McpServersPage', () => {
 
     await waitFor(() => expect(rows()[0][2]).toBe('1'));
     expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(
-      ['Server', 'Status', 'Tools', 'Auth', 'Source'],
+      ['Connector', 'Status', 'Tools', 'Auth', 'Source'],
     );
     expect(rows()).toEqual([
       [
@@ -223,21 +223,21 @@ describe('McpServersPage', () => {
         'Connected',
         '1',
         'AWS request signing (SigV4, shared identity)',
-        'User-registered server',
+        'User-registered connector',
       ],
       [
         'github',
         'Connected',
         '2',
         'Own account (OAuth sign-in)',
-        'Fleet server',
+        'Fleet connector',
       ],
       [
         'kubernetesFamily',
         '1 of 2 instances healthy',
         '2',
         'Platform SSO (forwarded token)',
-        'Fleet server',
+        'Fleet connector',
       ],
       ['musterCore', '—', '1', 'Muster session', 'muster'],
     ]);
@@ -323,7 +323,7 @@ describe('McpServersPage', () => {
 
     await userEvent.type(
       await screen.findByRole('searchbox', {
-        name: 'Search servers and tools',
+        name: 'Search connectors and tools',
       }),
       'bucket',
     );
@@ -340,7 +340,7 @@ describe('McpServersPage', () => {
     await renderPage(fleet(), { path: `${BASE}?installation=gazelle&q=zzz` });
 
     expect(
-      await screen.findByText('No server or tool matches “zzz”.'),
+      await screen.findByText('No connector or tool matches “zzz”.'),
     ).toBeInTheDocument();
   });
 
@@ -359,7 +359,7 @@ describe('McpServersPage', () => {
     // Only names are searched; no server is named after pods.
     expect(
       screen.getByText(
-        'No server name matches “pod”. Tool names are searched once connected to muster.',
+        'No connector name matches “pod”. Tool names are searched once connected to muster.',
       ),
     ).toBeInTheDocument();
     expect(api.filterTools).not.toHaveBeenCalled();
@@ -373,20 +373,20 @@ describe('McpServersPage', () => {
     expect(rows().map(row => row[2])).toEqual(['—', '—', '—', '—']);
   });
 
-  it('offers Register server in the page header', async () => {
+  it('offers Register connector in the page header', async () => {
     await renderPage(fleet());
     await screen.findByRole('link', { name: /^kubernetes/ });
 
     await renderInTestApp(<>{mockHeaderActions}</>);
     expect(
-      screen.getByRole('button', { name: 'Register server' }),
+      screen.getByRole('button', { name: 'Register connector' }),
     ).toBeInTheDocument();
   });
 
   it('shows the empty state, with the way to muster’s own tools, without MCPServer CRs', async () => {
     await renderPage([]);
 
-    expect(screen.getByText('No MCP servers')).toBeInTheDocument();
+    expect(screen.getByText('No connectors')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: "Open muster's own tools" }),
     ).toHaveAttribute('href', `${BASE}/muster?installation=gazelle`);
@@ -402,13 +402,13 @@ describe('McpServersPage', () => {
     // The indicator holds itself back 250ms, so a warm cache flashes nothing.
     expect(
       await screen.findByRole('progressbar', {
-        name: "Reading the installation's MCP servers…",
+        name: "Reading the installation's connectors…",
       }),
     ).toBeInTheDocument();
     expect(
       screen.queryByText('No muster installation'),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText('No MCP servers')).not.toBeInTheDocument();
+    expect(screen.queryByText('No connectors')).not.toBeInTheDocument();
   });
 
   it('says there is no muster once the fleet has answered with none', async () => {
@@ -449,7 +449,7 @@ describe('McpServersPage', () => {
     expect(screen.getByText(/upstream timeout/)).toBeInTheDocument();
     expect(
       screen.getByText(
-        "No server name matches “pod”. Tool names could not be searched: the installation's tools failed to load.",
+        "No connector name matches “pod”. Tool names could not be searched: the installation's tools failed to load.",
       ),
     ).toBeInTheDocument();
 
@@ -489,7 +489,9 @@ describe('McpServersPage', () => {
     );
     expect(screen.getAllByRole('link', { name: 'kubernetes' })).toHaveLength(1);
     expect(
-      screen.getByTitle(/A server family \(or muster\) of the same name takes/),
+      screen.getByTitle(
+        /A connector family \(or muster\) of the same name takes/,
+      ),
     ).toHaveTextContent('kubernetes');
   });
 

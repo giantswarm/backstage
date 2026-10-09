@@ -25,7 +25,7 @@ const CONVERSATIONS_VIEW = {
   path: 'conversations',
   title: 'Your sessions',
 } as const;
-const MCP_VIEW = { path: 'mcp', title: 'MCP tools' } as const;
+const MCP_VIEW = { path: 'mcp', title: 'Connectors' } as const;
 
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {

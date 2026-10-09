@@ -33,7 +33,7 @@ export const InstallationPicker = ({
   return (
     <Box py={clusters.length > 1 ? 1 : 0}>
       <MultipleClustersSelector
-        label="Installations"
+        label="Environments"
         persistToURL={persistToURL}
         urlParameterName="installations"
         clusters={clusters}

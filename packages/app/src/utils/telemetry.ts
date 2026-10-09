@@ -146,35 +146,45 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // muster's two Agent Platform tabs, above the generic agent-platform cases
     // below, which would report them as the Agents page.
-    case pathname === '/agent-platform/mcp-servers':
-      payload = { page: 'MCP Servers' };
+    case pathname === '/agent-platform/connectors':
+      payload = { page: 'Connectors' };
       break;
 
-    case /^\/agent-platform\/mcp-servers\/new(\/|$)/.test(pathname): {
+    case /^\/agent-platform\/connectors\/new(\/|$)/.test(pathname): {
       const parts = pathname.split('/');
       payload = {
-        page: 'MCP server registration',
+        page: 'Connector registration',
         // The wizard's first step is its index.
         view: parts[4] || 'server',
       };
       break;
     }
 
-    // A tool's page beneath its server, and a server's page with its tab as
-    // the view.
-    case /^\/agent-platform\/mcp-servers\/[^/]+\/tools\/[^/]+/.test(pathname):
-      payload = { page: 'MCP tool' };
+    // A tool's page beneath its connector, and a connector's page with its tab
+    // as the view.
+    case /^\/agent-platform\/connectors\/[^/]+\/tools\/[^/]+/.test(pathname):
+      payload = { page: 'Connector tool' };
       break;
 
-    case pathname.startsWith('/agent-platform/mcp-servers/'): {
+    case pathname.startsWith('/agent-platform/connectors/'): {
       const parts = pathname.split('/');
       payload = {
-        page: 'MCP server',
-        // Tools is the server page's index.
+        page: 'Connector',
+        // Tools is the connector page's index.
         view: parts[4] || 'tools',
       };
       break;
     }
+
+    // The tab's old address: every `/agent-platform/mcp-servers…` path only
+    // redirects to its `/agent-platform/connectors…` counterpart now
+    // (`ConnectorsRedirect`), so the momentary view counts as the target page
+    // rather than opening a dimension or merging into the Agents page's
+    // numbers.
+    case pathname === '/agent-platform/mcp-servers' ||
+      pathname.startsWith('/agent-platform/mcp-servers/'):
+      payload = { page: 'Connectors', view: 'redirect' };
+      break;
 
     case pathname === '/agent-platform/workflows':
       payload = { page: 'Workflows' };

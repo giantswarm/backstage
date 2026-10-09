@@ -48,7 +48,7 @@ function renderAt(path: string, flag: FeatureFlagState, usedBy?: ReactElement) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/agent-platform/mcp-servers/*"
+        path="/agent-platform/connectors/*"
         element={<McpServersRouter usedBy={usedBy} />}
       />
     </Routes>,
@@ -67,13 +67,13 @@ describe('McpServersRouter', () => {
     ['inside the shell', FeatureFlagState.Active, 'Connector page'],
   ])('%s', (_, flag, serverPage) => {
     it.each([
-      ['/agent-platform/mcp-servers', 'Servers list'],
-      ['/agent-platform/mcp-servers/new', 'Wizard'],
-      ['/agent-platform/mcp-servers/new/verify', 'Wizard verify'],
-      ['/agent-platform/mcp-servers/jira', serverPage],
-      ['/agent-platform/mcp-servers/jira/used-by', serverPage],
-      ['/agent-platform/mcp-servers/jira/settings', serverPage],
-      ['/agent-platform/mcp-servers/jira/tools/search', 'Tool page'],
+      ['/agent-platform/connectors', 'Servers list'],
+      ['/agent-platform/connectors/new', 'Wizard'],
+      ['/agent-platform/connectors/new/verify', 'Wizard verify'],
+      ['/agent-platform/connectors/jira', serverPage],
+      ['/agent-platform/connectors/jira/used-by', serverPage],
+      ['/agent-platform/connectors/jira/settings', serverPage],
+      ['/agent-platform/connectors/jira/tools/search', 'Tool page'],
     ])('routes %s', async (path, text) => {
       await renderAt(path, flag);
       expect(screen.getByText(text)).toBeInTheDocument();
@@ -82,14 +82,14 @@ describe('McpServersRouter', () => {
 
   it('hands the attached Used by element to the shell connector page only', async () => {
     await renderAt(
-      '/agent-platform/mcp-servers/jira',
+      '/agent-platform/connectors/jira',
       FeatureFlagState.Active,
       <p>Agents using it</p>,
     );
     expect(screen.getByText('Agents using it')).toBeInTheDocument();
 
     await renderAt(
-      '/agent-platform/mcp-servers/jira',
+      '/agent-platform/connectors/jira',
       FeatureFlagState.None,
       <p>Agents using it too</p>,
     );

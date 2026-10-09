@@ -15,10 +15,6 @@ app:
     - nav-item:flux
     - page:agent-platform
     - nav-item:agent-platform
-    - page:ai-chat
-    - api:ai-chat/service
-    - api:ai-chat/drawer
-    - app-root-element:ai-chat/drawer
 
     # PagerDuty plugin is disabled — only the api:pagerduty extension is left
     # registered (via pagerDutyPlugin in App.tsx) so our custom WhoIsOnCallEntityCard
@@ -53,7 +49,7 @@ app:
 
     - page:scaffolder:
         config:
-          title: Create things
+          title: Templates
     - sub-page:scaffolder/actions: false
     - sub-page:scaffolder/editor: false
     - sub-page:scaffolder/templating-extensions: false

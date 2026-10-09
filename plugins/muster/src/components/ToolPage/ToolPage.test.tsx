@@ -63,7 +63,7 @@ function makeApi() {
   };
 }
 
-const BASE = '/agent-platform/mcp-servers';
+const BASE = '/agent-platform/connectors';
 
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
@@ -73,14 +73,14 @@ async function renderAt(path: string, api = makeApi()) {
     <QueryClientProvider client={queryClient}>
       <Routes>
         <Route
-          path="/agent-platform/mcp-servers/*"
+          path="/agent-platform/connectors/*"
           element={<McpServersRouter />}
         />
       </Routes>
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );
@@ -119,7 +119,7 @@ describe('ToolPage', () => {
         .getAllByRole('link')
         .map(link => [link.textContent, link.getAttribute('href')]),
     ).toEqual([
-      ['MCP Servers', `${BASE}?installation=gazelle`],
+      ['Connectors', `${BASE}?installation=gazelle`],
       ['aws-root', `${BASE}/aws-root?installation=gazelle`],
       ['Tools', `${BASE}/aws-root?installation=gazelle`],
     ]);

@@ -95,7 +95,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use “Activate” in the server’s actions/),
+      screen.getByText(/Use “Activate” in the connector’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -270,7 +270,7 @@ async function renderTools(
     </TestApiProvider>,
     // ServerTools links each tool to its page, so the route the link resolves
     // against has to be mounted.
-    { mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef } },
+    { mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef } },
   );
 }
 
@@ -286,13 +286,13 @@ describe('ServerTools', () => {
     const link = await screen.findByRole('link', { name: 'list_buckets' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/mcp-servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+      '/agent-platform/connectors/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
     );
     expect(
       screen.getByRole('link', { name: 'Open the server’s tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/mcp-servers/aws-root?installation=gazelle',
+      '/agent-platform/connectors/aws-root?installation=gazelle',
     );
   });
 });
@@ -313,10 +313,10 @@ describe('ServerTools with no tools to show', () => {
     );
 
     expect(
-      await screen.findByText(/the server may be down or unreachable/),
+      await screen.findByText(/the connector may be down or unreachable/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Use “Sign in” in the server’s actions/),
+      screen.queryByText(/Use “Sign in” in the connector’s actions/),
     ).not.toBeInTheDocument();
   });
 
@@ -324,7 +324,7 @@ describe('ServerTools with no tools to show', () => {
     await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
 
     expect(
-      await screen.findByText(/Use “Sign in” in the server’s actions/),
+      await screen.findByText(/Use “Sign in” in the connector’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -373,7 +373,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        'No tools exposed — this server is deactivated. Use “Activate” in the server’s actions.',
+        'No tools exposed — this connector is deactivated. Use “Activate” in the connector’s actions.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();

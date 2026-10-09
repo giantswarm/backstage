@@ -47,7 +47,9 @@ const hivePage = PageBlueprint.makeWithOverrides({
   factory(originalFactory, { inputs }) {
     return originalFactory(
       {
-        title: 'Hive',
+        // "Plans" to people; the route (`/hive`) and the code keep the hive
+        // name, and the legacy `/plans` redirect stays as it is.
+        title: 'Plans',
         icon: <EmojiNatureIcon />,
         path: '/hive',
         routeRef: hiveRouteRef,

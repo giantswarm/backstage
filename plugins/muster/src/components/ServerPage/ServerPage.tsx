@@ -76,11 +76,11 @@ export function useServersListHref(installation: string | undefined) {
 function kindLabel(row: ServerPageRow): string {
   switch (row.kind) {
     case 'family':
-      return 'Server family';
+      return 'Connector family';
     case 'server':
       return isGitOpsManaged(row.server)
-        ? 'Fleet server'
-        : 'User-registered server';
+        ? 'Fleet connector'
+        : 'User-registered connector';
     default:
       return 'muster (core tools)';
   }
@@ -329,7 +329,7 @@ function ServerPageContent({
       <Flex direction="column" gap="2">
         <Breadcrumbs
           items={[
-            { label: 'MCP Servers', href: listHref },
+            { label: 'Connectors', href: listHref },
             { label: serverKey },
           ]}
         />
@@ -507,24 +507,24 @@ export function ServerPage() {
 
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
-    body = <LoadingIndicator label="Reading the installation's MCP servers…" />;
+    body = <LoadingIndicator label="Reading the installation's connectors…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
         title="No muster installation"
-        description="None of the installations this portal knows runs muster, so there are no aggregated MCP servers to show."
+        description="None of the installations this portal knows runs muster, so there are no connectors to show."
       />
     );
   } else if (!row) {
     body = (
       <EmptyState
         missing="data"
-        title={`No server “${key}” on ${activeInstallation}`}
-        description={`The installation ${activeInstallation} has no MCP server or server family named “${key}”. It may run on another installation — pick it in the page header — or it may have been removed.`}
+        title={`No connector “${key}” on ${activeInstallation}`}
+        description={`The installation ${activeInstallation} has no connector or connector family named “${key}”. It may run on another installation — pick it in the page header — or it may have been removed.`}
         action={
           listHref ? (
-            <Link href={listHref}>Back to the MCP servers</Link>
+            <Link href={listHref}>Back to the connectors</Link>
           ) : undefined
         }
       />

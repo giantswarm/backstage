@@ -18,7 +18,7 @@ import { lab } from './lab';
  * (proxy start → muster → Dex) is real.
  */
 
-const serversPath = `/agent-platform/mcp-servers?installation=${lab.installation}`;
+const serversPath = `/agent-platform/connectors?installation=${lab.installation}`;
 
 /**
  * The family the lab's own cluster joins as `lab.mcpKubernetes`, the way every
@@ -37,7 +37,7 @@ test('lists the installation servers in one table, muster included', async ({
   await open(admin, serversPath);
   // A level-1 tab of the Agent Platform, with no tab row of its own.
   await expect(
-    admin.getByRole('tab', { name: 'MCP Servers', exact: true }),
+    admin.getByRole('tab', { name: 'Connectors', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   for (const name of [
     'agent-manager',
@@ -52,13 +52,27 @@ test('lists the installation servers in one table, muster included', async ({
   ).toBeVisible();
 });
 
+test('the tab’s old mcp-servers address redirects to connectors, path and query kept', async ({
+  admin,
+}) => {
+  await open(
+    admin,
+    `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/details?installation=${lab.installation}`,
+  );
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}/details\\?installation=${lab.installation}$`,
+    ),
+  );
+});
+
 test('searching a tool name narrows the list to the servers offering it', async ({
   admin,
 }) => {
   await open(admin, serversPath);
   await connectToMuster(admin, admin.getByRole('grid'));
   await admin
-    .getByRole('searchbox', { name: 'Search servers and tools' })
+    .getByRole('searchbox', { name: 'Search connectors and tools' })
     .fill('mcpserver_list');
 
   const muster = serverLink(admin, 'muster');
@@ -69,7 +83,7 @@ test('searching a tool name narrows the list to the servers offering it', async 
   await expect(serverLink(admin, 'lab-oauth-fixture')).toHaveCount(0);
 
   await muster.click();
-  await expect(admin).toHaveURL(/\/mcp-servers\/muster\?.*q=mcpserver_list/);
+  await expect(admin).toHaveURL(/\/connectors\/muster\?.*q=mcpserver_list/);
   await expect(
     admin.getByRole('link', { name: 'mcpserver_list', exact: true }),
   ).toBeVisible({ timeout: 60_000 });
@@ -136,7 +150,7 @@ test("a family's row opens its server page, with the family's tabs", async ({
   ).toBeVisible();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}\\?installation=${lab.installation}$`,
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}\\?installation=${lab.installation}$`,
     ),
   );
   // Tools is the server page's index: a server link lands on its tools.
@@ -152,7 +166,7 @@ test("a family's row opens its server page, with the family's tabs", async ({
   await admin.getByRole('tab', { name: /^Instances/ }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/instances\\?installation=${lab.installation}$`,
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}/instances\\?installation=${lab.installation}$`,
     ),
   );
   await expect(
@@ -164,7 +178,7 @@ test("a family's row opens its server page, with the family's tabs", async ({
   await admin.getByRole('tab', { name: 'Details' }).click();
   await expect(admin).toHaveURL(
     new RegExp(
-      `/agent-platform/mcp-servers/${KUBERNETES_FAMILY}/details\\?installation=${lab.installation}$`,
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}/details\\?installation=${lab.installation}$`,
     ),
   );
   await expect(admin.getByText('Configuration').first()).toBeVisible();
@@ -178,7 +192,7 @@ test("muster's own server page lists its core tools, and a tool page runs one", 
   await connectToMuster(admin, admin.getByRole('grid'));
   await open(
     admin,
-    `/agent-platform/mcp-servers/muster?installation=${lab.installation}`,
+    `/agent-platform/connectors/muster?installation=${lab.installation}`,
   );
 
   // Read-only, and there on every muster: the aggregator's own server list.

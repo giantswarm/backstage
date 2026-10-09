@@ -170,12 +170,12 @@ describe('ConfirmActionDialog', () => {
       screen.getByRole('button', { name: 'open deactivate' }),
     );
     expect(
-      await screen.findByText(/muster will disconnect this server/),
+      await screen.findByText(/muster will disconnect this connector/),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     expect(
-      await screen.findByText(/Done\. The server list has been refreshed/),
+      await screen.findByText(/Done\. The connector list has been refreshed/),
     ).toBeInTheDocument();
     expect(callTool).toHaveBeenCalledWith(
       'core_service_stop',
@@ -200,7 +200,7 @@ describe('ConfirmActionDialog', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: 'Confirm' }),
     );
-    await screen.findByText(/Done\. The server list has been refreshed/);
+    await screen.findByText(/Done\. The connector list has been refreshed/);
     const closes = screen.getAllByRole('button', { name: 'Close' });
     await userEvent.click(closes[closes.length - 1]);
 
@@ -212,7 +212,7 @@ describe('ConfirmActionDialog', () => {
       await screen.findByRole('button', { name: 'Confirm' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Done\. The server list has been refreshed/),
+      screen.queryByText(/Done\. The connector list has been refreshed/),
     ).not.toBeInTheDocument();
   });
 

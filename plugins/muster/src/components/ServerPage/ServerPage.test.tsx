@@ -223,7 +223,7 @@ async function renderAt(path: string, api = makeApi()) {
     <QueryClientProvider client={queryClient}>
       <Routes>
         <Route
-          path="/agent-platform/mcp-servers/*"
+          path="/agent-platform/connectors/*"
           element={
             <>
               <McpServersRouter />
@@ -235,14 +235,14 @@ async function renderAt(path: string, api = makeApi()) {
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
       apis: [[musterApiRef, api as never]],
     },
   );
   return api;
 }
 
-const BASE = '/agent-platform/mcp-servers';
+const BASE = '/agent-platform/connectors';
 
 function CurrentPath() {
   const { pathname, search } = useLocation();
@@ -313,7 +313,7 @@ describe('ServerPage tabs', () => {
       'Resources',
     );
     expect(
-      await screen.findByText('This server exposes no resources.'),
+      await screen.findByText('This connector exposes no resources.'),
     ).toBeInTheDocument();
   });
 
@@ -388,10 +388,10 @@ describe('ServerPage tabs', () => {
     await renderAt(`${BASE}/nope?installation=gazelle`);
 
     expect(
-      await screen.findByText('No server “nope” on gazelle'),
+      await screen.findByText('No connector “nope” on gazelle'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Back to the MCP servers' }),
+      screen.getByRole('link', { name: 'Back to the connectors' }),
     ).toHaveAttribute('href', `${BASE}?installation=gazelle`);
   });
 
@@ -400,7 +400,7 @@ describe('ServerPage tabs', () => {
 
     const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
     expect(
-      within(trail).getByRole('link', { name: 'MCP Servers' }),
+      within(trail).getByRole('link', { name: 'Connectors' }),
     ).toHaveAttribute('href', `${BASE}?installation=gazelle`);
   });
 });
@@ -632,7 +632,7 @@ describe('ServerPage header actions', () => {
 
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Server actions' }),
+      screen.getByRole('button', { name: 'Connector actions' }),
     );
     expect(
       screen.getAllByRole('menuitem').map(item => item.textContent),
@@ -648,7 +648,7 @@ describe('ServerPage header actions', () => {
       screen.getByRole('button', { name: 'Edit/Remove' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Server actions' }),
+      screen.queryByRole('button', { name: 'Connector actions' }),
     ).not.toBeInTheDocument();
   });
 
@@ -728,7 +728,9 @@ describe('ServerPage review fixes', () => {
     await screen.findByRole('heading', { name: 'aws-root' });
     const header = await renderHeader();
     await userEvent.click(
-      within(header!.container).getByRole('button', { name: 'Server actions' }),
+      within(header!.container).getByRole('button', {
+        name: 'Connector actions',
+      }),
     );
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
     // The header was rendered on its own; its Delete opened the page's dialog.
@@ -787,7 +789,9 @@ describe('ServerPage review fixes', () => {
 async function menuItems() {
   const header = await renderHeader();
   await userEvent.click(
-    within(header!.container).getByRole('button', { name: 'Server actions' }),
+    within(header!.container).getByRole('button', {
+      name: 'Connector actions',
+    }),
   );
   return screen.getAllByRole('menuitem').map(item => item.textContent);
 }
@@ -837,7 +841,9 @@ describe('ServerPage lifecycle and edit actions', () => {
       within(header!.container).queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/only covers remote \(streamable-http or SSE\) servers/),
+      screen.getByText(
+        /only covers remote \(streamable-http or SSE\) connectors/,
+      ),
     ).toBeInTheDocument();
   });
 });

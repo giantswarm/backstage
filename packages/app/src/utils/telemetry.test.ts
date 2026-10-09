@@ -253,43 +253,50 @@ describe('getTelemetryPageViewPayload', () => {
   });
 
   it.each([
-    ['/agent-platform/mcp-servers', { page: 'MCP Servers' }],
+    ['/agent-platform/connectors', { page: 'Connectors' }],
     [
-      '/agent-platform/mcp-servers/new',
-      { page: 'MCP server registration', view: 'server' },
+      '/agent-platform/connectors/new',
+      { page: 'Connector registration', view: 'server' },
     ],
     [
-      '/agent-platform/mcp-servers/new/auth',
-      { page: 'MCP server registration', view: 'auth' },
+      '/agent-platform/connectors/new/auth',
+      { page: 'Connector registration', view: 'auth' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes',
-      { page: 'MCP server', view: 'tools' },
+      '/agent-platform/connectors/kubernetes',
+      { page: 'Connector', view: 'tools' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/details',
-      { page: 'MCP server', view: 'details' },
+      '/agent-platform/connectors/kubernetes/details',
+      { page: 'Connector', view: 'details' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/instances',
-      { page: 'MCP server', view: 'instances' },
+      '/agent-platform/connectors/kubernetes/instances',
+      { page: 'Connector', view: 'instances' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/used-by',
-      { page: 'MCP server', view: 'used-by' },
+      '/agent-platform/connectors/kubernetes/used-by',
+      { page: 'Connector', view: 'used-by' },
     ],
     [
-      '/agent-platform/mcp-servers/kubernetes/settings',
-      { page: 'MCP server', view: 'settings' },
+      '/agent-platform/connectors/kubernetes/settings',
+      { page: 'Connector', view: 'settings' },
     ],
+    [
+      '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
+      { page: 'Connector tool' },
+    ],
+    // A connector named like a wizard step is not one: only `new` is.
+    [
+      '/agent-platform/connectors/newsroom',
+      { page: 'Connector', view: 'tools' },
+    ],
+    // The tab's old address only redirects now; every path under it reports
+    // as the target page.
+    ['/agent-platform/mcp-servers', { page: 'Connectors', view: 'redirect' }],
     [
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
-      { page: 'MCP tool' },
-    ],
-    // A server named like a wizard step is not one: only `new` is.
-    [
-      '/agent-platform/mcp-servers/newsroom',
-      { page: 'MCP server', view: 'tools' },
+      { page: 'Connectors', view: 'redirect' },
     ],
     ['/agent-platform/workflows', { page: 'Workflows' }],
     [
@@ -541,14 +548,15 @@ describe('getTelemetryPageViewPayload', () => {
       '/flux/tree',
       '/ai-chat',
       '/ai-chat/history',
+      '/agent-platform/connectors',
+      '/agent-platform/connectors/new',
+      '/agent-platform/connectors/new/verify',
+      '/agent-platform/connectors/kubernetes',
+      '/agent-platform/connectors/kubernetes/details',
+      '/agent-platform/connectors/kubernetes/used-by',
+      '/agent-platform/connectors/kubernetes/settings',
+      '/agent-platform/connectors/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/mcp-servers',
-      '/agent-platform/mcp-servers/new',
-      '/agent-platform/mcp-servers/new/verify',
-      '/agent-platform/mcp-servers/kubernetes',
-      '/agent-platform/mcp-servers/kubernetes/details',
-      '/agent-platform/mcp-servers/kubernetes/used-by',
-      '/agent-platform/mcp-servers/kubernetes/settings',
-      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
       '/agent-platform/workflows/my-workflow/run',

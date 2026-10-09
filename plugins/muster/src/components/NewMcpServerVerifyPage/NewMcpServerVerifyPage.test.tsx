@@ -73,7 +73,7 @@ function renderWizard(path: string) {
       <QueryClientProvider client={queryClient}>
         <Routes>
           <Route
-            path="/agent-platform/mcp-servers/*"
+            path="/agent-platform/connectors/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -81,7 +81,7 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
     },
   );
 }
@@ -89,7 +89,7 @@ function renderWizard(path: string) {
 /** Walks the real flow to a registered server so the verify step has one. */
 async function renderVerifyStep() {
   callTool.mockResolvedValue({});
-  const result = await renderWizard('/agent-platform/mcp-servers/new');
+  const result = await renderWizard('/agent-platform/connectors/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -100,7 +100,7 @@ async function renderVerifyStep() {
   await userEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
   await screen.findByText('Step 3 of 4: Review & register');
   await userEvent.click(
-    screen.getAllByRole('button', { name: 'Register server' })[0],
+    screen.getAllByRole('button', { name: 'Register connector' })[0],
   );
   await screen.findByText('Step 4 of 4: Verify');
   return result;
@@ -126,7 +126,7 @@ describe('NewMcpServerVerifyPage', () => {
   });
 
   it('sends a deep link with nothing registered back to step 1', async () => {
-    await renderWizard('/agent-platform/mcp-servers/new/verify');
+    await renderWizard('/agent-platform/connectors/new/verify');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(screen.queryByText('Step 4 of 4: Verify')).not.toBeInTheDocument();
@@ -137,7 +137,7 @@ describe('NewMcpServerVerifyPage', () => {
 
     expect(screen.getByText(/You can leave at any time/)).toBeInTheDocument();
     expect(
-      screen.getByText('Waiting for the server to appear…'),
+      screen.getByText('Waiting for the connector to appear…'),
     ).toBeInTheDocument();
     // A fresh CRD read was kicked so the panel doesn't idle on a stale list.
     expect(retry).toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe('NewMcpServerVerifyPage', () => {
    * Regression: the server connects during exactly the window where the user
    * wanders off to another window or tab, and react-query skips interval
    * refetches for hidden tabs by default -- the panel silently froze on
-   * "Waiting for the server to appear…" while the server was long Connected
+   * "Waiting for the connector to appear…" while the server was long Connected
    * (observed on gazelle, 2026-08-27). The poll must run in the background.
    *
    * fireEvent + fake timers on purpose: the poll interval only fires from a
@@ -163,7 +163,7 @@ describe('NewMcpServerVerifyPage', () => {
 
     try {
       callTool.mockResolvedValue({});
-      await renderWizard('/agent-platform/mcp-servers/new');
+      await renderWizard('/agent-platform/connectors/new');
       fireEvent.change(screen.getByLabelText(/^Name/), {
         target: { value: 'Weather' },
       });
@@ -175,12 +175,12 @@ describe('NewMcpServerVerifyPage', () => {
       fireEvent.click(screen.getAllByRole('button', { name: 'Continue' })[0]);
       await screen.findByText('Step 3 of 4: Review & register');
       fireEvent.click(
-        screen.getAllByRole('button', { name: 'Register server' })[0],
+        screen.getAllByRole('button', { name: 'Register connector' })[0],
       );
       await screen.findByText('Step 4 of 4: Verify');
 
       expect(
-        screen.getByText('Waiting for the server to appear…'),
+        screen.getByText('Waiting for the connector to appear…'),
       ).toBeInTheDocument();
 
       // The server connects while the tab is hidden; the next poll must pick
@@ -272,14 +272,16 @@ describe('NewMcpServerVerifyPage', () => {
     await renderVerifyStep();
 
     expect(
-      await screen.findByText("This server needs your sign-in — that's normal"),
+      await screen.findByText(
+        "This connector needs your sign-in — that's normal",
+      ),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: 'Sign in' }),
     ).toBeInTheDocument();
     // Not presented as a failure.
     expect(
-      screen.queryByText('The server is not connecting'),
+      screen.queryByText('The connector is not connecting'),
     ).not.toBeInTheDocument();
   });
 
@@ -295,19 +297,19 @@ describe('NewMcpServerVerifyPage', () => {
 
     expect(
       await screen.findByText(
-        "This server connects per session — that's normal",
+        "This connector connects per session — that's normal",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Tools appear here once your muster session has connected to the server.',
+        'Tools appear here once your muster session has connected to the connector.',
       ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText('The server is not connecting'),
+      screen.queryByText('The connector is not connecting'),
     ).not.toBeInTheDocument();
   });
 
@@ -326,7 +328,7 @@ describe('NewMcpServerVerifyPage', () => {
     await renderVerifyStep();
 
     expect(
-      await screen.findByText('The server is not connecting'),
+      await screen.findByText('The connector is not connecting'),
     ).toBeInTheDocument();
     // Appears in the status grid and again in the failure alert.
     expect(screen.getAllByText('TLS handshake failed').length).toBeGreaterThan(
@@ -377,7 +379,7 @@ describe('NewMcpServerVerifyPage', () => {
       listServers.mockResolvedValue({
         mcpServers: [runtime({ state: 'Connected' })],
       });
-      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
+      await renderWizard('/agent-platform/connectors/new/verify?edit=weather');
 
       expect(await screen.findByText('Applying changes…')).toBeInTheDocument();
       expect(screen.queryByText('Connected')).not.toBeInTheDocument();
@@ -434,7 +436,7 @@ describe('NewMcpServerVerifyPage', () => {
       listServers.mockResolvedValue({
         mcpServers: [runtime({ state: 'Connected' })],
       });
-      await renderWizard('/agent-platform/mcp-servers/new/verify?edit=weather');
+      await renderWizard('/agent-platform/connectors/new/verify?edit=weather');
 
       expect(await screen.findByText('Connected')).toBeInTheDocument();
       expect(screen.queryByText('Applying changes…')).not.toBeInTheDocument();

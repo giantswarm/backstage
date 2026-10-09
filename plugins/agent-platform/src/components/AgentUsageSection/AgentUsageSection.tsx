@@ -54,7 +54,7 @@ const PERSONAL_COPY = {
   descriptionWithoutInstallation: (days: number) =>
     `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
   topTools: 'Your top tools',
-  topServers: 'Your top MCP servers',
+  topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
     `You have no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
@@ -72,7 +72,7 @@ const SHARED_COPY = {
   descriptionWithoutInstallation: (days: number) =>
     `Agent sessions over the last ${days} days, derived from kagent's stored conversations.`,
   topTools: 'Top tools',
-  topServers: 'Top MCP servers',
+  topServers: 'Top connectors',
   empty: (days: number, installation: string) =>
     `There are no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
@@ -338,7 +338,7 @@ export function AgentUsageSection() {
           />
           <TopCallsTable
             title={copy.topServers}
-            nameLabel="MCP server"
+            nameLabel="Connector"
             rows={usage.topMcpServers.map((entry, position) => ({
               id: entry.server ?? `direct-${position}`,
               // `null` means the call resolved to no aggregated downstream

@@ -72,7 +72,7 @@ export function ToolPage() {
   const trail = (
     <Breadcrumbs
       items={[
-        { label: 'MCP Servers', href: listHref },
+        { label: 'Connectors', href: listHref },
         { label: serverKey, href: links.server(serverKey, activeInstallation) },
         {
           label: 'Tools',
@@ -85,7 +85,7 @@ export function ToolPage() {
 
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
-    body = <LoadingIndicator label="Reading the installation's MCP servers…" />;
+    body = <LoadingIndicator label="Reading the installation's connectors…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyState
@@ -103,12 +103,12 @@ export function ToolPage() {
       />
     );
   } else if (row && serverTools.isLoading) {
-    body = <LoadingIndicator label="Reading the server's tools…" />;
+    body = <LoadingIndicator label="Reading the connector's tools…" />;
   } else if (row && serverTools.error) {
     body = (
       <Alert
         status="danger"
-        title="Could not read the server's tools"
+        title="Could not read the connector's tools"
         description={serverTools.error.message}
       />
     );
@@ -123,14 +123,14 @@ export function ToolPage() {
         description={
           row
             ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another installation — pick it in the page header.`
-            : `The installation ${activeInstallation} has no MCP server or server family named “${key}”. It may run on another installation — pick it in the page header.`
+            : `The installation ${activeInstallation} has no connector or connector family named “${key}”. It may run on another installation — pick it in the page header.`
         }
         action={
           serverHref ? (
             <Link href={serverHref}>
               {row
                 ? `Back to the tools of ${serverKey}`
-                : 'Back to the MCP servers'}
+                : 'Back to the connectors'}
             </Link>
           ) : undefined
         }

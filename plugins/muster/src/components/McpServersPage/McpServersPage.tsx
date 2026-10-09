@@ -23,13 +23,13 @@ import { CatalogueState, ServersTable } from './ServersTable';
 function emptyText(catalogue: CatalogueState, query: string): string {
   switch (catalogue) {
     case 'loaded':
-      return `No server or tool matches “${query}”.`;
+      return `No connector or tool matches “${query}”.`;
     case 'failed':
-      return `No server name matches “${query}”. Tool names could not be searched: the installation's tools failed to load.`;
+      return `No connector name matches “${query}”. Tool names could not be searched: the installation's tools failed to load.`;
     case 'loading':
-      return `No server name matches “${query}”. The installation's tools are still loading.`;
+      return `No connector name matches “${query}”. The installation's tools are still loading.`;
     default:
-      return `No server name matches “${query}”. Tool names are searched once connected to muster.`;
+      return `No connector name matches “${query}”. Tool names are searched once connected to muster.`;
   }
 }
 
@@ -85,7 +85,7 @@ export function McpServersPage() {
     catalogueState = 'failed';
   }
 
-  // "Register server" in the shared Agent Platform page header (agent-flow
+  // "Register connector" in the shared Agent Platform page header (agent-flow
   // convention) — the one path for bringing a remote MCP server onto the
   // platform.
   const navigate = useNavigate();
@@ -108,7 +108,7 @@ export function McpServersPage() {
           }
         }}
       >
-        Register server
+        Register connector
       </Button>
     ),
     [newServerLink, navigate, registeredName, reset],
@@ -117,13 +117,13 @@ export function McpServersPage() {
 
   let body;
   if (isLoading) {
-    body = <LoadingIndicator label="Reading the installation's MCP servers…" />;
+    body = <LoadingIndicator label="Reading the installation's connectors…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
         title="No muster installation"
-        description="None of the installations this portal knows runs muster, so there are no aggregated MCP servers to list."
+        description="None of the installations this portal knows runs muster, so there are no connectors to list."
       />
     );
   } else if (mcpServers.length === 0) {
@@ -135,7 +135,7 @@ export function McpServersPage() {
         <MusterSummary servers={mcpServers} />
         <EmptyState
           missing="data"
-          title="No MCP servers"
+          title="No connectors"
           description="No MCPServer CRs found in this installation. The muster CRDs may not be installed, or the aggregator federates none yet."
           action={
             musterHref ? (
@@ -152,7 +152,7 @@ export function McpServersPage() {
         <MusterSummary servers={mcpServers} />
         {requiresAuth && !authenticated && (
           <Gate
-            label="The servers are read from the CRDs, but their tools -- and searching by tool name -- need an authenticated muster session."
+            label="The connectors are read from the CRDs, but their tools -- and searching by tool name -- need an authenticated muster session."
             action={
               <Button
                 variant="primary"
@@ -168,8 +168,8 @@ export function McpServersPage() {
         {/* No refresh control: the servers are re-read every 30 s, as the
             Agent Platform's other tables re-read theirs. */}
         <SearchField
-          aria-label="Search servers and tools"
-          placeholder="Search servers and tools"
+          aria-label="Search connectors and tools"
+          placeholder="Search connectors and tools"
           value={query}
           onChange={setQuery}
           style={{ maxWidth: 480 }}
@@ -180,7 +180,7 @@ export function McpServersPage() {
             title="Could not read the installation's tools"
             description={`${
               (catalogue.error as Error | null)?.message ?? 'No details.'
-            } Tool counts are missing and the search covers server names only.`}
+            } Tool counts are missing and the search covers connector names only.`}
             customActions={
               <Button
                 size="small"

@@ -55,7 +55,7 @@ export function authStatusQueryKey(installation?: string) {
  * already shows, so it is UI-authored.
  */
 const SIGNED_OUT_NOTE =
-  "Signed out — the server's tools are hidden until you sign in again.";
+  "Signed out — the connector's tools are hidden until you sign in again.";
 
 /**
  * A sign-in this browser tab started and is still waiting on. Held in the

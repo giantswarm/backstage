@@ -174,7 +174,7 @@ export function NewMcpServerVerifyPage() {
   const failed = severity === 'error';
   const toolsCount = runtime?.toolsCount;
 
-  let stateValue: Fact['value'] = 'Waiting for the server to appear…';
+  let stateValue: Fact['value'] = 'Waiting for the connector to appear…';
   if (applying) {
     stateValue = <StateBadge tone="neutral" label="Applying changes…" />;
   } else if (serverState) {
@@ -305,8 +305,8 @@ export function NewMcpServerVerifyPage() {
                 <Flex direction="column" gap="3">
                   <Alert
                     status="info"
-                    title="This server needs your sign-in — that's normal"
-                    description="It authenticates users with their own account, so each user completes a one-time sign-in before its tools appear. Sign in now, or later from the server's page."
+                    title="This connector needs your sign-in — that's normal"
+                    description="It authenticates users with their own account, so each user completes a one-time sign-in before its tools appear. Sign in now, or later from the connector's page."
                   />
                   <ServerSignIn
                     serverName={serverName}
@@ -322,7 +322,7 @@ export function NewMcpServerVerifyPage() {
               <CardBody>
                 <Alert
                   status="info"
-                  title="This server connects per session — that's normal"
+                  title="This connector connects per session — that's normal"
                   description={
                     cr?.getStateExplanation() ??
                     'It is used with each person’s own identity: muster holds no connection of its own, and its tools appear in your session once muster has connected it for you.'
@@ -338,7 +338,7 @@ export function NewMcpServerVerifyPage() {
                 <Flex direction="column" gap="3">
                   <Alert
                     status="danger"
-                    title="The server is not connecting"
+                    title="The connector is not connecting"
                     description={
                       runtime?.statusMessage ??
                       runtime?.error ??
@@ -384,12 +384,12 @@ export function NewMcpServerVerifyPage() {
                 ) : (
                   <Text variant="body-small" color="secondary">
                     {authRequired &&
-                      'Tools appear here after you sign in to the server.'}
+                      'Tools appear here after you sign in to the connector.'}
                     {awaitingSession &&
-                      'Tools appear here once your muster session has connected to the server.'}
+                      'Tools appear here once your muster session has connected to the connector.'}
                     {!authRequired &&
                       !awaitingSession &&
-                      'Tools appear here once the server is connected and discovery has run.'}
+                      'Tools appear here once the connector is connected and discovery has run.'}
                   </Text>
                 )}
               </Flex>

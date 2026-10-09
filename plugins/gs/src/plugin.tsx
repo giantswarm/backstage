@@ -107,7 +107,8 @@ const deploymentsPage = PageBlueprint.make({
   name: 'deployments',
   disabled: true,
   params: {
-    title: 'Deployments',
+    // "Apps" to people; the route and the code keep the deployments name.
+    title: 'Apps',
     icon: <CloudUploadIcon />,
     // The deployments pages render their own bui PluginHeader (list + detail),
     // so suppress the app-shell header to avoid stacking two headers.
@@ -125,7 +126,9 @@ const installationsPage = PageBlueprint.make({
   name: 'installations',
   disabled: true,
   params: {
-    title: 'Installations',
+    // "Environments" to people; the route and the code keep the
+    // installations name.
+    title: 'Environments',
     icon: <ApartmentIcon />,
     path: '/installations',
     routeRef: installationsRouteRef,
@@ -361,7 +364,7 @@ const deploymentsEntityContent = EntityContentBlueprint.make({
   name: 'deployments',
   params: {
     path: '/deployments',
-    title: 'Deployments',
+    title: 'Apps',
     routeRef: entityDeploymentsRouteRef,
     filter: entity => isEntityHelmChartTagged(entity),
     loader: async () => {

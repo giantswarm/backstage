@@ -421,7 +421,7 @@ describe('useServerSignIn', () => {
     // The flip is attributed by a UI-authored note, not muster's verbatim
     // confirmation -- that one tells portal users to run core_auth_login.
     expect(result.current.note).toBe(
-      "Signed out — the server's tools are hidden until you sign in again.",
+      "Signed out — the connector's tools are hidden until you sign in again.",
     );
     expect(result.current.note).not.toContain('core_auth_login');
   });

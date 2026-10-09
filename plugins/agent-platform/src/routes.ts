@@ -72,7 +72,7 @@ export const sessionDetailRouteRef = createSubRouteRef({
 });
 
 // The "Usage" tab (`/agent-platform/usage`), the last of the row: Sessions ·
-// Agents · Models · MCP Servers · Workflows · Usage, as the page orders its
+// Agents · Models · Connectors · Workflows · Usage, as the page orders its
 // tabs (`AGENT_PLATFORM_TAB_ORDER`, lib/tabOrder.ts).
 //
 // Like the Models tab, this one carries a **second-level tab row**, one
@@ -131,7 +131,7 @@ export const gpuCapacityRouteRef = createSubRouteRef({
 });
 
 /**
- * muster's MCP Servers tab (`/agent-platform/mcp-servers`): the servers table,
+ * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,
  * with the muster session gate and a search over server and tool names.
  *
  * Resolves automatically when the muster plugin is enabled (it registers this
@@ -143,7 +143,7 @@ export const musterServersExternalRouteRef = createExternalRouteRef({
 
 /**
  * A tool's page beneath the MCP server offering it
- * (`/agent-platform/mcp-servers/<server>/tools/<tool>`), where the tool can be
+ * (`/agent-platform/connectors/<server>/tools/<tool>`), where the tool can be
  * inspected and run. `server` is the server page segment (the family name for
  * a family, `muster` for muster's own tools), `tool` the full muster name.
  */

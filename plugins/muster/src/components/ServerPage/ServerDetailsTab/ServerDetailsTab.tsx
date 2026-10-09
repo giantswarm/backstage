@@ -69,12 +69,12 @@ function GitOpsClaim({ server }: { server: MCPServer }) {
 function actionNotes(server: MCPServer, authenticated: boolean): string[] {
   if (isGitOpsManaged(server)) {
     return [
-      'This server is managed through GitOps: Flux would revert a live change, so it is edited or removed in Git. “Edit/Remove” in the header shows how.',
+      'This connector is managed through GitOps: Flux would revert a live change, so it is edited or removed in Git. “Edit/Remove” in the header shows how.',
     ];
   }
   if (!authenticated) {
     return [
-      'Editing, deactivating, reconnecting and deleting this server run through the muster session, which is not available -- connect to muster first.',
+      'Editing, deactivating, reconnecting and deleting this connector run through the muster session, which is not available -- connect to muster first.',
     ];
   }
   const notes: string[] = [];
@@ -162,7 +162,7 @@ function FamilyDetails({
     representative.getManagementCluster() ?? representative.getName();
   return (
     <>
-      <DetailsCard title="Server family">
+      <DetailsCard title="Connector family">
         <Text as="p" variant="body-medium">
           <code>{family}</code> runs as {servers.length}{' '}
           {servers.length === 1 ? 'instance' : 'instances'}, {healthy} of them
@@ -243,9 +243,10 @@ export function ServerDetailsTab({
         <MusterSummary servers={servers} />
         <DetailsCard title="muster (core tools)">
           <Text as="p" variant="body-medium">
-            muster aggregates the installation's MCP servers and offers tools of
-            its own: for workflows, services, configuration, MCP server
-            definitions and authentication. Its tools are on the Tools tab.
+            muster aggregates the installation's connectors (MCP servers) and
+            offers tools of its own: for workflows, services, configuration,
+            connector definitions and authentication. Its tools are on the Tools
+            tab.
           </Text>
           <Note>
             muster itself is part of the installation and cannot be changed from

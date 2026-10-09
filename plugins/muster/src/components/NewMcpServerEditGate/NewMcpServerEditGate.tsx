@@ -124,7 +124,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   }
 
   const backToServers = serversLink ? (
-    <Link to={serversLink()}>Back to MCP servers</Link>
+    <Link to={serversLink()}>Back to connectors</Link>
   ) : undefined;
 
   if (editName && !server && !isLoading && !isLoadingInstallations) {
@@ -132,8 +132,8 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
       <Content>
         <EmptyState
           missing="data"
-          title="Server not found"
-          description={`There is no MCP server "${editName}" on ${
+          title="Connector not found"
+          description={`There is no connector "${editName}" on ${
             activeInstallation ?? 'this installation'
           }.`}
           action={backToServers}
@@ -146,8 +146,8 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
       <Content>
         <EmptyState
           missing="info"
-          title="This server is managed in Git"
-          description={`"${editName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the server list links to its source.`}
+          title="This connector is managed in Git"
+          description={`"${editName}" is applied from a GitOps repository, so changes are made there, not in the portal. Its Edit/Remove on the connector list links to its source.`}
           action={backToServers}
         />
       </Content>
@@ -158,7 +158,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
       <Content>
         <EmptyState
           missing="info"
-          title="This server cannot be edited in the wizard"
+          title="This connector cannot be edited in the wizard"
           description={blocker}
           action={backToServers}
         />
@@ -167,5 +167,5 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
   }
   // Seeding (or resetting) takes one render; the steps must not render in
   // between, or their guards would redirect on a half-seeded form.
-  return <Progress aria-label="Loading the server" />;
+  return <Progress aria-label="Loading the connector" />;
 }

@@ -124,7 +124,7 @@ export function ServerToolsTab({
     return <>{sessionGate}</>;
   }
   if (tools.isLoading) {
-    return <LoadingIndicator label="Reading the server's tools…" />;
+    return <LoadingIndicator label="Reading the connector's tools…" />;
   }
   if (tools.error) {
     return (

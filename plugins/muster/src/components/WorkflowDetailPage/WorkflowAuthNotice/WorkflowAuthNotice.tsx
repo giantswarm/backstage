@@ -64,8 +64,8 @@ export function WorkflowAuthNotice({
         <Flex direction="column" gap="2">
           <Text variant="body-small">
             {waiting.length === 1
-              ? 'This workflow calls tools of a server you are not signed in to. A run fails at the steps that reach it until you sign in.'
-              : `This workflow calls tools of ${waiting.length} servers you are not signed in to. A run fails at the steps that reach them until you sign in.`}
+              ? 'This workflow calls tools of a connector you are not signed in to. A run fails at the steps that reach it until you sign in.'
+              : `This workflow calls tools of ${waiting.length} connectors you are not signed in to. A run fails at the steps that reach them until you sign in.`}
           </Text>
           {canSignIn ? (
             waiting.map(server => (

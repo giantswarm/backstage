@@ -9,7 +9,7 @@ import { ServerSignInState, useServerSignIn } from './useServerSignIn';
  * knowledge of the CR rather than relying on muster's refusal text.
  */
 export const DEACTIVATED_SIGN_IN_GATE =
-  'Deactivated servers cannot be signed in to; activate the server first.';
+  'Deactivated connectors cannot be signed in to; activate the connector first.';
 
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
@@ -95,7 +95,7 @@ function SsoExplanation({
       {serverName} authenticates through SSO from muster's own session, so there
       is nothing to sign in to here.
       {state.status?.sso_attempt_failed
-        ? " muster tried and failed to establish it for your session — check the server's trusted audiences with an administrator."
+        ? " muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator."
         : ''}
     </Text>
   );
@@ -216,7 +216,7 @@ function SignInFlow({
           pre-provisioned one, which can otherwise look suspicious. */}
       {clientIdMethod === 'cimd-fallback' ? (
         <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This server's authorization server advertises neither support for
+          This connector's authorization server advertises neither support for
           muster's client identity (CIMD) nor automatic client registration —
           the sign-in may be rejected as an unregistered client.
         </Text>
@@ -226,8 +226,9 @@ function SignInFlow({
           rejection is in muster's challenge message and logs). */}
       {clientIdMethod === 'dcr-failed' ? (
         <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This server's authorization server rejected muster's automatic client
-          registration — the sign-in may be rejected as an unregistered client.
+          This connector's authorization server rejected muster's automatic
+          client registration — the sign-in may be rejected as an unregistered
+          client.
         </Text>
       ) : null}
       {clientIdMethod === 'dcr' ? (
@@ -236,7 +237,7 @@ function SignInFlow({
           color="secondary"
           className={classes.fullRow}
         >
-          muster registered itself with this server's authorization server
+          muster registered itself with this connector's authorization server
           automatically (Dynamic Client Registration).
         </Text>
       ) : null}

@@ -113,12 +113,18 @@ export function buildThemeOptions(
   variant: Variant,
   agentShell: boolean,
 ): UnifiedThemeOptions {
-  const palette = buildPalette(configApi, variant);
   if (!agentShell) {
-    return { palette };
+    return { palette: buildPalette(configApi, variant) };
   }
+  // The agent shell is light-only: while `data-agent-shell` is set, both
+  // providers build the light agent-shell palette, so a dark theme preference
+  // renders light on agent routes. UnifiedThemeProvider derives the body's
+  // `data-theme-mode` attribute from the palette, which is all bui (and
+  // agent-shell.css, scoped to body[data-theme-mode='light']) keys dark
+  // styles off, so this keeps those light too. Classic routes drop the mark
+  // and return to the user's choice.
   return {
-    palette: variant === 'light' ? withAgentShellColors(palette) : palette,
+    palette: withAgentShellColors(buildPalette(configApi, 'light')),
     fontFamily: AGENT_SHELL_FONT_FAMILY,
   };
 }

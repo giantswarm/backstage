@@ -7,6 +7,7 @@ import {
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
+  PageBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
@@ -23,6 +24,7 @@ import {
 import { mcpUsageSection } from './mcpUsageSection';
 import {
   customizeExternalRouteRef,
+  legacyMcpServersRouteRef,
   mcpServerRouteRef,
   mcpServersRouteRef,
   mcpServerToolRouteRef,
@@ -54,8 +56,9 @@ function musterTab<P extends object>(
   };
 }
 
-// muster contributes two of the Agent Platform page's level-1 tabs: "MCP
-// Servers" (`/agent-platform/mcp-servers`) and "Workflows"
+// muster contributes two of the Agent Platform page's level-1 tabs:
+// "Connectors" (`/agent-platform/connectors`; MCP servers, renamed for people
+// — the extension id and the code keep `mcp-servers`) and "Workflows"
 // (`/agent-platform/workflows`). Each carries its own root route ref, so
 // muster's links resolve under the tab they belong to. Their place among the
 // Agent Platform's tabs is the page's own (agent-platform's
@@ -81,16 +84,36 @@ const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
       coreExtensionData.reactElement,
     );
     return originalFactory({
-      path: 'mcp-servers',
-      title: 'MCP Servers',
+      path: 'connectors',
+      title: 'Connectors',
       routeRef: mcpServersRouteRef,
       loader: musterTab(
-        'The MCP servers of an installation are read through its Kubernetes API.',
+        'The connectors of an installation are read through its Kubernetes API.',
         () =>
           import('./components/McpServersRouter').then(m => m.McpServersRouter),
         { usedBy },
       ),
     });
+  },
+});
+
+// The tab's old address stays as a nav-less redirect, so every shared link
+// resolves: `/agent-platform/mcp-servers…` → `/agent-platform/connectors…`.
+// Enabled by default on purpose: deployments replace `app.extensions`
+// wholesale (the chart does), so an opt-in entry would silently drop the
+// redirect there. Where the Agent Platform page is disabled, the target
+// resolves to the same not-found it does today.
+const mcpServersRedirectPage = PageBlueprint.make({
+  name: 'mcp-servers-redirect',
+  params: {
+    path: '/agent-platform/mcp-servers',
+    routeRef: legacyMcpServersRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const { ConnectorsRedirect } =
+        await import('./components/ConnectorsRedirect');
+      return <ConnectorsRedirect />;
+    },
   },
 });
 
@@ -146,6 +169,7 @@ export const musterPlugin = createFrontendPlugin({
   pluginId: 'muster',
   extensions: [
     mcpServersSubPage,
+    mcpServersRedirectPage,
     workflowsSubPage,
     mcpUsageSection,
     musterApi,

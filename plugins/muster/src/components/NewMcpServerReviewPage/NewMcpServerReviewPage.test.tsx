@@ -83,7 +83,7 @@ function renderWizard(path: string) {
         <BrowserBack />
         <Routes>
           <Route
-            path="/agent-platform/mcp-servers/*"
+            path="/agent-platform/connectors/*"
             element={<McpServersRouter />}
           />
         </Routes>
@@ -91,7 +91,7 @@ function renderWizard(path: string) {
     </TestApiProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
     },
   );
 }
@@ -101,7 +101,7 @@ function renderWizard(path: string) {
  * with `answer` when given.
  */
 async function renderReviewStep(answer?: () => Promise<void>) {
-  const result = await renderWizard('/agent-platform/mcp-servers/new');
+  const result = await renderWizard('/agent-platform/connectors/new');
   await userEvent.type(screen.getByLabelText(/^Name/), 'Weather');
   await userEvent.type(
     screen.getByLabelText(/^URL/),
@@ -133,7 +133,7 @@ describe('NewMcpServerReviewPage', () => {
   });
 
   it('sends a deep link back to step 1 while the form is incomplete', async () => {
-    await renderWizard('/agent-platform/mcp-servers/new/review');
+    await renderWizard('/agent-platform/connectors/new/review');
 
     expect(await screen.findByText('Step 1 of 4: Details')).toBeInTheDocument();
     expect(
@@ -180,7 +180,9 @@ describe('NewMcpServerReviewPage', () => {
 
     expect(screen.getByText(label)).toBeInTheDocument();
     expect(
-      screen.queryAllByText(/All users of this server share one AWS identity/),
+      screen.queryAllByText(
+        /All users of this connector share one AWS identity/,
+      ),
     ).toHaveLength(label.includes('SigV4') ? 1 : 0);
   });
 
@@ -189,7 +191,7 @@ describe('NewMcpServerReviewPage', () => {
     await renderReviewStep();
 
     await userEvent.click(
-      screen.getAllByRole('button', { name: 'Register server' })[0],
+      screen.getAllByRole('button', { name: 'Register connector' })[0],
     );
 
     await screen.findByText('Step 4 of 4: Verify');
@@ -216,7 +218,7 @@ describe('NewMcpServerReviewPage', () => {
     await renderReviewStep();
 
     await userEvent.click(
-      screen.getAllByRole('button', { name: 'Register server' })[0],
+      screen.getAllByRole('button', { name: 'Register connector' })[0],
     );
 
     expect(
@@ -233,7 +235,7 @@ describe('NewMcpServerReviewPage', () => {
     callTool.mockResolvedValue({});
     await renderReviewStep();
     await userEvent.click(
-      screen.getAllByRole('button', { name: 'Register server' })[0],
+      screen.getAllByRole('button', { name: 'Register connector' })[0],
     );
     await screen.findByText('Step 4 of 4: Verify');
 
@@ -242,7 +244,7 @@ describe('NewMcpServerReviewPage', () => {
       screen.getAllByRole('button', { name: 'Edit details' })[0],
     );
     await screen.findByText('Step 1 of 4: Details');
-    expect(screen.getByText('Edit MCP server: weather')).toBeInTheDocument();
+    expect(screen.getByText('Edit connector: weather')).toBeInTheDocument();
     expect(screen.getByLabelText(/^URL/)).toHaveValue(
       'https://weather.example.com/mcp',
     );
@@ -276,7 +278,7 @@ describe('NewMcpServerReviewPage', () => {
     callTool.mockResolvedValue({});
     await renderReviewStep();
     await userEvent.click(
-      screen.getAllByRole('button', { name: 'Register server' })[0],
+      screen.getAllByRole('button', { name: 'Register connector' })[0],
     );
     await screen.findByText('Step 4 of 4: Verify');
 
@@ -290,9 +292,7 @@ describe('NewMcpServerReviewPage', () => {
     expect(
       screen.getAllByRole('button', { name: 'Save changes' }).length,
     ).toBeGreaterThan(0);
-    expect(
-      screen.queryByText('Register an MCP server'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Register a connector')).not.toBeInTheDocument();
   });
 
   it('saves an edit as validate then update, keeping what the wizard does not model', async () => {
@@ -314,11 +314,9 @@ describe('NewMcpServerReviewPage', () => {
       ),
     ];
     callTool.mockResolvedValue({});
-    await renderWizard('/agent-platform/mcp-servers/new?edit=miro');
+    await renderWizard('/agent-platform/connectors/new?edit=miro');
 
-    expect(
-      await screen.findByText('Edit MCP server: miro'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Edit connector: miro')).toBeInTheDocument();
     const url = screen.getByLabelText(/^URL/);
     await userEvent.clear(url);
     await userEvent.type(url, 'https://mcp.miro.com/v2');
@@ -355,9 +353,9 @@ describe('NewMcpServerReviewPage', () => {
   });
 
   it('says so when the server to edit does not exist', async () => {
-    await renderWizard('/agent-platform/mcp-servers/new?edit=nope');
+    await renderWizard('/agent-platform/connectors/new?edit=nope');
 
-    expect(await screen.findByText('Server not found')).toBeInTheDocument();
+    expect(await screen.findByText('Connector not found')).toBeInTheDocument();
     expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
   });
 });

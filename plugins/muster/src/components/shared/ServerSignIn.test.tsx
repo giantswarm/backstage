@@ -701,7 +701,7 @@ describe('ServerAuthActions', () => {
     // core_auth_login, CLI advice that contradicts the Sign in button.
     expect(
       screen.getByText(
-        "Signed out — the server's tools are hidden until you sign in again.",
+        "Signed out — the connector's tools are hidden until you sign in again.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/core_auth_login/)).not.toBeInTheDocument();

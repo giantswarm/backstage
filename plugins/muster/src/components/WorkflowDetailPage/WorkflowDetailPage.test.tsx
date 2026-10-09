@@ -210,7 +210,7 @@ describe('WorkflowDetailPage', () => {
       await screen.findByText('Authentication required'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/calls tools of a server you are not signed in to/),
+      screen.getByText(/calls tools of a connector you are not signed in to/),
     ).toBeInTheDocument();
     expect(screen.getByText('agent-manager')).toBeInTheDocument();
     expect(screen.queryByText('miro')).toBeNull();

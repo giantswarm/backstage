@@ -82,7 +82,7 @@ describe('MusterSummary', () => {
     expect(
       screen.getByRole('button', { name: 'Copy endpoint' }),
     ).toBeInTheDocument();
-    expect(totalsLine()).toBe('3 servers · 2 healthy · 42 tools');
+    expect(totalsLine()).toBe('3 connectors · 2 healthy · 42 tools');
   });
 
   it('holds a placeholder while the tool count is on its way', async () => {
@@ -91,7 +91,7 @@ describe('MusterSummary', () => {
       <MusterSummary servers={[server('a', 'Connected')]} />,
     );
 
-    expect(totalsLine()).toBe('1 server · 1 healthy · … tools');
+    expect(totalsLine()).toBe('1 connector · 1 healthy · … tools');
   });
 
   it('leaves the tool total out without a muster session', async () => {
@@ -100,7 +100,7 @@ describe('MusterSummary', () => {
       <MusterSummary servers={[server('a', 'Connected')]} />,
     );
 
-    expect(totalsLine()).toBe('1 server · 1 healthy');
+    expect(totalsLine()).toBe('1 connector · 1 healthy');
   });
 
   it('counts deactivated servers apart and says so in the hint', async () => {
@@ -114,12 +114,14 @@ describe('MusterSummary', () => {
       />,
     );
 
-    expect(totalsLine()).toBe('1 server · 1 healthy · 42 tools');
+    expect(totalsLine()).toBe('1 connector · 1 healthy · 42 tools');
     expect(
-      screen.getByRole('button', { name: 'How healthy servers are counted' }),
+      screen.getByRole('button', {
+        name: 'How healthy connectors are counted',
+      }),
     ).toBeInTheDocument();
     expect(screen.getByTestId('info-hint')).toHaveTextContent(
-      '2 deactivated servers are not counted.',
+      '2 deactivated connectors are not counted.',
     );
   });
 
@@ -129,6 +131,6 @@ describe('MusterSummary', () => {
 
     expect(screen.getByText('not configured for gazelle')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Copy endpoint' })).toBeNull();
-    expect(totalsLine()).toBe('0 servers · 0 healthy · 42 tools');
+    expect(totalsLine()).toBe('0 connectors · 0 healthy · 42 tools');
   });
 });

@@ -62,7 +62,7 @@ export type McpServerAuthMode =
  */
 export const SIGV4_SHARED_IDENTITY_WARNING =
   'Every request is signed as muster itself, never as the user making the ' +
-  'call. All users of this server share one AWS identity, and CloudTrail ' +
+  'call. All users of this connector share one AWS identity, and CloudTrail ' +
   'attributes their actions to muster (STS session name muster-aggregator), ' +
   'not to a named engineer.';
 
@@ -464,7 +464,7 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
   );
   if (!hasOperatingRegion) {
     advisories.push(
-      `No ${AWS_REGION_META_KEY} in request metadata. An AWS-hosted server reads the region it operates in from there — a different value from the signing region — and without it answers about its own default region instead of failing. Add it on the Details step.`,
+      `No ${AWS_REGION_META_KEY} in request metadata. An AWS-hosted connector reads the region it operates in from there — a different value from the signing region — and without it answers about its own default region instead of failing. Add it on the Details step.`,
     );
   }
 
@@ -592,13 +592,13 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     authorizationServer = {
       available: false,
       reason:
-        'This server needs no authentication, so there is no authorization server to point at.',
+        'This connector needs no authentication, so there is no authorization server to point at.',
     };
   } else if (platformSso) {
     authorizationServer = {
       available: false,
       reason:
-        'Platform SSO forwards the platform identity token; a per-server authorization server would contradict it and the CRD rejects both together.',
+        'Platform SSO forwards the platform identity token; a per-connector authorization server would contradict it and the CRD rejects both together.',
     };
   } else if (sigv4Mode) {
     authorizationServer = {
@@ -632,7 +632,7 @@ export function authFieldAvailability(state: NewMcpServerFormState): {
     sigv4 = {
       available: false,
       reason:
-        'The signing configuration applies to AWS SigV4 request signing, which this server does not use.',
+        'The signing configuration applies to AWS SigV4 request signing, which this connector does not use.',
     };
   } else if (state.transport !== 'streamable-http') {
     sigv4 = { available: false, reason: SIGV4_TRANSPORT_REQUIREMENT };
@@ -759,12 +759,12 @@ const EDIT_AS_JSON_HINT = 'Use “Edit as JSON” to change its definition.';
 export function wizardEditBlocker(server: MCPServer): string | undefined {
   const type = server.getType();
   if (type !== 'streamable-http' && type !== 'sse') {
-    return `The registration wizard only covers remote (streamable-http or SSE) servers. ${EDIT_AS_JSON_HINT}`;
+    return `The registration wizard only covers remote (streamable-http or SSE) connectors. ${EDIT_AS_JSON_HINT}`;
   }
   const mode = serverAuthMode(server);
   const answer = WIZARD_AUTH_MODES[mode];
   if (!answer) {
-    return `This server uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
+    return `This connector uses ${inSentence(AUTH_MODE_LABELS[mode])}, which the registration wizard does not offer. ${EDIT_AS_JSON_HINT}`;
   }
   const auth = server.getAuth();
   const unsupported = auth
@@ -779,7 +779,7 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
       ]
     : [];
   if (unsupported.length > 0) {
-    return `This server has authentication settings the registration wizard cannot show or keep: ${unsupported.join(', ')}. ${EDIT_AS_JSON_HINT}`;
+    return `This connector has authentication settings the registration wizard cannot show or keep: ${unsupported.join(', ')}. ${EDIT_AS_JSON_HINT}`;
   }
   return undefined;
 }

@@ -151,7 +151,7 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
 }) => {
   test.setTimeout(120_000);
   const server = 'lab-oauth-fixture';
-  await open(admin, `/agent-platform/mcp-servers/${server}${scope}`);
+  await open(admin, `/agent-platform/connectors/${server}${scope}`);
   const editAsJson = admin.getByRole('button', { name: 'Edit as JSON' });
   await connectToMuster(admin, editAsJson);
   await editAsJson.click();

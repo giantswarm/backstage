@@ -206,12 +206,12 @@ export function NewMcpServerPage() {
           className={classes.pageTitle}
         >
           {registeredName
-            ? `Edit MCP server: ${registeredName}`
-            : 'Register an MCP server'}
+            ? `Edit connector: ${registeredName}`
+            : 'Register a connector'}
         </Text>
         <Text as="p" className={classes.intro}>
           {registeredName
-            ? 'Change how this server is reached and authenticated. Saving updates the registered server in place.'
+            ? 'Change how this connector is reached and authenticated. Saving updates the registered connector in place.'
             : 'Bring an existing remote MCP server to the platform so agents can use its tools through the gateway.'}
         </Text>
 
@@ -222,7 +222,7 @@ export function NewMcpServerPage() {
             <CardBody>
               <SectionHeader
                 title="Identity"
-                description="How this server appears across the platform."
+                description="How this connector appears across the platform."
               />
               <Flex direction="column" gap="4">
                 <Grid.Root
@@ -240,7 +240,7 @@ export function NewMcpServerPage() {
                         value={state.name}
                         onChange={setName}
                         placeholder="e.g. Weather"
-                        description="The user-friendly name humans will use to refer to this server."
+                        description="The user-friendly name humans will use to refer to this connector."
                       />
                     </Grid.Item>
                   )}
@@ -260,8 +260,8 @@ export function NewMcpServerPage() {
                       placeholder="weather"
                       description={
                         registeredName
-                          ? 'The server is already registered under this name; changes are saved as an update to it.'
-                          : "Becomes the server's resource name and its tools' prefix."
+                          ? 'The connector is already registered under this name; changes are saved as an update to it.'
+                          : "Becomes the connector's resource name and its tools' prefix."
                       }
                     />
                   </Grid.Item>
@@ -272,13 +272,13 @@ export function NewMcpServerPage() {
                   value={state.description}
                   onChange={setDescription}
                   rows={4}
-                  placeholder="What this server's tools are for, example tasks…"
+                  placeholder="What this connector's tools are for, example tasks…"
                   description={
                     registeredName
                       ? // muster's update only replaces a description with a
                         // non-empty one (see mergeOntoExisting).
-                        'Describe this server so team mates know what to use it for. Leaving it empty keeps the current description.'
-                      : 'Describe this server so team mates know what to use it for.'
+                        'Describe this connector so team mates know what to use it for. Leaving it empty keeps the current description.'
+                      : 'Describe this connector so team mates know what to use it for.'
                   }
                 />
               </Flex>
@@ -289,7 +289,7 @@ export function NewMcpServerPage() {
             <CardBody>
               <SectionHeader
                 title="Endpoint"
-                description="Where the server is reachable and how muster talks to it."
+                description="Where the connector is reachable and how muster talks to it."
               />
               <Flex direction="column" gap="4">
                 <TextField
@@ -298,7 +298,7 @@ export function NewMcpServerPage() {
                   value={state.url}
                   onChange={onUrlChange}
                   placeholder="https://mcp.example.com/mcp"
-                  description="The server's MCP endpoint."
+                  description="The connector's MCP endpoint."
                 />
                 <SelectableCardGrid ariaLabel="Transport" minWidth={280}>
                   {TRANSPORTS.map(transport => (
@@ -330,7 +330,7 @@ export function NewMcpServerPage() {
                   onChange={onMetaChange}
                   rows={3}
                   placeholder={`${AWS_REGION_META_KEY}=eu-central-1`}
-                  description={`One NAME=value per line, merged into every request muster sends this server. Most servers need none. AWS-hosted servers read the region they operate in from ${AWS_REGION_META_KEY} — without it they answer about their own default region instead of failing.`}
+                  description={`One NAME=value per line, merged into every request muster sends this connector. Most connectors need none. AWS-hosted connectors read the region they operate in from ${AWS_REGION_META_KEY} — without it they answer about their own default region instead of failing.`}
                 />
               </Flex>
             </CardBody>
@@ -341,8 +341,8 @@ export function NewMcpServerPage() {
               <Flex direction="column" gap="3">
                 <Text as="p" color="secondary" className={classes.footerNote}>
                   {registeredName
-                    ? 'The next step asks how users authenticate to this server, then you review and save your changes.'
-                    : 'The next step asks how users authenticate to this server, then you review and register it.'}
+                    ? 'The next step asks how users authenticate to this connector, then you review and save your changes.'
+                    : 'The next step asks how users authenticate to this connector, then you review and register it.'}
                 </Text>
                 {showValidation && detailsErrors.length > 0 && (
                   <Alert

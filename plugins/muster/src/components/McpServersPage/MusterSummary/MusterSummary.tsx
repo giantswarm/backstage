@@ -21,7 +21,7 @@ function healthHint(deactivated: number): string {
   ];
   if (deactivated > 0) {
     lines.push(
-      `${deactivated} deactivated ${deactivated === 1 ? 'server is' : 'servers are'} not counted.`,
+      `${deactivated} deactivated ${deactivated === 1 ? 'connector is' : 'connectors are'} not counted.`,
     );
   }
   return lines.join('\n');
@@ -75,7 +75,7 @@ export function MusterSummary({ servers }: MusterSummaryProps) {
           ·
         </Text>
         <Text variant="body-medium" color="secondary">
-          {total} {total === 1 ? 'server' : 'servers'} ·{' '}
+          {total} {total === 1 ? 'connector' : 'connectors'} ·{' '}
           <Text
             as="span"
             variant="body-medium"
@@ -85,7 +85,7 @@ export function MusterSummary({ servers }: MusterSummaryProps) {
           </Text>
           {tools}
         </Text>
-        <InfoHint label="How healthy servers are counted" size="medium">
+        <InfoHint label="How healthy connectors are counted" size="medium">
           {healthHint(deactivated)}
         </InfoHint>
       </Flex>

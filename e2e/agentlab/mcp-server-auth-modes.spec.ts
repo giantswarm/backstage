@@ -15,7 +15,7 @@ test('MCP servers: the servers table and the server page name the auth mode alik
 }) => {
   await open(
     admin,
-    `/agent-platform/mcp-servers?installation=${lab.installation}`,
+    `/agent-platform/connectors?installation=${lab.installation}`,
   );
   await connectToMuster(admin, admin.getByRole('grid'));
 

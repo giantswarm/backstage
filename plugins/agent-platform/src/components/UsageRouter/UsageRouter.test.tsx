@@ -100,7 +100,7 @@ describe('UsageRouter', () => {
       'href',
       '/agent-platform/usage/conversations',
     );
-    expect(screen.getByRole('tab', { name: 'MCP tools' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Connectors' })).toHaveAttribute(
       'href',
       '/agent-platform/usage/mcp',
     );
@@ -122,7 +122,7 @@ describe('UsageRouter', () => {
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
     expect(
-      screen.queryByRole('tab', { name: 'MCP tools' }),
+      screen.queryByRole('tab', { name: 'Connectors' }),
     ).not.toBeInTheDocument();
   });
 

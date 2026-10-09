@@ -243,7 +243,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
         <Stat
           label="Tool calls"
           value={formatCount(totals.calls)}
-          hint={`Calls muster dispatched to its servers ${windowNote}, from every client, not only yours.`}
+          hint={`Calls muster dispatched to its connectors ${windowNote}, from every client, not only yours.`}
         />
         <Stat
           label="Error ratio"
@@ -254,7 +254,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
         <Stat
           label="p95 latency"
           value={formatSeconds(totals.p95_seconds)}
-          hint={`How long a server took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
+          hint={`How long a connector took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
         />
         <Stat
           label="Distinct tools"
@@ -265,7 +265,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 
       {totals.calls === 0 ? (
         <Typography variant="body2" color="textSecondary">
-          No tool calls were dispatched to MCP servers in the last {rangeLabel}.
+          No tool calls were dispatched to connectors in the last {rangeLabel}.
           If usage on this installation is expected, its muster release may not
           export downstream dispatch metrics yet.
         </Typography>
@@ -356,7 +356,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>MCP server</TableCell>
+                    <TableCell>Connector</TableCell>
                     <TableCell>Calls</TableCell>
                     <TableCell>Errors</TableCell>
                   </TableRow>
@@ -485,7 +485,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="MCP tool calls on this installation"
-        description="Every tool call dispatched to the MCP servers behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+        description="Every tool call dispatched to the connectors behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this
