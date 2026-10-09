@@ -1465,6 +1465,69 @@ describe('SessionDetailPage', () => {
         expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
         expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
       });
+
+      it('advances it from the text still being written', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [],
+              live: {
+                kind: 'agent-message' as const,
+                text: 'All nodes are rea',
+                messageId: 'art-reply',
+              },
+            },
+          }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are rea')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+
+      it('keeps each paragraph in its place when text follows a call', async () => {
+        // Both paragraphs and the call between them are one message. The poll
+        // read only the first; the second must neither take its place nor wait
+        // for the next read.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('Checking the nodes.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [
+                { ...replyStream.items[0], text: 'Checking the nodes.' },
+                {
+                  kind: 'tool-call' as const,
+                  id: 'stream:1',
+                  taskIndex: 0,
+                  messageId: 'art-reply',
+                  toolName: 'kubectl_get',
+                  isPending: true,
+                },
+                { ...replyStream.items[0], id: 'stream:2' },
+              ],
+            },
+          }),
+        );
+        await render();
+
+        const first = screen.getByText('Checking the nodes.');
+        const second = screen.getByText('All nodes are ready.');
+        expect(
+          first.compareDocumentPosition(second) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
     });
 
     describe('a streamed turn ending', () => {

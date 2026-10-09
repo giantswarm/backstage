@@ -281,6 +281,11 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
       // under its id (`artifactToWireMessage`). Without it the page cannot
       // recognise the polled copy, and renders the reply twice.
       const artifactId = event.artifact?.artifactId ?? undefined;
+      // Who produced it, where the poll reads it from too.
+      const artifactAuthor = readKagentMetadataString(
+        event.artifact?.metadata,
+        'author',
+      );
 
       let text = '';
       /**
@@ -306,7 +311,16 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (!text) {
           return;
         }
-        pushTextItem(next, 'agent-message', text, artifactId, undefined);
+        // A run that is this same text knows the author when the artifact
+        // does not say.
+        const repeats = live?.text.trim() === text.trim();
+        pushTextItem(
+          next,
+          'agent-message',
+          text,
+          artifactId,
+          artifactAuthor ?? (repeats ? live?.author : undefined),
+        );
         text = '';
       };
 
@@ -327,7 +341,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
               'agent-message',
               partText,
               undefined,
-              undefined,
+              artifactAuthor,
             );
           }
           continue;
@@ -338,7 +352,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (isComplete) {
           emitComplete();
         }
-        ingestDataPart(next, part, undefined, artifactId);
+        ingestDataPart(next, part, artifactAuthor, artifactId);
       }
 
       if (isComplete) {

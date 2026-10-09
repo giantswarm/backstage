@@ -59,7 +59,7 @@ import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionSwitcherRail } from '../SessionSwitcherRail';
 import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
-import { fresherStreamedCopy } from './helpers';
+import { createPolledPairing, fresherStreamedCopy } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -75,6 +75,7 @@ import {
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { formatUsd } from '../../lib/formatNumbers';
+import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -468,9 +469,21 @@ export function SessionDetailPage() {
     }
 
     if (streamVisible) {
-      const polled = new Set(
-        timeline.items.map(item => item.messageId).filter(Boolean),
-      );
+      const pairWithPolled = createPolledPairing(timeline.items);
+      /**
+       * Whether the poll holds a copy of a streamed item — which then stays,
+       * advanced by whatever the stream has seen since that read. A part of a
+       * message the read had not reached yet has no copy, and is still the
+       * stream's to show.
+       */
+      const advance = (streamed: TimelineItem): boolean => {
+        const at = pairWithPolled(streamed);
+        if (at === undefined) {
+          return false;
+        }
+        items[at] = fresherStreamedCopy(items[at], streamed) ?? items[at];
+        return true;
+      };
       // How a turn ended carries a `messageId` only when kagent wrote a reason
       // for it — the exception for a failure, the rule for a cancel, which has no
       // reason to write. Recognition by id therefore cannot retire the streamed
@@ -481,22 +494,7 @@ export function SessionDetailPage() {
         item => item.kind === 'turn-failed' && item.taskIndex === taskIndex,
       );
       for (const item of stream.items) {
-        if (item.messageId && polled.has(item.messageId)) {
-          // Recognised, so the polled copy stays — advanced by whatever the
-          // stream has seen since that read. Only where the match is
-          // unambiguous: one message can hold several items of a kind.
-          const matches = timeline.items.flatMap((candidate, index) =>
-            candidate.messageId === item.messageId &&
-            candidate.kind === item.kind
-              ? [index]
-              : [],
-          );
-          if (matches.length === 1) {
-            const fresher = fresherStreamedCopy(items[matches[0]], item);
-            if (fresher) {
-              items[matches[0]] = fresher;
-            }
-          }
+        if (advance(item)) {
           continue;
         }
         if (item.kind === 'turn-failed' && polledEndedTurn) {
@@ -507,19 +505,18 @@ export function SessionDetailPage() {
       // Appended, never sorted: the reducer keeps the open run newer than every
       // completed item, so the end of the list is where it belongs.
       const live = stream.live;
-      if (
-        live &&
-        live.text.trim() &&
-        !(live.messageId && polled.has(live.messageId))
-      ) {
-        items.push({
+      if (live && live.text.trim()) {
+        const liveItem: TimelineItem = {
           kind: live.kind,
           id: 'stream:live',
           taskIndex,
           messageId: live.messageId,
           author: live.author,
           text: live.text.trim(),
-        });
+        };
+        if (!advance(liveItem)) {
+          items.push(liveItem);
+        }
       }
     }
 
