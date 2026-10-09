@@ -250,6 +250,93 @@ describe('getMcpUsage', () => {
     ]);
   });
 
+  describe('a month-to-date window in daily steps', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    // A daily sample for every evaluation the range query asks for, and one
+    // at the window's start, the last day of the month before.
+    function dailyClient(seen: Array<Record<string, unknown>>) {
+      return fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        seen.push(args);
+        const start = Date.parse(String(args.start)) / 1000;
+        const end = Date.parse(String(args.end)) / 1000;
+        const lines = [
+          'Result Type: matrix',
+          'Result: {outcome="ok", mcpserver_name="jira"} =>',
+        ];
+        lines.push(`100 @[${start - 86400}]`);
+        for (let ts = start; ts <= end; ts += 86400) {
+          lines.push(`1 @[${ts}]`);
+        }
+        return lines.join('\n');
+      });
+    }
+
+    it.each([
+      ['on the 1st', '2026-10-01T10:30:00Z', 1],
+      ['on the 2nd', '2026-10-02T23:59:00Z', 2],
+      ['on the 3rd', '2026-10-03T00:30:00Z', 3],
+      ['on the 31st', '2026-10-31T12:00:00Z', 31],
+    ])(
+      'covers the days of the month and none before %s',
+      async (_, now, day) => {
+        jest.useFakeTimers({ now: new Date(now) });
+        const seen: Array<Record<string, unknown>> = [];
+
+        const usage = await getMcpUsage(
+          dailyClient(seen),
+          INSTALLATION,
+          {},
+          24 * day,
+          { stepHours: 24 },
+        );
+
+        expect(seen[0].start).toBe(`2026-10-02T00:00:00.000Z`);
+        expect(seen[0].end).toBe(
+          new Date(Date.UTC(2026, 9, day + 1)).toISOString(),
+        );
+        expect(usage.step_hours).toBe(24);
+        expect(usage.buckets.map(bucket => bucket.start)).toEqual(
+          Array.from({ length: day }, (__, index) =>
+            new Date(Date.UTC(2026, 9, index + 1)).toISOString(),
+          ),
+        );
+        expect(usage.totals.calls).toBe(day);
+        expect(usage.servers).toEqual([
+          { server: 'jira', calls: day, errors: 0 },
+        ]);
+      },
+    );
+
+    it('leaves out a sample from before the window that the server sends anyway', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-01T10:30:00Z') });
+      const client = fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        const end = Date.parse(String(args.end)) / 1000;
+        return [
+          'Result Type: matrix',
+          'Result: {outcome="ok", mcpserver_name="jira"} =>',
+          `100 @[${end - 86400}]`,
+          `3 @[${end}]`,
+        ].join('\n');
+      });
+
+      const usage = await getMcpUsage(client, INSTALLATION, {}, 24, {
+        stepHours: 24,
+      });
+
+      expect(usage.totals.calls).toBe(3);
+      expect(usage.servers).toEqual([{ server: 'jira', calls: 3, errors: 0 }]);
+    });
+  });
+
   it('falls back to the x_<server>_ tool names when the family tool is missing', async () => {
     const fallbackCalls: Array<{
       tool: string;

@@ -107,6 +107,14 @@ export function pickPrometheusServer(
   return prometheusLike.find(name => name.startsWith(installation.name));
 }
 
+/** The step sizes a caller may ask for, in hours. */
+export const MCP_USAGE_STEP_HOURS = [1, 24] as const;
+export type McpUsageStepHours = (typeof MCP_USAGE_STEP_HOURS)[number];
+
+export function isMcpUsageStepHours(value: number): value is McpUsageStepHours {
+  return (MCP_USAGE_STEP_HOURS as readonly number[]).includes(value);
+}
+
 /** Sum of every finite sample across all series (a range-query rollup). */
 function sumPoints(series: PromSeries[]): number {
   let total = 0;
@@ -118,6 +126,23 @@ function sumPoints(series: PromSeries[]): number {
     }
   }
   return total;
+}
+
+/**
+ * The series with only the samples inside the window `(start, end]`: a sample
+ * at T covers `(T - step, T]`, so one at `start` belongs to the step before.
+ */
+function withinWindow(
+  series: PromSeries[],
+  startSeconds: number,
+  endSeconds: number,
+): PromSeries[] {
+  return series.map(s => ({
+    ...s,
+    points: s.points.filter(
+      point => point.ts > startSeconds && point.ts <= endSeconds,
+    ),
+  }));
 }
 
 function parseLe(le: string | undefined): number | undefined {
@@ -230,6 +255,14 @@ export async function getMcpUsage(
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
+  options: {
+    /**
+     * The bucket size; by default hourly up to two days and daily beyond. A
+     * daily step ends the window at the next UTC midnight, so `24 * n` hours
+     * cover the last `n` UTC days, today included.
+     */
+    stepHours?: McpUsageStepHours;
+  } = {},
 ): Promise<McpUsageResponse> {
   const listed = (await client.callTool(
     'core_mcpserver_list',
@@ -246,8 +279,7 @@ export async function getMcpUsage(
     );
   }
 
-  // Bucket size: hourly up to two days, daily beyond.
-  const stepHours = hours <= 48 ? 1 : 24;
+  const stepHours = options.stepHours ?? (hours <= 48 ? 1 : 24);
   const stepSeconds = stepHours * 3600;
   const nowSeconds = Math.floor(Date.now() / 1000);
   // Align the window to whole steps so bucket edges are stable across reloads.
@@ -288,15 +320,17 @@ export async function getMcpUsage(
   // read from the store-gateway path — which is exactly what degrades when a
   // store-gateway has a bad day (observed on an internal installation: [1h]
   // fine, [12h]+ returning 500 while the equivalent range query kept working).
+  // The first evaluation is one step after the window's start: the one at the
+  // start itself covers the step before the window.
   const rangeQuery = (query: string): Promise<PromSeries[]> =>
     runQuery(RANGE_TOOL, {
       query,
       // RFC3339, not Unix seconds: mcp-prometheus documents both but its
       // deployed versions only parse RFC3339.
-      start: new Date(startSeconds * 1000).toISOString(),
+      start: new Date((startSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(endSeconds * 1000).toISOString(),
       step,
-    });
+    }).then(series => withinWindow(series, startSeconds, endSeconds));
   // The secondary rollups degrade to empty on failure instead of taking the
   // whole view down.
   const optional = (promise: Promise<PromSeries[]>): Promise<PromSeries[]> =>

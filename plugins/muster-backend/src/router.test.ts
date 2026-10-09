@@ -227,6 +227,28 @@ describe('createRouter', () => {
     expect(callTool).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a step other than an hour or a day', '/usage?hours=48&stepHours=12'],
+    ['hours that are not whole steps', '/usage?hours=30&stepHours=24'],
+  ])('rejects usage in %s', async (_, path) => {
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(400);
+    expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it('reads usage in daily steps when asked', async () => {
+    callTool.mockResolvedValue({ mcpServers: [] });
+
+    const response = await request(app).get('/usage?hours=24&stepHours=24');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      available: false,
+      range_hours: 24,
+    });
+  });
+
   it('proxies execution detail with steps', async () => {
     const payload = { execution_id: 'abc', steps: [] };
     callTool.mockResolvedValue(payload);

@@ -26,7 +26,7 @@ import {
   reachabilityFields,
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { getMcpUsage } from './mcpUsage';
+import { getMcpUsage, isMcpUsageStepHours } from './mcpUsage';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -652,12 +652,22 @@ export async function createRouter(
     if (hours < 1 || hours > 24 * 90) {
       throw new InputError('hours must be between 1 and 2160');
     }
+    const stepHours = parseOptionalInt(req.query.stepHours, 'stepHours');
+    if (
+      stepHours !== undefined &&
+      (!isMcpUsageStepHours(stepHours) || hours % stepHours !== 0)
+    ) {
+      throw new InputError(
+        'stepHours must be 1 or 24, and hours a multiple of it',
+      );
+    }
     res.json(
       await getMcpUsage(
         client,
         installation,
         readCallOptions(req, installation),
         hours,
+        { stepHours },
       ),
     );
   });
