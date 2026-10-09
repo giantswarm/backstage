@@ -273,7 +273,7 @@ describe('discoverAgentSkills', () => {
     expect(error).toBeInstanceOf(GitHubApiError);
     expect(error.status).toBe(403);
     expect(error.message).toBe(
-      "GitHub's API rate limit for this portal is used up until 14:05 UTC: it reads GitHub without a token, which GitHub allows 60 requests an hour.",
+      "GitHub's API rate limit for this portal's IP address is used up until 14:05 UTC: the portal reads GitHub without a token, which GitHub allows 60 requests an hour per IP.",
     );
   });
 
@@ -287,7 +287,31 @@ describe('discoverAgentSkills', () => {
 
     expect(error.status).toBe(429);
     expect(error.message).toBe(
-      "GitHub's API rate limit for this portal's token is used up until 14:05 UTC.",
+      "GitHub's API rate limit for the portal's token is used up until 14:05 UTC.",
+    );
+  });
+
+  it("says GitHub's secondary rate limit refused a read", async () => {
+    global.fetch = jest.fn(async () => {
+      return {
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: new Headers({
+          'retry-after': '60',
+          'x-ratelimit-remaining': '4321',
+        }),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const error = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+    }).catch(e => e);
+
+    expect(error.status).toBe(403);
+    expect(error.message).toBe(
+      "GitHub's secondary rate limit refused the read: too many requests in a short time. Try again in 60 seconds.",
     );
   });
 

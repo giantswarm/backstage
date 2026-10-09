@@ -127,18 +127,23 @@ async function githubApiFetch(
 }
 
 /**
- * GitHub answers 403 (or 429) with no requests left in the window when its
- * rate limit is used up; said in words, since a bare 403 reads as a
+ * GitHub refuses with 403 (or 429) both when the primary rate limit is used
+ * up (no requests left in the window) and when its secondary limit trips (a
+ * `retry-after` header); said in words, since a bare 403 reads as a
  * permission problem.
  */
 function rateLimitMessage(
   response: Response,
   authenticated: boolean,
 ): string | undefined {
-  if (
-    (response.status !== 403 && response.status !== 429) ||
-    response.headers?.get('x-ratelimit-remaining') !== '0'
-  ) {
+  if (response.status !== 403 && response.status !== 429) {
+    return undefined;
+  }
+  const retryAfter = Number(response.headers?.get('retry-after'));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return `GitHub's secondary rate limit refused the read: too many requests in a short time. Try again in ${retryAfter} seconds.`;
+  }
+  if (response.headers?.get('x-ratelimit-remaining') !== '0') {
     return undefined;
   }
   const reset = Number(response.headers.get('x-ratelimit-reset'));
@@ -147,8 +152,8 @@ function rateLimitMessage(
       ? ` until ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
       : '';
   return authenticated
-    ? `GitHub's API rate limit for this portal's token is used up${until}.`
-    : `GitHub's API rate limit for this portal is used up${until}: it reads GitHub without a token, which GitHub allows 60 requests an hour.`;
+    ? `GitHub's API rate limit for the portal's token is used up${until}.`
+    : `GitHub's API rate limit for this portal's IP address is used up${until}: the portal reads GitHub without a token, which GitHub allows 60 requests an hour per IP.`;
 }
 
 async function resolveDefaultBranch(
