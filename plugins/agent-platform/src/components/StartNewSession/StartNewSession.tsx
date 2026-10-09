@@ -13,7 +13,11 @@ import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { agentsRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
-import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
+import {
+  isStartableAgent,
+  NewSessionComposer,
+  type NewSessionComposerProps,
+} from '../NewSessionComposer';
 
 /**
  * Where the composer sits:
@@ -26,10 +30,27 @@ import { isStartableAgent, NewSessionComposer } from '../NewSessionComposer';
  */
 export type StartNewSessionLayout = 'inline' | 'firstRun' | 'standalone';
 
+/** The composer's opt-in props a caller may pass through. */
+export type StartNewSessionComposerProps = Pick<
+  NewSessionComposerProps,
+  | 'showUnavailable'
+  | 'groupByNamespace'
+  | 'recentAgentIds'
+  | 'searchable'
+  | 'initialPrompt'
+  | 'promptPlaceholder'
+  | 'renderPickerAccessory'
+  | 'renderFooter'
+  | 'onSelectedAgentChange'
+>;
+
 export type StartNewSessionProps = {
   /** Where the person starts the session from, as the analytics event says. */
   entryPoint: SessionEntryPoint;
   layout?: StartNewSessionLayout;
+  composerProps?: StartNewSessionComposerProps;
+  /** Passed to `useCreateSession` as the derived title's bound. */
+  titleMaxLength?: number;
 };
 
 /**
@@ -45,6 +66,8 @@ export type StartNewSessionProps = {
 export function StartNewSession({
   entryPoint,
   layout = 'inline',
+  composerProps,
+  titleMaxLength,
 }: StartNewSessionProps) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
@@ -57,7 +80,7 @@ export function StartNewSession({
     unreachableInstallations,
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
-  const creation = useCreateSession(entryPoint);
+  const creation = useCreateSession(entryPoint, { titleMaxLength });
 
   const { createSession } = creation;
   const onStart = useCallback(
@@ -185,6 +208,7 @@ export function StartNewSession({
 
   const composer = (
     <NewSessionComposer
+      {...composerProps}
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
       defaultAgent={lastUsedAgent}
