@@ -34,5 +34,5 @@ Remove this section if not applicable.)
 
 ### Checklist
 
-- In-repo documentation was updated (if applicable)
-- Changesets were created
+- [ ] In-repo documentation was updated (if applicable)
+- [ ] A [changeset](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md) was created
