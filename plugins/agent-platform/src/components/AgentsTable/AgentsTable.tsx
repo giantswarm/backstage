@@ -188,8 +188,8 @@ function getColumnConfig(
       id: 'harness',
       label: 'Harness',
       isSortable: true,
-      defaultWidth: '1fr',
-      minWidth: 120,
+      defaultWidth: '1.5fr',
+      minWidth: 170,
       cell: row => (
         <CellText
           title={row.harnessTitle ?? row.harness ?? '—'}
