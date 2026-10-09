@@ -13,12 +13,19 @@ const run = promisify(execFile);
 const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
 const NAMESPACE = 'agent-platform';
 
+type Scenario = {
+  name: string;
+  semver?: string;
+  semverFilter?: string;
+  label: string;
+};
+
 /**
  * The release-stage scenarios of the SemVer automatic upgrades guide, plus a
- * filter it does not document, each with the label the deployment page shows
- * for its Automatic upgrades.
+ * filter it does not document, and ranges with an upper bound, each with the
+ * label the deployment page shows for its Automatic upgrades.
  */
-const SCENARIOS = [
+const SCENARIOS: Scenario[] = [
   {
     name: 'auto-upgrades-dev',
     semverFilter: '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$',
@@ -44,6 +51,21 @@ const SCENARIOS = [
     semverFilter: undefined,
     label: 'Any, including pre-releases',
   },
+  {
+    name: 'auto-upgrades-minor-bounded',
+    semver: '>=5.12.0 <6.0.0',
+    label: 'Minor and patch',
+  },
+  {
+    name: 'auto-upgrades-minor-zero',
+    semver: '>=0.2.0 <1.0.0',
+    label: 'Minor and patch',
+  },
+  {
+    name: 'auto-upgrades-caret-zero',
+    semver: '^0.7.1',
+    label: 'Patch',
+  },
 ];
 
 /**
@@ -51,7 +73,7 @@ const SCENARIOS = [
  * controllers never fetch or install anything: the objects exist for the
  * portal to read.
  */
-function fixture(name: string, semverFilter?: string) {
+function fixture({ name, semver = '>=0.0.0-0', semverFilter }: Scenario) {
   const filter = semverFilter
     ? `\n    semverFilter: '${semverFilter.replace(/'/g, "''")}'`
     : '';
@@ -66,7 +88,7 @@ spec:
   interval: 10m
   url: oci://gsoci.azurecr.io/charts/giantswarm/hello-world
   ref:
-    semver: '>=0.0.0-0'${filter}
+    semver: '${semver}'${filter}
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -93,7 +115,7 @@ async function kubectl(args: string[], input?: string) {
   return child;
 }
 
-test.describe("a deployment's automatic upgrades with a semver filter", () => {
+test.describe("a deployment's automatic upgrades", () => {
   test.skip(
     !KUBECONFIG,
     "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
@@ -102,7 +124,7 @@ test.describe("a deployment's automatic upgrades with a semver filter", () => {
   test.beforeAll(async () => {
     await kubectl(
       ['apply', '-f', '-'],
-      SCENARIOS.map(s => fixture(s.name, s.semverFilter)).join('\n---\n'),
+      SCENARIOS.map(fixture).join('\n---\n'),
     );
   });
 
