@@ -1,4 +1,5 @@
 import { Helmet } from 'react-helmet';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import {
   configApiRef,
   RouteRef,
@@ -7,12 +8,17 @@ import {
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import { ButtonLink, Container, Flex, Grid, Link, Text } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  InfoCard,
+  PageHeaderActionsProvider,
+  ShellPage,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
   ServingLayerGate,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
+import { customizeRouteRef } from '../routes';
 
 type AreaRouteRef = RouteRef<undefined> | SubRouteRef<undefined>;
 
@@ -108,12 +114,42 @@ function AreaCard({ area }: { area: CustomizeArea }) {
   );
 }
 
-export function CustomizePage() {
-  const appTitle =
-    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
+type CustomizeTab = {
+  id: string;
+  title: string;
+  /** The areas, by id, whose cards the tab shows. */
+  areas: string[];
+};
+
+/** The tabs of `/customize/:tab`, in strip order. */
+export const CUSTOMIZE_TABS: CustomizeTab[] = [
+  { id: 'agents', title: 'Agents', areas: ['agents'] },
+  { id: 'connectors', title: 'Connectors', areas: ['mcp-servers'] },
+  { id: 'models', title: 'Models', areas: ['models', 'model-hosting'] },
+  { id: 'workflows', title: 'Workflows', areas: ['workflows'] },
+];
+
+function AreaCards({ ids }: { ids?: string[] }) {
+  return (
+    <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
+      {areas
+        .filter(area => !ids || ids.includes(area.id))
+        .map(area =>
+          area.needsServingLayer ? (
+            <ServingLayerGate key={area.id}>
+              <AreaCard area={area} />
+            </ServingLayerGate>
+          ) : (
+            <AreaCard key={area.id} area={area} />
+          ),
+        )}
+    </Grid.Root>
+  );
+}
+
+function CustomizeOverview() {
   return (
     <Container py="8">
-      <Helmet title="Customize" titleTemplate={`%s | ${appTitle}`} />
       <Flex direction="column" gap="6">
         <Flex direction="column" gap="2">
           <Text as="h1" variant="title-large">
@@ -123,18 +159,45 @@ export function CustomizePage() {
             The agents, models, tools and workflows behind your sessions.
           </Text>
         </Flex>
-        <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
-          {areas.map(area =>
-            area.needsServingLayer ? (
-              <ServingLayerGate key={area.id}>
-                <AreaCard area={area} />
-              </ServingLayerGate>
-            ) : (
-              <AreaCard key={area.id} area={area} />
-            ),
-          )}
-        </Grid.Root>
+        <AreaCards />
       </Flex>
     </Container>
+  );
+}
+
+function CustomizeTabPage() {
+  const tabId = (useParams()['*'] ?? '').split('/')[0];
+  const customizeLink = useRouteRef(customizeRouteRef);
+  const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
+  if (!tab) {
+    return <Navigate to={customizeLink?.() ?? '/customize'} replace />;
+  }
+  return (
+    <ShellPage
+      title="Customize"
+      description="The agents, models, tools and workflows behind your sessions."
+      tabs={CUSTOMIZE_TABS.map(({ id, title }) => ({ id, path: id, title }))}
+    >
+      <AreaCards ids={tab.areas} />
+    </ShellPage>
+  );
+}
+
+/**
+ * The shell's Customize section: an overview at `/customize` and one tab per
+ * area at `/customize/:tab`. Rendered without the app's page layout, so it
+ * mounts the header-actions slot its pages render.
+ */
+export function CustomizePage() {
+  const appTitle =
+    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
+  return (
+    <PageHeaderActionsProvider>
+      <Helmet title="Customize" titleTemplate={`%s | ${appTitle}`} />
+      <Routes>
+        <Route index element={<CustomizeOverview />} />
+        <Route path="*" element={<CustomizeTabPage />} />
+      </Routes>
+    </PageHeaderActionsProvider>
   );
 }

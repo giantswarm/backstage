@@ -3,6 +3,8 @@ import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { Route, Routes } from 'react-router-dom';
+import { customizeRouteRef } from '../routes';
 import { CustomizePage } from './CustomizePage';
 
 const mockServingLayer = jest.fn(() => true);
@@ -46,11 +48,25 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
 });
 
 const allRoutes = {
+  '/customize': customizeRouteRef,
   '/agent-platform/agents': agentPlatformPlugin.routes.agents,
   '/agent-platform/models': agentPlatformPlugin.routes.models,
   '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
   '/agent-platform/workflows': musterPlugin.routes.workflows,
 };
+
+function renderCustomize(
+  path: string,
+  options: Omit<Parameters<typeof renderInTestApp>[1], 'initialRouteEntries'>,
+) {
+  return renderInTestApp(
+    <Routes>
+      <Route path="/customize/*" element={<CustomizePage />} />
+      <Route path="*" element={<p>Elsewhere</p>} />
+    </Routes>,
+    { ...options, initialRouteEntries: [path] },
+  );
+}
 
 function cards() {
   return screen.getAllByRole('heading', { level: 2 }).map(heading => {
@@ -70,7 +86,7 @@ describe('CustomizePage', () => {
   beforeEach(() => mockServingLayer.mockReturnValue(true));
 
   it('renders a card per area with its link and create action', async () => {
-    await renderInTestApp(<CustomizePage />, { mountedRoutes: allRoutes });
+    await renderCustomize('/customize', { mountedRoutes: allRoutes });
 
     expect(
       screen.getByRole('heading', { level: 1, name: 'Customize' }),
@@ -105,7 +121,7 @@ describe('CustomizePage', () => {
   });
 
   it('leaves out the cards whose route is not bound', async () => {
-    await renderInTestApp(<CustomizePage />, {
+    await renderCustomize('/customize', {
       mountedRoutes: {
         '/agent-platform/agents': agentPlatformPlugin.routes.agents,
         '/agent-platform/workflows': musterPlugin.routes.workflows,
@@ -117,7 +133,7 @@ describe('CustomizePage', () => {
 
   it('leaves out Model hosting where no installation has a serving layer', async () => {
     mockServingLayer.mockReturnValue(false);
-    await renderInTestApp(<CustomizePage />, { mountedRoutes: allRoutes });
+    await renderCustomize('/customize', { mountedRoutes: allRoutes });
 
     expect(cards().map(card => card.title)).toEqual([
       'Agents',
@@ -127,8 +143,53 @@ describe('CustomizePage', () => {
     ]);
   });
 
+  describe('the tabs', () => {
+    it('draws a tab per area below the Customize heading', async () => {
+      await renderCustomize('/customize/agents', { mountedRoutes: allRoutes });
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Customize' }),
+      ).toBeInTheDocument();
+      expect(
+        screen
+          .getAllByRole('tab')
+          .map(tab => [tab.textContent, tab.getAttribute('href')]),
+      ).toEqual([
+        ['Agents', '/customize/agents'],
+        ['Connectors', '/customize/connectors'],
+        ['Models', '/customize/models'],
+        ['Workflows', '/customize/workflows'],
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Agents',
+      );
+    });
+
+    it.each([
+      ['agents', ['Agents']],
+      ['connectors', ['MCP servers']],
+      ['models', ['Models', 'Model hosting']],
+      ['workflows', ['Workflows']],
+    ])('shows the %s tab’s areas', async (tab, titles) => {
+      await renderCustomize(`/customize/${tab}`, { mountedRoutes: allRoutes });
+
+      expect(cards().map(card => card.title)).toEqual(titles);
+    });
+
+    it('sends an unknown tab back to the overview', async () => {
+      await renderCustomize('/customize/nonsense', {
+        mountedRoutes: allRoutes,
+      });
+
+      expect(await screen.findAllByRole('heading', { level: 2 })).toHaveLength(
+        5,
+      );
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    });
+  });
+
   it('names itself in the document title', async () => {
-    await renderInTestApp(<CustomizePage />, {
+    await renderCustomize('/customize', {
       mountedRoutes: allRoutes,
       config: { app: { title: 'Dev Portal' } },
     });
