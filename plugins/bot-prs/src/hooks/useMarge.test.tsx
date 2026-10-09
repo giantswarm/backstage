@@ -487,14 +487,14 @@ describe('useMargeMark', () => {
 describe('useMargeServerName', () => {
   it('names the server muster registers, not the prefix its tools carry', async () => {
     listServers.mockResolvedValue({
-      mcpServers: [{ name: 'gazelle-mcp-marge', toolPrefix: 'marge' }],
+      mcpServers: [{ name: 'mcp-marge', toolPrefix: 'marge' }],
     });
 
     const { result } = renderHook(() => useMargeServerName('gazelle'), {
       wrapper: wrapperWith(client()),
     });
 
-    await waitFor(() => expect(result.current).toBe('gazelle-mcp-marge'));
+    await waitFor(() => expect(result.current).toBe('mcp-marge'));
   });
 
   it('stands on the exposed name while the server list has not answered', () => {

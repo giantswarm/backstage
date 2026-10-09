@@ -56,7 +56,7 @@ export function useMargeAvailability(
 /**
  * The name this installation's muster registers marge under, for the sign-in
  * and the auth status, which name a server and not a tool. muster declares
- * marge with a `toolPrefix`, so the CR name (`gazelle-mcp-marge`) and the
+ * marge with a `toolPrefix`, so the CR name (`mcp-marge`) and the
  * exposed name (`marge`) differ, and a call under the exposed one is refused.
  * The exposed name stands until the server list answers, so an installation
  * whose muster registers marge under its own name still signs in.
