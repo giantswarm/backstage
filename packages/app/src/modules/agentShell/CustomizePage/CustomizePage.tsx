@@ -39,9 +39,7 @@ import musterPlugin, {
   useMusterCustomizeCounts,
 } from '@giantswarm/backstage-plugin-muster';
 import { customizeRouteRef } from '../routes';
-
-type CustomizeTabId =
-  'agents' | 'skills' | 'connectors' | 'models' | 'workflows';
+import type { CustomizeTabId } from '../customizeTabIds';
 
 type CustomizeTab = {
   id: CustomizeTabId;

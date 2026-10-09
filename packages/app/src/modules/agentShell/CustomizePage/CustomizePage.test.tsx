@@ -6,7 +6,8 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { customizeRouteRef } from '../routes';
-import { CustomizePage } from './CustomizePage';
+import { CUSTOMIZE_TAB_IDS } from '../customizeTabIds';
+import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 
 let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, number>;
@@ -123,6 +124,12 @@ const tabs = () =>
   screen
     .getAllByRole('tab')
     .map(tab => [tab.textContent, tab.getAttribute('href')]);
+
+describe('CUSTOMIZE_TABS', () => {
+  it('draws exactly the tab ids telemetry reports, in strip order', () => {
+    expect(CUSTOMIZE_TABS.map(tab => tab.id)).toEqual([...CUSTOMIZE_TAB_IDS]);
+  });
+});
 
 describe('CustomizePage', () => {
   beforeEach(() => {

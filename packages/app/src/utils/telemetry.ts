@@ -1,13 +1,8 @@
 import sha256 from 'crypto-js/sha256';
+import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
-const CUSTOMIZE_TABS = new Set([
-  'agents',
-  'skills',
-  'connectors',
-  'models',
-  'workflows',
-]);
+const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 
 export function getTelemetryPageViewPayload(pathname: string): {
   [key: string]: string;
@@ -224,9 +219,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`,
-    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an older release's links still carry. Only
-    // the first segment, so anything deeper collapses to what it belongs to
-    // instead of opening the dimension up.
+    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an
+    // older release's links still carry. Only the first segment, so anything
+    // deeper collapses to what it belongs to instead of opening the dimension
+    // up.
     case pathname.startsWith('/agent-platform/models'): {
       const parts = pathname.split('/');
       payload = {
@@ -312,13 +308,12 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
     // `mcp`, and the agent-platform shell's `technical`), with the view as its
-    // one segment. The bare path
-    // above keeps its existing name rather than becoming 'Usage index': it now
-    // only ever redirects here, and renaming it would break continuity in
-    // TelemetryDeck for nothing.
+    // one segment. The bare path above keeps its existing name rather than
+    // becoming 'Usage index': it now only ever redirects here, and renaming it
+    // would break continuity in TelemetryDeck for nothing.
     //
     // `view` is safe to include where a session or agent path's segments were
-    // not: these four are a fixed, public set, so they identify a view rather
+    // not: these views are a fixed, public set, so they identify a view rather
     // than a customer's installation or an agent's name.
     case pathname.startsWith('/agent-platform/usage/'): {
       const parts = pathname.split('/');
