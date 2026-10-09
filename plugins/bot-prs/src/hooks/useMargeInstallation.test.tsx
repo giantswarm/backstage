@@ -52,7 +52,7 @@ describe('useMargeInstallation', () => {
       Promise.resolve({
         mcpServers:
           installation === 'glean'
-            ? [{ name: 'glean-mcp-marge', toolPrefix: 'marge' }]
+            ? [{ name: 'mcp-marge', toolPrefix: 'marge' }]
             : [],
       }),
     );
