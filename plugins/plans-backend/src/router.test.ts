@@ -1,5 +1,5 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import { mockCredentials, mockServices } from '@backstage/backend-test-utils';
 import { AuthenticationError } from '@backstage/errors';
 import {
   AuthLoginResult,
@@ -825,6 +825,77 @@ describe('createRouter', () => {
       expect(
         (await request(app).get('/content').query({ path: 'plan-a/' })).status,
       ).toBe(400);
+    });
+
+    describe('cache', () => {
+      const read = (query: Record<string, string>, user?: string) => {
+        const req = request(app).get('/content').query(query);
+        return user
+          ? req.set('authorization', mockCredentials.user.header(user))
+          : req;
+      };
+      const contentCalls = () =>
+        github.calls.filter(c => c.tool === 'get_file_contents');
+
+      let now: number;
+      beforeEach(() => {
+        now = 1_000_000;
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
+        github.contentAnswers.set('get_file_contents', fileContent('v1'));
+      });
+      afterEach(() => jest.restoreAllMocks());
+
+      it('answers a repeated read from the cache, concurrent ones included', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        const [first, concurrent] = await Promise.all([
+          read(query),
+          read(query),
+        ]);
+        now += 59_000;
+        const again = await read(query);
+
+        for (const res of [first, concurrent, again]) {
+          expect(res.status).toBe(200);
+          expect(res.body.content).toBe('v1');
+        }
+        expect(contentCalls()).toHaveLength(1);
+      });
+
+      it('reads each path, ref and person on its own', async () => {
+        await read({ path: 'plan-a/PRD.md', ref: 'main' });
+        await read({ path: 'plan-b/PRD.md', ref: 'main' });
+        await read({ path: 'plan-a/PRD.md', ref: 'draft' });
+        await read(
+          { path: 'plan-a/PRD.md', ref: 'main' },
+          'user:default/someone-else',
+        );
+
+        expect(contentCalls()).toHaveLength(4);
+      });
+
+      it('reads a moved ref again once the entry expired', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        await read(query);
+        github.contentAnswers.set('get_file_contents', fileContent('v2'));
+
+        now += 60_001;
+        const res = await read(query);
+
+        expect(res.body.content).toBe('v2');
+        expect(contentCalls()).toHaveLength(2);
+      });
+
+      it('keeps no failed read', async () => {
+        const query = { path: 'plan-a/PRD.md', ref: 'main' };
+        github.failNextCallsWith = new Error('404 Not Found');
+        expect((await read(query)).status).toBe(404);
+
+        const res = await read(query);
+
+        expect(res.status).toBe(200);
+        expect(res.body.content).toBe('v1');
+        expect(contentCalls()).toHaveLength(2);
+      });
     });
   });
 

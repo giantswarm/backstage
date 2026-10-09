@@ -34,6 +34,42 @@ const EPICS_TTL_MS = 5 * 60_000;
  */
 const TREE_TTL_MS = 60_000;
 
+/**
+ * A file read at a ref is one GitHub call through muster, about 3 s, and the
+ * Magazine and plan pages read the same files on every load. Each person's
+ * reads are kept this long: a ref that moves on is seen within this window.
+ */
+const CONTENT_TTL_MS = 60_000;
+
+/**
+ * Reads shared per key within `ttlMs`, the concurrent ones included. A failed
+ * read is not kept: the next request asks again. Expired entries are dropped
+ * on the next miss.
+ */
+function ttlCache<T>(ttlMs: number) {
+  const entries = new Map<string, { expires: number; value: Promise<T> }>();
+  return (key: string, read: () => Promise<T>): Promise<T> => {
+    const now = Date.now();
+    const hit = entries.get(key);
+    if (hit && hit.expires > now) {
+      return hit.value;
+    }
+    for (const [cached, entry] of entries) {
+      if (entry.expires <= now) {
+        entries.delete(cached);
+      }
+    }
+    const value = read();
+    entries.set(key, { expires: now + ttlMs, value });
+    value.catch(() => {
+      if (entries.get(key)?.value === value) {
+        entries.delete(key);
+      }
+    });
+    return value;
+  };
+}
+
 /** Roadmap epic referenced by a plan's `**Epic:** [owner/repo#N](url)` header. */
 interface EpicRef {
   owner: string;
@@ -496,40 +532,38 @@ export async function createRouter(
     return { truncated: Boolean(result?.truncated), tree };
   };
 
-  const treeCache = new Map<
-    string,
-    { expires: number; tree: Promise<RepositoryTree> }
-  >();
+  const treeCache = ttlCache<RepositoryTree>(TREE_TTL_MS);
 
   /**
    * The tree of a ref, fetched once per repository and ref within
-   * TREE_TTL_MS and shared by every caller in that window, the concurrent
-   * ones included. A failed fetch is not kept: the next request asks again.
+   * TREE_TTL_MS and shared by every caller in that window.
    */
   const getTree = (
     gh: GithubSession,
     repo: string,
     ref: string,
-  ): Promise<RepositoryTree> => {
-    const now = Date.now();
-    const key = `${repo}@${ref}`;
-    const hit = treeCache.get(key);
-    if (hit && hit.expires > now) {
-      return hit.tree;
-    }
-    for (const [cached, entry] of treeCache) {
-      if (entry.expires <= now) {
-        treeCache.delete(cached);
-      }
-    }
-    const tree = fetchTree(gh, repo, ref);
-    treeCache.set(key, { expires: now + TREE_TTL_MS, tree });
-    tree.catch(() => {
-      if (treeCache.get(key)?.tree === tree) {
-        treeCache.delete(key);
-      }
-    });
-    return tree;
+  ): Promise<RepositoryTree> =>
+    treeCache(`${repo}@${ref}`, () => fetchTree(gh, repo, ref));
+
+  const contentCache = ttlCache<string>(CONTENT_TTL_MS);
+
+  /**
+   * A file at a ref, read once per person, repository, ref and path within
+   * CONTENT_TTL_MS. Kept per person, since each read runs with the person's
+   * own GitHub grant: no one is served a file their grant could not read.
+   */
+  const getCachedFileContent = async (
+    req: express.Request,
+    repo: string,
+    path: string,
+    ref: string,
+  ): Promise<string> => {
+    const { principal } = await httpAuth.credentials(req, { allow: ['user'] });
+    const gh = githubFor(req);
+    return contentCache(
+      JSON.stringify([principal.userEntityRef, repo, ref, path]),
+      () => getFileContent(gh, repo, path, ref),
+    );
   };
 
   const parsePullNumber = (raw: string): number => {
@@ -766,7 +800,7 @@ export async function createRouter(
     res.json({
       path,
       ref,
-      content: await getFileContent(githubFor(req), repo, path, ref),
+      content: await getCachedFileContent(req, repo, path, ref),
     });
   });
 
