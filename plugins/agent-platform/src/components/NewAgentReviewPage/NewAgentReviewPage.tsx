@@ -316,11 +316,15 @@ export function NewAgentReviewPage() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
-  const { platformChoice } = useHarnessChoices(
+  const { choices, platformChoice } = useHarnessChoices(
     state.installation,
     state.modelConfigNamespace,
   );
-  const runningHarness = state.harness ?? platformChoice;
+  // As listed now, so the limits match what the picker step shows.
+  const runningHarness = state.harness
+    ? (choices.find(choice => choice.name === state.harness?.name) ??
+      state.harness)
+    : platformChoice;
   const validation = useValidateAgent(
     state.installation,
     isComplete && isToolsetValid ? spec : undefined,

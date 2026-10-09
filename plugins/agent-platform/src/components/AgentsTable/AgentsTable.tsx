@@ -244,9 +244,6 @@ function emptyMessage(searchTerm: string, harness: string | undefined): string {
   if (searchTerm) {
     return `No agents match "${searchTerm}".`;
   }
-  if (harness) {
-    return `No agents run on Harness ${harness}.`;
-  }
   return 'No agents found.';
 }
 

@@ -443,18 +443,13 @@ describe('NewAgentReviewPage', () => {
     ).toHaveTextContent('1.0.0 (registry)');
   });
 
-  it('shows the limits of the Claude Code Harness picked', async () => {
+  it('shows the limits of the Claude Code Harness picked, as listed now', async () => {
     mockHarnessListing.mockReturnValue([
       listedHarness('kagent', 'kagent'),
       listedHarness('claude', 'claude', { budgetUSD: '2', maxTurns: 40 }),
     ]);
-    await renderReview({
-      harness: {
-        name: 'claude',
-        runtime: 'claude',
-        limits: { budgetUSD: '2', maxTurns: 40 },
-      },
-    });
+    // Picked before an admin set the limits.
+    await renderReview({ harness: { name: 'claude', runtime: 'claude' } });
 
     const limits = await screen.findByRole('group', { name: 'Limits' });
     expect(limits).toHaveTextContent('Budget per turn$2');

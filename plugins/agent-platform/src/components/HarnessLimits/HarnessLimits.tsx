@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import type { ClaudeHarnessLimits } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -26,6 +27,7 @@ export function HarnessLimits({
   showWhenUnset?: boolean;
   showTitle?: boolean;
 }) {
+  const titleId = useId();
   const entries = harnessLimitEntries(limits);
   if (entries.length === 0 && !showWhenUnset) {
     return null;
@@ -33,9 +35,16 @@ export function HarnessLimits({
   const harness = harnessName ? `Harness ${harnessName}` : 'the Harness';
 
   return (
-    <Flex direction="column" gap="1" role="group" aria-label="Limits">
+    <Flex
+      direction="column"
+      gap="1"
+      role="group"
+      {...(showTitle
+        ? { 'aria-labelledby': titleId }
+        : { 'aria-label': 'Limits' })}
+    >
       {showTitle && (
-        <Text variant="body-small" weight="bold">
+        <Text id={titleId} variant="body-small" weight="bold">
           Limits
         </Text>
       )}
