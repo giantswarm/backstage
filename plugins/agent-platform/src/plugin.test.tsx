@@ -112,8 +112,20 @@ describe('the Agent Platform page', () => {
       expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     });
 
-    it('heads the sessions sub-page with its description and a new-session action', async () => {
+    it('leaves the sessions list to title itself', async () => {
       renderPage(FeatureFlagState.Active, '/agent-platform/sessions');
+
+      expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { level: 1, name: 'Sessions' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('heads one session with its description and a new-session action', async () => {
+      renderPage(
+        FeatureFlagState.Active,
+        '/agent-platform/sessions/gazelle/abc',
+      );
 
       expect(await screen.findByText('Sessions content')).toBeInTheDocument();
       expect(

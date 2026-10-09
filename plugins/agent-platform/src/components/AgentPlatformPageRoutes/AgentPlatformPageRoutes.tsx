@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { Helmet } from 'react-helmet';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { BreadcrumbEntry } from '@backstage/frontend-plugin-api';
 import { ButtonLink, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
@@ -28,6 +28,9 @@ const SHELL_PAGE_HEADERS: Record<string, ShellPageHeader> = {
   },
 };
 
+/** Sub-pages whose index renders its own `ShellPage` header. */
+const SELF_TITLED_INDEXES = new Set(['sessions']);
+
 const useStyles = makeStyles(theme => ({
   header: {
     padding: theme.spacing(5, 3, 0),
@@ -38,6 +41,10 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
   const classes = useStyles();
   const { description, action } = SHELL_PAGE_HEADERS[path] ?? {};
   const slotActions = usePageHeaderActionsSlot();
+  const isIndex = (useParams()['*'] ?? '') === '';
+  if (isIndex && SELF_TITLED_INDEXES.has(path)) {
+    return null;
+  }
   return (
     <Flex justify="between" align="start" gap="4" className={classes.header}>
       <Flex direction="column" gap="1">
