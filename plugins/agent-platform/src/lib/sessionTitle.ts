@@ -7,7 +7,7 @@ export const DERIVED_TITLE_MAX_LENGTH = 60;
 
 /**
  * Share of the clip below which cutting back to a word boundary throws away too
- * much to be worth it — better a title that ends mid-word than one reduced to
+ * much to be worth it: better a title that ends mid-word than one reduced to
  * two words.
  */
 const MIN_WORD_BOUNDARY_SHARE = 0.6;
