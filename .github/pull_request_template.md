@@ -16,15 +16,11 @@
 
 ### Preview
 
-(Please add anything that represents the change visually, e.g. screenshots, output or logs.
-
-Remove this section if not applicable.)
+(Please add anything that represents the change visually, e.g. screenshots, output or logs. Remove this section if not applicable.)
 
 ### Background and context
 
-(Please reference issues, other PRs, or summarize.
-
-Remove this section if not applicable.)
+(Please reference issues, other PRs, or summarize. Remove this section if not applicable.)
 
 ### Ask to reviewers
 
