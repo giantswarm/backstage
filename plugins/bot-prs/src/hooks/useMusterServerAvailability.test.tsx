@@ -80,9 +80,7 @@ describe('useMusterServerAvailability', () => {
     const { result } = render('marge', ['gazelle']);
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.registeredNameOf('gazelle')).toBe(
-      'mcp-marge',
-    );
+    expect(result.current.registeredNameOf('gazelle')).toBe('mcp-marge');
   });
 
   it('reports no registered name for an installation whose muster does not list the server', async () => {
