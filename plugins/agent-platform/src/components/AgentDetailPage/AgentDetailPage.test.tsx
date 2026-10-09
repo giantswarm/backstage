@@ -89,6 +89,9 @@ jest.mock('../../hooks/useUpdateAgent', () => ({
 // affordance offered — which is what most of this file's tests want.
 let agentManagerPresence: 'available' | 'missing' | 'unknown' = 'unknown';
 let isMusterUnavailable = true;
+// `get_info`'s `capabilities.commit`: whether agent-manager can open a pull
+// request in the repository that owns a release applied from git.
+let canCommit = false;
 
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
@@ -99,7 +102,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
     isUnavailable: isMusterUnavailable,
   }),
   useAgentManagerInfo: () => ({
-    info: undefined,
+    info: canCommit ? { capabilities: { commit: true } } : undefined,
     isLoading: false,
     error: null,
   }),
@@ -522,6 +525,7 @@ describe('AgentDetailPage', () => {
     isMusterUnavailable = true;
     managerAgent = undefined;
     isReadingManagerAgent = false;
+    canCommit = false;
   });
 
   it('renders every section for a ready agent', async () => {
@@ -802,9 +806,25 @@ describe('AgentDetailPage', () => {
         await renderPage('skills');
 
         expect(
-          screen.getByText(/deployed from a GitOps repository/),
+          screen.getByText(/so its skills are added there/),
         ).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
+      });
+
+      it('offers Add skills for an agent applied from git when agent-manager can commit', async () => {
+        // The edit page then opens a pull request in the GitOps repository.
+        withAgentManager('gitops');
+        canCommit = true;
+        stubResources({ resource: withoutSkills() });
+
+        await renderPage('skills');
+
+        expect(
+          screen.getByText(/so adding skills opens a pull request there/),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Add skills' }),
+        ).toBeInTheDocument();
       });
     });
 
@@ -827,6 +847,17 @@ describe('AgentDetailPage', () => {
       // the GitOps repository, so pressing the button could only ever end in the
       // refusal the dialog used to show after the fact.
       withAgentManager('gitops');
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      expect(updateSkills()).not.toBeInTheDocument();
+    });
+
+    it('withholds Update skills for an agent applied from git even when agent-manager can commit', async () => {
+      // Update skills has no commit mode.
+      withAgentManager('gitops');
+      canCommit = true;
       stubResources({ resource: makeAgent() });
 
       await renderPage('skills');
@@ -1175,6 +1206,23 @@ describe('AgentDetailPage', () => {
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
+    it('offers Edit agent for a failed agent applied from git when agent-manager can commit', async () => {
+      withAgentManager('gitops');
+      canCommit = true;
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /deployed from a GitOps repository, so a fix opens a pull request there/,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Edit agent' }),
+      ).toBeInTheDocument();
     });
 
     // The Harness is named, but no claim that sessions run on it.

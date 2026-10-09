@@ -20,7 +20,10 @@ export function AgentSessionBlocker({
   isGitOpsOwned = false,
 }: {
   agent: Agent;
-  /** Opens the edit page. Absent when the viewer cannot write the agent. */
+  /**
+   * Opens the edit page. Absent when the viewer cannot write the agent; for an
+   * agent applied from git, present only when the edit page can commit.
+   */
   onEdit?: () => void;
   /** The agent's HelmRelease is applied from git, so it is fixed there. */
   isGitOpsOwned?: boolean;
@@ -42,7 +45,9 @@ export function AgentSessionBlocker({
     if (isPlatform) {
       description = `${sentence}. This is a problem with the platform, not with the agent: a platform admin has to fix it.`;
     } else if (isGitOpsOwned) {
-      description = `${sentence}. This agent is deployed from a GitOps repository, so it is fixed there.`;
+      description = onEdit
+        ? `${sentence}. This agent is deployed from a GitOps repository, so a fix opens a pull request there.`
+        : `${sentence}. This agent is deployed from a GitOps repository, so it is fixed there.`;
     }
     const canFix = onEdit && !isPlatform;
 

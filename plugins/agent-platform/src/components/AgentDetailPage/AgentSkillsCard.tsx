@@ -86,7 +86,8 @@ export function AgentSkillsCard({
   /**
    * Opens the edit page, whose skill picker is where skills are added —
    * Update skills only moves the pins of skills already mounted. Absent when
-   * the viewer cannot write the agent.
+   * the viewer cannot write the agent; for an agent applied from git, present
+   * only when the edit page can commit the change as a pull request.
    */
   onAddSkills?: () => void;
   /** The agent's HelmRelease is applied from git, so its skills are set there. */
@@ -114,8 +115,9 @@ export function AgentSkillsCard({
           </Text>
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
-              This agent is deployed from a GitOps repository, so its skills are
-              added there.
+              {onAddSkills
+                ? 'This agent is deployed from a GitOps repository, so adding skills opens a pull request there.'
+                : 'This agent is deployed from a GitOps repository, so its skills are added there.'}
             </Text>
           )}
           {onAddSkills && (

@@ -26,10 +26,10 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  *
  * `canCommit` is agent-manager's `commit` capability (`get_info`): it can open
  * a pull request as the person in the repository that owns a release. Only a
- * release applied from git has such a repository, so it is what makes Delete
- * available for a GitOps-owned agent — through a pull request instead of a
- * live write; the Edit agent page dry-runs and commits such an agent the same
- * way. Update skills has no commit mode.
+ * release applied from git has such a repository, so it is what makes Edit and
+ * Delete available for a GitOps-owned agent — through a pull request instead of
+ * a live write: the Edit agent page dry-runs and commits such an agent. Update
+ * skills has no commit mode.
  *
  * `isVerdictPending` is either read still being in flight, which is not the
  * same thing: offering the actions then would show them to everyone for a
@@ -108,7 +108,8 @@ export function agentManagerAbsenceReason(
  * and Update skills — is called by the page and their dialogs are rendered in
  * the page body; the menu only says whether they are offered (`agentManager`:
  * agent-manager's presence, its verdict on whether the agent is written live,
- * and whether it can delete one applied from git through a pull request) and
+ * and whether it can edit or delete one applied from git through a pull
+ * request) and
  * asks the page to open them. What it cannot offer it simply leaves out —
  * an explanation belongs on the page (the Overview tab's GitOps card already
  * carries the one for an agent applied from git), not as an unclickable item in
@@ -146,7 +147,7 @@ export function AgentActionsMenu({
           </MenuItem>
           {/* Three separate conditionals rather than one fragment: react-aria
               builds the menu's collection from its direct children. */}
-          {writeMode === 'apply' ? (
+          {writeMode !== undefined ? (
             <MenuItem iconStart={<EditOutlinedIcon />} onAction={onEdit}>
               Edit agent…
             </MenuItem>

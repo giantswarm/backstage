@@ -6,7 +6,10 @@ import { expect, open, test, type LabAgent } from './fixtures';
  * The Edit agent page's two write modes on the worker's own agent: an agent
  * written live keeps Save, one applied from git dry-runs in mode commit and
  * offers Commit — a pull request in the repository that owns it — in place of
- * Save, locked once the pull request is open.
+ * Save, locked once the pull request is open. The agent detail page's three
+ * ways to it — the actions menu, the Skills tab's Add skills and the failure
+ * blocker — offer it for an agent applied from git only when agent-manager can
+ * commit.
  *
  * The lab's agent-manager writes live only: it reports no commit capability,
  * and no Flux Kustomization applies the fixture agent from git. The commit
@@ -49,9 +52,13 @@ async function changeDescription(page: Page) {
 
 /**
  * Stages the agent as applied from git on an agent-manager that can open
- * pull requests, and records every `update_agent` the page sends.
+ * pull requests (or, with `canCommit: false`, cannot), and records every
+ * `update_agent` the page sends.
  */
-async function stageGitOpsAgent(page: Page): Promise<ToolCall[]> {
+async function stageGitOpsAgent(
+  page: Page,
+  { canCommit = true }: { canCommit?: boolean } = {},
+): Promise<ToolCall[]> {
   const writes: ToolCall[] = [];
   await page.route('**/api/muster/call**', async (route: Route) => {
     const call = route.request().postDataJSON() as ToolCall;
@@ -61,7 +68,7 @@ async function stageGitOpsAgent(page: Page): Promise<ToolCall[]> {
         await route.fulfill({
           json: {
             ...info,
-            capabilities: { ...info.capabilities, commit: true },
+            capabilities: { ...info.capabilities, commit: canCommit },
           },
         });
         return;
@@ -158,5 +165,142 @@ test('agent edit: an agent applied from git dry-runs in mode commit and opens on
   });
   await expect(admin, 'nothing changed live: the page stays').toHaveURL(
     new RegExp(`${editPathOf(labAgent)}$`),
+  );
+});
+
+/**
+ * Stages the lab agent as failed on a cause in its spec — a ModelConfig that
+ * does not resolve — which is what makes the failure blocker offer Edit agent.
+ */
+async function stageFailedAgent(page: Page, agent: LabAgent) {
+  await page.route('**/api/kubernetes/proxy/**', async (route: Route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const body = await response.json().catch(() => undefined);
+    if (body?.kind !== 'Agent' || body.metadata?.name !== agent.slug) {
+      await route.fulfill({ response });
+      return;
+    }
+    const at = new Date().toISOString();
+    const blocked = (type: string) => ({
+      type,
+      status: 'False',
+      reason: 'Blocked',
+      message: 'blocked by ResolvedRefs',
+      lastTransitionTime: at,
+    });
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        status: {
+          ...body.status,
+          observedGeneration: body.metadata.generation,
+          latestSuccessfulRevision: undefined,
+          conditions: [
+            {
+              type: 'Accepted',
+              status: 'True',
+              reason: 'Accepted',
+              message: 'Harness runs this template',
+              lastTransitionTime: at,
+            },
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'ReferenceResolutionFailed',
+              message: 'resolve ModelConfig "e2e-missing": not found',
+              lastTransitionTime: at,
+            },
+            blocked('Compatible'),
+            blocked('Ready'),
+          ],
+        },
+      },
+    });
+  });
+}
+
+async function expectCommitModeEditPage(page: Page, agent: LabAgent) {
+  await expect(page).toHaveURL(new RegExp(`${editPathOf(agent)}$`));
+  await changeDescription(page);
+  await expect(
+    writeButton(page, /^Commit/),
+    'the edit page opened in commit mode',
+  ).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /^Save/ })).toHaveCount(0);
+}
+
+const blockerEdit = (page: Page) =>
+  page.getByRole('button', { name: 'Edit agent', exact: true });
+
+test('agent edit: every entry point opens the commit-mode Edit page for an agent applied from git', async ({
+  admin,
+  labAgent,
+}) => {
+  await stageGitOpsAgent(admin);
+  await stageFailedAgent(admin, labAgent);
+
+  // The failure blocker.
+  await open(admin, labAgent.detailPath);
+  await expect(admin.getByText("Sessions can't start")).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(
+    admin.getByText(/so a fix opens a pull request there/),
+  ).toBeVisible();
+  await blockerEdit(admin).click();
+  await expectCommitModeEditPage(admin, labAgent);
+
+  // The actions menu.
+  await open(admin, labAgent.detailPath);
+  await admin.getByRole('button', { name: 'Agent actions' }).click();
+  await expect(
+    admin.getByRole('menuitem', { name: /Update skills/ }),
+    'Update skills has no commit mode',
+  ).toHaveCount(0);
+  await admin.getByRole('menuitem', { name: /Edit agent/ }).click();
+  await expectCommitModeEditPage(admin, labAgent);
+
+  // The Skills tab's Add skills: the lab agent has none.
+  await open(admin, `${labAgent.detailPath}/skills`);
+  await expect(
+    admin.getByText(/so adding skills opens a pull request there/),
+  ).toBeVisible({ timeout: 60_000 });
+  await admin.getByRole('button', { name: 'Add skills' }).click();
+  await expectCommitModeEditPage(admin, labAgent);
+});
+
+test('agent edit: an agent applied from git offers no Edit without the commit capability', async ({
+  admin,
+  labAgent,
+}) => {
+  await stageGitOpsAgent(admin, { canCommit: false });
+  await stageFailedAgent(admin, labAgent);
+
+  await open(admin, labAgent.detailPath);
+  await expect(admin.getByText(/so it is fixed there/)).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(blockerEdit(admin)).toHaveCount(0);
+
+  await admin.getByRole('button', { name: 'Agent actions' }).click();
+  await expect(
+    admin.getByRole('menuitem', { name: 'View manifest' }),
+  ).toBeVisible();
+  await expect(admin.getByRole('menuitem', { name: /Edit agent/ })).toHaveCount(
+    0,
+  );
+  await admin.keyboard.press('Escape');
+
+  await open(admin, `${labAgent.detailPath}/skills`);
+  await expect(admin.getByText(/so its skills are added there/)).toBeVisible({
+    timeout: 60_000,
+  });
+  await expect(admin.getByRole('button', { name: 'Add skills' })).toHaveCount(
+    0,
   );
 });
