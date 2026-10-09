@@ -319,6 +319,33 @@ const deleteClusterAction = createExtension({
   },
 });
 
+// The Used by tab of the shell's connector page: the agents whose toolset
+// reaches the connector.
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `sub-page:muster/mcp-servers`, its input `usedBy` (a singleton), declared
+// there with `SubPageBlueprint.makeWithOverrides` +
+// `createExtensionInput([coreExtensionData.reactElement])`. The element reads
+// its connector with muster's `useConnectorPageTarget`. Both ends carry this
+// comment; changing either without the other makes the tab silently vanish.
+const connectorUsedBy = createExtension({
+  kind: 'connector-used-by',
+  name: 'agents',
+  attachTo: { id: 'sub-page:muster/mcp-servers', input: 'usedBy' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { ConnectorUsedBy } =
+            await import('./components/ConnectorUsedBy');
+          return <ConnectorUsedBy />;
+        }),
+      ),
+    ];
+  },
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
@@ -330,6 +357,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     installationScopeHeaderAction,
     createClusterAction,
     deleteClusterAction,
+    connectorUsedBy,
     kagentApi,
     modelManagerApi,
   ],
