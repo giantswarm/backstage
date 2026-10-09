@@ -66,7 +66,9 @@ async function renderNav({
   isPinned = true,
   isMobile = false,
   path = '/',
+  profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
 }: {
+  profile?: { displayName?: string; email?: string };
   bound?: boolean;
   isPinned?: boolean;
   isMobile?: boolean;
@@ -87,10 +89,7 @@ async function renderNav({
         [
           identityApiRef,
           mockApis.identity.mock({
-            getProfileInfo: async () => ({
-              displayName: 'Jane Doe',
-              email: 'jane@example.com',
-            }),
+            getProfileInfo: async () => profile,
             signOut,
           }),
         ],
@@ -262,6 +261,22 @@ describe('AgentShellNav', () => {
     expect(screen.queryByText('Customize')).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
+  });
+
+  it('heads the profile menu with the email alone when there is no name', async () => {
+    await renderNav({
+      profile: { displayName: '', email: 'jane@example.com' },
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Profile and settings' }),
+    );
+
+    const menu = await screen.findByRole('menu');
+    const group = within(menu).getByRole('group', {
+      name: 'jane@example.com',
+    });
+    expect(group.querySelector('header')?.children).toHaveLength(1);
   });
 
   it('opens the profile menu with the user name and email, settings links and sign out', async () => {

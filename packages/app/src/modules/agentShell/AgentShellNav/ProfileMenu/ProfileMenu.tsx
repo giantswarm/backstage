@@ -49,8 +49,9 @@ export function ProfileMenu({
   const classes = useStyles();
   const identityApi = useApi(identityApiRef);
   const profile = useProfile();
-  const name = profile?.displayName || profile?.email || '';
-  const email = profile?.displayName ? profile.email : undefined;
+  const displayName = profile?.displayName?.trim() || undefined;
+  const email = profile?.email?.trim() || undefined;
+  const name = displayName ?? email ?? '';
   const Icon = item.icon;
   const avatar = (
     <Avatar
@@ -94,22 +95,31 @@ export function ProfileMenu({
         </Button>
       )}
       <Menu placement="top start">
-        {email ? (
-          // The email is part of the group's heading, not an item: it is not
-          // something to choose.
+        {name ? (
+          // Who is signed in heads the group rather than being an item: it is
+          // not something to choose.
           <AriaMenuSection>
             <Header className={classes.identity}>
-              <Text as="div" variant="body-small" weight="bold" truncate>
-                {name}
-              </Text>
-              <Text as="div" variant="body-small" color="secondary" truncate>
-                {email}
-              </Text>
+              {displayName && (
+                <Text as="div" variant="body-small" weight="bold" truncate>
+                  {displayName}
+                </Text>
+              )}
+              {email && (
+                <Text
+                  as="div"
+                  variant="body-small"
+                  color={displayName ? 'secondary' : undefined}
+                  truncate
+                >
+                  {email}
+                </Text>
+              )}
             </Header>
             {settingsItems}
           </AriaMenuSection>
         ) : (
-          <MenuSection title={name || 'Signed in'}>{settingsItems}</MenuSection>
+          <MenuSection title="Signed in">{settingsItems}</MenuSection>
         )}
         <MenuSeparator />
         <MenuItem
