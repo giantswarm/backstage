@@ -237,7 +237,9 @@ export async function createRouter(
       >
     > = {},
   ): Record<string, unknown> => {
-    const args: Record<string, unknown> = { board, filters };
+    // `limit: 0` reads every matching item: pro cuts a list at 50 otherwise,
+    // and a column, its count and the overview count every item in scope.
+    const args: Record<string, unknown> = { board, filters, limit: 0 };
     for (const key of [
       'assignee',
       'state',
@@ -261,15 +263,24 @@ export async function createRouter(
       ITEMS_TTL_MS,
       async () => {
         const started = Date.now();
-        const loaded = await session.call<{ issues?: BoardItem[] }>(
-          'list_issues',
-          args,
-        );
+        const loaded = await session.call<{
+          issues?: BoardItem[];
+          totalCount?: number;
+          hidden?: number;
+          truncated?: boolean;
+        }>('list_issues', args);
         logger.info('Read the roadmap board', {
           durationMs: Date.now() - started,
           items: loaded.issues?.length ?? 0,
+          totalCount: loaded.totalCount,
+          hidden: loaded.hidden ?? 0,
           filters: JSON.stringify(args.filters),
         });
+        if (loaded.truncated) {
+          throw new Error(
+            'pro cut the roadmap board read short although every item was asked for (limit 0); its list_issues no longer reads a whole column.',
+          );
+        }
         return loaded;
       },
     );

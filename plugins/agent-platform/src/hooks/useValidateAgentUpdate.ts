@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
-import type { AgentUpdate } from '../lib/agentManager';
+import type { AgentUpdate, WriteMode } from '../lib/agentManager';
 import { musterValidateAgentUpdateQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 import { classifyReadFailure } from './useAgentManagerAgent';
@@ -14,20 +14,22 @@ import type { ValidateAgentState } from './useValidateAgent';
  * is written. Re-read whenever the update changes; never persisted.
  *
  * `undefined` disables the read: the edit form passes it while nothing has
- * changed yet, the Update skills dialog while it is closed.
+ * changed yet, the Update skills dialog while it is closed. `mode` is the
+ * write's: `commit` for an agent applied from git.
  */
 export function useValidateAgentUpdate(
   installation: string | undefined,
   update: AgentUpdate | undefined,
+  mode: WriteMode = 'apply',
 ): ValidateAgentState {
   const client = useAgentManagerClient(installation);
-  const signature = update ? JSON.stringify(update) : '';
+  const signature = update ? JSON.stringify({ mode, update }) : '';
   const enabled = Boolean(client) && Boolean(update);
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterValidateAgentUpdateQueryKey(installation ?? '', signature),
     enabled,
-    queryFn: () => client!.validateUpdate(update!),
+    queryFn: () => client!.validateUpdate(update!, mode),
     // A refused dry run stays refused; retrying only delays the message.
     retry: false,
   });

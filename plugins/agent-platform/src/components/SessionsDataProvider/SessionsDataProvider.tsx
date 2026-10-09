@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import {
   applyInstallationScope,
   useInstallationInventory,
@@ -287,7 +288,7 @@ export function SessionsDataProvider({ children }: { children: ReactNode }) {
       (isProbing ||
         isLoadingAllowlist ||
         !homeSettled ||
-        sessionQueries.some(query => query.isLoading));
+        sessionQueries.some(isAwaitingData));
 
     const sortedRows = sortSessionRows(rows, home);
 

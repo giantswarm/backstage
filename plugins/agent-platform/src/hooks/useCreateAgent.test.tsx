@@ -10,6 +10,7 @@ import {
 
 import type { AgentSpec } from '../lib/agentManager';
 import { useCreateAgent } from './useCreateAgent';
+import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
@@ -164,9 +165,9 @@ describe('useCreateAgent', () => {
   });
 
   it('commits with mode: commit and returns the pull request', async () => {
-    callTool.mockResolvedValue({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/7',
-    });
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/7'),
+    );
     const { result } = renderWith();
 
     let outcome;
@@ -179,9 +180,9 @@ describe('useCreateAgent', () => {
       { ...spec, mode: 'commit' },
       'gazelle',
     );
-    expect(outcome).toEqual({
-      pullRequestUrl: 'https://github.com/org/gitops/pull/7',
-    });
+    expect(outcome).toEqual(
+      committedTo('https://github.com/org/gitops/pull/7'),
+    );
     expectAgentCreated('commit');
   });
 

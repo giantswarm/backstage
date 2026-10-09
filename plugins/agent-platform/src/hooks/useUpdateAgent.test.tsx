@@ -8,6 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from './useUpdateAgent';
+import { committedTo } from '../lib/__fixtures__/gitOpsCommit';
 
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
@@ -223,10 +224,9 @@ describe('useUpdateAgent', () => {
   });
 
   it('commits through update_agent with mode: commit', async () => {
-    callTool.mockResolvedValue({
-      status: 'auth_required',
-      authUrl: 'https://x',
-    });
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/3'),
+    );
     const { result } = renderWith();
 
     let outcome;
@@ -239,6 +239,8 @@ describe('useUpdateAgent', () => {
     });
 
     expect(callTool.mock.calls[0][1]).toMatchObject({ mode: 'commit' });
-    expect(outcome).toEqual({ status: 'auth_required', authUrl: 'https://x' });
+    expect(outcome).toEqual(
+      committedTo('https://github.com/org/gitops/pull/3'),
+    );
   });
 });

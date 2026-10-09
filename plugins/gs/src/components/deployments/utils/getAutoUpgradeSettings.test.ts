@@ -197,14 +197,17 @@ describe('deriveAutoUpgradeSettings', () => {
   });
 
   it.each([
-    // Upper bounds
-    ['>=1.0.0 <3.0.0', '2.4.1'],
-    ['>=1.0.0-0 <3.0.0', '2.4.1'],
     ['>=0.0.0-0 || 1.x', undefined],
-    // Shapes the mode's operator does not write
-    ['1.2.x', '1.2.3'],
-    ['~1', '1.4.0'],
-    ['^0.1.0', '0.1.2'],
+    // A pre-release floor with a plain upper bound admits the bound's
+    // pre-releases, which the fixed modes' ranges do not
+    ['>=1.0.0-0 <3.0.0', '2.4.1'],
+    ['>=5.12.0-0 <6.0.0', '5.39.1'],
+    ['>=1.2.0-0 <1.3.0', '1.2.3'],
+    // An upper bound inside the mode's upgrades
+    ['>=1.0.0 <1.5.0', '1.2.0'],
+    ['>=1.2.0 <1.2.9', '1.2.3'],
+    // Alternatives with a gap
+    ['>=1.2.0 <1.3.0 || >=1.5.0 <2.0.0', '1.2.3'],
     // A range that admits no newer version
     ['1.2.3', undefined],
   ])('passes %s on to the custom range mode', (semver, currentVersion) => {
@@ -221,12 +224,42 @@ describe('deriveAutoUpgradeSettings', () => {
     ['>=3.2.3-rc.1', '3.2.3-rc.1'],
     // The floor moves to the current version; Flux upgrades as before
     ['>=0.0.0-0', '3.2.3'],
+    ['1.2.x', '1.2.3'],
+    ['~1', '1.4.0'],
+    ['^0.1.0', '0.1.2'],
+    ['^0.7.1', '0.7.4'],
+    ['>=1.2.0 <1.3.0', '1.2.3'],
+    ['>=5.12.0 <6.0.0', '5.39.1'],
+    ['>=5.12.0, <6.0.0', '5.39.1'],
+    ['>=0.2.0 <1.0.0', '0.7.4'],
+    // For 0.x the minor mode's range names the next major, as this one does
+    ['>=0.2.0-0 <1.0.0', '0.7.4'],
+    ['>=1.0.0 <3.0.0', '2.4.1'],
+    // A current version with a `v` prefix
+    ['^1.2.3', 'v1.2.4'],
+    ['~1.2.3', 'v1.2.4'],
+    ['>=1.2.3', 'v1.2.4'],
   ])(
     'leaves %s to the fixed modes, which write the same upgrades back',
     (semver, currentVersion) => {
       expect(
         deriveAutoUpgradeSettings({ semver }, currentVersion).semverRange,
       ).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ['>=0.2.0 <1.0.0', '0.7.4', 'minor-upgrades', 'Minor and patch'],
+    ['>=5.12.0 <6.0.0', '5.39.1', 'minor-upgrades', 'Minor and patch'],
+    ['^5.12.0', '5.39.1', 'minor-upgrades', 'Minor and patch'],
+    ['^0.7.1', '0.7.4', 'patch-upgrades', 'Patch'],
+  ])(
+    'gives the About card and the Edit button the same mode for %s',
+    (semver, currentVersion, mode, label) => {
+      const settings = deriveAutoUpgradeSettings({ semver }, currentVersion);
+      expect(settings.mode).toBe(mode);
+      expect(settings.semverRange).toBeUndefined();
+      expect(describeAutoUpgrades(settings).label).toBe(label);
     },
   );
 

@@ -6,7 +6,8 @@ import {
   readStreamFrame,
   StreamTurn,
 } from './kagentStreamTurn';
-import { TimelineItem } from './kagentTimeline';
+import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { buildTimeline, TimelineItem } from './kagentTimeline';
 
 describe('createSseDataDecoder', () => {
   it('decodes one event per blank-line delimiter', () => {
@@ -186,6 +187,110 @@ describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {
     expect(turn.live).toBeUndefined();
     expect(turn.items).toEqual([
       expect.objectContaining({ kind: 'agent-message', text: 'Hello' }),
+    ]);
+  });
+
+  it('keys what an artifact completes by its id, which is how the poll reads it back', () => {
+    // As recorded on kagent: a call and the reply, each its own artifact, the
+    // reply in chunks without a partial stamp and whole on its `lastChunk`.
+    const callPartV1 = {
+      data: { id: 'call-1', name: 'kubectl_get', args: {} },
+      metadata: { adk_type: 'function_call' },
+    };
+    const responsePartV1 = {
+      data: { id: 'call-1', name: 'kubectl_get', response: { output: 'ok' } },
+      metadata: { adk_type: 'function_response' },
+    };
+    const artifact = (artifactId: string, parts: unknown[]) => ({
+      artifactUpdate: {
+        taskId,
+        contextId: 'c1',
+        artifact: { artifactId, parts },
+        lastChunk: true,
+      },
+    });
+    const turn = [
+      artifact('art-call', [callPartV1]),
+      artifact('art-response', [responsePartV1]),
+      {
+        artifactUpdate: {
+          taskId,
+          contextId: 'c1',
+          artifact: { artifactId: 'art-reply', parts: [{ text: 'Do' }] },
+        },
+      },
+      artifact('art-reply', [{ text: 'Done.' }]),
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ].reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+    const polled = buildTimeline(
+      normalizeTaskList({
+        tasks: [
+          {
+            id: taskId,
+            contextId: 'c1',
+            status: { state: 'TASK_STATE_COMPLETED' },
+            history: [
+              {
+                messageId: 'sent-1',
+                role: 'ROLE_USER',
+                parts: [{ text: 'hi' }],
+              },
+            ],
+            artifacts: [
+              { artifactId: 'art-call', parts: [callPartV1] },
+              { artifactId: 'art-response', parts: [responsePartV1] },
+              { artifactId: 'art-reply', parts: [{ text: 'Done.' }] },
+            ],
+          },
+        ],
+      }).tasks,
+    );
+    const polledIds = new Set(polled.items.map(item => item.messageId));
+
+    expect(turn.items).toEqual([
+      expect.objectContaining({ kind: 'tool-call', messageId: 'art-call' }),
+      expect.objectContaining({
+        kind: 'agent-message',
+        text: 'Done.',
+        messageId: 'art-reply',
+      }),
+    ]);
+    // What lets the page drop each preview item once the poll has it.
+    for (const item of turn.items) {
+      expect(polledIds).toContain(item.messageId);
+    }
+  });
+
+  it('credits what an artifact completes to the author its metadata names', () => {
+    const turn = applyStreamEvent(createStreamTurn('sent-1'), {
+      artifactUpdate: {
+        taskId,
+        contextId: 'c1',
+        artifact: {
+          artifactId: 'art-reply',
+          parts: [{ text: 'Done.' }],
+          metadata: { adk_author: 'sre_agent' },
+        },
+        lastChunk: true,
+      },
+    });
+
+    expect(turn.items).toEqual([
+      expect.objectContaining({
+        kind: 'agent-message',
+        messageId: 'art-reply',
+        author: 'sre_agent',
+      }),
     ]);
   });
 
@@ -595,9 +700,8 @@ describe('applyStreamEvent', () => {
 
     it('does not duplicate the reply the terminal status update repeats', () => {
       // The Go flow can deliver the same response twice — as the
-      // `partial: false` artifact and again on the final status update — and
-      // only the second carries a messageId. Identical adjacent text is the
-      // dedupe.
+      // `partial: false` artifact and again on the final status update — under
+      // two different ids. Identical adjacent text is the dedupe.
       const turn = fold([
         artifactUpdate([textPart('The answer.')], { partial: false }),
         statusUpdate(agentMessage([textPart('The answer.')]), {

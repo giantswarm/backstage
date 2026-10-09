@@ -262,6 +262,7 @@ describe('createRouter', () => {
         args: {
           board: 'roadmap',
           filters: { Team: 'Bumblebee🐝', Status: 'In Progress ⛏️' },
+          limit: 0,
           assignee: 'teemow',
           state: 'open',
         },
@@ -293,8 +294,40 @@ describe('createRouter', () => {
       expect(pro.calls[0].args).toEqual({
         board: 'roadmap',
         filters: { Team: 'Bumblebee🐝' },
+        limit: 0,
         emptyFields: ['Status'],
       });
+    });
+
+    it('reads every item of a column, not the first page', async () => {
+      const items = Array.from({ length: 120 }, (_, i) => ({
+        ...ITEM,
+        id: `PVTI_${i}`,
+      }));
+      pro.answers.set('list_issues', {
+        count: 120,
+        totalCount: 120,
+        issues: items,
+        truncated: false,
+      });
+      const res = await request(app)
+        .get('/items')
+        .query({ team: 'Bumblebee🐝', status: 'Done ✅' });
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(120);
+      expect(pro.calls[0].args.limit).toBe(0);
+    });
+
+    it('fails a read pro cut short instead of showing part of a column', async () => {
+      pro.answers.set('list_issues', {
+        count: 50,
+        totalCount: 1200,
+        issues: [ITEM],
+        truncated: true,
+        nextCursor: 'abc',
+      });
+      const res = await request(app).get('/items').query({ status: 'Done ✅' });
+      expect(res.status).toBe(500);
     });
 
     it('rejects an empty filter on an unknown field', async () => {
@@ -308,7 +341,11 @@ describe('createRouter', () => {
     it('logs how long a board read took, once per read', async () => {
       const logger = mockServices.logger.mock();
       app = await buildApp(undefined, { logger });
-      pro.answers.set('list_issues', { issues: [ITEM] });
+      pro.answers.set('list_issues', {
+        issues: [ITEM],
+        totalCount: 2,
+        hidden: 1,
+      });
       await request(app).get('/items').query({ team: 'Bumblebee🐝' });
       await request(app).get('/items').query({ team: 'Bumblebee🐝' });
 
@@ -321,6 +358,8 @@ describe('createRouter', () => {
           {
             durationMs: expect.any(Number),
             items: 1,
+            totalCount: 2,
+            hidden: 1,
             filters: JSON.stringify({ Team: 'Bumblebee🐝' }),
           },
         ],
@@ -365,6 +404,7 @@ describe('createRouter', () => {
       expect(pro.calls[0].args).toEqual({
         board: 'roadmap',
         filters: { Team: 'Bumblebee🐝' },
+        limit: 0,
       });
     });
   });

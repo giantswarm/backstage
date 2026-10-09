@@ -60,6 +60,7 @@ import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionSwitcherRail } from '../SessionSwitcherRail';
 import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
+import { createPolledPairing, fresherStreamedCopy } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -75,6 +76,7 @@ import {
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { formatUsd } from '../../lib/formatNumbers';
+import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -422,8 +424,9 @@ export function SessionDetailPage() {
   // still being produced are appended after the stand-in, so the reply appears as
   // it is written rather than when the turn ends. The preview coexists with the
   // 10 s poll rather than replacing it: a streamed item whose `messageId` the poll
-  // has already delivered is dropped by recognition — exactly like the stand-in —
-  // and the whole preview is discarded once the send's awaited invalidation has
+  // has already delivered is dropped by recognition — exactly like the stand-in,
+  // except that what it knows beyond the polled copy carries over — and the whole
+  // preview is discarded once the send's awaited invalidation has
   // put the canonical history on screen (`useSendMessage` clears `stream` then).
   //
   // An answer to a confirmation streams the resumed turn the same way, through
@@ -470,9 +473,21 @@ export function SessionDetailPage() {
     }
 
     if (streamVisible) {
-      const polled = new Set(
-        timeline.items.map(item => item.messageId).filter(Boolean),
-      );
+      const pairWithPolled = createPolledPairing(timeline.items);
+      /**
+       * Whether the poll holds a copy of a streamed item — which then stays,
+       * advanced by whatever the stream has seen since that read. A part of a
+       * message the read had not reached yet has no copy, and is still the
+       * stream's to show.
+       */
+      const advance = (streamed: TimelineItem): boolean => {
+        const at = pairWithPolled(streamed);
+        if (at === undefined) {
+          return false;
+        }
+        items[at] = fresherStreamedCopy(items[at], streamed) ?? items[at];
+        return true;
+      };
       // How a turn ended carries a `messageId` only when kagent wrote a reason
       // for it — the exception for a failure, the rule for a cancel, which has no
       // reason to write. Recognition by id therefore cannot retire the streamed
@@ -483,7 +498,7 @@ export function SessionDetailPage() {
         item => item.kind === 'turn-failed' && item.taskIndex === taskIndex,
       );
       for (const item of stream.items) {
-        if (item.messageId && polled.has(item.messageId)) {
+        if (advance(item)) {
           continue;
         }
         if (item.kind === 'turn-failed' && polledEndedTurn) {
@@ -494,19 +509,18 @@ export function SessionDetailPage() {
       // Appended, never sorted: the reducer keeps the open run newer than every
       // completed item, so the end of the list is where it belongs.
       const live = stream.live;
-      if (
-        live &&
-        live.text.trim() &&
-        !(live.messageId && polled.has(live.messageId))
-      ) {
-        items.push({
+      if (live && live.text.trim()) {
+        const liveItem: TimelineItem = {
           kind: live.kind,
           id: 'stream:live',
           taskIndex,
           messageId: live.messageId,
           author: live.author,
           text: live.text.trim(),
-        });
+        };
+        if (!advance(liveItem)) {
+          items.push(liveItem);
+        }
       }
     }
 

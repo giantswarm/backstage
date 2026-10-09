@@ -20,6 +20,7 @@ import type { DiscoveredSkill } from '../../lib/skills';
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 
 // Header actions land in the shared plugin header, outside this tree; the page
 // renders the same Deploy in its own card, which is what is driven.
@@ -194,7 +195,7 @@ function makeMusterApi(scenario: Scenario = {}) {
             created: { ociRepository: true, helmRelease: true },
             requestedBy: 'admin@lab.local',
             ...(args.mode === 'commit'
-              ? { pullRequestUrl: 'https://github.com/org/gitops/pull/7' }
+              ? committedTo('https://github.com/org/gitops/pull/7')
               : {}),
           };
         }
@@ -597,7 +598,9 @@ describe('NewAgentReviewPage', () => {
         'gazelle',
       ),
     );
-    expect(await screen.findByText('Pull request opened')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Pull request #7 opened/),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Open the pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');

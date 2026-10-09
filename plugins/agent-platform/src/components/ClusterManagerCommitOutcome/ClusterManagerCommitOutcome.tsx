@@ -33,9 +33,11 @@ export function ClusterManagerCommitOutcome({
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
-            {commit.repository}, {commit.directory} on {commit.base}. Flux
-            Kustomization {commit.kustomization} lands it after the merge
-            {commit.prune ? '' : ', without pruning'}.
+            {commit.repository}, {commit.directory} on {commit.base}.
+            {commit.kustomization &&
+              ` Flux Kustomization ${commit.kustomization} lands it after the merge${
+                commit.prune ? '' : ', without pruning'
+              }.`}
           </Text>
           {commit.pullRequest && (
             <div>

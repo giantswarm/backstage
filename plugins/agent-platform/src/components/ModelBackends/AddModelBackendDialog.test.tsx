@@ -5,6 +5,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 
 import type { BackendWriteState } from '../../hooks/useModelManagerBackends';
 import type { AddBackendResult } from '../../lib/modelManagerBackends';
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import {
   AddModelBackendDialog,
   toAddBackendInput,
@@ -258,13 +259,11 @@ describe('AddModelBackendDialog', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('commits with mode commit and shows the connect step on auth_required', async () => {
+  it('commits with mode commit and links the pull request', async () => {
     write.dryRunAdd.mockResolvedValue(review);
     write.add.mockResolvedValue({
       ...review,
-      status: 'auth_required',
-      authUrl: 'https://muster.example/connect',
-      message: 'no GitHub grant yet',
+      ...committedTo('https://github.com/giantswarm/agents/pull/12'),
     });
     renderDialog();
     await pickKind('Lemonade');
@@ -281,9 +280,8 @@ describe('AddModelBackendDialog', () => {
       'commit',
     );
     expect(
-      await screen.findByText('Connect the repository first'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('no GitHub grant yet')).toBeInTheDocument();
+      await screen.findByRole('link', { name: /Open the pull request/ }),
+    ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/12');
   });
 
   it("shows model-manager's refusal verbatim and stays open", async () => {

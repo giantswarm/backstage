@@ -141,30 +141,90 @@ function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
   return /\d-[0-9A-Za-z]/.test(ref.semver);
 }
 
-const rangeOperators: Partial<Record<AutoUpgradeMode, string>> = {
-  'patch-upgrades': '~',
-  'minor-upgrades': '^',
-  'major-upgrades': '>=',
-};
+/**
+ * The range the edit template writes for a fixed mode from the chart version,
+ * as `templates/app-deployment/template/manifest.yaml` in
+ * giantswarm/backstage-catalogs (v0.7.3 and later) writes it: `~` for patch,
+ * `^` for minor and patch (`>=… <1.0.0` for a 0.x version, where `^` admits
+ * patches only) and `>=` for any upgrade, with a `-0` floor when pre-releases
+ * are included. It is built from the version without a `v` prefix, which
+ * admits the same versions and which the range checks here can read.
+ */
+function templateRange(
+  mode: AutoUpgradeMode,
+  version: Version,
+  includePrereleases: boolean,
+): string | undefined {
+  const tag = version.toString();
+  const floor = includePrereleases && !version.prerelease ? `${tag}-0` : tag;
+  switch (mode) {
+    case 'patch-upgrades':
+      return `~${floor}`;
+    case 'minor-upgrades':
+      return version.major === 0 ? `>=${floor} <1.0.0` : `^${floor}`;
+    case 'major-upgrades':
+      return `>=${floor}`;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The versions that tell whether two ranges of the same mode admit the same
+ * upgrades from `base`: the last version below the mode's bound (the next
+ * minor, the next major, or none), and the bound's first pre-release, which
+ * a range with a pre-release floor and a plain upper bound admits.
+ */
+function boundProbes(base: Version, mode: AutoUpgradeMode): Version[] {
+  const max = Number.MAX_SAFE_INTEGER;
+  const { major, minor } = base;
+  const probes: Partial<Record<AutoUpgradeMode, string[]>> = {
+    'patch-upgrades': [`${major}.${minor}.${max}`, `${major}.${minor + 1}.0-0`],
+    'minor-upgrades': [`${major}.${max}.${max}`, `${major + 1}.0.0-0`],
+    'major-upgrades': [`${max}.${max}.${max}`],
+  };
+  return (probes[mode] ?? []).map(probe => Version.parse(probe));
+}
 
 /**
  * The semver range, when the edit template's fixed modes cannot write it back.
- * They write the mode's operator (`~`, `^` or `>=`) followed by the chart
- * version, with a `-0` floor when pre-releases are included: for a single
- * comparator with that operator the floor moves to the current version, which
- * leaves the upgrades Flux performs unchanged. Any other range, such as one
- * with an upper bound (`>=1.0.0 <3.0.0`), goes to the template's custom range
- * mode verbatim.
+ * A range of `mode` without `||` or `!=` admits one interval from the current
+ * version; the template writes it back when its own range for the mode has
+ * the same mode and both admit the same versions at the mode's bound. The
+ * floor then moves to the current version, which leaves the upgrades Flux
+ * performs unchanged, so `>=5.12.0 <6.0.0`, `^5.12.0`, `>=0.2.0 <1.0.0` and
+ * `^0.7.1` (patches only) read as a fixed mode. Any other range, such as one
+ * with an upper bound inside the mode (`>=1.0.0 <1.5.0` at 1.2.0) or one that
+ * admits the bound's pre-releases (`>=1.0.0-0 <3.0.0`), goes to the
+ * template's custom range mode verbatim.
  */
 function deriveCustomRange(
   ref: OciRepositoryRef | undefined,
   mode: AutoUpgradeMode,
+  includePrereleases: boolean,
+  currentVersion?: string,
 ): string | undefined {
   if (ref?.digest || !ref?.semver) return undefined;
 
   const range = ref.semver.trim();
-  const operator = /^(~|\^|>=)\s*v?\d[^\s,|<>=~^]*$/.exec(range)?.[1];
-  return operator && operator === rangeOperators[mode] ? undefined : range;
+  const constraints = Constraints.tryParse(range);
+  if (!constraints || /\|\||!=/.test(range)) return range;
+
+  const base = rangeBase(constraints, currentVersion);
+  const written = base && templateRange(mode, base, includePrereleases);
+  if (!base || !written) return range;
+  if (deriveAutoUpgradeMode({ semver: written }, base.toString()) !== mode) {
+    return range;
+  }
+
+  const writtenConstraints = Constraints.parse(written);
+  const probes = boundProbes(base, mode);
+  const writesBack =
+    constraints.check(probes[0]) &&
+    probes.every(
+      probe => constraints.check(probe) === writtenConstraints.check(probe),
+    );
+  return writesBack ? undefined : range;
 }
 
 export type AutoUpgradeSettings = {
@@ -187,11 +247,17 @@ export function deriveAutoUpgradeSettings(
   currentVersion?: string,
 ): AutoUpgradeSettings {
   const mode = deriveAutoUpgradeMode(ref, currentVersion);
+  const includePrereleases = rangeIncludesPrereleases(ref);
   return {
     mode,
     semverFilter: deriveSemverFilter(ref),
-    includePrereleases: rangeIncludesPrereleases(ref),
-    semverRange: deriveCustomRange(ref, mode),
+    includePrereleases,
+    semverRange: deriveCustomRange(
+      ref,
+      mode,
+      includePrereleases,
+      currentVersion,
+    ),
   };
 }
 

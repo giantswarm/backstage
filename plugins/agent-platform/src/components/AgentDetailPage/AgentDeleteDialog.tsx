@@ -21,17 +21,17 @@ export type AgentDeleteDialogProps = {
   mode: 'apply' | 'commit';
   onConfirm: () => void;
   onCommit: () => void;
-  /** What `mode: commit` answered: the pull request, or the connect step. */
+  /** What `mode: commit` answered: the pull request. */
   commitResult?: CommitAgentResult;
 };
 
 /**
- * Whether agent-manager's commit answer settles the deletion — the pull
- * request is open, or the request was accepted. The connect step does not:
- * the person connects and tries again.
+ * Whether agent-manager's commit answer settles the deletion: it names the
+ * pull request, or that the repository already says so. The connect step
+ * (`auth_required`) is a refusal, so it never reaches here.
  */
 export function isCommitSettled(result: CommitAgentResult): boolean {
-  return result.status !== 'auth_required';
+  return result.commit !== undefined;
 }
 
 /**
