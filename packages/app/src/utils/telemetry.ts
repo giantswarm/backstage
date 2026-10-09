@@ -77,7 +77,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // A Customize tab, with the tab as the view. Only the known tabs: the
-    // segment comes from the URL, and an unknown one redirects to the overview.
+    // segment comes from the URL, and an unknown one redirects to the Agents tab.
     case pathname.startsWith('/customize/'): {
       const tab = pathname.split('/')[2];
       payload = CUSTOMIZE_TABS.has(tab)

@@ -265,10 +265,38 @@ describe('toAgentRow', () => {
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
       skillCount: 3,
+      skillIds: Array.from(
+        { length: 3 },
+        () => 'https://github.com/giantswarm/skills#',
+      ),
+      modelConfigId: 'installation-1/sre-team/sonnet-4-6',
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
       readinessMessage: undefined,
     });
+  });
+
+  it('identifies git skills as the catalog does and leaves the others out', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: 'skills/triage',
+          git: { url: 'https://github.com/giantswarm/skills', commit: 'abc' },
+        },
+      },
+      {
+        name: 'packaged',
+        source: { oci: 'ghcr.io/giantswarm/skill@sha256:abc' },
+      },
+    ];
+
+    const row = toAgentRow(agent, []);
+    expect(row.skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
+    expect(row.modelConfigId).toBeUndefined();
   });
 
   it('carries readiness and the explanation through', () => {

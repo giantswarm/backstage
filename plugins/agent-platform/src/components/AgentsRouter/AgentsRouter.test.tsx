@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { screen } from '@testing-library/react';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
@@ -45,10 +45,21 @@ jest.mock('../NewAgentFormProvider', () => ({
   ),
 }));
 
+let mockAgentShell = false;
+jest.mock('../../hooks/useAgentShell', () => ({
+  useAgentShell: () => mockAgentShell,
+}));
+
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <div>{`at ${pathname}${search}`}</div>;
+}
+
 function renderTab(path: string) {
   return renderInTestApp(
     <Routes>
       <Route path="/agent-platform/agents/*" element={<AgentsRouter />} />
+      <Route path="/customize/*" element={<LocationProbe />} />
     </Routes>,
     {
       initialRouteEntries: [path],
@@ -60,10 +71,32 @@ function renderTab(path: string) {
 const AGENT = '/agent-platform/agents/gazelle/agent-platform/pr-reviewer';
 
 describe('AgentsRouter', () => {
+  beforeEach(() => {
+    mockAgentShell = false;
+  });
+
   it('renders the list at the tab index', async () => {
     renderTab('/agent-platform/agents');
 
     expect(await screen.findByText('agents-index')).toBeInTheDocument();
+    expect(screen.queryByText(/^at \/customize/)).not.toBeInTheDocument();
+  });
+
+  it('sends the tab index to the Customize screen inside the agent shell', async () => {
+    mockAgentShell = true;
+    renderTab('/agent-platform/agents?installation=gazelle');
+
+    expect(
+      await screen.findByText('at /customize/agents?installation=gazelle'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('agents-index')).not.toBeInTheDocument();
+  });
+
+  it('keeps an agent page inside the agent shell', async () => {
+    mockAgentShell = true;
+    renderTab(AGENT);
+
+    expect(await screen.findByText('agent-detail')).toBeInTheDocument();
   });
 
   // The detail page is mounted at a splat because it is tabbed, so every URL

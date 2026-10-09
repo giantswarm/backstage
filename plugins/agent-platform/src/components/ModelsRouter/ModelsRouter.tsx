@@ -21,6 +21,8 @@ import { NewModelPage } from '../NewModelPage';
 import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import { useAgentShell } from '../../hooks/useAgentShell';
 
 // The serving layer's two views, as a second-level tab row under the Agent
 // Platform page's "Models" tab. The ModelConfigs list is not among them: it is
@@ -83,7 +85,10 @@ const ModelsViews = () => {
   const { pathname } = useLocation();
   const servingLayer = hasServingLayer(useServing());
   const onList = pathname.replace(/\/$/, '') === basePath;
-  const showTabs = servingLayer || !onList;
+  const agentShell = useAgentShell();
+  // Inside the agent-platform shell the list is the Customize screen's Models
+  // tab, and the index sends there.
+  const showTabs = (servingLayer || !onList) && !(agentShell && onList);
 
   return (
     <>
@@ -120,7 +125,16 @@ const ModelsViews = () => {
         </Box>
       )}
       <Routes>
-        <Route index element={<ModelConfigsPage />} />
+        <Route
+          index
+          element={
+            agentShell ? (
+              <ShellCustomizeRedirect tab="models" />
+            ) : (
+              <ModelConfigsPage />
+            )
+          }
+        />
         <Route path="new" element={<NewModelPage />} />
         {/* `new` (one segment) can never be swallowed by the three-segment
             detail path: react-router matches on segment count. */}

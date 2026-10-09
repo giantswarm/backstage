@@ -26,6 +26,8 @@ export type InstallationScopeSelectProps = {
    * before the generic state.
    */
   describe?: (entry: InstallationInventoryEntry) => string | undefined;
+  /** A visible label for the control; without one it is named for assistive technology only. */
+  label?: string;
   className?: string;
 };
 
@@ -42,6 +44,7 @@ export type InstallationScopeSelectProps = {
 export function InstallationScopeSelect({
   component,
   describe,
+  label,
   className,
 }: InstallationScopeSelectProps) {
   useInstallationScopeUrlSync();
@@ -95,7 +98,8 @@ export function InstallationScopeSelect({
 
   return (
     <Select
-      aria-label="Installation scope"
+      label={label}
+      aria-label={label ? undefined : 'Installation scope'}
       className={className}
       options={allOptions}
       selectedKey={scope}

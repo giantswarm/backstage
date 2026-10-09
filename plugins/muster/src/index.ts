@@ -90,3 +90,12 @@ export type {
   ToneColors,
 } from './components/shared';
 export { useAgentShell } from './hooks/useAgentShell';
+export {
+  CustomizeMusterProvider,
+  useMusterCustomizeCounts,
+} from './components/CustomizeMusterProvider';
+export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
+export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
+export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
+export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
