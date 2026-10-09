@@ -3,13 +3,15 @@ import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import { Badge, Box, Flex, Link, Skeleton, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
+import { StatusDot } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
-import { sessionDetailRouteRef } from '../../routes';
+import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useSessions } from '../SessionsDataProvider';
 import {
   DEFAULT_RECENT_SESSIONS_LIMIT,
+  isWorking,
   needsAttention,
   pickRecentSessions,
 } from './helpers';
@@ -43,6 +45,11 @@ const useStyles = makeStyles({
 export type RecentSessionsProps = {
   /** How many sessions to list. */
   limit?: number;
+  /**
+   * Puts an "All sessions" link to the sessions list next to the list's
+   * label, and a dot before each session whose agent is working.
+   */
+  shellRail?: boolean;
 };
 
 type SessionDetailRoute = RouteFunc<{
@@ -53,11 +60,15 @@ type SessionDetailRoute = RouteFunc<{
 function RecentSessionsList({
   limit,
   sessionDetailRoute,
+  shellRail,
 }: {
   limit: number;
   sessionDetailRoute: SessionDetailRoute;
+  shellRail: boolean;
 }) {
   const classes = useStyles();
+  const sessionsRoute = useRouteRef(sessionsRouteRef);
+  const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const labelId = useId();
   const { pathname } = useLocation();
   const { rows, isLoading } = useSessions();
@@ -95,6 +106,7 @@ function RecentSessionsList({
           });
           const isActive = pathname === href;
           const waiting = needsAttention(states.get(row.id));
+          const working = shellRail && isWorking(states.get(row.id));
           return (
             <li key={row.id}>
               <Link
@@ -103,6 +115,7 @@ function RecentSessionsList({
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Flex align="center" gap="2">
+                  {working && <StatusDot tone="info" aria-label="Working" />}
                   <Box grow minWidth="0">
                     <Text
                       as="div"
@@ -140,7 +153,7 @@ function RecentSessionsList({
 
   return (
     <Flex direction="column" gap="1">
-      <Box px="2">
+      <Flex px="2" align="center" justify="between" gap="2">
         <Text
           id={labelId}
           variant="body-x-small"
@@ -149,7 +162,16 @@ function RecentSessionsList({
         >
           Recent
         </Text>
-      </Box>
+        {allSessionsHref && (
+          <Link
+            href={allSessionsHref}
+            variant="body-x-small"
+            aria-current={pathname === allSessionsHref ? 'page' : undefined}
+          >
+            All sessions
+          </Link>
+        )}
+      </Flex>
       {body}
     </Flex>
   );
@@ -164,6 +186,7 @@ function RecentSessionsList({
  */
 export function RecentSessions({
   limit = DEFAULT_RECENT_SESSIONS_LIMIT,
+  shellRail = false,
 }: RecentSessionsProps) {
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   if (!sessionDetailRoute) {
@@ -174,6 +197,7 @@ export function RecentSessions({
       <RecentSessionsList
         limit={limit}
         sessionDetailRoute={sessionDetailRoute}
+        shellRail={shellRail}
       />
     </AgentPlatformProviders>
   );

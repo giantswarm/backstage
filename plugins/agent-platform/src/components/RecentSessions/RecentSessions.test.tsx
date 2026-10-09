@@ -81,9 +81,11 @@ function session(id: string, createdAt: string, title: string): KagentSession {
   } as KagentSession;
 }
 
-function renderRecent(options: { mounted?: boolean; path?: string } = {}) {
-  const { mounted = true, path = '/' } = options;
-  return renderInTestApp(<RecentSessions limit={2} />, {
+function renderRecent(
+  options: { mounted?: boolean; path?: string; shellRail?: boolean } = {},
+) {
+  const { mounted = true, path = '/', shellRail } = options;
+  return renderInTestApp(<RecentSessions limit={2} shellRail={shellRail} />, {
     apis: [[kagentApiRef, kagentApi]],
     initialRouteEntries: [path],
     ...(mounted && {
@@ -106,7 +108,10 @@ beforeEach(() => {
   ]);
   listSessionStates.mockResolvedValue({
     evaluatedAt: 0,
-    states: [{ sessionId: 'mid', state: 'input-required' }],
+    states: [
+      { sessionId: 'mid', state: 'input-required' },
+      { sessionId: 'new', state: 'working' },
+    ],
     unreadable: [],
     skipped: 0,
   });
@@ -153,6 +158,52 @@ describe('RecentSessions', () => {
     expect(middle).toHaveAttribute('aria-current', 'page');
     const newest = screen.getByText('Newest').closest('a');
     expect(newest).not.toHaveAttribute('aria-current');
+  });
+
+  it('has no All sessions link and no working dot outside the shell rail', async () => {
+    await renderRecent();
+
+    await screen.findByText('Middle');
+    expect(
+      screen.queryByRole('link', { name: 'All sessions' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('img', { name: 'Working' }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('in the shell rail', () => {
+    it('links to all sessions next to the list label', async () => {
+      await renderRecent({ shellRail: true });
+
+      const link = await screen.findByRole('link', { name: 'All sessions' });
+      expect(link).toHaveAttribute('href', '/agent-platform/sessions');
+      expect(link).not.toHaveAttribute('aria-current');
+    });
+
+    it('marks All sessions current on the sessions list', async () => {
+      await renderRecent({ shellRail: true, path: '/agent-platform/sessions' });
+
+      expect(
+        await screen.findByRole('link', { name: 'All sessions' }),
+      ).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('puts a dot before the sessions whose agent is working', async () => {
+      await renderRecent({ shellRail: true });
+
+      const newest = (await screen.findByText('Newest')).closest(
+        'a',
+      ) as HTMLElement;
+      expect(
+        await within(newest).findByRole('img', { name: 'Working' }),
+      ).toBeInTheDocument();
+      const middle = screen.getByText('Middle').closest('a') as HTMLElement;
+      expect(
+        within(middle).queryByRole('img', { name: 'Working' }),
+      ).not.toBeInTheDocument();
+      expect(within(middle).getByText('Needs you')).toBeInTheDocument();
+    });
   });
 
   it('says so when there is no session', async () => {

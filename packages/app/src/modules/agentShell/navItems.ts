@@ -15,6 +15,11 @@ type AgentShellNavItemBase = {
   position: 'top' | 'bottom';
   /** Routes whose pages the item stands for in the rail, as their parent. */
   currentOn?: RouteRef[];
+  /**
+   * Only in the mobile bar, which has no recent-sessions list and so no
+   * "All sessions" link.
+   */
+  mobileOnly?: boolean;
 };
 
 /**
@@ -38,6 +43,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     icon: ChatBubbleOutlineIcon,
     routeRef: agentPlatformPlugin.routes.sessions,
     position: 'top',
+    mobileOnly: true,
   },
   {
     id: 'customize',

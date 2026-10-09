@@ -30,7 +30,9 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         models: createRouteRef(),
       },
     },
-    RecentSessions: () => <div data-testid="recent-sessions" />,
+    RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
+      <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
+    ),
   };
 });
 
@@ -62,14 +64,20 @@ const signOut = jest.fn().mockResolvedValue(undefined);
 async function renderNav({
   bound = true,
   isPinned = true,
+  isMobile = false,
   path = '/',
-}: { bound?: boolean; isPinned?: boolean; path?: string } = {}) {
+}: {
+  bound?: boolean;
+  isPinned?: boolean;
+  isMobile?: boolean;
+  path?: string;
+} = {}) {
   const Content = createExtensionTester(agentShellNav).get(
     NavContentBlueprint.dataRefs.component,
   );
   await renderInTestApp(
     <SidebarPinStateProvider
-      value={{ isPinned, toggleSidebarPinState: () => {}, isMobile: false }}
+      value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
     >
       <Content navItems={navItems} items={[]} />
     </SidebarPinStateProvider>,
@@ -121,12 +129,43 @@ describe('AgentShellNav', () => {
     expect(railLinks()).toEqual([
       ['Agent Platform', '/'],
       ['New session', '/'],
-      ['Sessions', '/agent-platform/sessions'],
       ['Customize', '/customize'],
       ['Usage', '/agent-platform/usage'],
     ]);
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeDisabled();
-    expect(screen.getByTestId('recent-sessions')).toBeInTheDocument();
+    expect(screen.getByTestId('recent-sessions')).toHaveAttribute(
+      'data-shell-rail',
+      'true',
+    );
+  });
+
+  it('leaves Platform and Developers out of the rail', async () => {
+    await renderNav();
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(within(nav).queryByText('Platform')).not.toBeInTheDocument();
+    expect(within(nav).queryByText('Developers')).not.toBeInTheDocument();
+  });
+
+  it('keeps a Sessions item in the mobile bar, which lists no recent sessions', async () => {
+    await renderNav({ isMobile: true });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .filter(link => link.textContent !== 'Skip to content')
+        .map(link => [
+          link.getAttribute('aria-label'),
+          link.getAttribute('href'),
+        ]),
+    ).toEqual([
+      ['New session', '/'],
+      ['Sessions', '/agent-platform/sessions'],
+      ['Customize', '/customize'],
+      ['Usage', '/agent-platform/usage'],
+    ]);
+    expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
   });
 
   it('puts the search right after New session, the recent sessions after the items', async () => {
@@ -136,7 +175,7 @@ describe('AgentShellNav', () => {
     const order = [
       within(nav).getByRole('link', { name: 'New session' }),
       within(nav).getByRole('searchbox', { name: 'Search' }),
-      within(nav).getByRole('link', { name: 'Sessions' }),
+      within(nav).getByRole('link', { name: 'Customize' }),
       within(nav).getByRole('link', { name: 'Usage' }),
       within(nav).getByTestId('recent-sessions'),
     ];
@@ -179,9 +218,9 @@ describe('AgentShellNav', () => {
   });
 
   it('highlights the item of the current location', async () => {
-    await renderNav({ path: '/agent-platform/sessions/gazelle/abc' });
+    await renderNav({ path: '/agent-platform/usage/cost' });
 
-    expect(screen.getByRole('link', { name: 'Sessions' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Usage' })).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -195,6 +234,7 @@ describe('AgentShellNav', () => {
     '/agent-platform/models/serving',
     '/agent-platform/mcp-servers',
     '/agent-platform/workflows/deploy',
+    '/customize/connectors',
   ])('makes Customize the current item on %s', async path => {
     await renderNav({ path });
 

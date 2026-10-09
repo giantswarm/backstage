@@ -103,6 +103,7 @@ function AgentShellRail() {
   // SidebarPage pads the content by the classic sidebar's width for the same
   // pin state, so the rail takes exactly that width.
   const compact = !isPinned;
+  const desktopTop = top.filter(item => !item.mobileOnly);
   const width = isPinned
     ? sidebarConfig.drawerWidthOpen
     : sidebarConfig.drawerWidthClosed;
@@ -138,7 +139,7 @@ function AgentShellRail() {
           />
         </Flex>
         <ul className={classes.list}>
-          {top.map(item => (
+          {desktopTop.map(item => (
             <Fragment key={item.id}>
               <RailItem item={item} compact={compact} />
               {item.id === 'new-session' && !compact && (
@@ -156,7 +157,7 @@ function AgentShellRail() {
         </ul>
         {!compact && (
           <div className={classes.recent}>
-            <RecentSessions />
+            <RecentSessions shellRail />
           </div>
         )}
         <Box pt="2" className={classes.bottom}>
