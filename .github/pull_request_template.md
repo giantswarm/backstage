@@ -11,13 +11,7 @@ Make sure to include what reviewers need)
 
 <!-- START end-user-summary -->
 
-(Place a short summary -- ideally one sentence -- here targeting end-users of the application.
-Avoid technical language, instead use terms from the user interface.
-
-Remove this section in case the PR has no changes affecting the end-user's experience.
-
-To allow extracting this part into release notes automatically,
-please leave the HTML comments above and below intact!)
+(Write a short summary for end users here, ideally one sentence. Avoid technical language; use terms from the user interface instead. Remove this section if the PR doesn't change anything end users experience. Keep the START and END markers intact so the summary can be extracted into release notes automatically.)
 
 <!-- END end-user-summary -->
 
