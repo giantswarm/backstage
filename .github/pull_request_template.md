@@ -27,8 +27,3 @@
 (Use this section to point reviewers to specific aspects, e.g. where you need feedback or are unsure about a decision.
 
 Remove this section if not applicable.)
-
-### Checklist
-
-- [ ] In-repo documentation was updated (if applicable)
-- [ ] A [changeset](https://github.com/changesets/changesets/blob/main/docs/adding-a-changeset.md) was created
