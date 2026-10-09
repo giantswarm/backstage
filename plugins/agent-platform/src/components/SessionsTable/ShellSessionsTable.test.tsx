@@ -1,4 +1,5 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { StorageApi, storageApiRef } from '@backstage/core-plugin-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -102,6 +103,7 @@ const states: FleetSessionStatesView = {
 async function renderShell(
   sessionRows: SessionRow[] = rows,
   sessionStates: FleetSessionStatesView = states,
+  storage: StorageApi = mockApis.storage(),
 ) {
   await renderInTestApp(
     <SessionsTable
@@ -111,8 +113,21 @@ async function renderShell(
       showFilters
       layout="shell"
     />,
-    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    {
+      apis: [[storageApiRef, storage]],
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    },
   );
+}
+
+/** A storage bucket pre-seeded with pinned sessions. */
+async function storageWithPins(sessionIds: string[]) {
+  const storage = mockApis.storage();
+  await storage.forBucket('agent-platform').set(
+    'pinnedSessions',
+    sessionIds.map(sessionId => ({ installation: 'gazelle', sessionId })),
+  );
+  return storage;
 }
 
 const rowTitles = (grid: HTMLElement) =>
@@ -331,6 +346,75 @@ describe('SessionsTable in the shell layout', () => {
       .map(id => document.getElementById(id))
       .find(element => element?.textContent === 'Agent');
     expect(label).toBeVisible();
+  });
+
+  describe('pinned sessions', () => {
+    it('surfaces them in a leading Pinned group, out of their day group', async () => {
+      await renderShell(rows, states, await storageWithPins(['b']));
+
+      const headings = screen
+        .getAllByRole('heading', { level: 2 })
+        .map(heading => heading.textContent);
+      expect(headings).toEqual(['Pinned', 'Today', 'Earlier']);
+      expect(rowTitles(screen.getByRole('grid', { name: 'Pinned' }))).toEqual([
+        'Release notes',
+      ]);
+      // A pinned row can be from any day, so its start shows as a date.
+      const pinnedGrid = screen.getByRole('grid', { name: 'Pinned' });
+      expect(
+        within(pinnedGrid).getByRole('rowheader').closest('[role="row"]'),
+      ).toHaveTextContent(/[A-Z][a-z]{2}/);
+    });
+
+    it('offers the Pinned chip once something is pinned, and filters by it', async () => {
+      const user = userEvent.setup();
+      await renderShell(rows, states, await storageWithPins(['b', 'c']));
+
+      await user.click(screen.getByRole('radio', { name: 'Pinned 2' }));
+
+      expect(
+        screen.getAllByRole('rowheader').map(cell => cell.textContent),
+      ).toEqual(['Release notes', 'Pricing research']);
+      expect(
+        screen.queryByRole('grid', { name: 'Today' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('pins and unpins a session from its row, without opening it', async () => {
+      const user = userEvent.setup();
+      const storage = mockApis.storage();
+      await renderShell(rows, states, storage);
+
+      expect(
+        screen.queryByRole('radio', { name: /^Pinned/ }),
+      ).not.toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Pin “Triage this week”' }),
+      );
+
+      await waitFor(() =>
+        expect(
+          storage.forBucket('agent-platform').snapshot('pinnedSessions').value,
+        ).toEqual([{ installation: 'gazelle', sessionId: 'a' }]),
+      );
+      expect(
+        rowTitles(await screen.findByRole('grid', { name: 'Pinned' })),
+      ).toEqual(['Triage this week']);
+      expect(
+        screen.getByRole('radio', { name: 'Pinned 1' }),
+      ).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Unpin “Triage this week”' }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('grid', { name: 'Pinned' }),
+        ).not.toBeInTheDocument(),
+      );
+    });
   });
 
   describe('a long list', () => {

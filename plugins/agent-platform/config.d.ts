@@ -41,5 +41,27 @@ export interface Config {
        */
       repositories?: string[];
     };
+    /**
+     * Which agent serves each meta-agent role (iteration-1 decision G13).
+     * Values are agent names: the Agent resource's technical name, optionally
+     * qualified as `<namespace>/<name>` when the same name exists in several
+     * namespaces. A feature gated on a role (`useMetaAgent`) appears only when
+     * the configured name resolves to an existing agent, and is hidden while
+     * the role is unconfigured or unresolved. Read by the frontend from the
+     * signed-in config. A platform CR becomes the source later; this stays the
+     * override.
+     */
+    metaAgents?: {
+      /** Answers general questions about the platform. */
+      generalInformation?: string;
+      /** Creates and edits agents in conversation. */
+      agentManagement?: string;
+      /** Creates and edits workflows in conversation. */
+      workflowManagement?: string;
+      /** Operates the platform itself. */
+      platformOperations?: string;
+      /** Reviews a skill: the skill detail page's Evaluate button. */
+      skillEvaluation?: string;
+    };
   };
 }

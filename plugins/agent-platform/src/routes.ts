@@ -57,6 +57,16 @@ export const agentEditRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
+// The skill pages (`/agent-platform/skills`): one discovered skill's detail
+// page per `/agent-platform/skills/<owner>/<repo>[/<skill dir>]` (the trailing
+// segments are a splat, since a skill directory may be nested — hrefs come from
+// `skillDetailPath` in lib/skills.ts rather than route-ref params), the bare
+// path redirecting to the shell's Customize → Skills tab. A page of its own
+// beside `page:agent-platform`, like muster's `/agent-platform/mcp-servers`
+// redirect page: the Customize screen that lists skills belongs to the app, so
+// the detail page cannot hang under it.
+export const skillsRouteRef = createRouteRef();
+
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
 

@@ -49,6 +49,19 @@ const EMPTY_VIEW: FleetSessionStatesView = {
   isError: false,
 };
 
+export type FleetSessionStatesOptions = {
+  /**
+   * Poll interval, defaulting to the baseline tier. The shell rail and the
+   * notification bell pass `ACTIVE_REFETCH_INTERVAL_MS`: they are the surfaces
+   * that exist to say something started needing a person, so they poll on the
+   * fast tier the way `useSessionStates` does — the backend's 15 s cache keeps
+   * the cost flat, and react-query shares one cache entry per installation, so
+   * a list open beside them simply reads fresher data. Interval refetches pause
+   * while the tab is hidden (`refetchIntervalInBackground` defaults to false).
+   */
+  refetchIntervalMs?: number;
+};
+
 /**
  * The derived state of each session, across the installations a list shows.
  *
@@ -66,8 +79,11 @@ const EMPTY_VIEW: FleetSessionStatesView = {
  */
 export function useFleetSessionStates(
   installations: string[],
+  options?: FleetSessionStatesOptions,
 ): FleetSessionStatesView {
   const kagentApi = useApi(kagentApiRef);
+  const refetchInterval =
+    options?.refetchIntervalMs ?? BASELINE_REFETCH_INTERVAL_MS;
 
   // Keyed on contents: the caller derives this array fresh on every render.
   const key = installations.join(',');
@@ -77,7 +93,7 @@ export function useFleetSessionStates(
     queries: targets.map(installation => ({
       queryKey: sessionStatesQueryKey(installation),
       queryFn: () => kagentApi.listSessionStates(installation),
-      refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+      refetchInterval,
     })),
   });
 

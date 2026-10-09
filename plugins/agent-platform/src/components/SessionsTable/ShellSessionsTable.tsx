@@ -11,6 +11,7 @@ import useDebounce from 'react-use/esm/useDebounce';
 import {
   Badge,
   Button,
+  ButtonIcon,
   Cell,
   CellText,
   Column,
@@ -36,7 +37,9 @@ import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
 import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
+import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useRenameSession } from '../../hooks/useRenameSession';
+import { PinIcon } from '../PinIcon';
 import {
   SessionRow,
   sessionSearchFn,
@@ -46,7 +49,9 @@ import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
   formatSessionStart,
+  PINNED_GROUP_LABEL,
   SESSION_DAY_GROUPS,
+  SessionListGroup,
   SessionDayGroup,
   sessionDayGroup,
   SessionTableRow,
@@ -103,7 +108,7 @@ type ShellColumn = {
    * group to the next. The column without one takes the rest.
    */
   width?: string;
-  cell: (row: SessionTableRow, group: SessionDayGroup) => JSX.Element;
+  cell: (row: SessionTableRow, group: SessionListGroup) => JSX.Element;
 };
 
 /** The state of the session's newest turn, in the shell's words. */
@@ -230,6 +235,36 @@ function SessionRowMenu({
   );
 }
 
+/**
+ * A row's pin toggle. Presses are kept from the row, which would otherwise
+ * open the session — same handling as the row's menu.
+ */
+function RowPinButton({
+  row,
+  onToggle,
+}: {
+  row: SessionTableRow;
+  onToggle: (id: string) => void;
+}) {
+  const pinned = row.pinned === true;
+  return (
+    <span
+      role="presentation"
+      onPointerDown={stopRowPress}
+      onPointerUp={stopRowPress}
+      onClick={stopRowPress}
+    >
+      <ButtonIcon
+        variant="tertiary"
+        icon={<PinIcon filled={pinned} />}
+        aria-pressed={pinned}
+        aria-label={pinned ? `Unpin “${row.title}”` : `Pin “${row.title}”`}
+        onPress={() => onToggle(row.id)}
+      />
+    </span>
+  );
+}
+
 function shellColumns({
   buildAvatarUrl,
   hrefFor,
@@ -238,6 +273,7 @@ function shellColumns({
   currentYear,
   focusAfterDelete,
   onRowDeleted,
+  onTogglePin,
 }: {
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   hrefFor: (row: SessionRow) => string | undefined;
@@ -247,6 +283,7 @@ function shellColumns({
   /** The row to focus once a row is deleted, by the deleted row's id. */
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
+  onTogglePin: (rowId: string) => void;
 }): ShellColumn[] {
   const columns: ShellColumn[] = [
     {
@@ -344,15 +381,18 @@ function shellColumns({
       id: 'actions',
       label: 'Actions',
       hideLabel: true,
-      width: '56px',
+      width: '96px',
       cell: row => {
         const focusRowId = focusAfterDelete(row.id);
         return (
           <Cell>
-            <SessionRowMenu
-              row={row}
-              onDeleted={() => onRowDeleted(focusRowId)}
-            />
+            <Flex align="center" gap="1">
+              <RowPinButton row={row} onToggle={onTogglePin} />
+              <SessionRowMenu
+                row={row}
+                onDeleted={() => onRowDeleted(focusRowId)}
+              />
+            </Flex>
           </Cell>
         );
       },
@@ -382,7 +422,7 @@ function DayTable({
 }: {
   headingId: string;
   rows: SessionTableRow[];
-  group: SessionDayGroup;
+  group: SessionListGroup;
   columns: ShellColumn[];
   onRowAction: (row: SessionTableRow) => void;
 }) {
@@ -558,9 +598,16 @@ export function ShellSessionsTable({
     [sessionDetailRoute],
   );
 
+  const { isPinned, togglePin } = usePinnedSessions();
+
+  // The pin joined onto the row like the state, so the Pinned chip and group
+  // run through the same search/filter/sort pipeline as everything else.
   const stateRows = useMemo(
-    () => withSessionStates(rows, sessionStates),
-    [rows, sessionStates],
+    () =>
+      withSessionStates(rows, sessionStates).map(row =>
+        isPinned(row.id) ? { ...row, pinned: true } : row,
+      ),
+    [rows, sessionStates, isPinned],
   );
 
   const hasStates = sessionStates !== undefined;
@@ -572,6 +619,22 @@ export function ShellSessionsTable({
   const today = now.toDateString();
   const currentYear = now.getFullYear();
 
+  // Pinned rows lead whatever page of the list is shown — the Pinned group is
+  // no use when its rows sit past the first Load more.
+  const sortPinnedFirst = useCallback(
+    (
+      sorted: SessionTableRow[],
+      sort: { column: unknown; direction: 'ascending' | 'descending' },
+    ) => {
+      const ordered = sortSessionsBy(sorted, sort);
+      const pinned = ordered.filter(row => row.pinned);
+      return pinned.length > 0
+        ? [...pinned, ...ordered.filter(row => !row.pinned)]
+        : ordered;
+    },
+    [],
+  );
+
   const { tableProps, search, filter } = useTable<
     SessionTableRow,
     SessionsFilter
@@ -582,7 +645,7 @@ export function ShellSessionsTable({
     searchDebounceMs,
     initialFilter: NO_SESSIONS_FILTER,
     filterFn: filterSessions,
-    sortFn: sortSessionsBy,
+    sortFn: sortPinnedFirst,
     initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: { type: 'none' },
   });
@@ -611,16 +674,32 @@ export function ShellSessionsTable({
     [matching, shownCount],
   );
 
-  const groups = useMemo(() => {
+  const groups = useMemo((): Array<{
+    id: SessionListGroup;
+    label: string;
+    rows: SessionTableRow[];
+  }> => {
+    // The pinned rows lead under their own heading, whatever day they started,
+    // and do not repeat in the day groups.
+    const pinnedRows = (shown ?? []).filter(row => row.pinned);
     const byGroup = new Map<SessionDayGroup, SessionTableRow[]>();
     for (const row of shown ?? []) {
+      if (row.pinned) {
+        continue;
+      }
       const group = sessionDayGroup(row.createdAt, now);
       byGroup.set(group, [...(byGroup.get(group) ?? []), row]);
     }
-    return SESSION_DAY_GROUPS.flatMap(({ id, label }) => {
+    const dayGroups = SESSION_DAY_GROUPS.flatMap(({ id, label }) => {
       const groupRows = byGroup.get(id);
       return groupRows ? [{ id, label, rows: groupRows }] : [];
     });
+    return pinnedRows.length > 0
+      ? [
+          { id: 'pinned', label: PINNED_GROUP_LABEL, rows: pinnedRows },
+          ...dayGroups,
+        ]
+      : dayGroups;
     // `now` changes every render; the groups only change with its day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, today]);
@@ -662,6 +741,7 @@ export function ShellSessionsTable({
         currentYear,
         focusAfterDelete,
         onRowDeleted,
+        onTogglePin: togglePin,
       }),
     [
       buildAvatarUrl,
@@ -671,6 +751,7 @@ export function ShellSessionsTable({
       currentYear,
       focusAfterDelete,
       onRowDeleted,
+      togglePin,
     ],
   );
 

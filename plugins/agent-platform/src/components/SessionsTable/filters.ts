@@ -19,9 +19,32 @@ import {
  * sessions and any state kagent reports that the portal does not recognise.
  * Rows whose state has not been loaded are a fact about this page, not the
  * session, so only "All" holds them.
+ *
+ * "Pinned" is not a state but rides the same single-select chips: the shell
+ * offers it beside the state chips, and a row is in it by its `pinned` flag
+ * whatever its state. The classic chips do not offer it.
  */
 export type SessionStateFilter =
-  'all' | 'waiting' | 'running' | 'failed' | 'finished' | 'idle' | 'unknown';
+  | 'all'
+  | 'pinned'
+  | 'waiting'
+  | 'running'
+  | 'failed'
+  | 'finished'
+  | 'idle'
+  | 'unknown';
+
+/** Every chip id, for the counts record — the two chip sets each show a subset. */
+const ALL_FILTER_IDS: ReadonlyArray<SessionStateFilter> = [
+  'all',
+  'pinned',
+  'waiting',
+  'running',
+  'failed',
+  'finished',
+  'idle',
+  'unknown',
+];
 
 export const SESSION_STATE_FILTERS: ReadonlyArray<{
   id: SessionStateFilter;
@@ -47,6 +70,9 @@ export const SHELL_SESSION_STATE_FILTERS: ReadonlyArray<{
   whenPresent?: boolean;
 }> = [
   { id: 'all', label: 'All' },
+  // Only once something is pinned: before the first pin the chip filters down
+  // to nothing, and the affordance that introduces pinning is the row's pin.
+  { id: 'pinned', label: 'Pinned', whenPresent: true },
   { id: 'waiting', label: SHELL_STATE_LABELS.waiting },
   { id: 'running', label: SHELL_STATE_LABELS.working },
   { id: 'finished', label: SHELL_STATE_LABELS.finished },
@@ -91,7 +117,13 @@ function stateBucket(row: SessionTableRow): SessionStateFilter | undefined {
 }
 
 function matchesState(row: SessionTableRow, state: SessionStateFilter) {
-  return state === 'all' || stateBucket(row) === state;
+  if (state === 'all') {
+    return true;
+  }
+  if (state === 'pinned') {
+    return row.pinned === true;
+  }
+  return stateBucket(row) === state;
 }
 
 /**
@@ -126,20 +158,25 @@ export function filterSessions(
 /**
  * Rows per State chip among the given rows of the chosen agent, so each count
  * says what picking that chip would show when given the rows the search
- * matched. Rows whose state is not loaded count only towards "All".
+ * matched. Rows whose state is not loaded count only towards "All". A pinned
+ * row counts towards "Pinned" *and* its state's chip — pinning says nothing
+ * about the state.
  */
 export function countSessionsByState(
   rows: SessionTableRow[],
   agent: string | undefined,
 ): Record<SessionStateFilter, number> {
   const counts = Object.fromEntries(
-    SESSION_STATE_FILTERS.map(({ id }) => [id, 0]),
+    ALL_FILTER_IDS.map(id => [id, 0]),
   ) as Record<SessionStateFilter, number>;
   for (const row of rows) {
     if (!matchesAgent(row, agent)) {
       continue;
     }
     counts.all += 1;
+    if (row.pinned) {
+      counts.pinned += 1;
+    }
     const bucket = stateBucket(row);
     if (bucket) {
       counts[bucket] += 1;

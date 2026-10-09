@@ -1,10 +1,31 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
+import { skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { CustomizeSkillsPanel } from './CustomizeSkillsPanel';
 
 const REPO = 'https://github.com/giantswarm/skills';
+
+let mockRepositories: string[] = [];
+jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
+  useSignedInConfig: () => ({
+    config: { getOptionalStringArray: () => mockRepositories },
+    isLoading: false,
+  }),
+}));
+
+jest.mock('../AddSkillDialog', () => ({
+  AddSkillDialog: ({
+    isOpen,
+    repositories,
+  }: {
+    isOpen: boolean;
+    repositories: string[];
+  }) =>
+    isOpen ? <div>Add skill dialog for {repositories.join(', ')}</div> : null,
+}));
 
 function skill(name: string) {
   return {
@@ -38,14 +59,21 @@ const loaded: SkillCatalog = {
   truncated: false,
 };
 
+function renderPanel(search = '') {
+  return renderInTestApp(<CustomizeSkillsPanel search={search} />, {
+    mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+  });
+}
+
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
     mockCatalog = loaded;
     mockAgentSkillIds = [`${REPO}#triage`];
+    mockRepositories = [REPO];
   });
 
   it('lists the most used skills first, with their source and usage', async () => {
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(
       screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
@@ -57,7 +85,7 @@ describe('CustomizeSkillsPanel', () => {
 
   it('names a repository it could not read', async () => {
     mockCatalog = { ...loaded, failedRepositories: [`${REPO}-private`] };
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(
       screen.getByText('Could not read giantswarm/skills-private'),
@@ -79,7 +107,7 @@ describe('CustomizeSkillsPanel', () => {
           'Failed to discover skills: GitHub refused the read because the API rate limit of this portal is used up.',
       },
     };
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(
       screen.getByText('Could not read giantswarm/skills'),
@@ -106,7 +134,7 @@ describe('CustomizeSkillsPanel', () => {
         },
       ],
     };
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(
       screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
@@ -131,7 +159,7 @@ describe('CustomizeSkillsPanel', () => {
         },
       ],
     };
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
     expect(screen.getByText('GiantSwarm/skills')).toBeInTheDocument();
@@ -139,14 +167,51 @@ describe('CustomizeSkillsPanel', () => {
 
   it('says when no repository is configured', async () => {
     mockCatalog = { ...loaded, skills: [], hasRepositories: false };
-    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+    await renderPanel();
 
     expect(screen.getByText('No skill repositories')).toBeInTheDocument();
   });
 
   it('says when the search matches nothing', async () => {
-    await renderInTestApp(<CustomizeSkillsPanel search="zzz" />);
+    await renderPanel('zzz');
 
     expect(screen.getByText('No skills match “zzz”.')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeSkillsPanel links and Add skill', () => {
+  beforeEach(() => {
+    mockCatalog = loaded;
+    mockAgentSkillIds = [];
+    mockRepositories = [REPO];
+  });
+
+  it('links each skill card to its detail page', async () => {
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: 'triage' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/giantswarm/skills/triage',
+    );
+  });
+
+  it('opens the Add skill dialog targeting the configured repositories', async () => {
+    await renderPanel();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add skill' }));
+
+    expect(
+      screen.getByText(`Add skill dialog for ${REPO}`),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no Add skill without a configured repository', async () => {
+    mockRepositories = [];
+    mockCatalog = { ...loaded, skills: [], hasRepositories: false };
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('button', { name: 'Add skill' }),
+    ).not.toBeInTheDocument();
   });
 });

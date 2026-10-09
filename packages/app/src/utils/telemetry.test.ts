@@ -571,6 +571,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
+      '/agent-platform/skills',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
       '/agent-platform/usage/cost',
@@ -639,5 +641,21 @@ describe('Usage sub-tabs', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/usage/cost'),
     ).not.toMatchObject({ page: 'Agents' });
+  });
+});
+
+describe('Skill detail', () => {
+  it('reports one page name, with no view, whatever the skill', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Skill detail',
+      path: '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+    });
+    expect(getTelemetryPageViewPayload('/agent-platform/skills').page).toBe(
+      'Skill detail',
+    );
   });
 });

@@ -14,6 +14,10 @@ import { McpServersRouter } from '../McpServersRouter';
 
 const connect = jest.fn();
 
+// Each test walks the real multi-step flow with plenty of typing, which gets
+// slow when the whole plugin suite runs in parallel (same as BotPrsPage).
+jest.setTimeout(30_000);
+
 /** Registered servers of the active installation, per test. */
 let mockMcpServers: MCPServer[] = [];
 

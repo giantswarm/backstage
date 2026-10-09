@@ -6,7 +6,10 @@ import useDebounce from 'react-use/esm/useDebounce';
 import { musterApiRef } from '../../apis';
 import { isCompleteMcpUrl } from '../../lib/mcpServerDefinition';
 import type { McpServerTransport } from '../../lib/mcpServerDefinition';
-import { parseTransportDetection } from '../../lib/transportDetection';
+import {
+  parseTransportDetection,
+  type TransportDetection,
+} from '../../lib/transportDetection';
 import { useMusterSession } from '../MusterInstanceProvider';
 
 const DETECT_DEBOUNCE_MS = 500;
@@ -16,6 +19,18 @@ export type TransportDetectionState = {
   detected?: McpServerTransport;
   /** Whether a probe is currently in flight. */
   probing: boolean;
+  /**
+   * The full probe result (reachable / requiresAuth / server info), for
+   * callers that show more than the transport. Undefined until a probe
+   * answered recognizably.
+   */
+  detection?: TransportDetection;
+  /**
+   * The URL {@link detection} speaks about. Compare it with the current input
+   * before showing the verdict — the probe is debounced, so a result can
+   * briefly describe a URL the user has already typed past.
+   */
+  probedUrl?: string;
 };
 
 /**
@@ -65,5 +80,10 @@ export function useTransportDetection(
       ? detection.transport
       : undefined;
 
-  return { detected, probing: query.isFetching };
+  return {
+    detected,
+    probing: query.isFetching,
+    detection,
+    probedUrl: detection ? probeUrl : undefined,
+  };
 }

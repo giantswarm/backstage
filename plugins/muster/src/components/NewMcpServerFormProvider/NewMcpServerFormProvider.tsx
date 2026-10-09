@@ -42,6 +42,13 @@ export type NewMcpServerFormContextValue = {
   setAuthMode: (authMode: McpServerAuthMode) => void;
   setIssuer: (issuer: string) => void;
   setScopes: (scopes: string) => void;
+  setAuthorizationEndpoint: (authorizationEndpoint: string) => void;
+  setTokenEndpoint: (tokenEndpoint: string) => void;
+  setClientSecretName: (clientSecretName: string) => void;
+  setClientSecretNamespace: (clientSecretNamespace: string) => void;
+  setClientIdKey: (clientIdKey: string) => void;
+  setClientSecretKey: (clientSecretKey: string) => void;
+  setGrantScope: (grantScope: NewMcpServerFormState['grantScope']) => void;
   setRequiredAudiences: (requiredAudiences: string[]) => void;
   setSigv4Region: (region: string) => void;
   setSigv4Service: (service: string) => void;
@@ -263,6 +270,19 @@ export function NewMcpServerFormProvider({
         }),
       setIssuer: issuer => setState(prev => ({ ...prev, issuer })),
       setScopes: scopes => setState(prev => ({ ...prev, scopes })),
+      setAuthorizationEndpoint: authorizationEndpoint =>
+        setState(prev => ({ ...prev, authorizationEndpoint })),
+      setTokenEndpoint: tokenEndpoint =>
+        setState(prev => ({ ...prev, tokenEndpoint })),
+      setClientSecretName: clientSecretName =>
+        setState(prev => ({ ...prev, clientSecretName })),
+      setClientSecretNamespace: clientSecretNamespace =>
+        setState(prev => ({ ...prev, clientSecretNamespace })),
+      setClientIdKey: clientIdKey =>
+        setState(prev => ({ ...prev, clientIdKey })),
+      setClientSecretKey: clientSecretKey =>
+        setState(prev => ({ ...prev, clientSecretKey })),
+      setGrantScope: grantScope => setState(prev => ({ ...prev, grantScope })),
       setRequiredAudiences: requiredAudiences =>
         setState(prev => ({ ...prev, requiredAudiences })),
       setSigv4Region: sigv4Region =>

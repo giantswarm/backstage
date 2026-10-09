@@ -47,6 +47,7 @@ import {
   servingRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
+  skillsRouteRef,
   usageRouteRef,
 } from './routes';
 
@@ -215,6 +216,27 @@ const modelsSubPage = SubPageBlueprint.make({
   },
 });
 
+// One skill's detail page (`/agent-platform/skills/<owner>/<repo>[/<dir>]`),
+// linked from the shell's Customize → Skills tab the way a connector row links
+// to `/agent-platform/connectors/<name>`. The bare path redirects there.
+//
+// Enabled by default on purpose, like muster's mcp-servers redirect page:
+// deployments replace `app.extensions` wholesale, so an opt-in entry would
+// silently drop the page. Where the shell (and so the Customize screen) is off,
+// nothing links here, and a deep link still renders the skill read-only.
+const skillsPage = PageBlueprint.make({
+  name: 'skills',
+  params: {
+    path: '/agent-platform/skills',
+    routeRef: skillsRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const { SkillsRouter } = await import('./components/SkillsRouter');
+      return <SkillsRouter />;
+    },
+  },
+});
+
 // The section's installation scope selector, in the page header next to the
 // tabs' own actions: "All installations" (home first) or
 // one pinned installation, for the three tabs above and the muster plugin's
@@ -354,6 +376,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionsSubPage,
     agentsSubPage,
     modelsSubPage,
+    skillsPage,
     usageSubPage,
     installationScopeHeaderAction,
     createClusterAction,
@@ -372,6 +395,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newAgentReview: newAgentReviewRouteRef,
     sessions: sessionsRouteRef,
     sessionDetail: sessionDetailRouteRef,
+    skills: skillsRouteRef,
     usage: usageRouteRef,
     models: modelsRouteRef,
     modelDetail: modelDetailRouteRef,

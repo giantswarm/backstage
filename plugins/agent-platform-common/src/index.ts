@@ -10,6 +10,7 @@
  * them until the usage summary needed the same arithmetic server-side.
  */
 export * from './agentShellFlag';
+export * from './metaAgents';
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';
 export * from './kagent/kagentA2aV1';

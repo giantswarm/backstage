@@ -11,7 +11,13 @@ import { fetchGitHubRawContent } from './githubRawContent';
 import {
   discoverAgentSkills,
   GitHubApiError,
+  parseRepoUrl,
 } from './agentSkills/discoverAgentSkills';
+import {
+  createSkillPullRequest,
+  GITHUB_TOKEN_HEADER,
+  SKILL_NAME_RE,
+} from './agentSkills/createSkillPullRequest';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { readSignedInConfig } from './signedInConfig';
@@ -307,6 +313,111 @@ export async function createRouter({
       if (error instanceof GitHubApiError) {
         res.status(error.status).json({
           error: { message: `Failed to discover skills: ${error.message}` },
+        });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /**
+   * POST /agent-skills/pull-request
+   *
+   * Opens a pull request that adds a new skill (`<skillName>/SKILL.md`) to one
+   * of the configured skill repositories, authored **as the signed-in person**:
+   * their GitHub access token — minted by the frontend through
+   * `githubAuthApiRef`, i.e. their own GitHub grant in muster — travels in the
+   * `gs-github-token` header, and every GitHub call runs with it. Nothing is
+   * applied anywhere: the skill joins the catalog once a teammate merges the
+   * pull request and discovery re-reads the repository's head.
+   *
+   * Body:
+   * - repoUrl: one of `agentPlatform.skills.repositories` (compared
+   *   case-insensitively, tolerating `.git` and a trailing slash)
+   * - skillName: the skill's directory and frontmatter name (lowercase slug)
+   * - description: frontmatter `description`
+   * - instructions: the SKILL.md body
+   *
+   * Returns { pullRequestUrl, number, branch, base, path }. A person without
+   * the header gets 401 (the frontend connects GitHub through muster first);
+   * GitHub's refusals — no push access, the skill or branch already existing,
+   * rate limits — are forwarded with their upstream status, not turned into
+   * 500s.
+   */
+  router.post('/agent-skills/pull-request', async (req, res) => {
+    await httpAuth.credentials(req, { allow: ['user'] });
+
+    const token = req.header(GITHUB_TOKEN_HEADER);
+    if (!token) {
+      res.status(401).json({
+        error: {
+          message: `Missing ${GITHUB_TOKEN_HEADER} header: the pull request is opened as the signed-in person, with their own GitHub grant. Connect GitHub and try again.`,
+        },
+      });
+      return;
+    }
+
+    const schema = z.object({
+      repoUrl: z
+        .string()
+        .url()
+        .refine(u => u.startsWith('https://github.com/'), {
+          message: 'Only github.com repository URLs are allowed',
+        }),
+      skillName: z.string().regex(SKILL_NAME_RE, {
+        message:
+          'skillName must be a lowercase slug (letters, digits and dashes, up to 63 characters)',
+      }),
+      description: z.string().trim().min(1).max(1024),
+      instructions: z.string().trim().min(1).max(100_000),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+    const { repoUrl, skillName, description, instructions } = parsed.data;
+
+    // Only the configured sources: the catalog lists these and nothing else,
+    // so a pull request anywhere else would add a skill no one can see.
+    const repositories =
+      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+    const slugOf = (url: string) => {
+      const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
+      return `${owner}/${repo}`.toLowerCase();
+    };
+    const target = slugOf(repoUrl);
+    const configured = repositories.some(url => {
+      try {
+        return slugOf(url) === target;
+      } catch {
+        return false;
+      }
+    });
+    if (!configured) {
+      throw new InputError(
+        `${repoUrl} is not one of the configured skill repositories`,
+      );
+    }
+
+    try {
+      res.json(
+        await createSkillPullRequest({
+          repoUrl,
+          skillName,
+          description,
+          instructions,
+          token,
+        }),
+      );
+    } catch (error) {
+      // Expected outcomes keep their upstream status (409 skill exists, 403 no
+      // push access or rate limit, 404 no read access), like the discovery
+      // route above — not 500s, keeping Sentry quiet.
+      if (error instanceof GitHubApiError) {
+        res.status(error.status).json({
+          error: {
+            message: `Failed to open the pull request: ${error.message}`,
+          },
         });
         return;
       }

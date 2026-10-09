@@ -436,6 +436,16 @@ agentPlatform:
     # becomes a kagent spec.skills.gitRefs entry.
     repositories:
       - https://github.com/giantswarm/agent-skills
+  # Which agent serves each meta-agent role. Values are agent names (the Agent
+  # resource's name, optionally `<namespace>/<name>`); a feature gated on a
+  # role appears only where the name resolves to an existing agent, and stays
+  # hidden otherwise. All roles are optional.
+  # metaAgents:
+  #   generalInformation: swarmgeist
+  #   agentManagement: swarm-operator
+  #   workflowManagement: swarm-operator
+  #   platformOperations: platform-manager
+  #   skillEvaluation: skill-evaluator
   # kagent API v2 access (gRPC), used by the Sessions list, the session chat
   # and the Usage tab. The backend speaks gRPC to each installation's
   # controller route and forwards the user's Dex ID token.

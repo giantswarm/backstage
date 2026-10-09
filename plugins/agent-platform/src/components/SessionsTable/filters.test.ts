@@ -94,6 +94,7 @@ describe('countSessionsByState', () => {
   it('counts every row once under All and once under its chip', () => {
     expect(countSessionsByState(rows, undefined)).toEqual({
       all: 11,
+      pinned: 0,
       waiting: 2,
       running: 1,
       failed: 1,
@@ -106,6 +107,7 @@ describe('countSessionsByState', () => {
   it('counts only the chosen agent’s rows', () => {
     expect(countSessionsByState(rows, SRE)).toEqual({
       all: 8,
+      pinned: 0,
       waiting: 1,
       running: 0,
       failed: 1,
@@ -113,6 +115,17 @@ describe('countSessionsByState', () => {
       idle: 1,
       unknown: 2,
     });
+  });
+
+  it('counts a pinned row under Pinned and under its state chip', () => {
+    const pinnedRows = rows.map(r =>
+      r.sessionId === 'a' ? { ...r, pinned: true } : r,
+    );
+    const counts = countSessionsByState(pinnedRows, undefined);
+    expect(counts.pinned).toBe(1);
+    // Pinning says nothing about the state, so the row still counts there.
+    expect(counts.waiting).toBe(2);
+    expect(counts.all).toBe(11);
   });
 });
 
@@ -236,9 +249,20 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       ['finished', 'Finished'],
       ['failed', 'Failed'],
     ]);
+    // The shell adds the Pinned chip; everything else is the same buckets.
     expect(SHELL_SESSION_STATE_FILTERS.map(({ id }) => id).sort()).toEqual(
-      SESSION_STATE_FILTERS.map(({ id }) => id).sort(),
+      [...SESSION_STATE_FILTERS.map(({ id }) => id), 'pinned'].sort(),
     );
+  });
+
+  it('keeps only the pinned rows under the Pinned chip', () => {
+    const pinnedRows = rows.map(r =>
+      ['b', 'd'].includes(r.sessionId) ? { ...r, pinned: true } : r,
+    );
+    expect(ids(filterSessions(pinnedRows, { state: 'pinned' }))).toEqual([
+      'b',
+      'd',
+    ]);
   });
 
   it.each([

@@ -78,3 +78,85 @@ export function repoSlug(repoUrl: string): string {
 export function shortCommit(commit: string): string {
   return commit.slice(0, 7);
 }
+
+/** `owner` and `repo` of a (normalized) github.com URL, or undefined. */
+export function githubRepoParts(
+  repoUrl: string,
+): { owner: string; repo: string } | undefined {
+  const match = normalizedRepoUrl(repoUrl).match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/,
+  );
+  return match ? { owner: match[1], repo: match[2] } : undefined;
+}
+
+/** A skill's directory with no leading/trailing slashes ('' at repo root). */
+function cleanSkillPath(path: string): string {
+  return path.replace(/^\.?\/+/, '').replace(/\/+$/, '');
+}
+
+/**
+ * The skill detail page's path under the skills route
+ * (`/<owner>/<repo>[/<skill dir>]`), each segment URL-encoded. Undefined for a
+ * skill outside github.com, which has no detail page.
+ */
+export function skillDetailPath(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'path'>,
+): string | undefined {
+  const parts = githubRepoParts(skill.repoUrl);
+  if (!parts) {
+    return undefined;
+  }
+  const segments = [
+    parts.owner,
+    parts.repo,
+    ...cleanSkillPath(skill.path).split('/').filter(Boolean),
+  ];
+  return segments.map(encodeURIComponent).join('/');
+}
+
+/**
+ * The inverse of {@link skillDetailPath}: a detail route's splat back into the
+ * repository and skill directory it names. Undefined when the splat does not
+ * carry at least `owner/repo`.
+ */
+export function parseSkillDetailPath(
+  splat: string,
+): { repoUrl: string; path: string } | undefined {
+  const segments = splat.split('/').filter(Boolean).map(decodeURIComponent);
+  if (segments.length < 2) {
+    return undefined;
+  }
+  const [owner, repo, ...rest] = segments;
+  return {
+    repoUrl: `https://github.com/${owner}/${repo}`,
+    path: rest.join('/'),
+  };
+}
+
+/**
+ * The skill's source in the repository at the commit it is pinned to: the
+ * SKILL.md's directory (or the repository root). Undefined outside github.com.
+ */
+export function skillSourceUrl(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
+): string | undefined {
+  const parts = githubRepoParts(skill.repoUrl);
+  if (!parts) {
+    return undefined;
+  }
+  const dir = cleanSkillPath(skill.path);
+  const base = `https://github.com/${parts.owner}/${parts.repo}/tree/${skill.commit}`;
+  return dir
+    ? `${base}/${dir.split('/').map(encodeURIComponent).join('/')}`
+    : base;
+}
+
+/** The pinned commit on github.com, for the facts column. */
+export function skillCommitUrl(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'commit'>,
+): string | undefined {
+  const parts = githubRepoParts(skill.repoUrl);
+  return parts
+    ? `https://github.com/${parts.owner}/${parts.repo}/commit/${skill.commit}`
+    : undefined;
+}

@@ -33,6 +33,13 @@ export type SessionTableRow = SessionRow & {
   stateCell: SessionStateCell;
   /** Sort key for the State column — see {@link stateRank}. */
   stateRank: number;
+  /**
+   * Whether the user pinned this session (`usePinnedSessions`). Joined onto the
+   * row by the shell table so the Pinned chip and group can run through the
+   * same filter and grouping code as the states; the classic table never sets
+   * it.
+   */
+  pinned?: boolean;
 };
 
 /**
@@ -183,6 +190,14 @@ export const SESSION_DAY_GROUPS: ReadonlyArray<{
 ];
 
 /**
+ * The groups a shell list row can sit under: the day it started, or the
+ * Pinned group that leads the list whatever day its rows started.
+ */
+export type SessionListGroup = SessionDayGroup | 'pinned';
+
+export const PINNED_GROUP_LABEL = 'Pinned';
+
+/**
  * The day group of a session started at `createdAt`, in the reader's local
  * calendar. A start later than `now` (clock skew) counts as today; a missing
  * or unparseable one as earlier.
@@ -212,17 +227,17 @@ export function sessionDayGroup(
 }
 
 /**
- * When a session started, as short as its day group allows: the time of day
- * under Today and Yesterday, the date under Earlier, with the year only when
- * it is not the current one.
+ * When a session started, as short as its group allows: the time of day under
+ * Today and Yesterday, the date under Earlier and Pinned (whose rows can be
+ * from any day), with the year only when it is not the current one.
  */
 export function formatSessionStart(
   createdAt: string,
-  group: SessionDayGroup,
+  group: SessionListGroup,
   currentYear: number,
 ): string {
   const started = new Date(createdAt);
-  if (group !== 'earlier') {
+  if (group === 'today' || group === 'yesterday') {
     return started.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',

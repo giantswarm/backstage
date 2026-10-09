@@ -19,6 +19,8 @@ export type {
   ToolGroupKey,
   ToolGroupInfo,
   MCPServerAuth,
+  MCPServerAuthorizationServer,
+  MCPServerClientCredentialsSecretRef,
   MCPServerSigV4,
   MCPServerTokenExchange,
   ServersHealthSummary,

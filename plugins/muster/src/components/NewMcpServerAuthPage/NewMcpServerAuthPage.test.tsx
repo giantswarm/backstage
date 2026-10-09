@@ -7,6 +7,10 @@ import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
+// Each test walks the real multi-step flow with plenty of typing, which gets
+// slow when the whole plugin suite runs in parallel (same as BotPrsPage).
+jest.setTimeout(30_000);
+
 /** Registered servers of the active installation, per test. */
 let mockMcpServers: MCPServer[] = [];
 

@@ -14,7 +14,9 @@
       "kind": "MCPServer",
       "listKind": "MCPServerList",
       "plural": "mcpservers",
-      "shortNames": ["mcps"],
+      "shortNames": [
+        "mcps"
+      ],
       "singular": "mcpserver"
     },
     "scope": "Namespaced",
@@ -77,20 +79,87 @@
                     "description": "Auth configures authentication behavior for this MCP server.\nThis is only relevant for remote servers (streamable-http or sse).",
                     "properties": {
                       "authorizationServer": {
-                        "description": "AuthorizationServer is an opt-out for backends that don't publish RFC 9728\nProtected Resource Metadata. When set, muster's per-server OAuth login flow\n(core_auth_login) skips PRM probing and uses these values directly. muster\nlogs each override use at INFO so non-compliance is observable.\n\nThis override does NOT bypass mcp-go's connect-time PRM probe; backends\nwithout RFC 9728 metadata still reconcile to \"Auth Required\" on first\nconnect, then transition to \"Connected\" after `muster auth login`.\n\nSetting AuthorizationServer does NOT change the RFC 8707 `resource`\nparameter — that remains driven by the MCP server URL.\n\nAuthorizationServer is mutually exclusive with ForwardToken: true and\nTokenExchange.Enabled: true. The CRD admission rules above reject any\nCR that combines them. Only valid when Type is \"oauth\".\n\nUse case: Atlassian Remote MCP and similar backends that publish RFC 8414\nmetadata at their resource origin instead of via RFC 9728.",
+                        "description": "AuthorizationServer is an opt-out for backends that don't publish RFC 9728\nProtected Resource Metadata. When set, muster's per-server OAuth login flow\n(core_auth_login) skips PRM probing and uses these values directly. muster\nlogs each override use at INFO so non-compliance is observable.\n\nThis override does NOT bypass mcp-go's connect-time PRM probe; backends\nwithout RFC 9728 metadata still reconcile to \"Auth Required\" on first\nconnect, then transition to \"Connected\" after `muster auth login`.\n\nSetting AuthorizationServer does NOT change the RFC 8707 `resource`\nparameter — that remains driven by the MCP server URL.\n\nAuthorizationServer is mutually exclusive with ForwardToken: true and\nTokenExchange.Enabled: true. The CRD admission rules above reject any\nCR that combines them. Only valid when Type is \"oauth\". A server that\nneeds the session's ID token next to the pinned grant sets\nForwardIdentity instead.\n\nUse case: Atlassian Remote MCP and similar backends that publish RFC 8414\nmetadata at their resource origin instead of via RFC 9728.",
                         "properties": {
+                          "authorizationEndpoint": {
+                            "description": "AuthorizationEndpoint is the authorization server's authorization\nendpoint. Set it together with TokenEndpoint for an authorization server\nthat publishes no RFC 8414 / OIDC discovery document (GitHub:\nhttps://github.com/login/oauth/authorize). muster then performs no\ndiscovery for this issuer and assumes S256 PKCE support, which the\noperator asserts by pinning the endpoints.",
+                            "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
+                            "type": "string"
+                          },
+                          "clientCredentialsSecretRef": {
+                            "description": "ClientCredentialsSecretRef references a Kubernetes Secret holding a\nclient registered with this authorization server out of band (a GitHub\nApp or OAuth App). When set, muster identifies itself with these\ncredentials instead of its Client ID Metadata Document or a dynamic\nregistration -- the only option against an authorization server that\nsupports neither. The secret carries `client-id` and `client-secret`\n(key names configurable in the reference).",
+                            "properties": {
+                              "clientIdKey": {
+                                "default": "client-id",
+                                "description": "ClientIDKey is the key in the secret data that contains the client ID.\nDefaults to \"client-id\" if not specified.",
+                                "type": "string"
+                              },
+                              "clientSecretKey": {
+                                "default": "client-secret",
+                                "description": "ClientSecretKey is the key in the secret data that contains the client secret.\nDefaults to \"client-secret\" if not specified.",
+                                "type": "string"
+                              },
+                              "name": {
+                                "description": "Name is the name of the Kubernetes Secret.\nRequired.",
+                                "type": "string"
+                              },
+                              "namespace": {
+                                "description": "Namespace is the Kubernetes namespace where the secret is located.\nIf not specified, defaults to the MCPServer's namespace.",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "expectedIssuer": {
+                            "description": "ExpectedIssuer is the issuer identifier the authorization server itself\npublishes and puts in the RFC 9207 `iss` parameter of its authorization\nresponses, when that differs from Issuer. Issuer stays the identity the\ngrants are filed under; ExpectedIssuer only decides which value a\npresent `iss` on the callback has to equal. Set it when several\nMCPServers pin one authorization server under different identities so\ntheir grants stay apart -- two GitHub Apps, say: each is pinned under\nits own identity (https://github.com/apps/<slug>) with ExpectedIssuer\nhttps://github.com/login/oauth, the issuer GitHub sends. Needs\nAuthorizationEndpoint and TokenEndpoint. Default: Issuer.",
+                            "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
+                            "type": "string"
+                          },
+                          "grantScope": {
+                            "description": "GrantScope decides whom a token obtained from this authorization server\nbelongs to. `session` (the default) keeps today's behavior: the token is\nbound to the login session that completed the browser flow, so every new\nsession signs in again. `subject` files the token under the user's\nidentity as well, so any later session of the same person -- another\nclient, a re-login, a front-end whose bearer rotates -- reuses the grant\nwithout a new consent, until the person signs out of this server\n(`core_auth_logout`) or everywhere. Use `subject` for external accounts\nthe person owns (GitHub), never for tokens that carry session-specific\nauthority.",
+                            "enum": [
+                              "session",
+                              "subject"
+                            ],
+                            "type": "string"
+                          },
                           "issuer": {
-                            "description": "Issuer is the OAuth 2.0 / OIDC issuer URL.\nmuster fetches AS metadata via the existing OAuth client, which performs\nRFC 8414 / OIDC discovery against this issuer.",
+                            "description": "Issuer is the OAuth 2.0 / OIDC issuer URL of the authorization server\nthe sign-in runs against, and the identity the session's grants are\nfiled under. It takes precedence over the authorization server the\nendpoint's own RFC 9728 metadata names: the browser flow, the token\nstore, the connection and core_auth_logout all use this issuer, so an\nendpoint that accepts tokens from an authorization server other than the\none it advertises is pinned by naming the accepting one here. It may be\nmuster's own identity provider; muster keeps the session's login token\napart from the grant. A change to this field takes effect on the next\ncore_auth_login, without a restart.\nmuster fetches AS metadata via the existing OAuth client, which performs\nRFC 8414 / OIDC discovery against this issuer -- unless\nAuthorizationEndpoint and TokenEndpoint are set, in which case no\ndiscovery happens and the issuer is only that identity. When the\nauthorization server publishes a different issuer identifier than the\nidentity pinned here, set ExpectedIssuer.",
                             "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
                             "type": "string"
                           },
                           "scopes": {
                             "description": "Scopes is the OAuth scope parameter value (RFC 6749 §3.3 wire format:\nspace-separated scope tokens). Matches existing TokenExchangeConfig.Scopes.",
                             "type": "string"
+                          },
+                          "tokenEndpoint": {
+                            "description": "TokenEndpoint is the authorization server's token endpoint (GitHub:\nhttps://github.com/login/oauth/access_token). See AuthorizationEndpoint.",
+                            "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
+                            "type": "string"
                           }
                         },
-                        "required": ["issuer"],
-                        "type": "object"
+                        "required": [
+                          "issuer"
+                        ],
+                        "type": "object",
+                        "x-kubernetes-validations": [
+                          {
+                            "message": "authorizationEndpoint and tokenEndpoint must be set together",
+                            "rule": "has(self.authorizationEndpoint) == has(self.tokenEndpoint)"
+                          },
+                          {
+                            "message": "expectedIssuer needs authorizationEndpoint and tokenEndpoint",
+                            "rule": "!has(self.expectedIssuer) || has(self.authorizationEndpoint)"
+                          }
+                        ]
+                      },
+                      "forwardIdentity": {
+                        "default": false,
+                        "description": "ForwardIdentity sends the session's upstream ID token -- the token\nForwardToken would put in Authorization -- in the X-Muster-Id-Token\nheader on every request to this server, next to the grant of its pinned\nauthorization server, which Authorization keeps carrying unchanged. It\nis for a server that acts for the person on two systems: one through the\npinned grant (a GitHub App user token, say) and one through calls back\nwith the person's own identity (their Kubernetes access). The token is\nread on every request, so a refreshed one is sent once the session holds\nit; a session without an upstream ID token sends no header, and a server\nwithout this field never receives it.\n\nOnly valid with Type \"oauth\" and AuthorizationServer set. RequiredAudiences\nof such a server are requested at login as for a ForwardToken server, so\nthe forwarded ID token carries them.\n\nThe forwarded ID token is not audience-scoped to this server, as with\nForwardToken: the same token is accepted by every backend that trusts\nits issuer and audiences, so a ForwardIdentity server must be trusted as\nmuch as a ForwardToken backend.",
+                        "type": "boolean"
                       },
                       "forwardToken": {
                         "default": false,
@@ -98,7 +167,7 @@
                         "type": "boolean"
                       },
                       "requiredAudiences": {
-                        "description": "RequiredAudiences specifies additional audience(s) that the forwarded ID token\nshould contain. When ForwardToken is true, muster will request these audiences\nfrom the upstream IdP (e.g., Dex) using cross-client scopes.\n\nThis is used when the downstream server requires tokens with specific audiences,\nfor example when forwarding tokens to Kubernetes for OIDC authentication:\n  requiredAudiences:\n    - \"dex-k8s-authenticator\"\n\nAt user authentication, muster collects all requiredAudiences from MCPServers\nwith forwardToken: true and requests them all from the IdP.",
+                        "description": "RequiredAudiences specifies additional audience(s) that the forwarded ID token\nshould contain. When ForwardToken is true, muster will request these audiences\nfrom the upstream IdP (e.g., Dex) using cross-client scopes.\n\nThis is used when the downstream server requires tokens with specific audiences,\nfor example when forwarding tokens to Kubernetes for OIDC authentication:\n  requiredAudiences:\n    - \"dex-k8s-authenticator\"\n\nAt user authentication, muster collects all requiredAudiences from MCPServers\nwith forwardToken: true or forwardIdentity: true and requests them all\nfrom the IdP.",
                         "items": {
                           "type": "string"
                         },
@@ -120,7 +189,9 @@
                             "type": "string"
                           }
                         },
-                        "required": ["region"],
+                        "required": [
+                          "region"
+                        ],
                         "type": "object"
                       },
                       "tokenExchange": {
@@ -148,7 +219,9 @@
                                 "type": "string"
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "type": "object"
                           },
                           "connectorId": {
@@ -182,7 +255,11 @@
                       "type": {
                         "default": "none",
                         "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication\n  - \"sigv4\": AWS Signature Version 4, signed with muster's own machine\n    identity. See SigV4.",
-                        "enum": ["oauth", "none", "sigv4"],
+                        "enum": [
+                          "oauth",
+                          "none",
+                          "sigv4"
+                        ],
                         "type": "string"
                       }
                     },
@@ -207,6 +284,10 @@
                       {
                         "message": "sigv4 signs as muster's own machine identity, so forwardToken and tokenExchange do not apply",
                         "rule": "!has(self.sigv4) || (self.forwardToken == false && !has(self.tokenExchange))"
+                      },
+                      {
+                        "message": "forwardIdentity sends the session's ID token next to a pinned grant, so it needs type oauth and authorizationServer",
+                        "rule": "!has(self.forwardIdentity) || !self.forwardIdentity || (self.type == 'oauth' && has(self.authorizationServer))"
                       }
                     ]
                   },
@@ -245,7 +326,10 @@
                         "type": "string"
                       }
                     },
-                    "required": ["instanceArg", "name"],
+                    "required": [
+                      "instanceArg",
+                      "name"
+                    ],
                     "type": "object"
                   },
                   "headers": {
@@ -274,7 +358,7 @@
                   },
                   "timeout": {
                     "default": 30,
-                    "description": "Timeout specifies the connection timeout for remote operations (in seconds)",
+                    "description": "Timeout bounds every operation on the server in seconds, a tool call\nincluded, for every type; for a remote server also the connect and the\nhealth probe.",
                     "maximum": 300,
                     "minimum": 1,
                     "type": "integer"
@@ -286,7 +370,11 @@
                   },
                   "type": {
                     "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events.\n\n\"stdio\" is CLI-only. A stdio server is started as a subprocess of the muster\nprocess, so a muster running in Kubernetes mode rejects it: the tool handlers\nfail the call, and a CR applied directly through the API server is reconciled\nto state Failed instead of spawning a process in the muster pod. Run the MCP\nserver as its own workload and use \"streamable-http\" or \"sse\" instead.",
-                    "enum": ["stdio", "streamable-http", "sse"],
+                    "enum": [
+                      "stdio",
+                      "streamable-http",
+                      "sse"
+                    ],
                     "type": "string"
                   },
                   "url": {
@@ -295,14 +383,16 @@
                     "type": "string"
                   }
                 },
-                "required": ["type"],
+                "required": [
+                  "type"
+                ],
                 "type": "object"
               },
               "status": {
-                "description": "MCPServerStatus defines the observed state of MCPServer.\n\nThis status reflects server-side observable state including auth requirements.\nIt captures infrastructure connectivity as well as whether the server demands\nauthentication (e.g. \"Auth Required\"). Per-user session state (which specific\nuser is authenticated, token expiry, etc.) is tracked separately in the\nSession Registry (internal/aggregator/session_registry.go).\n\nServer-Side State (CRD):\n  - State: Running/Connected/Starting/Connecting/Stopped/Disconnected/Auth Required/Failed\n  - Conditions: Standard K8s conditions for detailed status\n\nPer-User Session State (Session Registry):\n  - ConnectionStatus: Connected, PendingAuth, Failed (per-user)\n  - AuthStatus: Authenticated, AuthRequired, TokenExpired (per-user)\n  - AvailableTools: Tools visible to this specific user",
+                "description": "MCPServerStatus defines the observed state of MCPServer.\n\nThis status reflects server-side observable state including auth requirements.\nIt captures infrastructure connectivity as well as whether the server demands\nauthentication (e.g. \"Auth Required\"). Per-user session state (which specific\nuser is authenticated, token expiry, etc.) is tracked separately in the\nSession Registry (internal/aggregator/session_registry.go).\n\nServer-Side State (CRD):\n  - State: Running/Connected/Starting/Connecting/Stopped/Disconnected/Auth Required/Awaiting Session/Failed\n  - Conditions: Standard K8s conditions for detailed status\n\nPer-User Session State (Session Registry):\n  - ConnectionStatus: Connected, PendingAuth, Failed (per-user)\n  - AuthStatus: Authenticated, AuthRequired, TokenExpired (per-user)\n  - AvailableTools: Tools visible to this specific user",
                 "properties": {
                   "conditions": {
-                    "description": "Conditions represent the latest available observations of the MCPServer's current state.\nStandard condition types:\n  - Ready: True if infrastructure is reachable (process running or TCP connectable)",
+                    "description": "Conditions represent the latest available observations of the MCPServer's current state.\nStandard condition types:\n  - Ready: True while the server is reachable (Running, Connected, Auth\n    Required, Awaiting Session), False otherwise. The reason is the state\n    in one word (Connected, AwaitingSession, AuthRequired, Connecting,\n    Disconnected, Suspended, Failed) or, for a server Failed by its token\n    exchange, the class of the failure (TokenExchangeCredentials,\n    TokenExchangeEndpoint, TokenExchangeConnector). The message explains\n    the state: for Awaiting Session the per-session mechanism, the token\n    endpoint and connector, and when the last exchange succeeded; for\n    Failed the error.",
                     "items": {
                       "description": "Condition contains details for one aspect of the current state of this API Resource.",
                       "properties": {
@@ -331,7 +421,11 @@
                         },
                         "status": {
                           "description": "status of the condition, one of True, False, Unknown.",
-                          "enum": ["True", "False", "Unknown"],
+                          "enum": [
+                            "True",
+                            "False",
+                            "Unknown"
+                          ],
                           "type": "string"
                         },
                         "type": {
@@ -370,13 +464,17 @@
                     "description": "LastError contains any error message from the most recent server operation.\nNote: Per-user authentication errors are tracked in the Session Registry,\nnot here. This field only contains infrastructure-level errors.",
                     "type": "string"
                   },
+                  "lastFailureHTTPStatus": {
+                    "description": "LastFailureHTTPStatus is the HTTP status code the endpoint answered the\nmost recent failed connection attempt with, for example 504 from a\ngateway in front of the server or 404 from a backend whose route is\nnot served yet. Absent when the attempt got no HTTP response at all\n(connection refused, DNS failure, timeout) or the last attempt\nsucceeded. Together with LastError it tells an upstream outage from an\nendpoint nothing listens on.",
+                    "type": "integer"
+                  },
                   "lastRestartedAt": {
                     "description": "LastRestartedAt mirrors the spec.restartRequestedAt value most recently\nprocessed by the reconciler. A restart is performed only when the two\ndiffer (spec-is-desired / status-is-observed idiom, issue #1055).",
                     "format": "date-time",
                     "type": "string"
                   },
                   "nextRetryAfter": {
-                    "description": "NextRetryAfter indicates the earliest time when the next retry should be attempted.\nThis is calculated based on exponential backoff from ConsecutiveFailures.",
+                    "description": "NextRetryAfter indicates the earliest time when the next retry should be attempted.\nThe wait doubles with every consecutive failure, starting at 30 seconds,\nand is capped (2 minutes by default) so a recovered upstream is noticed\nwithin the cap plus the retry tick, however long the outage lasted.\nAbsent while no retry is scheduled.",
                     "format": "date-time",
                     "type": "string"
                   },
@@ -385,13 +483,14 @@
                     "type": "integer"
                   },
                   "state": {
-                    "description": "State represents the high-level infrastructure state of the MCP server.\nThis is independent of user session state (authentication, connection status).\n\nFor stdio servers: Running, Starting, Stopped, Failed\nFor remote servers: Connected, Auth Required, Connecting, Disconnected, Failed",
+                    "description": "State represents the high-level infrastructure state of the MCP server.\nThis is independent of user session state (authentication, connection status).\n\nFor stdio servers: Running, Starting, Stopped, Failed\nFor remote servers: Connected, Auth Required, Awaiting Session, Connecting, Disconnected, Failed",
                     "enum": [
                       "Running",
                       "Starting",
                       "Stopped",
                       "Connected",
                       "Auth Required",
+                      "Awaiting Session",
                       "Connecting",
                       "Disconnected",
                       "Failed"

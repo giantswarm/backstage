@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
+import { newMcpServerAuthRouteRef } from '../../routes';
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
 import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
 import { McpServersPage } from '../McpServersPage';
@@ -9,10 +11,31 @@ import { NewMcpServerPage } from '../NewMcpServerPage';
 import { NewMcpServerAuthPage } from '../NewMcpServerAuthPage';
 import { NewMcpServerReviewPage } from '../NewMcpServerReviewPage';
 import { NewMcpServerVerifyPage } from '../NewMcpServerVerifyPage';
+import {
+  NewConnectorConnectPage,
+  NewConnectorSignInPage,
+  NewConnectorTestPage,
+} from '../NewConnectorWizard';
 import { ConnectorPage } from '../ConnectorPage';
 import { ServerPage } from '../ServerPage';
 import { ToolPage } from '../ToolPage';
 import { useAgentShell } from '../../hooks/useAgentShell';
+
+/**
+ * The shell wizard has no review step — step 2's "Add connector" registers
+ * directly — so its address sends to the Sign-in step, keeping classic links
+ * (and an in-flight edit's `?edit=`) working inside the shell.
+ */
+const ShellReviewRedirect = () => {
+  const signInLink = useRouteRef(newMcpServerAuthRouteRef);
+  const { search } = useLocation();
+  return (
+    <Navigate
+      to={signInLink ? { pathname: signInLink(), search } : '..'}
+      replace
+    />
+  );
+};
 
 /**
  * Routing within the Agent Platform's MCP Servers tab: the servers table, a
@@ -39,11 +62,15 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
     <NewMcpServerFormProvider>
       <Routes>
         <Route index element={<McpServersPage />} />
+        {/* The registration wizard's steps, on the same addresses in both
+            chromes: the shell renders the prototype's full-screen three-step
+            wizard (Connect / Sign-in / Test), classic keeps the four-step
+            pages — the same shell/classic split as the server routes below. */}
         <Route
           path="new"
           element={
             <NewMcpServerEditGate>
-              <NewMcpServerPage />
+              {agentShell ? <NewConnectorConnectPage /> : <NewMcpServerPage />}
             </NewMcpServerEditGate>
           }
         />
@@ -51,23 +78,35 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
           path="new/auth"
           element={
             <NewMcpServerEditGate>
-              <NewMcpServerAuthPage />
+              {agentShell ? (
+                <NewConnectorSignInPage />
+              ) : (
+                <NewMcpServerAuthPage />
+              )}
             </NewMcpServerEditGate>
           }
         />
         <Route
           path="new/review"
           element={
-            <NewMcpServerEditGate>
-              <NewMcpServerReviewPage />
-            </NewMcpServerEditGate>
+            agentShell ? (
+              <ShellReviewRedirect />
+            ) : (
+              <NewMcpServerEditGate>
+                <NewMcpServerReviewPage />
+              </NewMcpServerEditGate>
+            )
           }
         />
         <Route
           path="new/verify"
           element={
             <NewMcpServerEditGate>
-              <NewMcpServerVerifyPage />
+              {agentShell ? (
+                <NewConnectorTestPage />
+              ) : (
+                <NewMcpServerVerifyPage />
+              )}
             </NewMcpServerEditGate>
           }
         />

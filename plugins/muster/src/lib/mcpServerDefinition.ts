@@ -17,7 +17,13 @@
 // annotations through the create tool would in fact fail the registration — its
 // request parsing rejects unknown fields.
 
-import type { MCPServer, MCPServerAuth, MCPServerSigV4 } from './k8s';
+import type {
+  MCPServer,
+  MCPServerAuth,
+  MCPServerAuthorizationServer,
+  MCPServerClientCredentialsSecretRef,
+  MCPServerSigV4,
+} from './k8s';
 import { toYaml } from './gitops';
 import {
   AUTH_MODE_LABELS,
@@ -112,6 +118,32 @@ export type NewMcpServerFormState = {
   issuer: string;
   /** `own-account` only: space-separated OAuth scopes for the issuer override. */
   scopes: string;
+  /**
+   * `own-account` only: pinned authorization endpoint, for authorization
+   * servers without RFC 8414 discovery (GitHub-style). Set together with
+   * {@link NewMcpServerFormState.tokenEndpoint} — the CRD requires both.
+   */
+  authorizationEndpoint: string;
+  /** `own-account` only: pinned token endpoint, set with the one above. */
+  tokenEndpoint: string;
+  /**
+   * `own-account` only: name of the Kubernetes Secret holding an out-of-band
+   * registered OAuth client's credentials. Empty means muster registers itself
+   * dynamically (RFC 7591) or identifies by its CIMD URL.
+   */
+  clientSecretName: string;
+  /** `own-account` only: the Secret's namespace. Empty uses muster's default. */
+  clientSecretNamespace: string;
+  /** `own-account` only: key of the client id inside the Secret. */
+  clientIdKey: string;
+  /** `own-account` only: key of the client secret inside the Secret. */
+  clientSecretKey: string;
+  /**
+   * `own-account` only: whether a person's grant lives per login session
+   * (`session`, muster's default) or is reused across their sessions
+   * (`subject`).
+   */
+  grantScope: 'session' | 'subject';
   /** `platform-sso` only: audiences the forwarded token must carry. */
   requiredAudiences: string[];
   /** `sigv4` only: the SigV4 signing region. Required for that mode. */
@@ -149,6 +181,13 @@ export const emptyFormState: NewMcpServerFormState = {
   authMode: 'none',
   issuer: '',
   scopes: '',
+  authorizationEndpoint: '',
+  tokenEndpoint: '',
+  clientSecretName: '',
+  clientSecretNamespace: '',
+  clientIdKey: '',
+  clientSecretKey: '',
+  grantScope: 'session',
   requiredAudiences: [],
   sigv4Region: '',
   sigv4Service: '',
@@ -233,12 +272,47 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
     case 'own-account': {
       const auth: MCPServerAuth = { type: 'oauth' };
       // No issuer → RFC 9728 discovery, which is the default and needs no
-      // config. The override only exists for backends without that metadata.
+      // config. The override only exists for backends without that metadata,
+      // and every advanced setting below belongs to it (the CRD requires an
+      // issuer on the authorizationServer block).
       if (state.issuer.trim()) {
-        auth.authorizationServer = {
+        const authorizationServer: MCPServerAuthorizationServer = {
           issuer: state.issuer.trim(),
-          ...(state.scopes.trim() ? { scopes: state.scopes.trim() } : {}),
         };
+        if (state.scopes.trim()) {
+          authorizationServer.scopes = state.scopes.trim();
+        }
+        // The CRD's CEL rule: pinned endpoints are set together. Validation
+        // flags a lone one; composing only the pair keeps the definition
+        // acceptable even mid-typing.
+        const authorizationEndpoint = state.authorizationEndpoint.trim();
+        const tokenEndpoint = state.tokenEndpoint.trim();
+        if (authorizationEndpoint && tokenEndpoint) {
+          authorizationServer.authorizationEndpoint = authorizationEndpoint;
+          authorizationServer.tokenEndpoint = tokenEndpoint;
+        }
+        const secretName = state.clientSecretName.trim();
+        if (secretName) {
+          const secretRef: MCPServerClientCredentialsSecretRef = {
+            name: secretName,
+          };
+          if (state.clientSecretNamespace.trim()) {
+            secretRef.namespace = state.clientSecretNamespace.trim();
+          }
+          if (state.clientIdKey.trim()) {
+            secretRef.clientIdKey = state.clientIdKey.trim();
+          }
+          if (state.clientSecretKey.trim()) {
+            secretRef.clientSecretKey = state.clientSecretKey.trim();
+          }
+          authorizationServer.clientCredentialsSecretRef = secretRef;
+        }
+        // `session` is muster's default, so only `subject` is spelled out —
+        // the same omit-the-default rule as the rest of the composition.
+        if (state.grantScope === 'subject') {
+          authorizationServer.grantScope = 'subject';
+        }
+        auth.authorizationServer = authorizationServer;
       }
       return auth;
     }
@@ -395,6 +469,28 @@ function validateMeta(entries: McpServerMetaEntry[]): string[] {
   return errors;
 }
 
+/** `authorizationEndpoint`/`tokenEndpoint` shape: an https URL, no spaces. */
+const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
+
+/**
+ * Whether any of the advanced authorization-server settings (pinned endpoints,
+ * client-credentials Secret, a non-default grant scope) is filled in — they all
+ * live on the `authorizationServer` block, so they need an issuer to hang off.
+ */
+export function hasAdvancedAuthorizationServer(
+  state: NewMcpServerFormState,
+): boolean {
+  return Boolean(
+    state.authorizationEndpoint.trim() ||
+    state.tokenEndpoint.trim() ||
+    state.clientSecretName.trim() ||
+    state.clientSecretNamespace.trim() ||
+    state.clientIdKey.trim() ||
+    state.clientSecretKey.trim() ||
+    state.grantScope === 'subject',
+  );
+}
+
 /** Validation problems of the Authentication step's fields only. */
 export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
   const errors: string[] = [];
@@ -408,6 +504,37 @@ export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
     }
     if (!issuer && state.scopes.trim()) {
       errors.push('Scopes apply to the issuer override — set an issuer too');
+    }
+    if (!issuer && hasAdvancedAuthorizationServer(state)) {
+      errors.push(
+        'The advanced authorization-server settings apply to the issuer override — set an issuer too',
+      );
+    }
+    const authorizationEndpoint = state.authorizationEndpoint.trim();
+    const tokenEndpoint = state.tokenEndpoint.trim();
+    // The CRD's CEL rule: the pinned endpoints are set together.
+    if (Boolean(authorizationEndpoint) !== Boolean(tokenEndpoint)) {
+      errors.push(
+        'The authorization and token endpoints are pinned together — set both or neither',
+      );
+    }
+    for (const [label, endpoint] of [
+      ['Authorization endpoint', authorizationEndpoint],
+      ['Token endpoint', tokenEndpoint],
+    ] as const) {
+      if (endpoint && !ENDPOINT_PATTERN.test(endpoint)) {
+        errors.push(`${label} must be an https URL`);
+      }
+    }
+    if (
+      !state.clientSecretName.trim() &&
+      (state.clientSecretNamespace.trim() ||
+        state.clientIdKey.trim() ||
+        state.clientSecretKey.trim())
+    ) {
+      errors.push(
+        'The client-credentials Secret needs a name for its namespace and keys to point into',
+      );
     }
   }
 
@@ -520,12 +647,22 @@ function shellQuote(value: string): string {
  * mcpserver` has no flags for `auth.sigv4` or `meta` (cmd/create.go as of
  * muster v5.4.0), and `--auth-type=sigv4` alone composes a CR the CRD rejects —
  * so the caller must offer the manifest instead of a command that looks right
- * and fails.
+ * and fails. The advanced authorization-server settings (pinned endpoints,
+ * client-credentials Secret, grant scope) have no flags either.
  */
 export function toMusterCliCommand(
   definition: McpServerDefinition,
 ): string | undefined {
   if (definition.auth?.sigv4 || definition.meta) {
+    return undefined;
+  }
+  const authorizationServer = definition.auth?.authorizationServer;
+  if (
+    authorizationServer &&
+    Object.keys(authorizationServer).some(
+      key => key !== 'issuer' && key !== 'scopes',
+    )
+  ) {
     return undefined;
   }
   const parts = [
@@ -702,7 +839,16 @@ const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
   'platform-sso': ['type', 'forwardToken', 'requiredAudiences'],
   sigv4: ['type', 'sigv4'],
 };
-const WIZARD_AUTHORIZATION_SERVER_KEYS = ['issuer', 'scopes'];
+// `expectedIssuer` stays out: the wizard has no field for it, so a server
+// pinning one keeps being edited as JSON rather than silently losing it.
+const WIZARD_AUTHORIZATION_SERVER_KEYS = [
+  'issuer',
+  'scopes',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'clientCredentialsSecretRef',
+  'grantScope',
+];
 const WIZARD_SIGV4_KEYS = ['region', 'service', 'roleArn'];
 
 /**
@@ -788,6 +934,13 @@ export function wizardEditBlocker(server: MCPServer): string | undefined {
 const AUTH_ANSWER_FIELDS = [
   'issuer',
   'scopes',
+  'authorizationEndpoint',
+  'tokenEndpoint',
+  'clientSecretName',
+  'clientSecretNamespace',
+  'clientIdKey',
+  'clientSecretKey',
+  'grantScope',
   'requiredAudiences',
   'sigv4Region',
   'sigv4Service',
@@ -831,6 +984,22 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     authMode: WIZARD_AUTH_MODES[serverAuthMode(server)] ?? 'none',
     issuer: auth?.authorizationServer?.issuer ?? '',
     scopes: auth?.authorizationServer?.scopes ?? '',
+    authorizationEndpoint:
+      auth?.authorizationServer?.authorizationEndpoint ?? '',
+    tokenEndpoint: auth?.authorizationServer?.tokenEndpoint ?? '',
+    clientSecretName:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.name ?? '',
+    clientSecretNamespace:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.namespace ?? '',
+    clientIdKey:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.clientIdKey ?? '',
+    clientSecretKey:
+      auth?.authorizationServer?.clientCredentialsSecretRef?.clientSecretKey ??
+      '',
+    grantScope:
+      auth?.authorizationServer?.grantScope === 'subject'
+        ? 'subject'
+        : 'session',
     requiredAudiences: auth?.requiredAudiences ?? [],
     sigv4Region: auth?.sigv4?.region ?? '',
     sigv4Service: auth?.sigv4?.service ?? '',

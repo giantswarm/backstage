@@ -14,6 +14,10 @@ export { usePinnedSessions } from './hooks/usePinnedSessions';
 export type { PinnedSession } from './hooks/usePinnedSessions';
 export { useFavoriteAgents } from './hooks/useFavoriteAgents';
 export type { FavoriteAgent } from './hooks/useFavoriteAgents';
+export { useSessionNotifications } from './hooks/useSessionNotifications';
+export type { SessionNotificationSetting } from './hooks/useSessionNotifications';
+export { SessionNotificationsBell } from './components/SessionNotifications';
+export type { SessionNotificationsBellProps } from './components/SessionNotifications';
 export { ServingLayerGate } from './components/ServingLayerGate';
 export type { AgentPlatformHomeProps } from './components/AgentPlatformHome';
 export {
@@ -35,3 +39,4 @@ export type { EnvironmentSelectProps } from './components/EnvironmentSelect';
 export { OrganizationSelect } from './components/OrganizationSelect';
 export type { OrganizationSelectProps } from './components/OrganizationSelect';
 export { ALL_ORGANIZATIONS } from './lib/customize';
+export { useMetaAgent } from './hooks/useMetaAgent';

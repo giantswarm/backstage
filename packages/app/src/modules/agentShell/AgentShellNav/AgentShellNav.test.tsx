@@ -25,6 +25,22 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
       <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
     ),
+    SessionNotificationsBell: ({
+      compact,
+      className,
+    }: {
+      compact?: boolean;
+      className?: string;
+    }) => (
+      <button
+        type="button"
+        data-testid="session-notifications-bell"
+        data-compact={String(compact)}
+        className={className}
+      >
+        Notifications
+      </button>
+    ),
   };
 });
 
@@ -173,6 +189,34 @@ describe('AgentShellNav', () => {
   it('mounts the cluster-access connector that the installation inventory waits on', async () => {
     await renderNav();
     expect(screen.getByTestId('cluster-access-connector')).toBeInTheDocument();
+  });
+
+  it('puts the notification bell in the rail footer, after the bottom items', async () => {
+    await renderNav();
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const bell = within(nav).getByTestId('session-notifications-bell');
+    expect(bell).toHaveAttribute('data-compact', 'false');
+    const portal = within(nav).getByRole('link', { name: 'Platform Portal' });
+    expect(
+      portal.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('keeps the bell, compacted, in the collapsed rail and the mobile bar', async () => {
+    await renderNav({ isPinned: false });
+    expect(screen.getByTestId('session-notifications-bell')).toHaveAttribute(
+      'data-compact',
+      'true',
+    );
+  });
+
+  it('shows the bell in the mobile bar', async () => {
+    await renderNav({ isMobile: true });
+    expect(screen.getByTestId('session-notifications-bell')).toHaveAttribute(
+      'data-compact',
+      'true',
+    );
   });
 
   it('hides the items whose route is not bound', async () => {

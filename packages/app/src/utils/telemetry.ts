@@ -242,6 +242,17 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // One skill: `/agent-platform/skills/<owner>/<repo>[/<skill dir>]`. No
+    // `view`, like Session detail: the varying segments name a repository and
+    // a skill directory, which would open the dimension up per skill. The bare
+    // path only redirects to Customize → Skills and is folded in like the
+    // mcp-servers redirect above. Must stay above the generic '/agent-platform'
+    // cases below for the reason the Sessions cases give.
+    case pathname === '/agent-platform/skills' ||
+      pathname.startsWith('/agent-platform/skills/'):
+      payload = { page: 'Skill detail' };
+      break;
+
     // Must stay above the generic '/agent-platform' cases below: `switch (true)`
     // takes the first match, so after them this would be dead and the Sessions
     // tab would report as `page: 'Agents', view: 'sessions'`.

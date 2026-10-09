@@ -172,12 +172,42 @@ export interface MCPServerSigV4 {
   roleArn?: string;
 }
 
+/**
+ * A Kubernetes Secret holding an out-of-band registered OAuth client's
+ * credentials (`spec.auth.authorizationServer.clientCredentialsSecretRef`) —
+ * how a GitHub-style authorization server without dynamic client registration
+ * is reached without a plaintext credential in the CR.
+ */
+export interface MCPServerClientCredentialsSecretRef {
+  name: string;
+  namespace?: string;
+  clientIdKey?: string;
+  clientSecretKey?: string;
+}
+
+/**
+ * The authorization-server pin for `auth.type: oauth` — only needed for
+ * backends without RFC 9728/8414 discovery. `authorizationEndpoint` and
+ * `tokenEndpoint` are set together (the CRD's CEL rule); `grantScope` decides
+ * whether a person's grant lives per login session (the default) or is reused
+ * across their sessions.
+ */
+export interface MCPServerAuthorizationServer {
+  issuer: string;
+  scopes?: string;
+  authorizationEndpoint?: string;
+  tokenEndpoint?: string;
+  expectedIssuer?: string;
+  clientCredentialsSecretRef?: MCPServerClientCredentialsSecretRef;
+  grantScope?: 'session' | 'subject';
+}
+
 export interface MCPServerAuth {
   type?: 'oauth' | 'none' | 'sigv4';
   forwardToken?: boolean;
   requiredAudiences?: string[];
   tokenExchange?: MCPServerTokenExchange;
-  authorizationServer?: { issuer: string; scopes?: string };
+  authorizationServer?: MCPServerAuthorizationServer;
   localMint?: { enabled?: boolean; audience?: string };
   /** Required when `type` is `sigv4`, and rejected otherwise. */
   sigv4?: MCPServerSigV4;

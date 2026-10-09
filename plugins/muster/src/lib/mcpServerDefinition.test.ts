@@ -101,6 +101,62 @@ describe('composeMcpServerDefinition', () => {
     });
   });
 
+  it('composes the GitHub-grade advanced override: pinned endpoints, Secret-held client credentials and grant scope', () => {
+    expect(
+      composeMcpServerDefinition(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://github.com',
+          scopes: 'repo read:user',
+          authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+          tokenEndpoint: 'https://github.com/login/oauth/access_token',
+          clientSecretName: 'github-oauth-client',
+          clientSecretNamespace: 'muster',
+          clientIdKey: 'clientId',
+          clientSecretKey: 'clientSecret',
+          grantScope: 'subject',
+        }),
+      ).auth,
+    ).toEqual({
+      type: 'oauth',
+      authorizationServer: {
+        issuer: 'https://github.com',
+        scopes: 'repo read:user',
+        authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+        tokenEndpoint: 'https://github.com/login/oauth/access_token',
+        clientCredentialsSecretRef: {
+          name: 'github-oauth-client',
+          namespace: 'muster',
+          clientIdKey: 'clientId',
+          clientSecretKey: 'clientSecret',
+        },
+        grantScope: 'subject',
+      },
+    });
+  });
+
+  it('omits a lone pinned endpoint, empty Secret keys and the default grant scope', () => {
+    expect(
+      composeMcpServerDefinition(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          // Only one endpoint typed so far: composing just it would compose a
+          // definition the CRD's set-together rule rejects.
+          authorizationEndpoint: 'https://auth.example.com/authorize',
+          clientSecretName: 'oauth-client',
+          grantScope: 'session',
+        }),
+      ).auth,
+    ).toEqual({
+      type: 'oauth',
+      authorizationServer: {
+        issuer: 'https://auth.example.com',
+        clientCredentialsSecretRef: { name: 'oauth-client' },
+      },
+    });
+  });
+
   it('composes Platform SSO as forwardToken with required audiences', () => {
     expect(
       composeMcpServerDefinition(
@@ -306,6 +362,61 @@ describe('validateNewMcpServerForm', () => {
         state({ authMode: 'own-account', scopes: 'openid' }),
       ),
     ).toEqual([expect.stringContaining('Scopes apply to the issuer override')]);
+  });
+
+  it('rejects the advanced authorization-server settings without an issuer', () => {
+    for (const overrides of [
+      { tokenEndpoint: 'https://idp/token' },
+      { clientSecretName: 'oauth-client' },
+      { grantScope: 'subject' as const },
+    ]) {
+      expect(
+        validateNewMcpServerForm(
+          state({ authMode: 'own-account', ...overrides }),
+        ),
+      ).toContainEqual(expect.stringContaining('set an issuer too'));
+    }
+  });
+
+  it('requires the pinned endpoints to be set together, as https URLs', () => {
+    const pinned = (overrides: Partial<NewMcpServerFormState>) =>
+      validateNewMcpServerForm(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          ...overrides,
+        }),
+      );
+
+    expect(
+      pinned({ authorizationEndpoint: 'https://idp/authorize' }),
+    ).toContainEqual(expect.stringContaining('set both or neither'));
+    expect(
+      pinned({
+        authorizationEndpoint: 'http://idp/authorize',
+        tokenEndpoint: 'https://idp/token',
+      }),
+    ).toContainEqual('Authorization endpoint must be an https URL');
+    expect(
+      pinned({
+        authorizationEndpoint: 'https://idp/authorize',
+        tokenEndpoint: 'https://idp/token',
+      }),
+    ).toEqual([]);
+  });
+
+  it('requires a name for a client-credentials Secret whose keys are set', () => {
+    expect(
+      validateNewMcpServerForm(
+        state({
+          authMode: 'own-account',
+          issuer: 'https://auth.example.com',
+          clientIdKey: 'clientId',
+        }),
+      ),
+    ).toContainEqual(
+      expect.stringContaining('client-credentials Secret needs a name'),
+    );
   });
 
   it('requires a signing region for AWS SigV4', () => {
@@ -595,6 +706,11 @@ function evaluateCel(rule: string, self: unknown): boolean {
       next('(');
       const value = disjunction();
       next(')');
+      // A sub-expression's held-back error resurfaces here: outside a
+      // short-circuit it must fail loudly, never compare as a value.
+      if (value instanceof Error) {
+        throw value;
+      }
       return value;
     }
     if (peek() === 'has') {
@@ -620,25 +736,50 @@ function evaluateCel(rule: string, self: unknown): boolean {
     return value;
   };
 
-  const conjunction = (): boolean => {
-    let value = asBoolean(equality());
+  // CEL's && and || are commutative short-circuits: `true || error` is true
+  // and `false && error` is false (the guard pattern `!has(self.x) || !self.x`
+  // relies on it). Operands are still parsed left to right — only their
+  // evaluation errors are held back until the other operand cannot decide.
+  const tryEval = (operand: () => unknown): boolean | Error => {
+    try {
+      return asBoolean(operand());
+    } catch (error) {
+      return error as Error;
+    }
+  };
+
+  const conjunction = (): boolean | Error => {
+    let value = tryEval(equality);
     while (peek() === '&&') {
       next('&&');
-      value = asBoolean(equality()) && value;
+      const right = tryEval(equality);
+      if (value === false || right === false) {
+        value = false;
+      } else if (!(value instanceof Error)) {
+        value = right;
+      }
     }
     return value;
   };
 
-  function disjunction(): boolean {
+  function disjunction(): boolean | Error {
     let value = conjunction();
     while (peek() === '||') {
       next('||');
-      value = conjunction() || value;
+      const right = conjunction();
+      if (value === true || right === true) {
+        value = true;
+      } else if (!(value instanceof Error)) {
+        value = right;
+      }
     }
     return value;
   }
 
   const result = disjunction();
+  if (result instanceof Error) {
+    throw result;
+  }
   if (pos !== tokens.length) {
     throw new Error(`trailing tokens in: ${rule}`);
   }
@@ -716,6 +857,21 @@ describe('CRD conformance', () => {
         authMode: 'own-account',
         issuer: 'https://auth.example.com',
         scopes: 'openid mcp:read',
+      }),
+    ],
+    [
+      'own account (pinned endpoints, client-credentials Secret, subject grant)',
+      state({
+        authMode: 'own-account',
+        issuer: 'https://github.com',
+        scopes: 'repo',
+        authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+        tokenEndpoint: 'https://github.com/login/oauth/access_token',
+        clientSecretName: 'github-oauth-client',
+        clientSecretNamespace: 'muster',
+        clientIdKey: 'clientId',
+        clientSecretKey: 'clientSecret',
+        grantScope: 'subject',
       }),
     ],
     [
@@ -966,6 +1122,30 @@ describe('toMusterCliCommand', () => {
         ),
       ),
     ).toBeUndefined();
+    // ...and no flags for the advanced authorization-server settings either.
+    expect(
+      toMusterCliCommand(
+        composeMcpServerDefinition(
+          state({
+            authMode: 'own-account',
+            issuer: 'https://github.com',
+            authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+            tokenEndpoint: 'https://github.com/login/oauth/access_token',
+          }),
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      toMusterCliCommand(
+        composeMcpServerDefinition(
+          state({
+            authMode: 'own-account',
+            issuer: 'https://auth.example.com',
+            grantScope: 'subject',
+          }),
+        ),
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -1065,6 +1245,43 @@ describe('editing a registered server in the wizard', () => {
     [{ auth: { type: 'none' } }, { authMode: 'none' }],
   ])('pre-fills the auth answer of %j', (spec, expected) => {
     expect(formStateFromServer(registered(spec))).toMatchObject(expected);
+  });
+
+  it('round-trips the advanced authorization-server settings', () => {
+    const server = registered({
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://github.com',
+          authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+          tokenEndpoint: 'https://github.com/login/oauth/access_token',
+          clientCredentialsSecretRef: {
+            name: 'github-oauth-client',
+            namespace: 'muster',
+            clientIdKey: 'clientId',
+            clientSecretKey: 'clientSecret',
+          },
+          grantScope: 'subject',
+        },
+      },
+    });
+
+    // Such a server is editable in the wizard now that it models every key.
+    expect(wizardEditBlocker(server)).toBeUndefined();
+    const form = formStateFromServer(server);
+    expect(form).toMatchObject({
+      authMode: 'own-account',
+      issuer: 'https://github.com',
+      authorizationEndpoint: 'https://github.com/login/oauth/authorize',
+      tokenEndpoint: 'https://github.com/login/oauth/access_token',
+      clientSecretName: 'github-oauth-client',
+      clientSecretNamespace: 'muster',
+      clientIdKey: 'clientId',
+      clientSecretKey: 'clientSecret',
+      grantScope: 'subject',
+    });
+    expect(validateNewMcpServerForm(form)).toEqual([]);
+    expect(composeMcpServerDefinition(form).auth).toEqual(server.getAuth());
   });
 
   it('trims request metadata values on the round trip', () => {
@@ -1185,6 +1402,7 @@ describe('editing a registered server in the wizard', () => {
       { auth: { forwardToken: true, localMint: { enabled: true } } },
       /cannot show or keep/,
     ],
+    // Pinned endpoints are wizard fields now; `expectedIssuer` is not.
     [
       {
         auth: {
@@ -1192,10 +1410,12 @@ describe('editing a registered server in the wizard', () => {
           authorizationServer: {
             issuer: 'https://idp',
             authorizationEndpoint: 'https://idp/authorize',
+            tokenEndpoint: 'https://idp/token',
+            expectedIssuer: 'https://idp',
           },
         },
       },
-      /cannot show or keep/,
+      /cannot show or keep: authorizationServer.expectedIssuer/,
     ],
     // Keys the wizard knows, but of another answer than the server's: the
     // answer it is pre-filled with would compose the auth block without them.

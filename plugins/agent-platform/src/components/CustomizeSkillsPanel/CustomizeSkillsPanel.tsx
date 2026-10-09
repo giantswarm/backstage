@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
-import { Alert, Card, CardBody, Flex, Grid, Text } from '@backstage/ui';
+import { useMemo, useState } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Alert, Button, Card, CardBody, Flex, Grid, Text } from '@backstage/ui';
+import AddIcon from '@material-ui/icons/Add';
 import {
   EmptyStateCard,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   agentsBySkill,
@@ -13,8 +16,15 @@ import {
   uniqueSkills,
   usedByLabel,
 } from '../../lib/customize';
-import { canonicalRepoUrl, canonicalSkillId, repoSlug } from '../../lib/skills';
+import {
+  canonicalRepoUrl,
+  canonicalSkillId,
+  repoSlug,
+  skillDetailPath,
+} from '../../lib/skills';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
+import { skillsRouteRef } from '../../routes';
+import { AddSkillDialog } from '../AddSkillDialog';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 
@@ -82,6 +92,13 @@ function UnreadRepositoriesAlert({
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
+  const skillsRoute = useRouteRef(skillsRouteRef);
+  // The dialog's target repositories: the same signed-in-config list the
+  // catalog is discovered from.
+  const { config } = useSignedInConfig();
+  const repositories =
+    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+  const [isAddOpen, setAddOpen] = useState(false);
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const ranked = useMemo(
     () => rankSkills(searchSkills(skillCatalog.skills, search), usage),
@@ -154,32 +171,46 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
         <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
           {ranked.map(skill => {
             const id = canonicalSkillId(skill);
+            const detailPath = skillDetailPath(skill);
+            const cardBody = (
+              <CardBody>
+                <Flex direction="column" gap="3">
+                  <Text as="h3" variant="body-large" weight="bold">
+                    {skill.name}
+                  </Text>
+                  {skill.description && (
+                    <Text as="p" variant="body-medium" color="secondary">
+                      {skill.description}
+                    </Text>
+                  )}
+                  <Flex justify="between" gap="2">
+                    <Text variant="body-small" color="secondary">
+                      {skillSource(skill)}
+                    </Text>
+                    {!agentsLoading && (
+                      <Text variant="body-small" color="secondary">
+                        {usedByLabel(usage.get(id) ?? 0)}
+                      </Text>
+                    )}
+                  </Flex>
+                </Flex>
+              </CardBody>
+            );
+            // Each card opens the skill's page; a skill outside github.com (or
+            // with the route unbound) has no page and stays a plain card.
             return (
               <Grid.Item key={id}>
-                <Card style={{ height: '100%' }}>
-                  <CardBody>
-                    <Flex direction="column" gap="3">
-                      <Text as="h3" variant="body-large" weight="bold">
-                        {skill.name}
-                      </Text>
-                      {skill.description && (
-                        <Text as="p" variant="body-medium" color="secondary">
-                          {skill.description}
-                        </Text>
-                      )}
-                      <Flex justify="between" gap="2">
-                        <Text variant="body-small" color="secondary">
-                          {skillSource(skill)}
-                        </Text>
-                        {!agentsLoading && (
-                          <Text variant="body-small" color="secondary">
-                            {usedByLabel(usage.get(id) ?? 0)}
-                          </Text>
-                        )}
-                      </Flex>
-                    </Flex>
-                  </CardBody>
-                </Card>
+                {skillsRoute && detailPath ? (
+                  <Card
+                    href={`${skillsRoute()}/${detailPath}`}
+                    label={skill.name}
+                    style={{ height: '100%' }}
+                  >
+                    {cardBody}
+                  </Card>
+                ) : (
+                  <Card style={{ height: '100%' }}>{cardBody}</Card>
+                )}
               </Grid.Item>
             );
           })}
@@ -190,8 +221,26 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
 
   return (
     <Flex direction="column" gap="4">
+      {/* Add skill = a pull request to a source repository, opened as the
+          person (G16 B) — offered whenever a repository to target exists. */}
+      {!skillCatalog.isLoading && repositories.length > 0 && (
+        <Flex justify="end">
+          <Button
+            variant="primary"
+            iconStart={<AddIcon />}
+            onPress={() => setAddOpen(true)}
+          >
+            Add skill
+          </Button>
+        </Flex>
+      )}
       {notes}
       {body}
+      <AddSkillDialog
+        repositories={repositories}
+        isOpen={isAddOpen}
+        onOpenChange={setAddOpen}
+      />
     </Flex>
   );
 }

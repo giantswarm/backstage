@@ -1,7 +1,10 @@
 import { Fragment } from 'react';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, SearchField, Text } from '@backstage/ui';
-import { RecentSessions } from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  RecentSessions,
+  SessionNotificationsBell,
+} from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
 import { makeStyles } from '@material-ui/core/styles';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
@@ -68,7 +71,46 @@ const useStyles = makeStyles({
     marginTop: 'auto',
     borderTop: '1px solid var(--bui-border-1)',
   },
+  // The bell's trigger, dressed as a rail item (it is a button, not a link).
+  bell: {
+    display: 'block',
+    width: '100%',
+    padding: 'var(--bui-space-2)',
+    border: 0,
+    background: 'transparent',
+    borderRadius: 'var(--bui-radius-2)',
+    color: 'var(--bui-fg-primary)',
+    font: 'inherit',
+    textAlign: 'left',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    '&:hover': {
+      background: 'var(--agent-shell-rail-item-hover, var(--bui-bg-neutral-2))',
+    },
+  },
 });
+
+/**
+ * The notification bell, guarded: several test files mock the agent-platform
+ * plugin module with only the exports they know about, and a partial mock
+ * must degrade to "no bell" rather than crash the whole rail.
+ */
+function BellItem({
+  compact,
+  className,
+}: {
+  compact: boolean;
+  className: string;
+}) {
+  if (!SessionNotificationsBell) {
+    return null;
+  }
+  return (
+    <li>
+      <SessionNotificationsBell compact={compact} className={className} />
+    </li>
+  );
+}
 
 // The connector probes each installation and records it healthy; the
 // installation inventory, and so every Agent Platform page, waits on that.
@@ -95,6 +137,7 @@ function AgentShellRail() {
           {[...top, ...bottom].map(item => (
             <RailItem key={item.id} item={item} compact />
           ))}
+          <BellItem compact className={classes.bell} />
         </ul>
       </nav>
     );
@@ -165,6 +208,7 @@ function AgentShellRail() {
             {bottom.map(item => (
               <RailItem key={item.id} item={item} compact={compact} />
             ))}
+            <BellItem compact={compact} className={classes.bell} />
           </ul>
         </Box>
       </Flex>
