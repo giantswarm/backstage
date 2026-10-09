@@ -28,6 +28,15 @@ const useStyles = makeStyles({
     width: '100%',
     justifyContent: 'flex-start',
   },
+  // A line of information, not an action: read at full contrast, not dimmed
+  // as a disabled action would be.
+  email: {
+    '&&': {
+      opacity: 1,
+      cursor: 'default',
+      color: 'var(--bui-fg-secondary)',
+    },
+  },
 });
 
 export function ProfileMenu({
@@ -41,6 +50,7 @@ export function ProfileMenu({
   const identityApi = useApi(identityApiRef);
   const profile = useProfile();
   const name = profile?.displayName || profile?.email || '';
+  const email = profile?.displayName ? profile.email : undefined;
   const Icon = item.icon;
   const avatar = (
     <Avatar
@@ -68,6 +78,11 @@ export function ProfileMenu({
       )}
       <Menu placement="top start">
         <MenuSection title={name || 'Signed in'}>
+          {email ? (
+            <MenuItem id="email" isDisabled className={classes.email}>
+              {email}
+            </MenuItem>
+          ) : null}
           <MenuItem href="/settings" iconStart={<Icon fontSize="small" />}>
             {item.title}
           </MenuItem>
