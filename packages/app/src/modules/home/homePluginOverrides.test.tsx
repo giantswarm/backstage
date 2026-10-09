@@ -9,6 +9,7 @@ import {
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import homePlugin from '@backstage/plugin-home/alpha';
 import { screen } from '@testing-library/react';
+import { agentShellModule } from '../agentShell';
 import { AGENT_SHELL_FLAG } from '../agentShell/predicates';
 import { AgentShellHomePage } from './AgentShellHomePage';
 import { HomePageOverride } from './HomePageOverride';
@@ -18,9 +19,35 @@ jest.mock('./RootPage', () => ({
   RootPage: () => <div data-testid="classic-home" />,
 }));
 
-jest.mock('@giantswarm/backstage-plugin-agent-platform', () => ({
-  AGENT_SHELL_FLAG: 'agent-platform-shell',
-  AgentPlatformHome: () => <div data-testid="agent-shell-home" />,
+jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
+  const { createRouteRef } = jest.requireActual(
+    '@backstage/frontend-plugin-api',
+  );
+  return {
+    AGENT_SHELL_FLAG: 'agent-platform-shell',
+    agentPlatformPlugin: {
+      routes: { sessions: createRouteRef(), usage: createRouteRef() },
+    },
+    RecentSessions: () => null,
+    AgentPlatformHome: ({
+      manageAgentsHref,
+    }: {
+      manageAgentsHref?: string;
+    }) => (
+      <div
+        data-testid="agent-shell-home"
+        data-manage-agents-href={manageAgentsHref ?? ''}
+      />
+    ),
+  };
+});
+
+jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  ClusterAccessConnector: () => null,
+}));
+
+jest.mock('../agentShell/CustomizePage', () => ({
+  CustomizePage: () => <div data-testid="customize-page" />,
 }));
 
 function enabledWith(extension: ExtensionDefinition, featureFlags: string[]) {
@@ -49,9 +76,13 @@ describe('home page overrides', () => {
   });
 });
 
-function renderHome(flag: FeatureFlagState) {
+function renderHome(flag: FeatureFlagState, { withShell = false } = {}) {
   return renderTestApp({
-    features: [homePlugin, homePluginOverrides],
+    features: [
+      homePlugin,
+      homePluginOverrides,
+      ...(withShell ? [agentShellModule] : []),
+    ],
     initialRouteEntries: ['/'],
     apis: [
       mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
@@ -84,5 +115,23 @@ describe('the page at /', () => {
 
     expect(await screen.findByTestId('agent-shell-home')).toBeInTheDocument();
     expect(screen.queryByTestId('classic-home')).not.toBeInTheDocument();
+  });
+
+  it('sends Manage agents to the Agents tab of Customize', async () => {
+    renderHome(FeatureFlagState.Active, { withShell: true });
+
+    expect(await screen.findByTestId('agent-shell-home')).toHaveAttribute(
+      'data-manage-agents-href',
+      '/customize/agents',
+    );
+  });
+
+  it('offers no Manage agents where Customize is not mounted', async () => {
+    renderHome(FeatureFlagState.Active);
+
+    expect(await screen.findByTestId('agent-shell-home')).toHaveAttribute(
+      'data-manage-agents-href',
+      '',
+    );
   });
 });

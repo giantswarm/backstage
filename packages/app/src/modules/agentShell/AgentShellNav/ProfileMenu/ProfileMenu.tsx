@@ -8,7 +8,9 @@ import {
   MenuSection,
   MenuSeparator,
   MenuTrigger,
+  Text,
 } from '@backstage/ui';
+import { Header, MenuSection as AriaMenuSection } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import FlagIcon from '@material-ui/icons/Flag';
@@ -28,14 +30,12 @@ const useStyles = makeStyles({
     width: '100%',
     justifyContent: 'flex-start',
   },
-  // A line of information, not an action: read at full contrast, not dimmed
-  // as a disabled action would be.
-  email: {
-    '&&': {
-      opacity: 1,
-      cursor: 'default',
-      color: 'var(--bui-fg-secondary)',
-    },
+  identity: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    padding: 'var(--bui-space-3) var(--bui-space-3) var(--bui-space-1)',
+    minWidth: 0,
   },
 });
 
@@ -62,6 +62,23 @@ export function ProfileMenu({
     />
   );
 
+  const settingsItems = [
+    <MenuItem
+      key="settings"
+      href="/settings"
+      iconStart={<Icon fontSize="small" />}
+    >
+      {item.title}
+    </MenuItem>,
+    <MenuItem
+      key="feature-flags"
+      href="/settings/feature-flags"
+      iconStart={<FlagIcon fontSize="small" />}
+    >
+      Feature flags
+    </MenuItem>,
+  ];
+
   return (
     <MenuTrigger>
       {compact ? (
@@ -77,22 +94,23 @@ export function ProfileMenu({
         </Button>
       )}
       <Menu placement="top start">
-        <MenuSection title={name || 'Signed in'}>
-          {email ? (
-            <MenuItem id="email" isDisabled className={classes.email}>
-              {email}
-            </MenuItem>
-          ) : null}
-          <MenuItem href="/settings" iconStart={<Icon fontSize="small" />}>
-            {item.title}
-          </MenuItem>
-          <MenuItem
-            href="/settings/feature-flags"
-            iconStart={<FlagIcon fontSize="small" />}
-          >
-            Feature flags
-          </MenuItem>
-        </MenuSection>
+        {email ? (
+          // The email is part of the group's heading, not an item: it is not
+          // something to choose.
+          <AriaMenuSection>
+            <Header className={classes.identity}>
+              <Text as="div" variant="body-small" weight="bold" truncate>
+                {name}
+              </Text>
+              <Text as="div" variant="body-small" color="secondary" truncate>
+                {email}
+              </Text>
+            </Header>
+            {settingsItems}
+          </AriaMenuSection>
+        ) : (
+          <MenuSection title={name || 'Signed in'}>{settingsItems}</MenuSection>
+        )}
         <MenuSeparator />
         <MenuItem
           iconStart={<ExitToAppIcon fontSize="small" />}

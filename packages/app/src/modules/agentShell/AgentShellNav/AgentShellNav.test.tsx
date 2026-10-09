@@ -278,6 +278,14 @@ describe('AgentShellNav', () => {
     expect(within(menu).getByText('Jane Doe')).toBeInTheDocument();
     expect(within(menu).getByText('jane@example.com')).toBeInTheDocument();
     expect(
+      within(menu).getByRole('group', { name: 'Jane Doe jane@example.com' }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map(menuItem => menuItem.textContent),
+    ).toEqual(['Profile and settings', 'Feature flags', 'Sign out']);
+    expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
     ).toHaveAttribute('href', '/settings');
     expect(

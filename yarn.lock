@@ -22756,6 +22756,7 @@ __metadata:
     crypto-js: "npm:^4.2.0"
     history: "npm:^5.0.0"
     react: "npm:^18.0.2"
+    react-aria-components: "npm:~1.17.0"
     react-dom: "npm:^18.0.2"
     react-helmet: "npm:6.1.0"
     react-router-dom: "npm:^6.30.2"
