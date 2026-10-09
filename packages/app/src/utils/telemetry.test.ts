@@ -117,6 +117,24 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  it.each(['agents', 'skills', 'connectors', 'models', 'workflows'])(
+    'reports the %s Customize tab as its view',
+    tab => {
+      expect(getTelemetryPageViewPayload(`/customize/${tab}`)).toEqual({
+        page: 'Customize',
+        view: tab,
+        path: `/customize/${tab}`,
+      });
+    },
+  );
+
+  it('reports an unknown Customize tab without a view', () => {
+    expect(getTelemetryPageViewPayload('/customize/whatever')).toEqual({
+      page: 'Customize',
+      path: '/customize/whatever',
+    });
+  });
+
   it('should return correct payload for installations index page', () => {
     const result = getTelemetryPageViewPayload('/installations');
     expect(result).toEqual({
@@ -257,6 +275,14 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'MCP server', view: 'instances' },
     ],
     [
+      '/agent-platform/mcp-servers/kubernetes/used-by',
+      { page: 'MCP server', view: 'used-by' },
+    ],
+    [
+      '/agent-platform/mcp-servers/kubernetes/settings',
+      { page: 'MCP server', view: 'settings' },
+    ],
+    [
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       { page: 'MCP tool' },
     ],
@@ -327,6 +353,7 @@ describe('getTelemetryPageViewPayload', () => {
     it.each([
       ['/agent-platform/models/serving', 'serving'],
       ['/agent-platform/models/capacity', 'capacity'],
+      ['/agent-platform/models/hosting', 'hosting'],
       ['/agent-platform/models/new', 'new'],
       // The paths an older release's links still carry, before the redirect to
       // the tab root lands.
@@ -500,6 +527,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/create/default/template/my-template',
       '/settings',
       '/customize',
+      '/customize/agents',
+      '/customize/skills',
+      '/customize/connectors',
+      '/customize/models',
+      '/customize/workflows',
       '/installations',
       '/clusters',
       '/clusters/installation/org-demo/demo-cluster',
@@ -514,6 +546,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/mcp-servers/new/verify',
       '/agent-platform/mcp-servers/kubernetes',
       '/agent-platform/mcp-servers/kubernetes/details',
+      '/agent-platform/mcp-servers/kubernetes/used-by',
+      '/agent-platform/mcp-servers/kubernetes/settings',
       '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_get_pods',
       '/agent-platform/workflows',
       '/agent-platform/workflows/my-workflow',
@@ -534,12 +568,14 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/usage/cost',
       '/agent-platform/usage/conversations',
       '/agent-platform/usage/mcp',
+      '/agent-platform/usage/technical',
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',
       '/agent-platform/models/new',
       '/agent-platform/models/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
+      '/agent-platform/models/hosting',
       '/plans',
       '/bot-prs',
       '/plans/pr/22',
@@ -579,6 +615,7 @@ describe('Usage sub-tabs', () => {
     ['cost', '/agent-platform/usage/cost'],
     ['conversations', '/agent-platform/usage/conversations'],
     ['mcp', '/agent-platform/usage/mcp'],
+    ['technical', '/agent-platform/usage/technical'],
   ])('reports the %s view under page Usage', (view, path) => {
     expect(getTelemetryPageViewPayload(path)).toEqual({
       page: 'Usage',

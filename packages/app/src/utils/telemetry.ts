@@ -1,5 +1,14 @@
 import sha256 from 'crypto-js/sha256';
 
+/** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
+const CUSTOMIZE_TABS = new Set([
+  'agents',
+  'skills',
+  'connectors',
+  'models',
+  'workflows',
+]);
+
 export function getTelemetryPageViewPayload(pathname: string): {
   [key: string]: string;
 } {
@@ -66,6 +75,16 @@ export function getTelemetryPageViewPayload(pathname: string): {
     case pathname === '/customize':
       payload = { page: 'Customize' };
       break;
+
+    // A Customize tab, with the tab as the view. Only the known tabs: the
+    // segment comes from the URL, and an unknown one redirects to the overview.
+    case pathname.startsWith('/customize/'): {
+      const tab = pathname.split('/')[2];
+      payload = CUSTOMIZE_TABS.has(tab)
+        ? { page: 'Customize', view: tab }
+        : { page: 'Customize' };
+      break;
+    }
 
     case pathname === '/installations':
       payload = { page: 'Installations index' };
@@ -204,8 +223,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Model detail' };
       break;
 
-    // What hangs off the Models tab: the serving views (`serving`, `capacity`),
-    // `new`, and the `configs` paths an older release's links still carry. Only
+    // What hangs off the Models tab: the serving views (`serving`, `capacity`,
+    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an older release's links still carry. Only
     // the first segment, so anything deeper collapses to what it belongs to
     // instead of opening the dimension up.
     case pathname.startsWith('/agent-platform/models'): {
@@ -292,7 +311,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // `mcp`), with the view as its one segment. The bare path
+    // `mcp`, and the agent-platform shell's `technical`), with the view as its
+    // one segment. The bare path
     // above keeps its existing name rather than becoming 'Usage index': it now
     // only ever redirects here, and renaming it would break continuity in
     // TelemetryDeck for nothing.
