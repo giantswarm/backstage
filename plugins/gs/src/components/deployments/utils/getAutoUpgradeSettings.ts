@@ -142,18 +142,21 @@ function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
 }
 
 /**
- * The range the edit template writes for a fixed mode from the chart version:
- * `~` for patch, `^` for minor and patch (`>=… <1.0.0` for a 0.x version,
- * where `^` admits patches only) and `>=` for any upgrade, with a `-0` floor
- * when pre-releases are included.
+ * The range the edit template writes for a fixed mode from the chart version,
+ * as `templates/app-deployment/template/manifest.yaml` in
+ * giantswarm/backstage-catalogs (v0.7.3 and later) writes it: `~` for patch,
+ * `^` for minor and patch (`>=… <1.0.0` for a 0.x version, where `^` admits
+ * patches only) and `>=` for any upgrade, with a `-0` floor when pre-releases
+ * are included. It is built from the version without a `v` prefix, which
+ * admits the same versions and which the range checks here can read.
  */
 function templateRange(
   mode: AutoUpgradeMode,
   version: Version,
   includePrereleases: boolean,
 ): string | undefined {
-  const tag = version.toOriginalString();
-  const floor = includePrereleases && !tag.includes('-') ? `${tag}-0` : tag;
+  const tag = version.toString();
+  const floor = includePrereleases && !version.prerelease ? `${tag}-0` : tag;
   switch (mode) {
     case 'patch-upgrades':
       return `~${floor}`;
@@ -167,45 +170,33 @@ function templateRange(
 }
 
 /**
- * Whether a range admits, from `base` upward, exactly the upgrades of `mode`:
- * every version up to the mode's bound (the next minor, the next major, or
- * none) and nothing at or above it. Only a range without `||` or `!=` is
- * read, as it admits one interval; the version just below the bound tells
- * whether the interval reaches it.
+ * The versions that tell whether two ranges of the same mode admit the same
+ * upgrades from `base`: the last version below the mode's bound (the next
+ * minor, the next major, or none), and the bound's first pre-release, which
+ * a range with a pre-release floor and a plain upper bound admits.
  */
-function admitsExactlyMode(
-  range: Constraints,
-  base: Version,
-  mode: AutoUpgradeMode,
-): boolean {
-  if (/\|\||!=/.test(range.toString())) return false;
-  if (
-    deriveAutoUpgradeMode({ semver: range.toString() }, base.toString()) !==
-    mode
-  ) {
-    return false;
-  }
-
+function boundProbes(base: Version, mode: AutoUpgradeMode): Version[] {
   const max = Number.MAX_SAFE_INTEGER;
   const { major, minor } = base;
-  const belowBound: Partial<Record<AutoUpgradeMode, string>> = {
-    'patch-upgrades': `${major}.${minor}.${max}`,
-    'minor-upgrades': `${major}.${max}.${max}`,
-    'major-upgrades': `${max}.${max}.${max}`,
+  const probes: Partial<Record<AutoUpgradeMode, string[]>> = {
+    'patch-upgrades': [`${major}.${minor}.${max}`, `${major}.${minor + 1}.0-0`],
+    'minor-upgrades': [`${major}.${max}.${max}`, `${major + 1}.0.0-0`],
+    'major-upgrades': [`${max}.${max}.${max}`],
   };
-  const probe = belowBound[mode];
-  return Boolean(probe && range.check(Version.parse(probe)));
+  return (probes[mode] ?? []).map(probe => Version.parse(probe));
 }
 
 /**
- * The semver range, when the edit template's fixed modes cannot write it back:
- * unless both the range and the template's range for its mode admit exactly
- * that mode's upgrades from the current version. Then the floor moves to the
- * current version, which leaves the upgrades Flux performs unchanged, so
- * `>=5.12.0 <6.0.0`, `^5.12.0`, `>=0.2.0 <1.0.0` and `^0.7.1` (patches only)
- * read as a fixed mode. Any other range, such as one with an upper bound
- * inside the mode (`>=1.0.0 <3.0.0`), goes to the template's custom range
- * mode verbatim.
+ * The semver range, when the edit template's fixed modes cannot write it back.
+ * A range of `mode` without `||` or `!=` admits one interval from the current
+ * version; the template writes it back when its own range for the mode has
+ * the same mode and both admit the same versions at the mode's bound. The
+ * floor then moves to the current version, which leaves the upgrades Flux
+ * performs unchanged, so `>=5.12.0 <6.0.0`, `^5.12.0`, `>=0.2.0 <1.0.0` and
+ * `^0.7.1` (patches only) read as a fixed mode. Any other range, such as one
+ * with an upper bound inside the mode (`>=1.0.0 <1.5.0` at 1.2.0) or one that
+ * admits the bound's pre-releases (`>=1.0.0-0 <3.0.0`), goes to the
+ * template's custom range mode verbatim.
  */
 function deriveCustomRange(
   ref: OciRepositoryRef | undefined,
@@ -217,17 +208,23 @@ function deriveCustomRange(
 
   const range = ref.semver.trim();
   const constraints = Constraints.tryParse(range);
-  const base = constraints ? rangeBase(constraints, currentVersion) : null;
-  const written = base && templateRange(mode, base, includePrereleases);
-  const writtenConstraints = written ? Constraints.tryParse(written) : null;
+  if (!constraints || /\|\||!=/.test(range)) return range;
 
-  const isFixedMode =
-    constraints &&
-    base &&
-    writtenConstraints &&
-    admitsExactlyMode(constraints, base, mode) &&
-    admitsExactlyMode(writtenConstraints, base, mode);
-  return isFixedMode ? undefined : range;
+  const base = rangeBase(constraints, currentVersion);
+  const written = base && templateRange(mode, base, includePrereleases);
+  if (!base || !written) return range;
+  if (deriveAutoUpgradeMode({ semver: written }, base.toString()) !== mode) {
+    return range;
+  }
+
+  const writtenConstraints = Constraints.parse(written);
+  const probes = boundProbes(base, mode);
+  const writesBack =
+    constraints.check(probes[0]) &&
+    probes.every(
+      probe => constraints.check(probe) === writtenConstraints.check(probe),
+    );
+  return writesBack ? undefined : range;
 }
 
 export type AutoUpgradeSettings = {
