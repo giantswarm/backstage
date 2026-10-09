@@ -9,6 +9,7 @@
  * part and metadata readers live here too, even though only the frontend rendered
  * them until the usage summary needed the same arithmetic server-side.
  */
+export * from './agentShellFlag';
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';
 export * from './kagent/kagentA2aV1';
