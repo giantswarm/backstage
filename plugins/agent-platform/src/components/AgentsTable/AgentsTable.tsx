@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
+  Button,
   Cell,
   CellText,
   ColumnConfig,
@@ -191,7 +192,8 @@ function getColumnConfig(
       minWidth: 120,
       cell: row => (
         <CellText
-          title={row.harness ?? '—'}
+          title={row.harnessTitle ?? row.harness ?? '—'}
+          description={row.harnessTitle && row.harness}
           color={isAgentRowMuted(row) ? 'secondary' : undefined}
         />
       ),
@@ -289,14 +291,24 @@ export function AgentsTable({
 
   const hiddenKey = hideColumns?.join(',') ?? '';
 
+  // By name, labelled with the title the column shows for it.
+  const harnessOptions = useMemo(() => {
+    const titles = new Map<string, string | undefined>();
+    for (const row of rows) {
+      if (row.harness !== undefined && !titles.get(row.harness)) {
+        titles.set(row.harness, row.harnessTitle);
+      }
+    }
+    return [...titles]
+      .map(([name, title]) => ({
+        id: name,
+        label: title ? `${title} (${name})` : name,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [rows]);
   const harnesses = useMemo(
-    () =>
-      [
-        ...new Set(
-          rows.flatMap(row => (row.harness === undefined ? [] : [row.harness])),
-        ),
-      ].sort((a, b) => a.localeCompare(b)),
-    [rows],
+    () => harnessOptions.map(option => option.id),
+    [harnessOptions],
   );
   const showsHarnessFilter =
     !hideColumns?.includes('harness') && harnesses.length > 1;
@@ -398,7 +410,7 @@ export function AgentsTable({
               aria-label="Filter by Harness"
               options={[
                 { id: ALL_HARNESSES, label: 'All Harnesses' },
-                ...harnesses.map(name => ({ id: name, label: name })),
+                ...harnessOptions,
               ]}
               selectedKey={harnessFilter ?? ALL_HARNESSES}
               onSelectionChange={onHarnessChange}
@@ -421,9 +433,23 @@ export function AgentsTable({
           },
         }}
         emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyMessage(searchTerm, harnessFilter)}
-          </Text>
+          <Flex direction="column" gap="2" align="start">
+            <Text variant="body-medium" color="secondary">
+              {emptyMessage(searchTerm, harnessFilter)}
+            </Text>
+            {searchTerm && (
+              <Button
+                variant="secondary"
+                size="small"
+                onPress={() => {
+                  search.onChange('');
+                  onHarnessChange(null);
+                }}
+              >
+                Show all agents
+              </Button>
+            )}
+          </Flex>
         }
       />
     </Flex>

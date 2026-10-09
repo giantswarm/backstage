@@ -8,6 +8,7 @@ import {
 } from 'react';
 import {
   Agent,
+  Harness,
   isNotFoundError,
   ModelConfig,
   RemoteMCPServer,
@@ -124,6 +125,9 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const [carriersByInstallation, setCarriersByInstallation] = useState<
     Record<string, RemoteMCPServer[]>
   >({});
+  const [harnessesByInstallation, setHarnessesByInstallation] = useState<
+    Record<string, Harness[]>
+  >({});
 
   // Home first, literally: the home installation is queried alone, and the
   // others only once it has answered (rows, an empty list, or a failure), so
@@ -153,6 +157,15 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     Agent,
     {},
     { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
+  );
+
+  // The Harnesses the agents name, for what the list calls each one. A failed
+  // read leaves the rows with the Harness name alone.
+  const harnesses = useResources(
+    queriedInstallations,
+    Harness,
+    {},
+    { enableDiscovery: false, refetchInterval: BASELINE_REFETCH_INTERVAL_MS },
   );
 
   // The toolset carriers: on API v2 an agent's `X-Muster-Toolset` header lives
@@ -298,6 +311,37 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carriersSignature]);
 
+  const harnessesSignature = useMemo(
+    () =>
+      harnesses.clustersData
+        .map(
+          ({ cluster, data }) =>
+            `${cluster}:${data
+              .map(
+                item =>
+                  `${item.metadata?.namespace ?? ''}/${
+                    item.metadata?.name ?? ''
+                  }@${item.metadata?.resourceVersion ?? ''}`,
+              )
+              .join(',')}`,
+        )
+        .sort()
+        .join('|'),
+    [harnesses.clustersData],
+  );
+
+  useEffect(() => {
+    const next: Record<string, Harness[]> = {};
+    for (const { cluster } of harnesses.clustersData) {
+      next[cluster] = [];
+    }
+    for (const harness of harnesses.resources) {
+      next[harness.cluster]?.push(harness);
+    }
+    setHarnessesByInstallation(prev => ({ ...prev, ...next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harnessesSignature]);
+
   // Prune cached entries for installations that have durably left the scoped
   // set (session-expired, degraded, removed from config, or outside a pinned
   // scope). They are no longer queried, so they'd never produce a
@@ -326,6 +370,14 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
         ? prev
         : kept;
     });
+    setHarnessesByInstallation(prev => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([cluster]) => scoped.has(cluster)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length
+        ? prev
+        : kept;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
@@ -340,6 +392,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // Undefined until the installation's servers have answered once, so
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
+            harnessesByInstallation[cluster],
           ),
         ),
       ),
@@ -403,6 +456,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   }, [
     agentsByInstallation,
     carriersByInstallation,
+    harnessesByInstallation,
     erroredInstallations,
     isLoading,
     isProbing,

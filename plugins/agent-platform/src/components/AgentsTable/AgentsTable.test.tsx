@@ -514,6 +514,48 @@ describe('AgentsTable Harness', () => {
     expect(bodyRowCount()).toBe(3);
   });
 
+  it('shows the Harness title over its name, in the column and the filter', async () => {
+    const user = userEvent.setup();
+    await renderTable(
+      <AgentsTable
+        rows={[...rows, { ...coder, harnessTitle: 'Claude Code' }]}
+      />,
+    );
+
+    const body = screen.getAllByRole('rowgroup')[1];
+    expect(within(body).getByText('Claude Code')).toBeInTheDocument();
+    expect(within(body).getByText('claude-go')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Filter by Harness/ }));
+    await user.click(
+      await screen.findByRole('option', { name: 'Claude Code (claude-go)' }),
+    );
+    expect(bodyRowCount()).toBe(1);
+  });
+
+  it('shows every agent again from an empty search', async () => {
+    const user = userEvent.setup();
+    await renderTable(<AgentsTable rows={mixed} searchDebounceMs={0} />);
+
+    await user.click(screen.getByRole('button', { name: /Filter by Harness/ }));
+    await user.click(await screen.findByRole('option', { name: 'claude-go' }));
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+      'triages',
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Show all agents' }),
+    );
+
+    expect(bodyRowCount()).toBe(3);
+    expect(
+      screen.getByRole('searchbox', { name: 'Search agents' }),
+    ).toHaveValue('');
+    expect(
+      screen.getByRole('button', { name: /Filter by Harness/ }),
+    ).toHaveTextContent('All Harnesses');
+  });
+
   it('names the Harness when the filter and the search leave nothing', async () => {
     const user = userEvent.setup();
     await renderTable(<AgentsTable rows={mixed} searchDebounceMs={0} />);

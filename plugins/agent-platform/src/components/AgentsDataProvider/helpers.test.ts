@@ -3,6 +3,7 @@ import {
   AgentCondition,
   AgentInterface,
   AgentStatus,
+  Harness,
   ModelConfig,
   ModelConfigInterface,
   RemoteMCPServer,
@@ -324,6 +325,40 @@ describe('toAgentRow', () => {
     ).toBeUndefined();
   });
 
+  it('carries the title of the Harness it runs on, once that is read', () => {
+    const harness = (name: string, namespace: string, displayName?: string) =>
+      new Harness(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: {
+            name,
+            namespace,
+            ...(displayName && {
+              annotations: { 'ui.giantswarm.io/display-name': displayName },
+            }),
+          },
+          spec: { claude: {}, workload: { image: 'registry.example/h' } },
+        } as never,
+        'inst-1',
+      );
+    const agent = makeAgent({ harness: 'claude-go' });
+    const namespace = agent.getNamespace();
+
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', 'elsewhere', 'Not this one'),
+        harness('claude-go', namespace!),
+      ]).harnessTitle,
+    ).toBe('Claude Code');
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!, 'Go coder Harness'),
+      ]).harnessTitle,
+    ).toBe('Go coder Harness');
+    expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
+  });
+
   it('carries the Harness warnings', () => {
     const row = toAgentRow(
       makeAgent({
@@ -522,6 +557,18 @@ describe('sortAgentsBy', () => {
   const row = (name: string, overrides: Partial<AgentRow> = {}): AgentRow => ({
     ...toAgentRow(makeAgent({ name, displayName: name }), []),
     ...overrides,
+  });
+
+  it('sorts by Harness as the column shows it, title before name', () => {
+    const sorted = sortAgentsBy(
+      [
+        row('a', { harness: 'kagent', harnessTitle: 'Declarative (Go ADK)' }),
+        row('b', { harness: 'claude-go', harnessTitle: 'Claude Code' }),
+        row('c', { harness: 'aaa-unread' }),
+      ],
+      { column: 'harness', direction: 'ascending' },
+    );
+    expect(sorted.map(r => r.name)).toEqual(['c', 'b', 'a']);
   });
 
   const names = (rows: AgentRow[]) => rows.map(r => r.name);
@@ -744,6 +791,16 @@ describe('agentSearchFn', () => {
 
   it('finds an agent by its Harness', () => {
     expect(agentSearchFn(rows, 'CLAUDE-go').map(row => row.name)).toEqual([
+      'coder',
+    ]);
+  });
+
+  it('finds an agent by its Harness title', () => {
+    const titled = [
+      { ...rows[0], harnessTitle: 'Claude Code' },
+      ...rows.slice(1),
+    ];
+    expect(agentSearchFn(titled, 'claude code').map(row => row.name)).toEqual([
       'coder',
     ]);
   });

@@ -69,17 +69,26 @@ jest.mock('../ServingProvider', () => ({
   useOptionalServing: () => undefined,
 }));
 
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  // The real module underneath: the toolset read pulls in the muster plugin,
-  // whose resource classes extend this library's KubeObject at import time.
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  Agent: class {},
-  ModelConfig: class {},
-  RemoteMCPServer: class {},
-  useResources: (...args: unknown[]) => mockUseResources(...args),
-  isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
-    e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
-}));
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  // Harness reads answer empty, so `mockUseResources` sees only the Agents
+  // and the carriers.
+  const MockHarness = class {};
+  return {
+    // The real module underneath: the toolset read pulls in the muster plugin,
+    // whose resource classes extend this library's KubeObject at import time.
+    ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+    Agent: class {},
+    Harness: MockHarness,
+    ModelConfig: class {},
+    RemoteMCPServer: class {},
+    useResources: (...args: unknown[]) =>
+      args[1] === MockHarness
+        ? { resources: [], clustersData: [], isLoading: false, errors: [] }
+        : mockUseResources(...args),
+    isNotFoundError: (e: { type?: string; error?: { name?: string } }) =>
+      e.type !== 'incompatibility' && e.error?.name === 'NotFoundError',
+  };
+});
 
 type AgentSpec = {
   name: string;
