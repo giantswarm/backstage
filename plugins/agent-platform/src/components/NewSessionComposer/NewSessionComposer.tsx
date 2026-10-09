@@ -45,6 +45,9 @@ const SEARCHABLE_THRESHOLD = 8;
 /** Matches the sessions table's row avatar: one line of text, 2× for hi-dpi. */
 const OPTION_AVATAR_SIZE: AvatarSize = 48;
 
+/** Id of the picker's last option, an action rather than an agent. */
+const FOOTER_ACTION_ID = 'action:picker-footer';
+
 const useStyles = makeStyles(theme => ({
   // bui sets a leading icon flush against the label, which suits a line icon but
   // not an avatar: a filled circle needs real space or the two read as one
@@ -59,6 +62,14 @@ const useStyles = makeStyles(theme => ({
   agentSelect: {
     maxWidth: 260,
     minWidth: 0,
+  },
+  '@global': {
+    [`[role="listbox"] [data-key="${FOOTER_ACTION_ID}"]`]: {
+      borderTopWidth: 1,
+      borderTopStyle: 'solid',
+      borderTopColor: 'var(--bui-border-1)',
+      marginTop: 4,
+    },
   },
 }));
 
@@ -99,9 +110,6 @@ export type NewSessionComposerFooterContext = {
 
 /** Prefix of the option ids in the Recent group, which repeat agents listed below it. */
 const RECENT_OPTION_PREFIX = 'recent:';
-
-/** Id of the picker's last option, an action rather than an agent. */
-const FOOTER_ACTION_ID = 'action:picker-footer';
 
 /** An action listed last in the agent picker, e.g. a link to manage agents. */
 export type NewSessionComposerPickerAction = {
@@ -209,15 +217,19 @@ function oneShortLine(text: string): string {
     : collapsed;
 }
 
-/** The picker's search: by label, keeping the footer action in view. */
-function matchesPickerSearch(
-  option: { id: Key; label?: string },
-  query: string,
-): boolean {
-  return (
-    option.id === FOOTER_ACTION_ID ||
-    (option.label ?? '').toLowerCase().includes(query.trim().toLowerCase())
-  );
+function labelMatches(label: string | undefined, query: string): boolean {
+  return (label ?? '').toLowerCase().includes(query.trim().toLowerCase());
+}
+
+/**
+ * The picker's search, by label. The footer action stays in view while some
+ * agent matches, so a search that matches none shows the empty state.
+ */
+function pickerSearchFilter(agentLabels: string[]) {
+  return (option: { id: Key; label?: string }, query: string): boolean =>
+    option.id === FOOTER_ACTION_ID
+      ? agentLabels.some(label => labelMatches(label, query))
+      : labelMatches(option.label, query);
 }
 
 /**
@@ -430,6 +442,19 @@ export function NewSessionComposer({
     }));
   }, [listed, renderAvatar, groupByNamespace, recentAgentIds, isSearching]);
 
+  const searchFilter = useMemo(
+    () =>
+      pickerSearchFilter(
+        listed.map(agent =>
+          agentOptionLabel(
+            agent,
+            new Set(listed.map(each => each.installation)).size > 1,
+          ),
+        ),
+      ),
+    [listed],
+  );
+
   const pickerOptions = useMemo(
     () =>
       pickerFooterAction
@@ -593,14 +618,18 @@ export function NewSessionComposer({
                         inputValue: searchText,
                         onInputChange: setSearchText,
                         placeholder: `Search ${listed.length} agents`,
-                        filter: matchesPickerSearch,
+                        filter: searchFilter,
                       },
                     }
                   : { searchable: isSearchable })}
                 // A sole startable agent is no choice, unless unavailable ones
-                // are listed beside it with their reasons.
+                // are listed beside it with their reasons or the picker also
+                // holds its footer action.
                 isDisabled={
-                  isStarting || (Boolean(soleAgent) && listed.length === 1)
+                  isStarting ||
+                  (Boolean(soleAgent) &&
+                    listed.length === 1 &&
+                    !pickerFooterAction)
                 }
               />
               {renderPickerAccessory?.(selectedAgent)}

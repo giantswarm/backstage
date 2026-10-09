@@ -714,6 +714,63 @@ describe('opt-in picker options', () => {
     expect(agentPicker()).toHaveTextContent('Select an agent');
   });
 
+  it('keeps the footer action reachable beside a sole agent', async () => {
+    const onAction = jest.fn();
+    renderComposer({
+      agents: [sre],
+      pickerFooterAction: { label: 'Manage agents', onAction },
+    });
+
+    expect(agentPicker()).toBeEnabled();
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Manage agents' }),
+    );
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+  });
+
+  it('keeps a sole agent without a footer action as no choice', () => {
+    renderComposer({ agents: [sre] });
+
+    expect(agentPicker()).toBeDisabled();
+  });
+
+  it('says nothing matches rather than offering only the footer action', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      searchable: true,
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'zebra',
+    );
+
+    expect(
+      screen.queryByRole('option', { name: 'Manage agents' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+  });
+
+  it('sets the footer action apart from the agents', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getByRole('option', { name: 'Manage agents' })).toHaveStyle({
+      borderTop: '1px solid var(--bui-border-1)',
+    });
+  });
+
   it('starts with the initial prompt', () => {
     renderComposer({ initialPrompt: 'Which clusters still run 1.31?' });
 
