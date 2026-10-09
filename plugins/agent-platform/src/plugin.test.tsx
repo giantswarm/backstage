@@ -4,10 +4,18 @@ import {
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import { useMemo } from 'react';
+import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
 import { agentPlatformPlugin } from './plugin';
+
+function RegistersHeaderAction() {
+  const actions = useMemo(() => <button>Header action</button>, []);
+  useProvidePageHeaderActions(actions);
+  return <div>Models content</div>;
+}
 
 function stubSubPage(name: string, title: string) {
   return SubPageBlueprint.make({
@@ -46,6 +54,14 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
           stubSubPage('usage', 'Usage'),
           stubSubPage('agents', 'Agents'),
           stubSubPage('sessions', 'Sessions'),
+          SubPageBlueprint.make({
+            name: 'models',
+            params: {
+              path: 'models',
+              title: 'Models',
+              loader: async () => <RegistersHeaderAction />,
+            },
+          }),
         ],
       }),
     ],
@@ -71,6 +87,7 @@ describe('the Agent Platform page', () => {
       expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
         'Sessions',
         'Agents',
+        'Models',
         'MCP Servers',
         'Usage',
       ]);
@@ -123,6 +140,17 @@ describe('the Agent Platform page', () => {
       renderPage(FeatureFlagState.Active, '/agent-platform');
 
       expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+    });
+
+    it('renders the actions a sub-page registers in its header', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/models');
+
+      expect(await screen.findByText('Models content')).toBeInTheDocument();
+      const heading = screen.getByRole('heading', { level: 1, name: 'Models' });
+      const header = heading.parentElement?.parentElement as HTMLElement;
+      expect(
+        within(header).getByRole('button', { name: 'Header action' }),
+      ).toBeVisible();
     });
 
     it('names the sub-page in the document title', async () => {

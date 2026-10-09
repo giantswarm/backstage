@@ -5,6 +5,10 @@ import { BreadcrumbEntry } from '@backstage/frontend-plugin-api';
 import { ButtonLink, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import AddIcon from '@material-ui/icons/Add';
+import {
+  PageHeaderActionsProvider,
+  usePageHeaderActionsSlot,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 export type AgentPlatformSubPage = {
   path: string;
@@ -33,6 +37,7 @@ const useStyles = makeStyles(theme => ({
 function SubPageHeader({ title, path }: { title: string; path: string }) {
   const classes = useStyles();
   const { description, action } = SHELL_PAGE_HEADERS[path] ?? {};
+  const slotActions = usePageHeaderActionsSlot();
   return (
     <Flex justify="between" align="start" gap="4" className={classes.header}>
       <Flex direction="column" gap="1">
@@ -45,14 +50,19 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
           </Text>
         )}
       </Flex>
-      {action && (
-        <ButtonLink
-          href={action.href}
-          variant="primary"
-          iconStart={<AddIcon />}
-        >
-          {action.label}
-        </ButtonLink>
+      {(action || slotActions) && (
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          {slotActions}
+          {action && (
+            <ButtonLink
+              href={action.href}
+              variant="primary"
+              iconStart={<AddIcon />}
+            >
+              {action.label}
+            </ButtonLink>
+          )}
+        </Flex>
       )}
     </Flex>
   );
@@ -63,6 +73,10 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
  * page rendered without its tab strip: a bare path lands on the first one, and
  * each names itself in the document title as its tab would and heads its
  * content with its own title.
+ *
+ * The page renders without the app's page layout, so the header-actions slot
+ * that layout would provide is mounted here: the actions a sub-page registers
+ * with `useProvidePageHeaderActions` render in its header.
  */
 export function AgentPlatformPageRoutes({
   pageTitle,
@@ -73,26 +87,28 @@ export function AgentPlatformPageRoutes({
 }) {
   const firstPath = pages[0]?.path;
   return (
-    <Routes>
-      {firstPath && (
-        <Route index element={<Navigate to={firstPath} replace />} />
-      )}
-      {pages.map(page => {
-        const label = page.title || page.path;
-        return (
-          <Route
-            key={page.path}
-            path={`${page.path}/*`}
-            element={
-              <BreadcrumbEntry entry={{ label, href: page.path }}>
-                <Helmet title={`${label} · ${pageTitle}`} />
-                <SubPageHeader title={label} path={page.path} />
-                {page.element}
-              </BreadcrumbEntry>
-            }
-          />
-        );
-      })}
-    </Routes>
+    <PageHeaderActionsProvider>
+      <Routes>
+        {firstPath && (
+          <Route index element={<Navigate to={firstPath} replace />} />
+        )}
+        {pages.map(page => {
+          const label = page.title || page.path;
+          return (
+            <Route
+              key={page.path}
+              path={`${page.path}/*`}
+              element={
+                <BreadcrumbEntry entry={{ label, href: page.path }}>
+                  <Helmet title={`${label} · ${pageTitle}`} />
+                  <SubPageHeader title={label} path={page.path} />
+                  {page.element}
+                </BreadcrumbEntry>
+              }
+            />
+          );
+        })}
+      </Routes>
+    </PageHeaderActionsProvider>
   );
 }
