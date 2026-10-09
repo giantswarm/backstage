@@ -1,5 +1,5 @@
 import type { FilterPredicate } from '@backstage/filter-predicates';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform';
+import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 export { AGENT_SHELL_FLAG };
 
