@@ -26,7 +26,6 @@ import {
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
-import { AvatarSize } from '../../lib/agentAvatar';
 import { toneColor } from '../../lib/sessionStateTone';
 import {
   SessionRow,
@@ -50,38 +49,17 @@ import {
   SessionStateFilter,
   sessionAgentOptions,
 } from './filters';
-import { AgentAvatar } from '../AgentAvatar';
+import {
+  RUNTIME_LOST_LABEL,
+  RUNTIME_LOST_TITLE,
+  SessionAgent,
+  TRUNCATE,
+  Unknown,
+} from './cells';
+import { ShellSessionsTable } from './ShellSessionsTable';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
-/** The avatar is one line of text tall; request 2× for hi-dpi crispness. */
-const ROW_AVATAR_SIZE: AvatarSize = 48;
-
-/**
- * The mark on a session whose runtime kagent reports lost — the same two words
- * on the list, the rail and the page's header, so one session reads the same
- * everywhere.
- */
-export const RUNTIME_LOST_LABEL = 'Runtime lost';
-export const RUNTIME_LOST_TITLE =
-  'kagent cannot bring this session’s agent back; the transcript stays readable. Start a new session to carry on.';
-
-/** One line, cut with an ellipsis at the width of its container. */
-const TRUNCATE = {
-  display: 'block',
-  minWidth: 0,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-} as const;
-
-/** Dash shown where a value is genuinely unknown. */
-function Unknown() {
-  return (
-    <Text variant="body-medium" color="secondary">
-      —
-    </Text>
-  );
-}
+export { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE };
 
 /** Copy for each way a state can be missing, kept in one place. */
 const STATE_UNKNOWN_TITLE =
@@ -255,34 +233,7 @@ function getColumnConfig(
       minWidth: 160,
       cell: row => (
         <Cell>
-          {row.agentName ? (
-            <Flex align="center" gap="2">
-              <AgentAvatar
-                size="small"
-                purpose="decoration"
-                name={row.agentName}
-                src={
-                  buildAvatarUrl(
-                    row.installation,
-                    row.agentTechnicalName ?? '',
-                    {
-                      size: ROW_AVATAR_SIZE,
-                    },
-                  ) ?? ''
-                }
-              />
-              <Text
-                variant="body-medium"
-                truncate
-                title={row.agentName}
-                style={{ minWidth: 0 }}
-              >
-                {row.agentName}
-              </Text>
-            </Flex>
-          ) : (
-            <Unknown />
-          )}
+          <SessionAgent row={row} buildAvatarUrl={buildAvatarUrl} />
         </Cell>
       ),
     },
@@ -459,16 +410,37 @@ export type SessionsTableProps = {
    * picker (when the Agent column shows).
    */
   showFilters?: boolean;
+  /**
+   * `shell` is the agent-platform shell's list: rows grouped by the day they
+   * started, the shell's state words, and a row menu. It always shows its
+   * search and filters, and does not paginate or sort.
+   */
+  layout?: 'classic' | 'shell';
 };
 
 /**
- * Presentational table of sessions, with client-side search and sorting.
+ * Presentational table of sessions, with client-side search and filtering.
  *
  * The page owns the loading indicator for incremental fleet loading and the
  * per-installation notices; this renders rows, the search field, and the empty
  * state.
  */
-export function SessionsTable({
+export function SessionsTable({ layout, ...props }: SessionsTableProps) {
+  return layout === 'shell' ? (
+    <ShellSessionsTable {...props} />
+  ) : (
+    <ClassicSessionsTable {...props} />
+  );
+}
+
+/**
+ * The classic list: one paginated table with sortable columns.
+ *
+ * The page owns the loading indicator for incremental fleet loading and the
+ * per-installation notices; this renders rows, the search field, and the empty
+ * state.
+ */
+function ClassicSessionsTable({
   rows,
   sessionStates,
   isLoading,

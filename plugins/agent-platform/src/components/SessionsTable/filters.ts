@@ -2,6 +2,7 @@ import {
   AWAITING_INPUT_STATES,
   CANCELED_STATE,
   FAILED_STATES,
+  SHELL_STATE_LABELS,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   SessionTableRow,
@@ -33,6 +34,25 @@ export const SESSION_STATE_FILTERS: ReadonlyArray<{
   { id: 'finished', label: 'Completed' },
   { id: 'idle', label: STATE_IDLE_LABEL },
   { id: 'unknown', label: STATE_UNKNOWN_LABEL },
+];
+
+/**
+ * The shell's State chips: the same buckets, named in the shell's four state
+ * words. `whenPresent` chips show only while a row falls in them, because the
+ * shell does not name those as states of their own.
+ */
+export const SHELL_SESSION_STATE_FILTERS: ReadonlyArray<{
+  id: SessionStateFilter;
+  label: string;
+  whenPresent?: boolean;
+}> = [
+  { id: 'all', label: 'All' },
+  { id: 'waiting', label: SHELL_STATE_LABELS.waiting },
+  { id: 'running', label: SHELL_STATE_LABELS.working },
+  { id: 'finished', label: SHELL_STATE_LABELS.finished },
+  { id: 'failed', label: SHELL_STATE_LABELS.failed },
+  { id: 'idle', label: STATE_IDLE_LABEL, whenPresent: true },
+  { id: 'unknown', label: STATE_UNKNOWN_LABEL, whenPresent: true },
 ];
 
 export type SessionsFilter = {
