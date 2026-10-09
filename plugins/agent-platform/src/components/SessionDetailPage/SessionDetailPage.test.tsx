@@ -1403,6 +1403,133 @@ describe('SessionDetailPage', () => {
       ).not.toBeInTheDocument();
     });
 
+    describe('a streamed reply the poll has read back', () => {
+      const replyTimeline = (text: string) => ({
+        ...timeline,
+        items: [
+          {
+            kind: 'user-message' as const,
+            id: 'm-sent',
+            taskIndex: 0,
+            messageId: 'm-sent',
+            text: 'how are the nodes?',
+          },
+          {
+            kind: 'agent-message' as const,
+            id: 'art-reply',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text,
+          },
+        ],
+      });
+      const replyStream = {
+        ...createStreamTurn('m-sent'),
+        dispatched: true,
+        items: [
+          {
+            kind: 'agent-message' as const,
+            id: 'stream:0',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text: 'All nodes are ready.',
+          },
+        ],
+      };
+
+      it('is shown once', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes are ready.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+      });
+
+      it('shows what the stream has beyond a read that cut it off', async () => {
+        // kagent appends to an artifact as it streams, so a poll mid-reply holds
+        // the start of it under the same id.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+
+      it('advances it from the text still being written', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [],
+              live: {
+                kind: 'agent-message' as const,
+                text: 'All nodes are rea',
+                messageId: 'art-reply',
+              },
+            },
+          }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are rea')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+
+      it('keeps each paragraph in its place when text follows a call', async () => {
+        // Both paragraphs and the call between them are one message. The poll
+        // read only the first; the second must neither take its place nor wait
+        // for the next read.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('Checking the nodes.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            stream: {
+              ...replyStream,
+              items: [
+                { ...replyStream.items[0], text: 'Checking the nodes.' },
+                {
+                  kind: 'tool-call' as const,
+                  id: 'stream:1',
+                  taskIndex: 0,
+                  messageId: 'art-reply',
+                  toolName: 'kubectl_get',
+                  isPending: true,
+                },
+                { ...replyStream.items[0], id: 'stream:2' },
+              ],
+            },
+          }),
+        );
+        await render();
+
+        const first = screen.getByText('Checking the nodes.');
+        const second = screen.getByText('All nodes are ready.');
+        expect(
+          first.compareDocumentPosition(second) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      });
+    });
+
     describe('a streamed turn ending', () => {
       /** The stream's copy of a cancel: terminal, and with no reason to carry. */
       const canceledStream = () => ({

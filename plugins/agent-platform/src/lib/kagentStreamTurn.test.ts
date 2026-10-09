@@ -271,6 +271,29 @@ describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {
     }
   });
 
+  it('credits what an artifact completes to the author its metadata names', () => {
+    const turn = applyStreamEvent(createStreamTurn('sent-1'), {
+      artifactUpdate: {
+        taskId,
+        contextId: 'c1',
+        artifact: {
+          artifactId: 'art-reply',
+          parts: [{ text: 'Done.' }],
+          metadata: { adk_author: 'sre_agent' },
+        },
+        lastChunk: true,
+      },
+    });
+
+    expect(turn.items).toEqual([
+      expect.objectContaining({
+        kind: 'agent-message',
+        messageId: 'art-reply',
+        author: 'sre_agent',
+      }),
+    ]);
+  });
+
   it('ends the live view on a v1 pause, whose status update carries no final flag', () => {
     const turn = [
       {
@@ -677,9 +700,8 @@ describe('applyStreamEvent', () => {
 
     it('does not duplicate the reply the terminal status update repeats', () => {
       // The Go flow can deliver the same response twice — as the
-      // `partial: false` artifact and again on the final status update — and
-      // only the second carries a messageId. Identical adjacent text is the
-      // dedupe.
+      // `partial: false` artifact and again on the final status update — under
+      // two different ids. Identical adjacent text is the dedupe.
       const turn = fold([
         artifactUpdate([textPart('The answer.')], { partial: false }),
         statusUpdate(agentMessage([textPart('The answer.')]), {
