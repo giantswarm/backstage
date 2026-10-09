@@ -12,10 +12,20 @@ test('the roster shows the agent table with its columns', async ({
   labAgent,
 }) => {
   await open(admin, '/agent-platform/agents');
+  const grid = admin.getByRole('grid', { name: 'Data table' });
+  // Deploy writes the agent's HelmRelease; the roster lists the Agent once
+  // Flux has rendered it, a poll or two later. Until then a lab without other
+  // agents shows the "No agents yet" empty state, without search or table, so
+  // the fixture agent's row comes first.
+  await expect(
+    grid
+      .getByRole('rowheader')
+      .getByRole('link', { name: labAgent.name, exact: true }),
+    'the roster lists the fixture agent',
+  ).toBeVisible({ timeout: 2 * 60_000 });
   await expect(
     admin.getByRole('searchbox', { name: 'Search agents' }),
   ).toBeVisible();
-  const grid = admin.getByRole('grid', { name: 'Data table' });
   // The lab is one installation with its agents in one namespace, so neither
   // column would tell a row apart.
   await expect(grid.getByRole('columnheader')).toHaveText([
@@ -25,14 +35,6 @@ test('the roster shows the agent table with its columns', async ({
     'Toolset',
     'Skills',
   ]);
-  // Deploy writes the agent's HelmRelease; the roster lists the Agent once
-  // Flux has rendered it, a poll or two later.
-  await expect(
-    grid
-      .getByRole('rowheader')
-      .getByRole('link', { name: labAgent.name, exact: true }),
-    'the roster lists the fixture agent',
-  ).toBeVisible({ timeout: 2 * 60_000 });
   await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
 });
 
