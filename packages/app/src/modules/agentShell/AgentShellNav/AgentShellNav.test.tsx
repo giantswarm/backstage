@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { SidebarPinStateProvider } from '@backstage/core-components';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
@@ -8,12 +9,19 @@ import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { customizeRouteRef } from '../routes';
 import { AgentShellNav } from './AgentShellNav';
 
+const mockOpenPalette = jest.fn();
+
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef } = jest.requireActual(
     '@backstage/frontend-plugin-api',
   );
   return {
     AGENT_SHELL_FLAG: 'agent-platform-shell',
+    CommandPalette: ({
+      renderTrigger,
+    }: {
+      renderTrigger: (open: () => void) => ReactNode;
+    }) => <>{renderTrigger(mockOpenPalette)}</>,
     agentPlatformPlugin: {
       routes: {
         sessions: createRouteRef(),
@@ -117,10 +125,11 @@ function railLinks() {
 
 beforeEach(() => {
   signOut.mockClear();
+  mockOpenPalette.mockClear();
 });
 
 describe('AgentShellNav', () => {
-  it('renders the rail items, the search placeholder and the recent sessions', async () => {
+  it('renders the rail items, the search item and the recent sessions', async () => {
     await renderNav();
 
     expect(railLinks()).toEqual([
@@ -130,11 +139,26 @@ describe('AgentShellNav', () => {
       ['Usage', '/agent-platform/usage'],
       ['Platform Portal', '/clusters'],
     ]);
-    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
     expect(screen.getByTestId('recent-sessions')).toHaveAttribute(
       'data-shell-rail',
       'true',
     );
+  });
+
+  it('opens the command palette from the rail Search item', async () => {
+    await renderNav();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a Search item in the mobile bar, opening the palette', async () => {
+    await renderNav({ isMobile: true });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    await userEvent.click(within(nav).getByRole('button', { name: 'Search' }));
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
   });
 
   it('leaves Platform and Developers out of the rail', async () => {
@@ -173,7 +197,7 @@ describe('AgentShellNav', () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
     const order = [
       within(nav).getByRole('link', { name: 'New session' }),
-      within(nav).getByRole('searchbox', { name: 'Search' }),
+      within(nav).getByRole('button', { name: 'Search' }),
       within(nav).getByRole('link', { name: 'Customize' }),
       within(nav).getByRole('link', { name: 'Usage' }),
       within(nav).getByTestId('recent-sessions'),
@@ -340,13 +364,24 @@ describe('AgentShellNav', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map(menuItem => menuItem.textContent),
-    ).toEqual(['Profile and settings', 'Feature flags', 'Sign out']);
+    ).toEqual([
+      'Profile and settings',
+      'Feature flags',
+      'Help and feedback',
+      'Sign out',
+    ]);
     expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
     ).toHaveAttribute('href', '/settings');
     expect(
       within(menu).getByRole('menuitem', { name: 'Feature flags' }),
     ).toHaveAttribute('href', '/settings/feature-flags');
+    const help = within(menu).getByRole('menuitem', {
+      name: 'Help and feedback',
+    });
+    // Another origin: opens a new tab, so the portal is not navigated away.
+    expect(help).toHaveAttribute('href', 'https://docs.giantswarm.io');
+    expect(help).toHaveAttribute('target', '_blank');
 
     await userEvent.click(
       within(menu).getByRole('menuitem', { name: 'Sign out' }),

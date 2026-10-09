@@ -25,6 +25,7 @@ import {
 } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
@@ -159,6 +160,10 @@ function NewAgentPageContent() {
         </Text>
 
         <Flex direction="column" gap="4">
+          {/* The "with Swarm Operator" assist (W6): renders nothing unless the
+              agentManagement meta-agent role resolves — see CreateAgentAssist. */}
+          <CreateAgentAssist />
+
           <InstallationSelect />
 
           <Card>

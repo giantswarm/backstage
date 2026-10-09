@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -69,6 +69,7 @@ import {
 } from '../SessionsDataProvider/helpers';
 import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
 import { SessionCostPopover } from '../SessionCostPopover';
+import { SessionShareDialog, ShareIcon } from '../SessionShareDialog';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
@@ -514,6 +515,9 @@ export function SessionDetailPage() {
 
     return { ...timeline, items };
   }, [timeline, send.pending, send.stream, answerStream]);
+
+  // The share dialog, opened by the icon beside the cost chip.
+  const [isShareOpen, setShareOpen] = useState(false);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -1111,7 +1115,7 @@ export function SessionDetailPage() {
                 runtime reported any; memory is a share only when the model's
                 context window is configured. The row wraps, so on a phone the
                 chip simply drops to its own line. */}
-            <div style={{ marginLeft: 'auto' }}>
+            <Flex align="center" gap="1" style={{ marginLeft: 'auto' }}>
               <SessionCostPopover
                 installation={row.installation}
                 model={row.agentModel}
@@ -1128,7 +1132,18 @@ export function SessionDetailPage() {
                 })}
                 agentName={row.agentName || undefined}
               />
-            </div>
+              {/* Sharing is the owner's act, so a session that arrived here
+                  shared read-only does not offer it — the controller would
+                  refuse the create anyway. */}
+              {!detail.readOnly && (
+                <ButtonIcon
+                  variant="tertiary"
+                  icon={<ShareIcon />}
+                  aria-label="Share session"
+                  onPress={() => setShareOpen(true)}
+                />
+              )}
+            </Flex>
           </Flex>
 
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
@@ -1212,6 +1227,16 @@ export function SessionDetailPage() {
           setRenameOpen(false);
         }}
         isUserScoped={isUserScoped}
+      />
+
+      {/* Rendered here rather than beside its button so it sits inside the
+          plugin's QueryClientProvider, where its reads and writes have a
+          client — same reasoning as the rename hooks above. */}
+      <SessionShareDialog
+        installation={installation}
+        sessionId={sessionId}
+        isOpen={isShareOpen}
+        onOpenChange={setShareOpen}
       />
     </Shell>
   );

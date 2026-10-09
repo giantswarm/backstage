@@ -147,6 +147,36 @@ describe('useCreateSession', () => {
     );
   });
 
+  it('reports a session started from the create-agent assist as such', async () => {
+    const { result } = renderWith('createAgentAssist');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Draft an agent' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'createAgentAssist' },
+      }),
+    );
+  });
+
+  it('reports a session started from the ⌘K search palette as such', async () => {
+    const { result } = renderWith('searchPalette');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'searchPalette' },
+      }),
+    );
+  });
+
   it('sends the agent’s technical name, not its display name', async () => {
     // kagent resolves `agent_ref` against the resource name. The display name is
     // an annotation and would match nothing.

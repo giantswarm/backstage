@@ -14,8 +14,16 @@ import { Header, MenuSection as AriaMenuSection } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import FlagIcon from '@material-ui/icons/Flag';
+import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import type { AgentShellNavItem } from '../../navItems';
 import { useProfile } from './useProfile';
+
+/**
+ * Where "Help and feedback" goes: the public docs, the same default the
+ * homepage's Resources card links first. There is no per-installation help
+ * link convention yet; when one appears this is the one place to read it.
+ */
+const HELP_URL = 'https://docs.giantswarm.io';
 
 const useStyles = makeStyles({
   avatar: {
@@ -122,6 +130,17 @@ export function ProfileMenu({
           <MenuSection title="Signed in">{settingsItems}</MenuSection>
         )}
         <MenuSeparator />
+        {/* The prototype groups help and sign-out below the settings group.
+            The docs are another origin, so this opens a new tab rather than
+            navigating the portal away mid-session. */}
+        <MenuItem
+          href={HELP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          iconStart={<HelpOutlineIcon fontSize="small" />}
+        >
+          Help and feedback
+        </MenuItem>
         <MenuItem
           iconStart={<ExitToAppIcon fontSize="small" />}
           onAction={() => {

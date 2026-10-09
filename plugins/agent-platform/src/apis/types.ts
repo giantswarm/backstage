@@ -1,4 +1,5 @@
 import { KagentInstallation } from '../lib/kagentInstallations';
+import type { CreatedSessionShare, SessionShare } from '../lib/sessionShares';
 import {
   A2aTaskWire,
   KagentSession,
@@ -303,6 +304,42 @@ export interface KagentApi {
     answer: ConfirmationAnswerRequest,
     onEvent: (result: unknown) => void,
     signal?: AbortSignal,
+  ): Promise<void>;
+
+  /**
+   * Mint a share for one session: a token granting A2A access to it until the
+   * share expires or is revoked.
+   *
+   * The returned token exists **only in this answer** — the controller stores a
+   * hash — so the caller must show it immediately or lose it. `ttlSeconds`
+   * left out lets the controller apply its own maximum share lifetime.
+   *
+   * Like the other writes, a 400 here does **not** mean "kagent isn't
+   * available on this installation"; it is a rejected body.
+   */
+  createSessionShare(
+    installation: string,
+    sessionId: string,
+    share: { permission: 'read-only' | 'read-write'; ttlSeconds?: number },
+  ): Promise<CreatedSessionShare>;
+
+  /**
+   * The shares that exist for one session, parsed and normalized. No tokens in
+   * here, ever: a listed share can be revoked but never re-copied.
+   */
+  listSessionShares(
+    installation: string,
+    sessionId: string,
+  ): Promise<SessionShare[]>;
+
+  /**
+   * Revoke one share: its token stops granting access as soon as the
+   * controller answers.
+   */
+  revokeSessionShare(
+    installation: string,
+    sessionId: string,
+    shareId: string,
   ): Promise<void>;
 
   /** Identity kagent resolved, used to detect a non-user-scoped deployment. */

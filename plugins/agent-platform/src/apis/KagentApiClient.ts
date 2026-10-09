@@ -30,6 +30,12 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { createSseDataDecoder, readStreamFrame } from '../lib/kagentStreamTurn';
 import {
+  parseCreatedSessionShare,
+  parseSessionShareList,
+  type CreatedSessionShare,
+  type SessionShare,
+} from '../lib/sessionShares';
+import {
   ConfirmationAnswerRequest,
   KAGENT_AUTH_HEADER,
   KagentApi,
@@ -464,6 +470,85 @@ export class KagentApiClient implements KagentApi {
           : 'kagent reported an error while renaming the session, without saying what.',
       );
     }
+  }
+
+  async createSessionShare(
+    installation: string,
+    sessionId: string,
+    share: { permission: 'read-only' | 'read-write'; ttlSeconds?: number },
+  ): Promise<CreatedSessionShare> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/shares`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        permission: share.permission,
+        ...(share.ttlSeconds !== undefined && {
+          ttlSeconds: share.ttlSeconds,
+        }),
+      }),
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the other writes: this
+    // route answers 400 for a rejected body, which is nothing like "kagent is
+    // absent from this installation".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // Like the create: the body is **required**, because the token in it is the
+    // entire point and can never be read back — so an unreadable body has to
+    // fail rather than resolve into a share nobody can use.
+    const body = await response.json().catch(() => undefined);
+    const created = parseCreatedSessionShare(body);
+    if (!created) {
+      throw upstreamError(
+        isErrorEnvelope(body) &&
+          typeof body.message === 'string' &&
+          body.message
+          ? body.message
+          : 'kagent accepted the share but did not return its token, so there is nothing to copy. The share may still exist — check the list below and revoke it.',
+      );
+    }
+    return created;
+  }
+
+  async listSessionShares(
+    installation: string,
+    sessionId: string,
+  ): Promise<SessionShare[]> {
+    const body = await this.get<unknown>(
+      `/kagent/sessions/${encodeURIComponent(sessionId)}/shares`,
+      installation,
+    );
+    // Parsed permissively; an unreadable row is dropped rather than costing the
+    // list. There is no in-band envelope on this line: the backend answers the
+    // proto3 JSON of `ListSessionSharesResponse` or a mapped error status.
+    return parseSessionShareList(body);
+  }
+
+  async revokeSessionShare(
+    installation: string,
+    sessionId: string,
+    shareId: string,
+  ): Promise<void> {
+    const { url, headers } = await this.prepare(
+      `/kagent/sessions/${encodeURIComponent(
+        sessionId,
+      )}/shares/${encodeURIComponent(shareId)}`,
+      installation,
+    );
+    const response = await this.fetchApi.fetch(url, {
+      method: 'DELETE',
+      headers,
+    });
+
+    // `badRequestIsMissing: false` for the same reason as the other writes: a
+    // 400 here is a rejected revoke, nothing like "kagent is absent".
+    await this.throwIfNotOk(response, { badRequestIsMissing: false });
+
+    // The body is `{}` and carries nothing worth returning.
   }
 
   async sendMessage(

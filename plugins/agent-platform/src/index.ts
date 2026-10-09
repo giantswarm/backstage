@@ -18,6 +18,8 @@ export { useSessionNotifications } from './hooks/useSessionNotifications';
 export type { SessionNotificationSetting } from './hooks/useSessionNotifications';
 export { SessionNotificationsBell } from './components/SessionNotifications';
 export type { SessionNotificationsBellProps } from './components/SessionNotifications';
+export { CommandPalette } from './components/CommandPalette';
+export type { CommandPaletteProps } from './components/CommandPalette';
 export { ServingLayerGate } from './components/ServingLayerGate';
 export type { AgentPlatformHomeProps } from './components/AgentPlatformHome';
 export {

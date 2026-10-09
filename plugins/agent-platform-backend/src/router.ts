@@ -27,6 +27,8 @@ import {
   REQUEST_ID_HEADER,
   REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
+  SESSION_SHARE_MAX_TTL_SECONDS,
+  type SessionSharePermissionInput,
 } from './KagentClient';
 import { probeKagentGrpc } from './kagent/reachability';
 import { SessionStateReader } from './sessionStates';
@@ -137,6 +139,45 @@ function readRequestId(body: Record<string, unknown>): string {
     );
   }
   return requestId;
+}
+
+/**
+ * The body the share-create route takes: the permission (defaulting to
+ * read-only, the only grant anyone should hand out unthinkingly) and an
+ * optional lifetime in whole seconds.
+ *
+ * `ttlSeconds` left out is forwarded as an unset TTL, which the controller
+ * fills with its own maximum share lifetime — so "no TTL" is never "forever"
+ * unless the controller itself is configured that way.
+ */
+function readShareBody(req: express.Request): {
+  permission: SessionSharePermissionInput;
+  ttlSeconds?: number;
+} {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+
+  const permission = body.permission ?? 'read-only';
+  if (permission !== 'read-only' && permission !== 'read-write') {
+    throw new InputError("permission must be 'read-only' or 'read-write'");
+  }
+
+  let ttlSeconds: number | undefined;
+  if (body.ttlSeconds !== undefined) {
+    const value = body.ttlSeconds;
+    if (
+      typeof value !== 'number' ||
+      !Number.isInteger(value) ||
+      value <= 0 ||
+      value > SESSION_SHARE_MAX_TTL_SECONDS
+    ) {
+      throw new InputError(
+        `ttlSeconds must be a positive integer of at most ${SESSION_SHARE_MAX_TTL_SECONDS}`,
+      );
+    }
+    ttlSeconds = value;
+  }
+
+  return { permission, ttlSeconds };
 }
 
 /**
@@ -858,6 +899,76 @@ export async function createRouter(
 
     res.json(result);
   });
+
+  /**
+   * The shares that exist for one session — the dialog's "active shares" list.
+   *
+   * The controller scopes this to the caller like every other session read, so
+   * the list is the owner's own. Shares carry no token (the controller stores
+   * only a hash), but when a share expires and who holds one is still the
+   * owner's business — hence `no-store`, like the other per-user reads.
+   */
+  router.get('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const result = await client.listSessionShares(readSessionId(req), {
+      userToken: readUserToken(req, { required: true }),
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  });
+
+  /**
+   * Mint a share for one session: a token that grants A2A access to it —
+   * read-only (get, list, subscribe) or read-write (also send and cancel) —
+   * until the share expires or is revoked.
+   *
+   * The token is **in this answer and nowhere else**: the controller stores a
+   * hash, so a token that is not copied now is gone, and `no-store` keeps the
+   * only copy out of every cache between here and the dialog.
+   *
+   * The token is **required**, as on every other write: the controller decides
+   * whose session this is — and therefore who may share it — from the identity
+   * the gateway derived.
+   *
+   * Nothing expected reaches a 5xx: a malformed body is a 400, somebody else's
+   * or a deleted session a 404 — `MiddlewareFactory.error()` forwards anything
+   * `>= 500` to Sentry.
+   */
+  router.post('/kagent/sessions/:sessionId/shares', async (req, res) => {
+    const { client } = resolveInstallation(req);
+    const share = readShareBody(req);
+
+    const result = await client.createSessionShare(readSessionId(req), share, {
+      userToken: readUserToken(req, { required: true }),
+    });
+
+    res.setHeader('Cache-Control', 'no-store');
+    // 201 for a create. The body is the controller's `CreateSessionShareResponse`
+    // as JSON — `{share, token}` — and the token in it is the entire point.
+    res.status(201).json(result);
+  });
+
+  /**
+   * Revoke one share: the token stops granting access as soon as the
+   * controller answers.
+   *
+   * The controller authorizes the revoke by the share id and the caller alone;
+   * the session id in the path is the resource's address for the frontend's
+   * benefit and is not forwarded. Share ids are opaque and pass through
+   * undecorated, like session and task ids.
+   */
+  router.delete(
+    '/kagent/sessions/:sessionId/shares/:shareId',
+    async (req, res) => {
+      const { client } = resolveInstallation(req);
+      const rawShareId = req.params.shareId;
+      const result = await client.revokeSessionShare(
+        typeof rawShareId === 'string' ? rawShareId : '',
+        { userToken: readUserToken(req, { required: true }) },
+      );
+      res.json(result);
+    },
+  );
 
   /** The session's A2A tasks — the conversation, its state and token usage. */
   router.get('/kagent/sessions/:sessionId/tasks', async (req, res) => {

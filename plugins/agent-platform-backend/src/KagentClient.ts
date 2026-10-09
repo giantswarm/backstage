@@ -23,12 +23,17 @@ import {
 } from './kagent/gen/a2a_pb';
 import {
   CreateSessionResponseSchema,
+  CreateSessionShareResponseSchema,
   DeleteSessionResponseSchema,
   GetSessionResponseSchema,
+  ListSessionSharesResponseSchema,
   ListSessionsResponseSchema,
+  RevokeSessionShareResponseSchema,
   SessionService,
+  SessionSharePermission,
   UpdateSessionNameResponseSchema,
   type Session,
+  type SessionShare,
 } from './kagent/gen/kagent/api/v1alpha1/sessions_pb';
 import { SystemService } from './kagent/gen/kagent/api/v1alpha1/system_pb';
 import {
@@ -132,6 +137,24 @@ export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
  */
 export const REQUEST_ID_MAX_LENGTH = 128;
 
+/**
+ * Longest lifetime this proxy will request for a session share, in seconds.
+ *
+ * Ours, not the controller's: the `CreateSessionShareRequest.ttl` field is an
+ * unbounded Duration, and the controller may cap it with its own maximum share
+ * lifetime. A year is far beyond any TTL the dialog offers; the bound exists so
+ * a hand-made request cannot ask for a share that effectively never expires
+ * while claiming a TTL.
+ */
+export const SESSION_SHARE_MAX_TTL_SECONDS = 365 * 24 * 60 * 60;
+
+/**
+ * How a share grants access, as the routes take it. Maps onto the controller's
+ * `SessionSharePermission`: read-only is A2A get/list/subscribe, read-write
+ * adds send and cancel.
+ */
+export type SessionSharePermissionInput = 'read-only' | 'read-write';
+
 /** An Agent as the A2A gateway routes by: the `tenant` of every A2A request. */
 export type AgentRef = { namespace: string; name: string };
 
@@ -158,6 +181,8 @@ const PAGE_SIZE = 100;
  */
 const MAX_TASK_PAGES = 10;
 const MAX_SESSION_PAGES = 20;
+// A session has a handful of shares at most; the bound only guards the loop.
+const MAX_SHARE_PAGES = 5;
 
 /**
  * The header a request id travels in toward the controller route, and back to
@@ -891,6 +916,123 @@ export class KagentClient {
       },
     );
     return toJson(UpdateSessionNameResponseSchema, response);
+  }
+
+  /**
+   * `SessionService/CreateSessionShare` — mint a share for one session.
+   *
+   * The answer carries the share's metadata and, **only on this answer**, the
+   * token that grants the access: the controller stores a hash of it, so
+   * nothing can read the token back later. Passed through as `{share, token}`
+   * for the dialog to show exactly once.
+   *
+   * `ttlSeconds` becomes the share's lifetime, counted from its creation. Left
+   * unset, the controller applies its own maximum share lifetime — or, where
+   * none is configured, the share lasts until it is revoked or the session
+   * deleted.
+   *
+   * The caller must own the session: the controller scopes the create exactly
+   * as it scopes the reads, so sharing somebody else's session answers
+   * `NotFound` like reading it would.
+   */
+  async createSessionShare(
+    sessionId: string,
+    share: { permission: SessionSharePermissionInput; ttlSeconds?: number },
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.createSessionShare(
+          {
+            sessionId,
+            permission:
+              share.permission === 'read-write'
+                ? SessionSharePermission.READ_WRITE
+                : SessionSharePermission.READ_ONLY,
+            ...(share.ttlSeconds !== undefined && {
+              ttl: { seconds: BigInt(share.ttlSeconds) },
+            }),
+          },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share create',
+        missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+        invalidArgument: reason =>
+          new InputError(
+            `kagent on installation '${this.installation.name}' did not accept the share: ${reason}`,
+          ),
+      },
+    );
+    return toJson(CreateSessionShareResponseSchema, response);
+  }
+
+  /**
+   * `SessionService/ListSessionShares` — the shares that exist for one
+   * session, walked to the end of the listing, as `{shares: […]}`.
+   *
+   * No token is ever in here: the controller keeps only a hash, so a listed
+   * share can be revoked but never re-copied.
+   */
+  async listSessionShares(
+    sessionId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const context: ErrorContext = {
+      endpoint: 'session share list',
+      missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
+      invalidArgument: () =>
+        new InputError('The session id is not a Session id.'),
+    };
+    const shares: SessionShare[] = [];
+    let pageToken = '';
+    for (let page = 0; page < MAX_SHARE_PAGES; page += 1) {
+      // A per-iteration copy: the RPC closure must not capture the variable
+      // the loop rewrites.
+      const token = pageToken;
+      const response = await this.call(
+        () =>
+          this.sessionService.listSessionShares(
+            { sessionId, page: { limit: PAGE_SIZE, pageToken: token } },
+            this.callOptions(options),
+          ),
+        context,
+      );
+      shares.push(...response.shares);
+      pageToken = response.page?.nextPageToken ?? '';
+      if (!pageToken) {
+        break;
+      }
+    }
+    return toJson(
+      ListSessionSharesResponseSchema,
+      create(ListSessionSharesResponseSchema, { shares }),
+    );
+  }
+
+  /**
+   * `SessionService/RevokeSessionShare` — end one share now. The token stops
+   * granting access as soon as the controller answers; the answer itself is
+   * empty, passed through as `{}`.
+   */
+  async revokeSessionShare(
+    shareId: string,
+    options: KagentRequestOptions,
+  ): Promise<unknown> {
+    const response = await this.call(
+      () =>
+        this.sessionService.revokeSessionShare(
+          { shareId },
+          this.callOptions(options),
+        ),
+      {
+        endpoint: 'session share revoke',
+        missingResource: `That share does not exist on installation '${this.installation.name}'. It may already have been revoked.`,
+        invalidArgument: () =>
+          new InputError('The share id is not a share id.'),
+      },
+    );
+    return toJson(RevokeSessionShareResponseSchema, response);
   }
 
   /**

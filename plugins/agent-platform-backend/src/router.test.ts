@@ -43,6 +43,9 @@ describe('createRouter', () => {
 
   const deleteSession = jest.fn();
   const updateSessionName = jest.fn();
+  const createSessionShare = jest.fn();
+  const listSessionShares = jest.fn();
+  const revokeSessionShare = jest.fn();
   const sendMessage = jest.fn();
   const streamMessage = jest.fn();
   const createSession = jest.fn();
@@ -57,6 +60,9 @@ describe('createRouter', () => {
     listSessionTasks,
     deleteSession,
     updateSessionName,
+    createSessionShare,
+    listSessionShares,
+    revokeSessionShare,
     sendMessage,
     streamMessage,
     createSession,
@@ -96,6 +102,9 @@ describe('createRouter', () => {
     listSessionTasks.mockReset();
     deleteSession.mockReset();
     updateSessionName.mockReset();
+    createSessionShare.mockReset();
+    listSessionShares.mockReset();
+    revokeSessionShare.mockReset();
     sendMessage.mockReset();
     streamMessage.mockReset();
     createSession.mockReset();
@@ -1375,6 +1384,229 @@ describe('createRouter', () => {
 
       expect(response.status).toBe(204);
       expect(response.text).toBe('');
+    });
+  });
+
+  describe('POST /kagent/sessions/:sessionId/shares', () => {
+    const createdBody = {
+      share: {
+        id: 'share-1',
+        sessionId: 'abc',
+        permission: 'SESSION_SHARE_PERMISSION_READ_ONLY',
+        createdAt: '2026-10-09T10:00:00Z',
+        expiresAt: '2026-10-10T10:00:00Z',
+      },
+      token: 'secret-share-token',
+    };
+
+    it('forwards the id, permission, TTL and token, answering 201 with kagent’s body', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ permission: 'read-only', ttlSeconds: 86_400 });
+
+      expect(response.status).toBe(201);
+      expect(response.body).toEqual(createdBody);
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-only', ttlSeconds: 86_400 },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('marks the answer no-store — it carries the only copy of the token', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('defaults to a read-only share with the controller’s own TTL', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-only', ttlSeconds: undefined },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it('accepts a read-write share', async () => {
+      createSessionShare.mockResolvedValue(createdBody);
+
+      await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({ permission: 'read-write' });
+
+      expect(createSessionShare).toHaveBeenCalledWith(
+        'abc',
+        { permission: 'read-write', ttlSeconds: undefined },
+        { userToken: 'user-token' },
+      );
+    });
+
+    it.each([
+      ['an unknown value', { permission: 'admin' }],
+      ['not a string', { permission: 2 }],
+    ])('rejects a permission that is %s with a 400', async (_label, body) => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['not a number', { ttlSeconds: '86400' }],
+      ['not an integer', { ttlSeconds: 1.5 }],
+      ['zero', { ttlSeconds: 0 }],
+      ['negative', { ttlSeconds: -60 }],
+      ['beyond a year', { ttlSeconds: 366 * 24 * 60 * 60 }],
+    ])('rejects a TTL that is %s with a 400', async (_label, body) => {
+      // A 400 rather than a 5xx: the caller's mistake, and anything >= 500 is
+      // logged at error and forwarded to Sentry.
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send(body);
+
+      expect(response.status).toBe(400);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .send({});
+
+      expect(response.status).toBe(401);
+      expect(createSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('reports someone else’s or a deleted session as 404, not a 5xx', async () => {
+      createSessionShare.mockRejectedValue(
+        new NotFoundError('That session does not exist.'),
+      );
+
+      const response = await request(app)
+        .post('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token')
+        .send({});
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET /kagent/sessions/:sessionId/shares', () => {
+    const sharesBody = {
+      shares: [
+        {
+          id: 'share-1',
+          sessionId: 'abc',
+          permission: 'SESSION_SHARE_PERMISSION_READ_ONLY',
+          createdAt: '2026-10-09T10:00:00Z',
+        },
+      ],
+    };
+
+    it('forwards the id and token and echoes the body verbatim, no-store', async () => {
+      listSessionShares.mockResolvedValue(sharesBody);
+
+      const response = await request(app)
+        .get('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(sharesBody);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(listSessionShares).toHaveBeenCalledWith('abc', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('does not shadow the session detail route', async () => {
+      getSession.mockResolvedValue({ session: { id: 'abc' } });
+
+      await request(app)
+        .get('/kagent/sessions/abc')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(getSession).toHaveBeenCalled();
+      expect(listSessionShares).not.toHaveBeenCalled();
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .get('/kagent/sessions/abc/shares')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(listSessionShares).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('DELETE /kagent/sessions/:sessionId/shares/:shareId', () => {
+    it('forwards the share id and token and echoes the body', async () => {
+      revokeSessionShare.mockResolvedValue({});
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({});
+      // The revoke is authorized by the share id and the caller alone; the
+      // session id in the path is not forwarded.
+      expect(revokeSessionShare).toHaveBeenCalledWith('share-1', {
+        userToken: 'user-token',
+      });
+    });
+
+    it('requires a forwarded user token', async () => {
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' });
+
+      expect(response.status).toBe(401);
+      expect(revokeSessionShare).not.toHaveBeenCalled();
+    });
+
+    it('reports a share kagent does not know as 404, not a 5xx', async () => {
+      revokeSessionShare.mockRejectedValue(
+        new NotFoundError('That share does not exist.'),
+      );
+
+      const response = await request(app)
+        .delete('/kagent/sessions/abc/shares/share-1')
+        .query({ installation: 'gazelle' })
+        .set(KAGENT_AUTH_HEADER, 'user-token');
+
+      expect(response.status).toBe(404);
     });
   });
 

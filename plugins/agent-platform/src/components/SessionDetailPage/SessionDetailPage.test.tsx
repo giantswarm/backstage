@@ -77,6 +77,15 @@ jest.mock('../SessionSwitcherRail', () => ({
   ),
 }));
 
+// Stubbed like the switcher rail: the share dialog runs its own queries and
+// reads `kagentApiRef`, and its own suite covers what it renders. What matters
+// here is that the header's share button opens it.
+jest.mock('../SessionShareDialog', () => ({
+  SessionShareDialog: ({ isOpen }: { isOpen: boolean }) =>
+    isOpen ? <div data-testid="share-dialog" /> : null,
+  ShareIcon: () => null,
+}));
+
 // jsdom implements no matchMedia, so MUI's useMediaQuery answers false and the
 // rail would never render. Driven explicitly instead, so both branches are real
 // tests rather than an accident of the environment.
@@ -343,6 +352,29 @@ describe('SessionDetailPage', () => {
     expect(screen.getByTestId('installation-chip')).toHaveTextContent(
       'gazelle',
     );
+  });
+
+  it('opens the share dialog from the header’s share button', async () => {
+    await render();
+
+    expect(screen.queryByTestId('share-dialog')).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Share session' }),
+    );
+    expect(await screen.findByTestId('share-dialog')).toBeInTheDocument();
+  });
+
+  it('offers no share on a session that arrived shared read-only', async () => {
+    // Sharing is the owner's act, and the controller would refuse the create.
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      detail: { ...detail, readOnly: true },
+    });
+    await render();
+
+    expect(
+      screen.queryByRole('button', { name: 'Share session' }),
+    ).not.toBeInTheDocument();
   });
 
   it('links the agent name to the agent, so a session is a way in to it', async () => {

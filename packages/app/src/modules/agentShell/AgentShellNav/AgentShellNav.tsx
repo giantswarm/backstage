@@ -1,7 +1,8 @@
 import { Fragment } from 'react';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
-import { Box, ButtonIcon, Flex, Link, SearchField, Text } from '@backstage/ui';
+import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
+  CommandPalette,
   RecentSessions,
   SessionNotificationsBell,
 } from '@giantswarm/backstage-plugin-agent-platform';
@@ -9,6 +10,7 @@ import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
 import { makeStyles } from '@material-ui/core/styles';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { agentShellNavItems } from '../navItems';
 import { RailItem } from './RailItem';
@@ -71,6 +73,17 @@ const useStyles = makeStyles({
     marginTop: 'auto',
     borderTop: '1px solid var(--bui-border-1)',
   },
+  // The ⌘K hint beside the Search item, like the prototype's.
+  shortcutHint: {
+    marginLeft: 'auto',
+    fontSize: 11.5,
+    lineHeight: '16px',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 5,
+    padding: '1px 5px',
+    color: 'var(--bui-fg-secondary)',
+    background: 'var(--bui-bg-neutral-1)',
+  },
   // The bell's trigger, dressed as a rail item (it is a button, not a link).
   bell: {
     display: 'block',
@@ -112,6 +125,55 @@ function BellItem({
   );
 }
 
+/**
+ * The rail's Search item: opens the ⌘K command palette the agent-platform
+ * plugin provides. A button dressed as a rail item, like the bell — opening
+ * the palette is an overlay, not a navigation. Guarded like {@link BellItem}:
+ * a partial mock of the plugin module degrades to "no Search item".
+ */
+function PaletteSearchItem({
+  compact,
+  className,
+  hintClassName,
+}: {
+  compact: boolean;
+  className: string;
+  hintClassName: string;
+}) {
+  if (!CommandPalette) {
+    return null;
+  }
+  const shortcut = /mac|iphone|ipad|ipod/i.test(navigator.platform)
+    ? '⌘K'
+    : 'Ctrl+K';
+  return (
+    <CommandPalette
+      renderTrigger={open => (
+        <li>
+          <button
+            type="button"
+            className={className}
+            onClick={open}
+            aria-label={compact ? 'Search' : undefined}
+            title={compact ? `Search (${shortcut})` : undefined}
+            aria-keyshortcuts="Meta+K Control+K"
+          >
+            <Flex align="center" gap="2">
+              <SearchIcon fontSize="small" />
+              {!compact && <Text variant="body-medium">Search</Text>}
+              {!compact && (
+                <span aria-hidden="true" className={hintClassName}>
+                  {shortcut}
+                </span>
+              )}
+            </Flex>
+          </button>
+        </li>
+      )}
+    />
+  );
+}
+
 // The connector probes each installation and records it healthy; the
 // installation inventory, and so every Agent Platform page, waits on that.
 export function AgentShellNav() {
@@ -137,6 +199,11 @@ function AgentShellRail() {
           {[...top, ...bottom].map(item => (
             <RailItem key={item.id} item={item} compact />
           ))}
+          <PaletteSearchItem
+            compact
+            className={classes.bell}
+            hintClassName={classes.shortcutHint}
+          />
           <BellItem compact className={classes.bell} />
         </ul>
       </nav>
@@ -185,15 +252,12 @@ function AgentShellRail() {
           {desktopTop.map(item => (
             <Fragment key={item.id}>
               <RailItem item={item} compact={compact} />
-              {item.id === 'new-session' && !compact && (
-                <Box as="li" my="1">
-                  <SearchField
-                    aria-label="Search"
-                    placeholder="Search"
-                    size="small"
-                    isDisabled
-                  />
-                </Box>
+              {item.id === 'new-session' && (
+                <PaletteSearchItem
+                  compact={compact}
+                  className={classes.bell}
+                  hintClassName={classes.shortcutHint}
+                />
               )}
             </Fragment>
           ))}
