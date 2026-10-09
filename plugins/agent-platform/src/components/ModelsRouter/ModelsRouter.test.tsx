@@ -47,6 +47,11 @@ jest.mock('../ServedModelRowsProvider', () => ({
   ),
 }));
 
+let mockAgentShell = false;
+jest.mock('../../hooks/useAgentShell', () => ({
+  useAgentShell: () => mockAgentShell,
+}));
+
 const CurrentPath = () => {
   const { pathname, search } = useLocation();
   return <div data-testid="path">{`${pathname}${search}`}</div>;
@@ -55,6 +60,7 @@ const CurrentPath = () => {
 function renderTab(path: string) {
   return renderInTestApp(
     <Routes>
+      <Route path="/customize/*" element={<CurrentPath />} />
       <Route
         path="/agent-platform/models/*"
         element={
@@ -86,8 +92,30 @@ const withServingLayer: Partial<ServingContextValue> = {
 
 describe('ModelsRouter', () => {
   beforeEach(() => {
+    mockAgentShell = false;
     mockUseServing.mockReset();
     mockUseServing.mockReturnValue(noServingLayer);
+  });
+
+  it('sends the tab root to the Customize screen inside the agent shell', async () => {
+    mockAgentShell = true;
+    mockUseServing.mockReturnValue(withServingLayer);
+    renderTab('/agent-platform/models?installation=alpha');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/customize/models?installation=alpha',
+      );
+    });
+    expect(screen.queryByText('configs-view')).not.toBeInTheDocument();
+  });
+
+  it('keeps the Serving view inside the agent shell', async () => {
+    mockAgentShell = true;
+    mockUseServing.mockReturnValue(withServingLayer);
+    renderTab('/agent-platform/models/serving');
+
+    expect(await screen.findByText('serving-view')).toBeInTheDocument();
   });
 
   it('renders the ModelConfigs list at the tab root, with no redirect', async () => {

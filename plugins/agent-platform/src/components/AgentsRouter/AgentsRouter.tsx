@@ -10,6 +10,8 @@ import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
+import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import { useAgentShell } from '../../hooks/useAgentShell';
 
 // Content of the "Agents" tab: the list, one agent's details, the edit page,
 // and the create flow. The create steps share one NewAgentFormProvider so the composed
@@ -28,14 +30,27 @@ import { NewAgentReviewPage } from '../NewAgentReviewPage';
 // edit route survives beside it: react-router scores a static segment above a
 // splat, so `…/:name/edit` matches the edit page and never falls into the
 // detail page's tabs. AgentsRouter.test.tsx holds that ranking still.
+//
+// Inside the agent-platform shell the list is the Customize screen's Agents
+// tab, so the index sends there.
 export const AgentsRouter = () => {
   // The form and review steps, and an agent's page, open at their top.
   useScrollToTopOnNavigation();
+  const agentShell = useAgentShell();
   return (
     <QueryClientProvider>
       <NewAgentFormProvider>
         <Routes>
-          <Route index element={<AgentsIndexPage />} />
+          <Route
+            index
+            element={
+              agentShell ? (
+                <ShellCustomizeRedirect tab="agents" />
+              ) : (
+                <AgentsIndexPage />
+              )
+            }
+          />
           <Route path="new" element={<NewAgentPage />} />
           <Route path="new/skills" element={<NewAgentSkillsPage />} />
           <Route path="new/tools" element={<NewAgentToolsPage />} />
