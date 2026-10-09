@@ -677,9 +677,8 @@ describe('applyStreamEvent', () => {
 
     it('does not duplicate the reply the terminal status update repeats', () => {
       // The Go flow can deliver the same response twice — as the
-      // `partial: false` artifact and again on the final status update — and
-      // only the second carries a messageId. Identical adjacent text is the
-      // dedupe.
+      // `partial: false` artifact and again on the final status update — under
+      // two different ids. Identical adjacent text is the dedupe.
       const turn = fold([
         artifactUpdate([textPart('The answer.')], { partial: false }),
         statusUpdate(agentMessage([textPart('The answer.')]), {

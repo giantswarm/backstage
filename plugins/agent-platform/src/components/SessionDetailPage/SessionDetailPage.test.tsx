@@ -1403,6 +1403,70 @@ describe('SessionDetailPage', () => {
       ).not.toBeInTheDocument();
     });
 
+    describe('a streamed reply the poll has read back', () => {
+      const replyTimeline = (text: string) => ({
+        ...timeline,
+        items: [
+          {
+            kind: 'user-message' as const,
+            id: 'm-sent',
+            taskIndex: 0,
+            messageId: 'm-sent',
+            text: 'how are the nodes?',
+          },
+          {
+            kind: 'agent-message' as const,
+            id: 'art-reply',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text,
+          },
+        ],
+      });
+      const replyStream = {
+        ...createStreamTurn('m-sent'),
+        dispatched: true,
+        items: [
+          {
+            kind: 'agent-message' as const,
+            id: 'stream:0',
+            taskIndex: 0,
+            messageId: 'art-reply',
+            text: 'All nodes are ready.',
+          },
+        ],
+      };
+
+      it('is shown once', async () => {
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes are ready.'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+      });
+
+      it('shows what the stream has beyond a read that cut it off', async () => {
+        // kagent appends to an artifact as it streams, so a poll mid-reply holds
+        // the start of it under the same id.
+        mockUseSessionDetail.mockReturnValue({
+          ...loadedView,
+          timeline: replyTimeline('All nodes'),
+        });
+        mockUseSendMessage.mockReturnValue(
+          idleSend({ isSending: true, stream: replyStream }),
+        );
+        await render();
+
+        expect(screen.getAllByText('All nodes are ready.')).toHaveLength(1);
+        expect(screen.queryByText('All nodes')).not.toBeInTheDocument();
+      });
+    });
+
     describe('a streamed turn ending', () => {
       /** The stream's copy of a cancel: terminal, and with no reason to carry. */
       const canceledStream = () => ({

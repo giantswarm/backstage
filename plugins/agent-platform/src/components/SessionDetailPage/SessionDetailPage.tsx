@@ -59,6 +59,7 @@ import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionSwitcherRail } from '../SessionSwitcherRail';
 import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
+import { fresherStreamedCopy } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -418,8 +419,9 @@ export function SessionDetailPage() {
   // still being produced are appended after the stand-in, so the reply appears as
   // it is written rather than when the turn ends. The preview coexists with the
   // 10 s poll rather than replacing it: a streamed item whose `messageId` the poll
-  // has already delivered is dropped by recognition — exactly like the stand-in —
-  // and the whole preview is discarded once the send's awaited invalidation has
+  // has already delivered is dropped by recognition — exactly like the stand-in,
+  // except that what it knows beyond the polled copy carries over — and the whole
+  // preview is discarded once the send's awaited invalidation has
   // put the canonical history on screen (`useSendMessage` clears `stream` then).
   //
   // An answer to a confirmation streams the resumed turn the same way, through
@@ -480,6 +482,21 @@ export function SessionDetailPage() {
       );
       for (const item of stream.items) {
         if (item.messageId && polled.has(item.messageId)) {
+          // Recognised, so the polled copy stays — advanced by whatever the
+          // stream has seen since that read. Only where the match is
+          // unambiguous: one message can hold several items of a kind.
+          const matches = timeline.items.flatMap((candidate, index) =>
+            candidate.messageId === item.messageId &&
+            candidate.kind === item.kind
+              ? [index]
+              : [],
+          );
+          if (matches.length === 1) {
+            const fresher = fresherStreamedCopy(items[matches[0]], item);
+            if (fresher) {
+              items[matches[0]] = fresher;
+            }
+          }
           continue;
         }
         if (item.kind === 'turn-failed' && polledEndedTurn) {
