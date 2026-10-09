@@ -59,8 +59,10 @@ export interface ToolDetailPanelProps {
    * the page already shows them, as the tool page does beside the tool's name.
    */
   showMarkers?: boolean;
-  /** One line beside the Execute button, e.g. what running the tool does. */
+  /** One line beside the run button, e.g. what running the tool does. */
   note?: string;
+  /** The run button's label. */
+  runLabel?: string;
 }
 
 /**
@@ -75,6 +77,7 @@ export function ToolDetailPanel({
   installation,
   showMarkers = true,
   note,
+  runLabel = 'Execute',
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -180,7 +183,7 @@ export function ToolDetailPanel({
 
   const executeButton = (
     <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-      {mutation.isPending ? 'Running…' : 'Execute'}
+      {mutation.isPending ? 'Running…' : runLabel}
     </Button>
   );
 

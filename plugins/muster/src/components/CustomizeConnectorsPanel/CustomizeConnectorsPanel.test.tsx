@@ -1,11 +1,18 @@
 import type { ReactNode } from 'react';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
+
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+}));
 
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -84,6 +91,11 @@ const api = {
       { name: 'x_kubernetes_get_pods', description: 'List pods' },
     ],
   })),
+  signInServer: jest.fn(async () => ({
+    status: 'auth_required' as const,
+    authUrl: 'https://github.example.test/login/oauth/authorize',
+    message: 'Sign in to github.',
+  })),
   getAuthStatus: jest.fn(async () => ({
     servers: [
       {
@@ -123,6 +135,8 @@ describe('CustomizeConnectorsPanel', () => {
     mockInstance = {};
     api.filterTools.mockClear();
     api.getAuthStatus.mockClear();
+    api.signInServer.mockClear();
+    mockNavigate.mockClear();
   });
 
   it('shows a row per connector with its sign-in, tools and state', async () => {
@@ -155,6 +169,42 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       screen.queryByRole('row', { name: /^muster/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('signs in from the row without opening the connector', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+
+    await waitFor(() =>
+      expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
+    );
+    expect(open).toHaveBeenCalledWith('', '_blank');
+    expect(mockNavigate).not.toHaveBeenCalled();
+    open.mockRestore();
+
+    await user.click(
+      within(github).getByText('Repositories and pull requests'),
+    );
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/mcp-servers/github?installation=gazelle',
+      undefined,
+    );
+  });
+
+  it('offers no sign-in without a muster session', async () => {
+    mockAuthenticated = false;
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+    expect(api.getAuthStatus).not.toHaveBeenCalled();
   });
 
   it('opens the connector page from its row', async () => {

@@ -9,6 +9,12 @@ import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { AgentPlatformHome } from './AgentPlatformHome';
 
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => mockNavigate,
+}));
+
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
 }));
@@ -141,9 +147,15 @@ function render({
   );
 }
 
+const agentPicker = () =>
+  screen
+    .getAllByRole('button')
+    .find(button => button.getAttribute('aria-haspopup') === 'listbox')!;
+
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 9, 8, 15, 0), advanceTimers: true });
   window.localStorage.clear();
+  mockNavigate.mockClear();
   mockUseAgents.mockClear();
   mockUseCreateSession.mockReset();
   mockUseCreateSession.mockReturnValue({
@@ -285,10 +297,7 @@ describe('AgentPlatformHome', () => {
     it('groups the picker by namespace behind the recent agents', async () => {
       await render();
 
-      const picker = screen
-        .getAllByRole('button')
-        .find(button => button.getAttribute('aria-haspopup') === 'listbox');
-      await userEvent.click(picker!);
+      await userEvent.click(agentPicker());
 
       expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
       expect(screen.getByRole('group', { name: 'kagent' })).toBeInTheDocument();
@@ -297,12 +306,50 @@ describe('AgentPlatformHome', () => {
       ).toBeInTheDocument();
     });
 
-    it('links to the agents under Customize', async () => {
+    it('asks for an agent in the picker until one is chosen', async () => {
+      await render();
+
+      expect(agentPicker()).toHaveTextContent('Choose an agent');
+    });
+
+    it('ends the picker with Manage agents, which opens the agents under Customize', async () => {
       await render({ manageAgentsHref: '/customize/agents' });
 
+      await userEvent.click(agentPicker());
+      const options = screen.getAllByRole('option');
+      expect(options[options.length - 1]).toHaveAccessibleName('Manage agents');
+
+      await userEvent.click(options[options.length - 1]);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/customize/agents');
+      expect(agentPicker()).toHaveTextContent('Choose an agent');
+    });
+
+    it('keeps Manage agents in the picker while searching', async () => {
+      await render({ manageAgentsHref: '/customize/agents' });
+
+      await userEvent.click(agentPicker());
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+        'docs',
+      );
+
       expect(
-        screen.getByRole('link', { name: 'Manage agents' }),
-      ).toHaveAttribute('href', '/customize/agents');
+        screen.getAllByRole('option').map(option => option.textContent),
+      ).toEqual([expect.stringContaining('Docs Agent'), 'Manage agents']);
+    });
+
+    it('leaves Manage agents out without a destination', async () => {
+      await render();
+
+      await userEvent.click(agentPicker());
+
+      expect(
+        screen.queryByRole('option', { name: 'Manage agents' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Manage agents' }),
+      ).not.toBeInTheDocument();
     });
   });
 });

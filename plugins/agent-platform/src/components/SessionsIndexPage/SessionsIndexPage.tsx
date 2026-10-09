@@ -1,4 +1,5 @@
-import { ReactNode, useMemo, useRef } from 'react';
+import { ReactNode, useEffect, useMemo, useRef } from 'react';
+import usePrevious from 'react-use/esm/usePrevious';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
 import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
@@ -51,6 +52,40 @@ function SessionsFrame({
   );
 }
 
+/**
+ * The shell's list when the person has no session: what the list is for and
+ * where one starts. Takes focus when it replaces a list that lost focus with
+ * its last row, as a delete does.
+ */
+function ShellSessionsEmpty({ replacesList }: { replacesList: boolean }) {
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (replacesList && (!active || active === document.body)) {
+      headingRef.current?.focus();
+    }
+  }, [replacesList]);
+  return (
+    <Flex direction="column" gap="2" py="6" align="center">
+      <Text
+        as="h2"
+        ref={headingRef}
+        tabIndex={-1}
+        variant="body-large"
+        weight="bold"
+      >
+        No sessions yet
+      </Text>
+      <Text as="p" variant="body-medium" color="secondary">
+        The sessions you start with an agent are listed here.
+      </Text>
+      <ButtonLink href="/" variant="secondary" iconStart={<AddIcon />}>
+        New session
+      </ButtonLink>
+    </Flex>
+  );
+}
+
 // Content of the "Sessions" tab, framed by `SessionsFrame`. Outside the shell
 // the one write it offers, starting a session, is inline rather than a header
 // action, so no actions are provided.
@@ -83,6 +118,9 @@ function SessionsIndexPageContent() {
   // Which container the composer mounts in, decided once — see the latch below.
   // Declared up here because the `hasInstallations` guard returns early.
   const firstRunRef = useRef<boolean | undefined>(undefined);
+  // Whether a list was on screen before, so an empty state that replaces it
+  // takes over focus.
+  const hadRows = usePrevious(rows.length > 0) ?? false;
 
   if (!isLoading && !hasInstallations) {
     return (
@@ -169,9 +207,14 @@ function SessionsIndexPageContent() {
         {/* No rows yet — show activity instead of an empty table skeleton.
             Also while the agents are still resolving on an empty list: the
             composer is withheld until they are in, the blurb and table are
-            gated off, and without this the tab would render nothing at all. */}
-        {(isLoading || (isEmpty && isLoadingAgents)) && (
+            gated off, and without this the tab would render nothing at all.
+            The shell has no composer here, so it waits for no agent. */}
+        {(isLoading || (isEmpty && isLoadingAgents && !agentShell)) && (
           <Progress aria-label="Loading sessions" />
+        )}
+
+        {agentShell && invitesFirstSession && (
+          <ShellSessionsEmpty replacesList={hadRows} />
         )}
 
         {/* An empty fleet gets no list at all, rather than an empty table

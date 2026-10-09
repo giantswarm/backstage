@@ -16,6 +16,12 @@ export interface StatusDotProps {
   'aria-label'?: string;
   /** Diameter in px. Defaults to 8. */
   size?: number;
+  /**
+   * A CSS custom property read before the tone's bui token, for a family of
+   * dots an app stylesheet recolours together, e.g.
+   * `--agent-platform-state-dot-success` for the session states.
+   */
+  colorVar?: string;
 }
 
 /** The bui foreground colour each tone falls back to. */
@@ -28,17 +34,15 @@ const TONE_TOKENS: Record<StatusDotTone, string> = {
 };
 
 /**
- * A coloured dot for a state, optionally followed by its label.
- *
- * The colour reads `--agent-platform-state-dot-<tone>` first, the variable the
- * sessions list's dots use, so an app stylesheet recolours every state dot at
- * once; the bui foreground token for the tone is the fallback.
+ * A coloured dot for a state, optionally followed by its label: the bui
+ * foreground token for the tone, or `colorVar` where the app sets it.
  */
 export function StatusDot({
   tone,
   label,
   'aria-label': ariaLabel,
   size = 8,
+  colorVar,
 }: StatusDotProps) {
   const dot = (
     <span
@@ -53,7 +57,9 @@ export function StatusDot({
         height: size,
         borderRadius: '50%',
         flexShrink: 0,
-        backgroundColor: `var(--agent-platform-state-dot-${tone}, ${TONE_TOKENS[tone]})`,
+        backgroundColor: colorVar
+          ? `var(${colorVar}, ${TONE_TOKENS[tone]})`
+          : TONE_TOKENS[tone],
       }}
     />
   );

@@ -4,7 +4,6 @@ import {
   addedLine,
   callsLine,
   healthLine,
-  monthToDateHours,
   runsAsCaller,
   signInLabel,
 } from './connectorFacts';
@@ -79,11 +78,6 @@ describe('connectorFacts', () => {
         server({ state: 'Disconnected', suspended: true }),
       ]),
     ).toBe('1 of 3 instances healthy');
-  });
-
-  it('reaches back to the 1st of the UTC month', () => {
-    expect(monthToDateHours(new Date('2026-10-09T08:00:00Z'))).toBe(216);
-    expect(monthToDateHours(new Date('2026-10-01T00:30:00Z'))).toBe(24);
   });
 
   it('sums the calls and errors of every name the connector goes by', () => {

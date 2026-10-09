@@ -55,13 +55,16 @@ jest.mock('../ServingProvider', () => ({
     backends: {},
   }),
 }));
+const SKILLS = 'https://github.com/giantswarm/skills';
+let mockSkills: { name: string; repoUrl: string; path: string }[] = [];
+let mockFailedRepositories: string[] = [];
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
-    skills: mockSkillsLoading ? [] : [{ name: 'triage' }],
+    skills: mockSkillsLoading ? [] : mockSkills,
     isLoading: mockSkillsLoading,
     error: null,
     hasRepositories: true,
-    failedRepositories: [],
+    failedRepositories: mockFailedRepositories,
     truncated: false,
   }),
 }));
@@ -94,6 +97,8 @@ describe('CustomizeDataProvider', () => {
     mockAgentsLoading = false;
     mockModelsLoading = false;
     mockSkillsLoading = false;
+    mockSkills = [{ name: 'triage', repoUrl: SKILLS, path: 'triage' }];
+    mockFailedRepositories = [];
   });
 
   it('counts each tab and names the organizations', () => {
@@ -103,6 +108,21 @@ describe('CustomizeDataProvider', () => {
       agentOrganizations: ['engineering', 'support'],
       modelOrganizations: ['support'],
     });
+  });
+
+  it('counts a skill once, however its repository is written', () => {
+    mockSkills = [
+      { name: 'triage', repoUrl: SKILLS, path: 'triage' },
+      { name: 'triage', repoUrl: `${SKILLS}.git`, path: 'triage' },
+      { name: 'notes', repoUrl: SKILLS, path: 'notes' },
+    ];
+    expect(read().counts.skills).toBe(2);
+  });
+
+  it('leaves the skills count out when no repository could be read', () => {
+    mockSkills = [];
+    mockFailedRepositories = [SKILLS];
+    expect(read().counts.skills).toBeUndefined();
   });
 
   it('leaves out the counts still loading', () => {

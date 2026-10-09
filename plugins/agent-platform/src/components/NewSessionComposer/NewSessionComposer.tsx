@@ -1,5 +1,6 @@
 import {
   FormEvent,
+  Key,
   KeyboardEvent,
   ReactNode,
   useCallback,
@@ -44,6 +45,9 @@ const SEARCHABLE_THRESHOLD = 8;
 /** Matches the sessions table's row avatar: one line of text, 2× for hi-dpi. */
 const OPTION_AVATAR_SIZE: AvatarSize = 48;
 
+/** Id of the picker's last option, an action rather than an agent. */
+const FOOTER_ACTION_ID = 'action:picker-footer';
+
 const useStyles = makeStyles(theme => ({
   // bui sets a leading icon flush against the label, which suits a line icon but
   // not an avatar: a filled circle needs real space or the two read as one
@@ -58,6 +62,14 @@ const useStyles = makeStyles(theme => ({
   agentSelect: {
     maxWidth: 260,
     minWidth: 0,
+  },
+  '@global': {
+    [`[role="listbox"] [data-key="${FOOTER_ACTION_ID}"]`]: {
+      borderTopWidth: 1,
+      borderTopStyle: 'solid',
+      borderTopColor: 'var(--bui-border-1)',
+      marginTop: 4,
+    },
   },
 }));
 
@@ -99,6 +111,12 @@ export type NewSessionComposerFooterContext = {
 /** Prefix of the option ids in the Recent group, which repeat agents listed below it. */
 const RECENT_OPTION_PREFIX = 'recent:';
 
+/** An action listed last in the agent picker, e.g. a link to manage agents. */
+export type NewSessionComposerPickerAction = {
+  label: string;
+  onAction: () => void;
+};
+
 export type NewSessionComposerProps = {
   /**
    * Agents to offer, in display order. Non-ready ones are filtered out unless
@@ -123,6 +141,13 @@ export type NewSessionComposerProps = {
   recentAgentIds?: string[];
   /** Gives the picker a search box whatever the number of agents. */
   searchable?: boolean;
+  /** What the picker says while no agent is selected. */
+  pickerPlaceholder?: string;
+  /**
+   * Listed last in the picker, after the agents and whatever the search:
+   * choosing it runs the action and selects nothing.
+   */
+  pickerFooterAction?: NewSessionComposerPickerAction;
   /** The prompt the field starts with. */
   initialPrompt?: string;
   /** The field's placeholder for the selected agent, or for none. */
@@ -192,6 +217,21 @@ function oneShortLine(text: string): string {
     : collapsed;
 }
 
+function labelMatches(label: string | undefined, query: string): boolean {
+  return (label ?? '').toLowerCase().includes(query.trim().toLowerCase());
+}
+
+/**
+ * The picker's search, by label. The footer action stays in view while some
+ * agent matches, so a search that matches none shows the empty state.
+ */
+function pickerSearchFilter(agentLabels: string[]) {
+  return (option: { id: Key; label?: string }, query: string): boolean =>
+    option.id === FOOTER_ACTION_ID
+      ? agentLabels.some(label => labelMatches(label, query))
+      : labelMatches(option.label, query);
+}
+
 /**
  * What to say about an agent under its name in the picker: for one that cannot
  * be started, why not.
@@ -232,6 +272,8 @@ export function NewSessionComposer({
   groupByNamespace = false,
   recentAgentIds,
   searchable,
+  pickerPlaceholder = 'Select an agent',
+  pickerFooterAction,
   initialPrompt,
   promptPlaceholder,
   renderPickerAccessory,
@@ -335,7 +377,8 @@ export function NewSessionComposer({
   );
 
   // With `groupByNamespace`, grouped by namespace behind the Recent group, or
-  // flat when that would be a single heading. Otherwise grouped by
+  // flat when that would be a single heading or while a search is typed, so
+  // the matches read as one list. Otherwise grouped by
   // installation only when there is more than one, since a single
   // group heading repeating the only installation's name is pure noise. Order is
   // already home-then-installation-then-name from `sortAgentRows`, so grouping
@@ -365,7 +408,7 @@ export function NewSessionComposer({
       const namespaces = [
         ...new Set(listed.map(agent => agent.namespace)),
       ].sort((a, b) => a.localeCompare(b));
-      if (recent.length === 0 && namespaces.length <= 1) {
+      if (isSearching || (recent.length === 0 && namespaces.length <= 1)) {
         return listed.map(agent => toOption(agent));
       }
       const groups = namespaces.map(namespace => ({
@@ -398,6 +441,30 @@ export function NewSessionComposer({
         .map(agent => toOption(agent)),
     }));
   }, [listed, renderAvatar, groupByNamespace, recentAgentIds, isSearching]);
+
+  const searchFilter = useMemo(
+    () =>
+      pickerSearchFilter(
+        listed.map(agent =>
+          agentOptionLabel(
+            agent,
+            new Set(listed.map(each => each.installation)).size > 1,
+          ),
+        ),
+      ),
+    [listed],
+  );
+
+  const pickerOptions = useMemo(
+    () =>
+      pickerFooterAction
+        ? [
+            ...options,
+            { id: FOOTER_ACTION_ID, label: pickerFooterAction.label },
+          ]
+        : options,
+    [options, pickerFooterAction],
+  );
 
   useEffect(() => {
     onSelectedAgentChange?.(selectedAgent);
@@ -521,18 +588,28 @@ export function NewSessionComposer({
                 // slot, and without this the chosen agent loses the avatar it had
                 // in the list.
                 icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-                options={options}
+                options={pickerOptions}
                 selectedKey={selectedId ?? null}
                 onSelectionChange={key => {
-                  touched.current = true;
+                  setSearchText('');
                   const id = key ? String(key) : undefined;
+                  if (id === FOOTER_ACTION_ID) {
+                    pickerFooterAction?.onAction();
+                    return;
+                  }
+                  touched.current = true;
                   setSelectedId(
                     id?.startsWith(RECENT_OPTION_PREFIX)
                       ? id.slice(RECENT_OPTION_PREFIX.length)
                       : id,
                   );
                 }}
-                placeholder="Select an agent"
+                onOpenChange={isOpen => {
+                  if (!isOpen) {
+                    setSearchText('');
+                  }
+                }}
+                placeholder={pickerPlaceholder}
                 // Grouped by namespace, the search text is held here so the
                 // Recent group can step aside while a search is typed.
                 {...(groupByNamespace
@@ -541,13 +618,18 @@ export function NewSessionComposer({
                         inputValue: searchText,
                         onInputChange: setSearchText,
                         placeholder: `Search ${listed.length} agents`,
+                        filter: searchFilter,
                       },
                     }
                   : { searchable: isSearchable })}
                 // A sole startable agent is no choice, unless unavailable ones
-                // are listed beside it with their reasons.
+                // are listed beside it with their reasons or the picker also
+                // holds its footer action.
                 isDisabled={
-                  isStarting || (Boolean(soleAgent) && listed.length === 1)
+                  isStarting ||
+                  (Boolean(soleAgent) &&
+                    listed.length === 1 &&
+                    !pickerFooterAction)
                 }
               />
               {renderPickerAccessory?.(selectedAgent)}

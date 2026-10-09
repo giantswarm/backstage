@@ -22,8 +22,9 @@ const meta = {
             'as a colour, use `StatusLabel`.',
           migration: 'mixed',
           extra:
-            'The colour reads `--agent-platform-state-dot-<tone>` before the ' +
-            'theme palette, so an app stylesheet can recolour every dot at once.',
+            'The colour is the bui token for the tone. Pass `colorVar` to read ' +
+            'a custom property first, so an app stylesheet can recolour one ' +
+            'family of dots, such as the session states, without the others.',
         }),
       },
     },

@@ -13,6 +13,7 @@ import { workflowDetailRouteRef } from '../../routes';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
+import { SessionGate } from '../shared';
 
 export type CustomizeWorkflowsPanelProps = {
   search: string;
@@ -128,25 +129,35 @@ function WorkflowsTable({
       />
     );
   }
-  if (rows.length === 0) {
-    return (
+  const list =
+    rows.length === 0 ? (
       <Text as="p" variant="body-medium" color="secondary">
         No workflows match “{search.trim()}”.
       </Text>
+    ) : (
+      <Table<Row>
+        columnConfig={columns}
+        data={rows}
+        pagination={{ type: 'none' }}
+        rowConfig={{
+          getHref: row =>
+            detailRoute
+              ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
+              : undefined,
+        }}
+      />
     );
-  }
   return (
-    <Table<Row>
-      columnConfig={columns}
-      data={rows}
-      pagination={{ type: 'none' }}
-      rowConfig={{
-        getHref: row =>
-          detailRoute
-            ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
-            : undefined,
-      }}
-    />
+    <Flex direction="column" gap="4">
+      {!hasSession && (
+        <SessionGate
+          session={session}
+          installation={installation}
+          context="Workflow runs are read through your muster session."
+        />
+      )}
+      {list}
+    </Flex>
   );
 }
 

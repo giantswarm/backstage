@@ -37,6 +37,8 @@ export type StartNewSessionComposerProps = Pick<
   | 'groupByNamespace'
   | 'recentAgentIds'
   | 'searchable'
+  | 'pickerPlaceholder'
+  | 'pickerFooterAction'
   | 'initialPrompt'
   | 'promptPlaceholder'
   | 'renderPickerAccessory'

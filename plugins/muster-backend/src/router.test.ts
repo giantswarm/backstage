@@ -16,6 +16,15 @@ import {
   RouterOptions,
 } from './router';
 
+const mockGetMcpUsage = jest.fn();
+jest.mock('./mcpUsage', () => {
+  const actual = jest.requireActual('./mcpUsage');
+  return {
+    ...actual,
+    getMcpUsage: (...args: unknown[]) => mockGetMcpUsage(...args),
+  };
+});
+
 /**
  * A reachability cache that never touches the network: every endpoint answers
  * as reachable, immediately. Tests of the reachability fields build their own.
@@ -106,6 +115,7 @@ describe('createRouter', () => {
   let app: express.Express;
 
   beforeEach(async () => {
+    mockGetMcpUsage.mockReset();
     callTool.mockReset();
     callToolWithStructured.mockReset();
     listTools.mockReset();
@@ -225,6 +235,34 @@ describe('createRouter', () => {
 
     expect(response.status).toBe(400);
     expect(callTool).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a window other than the month', '/usage?window=week'],
+    ['both hours and a window', '/usage?hours=24&window=month'],
+  ])('rejects usage with %s', async (_, path) => {
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(400);
+    expect(mockGetMcpUsage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/usage?window=month', 'month'],
+    ['/usage?hours=72', 72],
+    ['/usage', 24],
+  ])('reads %s as the range %s', async (path, range) => {
+    mockGetMcpUsage.mockResolvedValueOnce({ available: false });
+
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(200);
+    expect(mockGetMcpUsage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      range,
+    );
   });
 
   it('proxies execution detail with steps', async () => {

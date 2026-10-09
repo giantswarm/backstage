@@ -613,6 +613,164 @@ describe('opt-in picker options', () => {
     ).toBeInTheDocument();
   });
 
+  it('lists the matches as one group while searching', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'agent',
+    );
+
+    expect(screen.queryByRole('group')).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('SRE Agent'),
+      expect.stringContaining('Research Agent'),
+    ]);
+  });
+
+  it('shows Recent again when the picker reopens after a search', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'issue',
+    );
+    expect(
+      screen.queryByRole('group', { name: 'Recent' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(document.body);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+    ).toHaveValue('');
+    expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
+  });
+
+  it('clears the search once an agent is chosen', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'issue',
+    );
+    await userEvent.click(
+      screen.getByRole('option', { name: /Issue Tracker/ }),
+    );
+    expect(agentPicker()).toHaveTextContent('Issue Tracker');
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getByRole('group', { name: 'Recent' })).toBeInTheDocument();
+  });
+
+  it('names the empty choice as asked', () => {
+    renderComposer({
+      agents: [sre, issues],
+      pickerPlaceholder: 'Choose an agent',
+    });
+
+    expect(agentPicker()).toHaveTextContent('Choose an agent');
+  });
+
+  it('runs the footer action, last in the picker, without selecting it', async () => {
+    const onAction = jest.fn();
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      searchable: true,
+      pickerFooterAction: { label: 'Manage agents', onAction },
+    });
+
+    await userEvent.click(agentPicker());
+    const options = screen.getAllByRole('option');
+    expect(options[options.length - 1]).toHaveAccessibleName('Manage agents');
+
+    await userEvent.click(options[options.length - 1]);
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(agentPicker()).toHaveTextContent('Select an agent');
+  });
+
+  it('keeps the footer action reachable beside a sole agent', async () => {
+    const onAction = jest.fn();
+    renderComposer({
+      agents: [sre],
+      pickerFooterAction: { label: 'Manage agents', onAction },
+    });
+
+    expect(agentPicker()).toBeEnabled();
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Manage agents' }),
+    );
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(agentPicker()).toHaveTextContent('SRE Agent');
+  });
+
+  it('keeps a sole agent without a footer action as no choice', () => {
+    renderComposer({ agents: [sre] });
+
+    expect(agentPicker()).toBeDisabled();
+  });
+
+  it('says nothing matches rather than offering only the footer action', async () => {
+    renderComposer({
+      agents: [sre, research, issues],
+      groupByNamespace: true,
+      searchable: true,
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'zebra',
+    );
+
+    expect(
+      screen.queryByRole('option', { name: 'Manage agents' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+  });
+
+  it('sets the footer action apart from the agents', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      pickerFooterAction: { label: 'Manage agents', onAction: jest.fn() },
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getByRole('option', { name: 'Manage agents' })).toHaveStyle({
+      borderTop: '1px solid var(--bui-border-1)',
+    });
+  });
+
   it('starts with the initial prompt', () => {
     renderComposer({ initialPrompt: 'Which clusters still run 1.31?' });
 

@@ -648,8 +648,15 @@ export async function createRouter(
    */
   router.get('/usage', async (req, res) => {
     const { config: installation, client } = resolveInstallation(req);
-    const hours = parseOptionalInt(req.query.hours, 'hours') ?? 24;
-    if (hours < 1 || hours > 24 * 90) {
+    const window = req.query.window;
+    if (window !== undefined && window !== 'month') {
+      throw new InputError('window must be month');
+    }
+    const hours = parseOptionalInt(req.query.hours, 'hours');
+    if (window !== undefined && hours !== undefined) {
+      throw new InputError('Give hours or window, not both');
+    }
+    if (hours !== undefined && (hours < 1 || hours > 24 * 90)) {
       throw new InputError('hours must be between 1 and 2160');
     }
     res.json(
@@ -657,7 +664,7 @@ export async function createRouter(
         client,
         installation,
         readCallOptions(req, installation),
-        hours,
+        window ?? hours ?? 24,
       ),
     );
   });

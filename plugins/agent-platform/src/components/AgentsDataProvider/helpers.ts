@@ -14,7 +14,7 @@ import {
   type ClientServingState,
   type ClientServingSummary,
 } from '../../lib/serving';
-import { skillId } from '../../lib/skills';
+import { canonicalSkillId } from '../../lib/skills';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -176,10 +176,10 @@ export type AgentRow = {
   modelName?: string;
   skillCount: number;
   /**
-   * The git-sourced skills the agent mounts, each as the catalog's
-   * {@link skillId} (`<repo URL>#<path>`), so a discovered skill can be matched
-   * to the agents using it. OCI and bucket skills have no catalog identity and
-   * are left out.
+   * The git-sourced skills the agent mounts, each as its
+   * {@link canonicalSkillId} (`<repo URL>#<path>`), so a discovered skill can
+   * be matched to the agents using it whatever form either URL is written
+   * in. OCI and bucket skills have no catalog identity and are left out.
    */
   skillIds?: string[];
   /**
@@ -304,7 +304,9 @@ export function toAgentRow(
   const skillIds = agent
     .getSkills()
     .filter(skill => skill.source === 'git')
-    .map(skill => skillId({ repoUrl: skill.url, path: skill.path ?? '' }));
+    .map(skill =>
+      canonicalSkillId({ repoUrl: skill.url, path: skill.path ?? '' }),
+    );
 
   return {
     id: `${installation}/${namespace}/${name}`,

@@ -299,6 +299,26 @@ describe('toAgentRow', () => {
     expect(row.modelConfigId).toBeUndefined();
   });
 
+  it('identifies a git skill by its canonical repository URL', () => {
+    const agent = makeAgent({ name: 'triager' });
+    agent.jsonData.spec!.template!.skills = [
+      {
+        name: 'triage',
+        source: {
+          path: './skills/triage/',
+          git: {
+            url: 'https://github.com/GiantSwarm/skills.git',
+            commit: 'abc',
+          },
+        },
+      },
+    ];
+
+    expect(toAgentRow(agent, []).skillIds).toEqual([
+      'https://github.com/giantswarm/skills#skills/triage',
+    ]);
+  });
+
   it('carries readiness and the explanation through', () => {
     const agent = makeAgent({
       name: 'triager',

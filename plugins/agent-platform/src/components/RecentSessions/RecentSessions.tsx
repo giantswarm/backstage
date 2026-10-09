@@ -15,7 +15,10 @@ import {
   needsAttention,
   pickRecentSessions,
 } from './helpers';
-import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  sessionStateDotVar,
+  STABLE_CLASS_NAMES,
+} from '../../lib/stableClassNames';
 
 const useStyles = makeStyles({
   list: {
@@ -115,7 +118,13 @@ function RecentSessionsList({
                 aria-current={isActive ? 'page' : undefined}
               >
                 <Flex align="center" gap="2">
-                  {working && <StatusDot tone="info" aria-label="Working" />}
+                  {working && (
+                    <StatusDot
+                      tone="info"
+                      aria-label="Working"
+                      colorVar={sessionStateDotVar('info')}
+                    />
+                  )}
                   <Box grow minWidth="0">
                     <Text
                       as="div"

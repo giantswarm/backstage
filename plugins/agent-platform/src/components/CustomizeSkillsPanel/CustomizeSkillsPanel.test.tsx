@@ -21,9 +21,10 @@ let mockCatalog: SkillCatalog;
 jest.mock('../CustomizeDataProvider', () => ({
   useCustomizeData: () => ({ skillCatalog: mockCatalog }),
 }));
+let mockAgentSkillIds: string[] = [];
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({
-    rows: [{ id: 'a', skillIds: [`${REPO}#triage`] }] as AgentRow[],
+    rows: [{ id: 'a', skillIds: mockAgentSkillIds }] as AgentRow[],
     isLoading: false,
   }),
 }));
@@ -40,6 +41,7 @@ const loaded: SkillCatalog = {
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
     mockCatalog = loaded;
+    mockAgentSkillIds = [`${REPO}#triage`];
   });
 
   it('lists the most used skills first, with their source and usage', async () => {
@@ -60,6 +62,79 @@ describe('CustomizeSkillsPanel', () => {
     expect(
       screen.getByText('Could not read giantswarm/skills-private'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The skills of giantswarm/skills-private are missing below.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says once, with the reason, when no repository could be read', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      failedRepositories: [REPO],
+      failureMessages: {
+        [REPO]:
+          'Failed to discover skills: GitHub refused the read because the API rate limit of this portal is used up.',
+      },
+    };
+    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+
+    expect(
+      screen.getByText('Could not read giantswarm/skills'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Failed to discover skills: GitHub refused the read because the API rate limit of this portal is used up. No skill could be listed.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No skills yet')).not.toBeInTheDocument();
+    expect(screen.queryByText(/missing below/)).not.toBeInTheDocument();
+  });
+
+  it('counts each skill once, however its repository is written', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        skill('triage'),
+        { ...skill('triage'), repoUrl: `${REPO}.git/` },
+        skill('summarise'),
+        {
+          ...skill('notes'),
+          repoUrl: 'https://github.com/giantswarm/other-skills',
+        },
+      ],
+    };
+    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+
+    expect(
+      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
+    ).toEqual(['triage', 'notes', 'summarise']);
+    expect(
+      screen.getByText('The skills your agents use most come first.', {
+        exact: false,
+      }),
+    ).toHaveTextContent(
+      'The skills your agents use most come first. 3 skills from 2 sources in total.',
+    );
+  });
+
+  it('matches an agent that writes the repository another way', async () => {
+    mockAgentSkillIds = ['https://github.com/giantswarm/skills#summarise'];
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        {
+          ...skill('summarise'),
+          repoUrl: 'git@github.com:GiantSwarm/skills.git',
+        },
+      ],
+    };
+    await renderInTestApp(<CustomizeSkillsPanel search="" />);
+
+    expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
+    expect(screen.getByText('GiantSwarm/skills')).toBeInTheDocument();
   });
 
   it('says when no repository is configured', async () => {

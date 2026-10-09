@@ -50,15 +50,6 @@ export function healthLine(servers: MCPServer[]): string {
 }
 
 /**
- * The `/usage` window that covers the current UTC calendar month: the
- * backend ends a daily-bucketed window at the next UTC midnight, so one day
- * per elapsed day of the month reaches back to the 1st.
- */
-export function monthToDateHours(now: Date): number {
-  return 24 * now.getUTCDate();
-}
-
-/**
  * "3,418 · 0.4% errors": the calls muster dispatched to any of `serverNames`
  * over the usage window. Undefined when the usage carries no per-server rows
  * to count from.

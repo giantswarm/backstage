@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
@@ -398,6 +398,59 @@ describe('SessionsIndexPage', () => {
   describe('with no session on the fleet yet', () => {
     beforeEach(() => {
       mockUseSessions.mockReturnValue(loadedSessions);
+    });
+
+    it('says so inside the agent shell, with where a session starts', async () => {
+      mockUseAgentShell.mockReturnValue(true);
+      await render();
+
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('link', { name: 'New session' })).toHaveLength(
+        2,
+      );
+      expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
+    });
+
+    it('leaves focus alone when the list was empty from the start', async () => {
+      mockUseAgentShell.mockReturnValue(true);
+      await render();
+
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+      ).not.toHaveFocus();
+    });
+
+    it('does not wait for the agents inside the agent shell', async () => {
+      mockUseAgentShell.mockReturnValue(true);
+      mockUseAgents.mockReturnValue({ ...loadedAgents, isLoading: true });
+      await render();
+
+      expect(
+        screen.queryByRole('progressbar', { name: 'Loading sessions' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+      ).toBeInTheDocument();
+    });
+
+    it('takes focus when it replaces a list whose focus went with its last row', async () => {
+      mockUseAgentShell.mockReturnValue(true);
+      mockUseSessions.mockReturnValue({ ...loadedSessions, rows: [session] });
+      await renderRerenderable();
+      expect(screen.getByTestId('sessions-table')).toBeInTheDocument();
+
+      // The row and its dialog are gone: focus fell back to the document.
+      mockUseSessions.mockReturnValue(loadedSessions);
+      (document.activeElement as HTMLElement | null)?.blur();
+      fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
+        ).toHaveFocus(),
+      );
     });
 
     it('makes the composer the invitation and shows no empty table', async () => {

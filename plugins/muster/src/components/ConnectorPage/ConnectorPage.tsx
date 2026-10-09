@@ -7,7 +7,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { EmptyState } from '@backstage/core-components';
-import { useApi } from '@backstage/frontend-plugin-api';
+import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -37,6 +37,7 @@ import { MCPServer } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import {
   familyGroups,
   findServerRow,
@@ -70,7 +71,6 @@ import {
   addedLine,
   callsLine,
   healthLine,
-  monthToDateHours,
   runsAsCaller,
   signInLabel,
 } from './connectorFacts';
@@ -81,9 +81,18 @@ import {
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 import { ConnectorSettingsTab } from './ConnectorSettingsTab';
 
-/** The shell's Customize page and its Connectors tab, app routes. */
-export const CUSTOMIZE_PATH = '/customize';
-export const CUSTOMIZE_CONNECTORS_PATH = '/customize/connectors';
+/** The shell's Customize page and its Connectors tab, where the app binds them. */
+function useCustomizePaths(): {
+  customize?: string;
+  connectors?: string;
+} {
+  const customizeRoute = useRouteRef(customizeExternalRouteRef);
+  const customize = customizeRoute?.();
+  return {
+    customize,
+    connectors: customize ? `${customize}/connectors` : undefined,
+  };
+}
 
 const useStyles = makeStyles({
   tile: {
@@ -141,10 +150,9 @@ function useCallsThisMonth(
   enabled: boolean,
 ): string | undefined {
   const musterApi = useApi(musterApiRef);
-  const hours = monthToDateHours(new Date());
   const { data } = useQuery({
-    queryKey: ['muster', 'mcp-usage', installation, hours],
-    queryFn: () => musterApi.getMcpUsage({ installation, hours }),
+    queryKey: ['muster', 'mcp-usage', installation, 'month'],
+    queryFn: () => musterApi.getMcpUsage({ installation, window: 'month' }),
     enabled: enabled && serverNames.length > 0,
   });
   return data ? callsLine(data, serverNames) : undefined;
@@ -172,6 +180,8 @@ function ConnectorPageContent({
   const { authenticated } = session;
   const navigate = useNavigate();
   const basePath = useSplatBasePath();
+  const paths = useCustomizePaths();
+  const serversRoute = useRouteRef(mcpServersRouteRef);
   const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
   const members = useMemo(() => rowServers(row), [row]);
@@ -373,8 +383,8 @@ function ConnectorPageContent({
   }
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Customize', href: CUSTOMIZE_PATH },
-    { label: 'Connectors', href: CUSTOMIZE_CONNECTORS_PATH },
+    { label: 'Customize', href: paths.customize },
+    { label: 'Connectors', href: paths.connectors },
     { label: name },
   ];
 
@@ -528,8 +538,9 @@ function ConnectorPageContent({
             open={actionOpen}
             onClose={() => setActionOpen(false)}
             onDone={done => {
-              if (done.destructive) {
-                navigate(CUSTOMIZE_CONNECTORS_PATH);
+              const away = paths.connectors ?? serversRoute?.();
+              if (done.destructive && away) {
+                navigate(away);
               }
             }}
           />
@@ -557,6 +568,7 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
+  const paths = useCustomizePaths();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
 
   if (isLoadingInstallations || isLoading) {
@@ -582,8 +594,8 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
       <ShellPage
         title={key}
         breadcrumbs={[
-          { label: 'Customize', href: CUSTOMIZE_PATH },
-          { label: 'Connectors', href: CUSTOMIZE_CONNECTORS_PATH },
+          { label: 'Customize', href: paths.customize },
+          { label: 'Connectors', href: paths.connectors },
           { label: key },
         ]}
       >
@@ -592,7 +604,9 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
           title={`No connector “${key}” on ${activeInstallation}`}
           description="It may run on another installation, or it may have been removed."
           action={
-            <Link href={CUSTOMIZE_CONNECTORS_PATH}>Back to the connectors</Link>
+            paths.connectors ? (
+              <Link href={paths.connectors}>Back to the connectors</Link>
+            ) : undefined
           }
         />
       </ShellPage>

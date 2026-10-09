@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EmptyState, Progress } from '@backstage/core-components';
 import {
   identityApiRef,
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Box, Container, Flex, Link, Text } from '@backstage/ui';
+import { Box, Container, Flex, Text } from '@backstage/ui';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 
 import { recentAgents } from '../../lib/recentAgents';
@@ -21,7 +22,10 @@ import {
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ModelChip } from '../ModelChip';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import type { NewSessionComposerFooterContext } from '../NewSessionComposer';
+import type {
+  NewSessionComposerFooterContext,
+  NewSessionComposerPickerAction,
+} from '../NewSessionComposer';
 import { RecentAgentChips } from '../RecentAgentChips';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ServingProvider } from '../ServingProvider';
@@ -71,7 +75,10 @@ function pickerAccessory(agent: AgentRow | undefined) {
 }
 
 export type AgentPlatformHomeProps = {
-  /** Where "Manage agents" leads; the link is left out without one. */
+  /**
+   * Where "Manage agents", the agent picker's last entry, leads; the entry is
+   * left out without one.
+   */
   manageAgentsHref?: string;
 };
 
@@ -82,6 +89,7 @@ function AgentPlatformHomeContent({
   const { rows: agents, isLoading, unreachableInstallations } = useAgents();
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
+  const navigate = useNavigate();
   const recent = useMemo(
     () => recentAgents(sessions, agents),
     [sessions, agents],
@@ -101,14 +109,16 @@ function AgentPlatformHomeContent({
         ) : (
           <RecentAgentChips agents={recent} onPick={selectAgent} />
         )}
-        {manageAgentsHref && (
-          <Link href={manageAgentsHref} variant="body-small">
-            Manage agents
-          </Link>
-        )}
       </Flex>
     ),
-    [recent, manageAgentsHref],
+    [recent],
+  );
+  const manageAgents = useMemo<NewSessionComposerPickerAction | undefined>(
+    () =>
+      manageAgentsHref
+        ? { label: 'Manage agents', onAction: () => navigate(manageAgentsHref) }
+        : undefined,
+    [manageAgentsHref, navigate],
   );
 
   return (
@@ -139,6 +149,8 @@ function AgentPlatformHomeContent({
                 groupByNamespace: true,
                 recentAgentIds,
                 searchable: true,
+                pickerPlaceholder: 'Choose an agent',
+                pickerFooterAction: manageAgents,
                 promptPlaceholder,
                 renderPickerAccessory: pickerAccessory,
                 renderFooter,

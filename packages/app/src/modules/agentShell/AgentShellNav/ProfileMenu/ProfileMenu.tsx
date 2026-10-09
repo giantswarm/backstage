@@ -8,7 +8,9 @@ import {
   MenuSection,
   MenuSeparator,
   MenuTrigger,
+  Text,
 } from '@backstage/ui';
+import { Header, MenuSection as AriaMenuSection } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import FlagIcon from '@material-ui/icons/Flag';
@@ -28,14 +30,12 @@ const useStyles = makeStyles({
     width: '100%',
     justifyContent: 'flex-start',
   },
-  // A line of information, not an action: read at full contrast, not dimmed
-  // as a disabled action would be.
-  email: {
-    '&&': {
-      opacity: 1,
-      cursor: 'default',
-      color: 'var(--bui-fg-secondary)',
-    },
+  identity: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    padding: 'var(--bui-space-3) var(--bui-space-3) var(--bui-space-1)',
+    minWidth: 0,
   },
 });
 
@@ -49,8 +49,9 @@ export function ProfileMenu({
   const classes = useStyles();
   const identityApi = useApi(identityApiRef);
   const profile = useProfile();
-  const name = profile?.displayName || profile?.email || '';
-  const email = profile?.displayName ? profile.email : undefined;
+  const displayName = profile?.displayName?.trim() || undefined;
+  const email = profile?.email?.trim() || undefined;
+  const name = displayName ?? email ?? '';
   const Icon = item.icon;
   const avatar = (
     <Avatar
@@ -61,6 +62,23 @@ export function ProfileMenu({
       className={classes.avatar}
     />
   );
+
+  const settingsItems = [
+    <MenuItem
+      key="settings"
+      href="/settings"
+      iconStart={<Icon fontSize="small" />}
+    >
+      {item.title}
+    </MenuItem>,
+    <MenuItem
+      key="feature-flags"
+      href="/settings/feature-flags"
+      iconStart={<FlagIcon fontSize="small" />}
+    >
+      Feature flags
+    </MenuItem>,
+  ];
 
   return (
     <MenuTrigger>
@@ -77,22 +95,32 @@ export function ProfileMenu({
         </Button>
       )}
       <Menu placement="top start">
-        <MenuSection title={name || 'Signed in'}>
-          {email ? (
-            <MenuItem id="email" isDisabled className={classes.email}>
-              {email}
-            </MenuItem>
-          ) : null}
-          <MenuItem href="/settings" iconStart={<Icon fontSize="small" />}>
-            {item.title}
-          </MenuItem>
-          <MenuItem
-            href="/settings/feature-flags"
-            iconStart={<FlagIcon fontSize="small" />}
-          >
-            Feature flags
-          </MenuItem>
-        </MenuSection>
+        {name ? (
+          // Who is signed in heads the group rather than being an item: it is
+          // not something to choose.
+          <AriaMenuSection>
+            <Header className={classes.identity}>
+              {displayName && (
+                <Text as="div" variant="body-small" weight="bold" truncate>
+                  {displayName}
+                </Text>
+              )}
+              {email && (
+                <Text
+                  as="div"
+                  variant="body-small"
+                  color={displayName ? 'secondary' : undefined}
+                  truncate
+                >
+                  {email}
+                </Text>
+              )}
+            </Header>
+            {settingsItems}
+          </AriaMenuSection>
+        ) : (
+          <MenuSection title="Signed in">{settingsItems}</MenuSection>
+        )}
         <MenuSeparator />
         <MenuItem
           iconStart={<ExitToAppIcon fontSize="small" />}

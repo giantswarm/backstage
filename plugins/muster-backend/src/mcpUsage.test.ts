@@ -1,5 +1,6 @@
 import {
   getMcpUsage,
+  usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
 } from './mcpUsage';
@@ -248,6 +249,113 @@ describe('getMcpUsage', () => {
       { server: 'gazelle-mcp-kubernetes', calls: 26, errors: 1 },
       { server: 'gazelle-mcp-prometheus', calls: 5, errors: 0 },
     ]);
+  });
+
+  describe('the month so far', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    // A daily sample for every evaluation the range query asks for, and one
+    // the day before the first, the last day of the month before.
+    function dailyClient(seen: Array<Record<string, unknown>>) {
+      return fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        seen.push(args);
+        const start = Date.parse(String(args.start)) / 1000;
+        const end = Date.parse(String(args.end)) / 1000;
+        const lines = [
+          'Result Type: matrix',
+          'Result: {outcome="ok", mcpserver_name="jira"} =>',
+          `100 @[${start - 86400}]`,
+        ];
+        for (let ts = start; ts <= end; ts += 86400) {
+          lines.push(`1 @[${ts}]`);
+        }
+        return lines.join('\n');
+      });
+    }
+
+    it.each([
+      ['at midnight on the 1st', '2026-10-01T00:00:00Z', 1],
+      ['during the 1st', '2026-10-01T10:30:00Z', 1],
+      ['at midnight on the 2nd', '2026-10-02T00:00:00Z', 2],
+      ['at the end of the 2nd', '2026-10-02T23:59:59Z', 2],
+      ['on the 31st', '2026-10-31T12:00:00Z', 31],
+    ])(
+      'covers the days of the month and none before %s',
+      async (_, now, day) => {
+        jest.useFakeTimers({ now: new Date(now) });
+        const seen: Array<Record<string, unknown>> = [];
+
+        const usage = await getMcpUsage(
+          dailyClient(seen),
+          INSTALLATION,
+          {},
+          'month',
+        );
+
+        expect(seen[0].start).toBe('2026-10-02T00:00:00.000Z');
+        expect(seen[0].end).toBe(
+          new Date(Date.UTC(2026, 9, day + 1)).toISOString(),
+        );
+        expect(usage.range_hours).toBe(24 * day);
+        expect(usage.step_hours).toBe(24);
+        expect(usage.buckets.map(bucket => bucket.start)).toEqual(
+          Array.from({ length: day }, (__, index) =>
+            new Date(Date.UTC(2026, 9, index + 1)).toISOString(),
+          ),
+        );
+        expect(usage.totals.calls).toBe(day);
+        expect(usage.servers).toEqual([
+          { server: 'jira', calls: day, errors: 0 },
+        ]);
+      },
+    );
+
+    it('leaves out a sample from before the window that the server sends anyway', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-01T10:30:00Z') });
+      const client = fakeClient((tool, args) => {
+        if (tool === 'core_mcpserver_list') {
+          return SERVER_LIST;
+        }
+        const end = Date.parse(String(args.end)) / 1000;
+        return [
+          'Result Type: matrix',
+          'Result: {outcome="ok", mcpserver_name="jira"} =>',
+          `100 @[${end - 86400}]`,
+          `3 @[${end}]`,
+        ].join('\n');
+      });
+
+      const usage = await getMcpUsage(client, INSTALLATION, {}, 'month');
+
+      expect(usage.totals.calls).toBe(3);
+      expect(usage.servers).toEqual([{ server: 'jira', calls: 3, errors: 0 }]);
+    });
+  });
+
+  describe('usageWindow', () => {
+    const at = (iso: string) => Date.parse(iso) / 1000;
+    const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
+
+    it('ends a daily window after today, also at exactly midnight', () => {
+      const window = usageWindow(72, at('2026-10-09T00:00:00Z'));
+
+      expect(iso(window.endSeconds)).toBe('2026-10-10T00:00:00.000Z');
+      expect(iso(window.startSeconds)).toBe('2026-10-07T00:00:00.000Z');
+      expect(window.stepSeconds).toBe(86400);
+    });
+
+    it('ends an hourly window at the next whole hour', () => {
+      const window = usageWindow(24, at('2026-10-09T10:30:00Z'));
+
+      expect(iso(window.endSeconds)).toBe('2026-10-09T11:00:00.000Z');
+      expect(iso(window.startSeconds)).toBe('2026-10-08T11:00:00.000Z');
+      expect(window.stepSeconds).toBe(3600);
+    });
   });
 
   it('falls back to the x_<server>_ tool names when the family tool is missing', async () => {
