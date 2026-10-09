@@ -297,6 +297,17 @@ export interface Config {
          * require it on every installation.
          */
         mimirEnabled?: boolean;
+        /**
+         * The currency the Agent Platform shows costs in for this
+         * installation. The gateway prices calls in USD, so `usdRate` is the
+         * amount of `code` one USD buys. A code other than USD without a
+         * `usdRate` shows USD. Defaults to USD.
+         */
+        currency?: {
+          /** ISO 4217 code, e.g. EUR. */
+          code: string;
+          usdRate?: number;
+        };
         apiVersionOverrides?: {
           [pluralKind: string]: string;
         };

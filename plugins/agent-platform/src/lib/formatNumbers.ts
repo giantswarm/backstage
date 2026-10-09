@@ -14,6 +14,9 @@
  * the reader's.
  */
 
+import { useMemo } from 'react';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+
 /** Thousands grouping (`1,040`), the same on every machine. */
 const grouped = new Intl.NumberFormat('en-US');
 
@@ -39,8 +42,59 @@ export function formatCount(value: number): string {
   return grouped.format(Math.round(value));
 }
 
+/** A currency to show costs in; see `InstallationCurrency` in the gs plugin. */
+export type Currency = {
+  /** ISO 4217 code, e.g. `EUR`. */
+  code: string;
+  /** The amount of `code` one USD buys. Required for any code but USD. */
+  usdRate?: number;
+};
+
+export const USD: Currency = { code: 'USD' };
+
+/** The currency's symbol as `en-US` writes it (`$`, `€`, `£`, `CHF`). */
+function currencySymbol(code: string): string | undefined {
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+    })
+      .formatToParts(0)
+      .find(part => part.type === 'currency')?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+type ResolvedCurrency = { symbol: string; usdRate: number };
+
 /**
- * Format an estimated USD amount, or `—` when there is nothing to price.
+ * The currency costs can actually be shown in: USD unless `currency` names a
+ * valid code with a positive, finite rate. Showing a converted figure needs the
+ * rate, so a code without one falls back to USD rather than relabelling a USD
+ * amount.
+ */
+function resolveCurrency(currency: Currency | undefined): ResolvedCurrency {
+  const usd = { symbol: '$', usdRate: 1 };
+  if (!currency) {
+    return usd;
+  }
+  const code = currency.code.trim().toUpperCase();
+  if (code === 'USD' || !/^[A-Z]{3}$/.test(code)) {
+    return usd;
+  }
+  const rate = currency.usdRate;
+  if (rate === undefined || !Number.isFinite(rate) || rate <= 0) {
+    return usd;
+  }
+  const symbol = currencySymbol(code);
+  return symbol ? { symbol, usdRate: rate } : usd;
+}
+
+/**
+ * Format an estimated cost, given in USD, in `currency`, or `—` when there is
+ * nothing to price.
  *
  * `undefined` means **no rate could be derived** — every model in the window
  * was missing from the gateway's price catalogue — which is a different fact
@@ -50,28 +104,66 @@ export function formatCount(value: number): string {
  * The precision follows the magnitude because these amounts span six orders:
  * a single session costs fractions of a cent while a month across a fleet runs
  * to thousands, and one fixed precision reads as either `$0.00` or
- * `$1,234.5678`.
+ * `$1,234.5678`. The thresholds apply to the converted amount.
+ *
+ * A currency other than USD needs its `usdRate`; without one the amount shows
+ * in USD.
  */
-export function formatUsd(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) {
+export function formatMoney(
+  usd: number | undefined,
+  currency: Currency = USD,
+): string {
+  if (usd === undefined || !Number.isFinite(usd)) {
     return '—';
   }
+  const { symbol, usdRate } = resolveCurrency(currency);
+  const value = usd * usdRate;
   if (value === 0) {
-    return '$0.00';
+    return `${symbol}0.00`;
   }
   const abs = Math.abs(value);
   const sign = value < 0 ? '-' : '';
   // Not `$0.00`: a real, priced, very small amount must not read as free.
   if (abs < 0.01) {
-    return `${sign}<$0.01`;
+    return `${sign}<${symbol}0.01`;
   }
   if (abs < 1) {
-    return `${sign}$${abs.toFixed(3)}`;
+    return `${sign}${symbol}${abs.toFixed(3)}`;
   }
   if (abs < 100) {
-    return `${sign}$${abs.toFixed(2)}`;
+    return `${sign}${symbol}${abs.toFixed(2)}`;
   }
-  return `${sign}$${grouped.format(Math.round(abs))}`;
+  return `${sign}${symbol}${grouped.format(Math.round(abs))}`;
+}
+
+/** Format an estimated USD amount in USD; see {@link formatMoney}. */
+export function formatUsd(value: number | undefined): string {
+  return formatMoney(value, USD);
+}
+
+/**
+ * The currency an installation shows costs in, from its
+ * `gs.installations.<name>.currency` setting in the signed-in config; USD when
+ * it has none, the installation is not known or the config has not loaded.
+ */
+export function useCurrency(installation: string | undefined): Currency {
+  const { config } = useSignedInConfig();
+  return useMemo(() => {
+    if (!config || !installation) {
+      return USD;
+    }
+    const installations =
+      config.getOptional<Record<string, { currency?: Currency }>>(
+        'gs.installations',
+      ) ?? {};
+    const currency = Object.prototype.hasOwnProperty.call(
+      installations,
+      installation,
+    )
+      ? installations[installation]?.currency
+      : undefined;
+    return currency?.code ? currency : USD;
+  }, [config, installation]);
 }
 
 /** Format a percentage, or `—`. One decimal below 10%, none above. */

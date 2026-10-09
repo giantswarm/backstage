@@ -1,11 +1,20 @@
+import { ConfigReader } from '@backstage/config';
+import {
+  __resetSignedInConfigForTests,
+  setSignedInConfig,
+} from '@giantswarm/backstage-plugin-gs-react';
+import { act, renderHook } from '@testing-library/react';
 import {
   formatBytes,
+  formatMoney,
   formatCount,
   formatPercent,
   formatSeconds,
   formatTokens,
   formatTokensPerSecond,
   formatUsd,
+  USD,
+  useCurrency,
 } from './formatNumbers';
 
 describe('formatTokens', () => {
@@ -141,5 +150,108 @@ describe('formatBytes', () => {
     expect(formatBytes(6594474711)).toBe('6.1 GiB');
     expect(formatBytes(34254796848)).toBe('31.9 GiB');
     expect(formatBytes(120 * 1024 ** 3)).toBe('120 GiB');
+  });
+});
+
+describe('formatMoney', () => {
+  const eur = { code: 'EUR', usdRate: 0.9 };
+
+  it('formats USD exactly as formatUsd does', () => {
+    for (const value of [
+      undefined,
+      NaN,
+      0,
+      0.0004,
+      0.0432,
+      4.5,
+      -4.5,
+      1234.4,
+    ]) {
+      expect(formatMoney(value)).toBe(formatUsd(value));
+      expect(formatMoney(value, USD)).toBe(formatUsd(value));
+    }
+  });
+
+  it('converts at the rate and writes the currency’s symbol', () => {
+    expect(formatMoney(10, eur)).toBe('€9.00');
+    expect(formatMoney(0.5, eur)).toBe('€0.450');
+    expect(formatMoney(2000, eur)).toBe('€1,800');
+    expect(formatMoney(-10, eur)).toBe('-€9.00');
+    expect(formatMoney(0.001, eur)).toBe('<€0.01');
+    expect(formatMoney(0, eur)).toBe('€0.00');
+  });
+
+  it('applies the precision to the converted amount', () => {
+    // $110 is €99, which keeps its cents.
+    expect(formatMoney(110, eur)).toBe('€99.00');
+  });
+
+  it('keeps an unpriced amount unknown in any currency', () => {
+    expect(formatMoney(undefined, eur)).toBe('—');
+  });
+
+  it.each([
+    ['no rate', { code: 'EUR' }],
+    ['a zero rate', { code: 'EUR', usdRate: 0 }],
+    ['a negative rate', { code: 'EUR', usdRate: -1 }],
+    ['an infinite rate', { code: 'EUR', usdRate: Infinity }],
+    ['an invalid code', { code: 'euro', usdRate: 0.9 }],
+    ['an unknown code', { code: 'XYZQ', usdRate: 0.9 }],
+  ])('falls back to USD for %s', (_, currency) => {
+    expect(formatMoney(10, currency)).toBe('$10.00');
+  });
+
+  it('reads the code case-insensitively', () => {
+    expect(formatMoney(10, { code: 'gbp', usdRate: 0.5 })).toBe('£5.00');
+  });
+});
+
+describe('useCurrency', () => {
+  beforeEach(() => __resetSignedInConfigForTests());
+
+  function publish(installations: Record<string, object>) {
+    setSignedInConfig(new ConfigReader({ gs: { installations } }));
+  }
+
+  it('returns the installation’s currency', () => {
+    publish({
+      golem: { pipeline: 'stable', currency: { code: 'EUR', usdRate: 0.9 } },
+      gazelle: { pipeline: 'stable' },
+    });
+
+    expect(renderHook(() => useCurrency('golem')).result.current).toEqual({
+      code: 'EUR',
+      usdRate: 0.9,
+    });
+  });
+
+  it.each([['gazelle'], ['unknown'], ['constructor'], [undefined]])(
+    'returns USD for %p',
+    installation => {
+      publish({ gazelle: { pipeline: 'stable' } });
+
+      expect(renderHook(() => useCurrency(installation)).result.current).toBe(
+        USD,
+      );
+    },
+  );
+
+  it('returns USD until the signed-in config loads, then the currency', () => {
+    const { result } = renderHook(() => useCurrency('golem'));
+    expect(result.current).toBe(USD);
+
+    act(() => publish({ golem: { currency: { code: 'GBP', usdRate: 0.8 } } }));
+
+    expect(result.current).toEqual({ code: 'GBP', usdRate: 0.8 });
+  });
+
+  it('keeps the same object across renders', () => {
+    publish({ golem: { currency: { code: 'EUR', usdRate: 0.9 } } });
+    const { result, rerender } = renderHook(() => useCurrency('golem'));
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
   });
 });
