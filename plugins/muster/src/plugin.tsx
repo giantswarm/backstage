@@ -1,7 +1,9 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactElement } from 'react';
 import {
   ApiBlueprint,
   configApiRef,
+  coreExtensionData,
+  createExtensionInput,
   createFrontendPlugin,
   discoveryApiRef,
   fetchApiRef,
@@ -33,7 +35,11 @@ import {
  * The loader of one muster tab: its router inside the shared muster providers
  * and the inventory-failure gate (`MusterSubPage`).
  */
-function musterTab(context: string, loadRouter: () => Promise<ComponentType>) {
+function musterTab<P extends object>(
+  context: string,
+  loadRouter: () => Promise<ComponentType<P>>,
+  props?: P,
+) {
   return async () => {
     const [{ MusterSubPage }, Router] = await Promise.all([
       import('./components/MusterSubPage'),
@@ -41,7 +47,7 @@ function musterTab(context: string, loadRouter: () => Promise<ComponentType>) {
     ]);
     return (
       <MusterSubPage context={context}>
-        <Router />
+        <Router {...(props as P)} />
       </MusterSubPage>
     );
   };
@@ -53,18 +59,37 @@ function musterTab(context: string, loadRouter: () => Promise<ComponentType>) {
 // muster's links resolve under the tab they belong to. Their place among the
 // Agent Platform's tabs is the page's own (agent-platform's
 // `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids.
-const mcpServersSubPage = SubPageBlueprint.make({
+//
+// **The `usedBy` input, a cross-plugin coupling by string:** the shell's
+// connector page renders the element attached to `sub-page:muster/mcp-servers`
+// (input `usedBy`) as its Used by tab, and leaves the tab out when nothing is
+// attached. The element reads its connector with `useConnectorPageTarget`.
+// agent-platform attaches it (its `connectorUsedBy` extension); both ends carry
+// this comment, and changing either without the other makes the tab vanish.
+const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'mcp-servers',
   attachTo: { id: 'page:agent-platform', input: 'pages' },
-  params: {
-    path: 'mcp-servers',
-    title: 'MCP Servers',
-    routeRef: mcpServersRouteRef,
-    loader: musterTab(
-      'The MCP servers of an installation are read through its Kubernetes API.',
-      () =>
-        import('./components/McpServersRouter').then(m => m.McpServersRouter),
-    ),
+  inputs: {
+    usedBy: createExtensionInput([coreExtensionData.reactElement], {
+      singleton: true,
+      optional: true,
+    }),
+  },
+  factory(originalFactory, { inputs }) {
+    const usedBy: ReactElement | undefined = inputs.usedBy?.get(
+      coreExtensionData.reactElement,
+    );
+    return originalFactory({
+      path: 'mcp-servers',
+      title: 'MCP Servers',
+      routeRef: mcpServersRouteRef,
+      loader: musterTab(
+        'The MCP servers of an installation are read through its Kubernetes API.',
+        () =>
+          import('./components/McpServersRouter').then(m => m.McpServersRouter),
+        { usedBy },
+      ),
+    });
   },
 });
 

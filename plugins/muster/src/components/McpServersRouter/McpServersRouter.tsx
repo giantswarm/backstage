@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -8,6 +9,7 @@ import { NewMcpServerPage } from '../NewMcpServerPage';
 import { NewMcpServerAuthPage } from '../NewMcpServerAuthPage';
 import { NewMcpServerReviewPage } from '../NewMcpServerReviewPage';
 import { NewMcpServerVerifyPage } from '../NewMcpServerVerifyPage';
+import { ConnectorPage } from '../ConnectorPage';
 import { ServerPage } from '../ServerPage';
 import { ToolPage } from '../ToolPage';
 import { useAgentShell } from '../../hooks/useAgentShell';
@@ -25,10 +27,11 @@ import { useAgentShell } from '../../hooks/useAgentShell';
  * (see NewMcpServerEditGate), so the routes — and their telemetry page names —
  * are the same for both.
  *
- * Inside the agent-platform shell a server's route is a branch of its own, so
- * the shell's connector page can change without touching the classic one.
+ * Inside the agent-platform shell a server's route renders the shell's
+ * connector page instead, whose Used by tab is the `usedBy` element another
+ * plugin attaches; the classic server page is unchanged outside the shell.
  */
-export const McpServersRouter = () => {
+export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
   // A wizard step, a server or a tool page opens at its top.
   useScrollToTopOnNavigation();
   const agentShell = useAgentShell();
@@ -70,7 +73,7 @@ export const McpServersRouter = () => {
         />
         <Route path=":server/tools/:tool" element={<ToolPage />} />
         {agentShell ? (
-          <Route path=":server/*" element={<ServerPage />} />
+          <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
         ) : (
           <Route path=":server/*" element={<ServerPage />} />
         )}

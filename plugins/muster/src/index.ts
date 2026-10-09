@@ -99,3 +99,5 @@ export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel'
 export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
+export { useConnectorPageTarget } from './components/ConnectorPage';
+export type { ConnectorPageTarget } from './components/ConnectorPage';

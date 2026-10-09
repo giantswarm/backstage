@@ -7,6 +7,7 @@ import {
   Alert,
   Box,
   Button,
+  Flex,
   Text,
 } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
@@ -58,6 +59,8 @@ export interface ToolDetailPanelProps {
    * the page already shows them, as the tool page does beside the tool's name.
    */
   showMarkers?: boolean;
+  /** One line beside the Execute button, e.g. what running the tool does. */
+  note?: string;
 }
 
 /**
@@ -71,6 +74,7 @@ export function ToolDetailPanel({
   name,
   installation,
   showMarkers = true,
+  note,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -174,6 +178,12 @@ export function ToolDetailPanel({
     execute(args);
   };
 
+  const executeButton = (
+    <Button variant="primary" isPending={mutation.isPending} onClick={run}>
+      {mutation.isPending ? 'Running…' : 'Execute'}
+    </Button>
+  );
+
   if (isLoading) {
     return <DetailSkeleton />;
   }
@@ -246,9 +256,16 @@ export function ToolDetailPanel({
       </Box>
 
       <Box mt="2">
-        <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-          {mutation.isPending ? 'Running…' : 'Execute'}
-        </Button>
+        {note ? (
+          <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+            {executeButton}
+            <Text variant="body-small" color="secondary">
+              {note}
+            </Text>
+          </Flex>
+        ) : (
+          executeButton
+        )}
       </Box>
 
       {mutation.isError && (
