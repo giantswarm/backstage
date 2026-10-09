@@ -1,6 +1,19 @@
-import { PageBlueprint } from '@backstage/frontend-plugin-api';
+import type { ComponentType } from 'react';
+import { PageBlueprint, useRouteRef } from '@backstage/frontend-plugin-api';
 import homePlugin from '@backstage/plugin-home/alpha';
+import type { AgentPlatformHomeProps } from '@giantswarm/backstage-plugin-agent-platform';
 import { agentShellOn } from '../agentShell/predicates';
+import { customizeRouteRef } from '../agentShell/routes';
+
+function ShellHome({ Home }: { Home: ComponentType<AgentPlatformHomeProps> }) {
+  const customizeLink = useRouteRef(customizeRouteRef);
+  const customizeHref = customizeLink?.();
+  return (
+    <Home
+      manageAgentsHref={customizeHref ? `${customizeHref}/agents` : undefined}
+    />
+  );
+}
 
 /**
  * `/` under the Agent Platform shell: the new-session screen. Bound to the home
@@ -18,7 +31,7 @@ export const AgentShellHomePage = PageBlueprint.make({
       const { AgentPlatformHome } =
         await import('@giantswarm/backstage-plugin-agent-platform');
 
-      return <AgentPlatformHome />;
+      return <ShellHome Home={AgentPlatformHome} />;
     },
   },
 });
