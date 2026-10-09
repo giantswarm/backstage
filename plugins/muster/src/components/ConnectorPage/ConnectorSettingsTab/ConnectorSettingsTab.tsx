@@ -94,6 +94,16 @@ function EditForm({ server }: { server: MCPServer }) {
   const registration = useRegisterMcpServer();
   const refresh = useMusterMutationRefresh(server.cluster);
 
+  // Caught up: from here the server's read is the baseline, so a later change
+  // made elsewhere is what Cancel returns to.
+  if (
+    saved &&
+    saved.url === initial.url &&
+    saved.authMode === initial.authMode
+  ) {
+    setSaved(undefined);
+  }
+
   const baseline = saved ?? initial;
   const dirty = url !== baseline.url || authMode !== baseline.authMode;
 
