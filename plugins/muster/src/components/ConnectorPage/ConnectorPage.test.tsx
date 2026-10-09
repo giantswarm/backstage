@@ -7,6 +7,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
+import { customizeExternalRouteRef } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
 
@@ -16,6 +17,7 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
+const mockRefresh = jest.fn();
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -36,7 +38,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     connecting: false,
     connect: jest.fn(),
   }),
-  useMusterMutationRefresh: () => jest.fn(),
+  useMusterMutationRefresh: () => mockRefresh,
 }));
 
 const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
@@ -130,7 +132,10 @@ function makeApi() {
       description: 'A tool.',
       inputSchema: { type: 'object', properties: {} },
     })),
-    callTool: jest.fn(async () => ({})),
+    callTool: jest.fn(
+      async (_tool: string, _args?: unknown, _installation?: string) =>
+        ({}) as object,
+    ),
     getMcpUsage: jest.fn(async () => ({
       available: true,
       range_hours: 216,
@@ -163,7 +168,12 @@ async function renderAt(
   {
     api = makeApi(),
     usedBy,
-  }: { api?: ReturnType<typeof makeApi>; usedBy?: ReactElement } = {},
+    customizeBound = true,
+  }: {
+    api?: ReturnType<typeof makeApi>;
+    usedBy?: ReactElement;
+    customizeBound?: boolean;
+  } = {},
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -182,6 +192,9 @@ async function renderAt(
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
+      ...(customizeBound && {
+        mountedRoutes: { '/customize': customizeExternalRouteRef },
+      }),
     },
   );
   return api;
@@ -192,6 +205,7 @@ const BASE = '/agent-platform/mcp-servers';
 beforeEach(() => {
   mockServers = makeServers();
   mockAuthenticated = true;
+  mockRefresh.mockClear();
 });
 
 describe('ConnectorPage', () => {
@@ -215,8 +229,16 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('names its place under Customize without links where Customize is not bound', async () => {
+    await renderAt(`${BASE}/jira`, { customizeBound: false });
+
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(breadcrumb).getByText('Customize')).toBeInTheDocument();
+    expect(within(breadcrumb).queryByRole('link')).not.toBeInTheDocument();
+  });
+
   it('lists the facts beside the content', async () => {
-    await renderAt(`${BASE}/jira`);
+    const api = await renderAt(`${BASE}/jira`);
 
     const facts = screen.getByRole('complementary', {
       name: 'Connector details',
@@ -230,6 +252,11 @@ describe('ConnectorPage', () => {
     expect(
       await within(facts).findByText('3,418 · 0.4% errors'),
     ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 24 * new Date().getUTCDate(),
+      stepHours: 24,
+    });
     expect(
       within(facts).getByText('https://jira.example.test/mcp'),
     ).toBeInTheDocument();
@@ -260,7 +287,7 @@ describe('ConnectorPage', () => {
     expect(
       await screen.findByText('Runs as you. Nothing is changed.'),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
       expect(api.callTool).toHaveBeenCalledWith(
         'x_jira_search_issues',
@@ -325,6 +352,67 @@ describe('ConnectorPage', () => {
         'gazelle',
       ),
     );
+  });
+
+  it('says Saved, refreshes the connectors and takes no second save of the same change', async () => {
+    const api = await renderAt(`${BASE}/jira/settings`);
+
+    const address = screen.getByRole('textbox', { name: /Server address/ });
+    await userEvent.clear(address);
+    await userEvent.type(address, 'https://jira.internal/mcp');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Save and reconnect' }),
+    );
+
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'Save and reconnect' }),
+    ).toBeDisabled();
+
+    await userEvent.type(address, '{Enter}');
+    expect(
+      api.callTool.mock.calls.filter(
+        ([tool]) => tool === 'core_mcpserver_update',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('takes one save while the first is still running', async () => {
+    const api = makeApi();
+    let finish: () => void = () => {};
+    api.callTool.mockImplementation(async (tool: string) =>
+      tool === 'core_mcpserver_update'
+        ? new Promise<object>(resolve => {
+            finish = () => resolve({});
+          })
+        : {},
+    );
+    await renderAt(`${BASE}/jira/settings`, { api });
+
+    const address = screen.getByRole('textbox', { name: /Server address/ });
+    await userEvent.clear(address);
+    await userEvent.type(address, 'https://jira.internal/mcp');
+    const save = screen.getByRole('button', { name: 'Save and reconnect' });
+    await userEvent.click(save);
+    await waitFor(() =>
+      expect(
+        api.callTool.mock.calls.filter(
+          ([tool]) => tool === 'core_mcpserver_update',
+        ),
+      ).toHaveLength(1),
+    );
+
+    await userEvent.click(save);
+    await userEvent.type(address, '{Enter}');
+    finish();
+
+    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(
+      api.callTool.mock.calls.filter(
+        ([tool]) => tool === 'core_mcpserver_update',
+      ),
+    ).toHaveLength(1);
   });
 
   it('shows a connector managed in Git read-only, with where to change it', async () => {

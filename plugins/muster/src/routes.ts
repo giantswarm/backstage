@@ -1,4 +1,5 @@
 import {
+  createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
@@ -54,3 +55,10 @@ export const workflowDetailRouteRef = createSubRouteRef({
   path: '/:name',
   parent: workflowsRouteRef,
 });
+
+/**
+ * The agent-platform shell's Customize page (`/customize`), whose Connectors
+ * tab a connector's page sits under. A page of the app, bound there; unbound,
+ * a connector's page links nowhere above itself.
+ */
+export const customizeExternalRouteRef = createExternalRouteRef();

@@ -4,6 +4,7 @@ import { createApp } from '@backstage/frontend-defaults';
 import { appOverrides } from './modules/app';
 import { navModule } from './modules/nav';
 import { agentShellModule } from './modules/agentShell';
+import { customizeRouteRef } from './modules/agentShell/routes';
 
 // GS plugins:
 import gsPlugin from '@giantswarm/backstage-plugin-gs';
@@ -109,6 +110,11 @@ const app = createApp({
     circleCINfsPlugin,
     githubPullRequestsNfsPlugin,
   ],
+  bindRoutes({ bind }) {
+    // The shell's Customize page belongs to the app, which no plugin can name
+    // as a default target.
+    bind(musterPlugin.externalRoutes, { customize: customizeRouteRef });
+  },
 });
 
 export default app.createRoot();

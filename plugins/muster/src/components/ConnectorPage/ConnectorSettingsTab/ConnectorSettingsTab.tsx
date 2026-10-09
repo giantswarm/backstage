@@ -16,6 +16,7 @@ import {
   wizardEditBlocker,
 } from '../../../lib/mcpServerDefinition';
 import { ServerPageRow } from '../../../lib/serverGrouping';
+import { useMusterMutationRefresh } from '../../MusterInstanceProvider';
 import { useRegisterMcpServer } from '../../NewMcpServerReviewPage/useRegisterMcpServer';
 import { GitOpsEditDialog } from '../../ServerPage/GitOpsEditDialog';
 import { AdHocServerDialog } from '../../ServerPage/serverActions';
@@ -84,11 +85,22 @@ function EditForm({ server }: { server: MCPServer }) {
   const [url, setUrl] = useState(initial.url);
   const [authMode, setAuthMode] = useState(initial.authMode);
   const [problems, setProblems] = useState<string[]>([]);
+  // What the last save wrote, the form's baseline until the server's own
+  // read catches up with it.
+  const [saved, setSaved] = useState<{
+    url: string;
+    authMode: McpServerAuthMode;
+  }>();
   const registration = useRegisterMcpServer();
+  const refresh = useMusterMutationRefresh(server.cluster);
 
-  const dirty = url !== initial.url || authMode !== initial.authMode;
+  const baseline = saved ?? initial;
+  const dirty = url !== baseline.url || authMode !== baseline.authMode;
 
   const save = () => {
+    if (registration.isPending || !dirty) {
+      return;
+    }
     const state = editedState(server, url, authMode);
     const errors = [
       ...validateMcpServerDetails(state),
@@ -98,20 +110,28 @@ function EditForm({ server }: { server: MCPServer }) {
     if (errors.length > 0) {
       return;
     }
-    registration.mutate({
-      definition: mergeOntoExisting(
-        toMcpServerDefinition(server),
-        composeMcpServerDefinition(state),
-      ),
-      installation: server.cluster,
-      authMode,
-      isEdit: true,
-    });
+    registration.mutate(
+      {
+        definition: mergeOntoExisting(
+          toMcpServerDefinition(server),
+          composeMcpServerDefinition(state),
+        ),
+        installation: server.cluster,
+        authMode,
+        isEdit: true,
+      },
+      {
+        onSuccess: () => {
+          setSaved({ url, authMode });
+          refresh();
+        },
+      },
+    );
   };
 
   const cancel = () => {
-    setUrl(initial.url);
-    setAuthMode(initial.authMode);
+    setUrl(baseline.url);
+    setAuthMode(baseline.authMode);
     setProblems([]);
     registration.reset();
   };
@@ -159,7 +179,8 @@ function EditForm({ server }: { server: MCPServer }) {
       {registration.isSuccess && !dirty && (
         <Alert
           status="success"
-          description="Saved. The connection status may take a few seconds to settle."
+          title="Saved"
+          description="The connection status may take a few seconds to settle."
         />
       )}
       <div className={classes.footer}>
@@ -174,6 +195,7 @@ function EditForm({ server }: { server: MCPServer }) {
           type="submit"
           variant="primary"
           isDisabled={!dirty}
+          // Pending takes no presses but keeps focus on the button.
           isPending={registration.isPending}
         >
           Save and reconnect

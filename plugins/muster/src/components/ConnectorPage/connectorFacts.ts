@@ -50,12 +50,15 @@ export function healthLine(servers: MCPServer[]): string {
 }
 
 /**
- * The `/usage` window that covers the current UTC calendar month: the
- * backend ends a daily-bucketed window at the next UTC midnight, so one day
- * per elapsed day of the month reaches back to the 1st.
+ * The `/usage` window that covers the current UTC calendar month: in daily
+ * steps the backend ends the window at the next UTC midnight, so one day per
+ * elapsed day of the month reaches back to the 1st.
  */
-export function monthToDateHours(now: Date): number {
-  return 24 * now.getUTCDate();
+export function monthToDateWindow(now: Date): {
+  hours: number;
+  stepHours: 24;
+} {
+  return { hours: 24 * now.getUTCDate(), stepHours: 24 };
 }
 
 /**

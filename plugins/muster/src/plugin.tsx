@@ -22,6 +22,7 @@ import {
 } from './apis';
 import { mcpUsageSection } from './mcpUsageSection';
 import {
+  customizeExternalRouteRef,
   mcpServerRouteRef,
   mcpServersRouteRef,
   mcpServerToolRouteRef,
@@ -158,5 +159,8 @@ export const musterPlugin = createFrontendPlugin({
     newMcpServerAuth: newMcpServerAuthRouteRef,
     workflows: workflowsRouteRef,
     workflowDetail: workflowDetailRouteRef,
+  },
+  externalRoutes: {
+    customize: customizeExternalRouteRef,
   },
 });

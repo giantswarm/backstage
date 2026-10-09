@@ -1,5 +1,9 @@
 import { ReactNode, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionGroup,
+  AccordionPanel,
+  AccordionTrigger,
   Alert,
   Box,
   Flex,
@@ -9,7 +13,6 @@ import {
   ToggleButtonGroup,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import ChevronRight from '@material-ui/icons/ChevronRight';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
 import { toolEffect, ToolEffect } from '../../../lib/toolAnnotations';
@@ -31,22 +34,13 @@ const useStyles = makeStyles({
     flex: '0 1 280px',
     minWidth: 200,
   },
-  row: {
+  trigger: {
     display: 'flex',
     alignItems: 'center',
     gap: 14,
-    width: '100%',
-    padding: '12px 4px',
-    border: 0,
-    borderBottom: '1px solid var(--bui-border-1)',
-    background: 'transparent',
+    flex: '1 1 auto',
+    minWidth: 0,
     textAlign: 'left',
-    color: 'var(--bui-fg-primary)',
-    font: 'inherit',
-    cursor: 'pointer',
-    '&:hover': {
-      background: 'var(--bui-bg-neutral-1)',
-    },
   },
   rowText: {
     flex: '1 1 auto',
@@ -54,14 +48,6 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
     minWidth: 0,
-  },
-  chevron: {
-    flex: 'none',
-    color: 'var(--bui-fg-secondary)',
-    transition: 'transform 120ms ease',
-  },
-  chevronOpen: {
-    transform: 'rotate(90deg)',
   },
   tryIt: {
     margin: '4px 0 12px',
@@ -111,61 +97,52 @@ function ToolRow({
   tool,
   label,
   open,
-  onToggle,
   installation,
   runsAsCaller,
 }: {
   tool: ToolSummary;
   label: string;
   open: boolean;
-  onToggle: () => void;
   installation: string;
   runsAsCaller: boolean;
 }) {
   const classes = useStyles();
   const effect = toolEffect(tool);
-  const panelId = `try-${tool.name}`;
   const description = tool.description ?? tool.summary;
   return (
-    <div>
-      <button
-        type="button"
-        className={classes.row}
-        aria-expanded={open}
-        aria-controls={open ? panelId : undefined}
-        onClick={onToggle}
-      >
-        <span className={classes.rowText}>
-          <Text variant="body-medium" weight="bold">
-            {label}
-          </Text>
-          {description && (
-            <Text variant="body-small" color="secondary" truncate>
-              {description}
+    <Accordion id={tool.name}>
+      <AccordionTrigger>
+        <span className={classes.trigger}>
+          <span className={classes.rowText}>
+            <Text variant="body-medium" weight="bold">
+              {label}
             </Text>
-          )}
+            {description && (
+              <Text variant="body-small" color="secondary" truncate>
+                {description}
+              </Text>
+            )}
+          </span>
+          <EffectBadge effect={effect} />
         </span>
-        <EffectBadge effect={effect} />
-        <ChevronRight
-          fontSize="small"
-          aria-hidden
-          className={`${classes.chevron} ${open ? classes.chevronOpen : ''}`}
-        />
-      </button>
-      {open && (
-        <div id={panelId} className={classes.tryIt}>
-          <Text as="h3" variant="body-medium" weight="bold">
-            Try it
-          </Text>
-          <ToolDetailPanel
-            name={tool.name}
-            installation={installation}
-            showMarkers={false}
-            note={tryItNote(effect, runsAsCaller)}
-          />
-        </div>
-      )}
-    </div>
+      </AccordionTrigger>
+      <AccordionPanel>
+        {open && (
+          <div className={classes.tryIt}>
+            <Text as="h4" variant="body-medium" weight="bold">
+              Try it
+            </Text>
+            <ToolDetailPanel
+              name={tool.name}
+              installation={installation}
+              showMarkers={false}
+              note={tryItNote(effect, runsAsCaller)}
+              runLabel="Run"
+            />
+          </div>
+        )}
+      </AccordionPanel>
+    </Accordion>
   );
 }
 
@@ -270,21 +247,24 @@ export function ConnectorToolsTab({
           No tools match.
         </Text>
       ) : (
-        shown.map(tool => (
-          <ToolRow
-            key={tool.name}
-            tool={tool}
-            label={shortName(tool.name)}
-            open={openTool === tool.name}
-            onToggle={() =>
-              setOpenTool(current =>
-                current === tool.name ? undefined : tool.name,
-              )
-            }
-            installation={installation}
-            runsAsCaller={runsAsCaller}
-          />
-        ))
+        <AccordionGroup
+          expandedKeys={openTool ? [openTool] : []}
+          onExpandedChange={keys => {
+            const [next] = [...keys];
+            setOpenTool(next === undefined ? undefined : String(next));
+          }}
+        >
+          {shown.map(tool => (
+            <ToolRow
+              key={tool.name}
+              tool={tool}
+              label={shortName(tool.name)}
+              open={openTool === tool.name}
+              installation={installation}
+              runsAsCaller={runsAsCaller}
+            />
+          ))}
+        </AccordionGroup>
       )}
     </Flex>
   );

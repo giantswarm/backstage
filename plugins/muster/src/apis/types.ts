@@ -557,6 +557,11 @@ export interface MusterApi {
   getMcpUsage(options?: {
     installation?: string;
     hours?: number;
+    /**
+     * The bucket size in hours. With 24, the window ends at the next UTC
+     * midnight, so `hours: 24 * n` covers the last `n` UTC days.
+     */
+    stepHours?: 1 | 24;
   }): Promise<McpUsage>;
   /** Live runtime server list from the muster aggregator (one installation). */
   listServers(installation?: string): Promise<McpServerListResponse>;
