@@ -58,6 +58,27 @@ const useStyles = makeStyles({
       paddingBottom: 0,
     },
   },
+  stackedList: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+    maxWidth: ({ maxWidth }: StyleProps) => maxWidth ?? 'none',
+    margin: 0,
+    '& > dd:last-of-type': {
+      borderBottom: 'none',
+    },
+  },
+  stackedLabel: {
+    margin: 0,
+    paddingTop: 'var(--bui-space-3)',
+  },
+  stackedValue: {
+    margin: 0,
+    minWidth: 0,
+    paddingTop: 'var(--bui-space-1)',
+    paddingBottom: 'var(--bui-space-3)',
+    borderBottom: '1px solid var(--bui-border-1)',
+    overflowWrap: 'anywhere',
+  },
 });
 
 export interface Fact {
@@ -78,6 +99,25 @@ export interface FactListProps {
    * container. Pass `null` to fill the container. Defaults to 720.
    */
   maxWidth?: number | null;
+  /**
+   * Each label above its value, a muted caption over the value, for a narrow
+   * column such as a detail page's facts column. `labelWidth` does not apply.
+   * Defaults to false: label and value side by side.
+   */
+  stacked?: boolean;
+}
+
+/**
+ * Numbers are wrapped as well as strings: a caller pushing a count would
+ * otherwise get the surrounding typography for that one row, a size and family
+ * apart from its neighbours.
+ */
+function FactValue({ value }: { value: ReactNode }) {
+  return typeof value === 'string' || typeof value === 'number' ? (
+    <Text variant="body-small">{value}</Text>
+  ) : (
+    <>{value}</>
+  );
 }
 
 /**
@@ -92,11 +132,31 @@ export const FactList = ({
   facts,
   labelWidth = 180,
   maxWidth = 720,
+  stacked = false,
 }: FactListProps) => {
   const classes = useStyles({
     labelWidth,
     maxWidth: maxWidth ?? undefined,
   });
+
+  if (stacked) {
+    return (
+      <dl className={classes.stackedList}>
+        {facts.map(fact => (
+          <Fragment key={fact.label}>
+            <dt className={classes.stackedLabel}>
+              <Text variant="body-small" color="secondary">
+                {fact.label}
+              </Text>
+            </dt>
+            <dd className={classes.stackedValue}>
+              <FactValue value={fact.value} />
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+    );
+  }
 
   return (
     <dl className={classes.list}>
@@ -110,15 +170,7 @@ export const FactList = ({
             </Text>
           </dt>
           <dd className={`${classes.cell} ${classes.value}`}>
-            {/* Numbers are wrapped as well as strings: a caller pushing a
-                count would otherwise get the surrounding typography for that
-                one row, a size and family apart from its neighbours. */}
-            {typeof fact.value === 'string' ||
-            typeof fact.value === 'number' ? (
-              <Text variant="body-small">{fact.value}</Text>
-            ) : (
-              fact.value
-            )}
+            <FactValue value={fact.value} />
           </dd>
         </Fragment>
       ))}
