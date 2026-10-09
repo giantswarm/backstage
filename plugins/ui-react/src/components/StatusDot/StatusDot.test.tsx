@@ -27,13 +27,22 @@ describe('StatusDot', () => {
     );
   });
 
-  it('reads the shared state-dot variable first, then the bui token', () => {
-    const { container } = render(<StatusDot tone="danger" size={6} />);
+  it('takes the bui token for its tone', () => {
+    const { container } = render(<StatusDot tone="success" size={6} />);
+
+    const dot = container.querySelector<HTMLElement>('[data-tone="success"]');
+    expect(dot?.style.backgroundColor).toBe('var(--bui-fg-positive)');
+    expect(dot?.style.width).toBe('6px');
+  });
+
+  it('reads the given variable first, then the bui token', () => {
+    const { container } = render(
+      <StatusDot tone="danger" colorVar="--agent-platform-state-dot-danger" />,
+    );
 
     const dot = container.querySelector<HTMLElement>('[data-tone="danger"]');
     expect(dot?.style.backgroundColor).toBe(
       'var(--agent-platform-state-dot-danger, var(--bui-fg-negative))',
     );
-    expect(dot?.style.width).toBe('6px');
   });
 });

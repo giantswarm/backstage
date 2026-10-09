@@ -11,3 +11,12 @@ export const STABLE_CLASS_NAMES = {
   message: 'agent-platform-message',
   stateFilter: 'agent-platform-state-filter',
 } as const;
+
+/**
+ * The custom property a session state's dot reads before its bui token, for
+ * an app stylesheet to recolour the session states by (the shell's palette
+ * greys the settled ones) without touching other status dots.
+ */
+export function sessionStateDotVar(tone: string): string {
+  return `--agent-platform-state-dot-${tone}`;
+}
