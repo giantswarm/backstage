@@ -16,6 +16,8 @@ export type SkillCatalog = {
   hasRepositories: boolean;
   /** Configured repositories whose discovery failed (surfaced as a warning). */
   failedRepositories: string[];
+  /** Why each failed repository could not be read, by its URL. */
+  failureMessages?: Record<string, string>;
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
 };
@@ -49,8 +51,17 @@ export function useSkillCatalog(): SkillCatalog {
             `${baseUrl}/agent-skills?${params.toString()}`,
           );
           if (!response.ok) {
+            const reason = await response
+              .json()
+              .then(
+                (body: { error?: { message?: unknown } }) =>
+                  body?.error?.message,
+              )
+              .catch(() => undefined);
             throw new Error(
-              `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
+              typeof reason === 'string' && reason
+                ? reason
+                : `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
             );
           }
           const body = (await response.json()) as {
@@ -63,6 +74,7 @@ export function useSkillCatalog(): SkillCatalog {
 
       const skills: DiscoveredSkill[] = [];
       const failedRepositories: string[] = [];
+      const failureMessages: Record<string, string> = {};
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
@@ -70,10 +82,14 @@ export function useSkillCatalog(): SkillCatalog {
           truncated = truncated || Boolean(result.value.truncated);
         } else {
           failedRepositories.push(repositories[index]);
+          failureMessages[repositories[index]] =
+            result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason);
         }
       });
 
-      return { skills, failedRepositories, truncated };
+      return { skills, failedRepositories, failureMessages, truncated };
     },
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
@@ -84,6 +100,7 @@ export function useSkillCatalog(): SkillCatalog {
     error: (error as Error) ?? null,
     hasRepositories: repositories.length > 0,
     failedRepositories: data?.failedRepositories ?? [],
+    failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
   };
 }

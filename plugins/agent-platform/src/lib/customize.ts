@@ -6,7 +6,12 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { SERVED_MODEL_READINESS } from './serving';
-import { type DiscoveredSkill, repoSlug, skillId } from './skills';
+import {
+  canonicalRepoUrl,
+  canonicalSkillId,
+  type DiscoveredSkill,
+  repoSlug,
+} from './skills';
 import { parseSelector, toolsetShape } from './toolset';
 
 /** A state as the shell's Customize screen shows it: a dot and a few words. */
@@ -126,7 +131,7 @@ export function agentsByModel(agents: AgentRow[]): Map<string, number> {
   return counts;
 }
 
-/** How many of the agents mount each skill, by catalog skill id. */
+/** How many of the agents mount each skill, by canonical skill id. */
 export function agentsBySkill(agents: AgentRow[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const agent of agents) {
@@ -171,28 +176,34 @@ export function searchSkills(
   const needle = search.trim().toLowerCase();
   return needle
     ? skills.filter(skill =>
-        matches(needle, [
-          skill.name,
-          skill.description,
-          repoSlug(skill.repoUrl),
-        ]),
+        matches(needle, [skill.name, skill.description, skillSource(skill)]),
       )
     : skills;
 }
 
-/** The skills most used first, then by name; one entry per catalog id. */
+/** Where a skill comes from, as `owner/repo`. */
+export function skillSource(skill: Pick<DiscoveredSkill, 'repoUrl'>): string {
+  return repoSlug(canonicalRepoUrl(skill.repoUrl));
+}
+
+/** One entry per skill, however many ways its repository is written. */
+export function uniqueSkills(skills: DiscoveredSkill[]): DiscoveredSkill[] {
+  const unique = new Map<string, DiscoveredSkill>();
+  for (const skill of skills) {
+    unique.set(canonicalSkillId(skill), skill);
+  }
+  return [...unique.values()];
+}
+
+/** The skills most used first, then by name; one entry per skill. */
 export function rankSkills(
   skills: DiscoveredSkill[],
   usage: Map<string, number>,
 ): DiscoveredSkill[] {
-  const unique = new Map<string, DiscoveredSkill>();
-  for (const skill of skills) {
-    unique.set(skillId(skill), skill);
-  }
-  return [...unique.values()].sort(
+  return uniqueSkills(skills).sort(
     (a, b) =>
-      (usage.get(skillId(b)) ?? 0) - (usage.get(skillId(a)) ?? 0) ||
-      a.name.localeCompare(b.name),
+      (usage.get(canonicalSkillId(b)) ?? 0) -
+        (usage.get(canonicalSkillId(a)) ?? 0) || a.name.localeCompare(b.name),
   );
 }
 

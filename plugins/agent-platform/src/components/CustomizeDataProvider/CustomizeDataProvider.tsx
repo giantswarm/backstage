@@ -4,7 +4,7 @@ import {
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
 import { clientLookupOf } from '../../lib/serving';
-import { organizationsOf } from '../../lib/customize';
+import { organizationsOf, uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { ModelRow, toModelRow, toModelServedBy } from '../ModelsTable';
@@ -33,6 +33,19 @@ export type CustomizeDataValue = {
   modelRows: ModelRow[];
   skillCatalog: SkillCatalog;
 };
+
+/**
+ * The skills the Skills tab lists, each once; unknown while loading and when
+ * no repository could be read.
+ */
+function skillCountOf(catalog: SkillCatalog): number | undefined {
+  const unreadable =
+    catalog.skills.length === 0 &&
+    (catalog.error !== null || catalog.failedRepositories.length > 0);
+  return catalog.isLoading || unreadable
+    ? undefined
+    : uniqueSkills(catalog.skills).length;
+}
 
 const CustomizeDataContext = createContext<CustomizeDataValue | undefined>(
   undefined,
@@ -93,7 +106,7 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
           modelsLoading && modelRows.length === 0
             ? undefined
             : modelRows.length,
-        skills: skillCatalog.isLoading ? undefined : skillCatalog.skills.length,
+        skills: skillCountOf(skillCatalog),
       },
       hasSkillRepositories: skillCatalog.isLoading
         ? undefined
