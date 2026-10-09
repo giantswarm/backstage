@@ -1,7 +1,11 @@
 import type { ReactNode } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -439,6 +443,36 @@ describe('SessionsDataProvider', () => {
       await waitFor(() => expect(result.current.rows).toHaveLength(1));
       expect(result.current.isLoading).toBe(false);
       expect(result.current.isLoadingMore).toBe(true);
+    });
+
+    it('keeps loading, not empty, while a failed read waits to retry', async () => {
+      // A 500 whose retry is paused (the tab is in the background) leaves the
+      // query pending but not `isLoading`: the table must not claim "No sessions".
+      focusManager.setFocused(false);
+      mockKagent = { installations: ['gazelle'], isProbing: false };
+      listInstallations.mockResolvedValue([proxied('gazelle')]);
+      listSessions
+        .mockRejectedValueOnce(new Error('500 Internal Server Error'))
+        .mockResolvedValue([session()]);
+
+      try {
+        const { result } = renderProvider(
+          new QueryClient({
+            defaultOptions: { queries: { retry: 1, retryDelay: 0 } },
+          }),
+        );
+
+        await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(result.current.isLoading).toBe(true));
+        expect(result.current.rows).toHaveLength(0);
+
+        act(() => focusManager.setFocused(true));
+
+        await waitFor(() => expect(result.current.rows).toHaveLength(1));
+        expect(result.current.isLoading).toBe(false);
+      } finally {
+        focusManager.setFocused(undefined);
+      }
     });
 
     it('is not loading when no installations are configured', async () => {
