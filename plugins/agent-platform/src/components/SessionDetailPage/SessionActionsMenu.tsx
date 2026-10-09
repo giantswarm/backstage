@@ -47,6 +47,7 @@ export function SessionActionsMenu({
   isUserScoped,
   runtimeLoss,
   triggerLabel = 'Session actions',
+  onDeleted,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -61,6 +62,11 @@ export function SessionActionsMenu({
   runtimeLoss?: RuntimeLoss;
   /** The menu button's accessible name; a list names the session in it. */
   triggerLabel?: string;
+  /**
+   * Called once the session is deleted, for a list to move focus off the
+   * row that held this menu.
+   */
+  onDeleted?: () => void;
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
@@ -106,6 +112,7 @@ export function SessionActionsMenu({
     if (sessionsPath && sessionsPath !== pathname) {
       navigate(sessionsPath);
     }
+    onDeleted?.();
   };
 
   return (

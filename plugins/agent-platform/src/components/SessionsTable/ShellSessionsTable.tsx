@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
 import {
   Badge,
@@ -64,9 +72,18 @@ import {
   Unknown,
 } from './cells';
 import type { SessionsTableProps } from './SessionsTable';
-import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import {
+  sessionStateDotVar,
+  STABLE_CLASS_NAMES,
+} from '../../lib/stableClassNames';
 
 const ALL_AGENTS = '';
+
+/** Sessions shown at first and added by each Load more, as the classic list pages by. */
+export const SESSIONS_PAGE_SIZE = 25;
+
+/** The attribute naming the session a row's menu belongs to. */
+const ROW_ATTRIBUTE = 'data-session-row';
 
 const STATE_UNKNOWN_TITLE =
   'kagent could not be read for this session, so its state is not known. This is not the same as finished.';
@@ -119,7 +136,11 @@ function ShellStateCell({
       return (
         <Cell>
           <span title={STATE_UNKNOWN_TITLE}>
-            <StatusDot tone="neutral" label={STATE_UNKNOWN_LABEL} />
+            <StatusDot
+              tone="neutral"
+              label={STATE_UNKNOWN_LABEL}
+              colorVar={sessionStateDotVar('neutral')}
+            />
           </span>
         </Cell>
       );
@@ -127,14 +148,22 @@ function ShellStateCell({
       return (
         <Cell>
           <span title={STATE_IDLE_TITLE}>
-            <StatusDot tone="neutral" label={STATE_IDLE_LABEL} />
+            <StatusDot
+              tone="neutral"
+              label={STATE_IDLE_LABEL}
+              colorVar={sessionStateDotVar('neutral')}
+            />
           </span>
         </Cell>
       );
     default:
       return (
         <Cell>
-          <StatusDot tone={cell.state.tone} label={cell.state.shellLabel} />
+          <StatusDot
+            tone={cell.state.tone}
+            label={cell.state.shellLabel}
+            colorVar={sessionStateDotVar(cell.state.tone)}
+          />
         </Cell>
       );
   }
@@ -147,7 +176,13 @@ function ShellStateCell({
  * bubble through portals), are kept from the row, which would otherwise open
  * the session.
  */
-function SessionRowMenu({ row }: { row: SessionTableRow }) {
+function SessionRowMenu({
+  row,
+  onDeleted,
+}: {
+  row: SessionTableRow;
+  onDeleted: () => void;
+}) {
   const deletion = useDeleteSession(row.installation, row.sessionId);
   const rename = useRenameSession(row.installation, row.sessionId);
   const { isUserScoped } = useKagentCapabilities(row.installation);
@@ -161,6 +196,7 @@ function SessionRowMenu({ row }: { row: SessionTableRow }) {
   return (
     <span
       role="presentation"
+      {...{ [ROW_ATTRIBUTE]: row.id }}
       onPointerDown={stopRowPress}
       onPointerUp={stopRowPress}
       onClick={stopRowPress}
@@ -171,6 +207,7 @@ function SessionRowMenu({ row }: { row: SessionTableRow }) {
         onRename={openRename}
         isUserScoped={isUserScoped}
         triggerLabel={`More actions for “${row.title}”`}
+        onDeleted={onDeleted}
       />
       <SessionRenameDialog
         title={row.title}
@@ -199,12 +236,17 @@ function shellColumns({
   isLoadingStates,
   showInstallation,
   currentYear,
+  focusAfterDelete,
+  onRowDeleted,
 }: {
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   hrefFor: (row: SessionRow) => string | undefined;
   isLoadingStates: boolean;
   showInstallation: boolean;
   currentYear: number;
+  /** The row to focus once a row is deleted, by the deleted row's id. */
+  focusAfterDelete: (rowId: string) => string | undefined;
+  onRowDeleted: (focusRowId: string | undefined) => void;
 }): ShellColumn[] {
   const columns: ShellColumn[] = [
     {
@@ -303,11 +345,17 @@ function shellColumns({
       label: 'Actions',
       hideLabel: true,
       width: '56px',
-      cell: row => (
-        <Cell>
-          <SessionRowMenu row={row} />
-        </Cell>
-      ),
+      cell: row => {
+        const focusRowId = focusAfterDelete(row.id);
+        return (
+          <Cell>
+            <SessionRowMenu
+              row={row}
+              onDeleted={() => onRowDeleted(focusRowId)}
+            />
+          </Cell>
+        );
+      },
     },
   );
   return columns;
@@ -373,6 +421,7 @@ function DayTable({
 }
 
 function ShellFilterBar({
+  searchField,
   rows,
   searchedRows,
   isLoading,
@@ -380,6 +429,7 @@ function ShellFilterBar({
   onChange,
   showStates,
 }: {
+  searchField: ReactNode;
   rows: SessionTableRow[];
   searchedRows: SessionTableRow[];
   isLoading: boolean;
@@ -412,20 +462,23 @@ function ShellFilterBar({
 
   return (
     <Flex direction="column" gap="3">
-      <Select
-        aria-label="Filter by agent"
-        size="small"
-        options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
-        selectedKey={filter.agent ?? ALL_AGENTS}
-        onSelectionChange={key => {
-          const agent = key === null ? ALL_AGENTS : String(key);
-          onChange({
-            ...filter,
-            agent: agent === ALL_AGENTS ? undefined : agent,
-          });
-        }}
-        style={{ minWidth: 200, maxWidth: 280 }}
-      />
+      <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
+        {searchField}
+        <Select
+          label="Agent"
+          size="small"
+          options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
+          selectedKey={filter.agent ?? ALL_AGENTS}
+          onSelectionChange={key => {
+            const agent = key === null ? ALL_AGENTS : String(key);
+            onChange({
+              ...filter,
+              agent: agent === ALL_AGENTS ? undefined : agent,
+            });
+          }}
+          style={{ minWidth: 200, maxWidth: 280 }}
+        />
+      </Flex>
       {showStates && (
         <ToggleButtonGroup
           className={STABLE_CLASS_NAMES.stateFilter}
@@ -452,9 +505,35 @@ function ShellFilterBar({
 }
 
 /**
+ * Moves focus to the row holding `rowId`, or to the first day's heading when
+ * that row is not on screen.
+ */
+function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
+  const marker = rowId
+    ? Array.from(
+        container.querySelectorAll<HTMLElement>(`[${ROW_ATTRIBUTE}]`),
+      ).find(element => element.getAttribute(ROW_ATTRIBUTE) === rowId)
+    : undefined;
+  const row = marker?.closest<HTMLElement>('[role="row"]');
+  if (row) {
+    row.focus();
+    if (row.contains(document.activeElement)) {
+      return;
+    }
+    const focusable = row.querySelector<HTMLElement>('a[href], button');
+    if (focusable) {
+      focusable.focus();
+      return;
+    }
+  }
+  container.querySelector<HTMLElement>('h2')?.focus();
+}
+
+/**
  * The agent-platform shell's sessions list: search, an agent picker and the
  * state chips over one data set, shown as one table per day the sessions
- * started (Today, Yesterday, Earlier), newest first.
+ * started (Today, Yesterday, Earlier), newest first, a page of sessions at a
+ * time.
  */
 export function ShellSessionsTable({
   rows,
@@ -468,6 +547,7 @@ export function ShellSessionsTable({
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const baseId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const hrefFor = useCallback(
     (row: SessionRow) =>
@@ -491,17 +571,6 @@ export function ShellSessionsTable({
   const now = new Date();
   const today = now.toDateString();
   const currentYear = now.getFullYear();
-  const columns = useMemo(
-    () =>
-      shellColumns({
-        buildAvatarUrl,
-        hrefFor,
-        isLoadingStates,
-        showInstallation,
-        currentYear,
-      }),
-    [buildAvatarUrl, hrefFor, isLoadingStates, showInstallation, currentYear],
-  );
 
   const { tableProps, search, filter } = useTable<
     SessionTableRow,
@@ -530,9 +599,21 @@ export function ShellSessionsTable({
   const activeFilter = filter.value ?? NO_SESSIONS_FILTER;
   const filtered = isSessionsFilterActive(activeFilter);
 
+  // A new search or filter starts over at the first page.
+  const [shownCount, setShownCount] = useState(SESSIONS_PAGE_SIZE);
+  useEffect(() => {
+    setShownCount(SESSIONS_PAGE_SIZE);
+  }, [searchTerm, activeFilter]);
+
+  const matching = tableProps.data;
+  const shown = useMemo(
+    () => matching?.slice(0, shownCount),
+    [matching, shownCount],
+  );
+
   const groups = useMemo(() => {
     const byGroup = new Map<SessionDayGroup, SessionTableRow[]>();
-    for (const row of tableProps.data ?? []) {
+    for (const row of shown ?? []) {
       const group = sessionDayGroup(row.createdAt, now);
       byGroup.set(group, [...(byGroup.get(group) ?? []), row]);
     }
@@ -542,7 +623,56 @@ export function ShellSessionsTable({
     });
     // `now` changes every render; the groups only change with its day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableProps.data, today]);
+  }, [shown, today]);
+
+  // The row after each one in reading order, else the one before it: where
+  // focus goes when that row is deleted.
+  const focusAfterDelete = useMemo(() => {
+    const order = groups.flatMap(group => group.rows.map(row => row.id));
+    const next = new Map<string, string | undefined>();
+    order.forEach((id, index) => {
+      next.set(id, order[index + 1] ?? order[index - 1]);
+    });
+    return (rowId: string) => next.get(rowId);
+  }, [groups]);
+
+  const [focusRequest, setFocusRequest] = useState<{ rowId?: string }>();
+  const onRowDeleted = useCallback((rowId: string | undefined) => {
+    setFocusRequest({ rowId });
+  }, []);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!focusRequest || !container) {
+      return undefined;
+    }
+    // After react-aria has restored focus for the closed menu and dialog.
+    const frame = requestAnimationFrame(() => {
+      focusRowOrHeading(container, focusRequest.rowId);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusRequest]);
+
+  const columns = useMemo(
+    () =>
+      shellColumns({
+        buildAvatarUrl,
+        hrefFor,
+        isLoadingStates,
+        showInstallation,
+        currentYear,
+        focusAfterDelete,
+        onRowDeleted,
+      }),
+    [
+      buildAvatarUrl,
+      hrefFor,
+      isLoadingStates,
+      showInstallation,
+      currentYear,
+      focusAfterDelete,
+      onRowDeleted,
+    ],
+  );
 
   const onRowAction = useCallback(
     (row: SessionTableRow) => {
@@ -559,19 +689,31 @@ export function ShellSessionsTable({
     filter.onChange(NO_SESSIONS_FILTER);
   };
 
+  const loadMore = () => {
+    const firstNew = matching?.[shownCount];
+    setShownCount(count => count + SESSIONS_PAGE_SIZE);
+    if (firstNew) {
+      setFocusRequest({ rowId: firstNew.id });
+    }
+  };
+
   const isSettled = !isLoading && tableProps.data !== undefined;
+  const total = matching?.length ?? 0;
+  const shownTotal = shown?.length ?? 0;
 
   return (
-    <Flex direction="column" gap="4">
-      <Flex direction="column" gap="3">
-        <SearchField
-          aria-label="Search sessions"
-          placeholder="Search by title or agent"
-          value={search.value}
-          onChange={search.onChange}
-          style={{ maxWidth: 420 }}
-        />
+    <div ref={containerRef}>
+      <Flex direction="column" gap="4">
         <ShellFilterBar
+          searchField={
+            <SearchField
+              aria-label="Search sessions"
+              placeholder="Search by title or agent"
+              value={search.value}
+              onChange={search.onChange}
+              style={{ flex: '1 1 320px', maxWidth: 420 }}
+            />
+          }
           rows={stateRows}
           searchedRows={searchedRows}
           isLoading={Boolean(isLoading)}
@@ -579,49 +721,61 @@ export function ShellSessionsTable({
           onChange={filter.onChange}
           showStates={hasStates}
         />
-      </Flex>
 
-      {isSettled && groups.length === 0 && (
-        <Flex direction="column" gap="1" py="6" align="center">
-          <Text variant="body-large" weight="bold">
-            {emptyTitle(searchTerm, filtered, emptyMessage)}
-          </Text>
-          {searchTerm && (
-            <Text variant="body-medium" color="secondary">
-              Try another word.
+        {isSettled && groups.length === 0 && (
+          <Flex direction="column" gap="1" py="6" align="center">
+            <Text variant="body-large" weight="bold">
+              {emptyTitle(searchTerm, filtered, emptyMessage)}
             </Text>
-          )}
-          {(searchTerm || filtered) && (
-            <Button variant="secondary" size="small" onPress={clearAll}>
-              Clear search and filters
-            </Button>
-          )}
-        </Flex>
-      )}
-
-      {groups.map(group => {
-        const headingId = `${baseId}-${group.id}`;
-        return (
-          <Flex key={group.id} direction="column" gap="2">
-            <Text
-              as="h2"
-              id={headingId}
-              variant="body-medium"
-              weight="bold"
-              color="secondary"
-            >
-              {group.label}
-            </Text>
-            <DayTable
-              headingId={headingId}
-              rows={group.rows}
-              group={group.id}
-              columns={columns}
-              onRowAction={onRowAction}
-            />
+            {searchTerm && (
+              <Text variant="body-medium" color="secondary">
+                Try another word.
+              </Text>
+            )}
+            {(searchTerm || filtered) && (
+              <Button variant="secondary" size="small" onPress={clearAll}>
+                Clear search and filters
+              </Button>
+            )}
           </Flex>
-        );
-      })}
-    </Flex>
+        )}
+
+        {groups.map(group => {
+          const headingId = `${baseId}-${group.id}`;
+          return (
+            <Flex key={group.id} direction="column" gap="2">
+              <Text
+                as="h2"
+                id={headingId}
+                tabIndex={-1}
+                variant="body-medium"
+                weight="bold"
+                color="secondary"
+              >
+                {group.label}
+              </Text>
+              <DayTable
+                headingId={headingId}
+                rows={group.rows}
+                group={group.id}
+                columns={columns}
+                onRowAction={onRowAction}
+              />
+            </Flex>
+          );
+        })}
+
+        {isSettled && total > shownTotal && (
+          <Flex justify="center" align="center" gap="3">
+            <Text variant="body-medium" color="secondary">
+              {`Showing ${shownTotal} of ${total} sessions`}
+            </Text>
+            <Button variant="secondary" size="small" onPress={loadMore}>
+              Load more
+            </Button>
+          </Flex>
+        )}
+      </Flex>
+    </div>
   );
 }
