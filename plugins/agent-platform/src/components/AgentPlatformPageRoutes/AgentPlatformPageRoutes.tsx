@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { Helmet } from 'react-helmet';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { BreadcrumbEntry } from '@backstage/frontend-plugin-api';
 import { ButtonLink, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
@@ -8,6 +8,7 @@ import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
+  usePageHeaderOwned,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 export type AgentPlatformSubPage = {
@@ -28,9 +29,6 @@ const SHELL_PAGE_HEADERS: Record<string, ShellPageHeader> = {
   },
 };
 
-/** Sub-pages whose index renders its own `ShellPage` header. */
-const SELF_TITLED_INDEXES = new Set(['sessions']);
-
 const useStyles = makeStyles(theme => ({
   header: {
     padding: theme.spacing(5, 3, 0),
@@ -41,8 +39,7 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
   const classes = useStyles();
   const { description, action } = SHELL_PAGE_HEADERS[path] ?? {};
   const slotActions = usePageHeaderActionsSlot();
-  const isIndex = (useParams()['*'] ?? '') === '';
-  if (isIndex && SELF_TITLED_INDEXES.has(path)) {
+  if (usePageHeaderOwned()) {
     return null;
   }
   return (
@@ -83,7 +80,10 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
  *
  * The page renders without the app's page layout, so the header-actions slot
  * that layout would provide is mounted here: the actions a sub-page registers
- * with `useProvidePageHeaderActions` render in its header.
+ * with `useProvidePageHeaderActions` render in its header. A route that renders
+ * its own header (`ShellPage`, `FullScreenWizardFrame`) claims it, and the
+ * sub-page header then stands aside, so the page has one h1 and each action
+ * once.
  */
 export function AgentPlatformPageRoutes({
   pageTitle,

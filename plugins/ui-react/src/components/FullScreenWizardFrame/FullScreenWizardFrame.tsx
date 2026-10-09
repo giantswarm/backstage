@@ -4,7 +4,10 @@ import { Button, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import CloseIcon from '@material-ui/icons/Close';
-import { usePageHeaderActionsSlot } from '../PageHeaderActions';
+import {
+  useOwnPageHeader,
+  usePageHeaderActionsSlot,
+} from '../PageHeaderActions';
 
 const NARROW_BREAKPOINT = 720;
 
@@ -190,7 +193,8 @@ function isInsideOverlay(target: EventTarget | null): boolean {
  *
  * The primary and secondary buttons come from the routed step through
  * `useProvidePageHeaderActions`, so a route above the frame must mount a
- * `PageHeaderActionsProvider`; the frame renders the slot and mounts none.
+ * `PageHeaderActionsProvider`; the frame renders the slot and mounts none,
+ * and claims the page header (`useOwnPageHeader`) like `ShellPage`.
  * Escape leaves to `closeHref`, except from inside a dialog or menu, which
  * close themselves first.
  */
@@ -206,6 +210,7 @@ export function FullScreenWizardFrame({
   const classes = useStyles();
   const navigate = useNavigate();
   const actions = usePageHeaderActionsSlot();
+  useOwnPageHeader();
   const currentIndex = steps?.findIndex(step => step.id === currentStep) ?? -1;
 
   useEffect(() => {

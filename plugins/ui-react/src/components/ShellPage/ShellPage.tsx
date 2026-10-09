@@ -2,7 +2,10 @@ import type { ReactNode } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { BreadcrumbItem, Breadcrumbs } from '../Breadcrumbs';
-import { usePageHeaderActionsSlot } from '../PageHeaderActions';
+import {
+  useOwnPageHeader,
+  usePageHeaderActionsSlot,
+} from '../PageHeaderActions';
 import { RouteTabs, RouteTabSpec } from '../RouteTabs';
 
 const NARROW_BREAKPOINT = 600;
@@ -129,7 +132,9 @@ export interface ShellPageProps {
  *
  * It renders the page-header-actions slot but mounts no
  * `PageHeaderActionsProvider`: the route that renders the page provides it,
- * so the actions of everything below the route land in this header.
+ * so the actions of everything below the route land in this header. It also
+ * claims the page header (`useOwnPageHeader`), so a layout header above it
+ * stands aside.
  */
 export function ShellPage({
   title,
@@ -148,6 +153,7 @@ export function ShellPage({
 }: ShellPageProps) {
   const classes = useStyles();
   const slotActions = usePageHeaderActionsSlot();
+  useOwnPageHeader();
   const hasBreadcrumbs = breadcrumbs !== undefined && breadcrumbs.length > 0;
   const hasActions = Boolean(actions || slotActions || menu);
 
