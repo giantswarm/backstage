@@ -67,16 +67,25 @@ const useStyles = makeStyles(theme => ({
     minWidth: 0,
     flex: 1,
   },
+  // One line that ellipsizes rather than widening the row: at phone width a
+  // long tool name would otherwise push the row past the viewport, since
+  // `nowrap` text cannot shrink below its content without `minWidth: 0`.
   rowName: {
     fontFamily: 'monospace',
     fontSize: '0.8125rem',
     fontWeight: 600,
     whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    minWidth: 0,
   },
   rowTitle: {
     fontSize: '0.8125rem',
     fontWeight: 500,
     whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    minWidth: 0,
   },
   summary: {
     fontFamily: 'monospace',

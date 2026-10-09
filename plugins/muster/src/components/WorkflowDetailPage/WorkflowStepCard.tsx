@@ -130,6 +130,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     gridTemplateColumns: 'max-content 1fr',
     columnGap: theme.spacing(3),
     rowGap: theme.spacing(0.5),
+    // Folds to one column at phone width, like WorkflowStepsSection's grid:
+    // templated values can be long, and a `max-content` key column would
+    // otherwise push them past the viewport.
+    [theme.breakpoints.down(420)]: {
+      gridTemplateColumns: '1fr',
+    },
   },
   argKey: {
     fontFamily: 'monospace',

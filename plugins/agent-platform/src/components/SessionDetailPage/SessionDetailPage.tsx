@@ -108,7 +108,11 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(2),
     position: 'sticky',
-    bottom: 0,
+    // At phone width the agent shell draws a fixed bottom bar; the variable
+    // (agent-shell.css) is its height there and 0px everywhere else — the
+    // fallback keeps classic chrome, where the shell never defines it, at the
+    // viewport's edge. Without the offset the bar covered the composer.
+    bottom: 'var(--agent-shell-mobile-bar-height, 0px)',
     zIndex: 1,
     backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
     paddingTop: theme.spacing(1),

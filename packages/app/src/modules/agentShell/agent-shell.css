@@ -130,3 +130,43 @@ html[data-agent-shell]
   border-color: #002645;
   color: #ffffff;
 }
+
+/*
+ * Responsive rules for the shell at phone width.
+ *
+ * How much of the viewport's bottom edge the shell's own chrome covers. Zero
+ * while the desktop rail is shown; at phone width it is the fixed bottom bar —
+ * core-components' `sidebarConfig.mobileSidebarHeight` (56) plus the iOS
+ * home-indicator inset. Consumed by the bar itself (`AgentShellNav`) and by
+ * anything docked to the viewport's bottom edge (the session view's sticky
+ * composer), so the two cannot disagree. theme.test.ts keeps the 56 in step
+ * with sidebarConfig.
+ *
+ * The 599.95px bound is MUI v4's `theme.breakpoints.down('xs')` — the same
+ * query `useSidebarPinState().isMobile` answers, which is what swaps the rail
+ * for the bottom bar.
+ */
+html[data-agent-shell] body {
+  --agent-shell-mobile-bar-height: 0px;
+}
+
+@media (max-width: 599.95px) {
+  html[data-agent-shell] body {
+    --agent-shell-mobile-bar-height: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  /* SidebarPage already pads the page by the bar's 56px; the home-indicator
+     inset on top of it comes from here, so in-flow content (the home
+     composer) clears the whole bar. */
+  html[data-agent-shell] #content {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* core-components tables (Sessions, Agents, Models, usage) scroll inside
+     their own box at phone width instead of widening the page. bui tables
+     bring their own scroll container and need nothing. */
+  html[data-agent-shell] [class*='BackstageTable-root'] {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

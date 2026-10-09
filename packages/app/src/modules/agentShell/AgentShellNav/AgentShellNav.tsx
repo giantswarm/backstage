@@ -38,7 +38,13 @@ const useStyles = makeStyles({
     right: 0,
     bottom: 0,
     zIndex: 1000,
-    height: sidebarConfig.mobileSidebarHeight,
+    // The shell's one source of truth for how much the bar covers
+    // (agent-shell.css): sidebarConfig.mobileSidebarHeight plus the iOS
+    // home-indicator inset, which the padding reserves so the items stay
+    // above it. The session composer docks above the same variable.
+    height: `var(--agent-shell-mobile-bar-height, ${sidebarConfig.mobileSidebarHeight}px)`,
+    paddingBottom: 'env(safe-area-inset-bottom)',
+    boxSizing: 'border-box',
     background: 'var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
     borderTop: '1px solid var(--bui-border-1)',
   },

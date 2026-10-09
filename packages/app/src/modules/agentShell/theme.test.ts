@@ -3,13 +3,21 @@
 import { readFileSync } from 'fs';
 // eslint-disable-next-line no-restricted-imports
 import { join } from 'path';
+import { sidebarConfig } from '@backstage/core-components';
 import { agentShellLightColors } from './theme';
 
+function shellCss(): string {
+  return readFileSync(join(__dirname, 'agent-shell.css'), 'utf8');
+}
+
 function cssColorValues(): string[] {
-  const css = readFileSync(join(__dirname, 'agent-shell.css'), 'utf8');
-  return [...css.matchAll(/(?:--[\w-]+|color|box-shadow)\s*:\s*([^;]+);/g)]
+  // Only values that carry a colour: the stylesheet also declares layout
+  // variables (the mobile bar height), which the palette table does not own.
+  return [
+    ...shellCss().matchAll(/(?:--[\w-]+|color|box-shadow)\s*:\s*([^;]+);/g),
+  ]
     .map(match => match[1].replace(/\s+/g, ' ').trim())
-    .filter(value => value !== 'none' && !value.includes('Roboto'));
+    .filter(value => value.includes('#') || value.includes('rgb'));
 }
 
 function luminance(hex: string): number {
@@ -91,6 +99,26 @@ describe('agentShellLightColors', () => {
         '0 1px 2px rgba(0, 38, 69, 0.04), 0 8px 24px rgba(0, 38, 69, 0.06)',
       settledStatus: '#9fb2c0',
     });
+  });
+
+  it('sizes the mobile bottom bar from sidebarConfig, plus the safe area', () => {
+    const css = shellCss();
+    // Zero by default — the desktop rail covers nothing at the bottom edge.
+    expect(css).toMatch(
+      /html\[data-agent-shell\] body \{\s*--agent-shell-mobile-bar-height: 0px;/,
+    );
+    // At phone width (MUI v4's xs bound, the bound `isMobile` answers) it is
+    // the bar: sidebarConfig.mobileSidebarHeight plus the home-indicator inset.
+    expect(css).toContain('@media (max-width: 599.95px)');
+    expect(css).toContain(
+      `--agent-shell-mobile-bar-height: calc(${sidebarConfig.mobileSidebarHeight}px + env(safe-area-inset-bottom));`,
+    );
+  });
+
+  it('contains core-components tables at phone width', () => {
+    expect(shellCss()).toMatch(
+      /html\[data-agent-shell\] \[class\*='BackstageTable-root'\] \{\s*max-width: 100%;\s*overflow-x: auto;/,
+    );
   });
 
   it('is the only source of the colours in agent-shell.css', () => {

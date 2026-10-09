@@ -537,11 +537,18 @@ export function PendingConfirmationPanel({
           />
         )}
 
-        <Flex align="center" justify="between" gap="2">
+        {/* The row wraps so at phone width the buttons drop under the caption
+            instead of squeezing beside it. */}
+        <Flex
+          align="center"
+          justify="between"
+          gap="2"
+          style={{ flexWrap: 'wrap' }}
+        >
           <Text variant="body-small" color="secondary">
             {caption}
           </Text>
-          <Flex align="center" gap="2">
+          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
             <Button
               variant="secondary"
               // Disabled rather than left to `decline()`'s silent early return: a
