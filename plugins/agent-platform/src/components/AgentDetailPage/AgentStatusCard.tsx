@@ -52,13 +52,8 @@ function CompilingRevision({ agent }: { agent: Agent }) {
 }
 
 /**
- * The Harness the agent names: where its sessions run once it is ready, and
- * the limits it sets on every agent. The page header already carries the
- * verdict.
- *
- * The limits come from a read of the Harness itself. A read that fails or is
- * refused shows no limits rather than an error: the line above still says
- * where the agent runs, which is what this card is about.
+ * Where the agent runs, and that Harness's limits. A failed read of the
+ * Harness just hides the limits. The page header already carries the verdict.
  */
 function HarnessLine({ agent, isReady }: { agent: Agent; isReady: boolean }) {
   const harness = agent.getHarnessName();

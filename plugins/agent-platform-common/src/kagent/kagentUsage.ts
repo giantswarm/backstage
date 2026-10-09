@@ -36,10 +36,7 @@ export type UsageTally = {
    */
   totalTokens: number;
   toolCalls: number;
-  /**
-   * The cost in USD the agent's runtime reported, summed over the turns that
-   * reported one. Absent when none did: "not reported" is not zero.
-   */
+  /** USD the runtime reported, summed over those turns. Absent if none did. */
   costUsd?: number;
 };
 
@@ -112,21 +109,30 @@ function bump<K>(counts: Map<K, number>, key: K): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
-/** A tally's tokens and reported cost as a {@link TokenUsage} to add elsewhere. */
-function usageOf(tally: UsageTally): TokenUsage {
-  return {
-    total: tally.totalTokens,
-    prompt: tally.inputTokens,
-    completion: tally.outputTokens,
-    ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
-  };
+export function addTally(target: UsageTally, source: UsageTally): void {
+  target.turns += source.turns;
+  target.inputTokens += source.inputTokens;
+  target.outputTokens += source.outputTokens;
+  target.totalTokens += source.totalTokens;
+  target.toolCalls += source.toolCalls;
+  if (source.costUsd !== undefined) {
+    target.costUsd = (target.costUsd ?? 0) + source.costUsd;
+  }
 }
 
 function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
   if (!usage) {
     return;
   }
-  const summed = addTokenUsage(usageOf(tally), usage);
+  const summed = addTokenUsage(
+    {
+      total: tally.totalTokens,
+      prompt: tally.inputTokens,
+      completion: tally.outputTokens,
+      ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
+    },
+    usage,
+  );
   tally.totalTokens = summed.total;
   tally.inputTokens = summed.prompt;
   tally.outputTokens = summed.completion;
@@ -281,9 +287,7 @@ export function reduceSessionUsage(
       bump(tools, name);
       bump(servers, mcpServerOf(name));
     }
-    tally.turns += turn.turns;
-    tally.toolCalls += turn.toolCalls;
-    addUsage(tally, usageOf(turn));
+    addTally(tally, turn);
 
     if (atMs === undefined) {
       undatedTurns += 1;
@@ -292,9 +296,7 @@ export function reduceSessionUsage(
 
     const key = utcDayKey(atMs);
     const day = days.get(key) ?? emptyTally();
-    day.turns += turn.turns;
-    day.toolCalls += turn.toolCalls;
-    addUsage(day, usageOf(turn));
+    addTally(day, turn);
     days.set(key, day);
   }
 

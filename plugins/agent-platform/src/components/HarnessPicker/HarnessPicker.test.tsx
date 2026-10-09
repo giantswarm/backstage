@@ -257,9 +257,9 @@ describe('HarnessPicker', () => {
 
     const limits = screen.getByRole('group', { name: 'Limits' });
     expect(limits).toHaveTextContent('Budget per turn$1.50');
-    expect(limits).toHaveTextContent('Max turns20');
+    expect(limits).toHaveTextContent('Max steps per turn20');
     expect(limits).toHaveTextContent(
-      'Set on the Harness kagent; they apply to every agent on it.',
+      'Set on Harness kagent, shared by every agent on it.',
     );
     expect(limits.querySelector('input, button')).toBeNull();
   });
@@ -279,7 +279,7 @@ describe('HarnessPicker', () => {
     await user.click(screen.getByRole('radio', { name: /Harness claude/ }));
 
     expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
-      'Max turns8',
+      'Max steps per turn8',
     );
   });
 
@@ -288,7 +288,7 @@ describe('HarnessPicker', () => {
     await render();
 
     expect(screen.getByRole('group', { name: 'Limits' })).toHaveTextContent(
-      'None set on the Harness kagent.',
+      'No limits set on Harness kagent.',
     );
   });
 });

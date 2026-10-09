@@ -449,14 +449,18 @@ describe('NewAgentReviewPage', () => {
       listedHarness('claude', 'claude', { budgetUSD: '2', maxTurns: 40 }),
     ]);
     await renderReview({
-      harness: { name: 'claude', runtime: 'claude' },
+      harness: {
+        name: 'claude',
+        runtime: 'claude',
+        limits: { budgetUSD: '2', maxTurns: 40 },
+      },
     });
 
     const limits = await screen.findByRole('group', { name: 'Limits' });
     expect(limits).toHaveTextContent('Budget per turn$2');
-    expect(limits).toHaveTextContent('Max turns40');
+    expect(limits).toHaveTextContent('Max steps per turn40');
     expect(limits).toHaveTextContent(
-      'Set on the Harness claude; they apply to every agent on it.',
+      'Set on Harness claude, shared by every agent on it.',
     );
   });
 
@@ -467,7 +471,7 @@ describe('NewAgentReviewPage', () => {
     await renderReview();
 
     const limits = await screen.findByRole('group', { name: 'Limits' });
-    expect(limits).toHaveTextContent('Max turns25');
+    expect(limits).toHaveTextContent('Max steps per turn25');
     expect(limits).not.toHaveTextContent('Budget per turn');
   });
 
@@ -477,9 +481,7 @@ describe('NewAgentReviewPage', () => {
 
     expect(
       await screen.findByRole('group', { name: 'Limits' }),
-    ).toHaveTextContent(
-      'None set on the Harness kagent. Limits are set on the Harness and apply to every agent on it.',
-    );
+    ).toHaveTextContent('No limits set on Harness kagent.');
   });
 
   it('shows no limits for a declarative Harness', async () => {

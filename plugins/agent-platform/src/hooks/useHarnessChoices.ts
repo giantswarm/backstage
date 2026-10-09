@@ -12,12 +12,9 @@ import {
 } from '../lib/harnesses';
 
 /**
- * The Harnesses of `namespace` on `installation` an agent can be created on,
- * read with the person's own RBAC, and which of them is the platform Harness
- * agent-manager composes when a request names none.
- *
- * `platformChoice` is `undefined` while the list loads, when it could not be
- * read, or when the platform Harness is not among those listed.
+ * The Harnesses an agent can be created on in `namespace`, read with the
+ * person's own RBAC, and the platform Harness agent-manager uses when a
+ * request names none.
  */
 export function useHarnessChoices(
   installation: string | undefined,

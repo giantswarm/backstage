@@ -19,10 +19,7 @@ export type SessionUsageTotals = {
    */
   totalTokens: number;
   toolCalls: number;
-  /**
-   * The cost in USD agents' runtimes reported, summed over the turns that
-   * reported one. Absent when no turn did: "not reported", never zero.
-   */
+  /** USD the runtimes reported, summed over those turns. Absent if none did. */
   costUsd?: number;
 };
 
@@ -116,10 +113,7 @@ function finite(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-/**
- * A reported cost, or `undefined` when there is none to trust. Unlike
- * {@link finite} it never coerces to 0: an absent cost is "not reported".
- */
+/** Like {@link finite}, but a missing or invalid cost stays absent, not 0. */
 function reportedCost(value: unknown): { costUsd?: number } {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? { costUsd: value }

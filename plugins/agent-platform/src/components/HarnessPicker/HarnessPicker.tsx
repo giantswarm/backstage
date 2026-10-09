@@ -22,9 +22,6 @@ import {
  * that could not be read, fully or in part, says so, since a choice may have
  * been missed; a pick dropped by a later model or installation change says so
  * too.
- *
- * Under the cards, the Limits a Claude Code Harness sets for the runtime that
- * will run the agent, read-only: they are the Harness's, not the agent's.
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();

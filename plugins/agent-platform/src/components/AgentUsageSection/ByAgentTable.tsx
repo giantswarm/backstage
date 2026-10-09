@@ -93,8 +93,7 @@ export function ByAgentTable({
     [rows, rates],
   );
 
-  // Only some runtimes report a cost; with none in the window the column
-  // would read "Not reported" on every row, so it is left out.
+  // Hidden when no agent reported a cost: every row would say "Not reported".
   const hasReportedCost = rows.some(row => row.costUsd !== undefined);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
@@ -270,9 +269,8 @@ export function ByAgentTable({
         {hasReportedCost && (
           <>
             {' '}
-            Reported cost is what each agent&apos;s runtime reported for its
-            turns, summed; an agent whose runtime reports none reads Not
-            reported.
+            Reported cost comes from the agent&apos;s runtime; not every runtime
+            reports one.
           </>
         )}
       </div>

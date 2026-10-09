@@ -316,17 +316,11 @@ export function NewAgentReviewPage() {
   const namespace = spec.namespace;
 
   const { info } = useAgentManagerInfo(state.installation);
-  // The Harness that will run the agent, as listed now, for the limits it
-  // sets: the picked one, else the platform Harness.
-  const harnessChoices = useHarnessChoices(
+  const { platformChoice } = useHarnessChoices(
     state.installation,
     state.modelConfigNamespace,
   );
-  const runningHarness = state.harness
-    ? (harnessChoices.choices.find(
-        choice => choice.name === state.harness?.name,
-      ) ?? state.harness)
-    : harnessChoices.platformChoice;
+  const runningHarness = state.harness ?? platformChoice;
   const validation = useValidateAgent(
     state.installation,
     isComplete && isToolsetValid ? spec : undefined,

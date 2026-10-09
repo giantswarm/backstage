@@ -1,4 +1,3 @@
-import { useId } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import type { ClaudeHarnessLimits } from '@giantswarm/backstage-plugin-kubernetes-react';
 
@@ -13,12 +12,8 @@ const LIST_STYLE: React.CSSProperties = {
 };
 
 /**
- * The limits a Claude Code Harness sets, read-only: they live on the Harness
- * and bound every agent on it, so nothing about one agent changes them.
- *
- * Renders nothing when the Harness sets none, unless `showWhenUnset` asks for
- * the group to say so (the create wizard, where the absence is worth knowing
- * before the agent exists).
+ * The per-turn limits a Claude Code Harness sets, read-only. Renders nothing
+ * when none are set, unless `showWhenUnset`.
  */
 export function HarnessLimits({
   limits,
@@ -27,30 +22,20 @@ export function HarnessLimits({
   showTitle = true,
 }: {
   limits: ClaudeHarnessLimits | undefined;
-  /** Named in the note, when known. */
   harnessName?: string;
   showWhenUnset?: boolean;
-  /** Off where the surrounding layout already labels the group. */
   showTitle?: boolean;
 }) {
-  const titleId = useId();
   const entries = harnessLimitEntries(limits);
   if (entries.length === 0 && !showWhenUnset) {
     return null;
   }
-  const harness = harnessName ? `the Harness ${harnessName}` : 'the Harness';
+  const harness = harnessName ? `Harness ${harnessName}` : 'the Harness';
 
   return (
-    <Flex
-      direction="column"
-      gap="1"
-      role="group"
-      {...(showTitle
-        ? { 'aria-labelledby': titleId }
-        : { 'aria-label': 'Limits' })}
-    >
+    <Flex direction="column" gap="1" role="group" aria-label="Limits">
       {showTitle && (
-        <Text id={titleId} variant="body-small" weight="bold">
+        <Text variant="body-small" weight="bold">
           Limits
         </Text>
       )}
@@ -71,13 +56,12 @@ export function HarnessLimits({
             ))}
           </dl>
           <Text variant="body-x-small" color="secondary">
-            Set on {harness}; they apply to every agent on it.
+            Set on {harness}, shared by every agent on it.
           </Text>
         </>
       ) : (
         <Text variant="body-small" color="secondary">
-          None set on {harness}. Limits are set on the Harness and apply to
-          every agent on it.
+          No limits set on {harness}.
         </Text>
       )}
     </Flex>

@@ -87,29 +87,13 @@ describe('harnessChoicesOf limits', () => {
 
     expect(choice.limits).toEqual({ budgetUSD: '5', maxTurns: 30 });
   });
-
-  it('carries no limits when the Harness sets none', () => {
-    const choices = harnessChoicesOf(
-      [
-        harness('claude', { claude: {} }),
-        harness('empty', { claude: { limits: {} } }),
-        harness('kagent', { kagent: {} }),
-      ],
-      'kagent',
-      'kagent',
-    );
-
-    for (const choice of choices) {
-      expect(choice).not.toHaveProperty('limits');
-    }
-  });
 });
 
 describe('harnessLimitEntries', () => {
   it('lists the set limits, the budget as configured', () => {
     expect(harnessLimitEntries({ budgetUSD: '0.50', maxTurns: 1200 })).toEqual([
       { label: 'Budget per turn', value: '$0.50' },
-      { label: 'Max turns', value: '1,200' },
+      { label: 'Max steps per turn', value: '1,200' },
     ]);
   });
 
@@ -117,7 +101,7 @@ describe('harnessLimitEntries', () => {
     expect(harnessLimitEntries(undefined)).toEqual([]);
     expect(harnessLimitEntries({ budgetUSD: ' ', maxTurns: 0 })).toEqual([]);
     expect(harnessLimitEntries({ maxTurns: 3 })).toEqual([
-      { label: 'Max turns', value: '3' },
+      { label: 'Max steps per turn', value: '3' },
     ]);
   });
 

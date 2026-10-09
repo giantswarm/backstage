@@ -173,10 +173,7 @@ export type AgentRow = {
    * this; a table column wants the other.
    */
   modelName?: string;
-  /**
-   * The same-namespace Harness the agent runs on (`spec.harnessRef.name`).
-   * `undefined` for an inline Harness.
-   */
+  /** `spec.harnessRef.name`; `undefined` for an inline Harness. */
   harness?: string;
   skillCount: number;
   /** Readiness derived from the Agent's conditions. */

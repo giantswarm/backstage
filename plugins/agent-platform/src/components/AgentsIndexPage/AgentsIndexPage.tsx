@@ -122,9 +122,9 @@ function AgentsIndexPageContent() {
   // the column appears only once a second one shows up, rather than showing
   // while the fleet loads and vanishing once it settles.
   const singleNamespace = new Set(rows.map(row => row.namespace)).size <= 1;
-  // The same rule for the Harness: most fleets run every agent on the
-  // platform Harness, so the column and its filter appear with a second one.
-  const singleHarness = new Set(rows.map(row => row.harness)).size <= 1;
+  // Most fleets run everything on one Harness; show the column from two on.
+  const singleHarness =
+    new Set(rows.flatMap(row => (row.harness ? [row.harness] : []))).size <= 1;
   const hideColumns: HideableAgentColumn[] = [
     ...(soleInstallation ? (['installation'] as const) : []),
     ...(singleNamespace ? (['namespace'] as const) : []),

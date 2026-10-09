@@ -38,10 +38,9 @@ const BY_INSTALLATION = {
 } as const;
 const BY_NAME = { column: 'name', direction: 'ascending' } as const;
 
-/** The Harness filter's URL parameter. */
 const HARNESS_PARAM = 'harness';
 
-/** The Harness filter's "no filter" option; `*` is never a Harness name. */
+/** `*` is never a Harness name. */
 const ALL_HARNESSES = '*';
 
 /**
@@ -238,7 +237,6 @@ function getColumnConfig(
   ];
 }
 
-/** The empty state, naming whatever narrowed the list to nothing. */
 function emptyMessage(searchTerm: string, harness: string | undefined): string {
   if (searchTerm && harness) {
     return `No agents on Harness ${harness} match "${searchTerm}".`;
@@ -269,9 +267,6 @@ export type AgentsTableProps = {
  * table until the first agents arrive) and the unreachable-installations
  * notice; this renders the search field, the filter, the rows and the "no
  * agents" empty state.
- *
- * The Harness filter shows with the Harness column: when every row shares one
- * Harness there is nothing to choose between.
  */
 export function AgentsTable({
   rows,
@@ -307,11 +302,10 @@ export function AgentsTable({
     [rows],
   );
   const showsHarnessFilter =
-    !hiddenKey.split(',').includes('harness') && harnesses.length > 1;
+    !hideColumns?.includes('harness') && harnesses.length > 1;
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedHarness = searchParams.get(HARNESS_PARAM);
-  // A Harness no row runs on any more (its agents deleted, or the link was
-  // shared from another fleet) filters nothing rather than everything.
+  // An unknown Harness in the URL (stale or shared link) filters nothing.
   const harnessFilter =
     showsHarnessFilter &&
     requestedHarness !== null &&

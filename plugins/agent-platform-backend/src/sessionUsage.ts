@@ -1,5 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
+  addTally,
+  emptyTally,
   isListableSession,
   KagentSession,
   normalizeSessionList,
@@ -93,27 +95,6 @@ export type SessionUsageOptions = {
   budgetMs?: number;
   cacheTtlMs?: number;
 };
-
-function emptyTally(): UsageTally {
-  return {
-    turns: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    toolCalls: 0,
-  };
-}
-
-function addInto(target: UsageTally, source: UsageTally): void {
-  target.turns += source.turns;
-  target.inputTokens += source.inputTokens;
-  target.outputTokens += source.outputTokens;
-  target.totalTokens += source.totalTokens;
-  target.toolCalls += source.toolCalls;
-  if (source.costUsd !== undefined) {
-    target.costUsd = (target.costUsd ?? 0) + source.costUsd;
-  }
-}
 
 /** Descending by count, then by name, so the answer is not Map order. */
 function topBy<T>(
@@ -241,13 +222,13 @@ export class SessionUsageReader {
           }
           sessionsWithActivity += 1;
 
-          addInto(totals, usage.tally);
+          addTally(totals, usage.tally);
           undatedTurns += usage.undatedTurns;
           unparseableMessages += usage.unparseableMessages;
 
           for (const [day, tally] of usage.days) {
             const existing = days.get(day) ?? emptyTally();
-            addInto(existing, tally);
+            addTally(existing, tally);
             days.set(day, existing);
           }
           for (const [tool, calls] of usage.tools) {
@@ -264,7 +245,7 @@ export class SessionUsageReader {
           const agentId = session.agentId ?? null;
           const agent =
             agents.get(agentId) ?? Object.assign(emptyTally(), { sessions: 0 });
-          addInto(agent, usage.tally);
+          addTally(agent, usage.tally);
           agent.sessions += 1;
           agents.set(agentId, agent);
         },

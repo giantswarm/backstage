@@ -14,7 +14,6 @@ export type ByAgentRow = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
-  /** The cost the agent's runtime reported; `undefined` when it reported none. */
   costUsd?: number;
 };
 

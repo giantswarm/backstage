@@ -20,7 +20,7 @@ export type HarnessChoice = {
   runtime?: HarnessRuntime;
   /** The image's repository name, without registry, tag or digest. */
   imageName?: string;
-  /** The per-turn limits a Claude Code Harness sets, when it sets any. */
+  /** Per-turn limits; only a Claude Code Harness sets them. */
   limits?: ClaudeHarnessLimits;
 };
 
@@ -70,7 +70,7 @@ export function harnessChoicesOf(
       }),
       runtime: harness.getRuntime(),
       imageName: imageNameOf(harness.getImage()),
-      ...(hasLimits(harness.getLimits()) && { limits: harness.getLimits() }),
+      limits: harness.getLimits(),
     }))
     .sort(
       (a, b) =>
@@ -79,14 +79,9 @@ export function harnessChoicesOf(
     );
 }
 
-/** A limit as a reader sees it: what it bounds and the configured value. */
 export type HarnessLimitEntry = { label: string; value: string };
 
-/**
- * The limits a Harness sets, in reading order, leaving out the unset ones.
- * The budget is shown as configured (`$0.50`, not a rounded figure), since it
- * is a setting rather than a measurement.
- */
+/** The set limits, the budget as configured (`$0.50`, not rounded). */
 export function harnessLimitEntries(
   limits: ClaudeHarnessLimits | undefined,
 ): HarnessLimitEntry[] {
@@ -99,12 +94,10 @@ export function harnessLimitEntries(
     });
   }
   if (typeof limits?.maxTurns === 'number' && limits.maxTurns > 0) {
-    entries.push({ label: 'Max turns', value: formatCount(limits.maxTurns) });
+    entries.push({
+      label: 'Max steps per turn',
+      value: formatCount(limits.maxTurns),
+    });
   }
   return entries;
-}
-
-/** Whether a Harness sets any limit {@link harnessLimitEntries} shows. */
-export function hasLimits(limits: ClaudeHarnessLimits | undefined): boolean {
-  return harnessLimitEntries(limits).length > 0;
 }

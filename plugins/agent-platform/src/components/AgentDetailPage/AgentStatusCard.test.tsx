@@ -85,10 +85,10 @@ describe('AgentStatusCard', () => {
     const group = screen.getByRole('group', { name: 'Limits' });
     expect(group).toHaveTextContent('Budget per turn');
     expect(group).toHaveTextContent('$0.50');
-    expect(group).toHaveTextContent('Max turns');
+    expect(group).toHaveTextContent('Max steps per turn');
     expect(group).toHaveTextContent('30');
     expect(group).toHaveTextContent(
-      'Set on the Harness claude-go; they apply to every agent on it.',
+      'Set on Harness claude-go, shared by every agent on it.',
     );
   });
 
@@ -98,7 +98,7 @@ describe('AgentStatusCard', () => {
     await renderInTestApp(<AgentStatusCard agent={makeAgent()} />);
 
     const group = screen.getByRole('group', { name: 'Limits' });
-    expect(group).toHaveTextContent('Max turns');
+    expect(group).toHaveTextContent('Max steps per turn');
     expect(group).not.toHaveTextContent('Budget per turn');
   });
 
