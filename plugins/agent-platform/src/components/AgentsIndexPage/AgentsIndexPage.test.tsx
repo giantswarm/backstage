@@ -1,6 +1,5 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { AgentsContextValue } from '../AgentsDataProvider';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
@@ -60,12 +59,6 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   StatusLabel: ({ label }: { label: string }) => <span>{label}</span>,
 }));
 
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
-
 const renderPage = () =>
   renderInTestApp(<AgentsIndexPage />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
@@ -122,7 +115,6 @@ const columnHeaders = () =>
 describe('AgentsIndexPage', () => {
   beforeEach(() => {
     mockUseAgents.mockReset();
-    mockNavigate.mockReset();
     jest.mocked(useProvidePageHeaderActions).mockClear();
     mockInventoryEntries = [];
   });
@@ -176,22 +168,23 @@ describe('AgentsIndexPage', () => {
       screen.getByRole('heading', { name: 'No agents yet' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /Create your first agent/ }),
+      screen.getByRole('link', { name: /Create your first agent/ }),
     ).toBeInTheDocument();
     // The table, and its bare "No agents found.", is gone entirely.
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     expect(screen.queryByText('No agents found.')).not.toBeInTheDocument();
   });
 
-  it('goes to the create flow from the invitation', async () => {
+  it('links the invitation to the same create form as New agent', async () => {
     mockUseAgents.mockReturnValue(baseValue);
 
     await renderPage();
-    await userEvent.click(
-      screen.getByRole('button', { name: /Create your first agent/ }),
-    );
 
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents/new');
+    // A link, so the browser follows it however the click arrives; the
+    // header's New agent navigates to the same form.
+    expect(
+      screen.getByRole('link', { name: /Create your first agent/ }),
+    ).toHaveAttribute('href', '/agent-platform/agents/new');
   });
 
   it('does not invite creating an agent where no installation runs kagent', async () => {
