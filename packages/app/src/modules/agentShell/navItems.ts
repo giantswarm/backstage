@@ -4,6 +4,7 @@ import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import BarChartIcon from '@material-ui/icons/BarChart';
 import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
+import LaunchIcon from '@material-ui/icons/Launch';
 import SettingsIcon from '@material-ui/icons/Settings';
 import TuneIcon from '@material-ui/icons/Tune';
 import { customizeRouteRef } from './routes';
@@ -20,6 +21,8 @@ type AgentShellNavItemBase = {
    * "All sessions" link.
    */
   mobileOnly?: boolean;
+  /** Opens in a new tab — for links that leave the shell. */
+  newTab?: boolean;
 };
 
 /**
@@ -64,6 +67,16 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     icon: BarChartIcon,
     routeRef: agentPlatformPlugin.routes.usage,
     position: 'top',
+  },
+  {
+    // The way back into the classic portal, whose own routes render classic
+    // chrome; a new tab so the shell stays where it is.
+    id: 'platform-portal',
+    title: 'Platform Portal',
+    icon: LaunchIcon,
+    path: '/clusters',
+    position: 'bottom',
+    newTab: true,
   },
   {
     id: 'profile',

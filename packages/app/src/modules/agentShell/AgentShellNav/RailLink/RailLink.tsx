@@ -56,6 +56,7 @@ export function RailLink({
     <li>
       <Link
         href={href}
+        target={item.newTab ? '_blank' : undefined}
         className={`${classes.link} ${isActive ? classes.active : ''}`}
         aria-current={isActive ? 'page' : undefined}
         aria-label={compact ? item.title : undefined}

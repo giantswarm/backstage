@@ -23,12 +23,15 @@ import LightIcon from '@material-ui/icons/WbSunny';
 import {
   configApiRef,
   discoveryApiRef,
+  errorApiRef,
   fetchApiRef,
   githubAuthApiRef,
   identityApiRef,
   oauthRequestApiRef,
+  storageApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
+import { UserSettingsStorage } from '@backstage/plugin-user-settings';
 import {
   ScmAuth,
   ScmIntegrationsApi,
@@ -134,6 +137,38 @@ export const appOverrides = createFrontendModule({
                   },
                 }),
               ],
+            }),
+        }),
+    }),
+    /**
+     * Persist StorageApi data (pinned sessions, favorite agents, starred
+     * entities, …) per user in the backend database via
+     * `@backstage/plugin-user-settings-backend`, so it roams across browsers
+     * and devices instead of living in localStorage.
+     *
+     * Degrades on its own: while the person is not signed in it reads and
+     * writes WebStorage (localStorage), and when the `user-settings` backend
+     * route is unreachable reads resolve as "absent" (reported once through
+     * the errorApi) — writes to an unreachable backend reject, which callers
+     * surface like any other failed write.
+     */
+    ApiBlueprint.make({
+      name: 'storage',
+      params: defineParams =>
+        defineParams({
+          api: storageApiRef,
+          deps: {
+            discoveryApi: discoveryApiRef,
+            errorApi: errorApiRef,
+            fetchApi: fetchApiRef,
+            identityApi: identityApiRef,
+          },
+          factory: ({ discoveryApi, errorApi, fetchApi, identityApi }) =>
+            UserSettingsStorage.create({
+              discoveryApi,
+              errorApi,
+              fetchApi,
+              identityApi,
             }),
         }),
     }),

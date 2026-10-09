@@ -7,11 +7,7 @@
  * `theme:app/dark` extensions provided by `@backstage/plugin-app`.
  */
 import { ReactNode, useMemo } from 'react';
-import {
-  configApiRef,
-  featureFlagsApiRef,
-  useApi,
-} from '@backstage/core-plugin-api';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   createUnifiedTheme,
   palettes,
@@ -19,7 +15,7 @@ import {
   UnifiedThemeProvider,
 } from '@backstage/theme';
 import type { Config } from '@backstage/config';
-import { AGENT_SHELL_FLAG } from '../agentShell/predicates';
+import { useAgentShellAttribute } from '../agentShell/AgentShellThemeRoot';
 import {
   AGENT_SHELL_FONT_FAMILY,
   agentShellLightColors,
@@ -159,7 +155,11 @@ function CustomThemeProvider({
   children: ReactNode;
 }) {
   const configApi = useApi(configApiRef);
-  const agentShell = useApi(featureFlagsApiRef).isActive(AGENT_SHELL_FLAG);
+  // The theme providers render above the router, so they follow the
+  // `data-agent-shell` document mark that AgentShellThemeRoot keys off the
+  // location, rather than reading the flag (which would restyle classic pages
+  // for flag users).
+  const agentShell = useAgentShellAttribute();
   const theme = useMemo(
     () => createUnifiedTheme(buildThemeOptions(configApi, variant, agentShell)),
     [configApi, variant, agentShell],

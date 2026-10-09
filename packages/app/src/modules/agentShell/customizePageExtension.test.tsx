@@ -1,6 +1,7 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
+import { navModule } from '../nav';
 import { AGENT_SHELL_FLAG } from './predicates';
 import { agentShellModule } from './index';
 
@@ -11,14 +12,37 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   return {
     AGENT_SHELL_FLAG: 'agent-platform-shell',
     agentPlatformPlugin: {
-      routes: { sessions: createRouteRef(), usage: createRouteRef() },
+      routes: {
+        sessions: createRouteRef(),
+        usage: createRouteRef(),
+        agents: createRouteRef(),
+        models: createRouteRef(),
+      },
     },
     RecentSessions: () => null,
   };
 });
 
+jest.mock('@giantswarm/backstage-plugin-muster', () => {
+  const { createRouteRef } = jest.requireActual(
+    '@backstage/frontend-plugin-api',
+  );
+  return {
+    __esModule: true,
+    default: {
+      routes: { mcpServers: createRouteRef(), workflows: createRouteRef() },
+    },
+  };
+});
+
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ClusterAccessConnector: () => null,
+  ClusterAccessStatusSidebarItem: () => null,
+}));
+
+jest.mock('@backstage/plugin-user-settings', () => ({
+  UserSettingsSignInAvatar: () => null,
+  Settings: () => null,
 }));
 
 jest.mock('./CustomizePage', () => ({
@@ -27,7 +51,7 @@ jest.mock('./CustomizePage', () => ({
 
 function renderCustomize(flag: FeatureFlagState) {
   return renderTestApp({
-    features: [agentShellModule],
+    features: [navModule, agentShellModule],
     initialRouteEntries: ['/customize'],
     apis: [
       mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),

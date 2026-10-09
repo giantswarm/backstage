@@ -1,20 +1,12 @@
 import { SidebarPinStateProvider } from '@backstage/core-components';
-import {
-  createExtensionTester,
-  mockApis,
-  renderInTestApp,
-} from '@backstage/frontend-test-utils';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
-import {
-  NavContentBlueprint,
-  NavContentNavItems,
-} from '@backstage/plugin-app-react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
-import { agentShellNav } from '../navExtension';
 import { customizeRouteRef } from '../routes';
+import { AgentShellNav } from './AgentShellNav';
 
 jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const { createRouteRef } = jest.requireActual(
@@ -52,13 +44,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ClusterAccessConnector: () => <div data-testid="cluster-access-connector" />,
 }));
 
-const navItems = {
-  take: () => undefined,
-  rest: () => [],
-  clone: () => navItems,
-  withComponent: () => ({ take: () => null, rest: () => [] }),
-} as unknown as NavContentNavItems;
-
 const signOut = jest.fn().mockResolvedValue(undefined);
 
 async function renderNav({
@@ -74,14 +59,11 @@ async function renderNav({
   isMobile?: boolean;
   path?: string;
 } = {}) {
-  const Content = createExtensionTester(agentShellNav).get(
-    NavContentBlueprint.dataRefs.component,
-  );
   await renderInTestApp(
     <SidebarPinStateProvider
       value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
     >
-      <Content navItems={navItems} items={[]} />
+      <AgentShellNav />
     </SidebarPinStateProvider>,
     {
       initialRouteEntries: [path],
@@ -130,6 +112,7 @@ describe('AgentShellNav', () => {
       ['New session', '/'],
       ['Customize', '/customize'],
       ['Usage', '/agent-platform/usage'],
+      ['Platform Portal', '/clusters'],
     ]);
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeDisabled();
     expect(screen.getByTestId('recent-sessions')).toHaveAttribute(
@@ -163,6 +146,7 @@ describe('AgentShellNav', () => {
       ['Sessions', '/agent-platform/sessions'],
       ['Customize', '/customize'],
       ['Usage', '/agent-platform/usage'],
+      ['Platform Portal', '/clusters'],
     ]);
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
   });
@@ -197,7 +181,20 @@ describe('AgentShellNav', () => {
     expect(railLinks()).toEqual([
       ['Agent Platform', '/'],
       ['New session', '/'],
+      ['Platform Portal', '/clusters'],
     ]);
+  });
+
+  it('cross-links to the classic Platform Portal in a new tab', async () => {
+    await renderNav();
+
+    const portal = screen.getByRole('link', { name: 'Platform Portal' });
+    expect(portal).toHaveAttribute('href', '/clusters');
+    expect(portal).toHaveAttribute('target', '_blank');
+    // The rail's in-shell items stay in the same tab.
+    expect(
+      screen.getByRole('link', { name: 'New session' }),
+    ).not.toHaveAttribute('target');
   });
 
   it('links the logo to the home page', async () => {

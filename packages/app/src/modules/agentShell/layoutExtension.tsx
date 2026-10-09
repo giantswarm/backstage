@@ -1,19 +1,38 @@
+import type { ReactNode } from 'react';
 import {
   coreExtensionData,
   createExtension,
   createExtensionInput,
-  featureFlagsApiRef,
 } from '@backstage/frontend-plugin-api';
 import { SidebarPage } from '@backstage/core-components';
-import { AGENT_SHELL_FLAG } from './predicates';
+import { useAgentShellArea } from './agentArea';
 import { ShellMain } from './ShellMain';
 
 /**
  * The app's layout, as `@backstage/plugin-app` builds it, with the page
- * content in the shell's main region while the agent-platform shell is on.
- * The flag is read when the app tree is built, as the shell's other
- * extensions are.
+ * content in the shell's main region on the agent area's routes while the
+ * agent-platform shell is available (feature flag on). Everywhere else — and
+ * with the flag off, everywhere — the layout is exactly the upstream one, so
+ * the classic portal keeps its chrome. The shell is decided per location at
+ * render time; the nav element makes the same choice for the rail vs the
+ * classic sidebar.
  */
+function AgentShellLayout({
+  nav,
+  content,
+}: {
+  nav: ReactNode;
+  content: ReactNode;
+}) {
+  const shellActive = useAgentShellArea();
+  return (
+    <SidebarPage>
+      {nav}
+      {shellActive ? <ShellMain>{content}</ShellMain> : content}
+    </SidebarPage>
+  );
+}
+
 export const agentShellLayout = createExtension({
   name: 'layout',
   attachTo: { id: 'app/root', input: 'children' },
@@ -26,16 +45,12 @@ export const agentShellLayout = createExtension({
     }),
   },
   output: [coreExtensionData.reactElement],
-  factory: ({ apis, inputs }) => {
+  factory: ({ inputs }) => {
     const nav = inputs.nav.get(coreExtensionData.reactElement);
     const content = inputs.content.get(coreExtensionData.reactElement);
-    const shell = apis.get(featureFlagsApiRef)?.isActive(AGENT_SHELL_FLAG);
     return [
       coreExtensionData.reactElement(
-        <SidebarPage>
-          {nav}
-          {shell ? <ShellMain>{content}</ShellMain> : content}
-        </SidebarPage>,
+        <AgentShellLayout nav={nav} content={content} />,
       ),
     ];
   },

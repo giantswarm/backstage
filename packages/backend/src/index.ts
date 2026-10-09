@@ -97,6 +97,11 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 backend.add(import('@backstage/plugin-notifications-backend'));
 backend.add(import('@backstage/plugin-signals-backend'));
 
+// user settings plugin (per-user roaming UI state — pinned sessions, favorite
+// agents, … — persisted in the DB; the frontend storageApi override in
+// packages/app/src/modules/app/AppOverrides.tsx reads and writes it)
+backend.add(import('@backstage/plugin-user-settings-backend'));
+
 // branding plugin (decoupled from gs so it works in deployments without gs)
 backend.add(brandingPlugin);
 

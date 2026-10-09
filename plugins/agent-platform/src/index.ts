@@ -10,6 +10,10 @@ export type {
   StartNewSessionProps,
 } from './components/StartNewSession';
 export { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
+export { usePinnedSessions } from './hooks/usePinnedSessions';
+export type { PinnedSession } from './hooks/usePinnedSessions';
+export { useFavoriteAgents } from './hooks/useFavoriteAgents';
+export type { FavoriteAgent } from './hooks/useFavoriteAgents';
 export { ServingLayerGate } from './components/ServingLayerGate';
 export type { AgentPlatformHomeProps } from './components/AgentPlatformHome';
 export {
