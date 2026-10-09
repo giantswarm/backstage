@@ -6,7 +6,11 @@ import {
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import { useMemo } from 'react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import { Route, Routes } from 'react-router-dom';
+import {
+  ShellPage,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
 import { agentPlatformPlugin } from './plugin';
@@ -27,6 +31,28 @@ function stubSubPage(name: string, title: string) {
     },
   });
 }
+
+/** The sessions list titles itself with a `ShellPage`; one session does not. */
+const sessionsSubPage = SubPageBlueprint.make({
+  name: 'sessions',
+  params: {
+    path: 'sessions',
+    title: 'Sessions',
+    loader: async () => (
+      <Routes>
+        <Route
+          index
+          element={
+            <ShellPage title="Sessions">
+              <div>Sessions content</div>
+            </ShellPage>
+          }
+        />
+        <Route path="*" element={<div>Sessions content</div>} />
+      </Routes>
+    ),
+  },
+});
 
 const musterLikePlugin = createFrontendPlugin({
   pluginId: 'muster',
@@ -53,7 +79,7 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
           agentPlatformPlugin.getExtension('page:agent-platform'),
           stubSubPage('usage', 'Usage'),
           stubSubPage('agents', 'Agents'),
-          stubSubPage('sessions', 'Sessions'),
+          sessionsSubPage,
           SubPageBlueprint.make({
             name: 'models',
             params: {
@@ -117,7 +143,10 @@ describe('the Agent Platform page', () => {
 
       expect(await screen.findByText('Sessions content')).toBeInTheDocument();
       expect(
-        screen.queryByRole('heading', { level: 1, name: 'Sessions' }),
+        screen.getAllByRole('heading', { level: 1 }).map(h => h.textContent),
+      ).toEqual(['Sessions']);
+      expect(
+        screen.queryByText("Every conversation you've had with an agent."),
       ).not.toBeInTheDocument();
     });
 
