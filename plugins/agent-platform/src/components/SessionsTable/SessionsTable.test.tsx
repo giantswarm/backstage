@@ -67,6 +67,27 @@ describe('SessionsTable', () => {
     expect(screen.queryByText('Last activity')).not.toBeInTheDocument();
   });
 
+  it('renders the classic single table without the shell layout', async () => {
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
+    expect(
+      screen.getByRole('grid', { name: 'Data table' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /More actions for/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
+    ).toHaveAttribute(
+      'placeholder',
+      'Search by session, agent, or installation',
+    );
+  });
+
   it('links each row to its session, carrying both installation and id', async () => {
     // A real anchor, not only a row click: an anchor is what makes cmd- and
     // middle-click open a new tab and gives keyboard users something focusable.

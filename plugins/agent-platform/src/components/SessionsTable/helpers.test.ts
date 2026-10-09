@@ -2,6 +2,8 @@ import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-c
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
+  formatSessionStart,
+  sessionDayGroup,
   SessionTableRow,
   sortSessionsByState,
   STATE_RANKS,
@@ -200,5 +202,51 @@ describe('sortSessionsByState', () => {
     expect(
       sortSessionsByState(undated, 'ascending').map(r => r.sessionId),
     ).toEqual(['newer', 'older']);
+  });
+});
+
+describe('sessionDayGroup', () => {
+  const now = new Date(2026, 9, 9, 10, 30);
+
+  it.each([
+    ['earlier today', new Date(2026, 9, 9, 0, 0), 'today'],
+    ['later than now', new Date(2026, 9, 9, 11, 0), 'today'],
+    ['the previous day', new Date(2026, 9, 8, 23, 59), 'yesterday'],
+    ['the previous day at midnight', new Date(2026, 9, 8, 0, 0), 'yesterday'],
+    ['two days ago', new Date(2026, 9, 7, 23, 59), 'earlier'],
+  ])('groups a start %s', (_, started, group) => {
+    expect(sessionDayGroup(started.toISOString(), now)).toBe(group);
+  });
+
+  it('counts the last day of the previous month as yesterday', () => {
+    const firstOfMonth = new Date(2026, 9, 1, 8, 0);
+    expect(
+      sessionDayGroup(new Date(2026, 8, 30, 20, 0).toISOString(), firstOfMonth),
+    ).toBe('yesterday');
+  });
+
+  it.each([undefined, '', 'not a date'])(
+    'puts an unknown start (%p) under earlier',
+    createdAt => {
+      expect(sessionDayGroup(createdAt, now)).toBe('earlier');
+    },
+  );
+});
+
+describe('formatSessionStart', () => {
+  const started = new Date(2026, 9, 2, 9, 5).toISOString();
+
+  it('shows the time of day under today and yesterday', () => {
+    const time = new Date(started).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    expect(formatSessionStart(started, 'today', 2026)).toBe(time);
+    expect(formatSessionStart(started, 'yesterday', 2026)).toBe(time);
+  });
+
+  it('shows the date under earlier, with the year only when it is another', () => {
+    expect(formatSessionStart(started, 'earlier', 2026)).not.toContain('2026');
+    expect(formatSessionStart(started, 'earlier', 2027)).toContain('2026');
   });
 });

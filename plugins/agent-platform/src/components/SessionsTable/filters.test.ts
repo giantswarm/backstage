@@ -10,6 +10,7 @@ import {
   isSessionsFilterActive,
   SESSION_STATE_FILTERS,
   sessionAgentOptions,
+  SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
 
@@ -219,5 +220,51 @@ describe('sessionAgentOptions', () => {
       { id: 'gazelle/team-a/sre-agent', label: 'SRE Agent (gazelle/team-a)' },
       { id: 'glean/agents/sre-agent', label: 'SRE Agent (glean)' },
     ]);
+  });
+});
+
+describe('SHELL_SESSION_STATE_FILTERS', () => {
+  it('names the chips in the shell words, over the same buckets', () => {
+    expect(
+      SHELL_SESSION_STATE_FILTERS.filter(({ whenPresent }) => !whenPresent).map(
+        ({ id, label }) => [id, label],
+      ),
+    ).toEqual([
+      ['all', 'All'],
+      ['waiting', 'Waiting for you'],
+      ['running', 'Working'],
+      ['finished', 'Finished'],
+      ['failed', 'Failed'],
+    ]);
+    expect(SHELL_SESSION_STATE_FILTERS.map(({ id }) => id).sort()).toEqual(
+      SESSION_STATE_FILTERS.map(({ id }) => id).sort(),
+    );
+  });
+
+  it.each([
+    'input-required',
+    'auth-required',
+    'submitted',
+    'working',
+    'completed',
+    'canceled',
+    'failed',
+    'rejected',
+  ])('files %s under the chip its shell label names', state => {
+    const [stateRow] = withSessionStates([row('s', 'SRE Agent', sre)], {
+      states: new Map([['gazelle/s', { sessionId: 's', state }]]),
+      unreadable: new Set(),
+      failedInstallations: new Set(),
+      skippedCount: 0,
+      isLoading: false,
+      isError: false,
+    });
+    const chip = SHELL_SESSION_STATE_FILTERS.find(
+      ({ label }) => label === describeSessionState(state)?.shellLabel,
+    );
+    if (!chip) {
+      throw new Error(`no chip is named for ${state}`);
+    }
+    expect(filterSessions([stateRow], { state: chip.id })).toEqual([stateRow]);
   });
 });

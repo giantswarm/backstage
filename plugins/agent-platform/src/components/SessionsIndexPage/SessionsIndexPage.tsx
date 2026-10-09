@@ -1,8 +1,10 @@
-import { useMemo, useRef } from 'react';
+import { ReactNode, useMemo, useRef } from 'react';
 import { Content, EmptyState, Progress } from '@backstage/core-components';
-import { Alert, Flex, Text } from '@backstage/ui';
+import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
+import AddIcon from '@material-ui/icons/Add';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
+import { ShellPage } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -19,10 +21,39 @@ import { SessionsTable } from '../SessionsTable';
 import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
-// Content of the "Sessions" tab. The section header + tabs come from the Agent
-// Platform page (GSPageLayout), so this renders content only. The one write it
-// offers — starting a session — is inline rather than a header action, so no
-// actions are provided.
+/**
+ * The page frame: inside the agent-platform shell the page titles itself and
+ * offers "New session", which goes to the shell's start screen; otherwise the
+ * Agent Platform page's header and tabs frame the content.
+ */
+function SessionsFrame({
+  agentShell,
+  children,
+}: {
+  agentShell: boolean;
+  children: ReactNode;
+}) {
+  if (!agentShell) {
+    return <Content>{children}</Content>;
+  }
+  return (
+    <ShellPage
+      title="Sessions"
+      description="Every conversation you’ve had with an agent."
+      actions={
+        <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
+          New session
+        </ButtonLink>
+      }
+    >
+      {children}
+    </ShellPage>
+  );
+}
+
+// Content of the "Sessions" tab, framed by `SessionsFrame`. Outside the shell
+// the one write it offers, starting a session, is inline rather than a header
+// action, so no actions are provided.
 function SessionsIndexPageContent() {
   const {
     rows,
@@ -55,13 +86,13 @@ function SessionsIndexPageContent() {
 
   if (!isLoading && !hasInstallations) {
     return (
-      <Content>
+      <SessionsFrame agentShell={agentShell}>
         <EmptyState
           missing="data"
           title="No installations configured"
           description="Sessions are read from kagent on your management clusters, but no installations are configured for this instance."
         />
-      </Content>
+      </SessionsFrame>
     );
   }
 
@@ -111,7 +142,7 @@ function SessionsIndexPageContent() {
   const firstRun = firstRunRef.current === true;
 
   return (
-    <Content>
+    <SessionsFrame agentShell={agentShell}>
       <Flex direction="column" gap="3">
         {/* Conversations from before the move to kagent API v2 are not here
             (plan decision D9). Said before the list, so an empty or short one
@@ -172,6 +203,7 @@ function SessionsIndexPageContent() {
                 sessionStates={sessionStates}
                 hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
                 showFilters
+                layout={agentShell ? 'shell' : undefined}
               />
             </Flex>
           </>
@@ -210,7 +242,7 @@ function SessionsIndexPageContent() {
           installations={notReachableInstallations}
         />
       </Flex>
-    </Content>
+    </SessionsFrame>
   );
 }
 

@@ -194,6 +194,37 @@ describe('SessionActionsMenu', () => {
     });
   });
 
+  it('stays on the list when deleting from a row of it', async () => {
+    await renderInTestApp(
+      <SessionActionsMenu
+        title="What issues are assigned to me?"
+        deletion={deletion}
+        onRename={onRename}
+        triggerLabel="More actions for “What issues are assigned to me?”"
+      />,
+      {
+        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        initialRouteEntries: ['/agent-platform/sessions'],
+      },
+    );
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'More actions for “What issues are assigned to me?”',
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Delete session/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete session' }),
+    );
+
+    await waitFor(() => {
+      expect(mockToastPost).toHaveBeenCalledTimes(1);
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('keeps the dialog open and says nothing succeeded when the delete fails', async () => {
     deleteSession.mockRejectedValue(new Error('kagent returned status 500'));
     setDeleteState({ error: new Error('kagent returned status 500') });

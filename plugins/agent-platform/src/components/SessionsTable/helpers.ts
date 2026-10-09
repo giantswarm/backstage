@@ -169,3 +169,68 @@ function readStateCell(
     ? { kind: 'unreadable' }
     : { kind: 'unevaluated' };
 }
+
+/** The day a shell list row is grouped under, by when its session started. */
+export type SessionDayGroup = 'today' | 'yesterday' | 'earlier';
+
+export const SESSION_DAY_GROUPS: ReadonlyArray<{
+  id: SessionDayGroup;
+  label: string;
+}> = [
+  { id: 'today', label: 'Today' },
+  { id: 'yesterday', label: 'Yesterday' },
+  { id: 'earlier', label: 'Earlier' },
+];
+
+/**
+ * The day group of a session started at `createdAt`, in the reader's local
+ * calendar. A start later than `now` (clock skew) counts as today; a missing
+ * or unparseable one as earlier.
+ */
+export function sessionDayGroup(
+  createdAt: string | undefined,
+  now: Date,
+): SessionDayGroup {
+  const started = createdAt ? Date.parse(createdAt) : Number.NaN;
+  if (Number.isNaN(started)) {
+    return 'earlier';
+  }
+  const startOfToday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const startOfYesterday = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - 1,
+  ).getTime();
+  if (started >= startOfToday) {
+    return 'today';
+  }
+  return started >= startOfYesterday ? 'yesterday' : 'earlier';
+}
+
+/**
+ * When a session started, as short as its day group allows: the time of day
+ * under Today and Yesterday, the date under Earlier, with the year only when
+ * it is not the current one.
+ */
+export function formatSessionStart(
+  createdAt: string,
+  group: SessionDayGroup,
+  currentYear: number,
+): string {
+  const started = new Date(createdAt);
+  if (group !== 'earlier') {
+    return started.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return started.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    ...(started.getFullYear() === currentYear ? {} : { year: 'numeric' }),
+  });
+}

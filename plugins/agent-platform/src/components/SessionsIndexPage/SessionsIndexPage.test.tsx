@@ -39,15 +39,18 @@ jest.mock('../SessionsTable', () => ({
     rows,
     hideColumns,
     showFilters,
+    layout,
   }: {
     rows: unknown[];
     hideColumns?: string[];
     showFilters?: boolean;
+    layout?: string;
   }) => (
     <div
       data-testid="sessions-table"
       data-hidden={hideColumns?.join(',') ?? ''}
       data-filters={String(Boolean(showFilters))}
+      data-layout={layout ?? ''}
     >
       {rows.length}
     </div>
@@ -225,6 +228,41 @@ describe('SessionsIndexPage', () => {
     expect(
       screen.queryByRole('heading', { level: 2, name: 'Your sessions' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('titles itself and offers a new session inside the agent shell', async () => {
+    mockUseAgentShell.mockReturnValue(true);
+    await render();
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Sessions' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Every conversation you’ve had with an agent.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-layout',
+      'shell',
+    );
+  });
+
+  it('keeps the classic table and no page title outside the agent shell', async () => {
+    await render();
+
+    expect(
+      screen.queryByRole('heading', { level: 1, name: 'Sessions' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'New session' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('sessions-table')).toHaveAttribute(
+      'data-layout',
+      '',
+    );
   });
 
   it('reports sessions as started from the sessions list', async () => {
