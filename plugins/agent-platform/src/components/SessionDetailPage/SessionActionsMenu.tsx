@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   toastApiRef,
   useApi,
@@ -46,6 +46,7 @@ export function SessionActionsMenu({
   onRename,
   isUserScoped,
   runtimeLoss,
+  triggerLabel = 'Session actions',
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -58,10 +59,13 @@ export function SessionActionsMenu({
    * a *failed* delete depends on it — see `describeSessionDeleteFailure`.
    */
   runtimeLoss?: RuntimeLoss;
+  /** The menu button's accessible name; a list names the session in it. */
+  triggerLabel?: string;
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
   const { deleteSession, isDeleting, error, reset } = deletion;
@@ -97,8 +101,10 @@ export function SessionActionsMenu({
     // An unbound route means the Agent Platform extension is disabled — in which
     // case this page is not rendering either. Staying put beats hardcoding a
     // path that would silently rot if the route moved.
-    if (sessionsRoute) {
-      navigate(sessionsRoute());
+    // From the list itself there is nowhere to go: the row is already gone.
+    const sessionsPath = sessionsRoute?.();
+    if (sessionsPath && sessionsPath !== pathname) {
+      navigate(sessionsPath);
     }
   };
 
@@ -107,7 +113,7 @@ export function SessionActionsMenu({
       <MenuTrigger>
         <ButtonIcon
           icon={<MoreVertIcon />}
-          aria-label="Session actions"
+          aria-label={triggerLabel}
           variant="tertiary"
         />
         <Menu maxWidth={MENU_WIDTH}>
