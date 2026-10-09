@@ -4,10 +4,9 @@
 
 ### Changes
 
-(Use this space for a full description of the changes.
-Make sure to include what reviewers need)
+(Use this space for a full description of the changes. Include everything reviewers need to know.)
 
-### Effect to end users
+### Effect on end users
 
 <!-- START end-user-summary -->
 
@@ -17,8 +16,7 @@ Make sure to include what reviewers need)
 
 ### Preview
 
-(Please add anything that represents the change visually.
-Screenshots, output, logs, ...
+(Please add anything that represents the change visually, e.g. screenshots, output or logs.
 
 Remove this section if not applicable.)
 
@@ -30,8 +28,7 @@ Remove this section if not applicable.)
 
 ### Ask to reviewers
 
-(Use this section to point reviewers to certain aspects,
-e. g. feedback needed or uncertain decisions.
+(Use this section to point reviewers to specific aspects, e.g. where you need feedback or are unsure about a decision.
 
 Remove this section if not applicable.)
 
