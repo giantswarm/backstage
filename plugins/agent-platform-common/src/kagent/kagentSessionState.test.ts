@@ -28,6 +28,34 @@ describe('describeSessionState', () => {
     expect(describeSessionState(raw)).toMatchObject({ raw, label, isActive });
   });
 
+  it.each([
+    ['submitted', 'Working'],
+    ['working', 'Working'],
+    ['input-required', 'Waiting for you'],
+    ['auth-required', 'Waiting for you'],
+    ['completed', 'Finished'],
+    ['canceled', 'Finished'],
+    ['failed', 'Failed'],
+    ['rejected', 'Failed'],
+  ])('names %s "%s" in the shell, next to its own label', (raw, shellLabel) => {
+    const state = describeSessionState(raw);
+    expect(state?.shellLabel).toBe(shellLabel);
+    expect(state?.label).not.toBe('');
+  });
+
+  it('keeps the existing labels', () => {
+    expect(
+      ['input-required', 'auth-required', 'completed', 'canceled'].map(
+        raw => describeSessionState(raw)?.label,
+      ),
+    ).toEqual([
+      'Waiting for input',
+      'Authentication required',
+      'Completed',
+      'Canceled',
+    ]);
+  });
+
   it('is case-insensitive about the state name', () => {
     expect(describeSessionState('COMPLETED')).toMatchObject({
       label: 'Completed',
@@ -43,6 +71,7 @@ describe('describeSessionState', () => {
       raw: 'quantum-superposition',
       key: 'quantum-superposition',
       label: 'quantum-superposition',
+      shellLabel: 'quantum-superposition',
       tone: 'neutral',
       isActive: false,
     });
@@ -63,6 +92,7 @@ describe('describeSessionState', () => {
         raw: state,
         key: state,
         label: state,
+        shellLabel: state,
         tone: 'neutral',
         isActive: false,
       });

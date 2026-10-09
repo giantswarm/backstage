@@ -25,10 +25,24 @@ export type SessionState = {
    */
   key: string;
   label: string;
+  /**
+   * The agent-platform shell's word for the state, one of four a person tells
+   * apart at a glance: Waiting for you, Working, Finished, Failed. An
+   * unrecognised state keeps its raw form, as `label` does.
+   */
+  shellLabel: string;
   tone: SessionStateTone;
   /** True while the session may still produce output. */
   isActive: boolean;
 };
+
+/** The shell's four state words, see {@link SessionState.shellLabel}. */
+export const SHELL_STATE_LABELS = {
+  waiting: 'Waiting for you',
+  working: 'Working',
+  finished: 'Finished',
+  failed: 'Failed',
+} as const;
 
 /**
  * The states in which a task is waiting on a human rather than working.
@@ -98,25 +112,68 @@ export const CANCELED_STATE = 'canceled';
  */
 const KNOWN_STATES: Record<
   string,
-  { label: string; tone: SessionStateTone; isActive: boolean }
+  {
+    label: string;
+    shellLabel: string;
+    tone: SessionStateTone;
+    isActive: boolean;
+  }
 > = {
-  submitted: { label: 'Submitted', tone: 'info', isActive: true },
-  working: { label: 'Working', tone: 'info', isActive: true },
+  submitted: {
+    label: 'Submitted',
+    shellLabel: SHELL_STATE_LABELS.working,
+    tone: 'info',
+    isActive: true,
+  },
+  working: {
+    label: 'Working',
+    shellLabel: SHELL_STATE_LABELS.working,
+    tone: 'info',
+    isActive: true,
+  },
   'input-required': {
     label: 'Waiting for input',
+    shellLabel: SHELL_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
   'auth-required': {
     label: 'Authentication required',
+    shellLabel: SHELL_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
-  completed: { label: 'Completed', tone: 'success', isActive: false },
-  failed: { label: 'Failed', tone: 'danger', isActive: false },
-  canceled: { label: 'Canceled', tone: 'neutral', isActive: false },
-  rejected: { label: 'Rejected', tone: 'danger', isActive: false },
-  unknown: { label: 'Unknown', tone: 'neutral', isActive: false },
+  completed: {
+    label: 'Completed',
+    shellLabel: SHELL_STATE_LABELS.finished,
+    tone: 'success',
+    isActive: false,
+  },
+  failed: {
+    label: 'Failed',
+    shellLabel: SHELL_STATE_LABELS.failed,
+    tone: 'danger',
+    isActive: false,
+  },
+  // Stopped on purpose, so over rather than failed.
+  canceled: {
+    label: 'Canceled',
+    shellLabel: SHELL_STATE_LABELS.finished,
+    tone: 'neutral',
+    isActive: false,
+  },
+  rejected: {
+    label: 'Rejected',
+    shellLabel: SHELL_STATE_LABELS.failed,
+    tone: 'danger',
+    isActive: false,
+  },
+  unknown: {
+    label: 'Unknown',
+    shellLabel: 'Unknown',
+    tone: 'neutral',
+    isActive: false,
+  },
 };
 
 /**
@@ -149,7 +206,14 @@ export function describeSessionState(
   if (known) {
     return { raw: state, key, ...known };
   }
-  return { raw: state, key, label: state, tone: 'neutral', isActive: false };
+  return {
+    raw: state,
+    key,
+    label: state,
+    shellLabel: state,
+    tone: 'neutral',
+    isActive: false,
+  };
 }
 
 /**

@@ -258,6 +258,7 @@ const awaitingInput = {
   raw: 'input-required',
   key: 'input-required',
   label: 'Waiting for input',
+  shellLabel: 'Waiting for you',
   tone: 'warning' as const,
   isActive: true,
 };
@@ -668,6 +669,7 @@ describe('SessionDetailPage', () => {
         raw: 'completed',
         key: 'completed',
         label: 'Completed',
+        shellLabel: 'Finished',
         tone: 'success' as const,
         isActive: false,
       },
@@ -916,6 +918,7 @@ describe('SessionDetailPage', () => {
           raw: 'input-required',
           key: 'input-required',
           label: 'Waiting for input',
+          shellLabel: 'Waiting for you',
           tone: 'warning',
           isActive: true,
         },
@@ -1590,6 +1593,7 @@ describe('SessionDetailPage', () => {
       raw: 'failed',
       key: 'failed',
       label: 'Failed',
+      shellLabel: 'Failed',
       tone: 'danger' as const,
       isActive: false,
     };
