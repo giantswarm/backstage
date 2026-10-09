@@ -14,6 +14,7 @@ import {
   type ClientServingState,
   type ClientServingSummary,
 } from '../../lib/serving';
+import { skillId } from '../../lib/skills';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -174,6 +175,18 @@ export type AgentRow = {
    */
   modelName?: string;
   skillCount: number;
+  /**
+   * The git-sourced skills the agent mounts, each as the catalog's
+   * {@link skillId} (`<repo URL>#<path>`), so a discovered skill can be matched
+   * to the agents using it. OCI and bucket skills have no catalog identity and
+   * are left out.
+   */
+  skillIds?: string[];
+  /**
+   * The referenced ModelConfig as `<installation>/<namespace>/<name>`, the id
+   * a model row carries. `undefined` when the agent references no model.
+   */
+  modelConfigId?: string;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
@@ -287,6 +300,11 @@ export function toAgentRow(
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
+  const modelConfigName = agent.getModelConfigName();
+  const skillIds = agent
+    .getSkills()
+    .filter(skill => skill.source === 'git')
+    .map(skill => skillId({ repoUrl: skill.url, path: skill.path ?? '' }));
 
   return {
     id: `${installation}/${namespace}/${name}`,
@@ -298,6 +316,10 @@ export function toAgentRow(
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
+    ...(skillIds.length > 0 ? { skillIds } : {}),
+    ...(modelConfigName
+      ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
+      : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),

@@ -98,6 +98,7 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getDescription: () => spec.description ?? '',
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
+    getSkills: () => [],
     getReadiness: () => spec.readiness ?? 'ready',
     getHarnessName: () => 'kagent',
     getReadinessMessage: () => undefined,
