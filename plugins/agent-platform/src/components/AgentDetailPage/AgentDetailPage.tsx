@@ -338,11 +338,14 @@ function AgentDetailPageContent() {
     ],
   );
 
+  const writeMode = agentWriteMode(agentManagerGate);
   /** Every live write the page offers is gated on this. */
-  const canWriteAgent =
-    isAgentManagerReachable &&
-    !agentManagerGate.isVerdictPending &&
-    !agentManagerGate.isGitOpsOwned;
+  const canWriteAgent = writeMode === 'apply';
+  /**
+   * Edit is also offered for an agent applied from git when agent-manager can
+   * commit: the Edit agent page then opens a pull request instead of saving.
+   */
+  const canEditAgent = writeMode !== undefined;
 
   const deletion = useAgentDeletion(installation, namespace, name);
   const updating = useUpdateAgent(installation);
@@ -698,7 +701,7 @@ function AgentDetailPageContent() {
 
         <AgentSessionBlocker
           agent={agent}
-          onEdit={canWriteAgent ? openEdit : undefined}
+          onEdit={canEditAgent ? openEdit : undefined}
           isGitOpsOwned={agentManagerGate.isGitOpsOwned}
         />
 
@@ -734,7 +737,7 @@ function AgentDetailPageContent() {
               <AgentSkillsCard
                 agent={agent}
                 onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
-                onAddSkills={canWriteAgent ? openEdit : undefined}
+                onAddSkills={canEditAgent ? openEdit : undefined}
                 isGitOpsOwned={agentManagerGate.isGitOpsOwned}
               />
             }
