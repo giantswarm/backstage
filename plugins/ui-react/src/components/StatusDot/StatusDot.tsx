@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Theme, useTheme } from '@material-ui/core';
 import { Text } from '@backstage/ui';
 
 /** What a state means; the same set as the session states' tones. */
@@ -19,27 +18,21 @@ export interface StatusDotProps {
   size?: number;
 }
 
-function fallbackColor(tone: StatusDotTone, theme: Theme): string {
-  switch (tone) {
-    case 'warning':
-      return theme.palette.warning.main;
-    case 'info':
-      return theme.palette.info.main;
-    case 'success':
-      return theme.palette.success.main;
-    case 'danger':
-      return theme.palette.error.main;
-    default:
-      return theme.palette.text.secondary;
-  }
-}
+/** The bui foreground colour each tone falls back to. */
+const TONE_TOKENS: Record<StatusDotTone, string> = {
+  neutral: 'var(--bui-fg-secondary)',
+  info: 'var(--bui-fg-announcement)',
+  success: 'var(--bui-fg-positive)',
+  warning: 'var(--bui-fg-warning)',
+  danger: 'var(--bui-fg-negative)',
+};
 
 /**
  * A coloured dot for a state, optionally followed by its label.
  *
  * The colour reads `--agent-platform-state-dot-<tone>` first, the variable the
  * sessions list's dots use, so an app stylesheet recolours every state dot at
- * once; the theme palette is the fallback.
+ * once; the bui foreground token for the tone is the fallback.
  */
 export function StatusDot({
   tone,
@@ -47,7 +40,6 @@ export function StatusDot({
   'aria-label': ariaLabel,
   size = 8,
 }: StatusDotProps) {
-  const theme = useTheme();
   const dot = (
     <span
       data-tone={tone}
@@ -61,10 +53,7 @@ export function StatusDot({
         height: size,
         borderRadius: '50%',
         flexShrink: 0,
-        backgroundColor: `var(--agent-platform-state-dot-${tone}, ${fallbackColor(
-          tone,
-          theme,
-        )})`,
+        backgroundColor: `var(--agent-platform-state-dot-${tone}, ${TONE_TOKENS[tone]})`,
       }}
     />
   );
