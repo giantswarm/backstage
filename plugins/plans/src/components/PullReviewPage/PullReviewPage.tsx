@@ -137,6 +137,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     backgroundColor: theme.palette.action.hover,
   },
   htmlFrame: {
+    // Inline, the frame sits on a text baseline and the gap below it
+    // overflows a container sized to the frame.
+    display: 'block',
     width: '100%',
     height: '75vh',
     border: `1px solid ${theme.palette.divider}`,
@@ -296,7 +299,15 @@ function DocumentPanel(props: {
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    // The page underneath keeps its height; without this the window shows a
+    // scrollbar for content the overlay covers.
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      root.style.overflow = previousOverflow;
+    };
   }, [fullscreen]);
 
   // The overlay starts where the app's content column starts: right of the

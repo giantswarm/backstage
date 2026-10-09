@@ -119,6 +119,17 @@ describe('PullReviewPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('stops the page underneath from scrolling while in full screen', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Full screen' }));
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Exit full screen' }));
+    expect(document.documentElement.style.overflow).toBe('');
+  });
+
   it('leaves full screen on Escape', async () => {
     const user = userEvent.setup();
     await renderPage();
