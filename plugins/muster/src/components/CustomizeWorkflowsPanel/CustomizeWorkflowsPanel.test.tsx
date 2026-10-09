@@ -128,12 +128,23 @@ describe('CustomizeWorkflowsPanel', () => {
     });
   });
 
-  it('does not ask for runs without a muster session', async () => {
+  it('asks for a muster session before reading runs', async () => {
     mockAuthenticated = false;
     await renderPanel();
 
     expect(screen.getByText('4 steps')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Workflow runs are read through your muster session/),
+    ).toBeInTheDocument();
     expect(api.listExecutions).not.toHaveBeenCalled();
+  });
+
+  it('asks for no session while one is connected', async () => {
+    await renderPanel();
+
+    expect(
+      screen.queryByText(/Workflow runs are read through your muster session/),
+    ).not.toBeInTheDocument();
   });
 
   it('searches names and descriptions', async () => {
