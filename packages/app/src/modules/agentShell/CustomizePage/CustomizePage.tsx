@@ -1,5 +1,12 @@
+import { useState } from 'react';
 import { Helmet } from 'react-helmet';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import {
   configApiRef,
   RouteRef,
@@ -7,186 +14,230 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { ButtonLink, Container, Flex, Grid, Link, Text } from '@backstage/ui';
+import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
+import { ButtonLink, Flex, SearchField } from '@backstage/ui';
+import AddIcon from '@material-ui/icons/Add';
 import {
-  InfoCard,
   PageHeaderActionsProvider,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
-  ServingLayerGate,
+  ALL_ORGANIZATIONS,
+  CustomizeAgentsPanel,
+  CustomizeDataProvider,
+  CustomizeModelsPanel,
+  CustomizeSkillsPanel,
+  EnvironmentSelect,
+  OrganizationSelect,
+  useCustomizeData,
 } from '@giantswarm/backstage-plugin-agent-platform';
-import musterPlugin from '@giantswarm/backstage-plugin-muster';
+import musterPlugin, {
+  CustomizeConnectorsPanel,
+  CustomizeMusterProvider,
+  CustomizeWorkflowsPanel,
+  useMusterCustomizeCounts,
+} from '@giantswarm/backstage-plugin-muster';
 import { customizeRouteRef } from '../routes';
 
-type AreaRouteRef = RouteRef<undefined> | SubRouteRef<undefined>;
+type CustomizeTabId =
+  'agents' | 'skills' | 'connectors' | 'models' | 'workflows';
 
-type CreateLink = { label: string; routeRef: AreaRouteRef };
-
-type CustomizeArea = {
-  id: string;
+type CustomizeTab = {
+  id: CustomizeTabId;
   title: string;
-  description: string;
-  routeRef: AreaRouteRef;
-  create?: CreateLink;
-  /** Shown only where the Models tab offers its Serving view. */
-  needsServingLayer?: boolean;
+  searchLabel: string;
+  /** The component whose installations the Environment control describes. */
+  component?: PlatformComponent;
+  /** Whether the tab can be narrowed to one organization (namespace). */
+  byOrganization?: boolean;
+  create?: {
+    label: string;
+    routeRef: RouteRef<undefined> | SubRouteRef<undefined>;
+  };
 };
 
-const areas: CustomizeArea[] = [
+/** The tabs of `/customize/:tab`, in strip order. */
+export const CUSTOMIZE_TABS: CustomizeTab[] = [
   {
     id: 'agents',
     title: 'Agents',
-    description:
-      'The agents you start sessions with, and the model, tools and skills each one runs on.',
-    routeRef: agentPlatformPlugin.routes.agents,
+    searchLabel: 'Search agents',
+    component: 'kagent',
+    byOrganization: true,
     create: {
       label: 'New agent',
       routeRef: agentPlatformPlugin.routes.newAgent,
     },
   },
+  { id: 'skills', title: 'Skills', searchLabel: 'Search skills' },
+  {
+    id: 'connectors',
+    title: 'Connectors',
+    searchLabel: 'Search connectors and tools',
+    component: 'muster',
+    create: {
+      label: 'Add connector',
+      routeRef: musterPlugin.routes.newMcpServer,
+    },
+  },
   {
     id: 'models',
     title: 'Models',
-    description: 'The model configurations agents can run on.',
-    routeRef: agentPlatformPlugin.routes.models,
+    searchLabel: 'Search models',
+    component: 'kagent',
+    byOrganization: true,
     create: {
       label: 'Add model',
       routeRef: agentPlatformPlugin.routes.newModel,
     },
   },
   {
-    id: 'model-hosting',
-    title: 'Model hosting',
-    description: 'The models served on your installations and their status.',
-    routeRef: agentPlatformPlugin.routes.serving,
-    needsServingLayer: true,
-  },
-  {
-    id: 'mcp-servers',
-    title: 'MCP servers',
-    description: 'The MCP servers that give agents their tools.',
-    routeRef: musterPlugin.routes.mcpServers,
-    create: {
-      label: 'Register server',
-      routeRef: musterPlugin.routes.newMcpServer,
-    },
-  },
-  {
     id: 'workflows',
     title: 'Workflows',
-    description:
-      'Multi-step tool sequences that muster offers to agents as a single tool.',
-    routeRef: musterPlugin.routes.workflows,
+    searchLabel: 'Search workflows',
+    component: 'muster',
   },
 ];
 
-function CreateAction({ label, routeRef }: CreateLink) {
-  const link = useRouteRef(routeRef);
+const DEFAULT_TAB: CustomizeTabId = 'agents';
+
+function CreateAction({
+  create,
+}: {
+  create: NonNullable<CustomizeTab['create']>;
+}) {
+  const link = useRouteRef(create.routeRef);
   if (!link) {
     return null;
   }
   return (
-    <ButtonLink href={link()} variant="secondary" size="small">
-      {label}
+    <ButtonLink href={link()} variant="primary" iconStart={<AddIcon />}>
+      {create.label}
     </ButtonLink>
   );
 }
 
-function AreaCard({ area }: { area: CustomizeArea }) {
-  const link = useRouteRef(area.routeRef);
-  if (!link) {
-    return null;
+function TabPanel({
+  tab,
+  search,
+  organization,
+}: {
+  tab: CustomizeTabId;
+  search: string;
+  organization: string;
+}) {
+  switch (tab) {
+    case 'agents':
+      return (
+        <CustomizeAgentsPanel search={search} organization={organization} />
+      );
+    case 'skills':
+      return <CustomizeSkillsPanel search={search} />;
+    case 'connectors':
+      return <CustomizeConnectorsPanel search={search} />;
+    case 'models':
+      return (
+        <CustomizeModelsPanel search={search} organization={organization} />
+      );
+    default:
+      return <CustomizeWorkflowsPanel search={search} />;
   }
-  return (
-    <Grid.Item>
-      <InfoCard
-        titleAs="h2"
-        title={<Link href={link()}>{area.title}</Link>}
-        footerActions={area.create && <CreateAction {...area.create} />}
-      >
-        <Text as="p" variant="body-medium" color="secondary">
-          {area.description}
-        </Text>
-      </InfoCard>
-    </Grid.Item>
-  );
 }
 
-type CustomizeTab = {
-  id: string;
-  title: string;
-  /** The areas, by id, whose cards the tab shows. */
-  areas: string[];
-};
+/** One tab: its filters, search and action, and its panel. */
+function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
+  const {
+    counts,
+    hasSkillRepositories,
+    agentOrganizations,
+    modelOrganizations,
+  } = useCustomizeData();
+  const musterCounts = useMusterCustomizeCounts();
+  const [search, setSearch] = useState('');
+  const [organization, setOrganization] = useState(ALL_ORGANIZATIONS);
 
-/** The tabs of `/customize/:tab`, in strip order. */
-export const CUSTOMIZE_TABS: CustomizeTab[] = [
-  { id: 'agents', title: 'Agents', areas: ['agents'] },
-  { id: 'connectors', title: 'Connectors', areas: ['mcp-servers'] },
-  { id: 'models', title: 'Models', areas: ['models', 'model-hosting'] },
-  { id: 'workflows', title: 'Workflows', areas: ['workflows'] },
-];
+  const tabCounts: Partial<Record<CustomizeTabId, number>> = {
+    ...counts,
+    ...musterCounts,
+  };
+  const tabs = CUSTOMIZE_TABS.filter(
+    candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
+  ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
 
-function AreaCards({ ids }: { ids?: string[] }) {
   return (
-    <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
-      {areas
-        .filter(area => !ids || ids.includes(area.id))
-        .map(area =>
-          area.needsServingLayer ? (
-            <ServingLayerGate key={area.id}>
-              <AreaCard area={area} />
-            </ServingLayerGate>
-          ) : (
-            <AreaCard key={area.id} area={area} />
-          ),
-        )}
-    </Grid.Root>
-  );
-}
-
-function CustomizeOverview() {
-  return (
-    <Container py="8">
-      <Flex direction="column" gap="6">
-        <Flex direction="column" gap="2">
-          <Text as="h1" variant="title-large">
-            Customize
-          </Text>
-          <Text as="p" variant="body-large" color="secondary">
-            The agents, models, tools and workflows behind your sessions.
-          </Text>
+    <ShellPage
+      title="Customize"
+      description="The agents, skills, connectors and models behind your sessions."
+      actions={
+        <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
+          {tab.byOrganization && (
+            <OrganizationSelect
+              organizations={
+                tab.id === 'models' ? modelOrganizations : agentOrganizations
+              }
+              value={organization}
+              onChange={setOrganization}
+            />
+          )}
+          <EnvironmentSelect component={tab.component} />
         </Flex>
-        <AreaCards />
+      }
+      tabs={tabs}
+    >
+      <Flex direction="column" gap="5">
+        <Flex
+          align="center"
+          justify="between"
+          gap="4"
+          style={{ flexWrap: 'wrap' }}
+        >
+          <div style={{ flex: '0 1 360px', minWidth: 0 }}>
+            <SearchField
+              aria-label={tab.searchLabel}
+              placeholder={tab.searchLabel}
+              value={search}
+              onChange={setSearch}
+            />
+          </div>
+          {tab.create && <CreateAction create={tab.create} />}
+        </Flex>
+        <TabPanel tab={tab.id} search={search} organization={organization} />
       </Flex>
-    </Container>
+    </ShellPage>
+  );
+}
+
+/** Opens the first tab, keeping the query string (the installation scope). */
+function DefaultTabRedirect() {
+  const { search } = useLocation();
+  const customizeLink = useRouteRef(customizeRouteRef);
+  return (
+    <Navigate
+      to={{
+        pathname: `${customizeLink?.() ?? '/customize'}/${DEFAULT_TAB}`,
+        search,
+      }}
+      replace
+    />
   );
 }
 
 function CustomizeTabPage() {
   const tabId = (useParams()['*'] ?? '').split('/')[0];
-  const customizeLink = useRouteRef(customizeRouteRef);
+  const { hasSkillRepositories } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
-  if (!tab) {
-    return <Navigate to={customizeLink?.() ?? '/customize'} replace />;
+  if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
+    return <DefaultTabRedirect />;
   }
-  return (
-    <ShellPage
-      title="Customize"
-      description="The agents, models, tools and workflows behind your sessions."
-      tabs={CUSTOMIZE_TABS.map(({ id, title }) => ({ id, path: id, title }))}
-    >
-      <AreaCards ids={tab.areas} />
-    </ShellPage>
-  );
+  // Keyed by tab, so the search and the organization start over on each tab.
+  return <CustomizeTabContent key={tab.id} tab={tab} />;
 }
 
 /**
- * The shell's Customize section: an overview at `/customize` and one tab per
- * area at `/customize/:tab`. Rendered without the app's page layout, so it
- * mounts the header-actions slot its pages render.
+ * The shell's Customize screen: a tab per area at `/customize/:tab`, with
+ * `/customize` opening the first. Rendered without the app's page layout, so
+ * it mounts the header-actions slot its pages render.
  */
 export function CustomizePage() {
   const appTitle =
@@ -194,10 +245,14 @@ export function CustomizePage() {
   return (
     <PageHeaderActionsProvider>
       <Helmet title="Customize" titleTemplate={`%s | ${appTitle}`} />
-      <Routes>
-        <Route index element={<CustomizeOverview />} />
-        <Route path="*" element={<CustomizeTabPage />} />
-      </Routes>
+      <CustomizeMusterProvider>
+        <CustomizeDataProvider>
+          <Routes>
+            <Route index element={<DefaultTabRedirect />} />
+            <Route path="*" element={<CustomizeTabPage />} />
+          </Routes>
+        </CustomizeDataProvider>
+      </CustomizeMusterProvider>
     </PageHeaderActionsProvider>
   );
 }
