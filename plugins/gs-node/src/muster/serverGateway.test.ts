@@ -149,7 +149,7 @@ describe('readMusterServerRef', () => {
       roadmap: {
         muster: {
           installation: 'gazelle',
-          server: 'gazelle-mcp-pro',
+          server: 'mcp-pro',
           toolPrefix: 'pro',
         },
       },
