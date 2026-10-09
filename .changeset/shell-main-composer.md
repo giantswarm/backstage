@@ -8,7 +8,7 @@ agents as disabled options that give the reason, `groupByNamespace` heads the
 options by namespace with `recentAgentIds` listed first under "Recent",
 `searchable` always offers the search box, `initialPrompt` fills the field,
 `pickerPlaceholder` names the empty choice, `pickerFooterAction` lists an
-action last in the picker, and `promptPlaceholder`, `renderPickerAccessory`,
+action last in the picker, set apart and kept open beside a sole agent, and `promptPlaceholder`, `renderPickerAccessory`,
 `renderFooter` and `onSelectedAgentChange` let a caller build around the
 choice. Grouped by namespace, the picker lists a search's matches as one group
 and starts the next opening with an empty search. `StartNewSession`
