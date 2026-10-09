@@ -123,6 +123,18 @@ describe('InstallationScopeSelect', () => {
     ]);
   });
 
+  it('is named by a visible label when given one', () => {
+    renderSelect({ label: 'Environment' });
+
+    expect(screen.getByText('Environment')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /environment/i }),
+    ).toHaveTextContent('All installations');
+    expect(
+      screen.queryByRole('button', { name: /installation scope/i }),
+    ).not.toBeInTheDocument();
+  });
+
   // The inventory moves an installation up once its access probe settles;
   // the list must not reshuffle with it between openings.
   it('lists the home installation first and the rest by name, whatever the inventory order', async () => {
