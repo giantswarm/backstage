@@ -59,7 +59,7 @@ export type LlmUsageQueryOptions = {
 };
 
 /** A positive whole number of days; anything else is the default window. */
-function windowDaysOf(days: number | undefined): number {
+export function windowDaysOf(days: number | undefined): number {
   if (days === undefined || !Number.isFinite(days)) {
     return WINDOW_DAYS;
   }
@@ -190,9 +190,21 @@ export function dailyRangeWindow(
   days: number = WINDOW_DAYS,
 ): RangeWindow {
   const end = todayMidnight(now);
-  const start = end - (windowDaysOf(days) - 2) * DAY_SECONDS;
+  const completeDays = windowDaysOf(days) - 1;
+  // A one-day window has no complete day: `start` lands one step past `end`,
+  // so the window holds no point and {@link hasCompleteDays} is false.
+  const start = end - (completeDays - 1) * DAY_SECONDS;
 
   return { start: String(start), end: String(end), step: String(DAY_SECONDS) };
+}
+
+/**
+ * Whether the range holds at least one evaluation point. A range without one
+ * is not a valid range query, so the caller skips the query and the chart is
+ * today's partial row alone.
+ */
+export function hasCompleteDays(range: RangeWindow): boolean {
+  return Number(range.start) <= Number(range.end);
 }
 
 /** How coarsely {@link todayPartialRange} is snapped. See its docblock. */
@@ -294,7 +306,7 @@ export function todayPartialQueries(
  * The window the $/token rate is averaged over, for the session detail strip
  * and the sessions tab.
  *
- * Shorter than the page's 30 days on purpose: a rate is applied to individual
+ * Shorter than the usage pages' window on purpose: a rate is applied to individual
  * sessions, so it should reflect the model mix in use now rather than one a
  * month of history has flattened.
  */

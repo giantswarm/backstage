@@ -96,7 +96,7 @@ describe('useLlmUsage', () => {
     ['tokens per day', llmUsageRangeQueries.tokensPerDayByType],
   ])('treats a failed %s range query as a page error', (_label, query) => {
     // A failed range query leaves `reduceDaily` with nothing, and since `days`
-    // is always supplied it densifies to 30 zero rows — a chart of empty bars
+    // is always supplied it densifies to a row of zeros per day — a chart of empty bars
     // beneath a strip showing a real non-zero total, with nothing on screen
     // saying a query failed.
     failed.add(query);
@@ -157,6 +157,24 @@ describe('useLlmUsage with options', () => {
     expect(result.current.usage?.costPerDay.rows).toHaveLength(7);
   });
 
+  it('runs no range query over a one-day window and charts today alone', () => {
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 1 }));
+
+    expect(issued).not.toContain(llmUsageRangeQueries.costPerDayByModel);
+    expect(issued).not.toContain(llmUsageRangeQueries.tokensPerDayByType);
+    expect(issued).toContain(llmUsageQueriesFor({ days: 1 }).cost);
+    expect(result.current.usage?.windowDays).toBe(1);
+    expect(result.current.usage?.costPerDay.rows).toHaveLength(1);
+  });
+
+  it('queries and reports the window it rounds the given days to', () => {
+    const { result } = renderHook(() => useLlmUsage('gazelle', { days: 6.6 }));
+
+    expect(issued).toContain(llmUsageQueriesFor({ days: 7 }).cost);
+    expect(result.current.usage?.windowDays).toBe(7);
+    expect(result.current.usage?.costPerDay.rows).toHaveLength(7);
+  });
+
   it('reports the previous period’s spend when asked', () => {
     const { previousCost } = llmUsageQueriesFor();
     answers.set(previousCost, [
@@ -169,6 +187,23 @@ describe('useLlmUsage with options', () => {
 
     expect(issued).toContain(previousCost);
     expect(result.current.usage?.totals.previousCostUsd).toBe(4.5);
+  });
+
+  it('compares one organization with its own previous period', () => {
+    const { previousCost } = llmUsageQueriesFor({ org: 'support' });
+    answers.set(previousCost, [
+      { metric: { agent: 'sre' }, value: [1757462400, '2.25'] },
+    ]);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { org: 'support', comparePrevious: true }),
+    );
+
+    expect(previousCost).toContain('agent_namespace="support"');
+    expect(previousCost).toContain('offset 30d');
+    expect(issued).toContain(previousCost);
+    expect(issued).not.toContain(llmUsageQueriesFor().previousCost);
+    expect(result.current.usage?.totals.previousCostUsd).toBe(2.25);
   });
 
   it('waits for the comparison it asked for', () => {

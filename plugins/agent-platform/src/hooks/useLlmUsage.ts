@@ -11,12 +11,13 @@ import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
   dailyRangeWindow,
   dailyWindowDayKeys,
+  hasCompleteDays,
   llmUsageQueriesFor,
   llmUsageRangeQueriesFor,
   todayDayKey,
   todayPartialQueries,
   todayPartialRange,
-  WINDOW_DAYS,
+  windowDaysOf,
   type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
 
@@ -45,8 +46,8 @@ const UNKNOWN_MODEL = 'Unknown model';
 
 /**
  * Everything the Overview and Cost views read, for one installation: by
- * default its last 30 days across every organization, or the window and the
- * organization `options` name.
+ * default its last `WINDOW_DAYS` across every organization, or the window and
+ * the organization `options` name.
  *
  * Twelve queries (a thirteenth with `comparePrevious`): ten instant and two
  * range, written out one call at a time.
@@ -72,11 +73,8 @@ export function useLlmUsage(
   installation: string | undefined,
   options: LlmUsageOptions = {},
 ): LlmUsageView {
-  const {
-    days: windowDays = WINDOW_DAYS,
-    org,
-    comparePrevious = false,
-  } = options;
+  const { org, comparePrevious = false } = options;
+  const windowDays = windowDaysOf(options.days);
   const enabled = Boolean(installation);
   const installationName = installation ?? '';
   const llmUsageQueries = useMemo(
@@ -92,13 +90,16 @@ export function useLlmUsage(
   // re-key the range queries on every render.
   const range = dailyRangeWindow(Date.now(), windowDays);
   const { start, end, step } = range;
+  // A one-day window has no complete day to query; today's partial row is
+  // the whole chart.
+  const rangeEnabled = enabled && hasCompleteDays(range);
   // The charts render one bar per day of this window whether or not Mimir
-  // answered for it, so the axis is the 30 days the page claims.
+  // answered for it, so the axis is the window the page claims.
   //
   // Memoised on `start`, which is already midnight-snapped and so a stable
   // per-day key. Without this both are fresh values every render, and since
   // they are dependencies of the `usage` memo below, that memo could never hit
-  // — re-running ten vector reductions, two 30-day series and the agent
+  // — re-running ten vector reductions, two daily series and the agent
   // join on every render, and re-keying every downstream memo with a new
   // `usage` object.
   const days = useMemo(
@@ -164,7 +165,7 @@ export function useLlmUsage(
     start,
     end,
     step,
-    enabled,
+    enabled: rangeEnabled,
     // The window re-keys at UTC midnight; hold the previous series rather than
     // reporting a first load.
     keepPreviousAnswer: true,
@@ -175,7 +176,7 @@ export function useLlmUsage(
     start,
     end,
     step,
-    enabled,
+    enabled: rangeEnabled,
     // The window re-keys at UTC midnight; hold the previous series rather than
     // reporting a first load.
     keepPreviousAnswer: true,
@@ -231,10 +232,10 @@ export function useLlmUsage(
     (comparePrevious && previousCost.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
-  // `days` is always supplied it densifies to 30 zero rows — a chart of empty
+  // `days` is always supplied it densifies to a row of zeros per day — a chart of empty
   // bars directly beneath a strip showing a real non-zero total, with nothing
   // saying a query failed. A refused quantile degrades honestly to `—`; a
-  // silently zeroed 30-day chart does not.
+  // silently zeroed chart does not.
   const isError = Boolean(
     cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
   );

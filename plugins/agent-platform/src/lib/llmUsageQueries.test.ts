@@ -6,9 +6,11 @@ import {
   llmUsageRangeQueriesFor,
   todayPartialQueries,
   dailyWindowDayKeys,
+  hasCompleteDays,
   todayDayKey,
   todayPartialRange,
   WINDOW_DAYS,
+  windowDaysOf,
 } from './llmUsageQueries';
 
 const DAY = 86_400_000;
@@ -188,8 +190,70 @@ describe('llmUsageQueriesFor', () => {
 });
 
 describe('dailyRangeWindow over another window', () => {
-  it('stops one day short of the days it is given', () => {
-    const { start, end } = dailyRangeWindow(MIDNIGHT, 7);
-    expect((Number(end) - Number(start)) / 86_400 + 1).toBe(6);
+  it.each([2, 7, 90])(
+    'stops one day short of %i days, ending at today’s midnight',
+    days => {
+      const range = dailyRangeWindow(MIDNIGHT + 12 * 60 * 60 * 1000, days);
+
+      expect(hasCompleteDays(range)).toBe(true);
+      expect(Number(range.end)).toBe(MIDNIGHT / 1000);
+      expect((Number(range.end) - Number(range.start)) / 86_400 + 1).toBe(
+        days - 1,
+      );
+    },
+  );
+
+  it.each([1, 0, -3, 0.4])(
+    'holds no point for a %p-day window, so no range query runs',
+    days => {
+      const range = dailyRangeWindow(MIDNIGHT + 12 * 60 * 60 * 1000, days);
+
+      expect(hasCompleteDays(range)).toBe(false);
+      expect(Number(range.start)).toBeGreaterThan(Number(range.end));
+    },
+  );
+
+  it('rounds a fractional window to whole days', () => {
+    expect(dailyRangeWindow(MIDNIGHT, 6.6)).toEqual(
+      dailyRangeWindow(MIDNIGHT, 7),
+    );
+  });
+});
+
+describe('dailyWindowDayKeys over another window', () => {
+  const noon = MIDNIGHT + 12 * 60 * 60 * 1000;
+
+  it.each([2, 7, 90])('lists %i days, oldest first, ending today', days => {
+    const range = dailyRangeWindow(noon, days);
+    const keys = dailyWindowDayKeys(range);
+
+    expect(keys).toHaveLength(days);
+    expect(keys.at(-1)).toBe('2026-09-11');
+    expect(keys.at(-1)).toBe(todayDayKey(range));
+    expect(keys[0]).toBe(
+      new Date(MIDNIGHT - (days - 1) * DAY).toISOString().slice(0, 10),
+    );
+    expect(new Set(keys).size).toBe(days);
+  });
+
+  it('is today alone for a one-day window', () => {
+    const range = dailyRangeWindow(noon, 1);
+
+    expect(dailyWindowDayKeys(range)).toEqual(['2026-09-11']);
+    expect(todayDayKey(range)).toBe('2026-09-11');
+  });
+});
+
+describe('windowDaysOf', () => {
+  it.each([
+    [undefined, WINDOW_DAYS],
+    [Number.NaN, WINDOW_DAYS],
+    [Number.POSITIVE_INFINITY, WINDOW_DAYS],
+    [7, 7],
+    [6.6, 7],
+    [0, 1],
+    [-5, 1],
+  ])('normalises %p to %i', (days, expected) => {
+    expect(windowDaysOf(days)).toBe(expected);
   });
 });
