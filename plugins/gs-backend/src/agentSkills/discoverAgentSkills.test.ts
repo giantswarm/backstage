@@ -243,4 +243,71 @@ describe('discoverAgentSkills', () => {
     expect(error).toBeInstanceOf(GitHubApiError);
     expect(error.status).toBe(404);
   });
+
+  function rateLimited(status: number) {
+    return jest.fn(async () => {
+      return {
+        ok: false,
+        status,
+        statusText: '',
+        headers: new Headers({
+          'x-ratelimit-remaining': '0',
+          'x-ratelimit-reset': String(Date.UTC(2026, 9, 9, 14, 5) / 1000),
+        }),
+      } as Response;
+    }) as unknown as typeof fetch;
+  }
+
+  it('says an unauthenticated read ran out of GitHub rate limit', async () => {
+    global.fetch = rateLimited(403);
+
+    const error = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: {
+        getCredentials: async () => {
+          throw new Error('no integration');
+        },
+      } as unknown as GithubCredentialsProvider,
+    }).catch(e => e);
+
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect(error.status).toBe(403);
+    expect(error.message).toBe(
+      "GitHub's API rate limit for this portal is used up until 14:05 UTC: it reads GitHub without a token, which GitHub allows 60 requests an hour.",
+    );
+  });
+
+  it('says an authenticated read ran out of GitHub rate limit', async () => {
+    global.fetch = rateLimited(429);
+
+    const error = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+    }).catch(e => e);
+
+    expect(error.status).toBe(429);
+    expect(error.message).toBe(
+      "GitHub's API rate limit for this portal's token is used up until 14:05 UTC.",
+    );
+  });
+
+  it('keeps the plain status for a 403 with requests left', async () => {
+    global.fetch = jest.fn(async () => {
+      return {
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: new Headers({ 'x-ratelimit-remaining': '42' }),
+      } as Response;
+    }) as unknown as typeof fetch;
+
+    const error = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/private-skills',
+      githubCredentialsProvider: credentialsProvider,
+    }).catch(e => e);
+
+    expect(error.message).toBe(
+      'GitHub API https://api.github.com/repos/giantswarm/private-skills returned 403: Forbidden',
+    );
+  });
 });

@@ -119,10 +119,36 @@ async function githubApiFetch(
   if (!response.ok) {
     throw new GitHubApiError(
       response.status,
-      `GitHub API ${url} returned ${response.status}: ${response.statusText}`,
+      rateLimitMessage(response, Boolean(token)) ??
+        `GitHub API ${url} returned ${response.status}: ${response.statusText}`,
     );
   }
   return response;
+}
+
+/**
+ * GitHub answers 403 (or 429) with no requests left in the window when its
+ * rate limit is used up; said in words, since a bare 403 reads as a
+ * permission problem.
+ */
+function rateLimitMessage(
+  response: Response,
+  authenticated: boolean,
+): string | undefined {
+  if (
+    (response.status !== 403 && response.status !== 429) ||
+    response.headers?.get('x-ratelimit-remaining') !== '0'
+  ) {
+    return undefined;
+  }
+  const reset = Number(response.headers.get('x-ratelimit-reset'));
+  const until =
+    Number.isFinite(reset) && reset > 0
+      ? ` until ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
+      : '';
+  return authenticated
+    ? `GitHub's API rate limit for this portal's token is used up${until}.`
+    : `GitHub's API rate limit for this portal is used up${until}: it reads GitHub without a token, which GitHub allows 60 requests an hour.`;
 }
 
 async function resolveDefaultBranch(
