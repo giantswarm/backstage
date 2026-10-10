@@ -1,7 +1,7 @@
-import { ReactNode, useCallback, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { ReactNode, useCallback, useMemo } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Content, Progress } from '@backstage/core-components';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import EditIcon from '@material-ui/icons/Edit';
@@ -17,24 +17,20 @@ import {
   FactsColumn,
   ShellPage,
   StatusDot,
-  useFieldValidation,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   modelConfigFormValues,
   modelConfigOwner,
-  ModelConfigFormValues,
-  modelConfigFieldErrors,
 } from '../../lib/modelConfigs';
 import { contextWindowFor } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { clientLookupOf } from '../../lib/serving';
+import { modelEditRouteRef } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
-import { ModelConfigFormFields } from '../ModelConfigForm';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
@@ -43,15 +39,9 @@ import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelReadView } from './ModelReadView';
 import { describeContextWindow } from './modelUsage';
 
-/** Long enough to read two lines, short enough not to follow you to the next page. */
-const TOAST_TIMEOUT_MS = 6000;
-
 const useStyles = makeStyles(theme => ({
   column: {
     maxWidth: 960,
-  },
-  form: {
-    maxWidth: 640,
   },
   pageTitle: {
     marginBottom: theme.spacing(1),
@@ -165,15 +155,17 @@ export function modelFacts({
 /**
  * One model, as a read view with Edit as an action, per the prototype: what it
  * cost and how much it was used, the agents that run on it, and the facts
- * beside it. **Edit** turns the main column into the form in place; Save
- * returns to the read view. A CR the portal must not write (tool-owned, no
- * RBAC, or a provider the form does not speak) offers no Edit, and an alert
- * says why where the reason is not just the reader's permissions.
+ * beside it. **Edit** opens the Connect-a-model flow prefilled
+ * (`EditModelPage`), the same way agents and skills are edited. A CR the
+ * portal must not write (tool-owned, no RBAC, or a provider the form does not
+ * speak) offers no Edit, and an alert says why where the reason is not just
+ * the reader's permissions.
  */
 export function ModelDetailPage() {
   const classes = useStyles();
   const agentShell = useAgentShell();
-  const toastApi = useApi(toastApiRef);
+  const navigate = useNavigate();
+  const modelEditRoute = useRouteRef(modelEditRouteRef);
   const { config } = useSignedInConfig();
   const {
     installation = '',
@@ -229,15 +221,6 @@ export function ModelDetailPage() {
       { enabled: Boolean(modelConfig) },
     );
 
-  const [isEditing, setEditing] = useState(false);
-  const [values, setValues] = useState<ModelConfigFormValues | undefined>();
-  // Each field shows its own problem once a Save was blocked, and the focus
-  // moves to the first one — the create flows' per-field validation. Hidden
-  // again whenever Edit reopens the form.
-  const [showValidation, setShowValidation] = useState(false);
-  const formRef = useRef<HTMLDivElement>(null);
-  const { reveal } = useFieldValidation(formRef);
-  const { save, isSaving, error: saveError, reset } = useSaveModelConfig();
   const deletion = useDeleteModelConfig(modelConfig);
 
   const isEditable =
@@ -247,69 +230,12 @@ export function ModelDetailPage() {
     mayUpdate &&
     !isCheckingPermission;
 
-  const onChange = useCallback((patch: Partial<ModelConfigFormValues>) => {
-    setValues(prev => (prev ? { ...prev, ...patch } : prev));
-  }, []);
-
-  const fieldErrors = values
-    ? modelConfigFieldErrors(values, {
-        isEdit: true,
-        originalProvider: modelConfig?.getProvider(),
-      })
-    : {};
-  const errorCount = Object.keys(fieldErrors).length;
-
-  // The form is seeded from the CR as it stands each time Edit opens it, so a
-  // change saved (or made elsewhere) since is what the person edits.
-  const onEdit = useCallback(() => {
-    if (!modelConfig) {
-      return;
+  const openEdit = useCallback(() => {
+    const href = modelEditRoute?.({ installation, namespace, name });
+    if (href) {
+      navigate(href);
     }
-    reset();
-    setShowValidation(false);
-    setValues(modelConfigFormValues(modelConfig));
-    setEditing(true);
-  }, [modelConfig, reset]);
-
-  const onCancel = useCallback(() => {
-    reset();
-    setEditing(false);
-  }, [reset]);
-
-  const onSave = useCallback(async () => {
-    if (!values || !modelConfig) {
-      return;
-    }
-    if (errorCount > 0) {
-      setShowValidation(true);
-      reveal();
-      return;
-    }
-    reset();
-    try {
-      await save({ installation, values, original: modelConfig });
-    } catch {
-      // Left on the form: the mutation error renders in the alert below.
-      return;
-    }
-    toastApi.post({
-      title: `Model "${values.displayName.trim() || values.name}" saved`,
-      status: 'success',
-      timeout: TOAST_TIMEOUT_MS,
-    });
-    setEditing(false);
-  }, [
-    values,
-    modelConfig,
-    installation,
-    save,
-    reset,
-    toastApi,
-    errorCount,
-    reveal,
-  ]);
-
-  const editing = isEditing && isEditable && Boolean(values);
+  }, [modelEditRoute, installation, namespace, name, navigate]);
 
   // Memoized so the header actions slot only updates when the handlers change.
   // The kebab gets the page's deletion result as a prop: it renders in the
@@ -317,41 +243,21 @@ export function ModelDetailPage() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center">
-        {editing ? (
-          <>
-            <Button variant="tertiary" onPress={onCancel} isDisabled={isSaving}>
-              Cancel
-            </Button>
-            <Button variant="primary" onPress={onSave} isDisabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save changes'}
-            </Button>
-          </>
-        ) : (
-          isEditable && (
-            <Button
-              variant="secondary"
-              iconStart={<EditIcon fontSize="small" />}
-              onPress={onEdit}
-            >
-              Edit
-            </Button>
-          )
+        {isEditable && modelEditRoute && (
+          <Button
+            variant="secondary"
+            iconStart={<EditIcon fontSize="small" />}
+            onPress={openEdit}
+          >
+            Edit
+          </Button>
         )}
         {modelConfig && (
           <ModelActionsMenu modelConfig={modelConfig} deletion={deletion} />
         )}
       </Flex>
     ),
-    [
-      editing,
-      onCancel,
-      onSave,
-      onEdit,
-      isSaving,
-      isEditable,
-      modelConfig,
-      deletion,
-    ],
+    [isEditable, modelEditRoute, openEdit, modelConfig, deletion],
   );
   useProvidePageHeaderActions(actions);
 
@@ -457,49 +363,13 @@ export function ModelDetailPage() {
             />
           )}
 
-          {editing && values ? (
-            <Flex direction="column" gap="4" className={classes.form}>
-              <div ref={formRef}>
-                <ModelConfigFormFields
-                  values={values}
-                  onChange={onChange}
-                  mode="edit"
-                  errors={showValidation ? fieldErrors : undefined}
-                />
-              </div>
-              {saveError && (
-                <Alert
-                  status="danger"
-                  title="The model could not be saved"
-                  description={saveError.message}
-                />
-              )}
-              <Flex gap="2" justify="end">
-                <Button
-                  variant="secondary"
-                  onPress={onCancel}
-                  isDisabled={isSaving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onPress={onSave}
-                  isDisabled={isSaving}
-                >
-                  {isSaving ? 'Saving…' : 'Save changes'}
-                </Button>
-              </Flex>
-            </Flex>
-          ) : (
-            <ModelReadView
-              installation={installation}
-              namespace={namespace}
-              name={name}
-              model={modelConfig.getModel()}
-              label={modelConfig.getDisplayName()}
-            />
-          )}
+          <ModelReadView
+            installation={installation}
+            namespace={namespace}
+            name={name}
+            model={modelConfig.getModel()}
+            label={modelConfig.getDisplayName()}
+          />
         </Flex>
       </div>
     </ModelFrame>

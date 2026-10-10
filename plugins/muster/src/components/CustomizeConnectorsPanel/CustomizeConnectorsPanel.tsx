@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -13,6 +13,9 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  type CatalogFacet,
+  CatalogFilterBar,
+  CatalogNoMatch,
   EmptyStateCard,
   INITIAL_ROWS,
   LoadingIndicator,
@@ -20,6 +23,7 @@ import {
   StatusDot,
   isAwaitingData,
   stopRowPress,
+  useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { ServerAuthStatus } from '../../apis/types';
@@ -37,6 +41,10 @@ import {
 } from '../shared';
 import {
   authLabel,
+  CONNECTOR_REACH_LABELS,
+  CONNECTOR_REACH_ORDER,
+  type ConnectorReach,
+  connectorReach,
   connectorStatus,
   rowServer,
   toolsLabel,
@@ -69,7 +77,24 @@ type Row = {
   tools?: string;
   authStatus?: ServerAuthStatus;
   signInServer?: string;
+  reach?: ConnectorReach;
 };
+
+/**
+ * The Connectors tab's facets (T49): how a person signs in, and whether the
+ * connector answers now (with this person's sign-in).
+ */
+const CONNECTOR_FACETS: CatalogFacet<Row>[] = [
+  { id: 'auth', label: 'Sign-in', value: row => row.auth || undefined },
+  {
+    id: 'reach',
+    label: 'Connection',
+    value: row => row.reach,
+    optionLabel: value =>
+      CONNECTOR_REACH_LABELS[value as ConnectorReach] ?? value,
+    order: CONNECTOR_REACH_ORDER,
+  },
+];
 
 function ConnectorName({ row }: { row: Row }) {
   const classes = useStyles();
@@ -155,31 +180,51 @@ function ConnectorsTable({
       ),
     [mcpServers, catalogue.data],
   );
-  const rows = useMemo<Row[]>(
-    () =>
-      serverListEntries(listRows, search).map(entry => {
-        const server = rowServer(entry, installation);
-        const status =
-          entry.row.kind === 'server'
-            ? authStatus.data?.servers.find(s => s.name === entry.id)
-            : undefined;
-        const asksSignIn =
-          status?.status === 'auth_required' ||
-          status?.status === 'reauth_required';
-        return {
-          id: entry.key,
-          entry,
-          description: server?.getDescription(),
-          auth: authLabel(server),
-          tools: toolsLabel(entry),
-          ...(status ? { authStatus: status } : {}),
-          ...(asksSignIn && server?.canAuthenticateInteractively()
-            ? { signInServer: entry.id }
-            : {}),
-        };
-      }),
-    [listRows, search, installation, authStatus.data],
+  const toRow = useCallback(
+    (entry: ServerListEntry): Row => {
+      const server = rowServer(entry, installation);
+      const status =
+        entry.row.kind === 'server'
+          ? authStatus.data?.servers.find(s => s.name === entry.id)
+          : undefined;
+      const asksSignIn =
+        status?.status === 'auth_required' ||
+        status?.status === 'reauth_required';
+      const reach = connectorReach(entry, status);
+      return {
+        id: entry.key,
+        entry,
+        description: server?.getDescription(),
+        auth: authLabel(server),
+        tools: toolsLabel(entry),
+        ...(status ? { authStatus: status } : {}),
+        ...(asksSignIn && server?.canAuthenticateInteractively()
+          ? { signInServer: entry.id }
+          : {}),
+        ...(reach ? { reach } : {}),
+      };
+    },
+    [installation, authStatus.data],
   );
+  // The whole list decides which filters can tell connectors apart; the
+  // searched one is what they then narrow.
+  const allRows = useMemo(
+    () => serverListEntries(listRows, '').map(toRow),
+    [listRows, toRow],
+  );
+  const searchedRows = useMemo(
+    () =>
+      search.trim() === ''
+        ? allRows
+        : serverListEntries(listRows, search).map(toRow),
+    [allRows, listRows, search, toRow],
+  );
+  const filters = useCatalogFilters({
+    items: allRows,
+    searched: searchedRows,
+    facets: CONNECTOR_FACETS,
+  });
+  const rows = filters.filtered;
 
   const columns: ColumnConfig<Row>[] = [
     {
@@ -223,17 +268,21 @@ function ConnectorsTable({
     );
   } else if (rows.length === 0) {
     list = (
-      <Text as="p" variant="body-medium" color="secondary">
-        No connectors or tools match “{search.trim()}”.
-      </Text>
+      <CatalogNoMatch
+        plural="connectors or tools"
+        search={search}
+        isFiltered={filters.isFiltered}
+        onClearFilters={filters.clear}
+      />
     );
   } else {
     // `serverListEntries` sorts by name, and ShowMore hands the table a page of
     // that at a time. Never bui's page mode, which draws its footer even at
-    // three rows. Keyed on the search, so a new query starts at its first page.
+    // three rows. Keyed on the search and filters, so a new query starts at
+    // its first page.
     list = (
       <ShowMore
-        key={search.trim()}
+        key={`${search.trim()}|${filters.key}`}
         items={rows}
         initial={INITIAL_ROWS}
         noun="connector"
@@ -259,6 +308,10 @@ function ConnectorsTable({
 
   return (
     <Flex direction="column" gap="4">
+      <CatalogFilterBar
+        dimensions={filters.dimensions}
+        onSelect={filters.select}
+      />
       {!hasSession && (
         <SessionGate
           session={session}
@@ -318,7 +371,8 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
 /**
  * The Connectors tab of the shell's Customize screen: the active muster's
  * servers as flat rows with how one signs in, their tool count and state, and
- * a sign-in where muster asks this person for one. Must be mounted inside a
+ * a sign-in where muster asks this person for one; filtered by sign-in and by
+ * connection where those tell connectors apart (T49). Must be mounted inside a
  * `CustomizeMusterProvider`.
  */
 export function CustomizeConnectorsPanel(props: CustomizeConnectorsPanelProps) {

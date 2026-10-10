@@ -137,6 +137,23 @@ describe('EditSkillPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers no form for a skill outside github.com, whose repository takes no pull request', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, repoUrl: 'http://gitea.lab.local/lab/skills' }],
+    };
+    await renderPage('-/gitea.lab.local/lab/skills/-/support/ticket-triage');
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
+    expect(screen.getByText('Read-only in the portal')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
+    // Cancel goes back to the skill's own (read-only) page.
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/support/ticket-triage',
+    );
+  });
+
   it('does not read a skill the portal could not read, and says so instead of a form', async () => {
     mockCatalog = {
       ...loaded,

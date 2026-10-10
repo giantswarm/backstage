@@ -12,6 +12,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CatalogFilterBar,
   LoadingIndicator,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -41,6 +42,12 @@ import {
   AUTO_EXPAND_MAX,
   ToolsetResolutionList,
 } from '../ToolsetResolutionList';
+import {
+  EFFECT_FILTER_ID,
+  effectDimension,
+  type EffectFilter,
+  filterCatalogueByEffect,
+} from './catalogueEffect';
 import { CopyFromAgent } from './CopyFromAgent';
 import { PresetCards } from './PresetCards';
 import { ToolCatalogue } from './ToolCatalogue';
@@ -171,16 +178,35 @@ export function NewAgentToolsPage() {
   // on that render, and is dropped so it is not reapplied if the catalogue
   // grows back (as ToolsetResolutionList does).
   const activeQuery = isShortCatalogue ? '' : trimmed;
+  // The artboard's All / Reads / Changes things (T60), with the search: a
+  // catalogue short enough to read whole gets neither. Dropped with the
+  // search when the catalogue shrinks, for the same reason.
+  const [effectPick, setEffect] = useState<EffectFilter>('all');
+  const effect: EffectFilter = isShortCatalogue ? 'all' : effectPick;
   useEffect(() => {
     if (isShortCatalogue) {
       setQuery('');
+      setEffect('all');
     }
   }, [isShortCatalogue]);
-  const showCatalogue = isShortCatalogue || browsing || activeQuery !== '';
+  // Searching or filtering is asking to see what is left.
+  const isNarrowed = activeQuery !== '' || effect !== 'all';
+  const showCatalogue = isShortCatalogue || browsing || isNarrowed;
 
-  const visibleGroups = useMemo(
+  const searchedGroups = useMemo(
     () => filterCatalogue(groups, activeQuery),
     [groups, activeQuery],
+  );
+  const visibleGroups = useMemo(
+    () => filterCatalogueByEffect(searchedGroups, effect),
+    [searchedGroups, effect],
+  );
+  const effectFilter = useMemo(
+    () =>
+      isShortCatalogue
+        ? undefined
+        : effectDimension(groups, searchedGroups, effect),
+    [isShortCatalogue, groups, searchedGroups, effect],
   );
   const matches = useMemo(
     () => catalogueInventory(visibleGroups),
@@ -249,27 +275,25 @@ export function NewAgentToolsPage() {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
 
-  const inventoryLine =
-    activeQuery === ''
-      ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
-          inventory.tools + inventory.platformAdministration,
-          'tool',
-        )} · ${countNoun(inventory.workflows, 'workflow')}`
-      : `${countNoun(
-          matches.tools + matches.platformAdministration,
-          'tool',
-        )} and ${countNoun(matches.workflows, 'workflow')} match`;
+  const inventoryLine = !isNarrowed
+    ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
+        inventory.tools + inventory.platformAdministration,
+        'tool',
+      )} · ${countNoun(inventory.workflows, 'workflow')}`
+    : `${countNoun(
+        matches.tools + matches.platformAdministration,
+        'tool',
+      )} and ${countNoun(matches.workflows, 'workflow')} match`;
 
   return (
     <AgentWizardFrame step="tools" onBack={onBack}>
-      <WizardStepHeading title="Choose the agent's tools">
-        The toolset bounds which of the gateway's tools this agent can discover
-        and call, within whatever the person using it may reach themselves.
-        Start from a preset — <strong>Read-only tools</strong> fits most agents
-        — and add servers, workflows or single tools from the catalogue if you
-        need more. Nothing is granted until you add it: with nothing selected
-        the agent has <strong>no tools</strong> and works from its prompt and
-        skills alone.
+      <WizardStepHeading title="What may it do?">
+        Tools let the agent use other apps on your behalf — never more than the
+        person using it may reach themselves. Start from a preset —{' '}
+        <strong>Read-only tools</strong> fits most agents — and choose
+        individual tools if it needs more. Nothing is granted until you add it:
+        with nothing selected the agent has <strong>no tools</strong> and works
+        from its prompt and skills alone.
       </WizardStepHeading>
 
       <Flex direction="column" gap="4">
@@ -347,8 +371,8 @@ export function NewAgentToolsPage() {
         <Card>
           <CardBody>
             <SectionTitle
-              title="Catalogue"
-              description="Every server the gateway aggregates and every workflow it runs, grouped as Infrastructure, Agent Platform, Registered servers and Workflows. Search across all of it, or browse group by group; select a whole server, or open it and pick single tools."
+              title="Individual tools"
+              description="Every server the gateway aggregates and every workflow it runs, grouped as Infrastructure, Agent Platform, Registered servers and Workflows. Search across all of it or keep only the tools that read or that change things; select a whole server, or open it and pick single tools."
             />
             <Flex direction="column" gap="3">
               {!musterApi && (
@@ -381,7 +405,7 @@ export function NewAgentToolsPage() {
                         />
                       </Flex>
                     )}
-                    {!isShortCatalogue && activeQuery === '' && (
+                    {!isShortCatalogue && !isNarrowed && (
                       <Button
                         variant="secondary"
                         size="small"
@@ -389,15 +413,18 @@ export function NewAgentToolsPage() {
                         onPress={() => setBrowsing(value => !value)}
                       >
                         {browsing
-                          ? 'Hide the catalogue'
-                          : 'Browse the catalogue'}
+                          ? 'Hide individual tools'
+                          : 'Choose individual tools'}
                       </Button>
                     )}
-                    {activeQuery !== '' && (
+                    {isNarrowed && (
                       <Button
                         variant="tertiary"
                         size="small"
-                        onPress={() => setQuery('')}
+                        onPress={() => {
+                          setQuery('');
+                          setEffect('all');
+                        }}
                       >
                         Show everything again
                       </Button>
@@ -406,8 +433,25 @@ export function NewAgentToolsPage() {
                       {inventoryLine}
                     </Text>
                   </Flex>
+                  {effectFilter && (
+                    <CatalogFilterBar
+                      dimensions={[effectFilter]}
+                      onSelect={(facetId, value) => {
+                        if (facetId === EFFECT_FILTER_ID) {
+                          setEffect(
+                            value === 'reads' || value === 'changes'
+                              ? value
+                              : 'all',
+                          );
+                        }
+                      }}
+                    />
+                  )}
                   {showCatalogue &&
                     (visibleGroups.length > 0 ? (
+                      // Only the search opens every group it matched in: a
+                      // Reads/Changes pick keeps most of the catalogue, and
+                      // opening all of it would mount hundreds of rows.
                       <ToolCatalogue
                         groups={visibleGroups}
                         query={activeQuery}
@@ -418,7 +462,11 @@ export function NewAgentToolsPage() {
                       />
                     ) : (
                       <Text color="secondary">
-                        Nothing matches &quot;{activeQuery}&quot;.
+                        {activeQuery === ''
+                          ? 'No tool of this kind.'
+                          : `Nothing matches "${activeQuery}"${
+                              effect === 'all' ? '' : ' with this filter'
+                            }.`}
                       </Text>
                     ))}
                 </>

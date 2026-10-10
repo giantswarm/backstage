@@ -1,13 +1,13 @@
 import { ReactElement } from 'react';
-import { Route, Routes } from 'react-router-dom';
-import { screen, waitFor, within } from '@testing-library/react';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
-import { customizeExternalRouteRef } from '../../routes';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
 
@@ -154,6 +154,27 @@ function makeApi() {
   };
 }
 
+/** Where a navigation away from the connector page landed. */
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <p>{`at ${pathname}${search}`}</p>;
+}
+
+/**
+ * The page header's buttons, in order: every button before the tab strip
+ * (the breadcrumbs above them are links).
+ */
+function headerButtons(): string[] {
+  const tabs = screen.getByRole('tablist');
+  return screen
+    .getAllByRole('button')
+    .filter(
+      button =>
+        button.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+    .map(button => button.getAttribute('aria-label') ?? button.textContent!);
+}
+
 function TargetProbe() {
   const target = useConnectorPageTarget();
   return (
@@ -182,6 +203,11 @@ async function renderAt(
     <QueryClientProvider client={queryClient}>
       <PageHeaderActionsProvider>
         <Routes>
+          {/* The connector wizard, where Edit leads. */}
+          <Route
+            path="/agent-platform/connectors/new"
+            element={<LocationProbe />}
+          />
           <Route
             path="/agent-platform/connectors/:server/*"
             element={<ConnectorPage usedBy={usedBy} />}
@@ -192,9 +218,10 @@ async function renderAt(
     {
       initialRouteEntries: [path],
       apis: [[musterApiRef, api as never]],
-      ...(customizeBound && {
-        mountedRoutes: { '/customize': customizeExternalRouteRef },
-      }),
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        ...(customizeBound && { '/customize': customizeExternalRouteRef }),
+      },
     },
   );
   return api;
@@ -337,120 +364,156 @@ describe('ConnectorPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('saves an edited address through muster', async () => {
-    const api = await renderAt(`${BASE}/jira/settings`);
+  it('opens the connector wizard on this connector from Edit', async () => {
+    await renderAt(`${BASE}/jira`);
 
-    const address = screen.getByRole('textbox', { name: /Server address/ });
-    await userEvent.clear(address);
-    await userEvent.type(address, 'https://jira.internal/mcp');
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save and reconnect' }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
-    await waitFor(() =>
-      expect(api.callTool).toHaveBeenCalledWith(
-        'core_mcpserver_update',
-        expect.objectContaining({
-          name: 'jira',
-          url: 'https://jira.internal/mcp',
-          auth: { type: 'oauth' },
-          autoStart: true,
-        }),
-        'gazelle',
-      ),
-    );
+    expect(
+      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
+    ).toBeInTheDocument();
   });
 
-  it('says Saved, refreshes the connectors and takes no second save of the same change', async () => {
-    const api = await renderAt(`${BASE}/jira/settings`);
+  it('has no Settings tab, and sends its old address to the edit', async () => {
+    await renderAt(`${BASE}/jira/settings`);
 
-    const address = screen.getByRole('textbox', { name: /Server address/ });
-    await userEvent.clear(address);
-    await userEvent.type(address, 'https://jira.internal/mcp');
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Save and reconnect' }),
-    );
-
-    expect(await screen.findByText('Saved')).toBeInTheDocument();
-    expect(mockRefresh).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole('button', { name: 'Save and reconnect' }),
-    ).toBeDisabled();
-
-    await userEvent.type(address, '{Enter}');
-    expect(
-      api.callTool.mock.calls.filter(
-        ([tool]) => tool === 'core_mcpserver_update',
-      ),
-    ).toHaveLength(1);
+      await screen.findByText('at /agent-platform/connectors/new?edit=jira'),
+    ).toBeInTheDocument();
   });
 
-  it('takes one save while the first is still running', async () => {
-    const api = makeApi();
-    let finish: () => void = () => {};
-    api.callTool.mockImplementation(async (tool: string) =>
-      tool === 'core_mcpserver_update'
-        ? new Promise<object>(resolve => {
-            finish = () => resolve({});
-          })
-        : {},
-    );
-    await renderAt(`${BASE}/jira/settings`, { api });
+  it('leaves the Settings tab out of the tab strip', async () => {
+    await renderAt(`${BASE}/jira`);
 
-    const address = screen.getByRole('textbox', { name: /Server address/ });
-    await userEvent.clear(address);
-    await userEvent.type(address, 'https://jira.internal/mcp');
-    const save = screen.getByRole('button', { name: 'Save and reconnect' });
-    await userEvent.click(save);
-    await waitFor(() =>
-      expect(
-        api.callTool.mock.calls.filter(
-          ([tool]) => tool === 'core_mcpserver_update',
-        ),
-      ).toHaveLength(1),
-    );
-
-    await userEvent.click(save);
-    await userEvent.type(address, '{Enter}');
-    finish();
-
-    expect(await screen.findByText('Saved')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Tools/ })).toBeInTheDocument();
     expect(
-      api.callTool.mock.calls.filter(
-        ([tool]) => tool === 'core_mcpserver_update',
-      ),
-    ).toHaveLength(1);
+      screen.queryByRole('tab', { name: /Settings/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it('shows a connector managed in Git read-only, with where to change it', async () => {
+  it('keeps Edit of a connector managed in Git in place, disabled, naming GitOps', async () => {
+    await renderAt(`${BASE}/grafana`);
+
+    const edit = screen.getByRole('button', { name: 'Edit' });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAccessibleDescription(/Managed by GitOps/);
+
+    // The tooltip opens from the wrapper: a disabled button takes no hover.
+    await userEvent.hover(edit.parentElement!);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      /Managed by GitOps/,
+    );
+
+    // Where it is changed instead is in the menu.
+    expect(headerButtons()).toEqual(['Edit', 'More actions']);
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(
+      screen.getByRole('menuitem', { name: 'Edit in Git…' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('menuitem', { name: 'Remove…' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('sends the old settings address of a connector managed in Git to its tools', async () => {
     await renderAt(`${BASE}/grafana/settings`);
 
     expect(
-      screen.getByRole('textbox', { name: /Server address/ }),
-    ).toHaveAttribute('readonly');
-    expect(
-      screen.getByRole('button', { name: 'Edit in Git' }),
+      await screen.findByRole('tab', { name: /Tools/, selected: true }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Save and reconnect' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'More actions' }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/^at /)).not.toBeInTheDocument();
   });
 
-  it("puts a family's instances under Settings and its health in the facts", async () => {
+  it("puts a family's instances on their own tab, where its old settings address leads", async () => {
     await renderAt(`${BASE}/kubernetes/settings`);
 
     expect(
-      screen.getByRole('heading', { name: 'Instances' }),
+      await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
+    expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
     const facts = screen.getByRole('complementary', {
       name: 'Connector details',
     });
     expect(
       within(facts).getByText('1 of 2 instances healthy'),
     ).toBeInTheDocument();
+    // Helm-applied instances: changed in Git, not here.
+    const edit = screen.getByRole('button', { name: 'Edit' });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAccessibleDescription(/Managed by GitOps/);
+  });
+
+  it('keeps Edit and the menu in place without a muster session, disabled with the reason', async () => {
+    mockAuthenticated = false;
+    await renderAt(`${BASE}/jira`);
+
+    expect(headerButtons()).toEqual(['Edit', 'More actions']);
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Edit' }),
+    ).toHaveAccessibleDescription(/muster session, which is not connected/);
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled();
+  });
+
+  it('offers Edit as JSON where the wizard cannot represent the connector', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({
+        name: 'local-tools',
+        spec: { type: 'stdio', url: undefined, command: 'local-tools' },
+      }),
+    ];
+    await renderAt(`${BASE}/local-tools`);
+
+    const edit = screen.getByRole('button', { name: 'Edit' });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAccessibleDescription(/Edit as JSON/);
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Edit as JSON…' }),
+    );
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Edit as JSON — local-tools',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the same header actions whether or not the person is signed in to the connector', async () => {
+    // Signed out: the tools are hidden, and the Tools tab offers the sign-in.
+    const signedOut = makeApi();
+    signedOut.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'jira', status: 'auth_required' }],
+    } as never);
+    signedOut.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    await renderAt(`${BASE}/jira`, { api: signedOut });
+    expect(
+      await screen.findByText(
+        'You are not signed in to this connector, so its tools are hidden.',
+      ),
+    ).toBeInTheDocument();
+    const signedOutHeader = headerButtons();
+    cleanup();
+
+    // Signed in: Sign out joins the menu, the header itself is unchanged.
+    const signedIn = makeApi();
+    signedIn.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'jira', status: 'connected' }],
+    } as never);
+    await renderAt(`${BASE}/jira`, { api: signedIn });
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(
+      await screen.findByRole('menuitem', { name: 'Sign out' }),
+    ).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+
+    expect(signedOutHeader).toEqual(['Edit', 'More actions']);
+    expect(headerButtons()).toEqual(signedOutHeader);
   });
 
   it('offers reconnect, turn off and remove, and confirms a removal', async () => {

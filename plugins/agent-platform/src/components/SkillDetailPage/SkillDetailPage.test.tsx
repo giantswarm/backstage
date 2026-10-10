@@ -50,6 +50,19 @@ jest.mock('../../hooks/useMetaAgent', () => ({
     role === 'skillEvaluation' ? mockEvaluator : undefined,
 }));
 
+let mockContent: {
+  content?: { commit: string; instructions: string };
+  isLoading: boolean;
+  error: Error | null;
+} = { isLoading: false, error: null };
+const mockUseSkillContent = jest.fn();
+jest.mock('../../hooks/useSkillContent', () => ({
+  useSkillContent: (target: unknown) => {
+    mockUseSkillContent(target);
+    return mockContent;
+  },
+}));
+
 const createSession = jest.fn();
 let mockCreationError: Error | null = null;
 const mockUseCreateSession = jest.fn();
@@ -110,6 +123,8 @@ beforeEach(() => {
   mockUnreachable = [];
   mockEvaluator = undefined;
   mockCreationError = null;
+  mockContent = { isLoading: false, error: null };
+  mockUseSkillContent.mockReset();
   createSession.mockReset();
   mockNavigate.mockReset();
 });
@@ -136,10 +151,6 @@ describe('evaluationPrompt', () => {
 
 describe('SkillDetailPage', () => {
   it('shows the skill from the list data: name, description, source and pin', async () => {
-    mockRows = [
-      agent('triage-bot', [`${REPO}#ticket-triage`]),
-      agent('other-bot', []),
-    ];
     await renderPage();
 
     expect(
@@ -160,7 +171,44 @@ describe('SkillDetailPage', () => {
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
+    // The Overview reads nothing more than the listing has.
+    expect(mockUseSkillContent).not.toHaveBeenCalled();
+  });
 
+  it('draws Agent detail’s routed tabs below the skill’s own address', async () => {
+    mockRows = [agent('triage-bot', [`${REPO}#ticket-triage`])];
+    await renderPage();
+
+    expect(
+      screen
+        .getAllByRole('tab')
+        .map(tab => [tab.textContent, tab.getAttribute('href')]),
+    ).toEqual([
+      ['Overview', '/agent-platform/skills/giantswarm/skills/ticket-triage'],
+      [
+        'Instructions',
+        '/agent-platform/skills/giantswarm/skills/ticket-triage/instructions',
+      ],
+      [
+        'Used by (1)',
+        '/agent-platform/skills/giantswarm/skills/ticket-triage/used-by',
+      ],
+    ]);
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Overview',
+    );
+  });
+
+  it('lists the agents using the skill on the Used by tab', async () => {
+    mockRows = [
+      agent('triage-bot', [`${REPO}#ticket-triage`]),
+      agent('other-bot', []),
+    ];
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Used by (1)',
+    );
     // Used by: only the agent that mounts the skill, its row opening its page.
     expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
     await userEvent.click(screen.getByText('triage-bot'));
@@ -173,7 +221,80 @@ describe('SkillDetailPage', () => {
     expect(
       screen.getByText(/Each agent pins the skill to a commit/),
     ).toBeInTheDocument();
+    // The facts belong to the Overview.
+    expect(
+      screen.queryByText('ticket-triage/SKILL.md'),
+    ).not.toBeInTheDocument();
   }, 30_000);
+
+  it('windows a long Used by list', async () => {
+    mockRows = Array.from({ length: 300 }, (_, index) =>
+      agent(`bot-${String(index).padStart(3, '0')}`, [`${REPO}#ticket-triage`]),
+    );
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    expect(screen.getByText('Used by 300 agents')).toBeInTheDocument();
+    expect(screen.getByText('bot-000')).toBeInTheDocument();
+    expect(screen.queryByText('bot-299')).not.toBeInTheDocument();
+  }, 30_000);
+
+  it('renders the SKILL.md instructions on the Instructions tab, without raw HTML', async () => {
+    mockContent = {
+      isLoading: false,
+      error: null,
+      content: {
+        commit: skill.commit,
+        instructions: [
+          '## When to use',
+          '',
+          'Read [the setup](references/setup.md) and [the docs](https://example.com/docs).',
+          '',
+          '<script>window.pwned = true</script><b data-testid="raw">raw</b>',
+          '',
+          '![diagram](img/flow.png)',
+        ].join('\n'),
+      },
+    };
+    await renderPage('giantswarm/skills/ticket-triage/instructions');
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(skill);
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Instructions',
+    );
+    expect(
+      screen.getByRole('heading', { name: 'When to use' }),
+    ).toBeInTheDocument();
+    // A relative link points into the skill's folder at the pinned commit.
+    expect(screen.getByRole('link', { name: /the setup/ })).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage/references/setup.md`,
+    );
+    expect(screen.getByRole('link', { name: /the docs/ })).toHaveAttribute(
+      'href',
+      'https://example.com/docs',
+    );
+    // Raw HTML is dropped, not rendered; an image is a link, not a load.
+    const instructions = screen.getByTestId('skill-instructions');
+    expect(instructions.querySelector('script')).toBeNull();
+    expect(screen.queryByTestId('raw')).not.toBeInTheDocument();
+    expect(instructions.querySelector('img')).toBeNull();
+    expect(
+      screen.getByRole('link', { name: /Image: diagram/ }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage/img/flow.png`,
+    );
+  }, 30_000);
+
+  it('says so when the instructions could not be read', async () => {
+    mockContent = { isLoading: false, error: new Error('HTTP 409') };
+    await renderPage('giantswarm/skills/ticket-triage/instructions');
+
+    expect(
+      screen.getByText('Could not read the instructions'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('HTTP 409')).toBeInTheDocument();
+  });
 
   it('offers no Evaluate while the Skill Evaluator role is unresolved', async () => {
     await renderPage();
@@ -183,11 +304,21 @@ describe('SkillDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('offers Edit, opening the add-skill flow for this skill', async () => {
+  it('offers Edit as a header button, opening the add-skill flow for this skill', async () => {
+    mockEvaluator = agent('skill-evaluator', []);
     await renderPage();
 
-    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute(
-      'href',
+    // Agent detail's header actions: secondary first, the primary last.
+    const edit = screen.getByRole('button', { name: 'Edit' });
+    expect(edit.parentElement).toBe(
+      screen.getByRole('button', { name: 'Evaluate' }).parentElement,
+    );
+    expect(
+      Array.from(edit.parentElement!.children).map(child => child.textContent),
+    ).toEqual(['Edit', 'View source ↗', 'Evaluate']);
+
+    await userEvent.click(edit);
+    expect(mockNavigate).toHaveBeenCalledWith(
       '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
     );
   });
@@ -204,7 +335,11 @@ describe('SkillDetailPage', () => {
       screen.getByText("The portal cannot read this skill's source"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Edit' }),
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    // Nothing to show on an Instructions tab either.
+    expect(
+      screen.queryByRole('tab', { name: 'Instructions' }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Evaluate' }),
@@ -218,10 +353,49 @@ describe('SkillDetailPage', () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, contentReadable: true }] };
     await renderPage();
 
-    expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     expect(
       screen.queryByText("The portal cannot read this skill's source"),
     ).not.toBeInTheDocument();
+  });
+
+  it('sends the Instructions tab of an unreadable skill to its Overview', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, contentReadable: false }] };
+    await renderPage('giantswarm/skills/ticket-triage/instructions');
+
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Overview',
+    );
+    expect(mockUseSkillContent).not.toHaveBeenCalled();
+  });
+
+  it('shows a skill outside github.com read-only: no Edit, no Evaluate, and why', async () => {
+    const gitSkill = {
+      ...skill,
+      repoUrl: 'http://gitea.lab.local/lab/skills',
+    };
+    mockCatalog = { ...loaded, skills: [gitSkill] };
+    mockEvaluator = agent('skill-evaluator', []);
+    await renderPage('-/gitea.lab.local/lab/skills/-/ticket-triage');
+
+    expect(
+      screen.getByRole('heading', { name: 'Ticket triage' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Read-only in the portal')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Evaluate' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /View source/ }),
+    ).not.toBeInTheDocument();
+    // Readable all the same: its instructions are a tab away.
+    expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/instructions',
+    );
   });
 
   it('starts an evaluation session with the evaluator and opens it', async () => {

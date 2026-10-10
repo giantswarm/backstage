@@ -35,10 +35,11 @@ jest.mock('../CustomizeDataProvider', () => ({
   useCustomizeData: () => ({ skillCatalog: mockCatalog }),
 }));
 let mockAgentSkillIds: string[] = [];
+let mockAgentsLoading = false;
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({
     rows: [{ id: 'a', skillIds: mockAgentSkillIds }] as AgentRow[],
-    isLoading: false,
+    isLoading: mockAgentsLoading,
   }),
 }));
 
@@ -68,6 +69,7 @@ function listedRows(): HTMLElement[] {
 
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
+    mockAgentsLoading = false;
     mockCatalog = loaded;
     mockAgentSkillIds = [`${REPO}#triage`];
     mockRepositories = [REPO];
@@ -255,12 +257,25 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     );
   });
 
-  it('keeps a skill without a detail page as a plain card', async () => {
+  it('links a skill outside github.com to its read-only detail page', async () => {
     mockCatalog = {
       ...loaded,
       skills: [
         { ...skill('local'), repoUrl: 'https://git.example.com/team/skills' },
       ],
+    };
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: 'local' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/-/git.example.com/team/skills/-/local',
+    );
+  });
+
+  it('keeps a skill whose repository is not http(s) as a plain card', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill('local'), repoUrl: 'file:///srv/skills' }],
     };
     await renderPanel();
 
@@ -286,5 +301,187 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     expect(
       screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers no Add skill when no configured repository is on github.com, and says why', async () => {
+    mockRepositories = ['http://gitea.lab.local/lab/skills'];
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('link', { name: /Add skill/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Skills are added from here as GitHub pull requests/),
+    ).toBeInTheDocument();
+  });
+
+  it('offers Add skill when one configured repository is on github.com', async () => {
+    mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Skills are added from here as GitHub pull requests/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+const OTHER = 'https://github.com/acme/agent-skills';
+
+const chips = (name: string) =>
+  within(screen.getByRole('radiogroup', { name }))
+    .getAllByRole('radio')
+    .map(chip => chip.textContent);
+
+const cardNames = () =>
+  listedRows().map(row => within(row).getByRole('heading').textContent);
+
+describe('CustomizeSkillsPanel filters (T49)', () => {
+  beforeEach(() => {
+    mockAgentsLoading = false;
+    mockRepositories = [REPO];
+  });
+
+  it('draws no filter over three skills of one repository nobody uses', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [skill('a'), skill('b'), skill('c')],
+    };
+    mockAgentSkillIds = [];
+    await renderPanel();
+
+    expect(listedRows()).toHaveLength(3);
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
+    // Add skill keeps its place.
+    expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
+  });
+
+  it('filters three skills by source and by usage', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        skill('summarise'),
+        skill('triage'),
+        { ...skill('notes'), repoUrl: OTHER },
+      ],
+    };
+    mockAgentSkillIds = [`${REPO}#triage`];
+    await renderPanel();
+
+    expect(chips('Filter by source')).toEqual([
+      'All 3',
+      'giantswarm/skills 2',
+      'acme/agent-skills 1',
+    ]);
+    expect(chips('Filter by usage')).toEqual([
+      'All 3',
+      'Used by agents 1',
+      'Not used 2',
+    ]);
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'giantswarm/skills 2' }),
+    );
+    expect(cardNames()).toEqual(['triage', 'summarise']);
+    // Usage counts follow the source pick.
+    expect(chips('Filter by usage')).toEqual([
+      'All 2',
+      'Used by agents 1',
+      'Not used 1',
+    ]);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Not used 1' }));
+    expect(cardNames()).toEqual(['summarise']);
+  });
+
+  it('offers no usage filter while the agents are still read', async () => {
+    mockAgentsLoading = true;
+    mockCatalog = {
+      ...loaded,
+      skills: [skill('summarise'), { ...skill('notes'), repoUrl: OTHER }],
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByRole('radiogroup', { name: 'Filter by source' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by usage' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says when the filters leave nothing, and clears them', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [skill('summarise'), { ...skill('notes'), repoUrl: OTHER }],
+    };
+    mockAgentSkillIds = [];
+    // "summarise" is searched; the other source has no match.
+    await renderPanel('summarise');
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'acme/agent-skills 0' }),
+    );
+    expect(
+      screen.getByText('No skills match “summarise” with these filters.'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear filters' }),
+    );
+    expect(cardNames()).toEqual(['summarise']);
+  });
+
+  it('filters 300 skills from three repositories, paging the result from its first page', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: Array.from({ length: 300 }, (_, index) => ({
+        ...skill(`skill-${String(index).padStart(3, '0')}`),
+        repoUrl: `https://github.com/org/repo-${index % 3}`,
+      })),
+    };
+    mockAgentSkillIds = Array.from(
+      { length: 30 },
+      (_, index) =>
+        `https://github.com/org/repo-${(index * 10) % 3}#skill-${String(
+          index * 10,
+        ).padStart(3, '0')}`,
+    );
+    await renderPanel();
+
+    expect(chips('Filter by source')).toEqual([
+      'All 300',
+      'org/repo-0 100',
+      'org/repo-1 100',
+      'org/repo-2 100',
+    ]);
+    expect(chips('Filter by usage')).toEqual([
+      'All 300',
+      'Used by agents 30',
+      'Not used 270',
+    ]);
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: `Show ${SKILL_CARDS_SHOWN} more skills`,
+      }),
+    );
+    expect(listedRows()).toHaveLength(2 * SKILL_CARDS_SHOWN);
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'org/repo-1 100' }),
+    );
+
+    // A new filter starts from the first page.
+    expect(listedRows()).toHaveLength(SKILL_CARDS_SHOWN);
+    expect(
+      screen.getByText(`${SKILL_CARDS_SHOWN} skills shown, 76 more`),
+    ).toBeInTheDocument();
+    expect(chips('Filter by usage')).toEqual([
+      'All 100',
+      'Used by agents 10',
+      'Not used 90',
+    ]);
   });
 });

@@ -160,7 +160,13 @@ describe('CustomizePage', () => {
       'Add connector',
       '/agent-platform/mcp-servers/new',
     ],
-    ['models', 'Models', 'kagent', 'Add model', '/agent-platform/models/new'],
+    [
+      'models',
+      'Models',
+      'kagent',
+      'Connect a model',
+      '/agent-platform/models/new',
+    ],
   ])(
     'shows the %s panel with its environment and create action',
     async (tab, panel, component, action, href) => {
@@ -214,36 +220,39 @@ describe('CustomizePage', () => {
   });
 
   describe('at list scale', () => {
-    it('offers no search over a short tab, and keeps the create action', async () => {
-      // Three models: read, not searched.
+    // T49: the five catalog tabs always carry the search, however short the
+    // list — the SEARCH_MIN gate is for secondary lists only.
+    it('offers the search over a short tab, beside the create action', async () => {
+      // Three models.
       await renderCustomize('/customize/models');
 
       expect(screen.getByText('Models panel, search “”')).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'Add model' })).toHaveAttribute(
-        'href',
-        '/agent-platform/models/new',
-      );
+      expect(
+        screen.getByRole('searchbox', { name: 'Search models' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Connect a model' }),
+      ).toHaveAttribute('href', '/agent-platform/models/new');
     });
 
-    it('offers no search over a short tab without a create action either', async () => {
+    it('offers the search over a short tab without a create action', async () => {
       await renderCustomize('/customize/workflows');
 
       expect(
-        screen.getByText('Workflows panel, search “”'),
+        screen.getByRole('searchbox', { name: 'Search workflows' }),
       ).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     });
 
-    it('offers no search while the tab is still counting', async () => {
+    it('offers the search while the tab is still counting', async () => {
       mockCustomizeData = { ...mockCustomizeData, counts: {} };
       await renderCustomize('/customize/agents');
 
-      expect(screen.getByText('Agents panel, search “”')).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('searchbox', { name: 'Search agents' }),
+      ).toBeInTheDocument();
     });
 
-    it('offers the search once the tab lists more than eight', async () => {
+    it('offers the search over a long tab', async () => {
       mockCustomizeData = {
         ...mockCustomizeData,
         counts: { agents: 300, skills: 71, models: 3 },
@@ -258,18 +267,19 @@ describe('CustomizePage', () => {
       ).toBeInTheDocument();
     });
 
-    it('draws no search at exactly eight, and one at nine', async () => {
-      mockMusterCounts = { connectors: 8, workflows: 9 };
-      await renderCustomize('/customize/connectors');
+    it.each(['agents', 'skills', 'connectors', 'models', 'workflows'])(
+      'searches the %s tab at any count',
+      async tab => {
+        mockCustomizeData = {
+          ...mockCustomizeData,
+          counts: { agents: 1, skills: 2, models: 0 },
+        };
+        mockMusterCounts = { connectors: 0, workflows: 1 };
+        await renderCustomize(`/customize/${tab}`);
 
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
-
-      expect(
-        await screen.findByRole('searchbox', { name: 'Search workflows' }),
-      ).toBeInTheDocument();
-    });
+        expect(screen.getByRole('searchbox')).toBeInTheDocument();
+      },
+    );
   });
 
   describe('a search in the address', () => {
@@ -325,8 +335,7 @@ describe('CustomizePage', () => {
       ).toBeInTheDocument();
     });
 
-    it('keeps the field over a short tab while the search is set, so it can be cleared', async () => {
-      // Three models are no reason for a search, but one arrived with the link.
+    it('keeps the field once a seeded search is cleared', async () => {
       await renderCustomize('/customize/models?q=opus');
 
       const field = screen.getByRole('searchbox', { name: 'Search models' });
@@ -338,9 +347,11 @@ describe('CustomizePage', () => {
       await userEvent.clear(field);
 
       expect(screen.getByText('Models panel, search “”')).toBeInTheDocument();
-      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
       expect(
-        screen.getByRole('link', { name: 'Add model' }),
+        screen.getByRole('searchbox', { name: 'Search models' }),
+      ).toHaveValue('');
+      expect(
+        screen.getByRole('link', { name: 'Connect a model' }),
       ).toBeInTheDocument();
     });
   });

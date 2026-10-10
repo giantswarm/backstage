@@ -477,3 +477,138 @@ describe('CustomizeAgentsPanel', () => {
     });
   });
 });
+
+describe('CustomizeAgentsPanel filters (T49)', () => {
+  const chips = (name: string) =>
+    within(screen.getByRole('radiogroup', { name }))
+      .getAllByRole('radio')
+      .map(chip => chip.textContent);
+  const listed = (name = 'Agents') =>
+    within(screen.getByRole('list', { name })).getAllByRole('listitem');
+
+  beforeEach(() => {
+    mockSessions = [];
+    mockMetaAgent = undefined;
+  });
+
+  it('draws no filter over three agents on one model, none starred', async () => {
+    mockAgents = {
+      rows: [
+        row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
+        row({ name: 'B', technicalName: 'b', model: 'Sonnet 4.5' }),
+        row({ name: 'C', technicalName: 'c', model: 'Sonnet 4.5' }),
+      ],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+
+    expect(listed()).toHaveLength(3);
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters three agents by model and by favorites, hiding the recent cards', async () => {
+    const opus = row({ name: 'Opus agent', technicalName: 'o', model: 'Opus' });
+    mockAgents = {
+      rows: [triage, { ...notes, model: 'Sonnet 4.5' }, opus],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    mockSessions = [sessionWith(triage, '2026-10-08T10:00:00Z')];
+    await renderPanel('', await storageWithFavorites([opus]));
+
+    expect(
+      await screen.findByRole('region', { name: 'Last used by you' }),
+    ).toBeInTheDocument();
+    expect(chips('Filter by model')).toEqual([
+      'All 3',
+      'Sonnet 4.5 2',
+      'Opus 1',
+    ]);
+    expect(chips('Filter by favorites')).toEqual(['All 3', 'Starred 1']);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Sonnet 4.5 2' }));
+    expect(listed().map(item => item.textContent)).toEqual([
+      expect.stringContaining('Support triage'),
+      expect.stringContaining('Release notes'),
+    ]);
+    // The favorites count follows the model pick.
+    expect(chips('Filter by favorites')).toEqual(['All 2', 'Starred 0']);
+    expect(
+      screen.queryByRole('region', { name: 'Last used by you' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Starred 0' }));
+    expect(
+      screen.getByText('No agents match these filters.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear filters' }),
+    );
+    expect(screen.getByRole('list', { name: 'Favorite agents' })).toBeVisible();
+    expect(listed()).toHaveLength(2);
+  });
+
+  it('offers the favorites filter once something is starred', async () => {
+    mockAgents = {
+      rows: [triage, notes],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by favorites' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add Release notes to favorites' }),
+    );
+
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Filter by favorites' }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: 'Starred 1' }));
+    expect(listed('Favorite agents')).toHaveLength(1);
+    expect(
+      screen.queryByRole('list', { name: 'Agents' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('picks one of many models from a select at 300 agents, paging from the first page', async () => {
+    mockAgents = {
+      rows: manyAgents(300).map((each, index) => ({
+        ...each,
+        model: `Model ${String(index % 12).padStart(2, '0')}`,
+      })),
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    await renderPanel();
+
+    // Twelve models are a select, not a row of twelve chips.
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by model' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 25 more agents' }),
+    );
+    expect(listed()).toHaveLength(50);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by model/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Model 03 (25)' }),
+    );
+
+    // 25 agents on Model 03: one page, shown whole.
+    expect(listed()).toHaveLength(25);
+    expect(screen.queryByRole('button', { name: /more/ })).toBeNull();
+  });
+});

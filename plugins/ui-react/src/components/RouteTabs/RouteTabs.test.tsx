@@ -43,6 +43,35 @@ describe('RouteTabs', () => {
     );
   });
 
+  it('builds the hrefs from an explicit base path when the page is part of the splat', () => {
+    render(
+      <MemoryRouter initialEntries={['/skills/acme/skills/nested/dir/run']}>
+        <Routes>
+          <Route
+            path="/skills/*"
+            element={
+              <RouteTabs
+                tabs={TABS}
+                basePath="/skills/acme/skills/nested/dir"
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getAllByRole('tab').map(tab => tab.getAttribute('href')),
+    ).toEqual([
+      '/skills/acme/skills/nested/dir',
+      '/skills/acme/skills/nested/dir/run',
+      '/skills/acme/skills/nested/dir/executions',
+    ]);
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Run',
+    );
+  });
+
   it('selects the index only at the page itself', () => {
     renderAt('/workflows/deploy');
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(

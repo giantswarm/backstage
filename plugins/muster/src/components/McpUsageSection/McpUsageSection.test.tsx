@@ -138,7 +138,7 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
     // And the heading says whose numbers these are, which is what keeps it from
     // being read as the personal section above it.
     expect(
-      screen.getByText('MCP tool calls on this environment'),
+      screen.getByText('Connector tool calls on this environment'),
     ).toBeInTheDocument();
 
     await act(() => new Promise(resolve => setTimeout(resolve, 20)));

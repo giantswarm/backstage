@@ -10,6 +10,7 @@ import {
 import {
   INITIAL_MODEL_CONFIG_FORM,
   ModelConfigFormValues,
+  PLACEHOLDER_API_KEY,
 } from '../lib/modelConfigs';
 import { useSaveModelConfig } from './useSaveModelConfig';
 
@@ -190,6 +191,49 @@ describe('useSaveModelConfig', () => {
     );
   });
 
+  it('rewrites the secret for a new provider when no key was entered', async () => {
+    // The stored Secret holds the old provider's canonical key; with the key
+    // field left empty, the endpoint is taken to need none and the Secret
+    // gets the placeholder under the new provider's key.
+    const original = makeModelConfig({
+      provider: 'OpenAI',
+      model: 'qwen3-8-27b',
+      apiKeySecret: 'kagent-qwen3',
+      apiKeySecretKey: 'OPENAI_API_KEY',
+    });
+
+    const { result } = setup();
+
+    await act(async () => {
+      await result.current.save({
+        installation: CLUSTER,
+        values: values({ provider: 'Anthropic', apiKey: '' }),
+        original,
+      });
+    });
+
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'kagent-qwen3',
+        patch: {
+          data: null,
+          stringData: { ANTHROPIC_API_KEY: PLACEHOLDER_API_KEY },
+        },
+      }),
+    );
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gvk: expect.objectContaining({ plural: 'modelconfigs' }),
+        patch: expect.objectContaining({
+          spec: expect.objectContaining({
+            apiKeySecret: 'kagent-qwen3',
+            apiKeySecretKey: 'ANTHROPIC_API_KEY',
+          }),
+        }),
+      }),
+    );
+  });
+
   it('drops our conventional secret when a model goes keyless', async () => {
     const original = makeModelConfig({
       provider: 'OpenAI',
@@ -260,7 +304,7 @@ describe('useSaveModelConfig', () => {
       await expect(
         result.current.save({
           installation: CLUSTER,
-          values: values({ keyless: true, apiKey: '' }),
+          values: values({ apiKey: '' }),
         }),
       ).rejects.toThrow(/already exists/);
     });

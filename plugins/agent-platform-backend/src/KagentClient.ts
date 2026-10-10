@@ -1244,7 +1244,26 @@ export class KagentClient {
 
   /**
    * Where a call on `sessionId` goes when the caller names the Agent: the
-   * session's A2A context is its id (the controller keeps the two equal).
+   * session's A2A context is its id.
+   *
+   * **Why the session id is the right `contextId` (T62).** On the controller this
+   * client targets, a Session's `context_id` is not a separate value that has to
+   * be read back: the proto documents it as "Output only. A2A conversation ID,
+   * equal to this session's ID", and the controller's own schema enforces it —
+   * its `session` table carries `CHECK (context_id = id)` (seen on kagent
+   * controller 1.5.0 in agentlab, where every stored session satisfies it). The
+   * gateway resolves the session from `tenant` + `message.contextId` and refuses
+   * a context id that names another session, so a mismatch fails loudly with an
+   * error; it never opens or misroutes to a second context. klaus-gateway relies
+   * on the same equality and refuses a created Session that breaks it.
+   *
+   * The recorded fixtures `sessions.kagent-a8353a0.json` /
+   * `tasks.kagent-4a91c273.json` show `contextId != id`: those were recorded
+   * (2026-09) on earlier controller builds that predate the equality, and are
+   * kept for their shapes, not as a version this client supports. Should a future controller
+   * decouple the two again, read `session.contextId` off the Session (as
+   * agentlab's driver does) instead of reusing the id here and in
+   * {@link target}.
    */
   private targetOf(sessionId: string, agent: AgentRef): Target {
     this.agents.set(sessionId, agent);
@@ -1254,7 +1273,8 @@ export class KagentClient {
   /**
    * Where a call on `sessionId` goes when the caller names no Agent: the one
    * remembered from a list, a create or a read of the session, else read off
-   * the Session now.
+   * the Session now. The context is the session id, as in {@link targetOf} —
+   * see there for why that is correct rather than a shortcut.
    */
   private async target(
     sessionId: string,

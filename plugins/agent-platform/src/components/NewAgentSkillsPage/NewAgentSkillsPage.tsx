@@ -13,6 +13,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CatalogNoMatch,
   LoadingIndicator,
   matchesQuery,
   SEARCH_MIN,
@@ -23,6 +24,7 @@ import {
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { agentsBySkill } from '../../lib/customize';
 import {
   DiscoveredSkill,
   repoSlug,
@@ -31,6 +33,9 @@ import {
 } from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
+import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
+import { ModelConfigsProvider } from '../ModelConfigsProvider';
+import { SkillsFilterBar, useSkillFilters } from '../SkillsFilterBar';
 import { KeptSkills } from './KeptSkills';
 import { AUTO_EXPAND_MAX } from '../ToolsetResolutionList';
 import {
@@ -136,7 +141,11 @@ function SkillCard({
 }
 
 type SkillSelection = {
-  /** The active search term; a new one starts every grid at its first page. */
+  /**
+   * What narrows the list — the search term and the filter picks — as one
+   * key: a new one starts every grid at its first page, and a non-empty one
+   * opens every repository holding a match. Empty while nothing narrows it.
+   */
   query: string;
   selectedIds: Map<string, DiscoveredSkill>;
   onToggle: (skill: DiscoveredSkill) => void;
@@ -296,7 +305,23 @@ function GroupedSkills({
   );
 }
 
+/**
+ * The wizard's skills step. The agents are read for the Usage filter ("Used
+ * by agents" / "Not used", the same facets as Customize → Skills, T60), so the
+ * step mounts the agent list the way the Customize screen does; the shared
+ * query client usually has it already (the step-1 assist reads it too).
+ */
 export function NewAgentSkillsPage() {
+  return (
+    <ModelConfigsProvider>
+      <AgentsDataProvider>
+        <NewAgentSkillsPageContent />
+      </AgentsDataProvider>
+    </ModelConfigsProvider>
+  );
+}
+
+function NewAgentSkillsPageContent() {
   const navigate = useNavigate();
   const links = useAgentWizardLinks();
   const newAgentLink = links.details;
@@ -357,20 +382,45 @@ export function NewAgentSkillsPage() {
     );
   }, [skills, trimmed]);
 
-  // Search filters within the grouping rather than replacing it with a flat
-  // list: the repo/subfolder a match came from is part of what identifies a
-  // skill, and keeping the structure means the page doesn't relayout on the
-  // first keystroke. Empty repos and subgroups simply don't appear.
+  // Source and Usage, as on Customize → Skills (T49): each facet only once it
+  // would change the list, so three skills from one repository get no bar.
+  // Usage waits for the agents rather than calling every skill unused.
+  const { rows: agents, isLoading: agentsLoading } = useAgents();
+  const usage = useMemo(() => agentsBySkill(agents), [agents]);
+  const filters = useSkillFilters({
+    skills,
+    searched: visibleSkills,
+    usage: agentsLoading ? undefined : usage,
+  });
+  const hasFilters = filters.dimensions.length > 0;
+
+  // Search and filters narrow within the grouping rather than replacing it
+  // with a flat list: the repo/subfolder a match came from is part of what
+  // identifies a skill, and keeping the structure means the page doesn't
+  // relayout on the first keystroke. Empty repos and subgroups simply don't
+  // appear.
   const groups = useMemo(
-    () => groupSkillsByRepo(visibleSkills),
-    [visibleSkills],
+    () => groupSkillsByRepo(filters.filtered),
+    [filters.filtered],
   );
 
-  const selection = { query: trimmed, selectedIds, onToggle: toggleSkill };
+  const narrowKey = filters.isFiltered ? `${trimmed}|${filters.key}` : trimmed;
+  const selection = { query: narrowKey, selectedIds, onToggle: toggleSkill };
   const catalogue = isSingleRepo ? (
     groups[0] && <RepoSkills group={groups[0]} {...selection} />
   ) : (
     <GroupedSkills groups={groups} expandAll={isShort} {...selection} />
+  );
+
+  // The only place the step reports its own output: a search, a filter, a
+  // collapsed repository or a grid's later pages can hide every selected
+  // card, and the review summary lists them only inside the values YAML.
+  // Shown beside the search; without one (a short catalogue), beside the
+  // filters while a pick is in force — only then can cards be out of sight.
+  const selectedCount = (
+    <Text variant="body-small" color="secondary">
+      {selectedIds.size} selected
+    </Text>
   );
 
   // The frame's footer carries Cancel and Back; only the primary lives here.
@@ -488,22 +538,31 @@ export function NewAgentSkillsPage() {
                     onChange={setQuery}
                   />
                 </Flex>
-                {/* The only place the step reports its own output: a
-                    search, a collapsed repository or a grid's later pages
-                    can hide every selected card, and the review summary
-                    lists them only inside the values YAML. */}
-                <Text variant="body-small" color="secondary">
-                  {selectedIds.size} selected
-                </Text>
+                {selectedCount}
+              </Flex>
+            )}
+
+            {hasFilters && (
+              <Flex
+                align="center"
+                justify="between"
+                gap="4"
+                style={{ flexWrap: 'wrap' }}
+              >
+                <SkillsFilterBar filters={filters} />
+                {!isSearchable && filters.isFiltered && selectedCount}
               </Flex>
             )}
 
             {groups.length > 0 ? (
               catalogue
             ) : (
-              <Text color="secondary">
-                No skills match &quot;{trimmed}&quot;.
-              </Text>
+              <CatalogNoMatch
+                plural="skills"
+                search={trimmed}
+                isFiltered={filters.isFiltered}
+                onClearFilters={filters.clear}
+              />
             )}
           </>
         )}

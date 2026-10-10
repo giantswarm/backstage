@@ -215,6 +215,28 @@ describe('CreateAgentAssist', () => {
     expect(screen.queryByRole('button', { name: /help/i })).toBeNull();
   });
 
+  it('presents the assist as the artboard banner above the form', async () => {
+    configuredRoles = { agentManagement: 'swarm-operator' };
+    mockRows = [agent('swarm-operator', 'Swarm Operator')];
+    await renderAssist();
+
+    const banner = screen.getByRole('region', {
+      name: 'Set up the agent with Swarm Operator',
+    });
+    expect(
+      within(banner).getByText('Rather describe it in your own words?'),
+    ).toBeInTheDocument();
+    expect(
+      within(banner).getByText(/Swarm Operator drafts the instructions/),
+    ).toBeInTheDocument();
+    const open = within(banner).getByRole('button', {
+      name: 'Let Swarm Operator help',
+    });
+    expect(open).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(open);
+    expect(open).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('offers the assist when the role resolves, and opens the panel', async () => {
     configuredRoles = { agentManagement: 'swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];

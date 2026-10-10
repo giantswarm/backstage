@@ -269,16 +269,19 @@ pull request — nothing is applied until someone merges it
 (`POST /api/gs/agent-skills/pull-request`, `createSkillPullRequest.ts`).
 Requirements:
 
-- **github.com only.** The route refuses any other URL. Skills from a
-  generic-git repository have no detail page, so they cannot be edited in the
-  UI.
+- **github.com only.** The route refuses any other URL, so the UI offers only
+  github.com repositories: "Add skill" lists only those as targets (and is
+  hidden when none of the configured repositories is on github.com), and a
+  skill from a generic-git repository gets a read-only detail page — its
+  description and instructions, no Edit or Evaluate.
 - **The person's own GitHub token**, scope `repo`, from `githubAuthApiRef`:
   either the person's GitHub grant in muster (`gs.github.brokerAudience` +
   `gs.authProvider`; a person without a grant is sent through muster's connect
   once) or Backstage's GitHub sign-in (`auth.providers.github`). The pull
   request is authored as that person, not a bot.
 - **Push access** for that person to the repository: the branch
-  (`add-skill/<name>` or `update-skill/<name>`) is created there and the pull
+  (`add-skill/<name>`, or `update-skill/<directory as a slug>` — the repo
+  name for a skill at the repository root) is created there and the pull
   request targets the default branch. No access → GitHub's 403/404 is shown.
 
 The GitHub integration token (`integrations.github`) is **not** used for pull

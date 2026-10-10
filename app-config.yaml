@@ -423,15 +423,16 @@ aiChat:
 # `https://muster.<baseDomain>/mcp`; nothing has to be listed for an
 # installation that adopts muster. `installations` holds OVERRIDES of that
 # derived list (url, headers, prometheusServer, authProvider per name) and
-# additions the fleet configuration does not know. The proxy is read-only by
-# default -- mutating `call_tool` names and workflow runs are blocked unless
-# `allowMutations: true`. See app-config.example.yaml.
+# additions the fleet configuration does not know. The proxy has no mutation
+# gate of its own: `call_tool` and workflow runs go to muster as the signed-in
+# person, and the trust boundary is each MCP server's deployment (e.g.
+# mcp-kubernetes deployed read-only). A leftover `allowMutations` key is
+# ignored. See app-config.example.yaml.
 # muster:
 #   installations:
 #     - name: main
 #       url: https://muster.<mc>.<domain>/mcp
 #       authProvider: oidc-main
-#       # allowMutations: false   # read-only default; opt in per installation
 
 # Agent platform (plugins/agent-platform). The create flow is disabled by
 # default and enabled per environment via `app.extensions`.
@@ -491,4 +492,6 @@ agentPlatform:
   #   installations:
   #     lab: {}   # enabled, use the derived URL
   #     golem:
-  #       apiBaseUrl: https://agentgateway.<baseDomain>/kagent/api
+  #       # The gRPC origin only, `https://<host>[:port]`: no path, no
+  #       # trailing slash (gRPC is matched by service, not by prefix).
+  #       apiBaseUrl: https://agentgateway.<other-domain>

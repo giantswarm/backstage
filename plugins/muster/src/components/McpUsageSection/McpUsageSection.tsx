@@ -504,7 +504,7 @@ function McpUsageBody() {
       <SectionHeader
         as="h3"
         variant="title-x-small"
-        title="MCP tool calls on this environment"
+        title="Connector tool calls on this environment"
         description="Every tool call dispatched to the connectors behind this environment's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />
       {/* Below the heading rather than above it, unlike muster's own views:

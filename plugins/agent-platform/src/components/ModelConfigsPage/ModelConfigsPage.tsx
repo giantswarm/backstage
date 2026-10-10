@@ -27,7 +27,7 @@ import {
 // the installations in scope, and the entry point for adding one. The section
 // header + tabs come from the Agent Platform page (GSPageLayout) and the
 // second-level tab row from ModelsRouter, so this renders content only, with
-// the "Add model" action surfaced in that shared header — same shape as the
+// the "Connect a model" action surfaced in that shared header — same shape as the
 // Agents tab. Must be mounted inside a ModelConfigsProvider and a
 // ServingProvider (ModelsRouter supplies both).
 export function ModelConfigsPage() {
@@ -87,7 +87,7 @@ export function ModelConfigsPage() {
         iconStart={<AddIcon />}
         onPress={() => newModelLink && navigate(newModelLink())}
       >
-        Add model
+        Connect a model
       </Button>
     ),
     [newModelLink, navigate],

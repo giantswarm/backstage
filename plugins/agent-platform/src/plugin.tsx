@@ -163,10 +163,11 @@ const sessionsSubPage = SubPageBlueprint.make({
 });
 
 // The "Usage" tab: an Overview of the platform's health and headline trends
-// (every caller — which also carries the MCP tool calls on the installation,
-// from muster's Prometheus metrics, contributed by the muster plugin through
-// the `sections` input below), the Cost view (every caller's money), and your
-// own agent usage (personal, derived from kagent's stored conversations).
+// (every caller), the Cost view (every caller's money), the Connectors view
+// (every caller's tool calls to the connectors, from muster's Prometheus
+// metrics, contributed by the muster plugin through the `sections` input
+// below), and your own agent usage (personal, derived from kagent's stored
+// conversations).
 //
 // The last tab of the row, after muster's MCP Servers and Workflows (see
 // `agentPlatformPage`).
@@ -175,8 +176,8 @@ const sessionsSubPage = SubPageBlueprint.make({
 // list/tree filter inputs — so muster can attach its section by node id
 // (`sub-page:agent-platform/usage`, input `sections`) without either plugin
 // depending on the other, exactly as it already attaches its "MCP Servers" tab
-// to `page:agent-platform`. An empty `sections` (muster not registered) leaves
-// the Overview to its own gateway content.
+// to `page:agent-platform`. An empty `sections` (muster not registered) means
+// no Connectors view is offered.
 const usageSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'usage',
   inputs: {
@@ -189,9 +190,9 @@ const usageSubPage = SubPageBlueprint.makeWithOverrides({
       routeRef: usageRouteRef,
       loader: async () => {
         const { UsageRouter } = await import('./components/UsageRouter');
-        // Passed as the array rather than wrapped in a fragment: the
-        // Overview has to know whether anything was contributed at all, so it
-        // can render its gateway content alone when nothing was.
+        // Passed as the array rather than wrapped in a fragment: the router
+        // has to know whether anything was contributed at all, so it offers
+        // the Connectors view only when something was.
         const sections = inputs.sections.map(section =>
           section.get(coreExtensionData.reactElement),
         );

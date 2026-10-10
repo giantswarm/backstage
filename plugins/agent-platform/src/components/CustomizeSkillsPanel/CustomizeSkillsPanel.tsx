@@ -4,6 +4,7 @@ import { Alert, ButtonLink, Card, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import AddIcon from '@material-ui/icons/Add';
 import {
+  CatalogNoMatch,
   EmptyStateCard,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -20,6 +21,7 @@ import {
 import {
   canonicalRepoUrl,
   canonicalSkillId,
+  canProposeSkillTo,
   repoSlug,
   skillDetailPath,
 } from '../../lib/skills';
@@ -28,6 +30,7 @@ import { newSkillRouteRef, skillsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { ShowMore } from '../ShowMore';
+import { SkillsFilterBar, useSkillFilters } from '../SkillsFilterBar';
 
 export type CustomizeSkillsPanelProps = {
   search: string;
@@ -89,7 +92,7 @@ type Row = {
   description?: string;
   source: string;
   usedBy?: string;
-  /** The skill's detail page; a skill outside github.com has none. */
+  /** The skill's detail page (read-only for a skill outside github.com). */
   href?: string;
 };
 
@@ -148,8 +151,8 @@ function UnreadRepositoriesAlert({
 /**
  * One skill as the prototype's catalog card: its name, what it does in its
  * own words, where it comes from and how many agents use it — the whole card
- * opening the skill's page when it has one (a skill outside github.com, or
- * with the route unbound, has none and stays a plain card).
+ * opening the skill's page when it has one (with the route unbound, or a
+ * repository URL that is not http(s), it has none and stays a plain card).
  */
 function SkillCard({ card }: { card: Row }) {
   const classes = useStyles();
@@ -194,8 +197,9 @@ function SkillCard({ card }: { card: Row }) {
  * The Skills tab of the shell's Customize screen, in the prototype's
  * presentation: the skills discovered in the configured repositories as a
  * grid of catalog cards, the ones the agents in scope use most first, each
- * card opening the skill's page. Must be mounted inside a
- * `CustomizeDataProvider`.
+ * card opening the skill's page. Filters by source repository and by whether
+ * an agent uses the skill, each only when it would change the list (T49).
+ * Must be mounted inside a `CustomizeDataProvider`.
  */
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const classes = useStyles();
@@ -203,25 +207,42 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const newSkillRoute = useRouteRef(newSkillRouteRef);
-  // The add form's target repositories: the same signed-in-config list the
-  // catalog is discovered from.
+  // The add form's target repositories: the github.com entries of the same
+  // signed-in-config list the catalog is discovered from — skills are
+  // proposed as GitHub pull requests, and the endpoint refuses any other
+  // repository (T61).
   const { config } = useSignedInConfig();
   const repositories =
     config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+  const proposable = repositories.filter(canProposeSkillTo);
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
+  const unique = useMemo(
+    () => uniqueSkills(skillCatalog.skills),
+    [skillCatalog.skills],
+  );
+  const searched = useMemo(
+    () => searchSkills(unique, search),
+    [unique, search],
+  );
+  // Source and Usage (T49); the agent wizard's skill step shares them (T60).
+  const filters = useSkillFilters({
+    skills: unique,
+    searched,
+    usage: agentsLoading ? undefined : usage,
+  });
   const ranked = useMemo(
-    () => rankSkills(searchSkills(skillCatalog.skills, search), usage),
-    [skillCatalog.skills, search, usage],
+    () => rankSkills(filters.filtered, usage),
+    [filters.filtered, usage],
   );
   // "The skills your agents use most come first" is advice for a catalog too
   // long to take in at once; over three cards it is volume framing (T39). So
   // the note appears only when the catalog outgrows the grid's first page.
   const totalLine = useMemo(
     () =>
-      uniqueSkills(skillCatalog.skills).length > SKILL_CARDS_SHOWN
+      unique.length > SKILL_CARDS_SHOWN
         ? skillsTotalLine(skillCatalog.skills)
         : undefined,
-    [skillCatalog.skills],
+    [unique, skillCatalog.skills],
   );
   const cards = useMemo<Row[]>(
     () =>
@@ -286,9 +307,12 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   } else if (ranked.length === 0) {
     body = (
-      <Text as="p" variant="body-medium" color="secondary">
-        No skills match “{search.trim()}”.
-      </Text>
+      <CatalogNoMatch
+        plural="skills"
+        search={search}
+        isFiltered={filters.isFiltered}
+        onClearFilters={filters.clear}
+      />
     );
   } else {
     body = (
@@ -303,10 +327,10 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
             </Text>
           </div>
         )}
-        {/* Keyed on the search so a new query starts again from the first
-            page rather than inheriting how far the last one was paged. */}
+        {/* Keyed on the search and filters so a new query starts again from
+            the first page rather than inheriting how far the last was paged. */}
         <ShowMore
-          key={search}
+          key={`${search}|${filters.key}`}
           items={cards}
           initial={SKILL_CARDS_SHOWN}
           noun="skill"
@@ -325,22 +349,49 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   }
 
+  const canAdd =
+    !skillCatalog.isLoading && proposable.length > 0 && Boolean(newSkillRoute);
+  // Repositories configured, none on github.com: nothing to propose a skill
+  // to, and the reason is the configuration, not the person.
+  const cannotAddHere =
+    !skillCatalog.isLoading &&
+    repositories.length > 0 &&
+    proposable.length === 0;
+  const hasFilters = filters.dimensions.length > 0;
+
   return (
     <Flex direction="column" gap="4">
-      {/* Add skill = a pull request to a source repository, opened as the
-          person (G16 B) — offered whenever a repository to target exists.
-          A page of its own (`/agent-platform/skills/new`), in the same
-          in-content wizard frame as the other create flows. */}
-      {!skillCatalog.isLoading && repositories.length > 0 && newSkillRoute && (
-        <Flex justify="end">
-          <ButtonLink
-            href={newSkillRoute()}
-            variant="primary"
-            iconStart={<AddIcon />}
-          >
-            Add skill
-          </ButtonLink>
+      {/* The filters, then Add skill on the same line at the right: the tab's
+          search sits above, on the page. Add skill = a pull request to a
+          source repository, opened as the person (G16 B) — offered whenever a
+          repository to target exists. A page of its own
+          (`/agent-platform/skills/new`), in the same in-content wizard frame
+          as the other create flows. */}
+      {(hasFilters || canAdd) && (
+        <Flex
+          align="center"
+          justify={hasFilters ? 'between' : 'end'}
+          gap="4"
+          style={{ flexWrap: 'wrap' }}
+        >
+          <SkillsFilterBar filters={filters} />
+          {canAdd && newSkillRoute && (
+            <ButtonLink
+              href={newSkillRoute()}
+              variant="primary"
+              iconStart={<AddIcon />}
+            >
+              Add skill
+            </ButtonLink>
+          )}
         </Flex>
+      )}
+      {cannotAddHere && (
+        <Text as="p" variant="body-small" color="secondary">
+          Skills are added from here as GitHub pull requests, and none of the
+          configured skill repositories is on github.com — add skills in their
+          repository instead.
+        </Text>
       )}
       {notes}
       {body}

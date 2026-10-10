@@ -13,13 +13,13 @@ import {
   DialogFooter,
   DialogHeader,
   Flex,
-  Grid,
   Select,
   Text,
   TextField,
 } from '@backstage/ui';
 import {
   dialogDismissLock,
+  FormFieldGrid,
   StatusLabel,
   isAwaitingData,
   searchableIf,
@@ -424,42 +424,40 @@ export function ImportModelDialog({
 
           {selected && (
             <>
-              <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-                <Grid.Item>
-                  <Select
-                    label="Serving preset"
-                    isDisabled={isBusy}
-                    searchable={searchableIf(presetSelectOptions)}
-                    options={presetSelectOptions}
-                    selectedKey={presetKey}
-                    onSelectionChange={key =>
-                      setPresetChoice(
-                        key && String(key) !== NO_PRESET
-                          ? String(key)
-                          : NO_PRESET,
-                      )
-                    }
-                    description="The weights land in the cache directory that preset's LLMInferenceService mounts, and its serving overhead is what the fit check adds."
-                  />
-                </Grid.Item>
-                <Grid.Item>
-                  <Select
-                    label="Target node"
-                    isDisabled={isBusy}
-                    searchable={searchableIf(nodeSelectOptions)}
-                    options={nodeSelectOptions}
-                    selectedKey={nodeKey}
-                    onSelectionChange={key =>
-                      setNodeChoice(
-                        key && String(key) !== BEST_NODE
-                          ? String(key)
-                          : BEST_NODE,
-                      )
-                    }
-                    description="Whose cache receives the download; the fit is checked against this node's memory budget."
-                  />
-                </Grid.Item>
-              </Grid.Root>
+              {/* The two descriptions differ in length: the grid keeps both
+                  selects on one line regardless. */}
+              <FormFieldGrid>
+                <Select
+                  label="Serving preset"
+                  isDisabled={isBusy}
+                  searchable={searchableIf(presetSelectOptions)}
+                  options={presetSelectOptions}
+                  selectedKey={presetKey}
+                  onSelectionChange={key =>
+                    setPresetChoice(
+                      key && String(key) !== NO_PRESET
+                        ? String(key)
+                        : NO_PRESET,
+                    )
+                  }
+                  description="The weights land in the cache directory that preset's LLMInferenceService mounts, and its serving overhead is what the fit check adds."
+                />
+                <Select
+                  label="Target node"
+                  isDisabled={isBusy}
+                  searchable={searchableIf(nodeSelectOptions)}
+                  options={nodeSelectOptions}
+                  selectedKey={nodeKey}
+                  onSelectionChange={key =>
+                    setNodeChoice(
+                      key && String(key) !== BEST_NODE
+                        ? String(key)
+                        : BEST_NODE,
+                    )
+                  }
+                  description="Whose cache receives the download; the fit is checked against this node's memory budget."
+                />
+              </FormFieldGrid>
 
               {isAwaitingData(fit) && (
                 <Text variant="body-medium" color="secondary">

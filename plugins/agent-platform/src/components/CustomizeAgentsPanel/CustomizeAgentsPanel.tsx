@@ -5,9 +5,13 @@ import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
+  type CatalogFacet,
+  CatalogFilterBar,
+  CatalogNoMatch,
   EmptyStateCard,
   LoadingIndicator,
   StatusDot,
+  useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -147,6 +151,27 @@ const useStyles = makeStyles({
 export type CustomizeAgentsPanelProps = {
   search: string;
 };
+
+/**
+ * The Agents tab's facets (T49): the model an agent runs on, and the person's
+ * favorites. The environment is not one of them: the page's Environment
+ * select already scopes the tab to one installation, and shows only where
+ * there is more than one — a second control for the same thing would be two
+ * answers to one question.
+ */
+export function agentFacets(
+  isFavorite: (id: string) => boolean,
+): CatalogFacet<AgentRow>[] {
+  return [
+    { id: 'model', label: 'Model', value: row => row.model || undefined },
+    {
+      id: 'favorites',
+      label: 'Favorites',
+      value: row => (isFavorite(row.id) ? 'starred' : undefined),
+      optionLabel: () => 'Starred',
+    },
+  ];
+}
 
 /**
  * One agent as the prototype's list row: avatar, name — with its state inline
@@ -333,7 +358,10 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const { isPinned: isFavorite, togglePin: toggleFavorite } =
     useFavoriteAgents();
 
-  const visible = useMemo(() => searchAgents(rows, search), [rows, search]);
+  const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
+  const facets = useMemo(() => agentFacets(isFavorite), [isFavorite]);
+  const filters = useCatalogFilters({ items: rows, searched, facets });
+  const visible = filters.filtered;
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),
     [visible, isFavorite],
@@ -343,7 +371,9 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     [visible, isFavorite],
   );
   const showInstallation = new Set(rows.map(row => row.installation)).size > 1;
-  const isSearching = search.trim() !== '';
+  const isNarrowed = search.trim() !== '' || filters.isFiltered;
+  // A new search or filter starts each group again from its first page.
+  const pageKey = `${search.trim()}|${filters.key}`;
 
   const renderRow = (row: AgentRow) => (
     <AgentListItem
@@ -387,18 +417,29 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       );
   } else if (visible.length === 0) {
     body = (
-      <Text as="p" variant="body-medium" color="secondary">
-        No agents match “{search.trim()}”.
-      </Text>
+      <CatalogNoMatch
+        plural="agents"
+        search={search}
+        isFiltered={filters.isFiltered}
+        onClearFilters={filters.clear}
+      />
     );
   } else if (favorites.length === 0) {
     // No favorites in view: one list, no headings — the artboard's ungrouped
     // presentation.
-    body = <AgentGroup label="Agents" rows={visible} renderRow={renderRow} />;
+    body = (
+      <AgentGroup
+        key={pageKey}
+        label="Agents"
+        rows={visible}
+        renderRow={renderRow}
+      />
+    );
   } else {
     body = (
       <>
         <AgentGroup
+          key={`favorites|${pageKey}`}
           title="Favorites"
           label="Favorite agents"
           rows={favorites}
@@ -406,6 +447,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         />
         {others.length > 0 && (
           <AgentGroup
+            key={`others|${pageKey}`}
             title="Other agents"
             label="Agents"
             rows={others}
@@ -418,14 +460,22 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
 
   return (
     <Flex direction="column" gap="5">
+      {/* Under the page's search, so the bar stays put when a pick hides the
+          recent-agent cards. */}
+      {!isLoading && (
+        <CatalogFilterBar
+          dimensions={filters.dimensions}
+          onSelect={filters.select}
+        />
+      )}
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Agents"
       />
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search
-          narrows the list below, and the cards would not follow it. */}
-      {!isLoading && rows.length > 0 && !isSearching && (
+          or a filter narrows the list below, and the cards would not follow. */}
+      {!isLoading && rows.length > 0 && !isNarrowed && (
         <SessionsDataProvider>
           <LastUsedAgents />
         </SessionsDataProvider>

@@ -38,7 +38,11 @@ import { MCPServer } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
-import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  mcpServersRouteRef,
+  newMcpServerRouteRef,
+} from '../../routes';
 import {
   familyGroups,
   findServerRow,
@@ -49,12 +53,16 @@ import {
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { noToolsExplanation } from '../McpServersPage/serverDetail';
+import { withEditParam } from '../NewMcpServerEditGate';
 import {
+  AdHocServerDialog,
   ConfirmActionDialog,
   LiveAction,
   serverLiveActions,
 } from '../ServerPage/serverActions';
+import { GitOpsEditDialog } from '../ServerPage/GitOpsEditDialog';
 import { ServerCapabilityTab } from '../ServerPage/ServerCapabilityTab';
+import { ServerInstancesTab } from '../ServerPage/ServerInstancesTab';
 import {
   representativeServer,
   useServerTools,
@@ -80,7 +88,8 @@ import {
   ConnectorPageTargetProvider,
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
-import { ConnectorSettingsTab } from './ConnectorSettingsTab';
+import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
+import { DisabledAction } from './DisabledAction';
 
 /** The shell's Customize page and its Connectors tab, where the app binds them. */
 function useCustomizePaths(): {
@@ -211,6 +220,10 @@ function ConnectorPageContent({
     authenticated,
   );
 
+  // The person's own sign-in to the connector. Signing in is offered where its
+  // absence shows — the Tools tab's gate, in place of the hidden tools — so
+  // the header's actions are the same whatever this state is; signing out is
+  // a menu entry.
   const canSignIn = Boolean(
     singular && authenticated && singular.canAuthenticateInteractively(),
   );
@@ -219,16 +232,21 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
-  const needsSignIn =
-    canSignIn &&
-    !singular!.getSuspended() &&
-    !signIn.isSsoManaged &&
-    (signIn.needsLogin || signIn.isWaiting);
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
     singular!.getAuth()?.type === 'oauth' &&
     signIn.isConnected;
+
+  // Edit opens the connector wizard on this connector (`?edit=`), the flow
+  // that added it; the wizard's edit gate seeds it from the server list.
+  const editBlock = connectorEditBlock(row, authenticated);
+  const newConnectorRoute = useRouteRef(newMcpServerRouteRef);
+  const editHref =
+    singular && !editBlock && newConnectorRoute
+      ? withEditParam(newConnectorRoute(), singular.getName())
+      : undefined;
+  const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
 
   const [action, setAction] = useState<LiveAction | undefined>();
   const [actionOpen, setActionOpen] = useState(false);
@@ -236,9 +254,32 @@ function ConnectorPageContent({
     setAction(next);
     setActionOpen(true);
   };
+  const [gitOpsOpen, setGitOpsOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const menu: MenuEntry[] = [];
-  if (singular && authenticated && !isGitOpsManaged(singular)) {
+  if (singular && gitOpsManaged) {
+    menu.push({
+      id: 'edit-in-git',
+      label: 'Edit in Git…',
+      onAction: () => setGitOpsOpen(true),
+    });
+  }
+  if (singular && editBlock?.cause === 'wizard') {
+    menu.push({
+      id: 'edit-as-json',
+      label: 'Edit as JSON…',
+      onAction: () => setJsonOpen(true),
+    });
+  }
+  if (canSignOut) {
+    menu.push({
+      id: 'sign-out',
+      label: 'Sign out',
+      onAction: () => signIn.signOut(),
+    });
+  }
+  if (singular && authenticated && !gitOpsManaged) {
     const live = serverLiveActions(singular);
     if (live.reconnect && !live.reconnectGate) {
       const reconnect = live.reconnect;
@@ -246,13 +287,6 @@ function ConnectorPageContent({
         id: 'reconnect',
         label: 'Reconnect…',
         onAction: () => openAction(reconnect),
-      });
-    }
-    if (canSignOut) {
-      menu.push({
-        id: 'sign-out',
-        label: 'Sign out',
-        onAction: () => signIn.signOut(),
       });
     }
     if (live.deactivate) {
@@ -282,12 +316,6 @@ function ConnectorPageContent({
       danger: true,
       onAction: () =>
         openAction({ ...live.remove, label: `Remove ${singular.getName()}` }),
-    });
-  } else if (canSignOut) {
-    menu.push({
-      id: 'sign-out',
-      label: 'Sign out',
-      onAction: () => signIn.signOut(),
     });
   }
 
@@ -357,8 +385,13 @@ function ConnectorPageContent({
   if (usedBy && row.kind !== 'core') {
     tabs.push({ id: 'used-by', path: 'used-by', title: 'Used by' });
   }
-  if (row.kind !== 'core') {
-    tabs.push({ id: 'settings', path: 'settings', title: 'Settings' });
+  if (row.kind === 'family') {
+    tabs.push({
+      id: 'instances',
+      path: 'instances',
+      title: 'Instances',
+      count: row.servers.length,
+    });
   }
 
   const facts = [];
@@ -394,6 +427,90 @@ function ConnectorPageContent({
   ];
 
   const toIndex = <Navigate to={`${basePath}${search}`} replace />;
+  // The removed Settings tab's address, kept for links and bookmarks: to the
+  // edit it offered where the wizard can make it, to a family's instances it
+  // listed, else to the connector itself.
+  const settingsTarget =
+    editHref ??
+    (row.kind === 'family'
+      ? `${basePath}/instances${search}`
+      : `${basePath}${search}`);
+
+  // The same two controls in the same place for every connector, whatever
+  // its sign-in state or session: Edit, disabled with the reason where it
+  // cannot be used, then the menu — itself disabled with the reason while
+  // nothing in it is available. Only muster itself, which is never edited,
+  // has neither.
+  const editIcon = <Edit fontSize="inherit" />;
+  let editAction: ReactNode;
+  if (row.kind !== 'core') {
+    editAction = editHref ? (
+      <Button
+        variant="secondary"
+        iconStart={editIcon}
+        onPress={() => navigate(editHref)}
+      >
+        Edit
+      </Button>
+    ) : (
+      <DisabledAction
+        reason={
+          editBlock?.reason ?? 'The connector wizard is not available here.'
+        }
+      >
+        {describedBy => (
+          <Button
+            variant="secondary"
+            iconStart={editIcon}
+            isDisabled
+            aria-describedby={describedBy}
+          >
+            Edit
+          </Button>
+        )}
+      </DisabledAction>
+    );
+  }
+  const moreIcon = <MoreHoriz />;
+  let menuAction: ReactNode;
+  if (menu.length > 0) {
+    menuAction = (
+      <MenuTrigger>
+        <ButtonIcon
+          icon={moreIcon}
+          aria-label="More actions"
+          variant="tertiary"
+        />
+        <Menu maxWidth={MENU_WIDTH}>
+          {menu.map(item => (
+            <MenuItem
+              key={item.id}
+              id={item.id}
+              color={item.danger ? 'danger' : undefined}
+              onAction={item.onAction}
+            >
+              {item.label}
+            </MenuItem>
+          ))}
+        </Menu>
+      </MenuTrigger>
+    );
+  } else if (singular) {
+    // Only without a muster session: every action runs through it.
+    menuAction = (
+      <DisabledAction reason={SESSION_ACTIONS_REASON}>
+        {describedBy => (
+          <ButtonIcon
+            icon={moreIcon}
+            aria-label="More actions"
+            variant="tertiary"
+            isDisabled
+            aria-describedby={describedBy}
+          />
+        )}
+      </DisabledAction>
+    );
+  }
 
   return (
     <ConnectorPageTargetProvider target={target}>
@@ -403,51 +520,8 @@ function ConnectorPageContent({
         leading={<ConnectorTile name={name} />}
         badges={<StatusBadge row={row} />}
         meta={representative?.getDescription()}
-        actions={
-          <>
-            {needsSignIn && (
-              <Button
-                variant="primary"
-                isPending={signIn.isPending || signIn.isWaiting}
-                onPress={() => signIn.signIn()}
-              >
-                Sign in
-              </Button>
-            )}
-            {row.kind !== 'core' && (
-              <Button
-                variant="secondary"
-                iconStart={<Edit fontSize="inherit" />}
-                onPress={() => navigate(`${basePath}/settings${search}`)}
-              >
-                Edit
-              </Button>
-            )}
-          </>
-        }
-        menu={
-          menu.length > 0 ? (
-            <MenuTrigger>
-              <ButtonIcon
-                icon={<MoreHoriz />}
-                aria-label="More actions"
-                variant="tertiary"
-              />
-              <Menu maxWidth={MENU_WIDTH}>
-                {menu.map(item => (
-                  <MenuItem
-                    key={item.id}
-                    id={item.id}
-                    color={item.danger ? 'danger' : undefined}
-                    onAction={item.onAction}
-                  >
-                    {item.label}
-                  </MenuItem>
-                ))}
-              </Menu>
-            </MenuTrigger>
-          ) : undefined
-        }
+        actions={editAction}
+        menu={menuAction}
         tabs={tabs}
         tabsSearch={search}
         aside={
@@ -463,26 +537,6 @@ function ConnectorPageContent({
           {canSignIn && signIn.note && (
             <Alert status="info" description={signIn.note} />
           )}
-          {canSignIn &&
-            signIn.isWaiting &&
-            signIn.authUrl &&
-            !signIn.signInTabOpened && (
-              <Alert
-                status="warning"
-                description={
-                  <>
-                    The browser blocked the sign-in page.{' '}
-                    <Link
-                      href={signIn.authUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Open the sign-in page
-                    </Link>
-                  </>
-                }
-              />
-            )}
           <Routes>
             <Route
               index
@@ -520,23 +574,42 @@ function ConnectorPageContent({
             {usedBy && row.kind !== 'core' && (
               <Route path="used-by" element={usedBy} />
             )}
-            {row.kind !== 'core' && (
+            {row.kind === 'family' && (
               <Route
-                path="settings"
+                path="instances"
                 element={
-                  <ConnectorSettingsTab
-                    row={row}
-                    representative={representative}
+                  <ServerInstancesTab
+                    instances={row.servers}
                     fleetClusters={fleetClusters}
                     authenticated={authenticated}
                   />
                 }
               />
             )}
+            {row.kind !== 'core' && (
+              <Route
+                path="settings"
+                element={<Navigate to={settingsTarget} replace />}
+              />
+            )}
             <Route path="*" element={toIndex} />
           </Routes>
         </Flex>
-        {singular && !isGitOpsManaged(singular) && (
+        {singular && gitOpsManaged && (
+          <GitOpsEditDialog
+            server={singular}
+            isOpen={gitOpsOpen}
+            onOpenChange={setGitOpsOpen}
+          />
+        )}
+        {singular && editBlock?.cause === 'wizard' && (
+          <AdHocServerDialog
+            server={singular}
+            open={jsonOpen}
+            onClose={() => setJsonOpen(false)}
+          />
+        )}
+        {singular && !gitOpsManaged && (
           <ConfirmActionDialog
             server={singular}
             action={action}
@@ -565,9 +638,15 @@ export interface ConnectorPageProps {
 
 /**
  * One connector's page in the agent-platform shell: Tools (the index), Used
- * by, Settings, and Resources and Prompts when it exposes any, with its
- * facts beside them. `:server` names a server, a server family or muster
- * itself on the installation the section's scope selects.
+ * by, a family's Instances, and Resources and Prompts when it exposes any,
+ * with its facts beside them. `:server` names a server, a server family or
+ * muster itself on the installation the section's scope selects.
+ *
+ * Edit opens the connector wizard pre-filled (`new?edit=<name>`), the flow
+ * that added the connector, the way agents and skills are edited; the old
+ * `settings` tab address redirects there. Where the wizard cannot edit the
+ * connector — applied from Git, a family, no muster session, settings the
+ * wizard cannot represent — Edit stays in place, disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();

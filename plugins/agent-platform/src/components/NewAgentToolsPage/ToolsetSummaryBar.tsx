@@ -9,17 +9,22 @@ import {
   selectorLabel,
   toolsetShape,
 } from '../../lib/toolset';
+import { changingToolCount } from './catalogueEffect';
 
 const useStyles = makeStyles(theme => ({
+  // The artboard's tinted "Selected" rail (CreateAgentTools), as a sticky bar
+  // over the one-column step: the shell's rail tint, the radius of the
+  // create flow's other tinted panels, and a light shadow so it still reads
+  // as lifted over the cards scrolling beneath it.
   bar: {
     position: 'sticky',
     top: theme.spacing(1),
     zIndex: 2,
     padding: theme.spacing(1.5, 2),
-    borderRadius: theme.shape.borderRadius,
-    border: `1px solid ${theme.palette.divider}`,
-    background: theme.palette.background.paper,
-    boxShadow: theme.shadows[2],
+    borderRadius: 12,
+    border: '1px solid var(--bui-border-1, transparent)',
+    background: `var(--agent-shell-rail-bg, ${theme.palette.background.paper})`,
+    boxShadow: theme.shadows[1],
   },
   selectors: {
     display: 'flex',
@@ -34,6 +39,8 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0.25, 1),
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
+    // White on the tinted bar, as the artboard's selected-chips tray.
+    background: `var(--bui-bg-neutral-1, ${theme.palette.background.paper})`,
   },
   selectorCode: {
     fontFamily: 'monospace',
@@ -133,6 +140,17 @@ export function toolsetEffect({
         tone: 'secondary',
       };
     case 'resolved': {
+      // The artboard's rail: how much of it can change things. Said plainly,
+      // without the artboard's "the agent asks people before using them" —
+      // the wizard sets no approval on the agent (T60 gap note, F2).
+      const changing = changingToolCount(resolution.tools);
+      if (changing > 0) {
+        hints.unshift(
+          changing === resolution.tools.length
+            ? `${changing === 1 ? 'It changes' : 'All of them change'} things`
+            : `${changing} of them change things`,
+        );
+      }
       if (resolution.unmatched.length > 0) {
         hints.push(
           `${countNoun(

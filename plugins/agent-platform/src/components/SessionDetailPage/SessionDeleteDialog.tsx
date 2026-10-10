@@ -48,10 +48,12 @@ export type SessionDeleteDialogProps = {
  * Two things, both of them things the reader cannot see for themselves.
  *
  * The first is what "deleted" means here, in both directions at once: kagent
- * soft-deletes, so the record survives on the server, while every read filters it
- * out — so for anyone using Backstage it is gone, and nothing in this UI can bring
- * it back. Saying only "permanently deleted" would be wrong about the retention;
- * saying only "hidden" would imply an undo that does not exist.
+ * soft-deletes — it shuts the runtime down and marks the session `DELETED`, but
+ * the row, its tasks and its events stay in the controller's database (checked on
+ * kagent 1.5.0, T62) — while every read answers 404 for it — so for anyone using
+ * Backstage it is gone, and nothing in this UI can bring it back. Saying only
+ * "permanently deleted" would be wrong about the retention; saying only "hidden"
+ * would imply an undo that does not exist.
  *
  * The second is conditional, and is the reason `isUserScoped` is a prop: on a
  * controller running in `unsecure` mode kagent ignores the forwarded identity and
@@ -82,9 +84,10 @@ export function SessionDeleteDialog({
       onConfirm={onConfirm}
     >
       <Text variant="body-medium">
-        The session and its conversation stop being listed and cannot be opened
-        again. kagent keeps the record on its own server, but there is no way to
-        restore it from here.
+        The session’s runtime is shut down, and the session and its conversation
+        stop being listed and cannot be opened again. kagent keeps the record
+        and the conversation in its database, but there is no way to restore it
+        from here.
       </Text>
       {isUserScoped === false && (
         <Text variant="body-medium">

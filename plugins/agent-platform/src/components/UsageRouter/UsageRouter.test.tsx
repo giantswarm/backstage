@@ -12,10 +12,13 @@ import { UsageRouter } from './UsageRouter';
 // second-level tabs it offers and the scope controls above them — and stubbing
 // them keeps the tree free of the Mimir and kagent reads they do.
 jest.mock('../UsageOverviewPage', () => ({
-  UsageOverviewPage: ({ sections }: { sections?: ReactNode[] }) => (
+  UsageOverviewPage: () => <div>overview-view</div>,
+}));
+jest.mock('../UsageConnectorsPage', () => ({
+  UsageConnectorsPage: ({ sections }: { sections: ReactNode[] }) => (
     <div>
-      overview-view
-      <span>overview-sections:{sections?.length ?? 0}</span>
+      connectors-view
+      <span>connectors-sections:{sections.length}</span>
     </div>
   ),
 }));
@@ -162,10 +165,11 @@ describe('UsageRouter', () => {
     expect(await screen.findByText(marker)).toBeInTheDocument();
   });
 
-  it('offers exactly three views — Technical details is gone', async () => {
+  it('offers three views without a contributed section — Technical details is gone', async () => {
     // T35: every Technical details figure moved to the tab whose question it
     // answers (design-context/implementation/usage-metrics-ia.md), so the view
-    // was dropped rather than left empty.
+    // was dropped rather than left empty. Without muster there is no
+    // Connectors content, so no Connectors tab over an empty page either.
     renderTab('/agent-platform/usage/overview');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
@@ -176,17 +180,68 @@ describe('UsageRouter', () => {
     ]);
   });
 
-  it.each(['mcp', 'technical'])(
-    'redirects the retired %s path to Overview, where its content lives, keeping the query string',
-    async retired => {
+  it('offers a Connectors view when a section is contributed, before the reader’s own', async () => {
+    // T52: the connector tool calls moved off Overview into their own view.
+    renderTab('/agent-platform/usage/overview?window=7d', MCP_SECTION);
+
+    expect(await screen.findByText('overview-view')).toBeInTheDocument();
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+      'Overview',
+      'Cost',
+      'Connectors',
+      'Your sessions',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/agent-platform/usage/connectors?window=7d',
+    );
+  });
+
+  it('hands the contributed sections to the Connectors view, not the Overview', async () => {
+    renderTab('/agent-platform/usage/connectors', MCP_SECTION);
+
+    expect(
+      await screen.findByText('connectors-sections:1'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('overview-view')).toBeNull();
+  });
+
+  it('sends the Connectors address to Overview when nothing was contributed', async () => {
+    renderTab('/agent-platform/usage/connectors?installation=alpha');
+
+    expect(await screen.findByText('overview-view')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/usage/overview?installation=alpha',
+      );
+    });
+  });
+
+  it('redirects the retired mcp path to Connectors, keeping the query string', async () => {
+    renderTab('/agent-platform/usage/mcp?installation=alpha', MCP_SECTION);
+
+    expect(
+      await screen.findByText('connectors-sections:1'),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/usage/connectors?installation=alpha',
+      );
+    });
+  });
+
+  it.each([
+    ['mcp', 'without a contributed section', undefined],
+    ['technical', 'whose figures live there', MCP_SECTION],
+  ])(
+    'redirects the retired %s path to Overview (%s), keeping the query string',
+    async (retired, _why, sections) => {
       renderTab(
         `/agent-platform/usage/${retired}?installation=alpha`,
-        MCP_SECTION,
+        sections,
       );
 
-      expect(
-        await screen.findByText('overview-sections:1'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
       await waitFor(() => {
         expect(screen.getByTestId('path')).toHaveTextContent(
           '/agent-platform/usage/overview?installation=alpha',
@@ -221,12 +276,6 @@ describe('UsageRouter', () => {
         '/agent-platform/usage/overview?installation=alpha',
       );
     });
-  });
-
-  it('hands the contributed sections to the Overview', async () => {
-    renderTab('/agent-platform/usage/overview', MCP_SECTION);
-
-    expect(await screen.findByText('overview-sections:1')).toBeInTheDocument();
   });
 
   describe('scope controls', () => {

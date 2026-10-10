@@ -12,29 +12,48 @@ import { AgentsDataProvider } from '../AgentsDataProvider';
 import { UsageOverviewPage } from '../UsageOverviewPage';
 import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
+import { UsageConnectorsPage } from '../UsageConnectorsPage';
 import { UsageColumn } from '../UsageColumn';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { UsageScopeBar } from './UsageScopeBar';
 
-// The Usage screen's views: Overview · Cost · Your sessions. Each answers one
-// question and every metric has one home among them (see
+// The Usage screen's views: Overview · Cost · Connectors · Your sessions.
+// Each answers one question and every metric has one home among them (see
 // `design-context/implementation/usage-metrics-ia.md`): Overview is the
-// platform's health and headline trends (and where the muster plugin's
-// tool-call section lands), Cost is the only place with money breakdowns, and
-// Your sessions is the reader's own slice. The prototype's fourth view,
-// Technical details, was dropped: once each of its figures moved to the tab
-// whose question it answers, it held nothing of its own.
+// platform's health and headline trends on one screen, Cost is the only place
+// with money breakdowns, Connectors is how the connectors and their tools are
+// used (the muster plugin's contributed section), and Your sessions is the
+// reader's own slice. The prototype's fourth view, Technical details, was
+// dropped: once each of its figures moved to the tab whose question it
+// answers, it held nothing of its own.
 //
-// The time-range control applies to every view. The gateway views scope
-// their queries by it directly; Your sessions narrows the kagent fan-out's
-// fixed-window answer client-side and says so when the selection asks for
-// more than that window holds (the fan-out's window is a backend caching
-// contract this screen must not reach into).
-const VIEWS = [
-  { path: 'overview', title: 'Overview' },
-  { path: 'cost', title: 'Cost' },
-  { path: 'conversations', title: 'Your sessions' },
-] as const;
+// The time-range control applies to every gateway view. The gateway views
+// scope their queries by it directly; Your sessions narrows the kagent
+// fan-out's fixed-window answer client-side and says so when the selection
+// asks for more than that window holds (the fan-out's window is a backend
+// caching contract this screen must not reach into). Connectors' figures
+// come from muster's own fixed window, which that view says.
+type UsageView = { path: string; title: string };
+
+const OVERVIEW: UsageView = { path: 'overview', title: 'Overview' };
+const COST: UsageView = { path: 'cost', title: 'Cost' };
+const CONNECTORS: UsageView = { path: 'connectors', title: 'Connectors' };
+const SESSIONS: UsageView = { path: 'conversations', title: 'Your sessions' };
+
+/**
+ * The views on offer. Connectors only when a plugin contributed its content —
+ * without muster there is nothing to show, and a tab over an empty page reads
+ * as broken. Everyone's views first, the reader's own last.
+ */
+function usageViews(hasConnectors: boolean): UsageView[] {
+  return hasConnectors
+    ? [OVERVIEW, COST, CONNECTORS, SESSIONS]
+    : [OVERVIEW, COST, SESSIONS];
+}
+
+function hasSectionsIn(sections: ReactNode[] | undefined): boolean {
+  return (sections?.length ?? 0) > 0;
+}
 
 /** The screen's one line under its title, in the shell's header. */
 const USAGE_DESCRIPTION =
@@ -49,39 +68,46 @@ const IndexRedirect = () => {
 /**
  * The old single-page Usage tab lived at `/agent-platform/usage` with no
  * sub-routes, so nothing needs redirecting — the index handles the one URL
- * that ever existed; `/usage/mcp` (the Connectors tab) and `/usage/technical`
- * (the Technical details view), whose content now lives on Overview, redirect
- * below, and the catch-all handles a guess or a typo.
+ * that ever existed; `/usage/mcp` (the first Connectors tab's address) now
+ * lands on Connectors, `/usage/technical` (the Technical details view) on
+ * Overview, and the catch-all handles a guess or a typo.
  *
  * The routed views alone, shared by both frames below.
  */
 const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
   const { search } = useLocation();
+  const hasConnectors = hasSectionsIn(sections);
+  const redirectTo = (view: UsageView) => (
+    <Navigate to={{ pathname: `${basePath}/${view.path}`, search }} replace />
+  );
 
   return (
     <Routes>
-      <Route
-        path="overview"
-        element={<UsageOverviewPage sections={sections} />}
-      />
+      <Route path="overview" element={<UsageOverviewPage />} />
       <Route path="cost" element={<UsageCostPage />} />
+      <Route
+        path="connectors"
+        element={
+          hasConnectors ? (
+            <UsageConnectorsPage sections={sections!} />
+          ) : (
+            // Nothing contributed the view's content (muster is not
+            // registered), so the view is not offered; a bookmark lands on
+            // Overview rather than on an empty page under no active tab.
+            redirectTo(OVERVIEW)
+          )
+        }
+      />
       <Route path="conversations" element={<UsageConversationsPage />} />
-      {/* Retired addresses whose content lives on Overview now — the
-          Connectors tab (`mcp`) and the Technical details view (`technical`)
-          — so a bookmark lands on that content, not on a 404. */}
-      {['mcp', 'technical'].map(retired => (
-        <Route
-          key={retired}
-          path={retired}
-          element={
-            <Navigate
-              to={{ pathname: `${basePath}/overview`, search }}
-              replace
-            />
-          }
-        />
-      ))}
+      {/* Retired addresses, so a bookmark lands on their content rather than
+          on a 404: `mcp` was the first Connectors tab, `technical` the
+          Technical details view whose figures now live on Overview. */}
+      <Route
+        path="mcp"
+        element={redirectTo(hasConnectors ? CONNECTORS : OVERVIEW)}
+      />
+      <Route path="technical" element={redirectTo(OVERVIEW)} />
       {/* Anything else lands on Overview rather than on the tab strip over
           an empty page with no tab active — which is what
           `/agent-platform/usage/sessions` did, a likely guess given the tab
@@ -89,12 +115,7 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
           from the splat base path, for the reason the tab hrefs are: a
           relative target inside a splat route resolves against the whole
           current pathname and would append rather than replace. */}
-      <Route
-        path="*"
-        element={
-          <Navigate to={{ pathname: `${basePath}/overview`, search }} replace />
-        }
-      />
+      <Route path="*" element={redirectTo(OVERVIEW)} />
     </Routes>
   );
 };
@@ -115,7 +136,7 @@ const ShellUsageViews = ({ sections }: { sections?: ReactNode[] }) => {
       title="Usage"
       description={USAGE_DESCRIPTION}
       actions={<UsageScopeBar />}
-      tabs={VIEWS.map(view => ({
+      tabs={usageViews(hasSectionsIn(sections)).map(view => ({
         id: view.path,
         path: view.path,
         title: view.title,
@@ -168,7 +189,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
           >
             <Tabs>
               <TabList>
-                {VIEWS.map(view => (
+                {usageViews(hasSectionsIn(sections)).map(view => (
                   <Tab
                     key={view.path}
                     id={view.path}
@@ -209,6 +230,10 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  * nor refetches — which matters more here than on the Models tab: the
  * gateway views run the same twelve Mimir queries, and they only cost one round
  * between them because the query client outlives the tab switch.
+ *
+ * `sections` is the `sections` extension input (the muster plugin's connector
+ * tool-call section); it is the Connectors view's content, and that view is
+ * offered only when it holds something.
  *
  * The index redirect is a sibling of the views, not a route inside them, so the
  * tab strip never renders for a location that is about to change.

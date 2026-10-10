@@ -67,6 +67,12 @@ export function SecretTextField(props: SecretTextFieldProps) {
     error,
   } = props;
   const errorId = `${id}-error`;
+  const descriptionId = `${id}-description`;
+  // What the input is described by: its description, then its problem.
+  const describedBy =
+    [description ? descriptionId : undefined, error ? errorId : undefined]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
   return (
     <div className={classes.root}>
@@ -75,12 +81,13 @@ export function SecretTextField(props: SecretTextFieldProps) {
         label={label}
         secondaryLabel={secondaryLabel}
         description={description}
+        descriptionId={descriptionId}
       />
       <input
         id={id}
         className={`${classes.input} ${error ? classes.invalid : ''}`}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy}
         type="password"
         // Keeps browsers and password managers from treating a provider API
         // key as a login credential to save or to fill in.

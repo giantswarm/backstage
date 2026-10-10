@@ -180,7 +180,15 @@ function MarkdownLink({
   );
 }
 
-function useMarkdownComponents(): Components {
+/**
+ * The prose styles and element mapping of agent messages, for other Markdown
+ * the platform renders in the same visual language (a skill's instructions).
+ * Raw HTML is the caller's decision: `MessageMarkdown` allows it, a document
+ * read from a repository should not.
+ */
+export const useMarkdownStyles = useStyles;
+
+export function useMarkdownComponents(): Components {
   const classes = useStyles();
   return {
     h1: ({ children }) => (

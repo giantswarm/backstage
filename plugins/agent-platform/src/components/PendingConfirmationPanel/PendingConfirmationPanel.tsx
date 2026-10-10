@@ -215,13 +215,13 @@ export type PendingConfirmationPanelProps = {
  * offered a button that always failed. A question is answered — a choice, or
  * the user's own words, which can say "none of these" — or left waiting.
  *
- * There is deliberately **no free-text box alongside a choice list**, even though a
- * choice like "Something else (I'll explain)" invites one. The only place extra
- * words could go is the message's text part, and both kagent executors discard the
- * inbound message entirely and substitute a synthesised tool response — so those
- * words would appear in the transcript and never reach the model. Offering the box
- * would be offering to be ignored. Picking that choice lets the agent ask again,
- * which is the mechanism kagent actually has.
+ * **Every question gets a free-text box, a choice list or not** ("Or type your
+ * own answer…" beside the choices). A choice list is not exhaustive — the live
+ * examples end in "Something else (I'll explain)" — and the typed words do reach
+ * the model: they go into the question's `answer` list after the picked choices,
+ * not into the message's text part, which both kagent executors discard in favour
+ * of a synthesised tool response (that text is the transcript's copy only). kagent's
+ * own UI offers the same box beside every choice list.
  *
  * **Enter sends from any answer control** — a radio, a checkbox or the text box —
  * with Shift+Enter for a newline in the box, the same rule as the composers (see

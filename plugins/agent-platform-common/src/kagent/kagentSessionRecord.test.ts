@@ -15,6 +15,10 @@ import {
   parseCreatedSessionId,
 } from './kagentSessions';
 
+// Recorded (2026-09) on an earlier controller build, kagent-a8353a0, whose
+// sessions still had a `contextId` different from their `id`. Current controllers
+// (1.5.0 checked) enforce the two equal, and KagentClient addresses turns by the session id on that basis (T62);
+// this fixture is kept for the record's shape, not for that divergence.
 describe('Session records as sessions (kagent API v2, recorded on kagent-a8353a0)', () => {
   it('tells a ListSessionsResponse from a 0.10 envelope', () => {
     expect(isSessionRecordList(sessions)).toBe(true);

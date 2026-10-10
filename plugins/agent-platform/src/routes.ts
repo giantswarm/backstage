@@ -133,13 +133,22 @@ export const newModelRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
-// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as an
-// editable form (read-only when a tool owns the CR). Three segments for the same
-// reason as `agentDetailRouteRef`: all three are part of the identity, and the
-// segment count keeps it clear of the one-segment `/new`, `/serving` and
-// `/capacity`.
+// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as a
+// read view with Edit as an action (none when a tool owns the CR). Three
+// segments for the same reason as `agentDetailRouteRef`: all three are part of
+// the identity, and the segment count keeps it clear of the one-segment `/new`,
+// `/serving` and `/capacity`.
 export const modelDetailRouteRef = createSubRouteRef({
   path: '/:installation/:namespace/:name',
+  parent: modelsRouteRef,
+});
+
+// Editing one model (`/agent-platform/models/edit/<installation>/<namespace>/<name>`):
+// the Connect-a-model flow prefilled from the CR, its primary Save changes. A
+// static first segment like `agentEditRouteRef`, and four segments, so it is
+// never read as a model's three-segment detail path.
+export const modelEditRouteRef = createSubRouteRef({
+  path: '/edit/:installation/:namespace/:name',
   parent: modelsRouteRef,
 });
 

@@ -546,4 +546,121 @@ describe('shell connector wizard', () => {
       });
     });
   });
+
+  describe('editing a registered connector', () => {
+    const registered = () =>
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'jira', namespace: 'muster' },
+          spec: {
+            type: 'streamable-http',
+            url: 'https://jira.example.com/mcp',
+            autoStart: true,
+            description: 'Search, read and update tickets',
+            auth: { type: 'oauth' },
+          },
+          status: { state: 'Connected' },
+        } as never,
+        'gazelle',
+      );
+
+    beforeEach(() => {
+      mockMcpServers = [registered()];
+    });
+
+    it('opens the same wizard pre-filled, titled as an edit of the connector', async () => {
+      await renderWizard('/agent-platform/connectors/new?edit=jira');
+
+      expect(
+        await screen.findByRole('heading', {
+          level: 1,
+          name: 'Edit connector: jira',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+        'https://jira.example.com/mcp',
+      );
+      expect(screen.getByLabelText(/^What does it give access to/)).toHaveValue(
+        'Search, read and update tickets',
+      );
+      // The registered name is the CR's: kept, not renamed.
+      const name = screen.getByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveValue('jira');
+      expect(name).toBeDisabled();
+      // Leaving goes back to the connector's page, where Edit was pressed.
+      expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+        'href',
+        '/agent-platform/connectors/jira?installation=gazelle',
+      );
+    });
+
+    it('marks the invalid fields themselves on Continue, as when adding', async () => {
+      await renderWizard('/agent-platform/connectors/new?edit=jira');
+
+      const address = await screen.findByLabelText(/^Server address/);
+      await userEvent.clear(address);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      expect(address).toHaveAttribute('aria-invalid', 'true');
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address is required'),
+      );
+      expect(address).toHaveFocus();
+      expect(
+        screen.queryByText('How do people sign in?'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('saves the changes as an update of the connector, never a second one', async () => {
+      await renderWizard('/agent-platform/connectors/new?edit=jira');
+
+      const address = await screen.findByLabelText(/^Server address/);
+      await userEvent.clear(address);
+      await userEvent.type(address, 'https://jira.internal/mcp');
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByText('How do people sign in?');
+
+      // The registered sign-in is the starting answer, not Company login.
+      expect(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      ).toHaveAttribute('aria-checked', 'true');
+      expect(
+        screen.queryByRole('button', { name: 'Add connector' }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Save changes' }),
+      );
+      await screen.findByText('Test the connection');
+
+      expect(toolCalls('core_mcpserver_update')).toEqual([
+        [
+          'core_mcpserver_update',
+          expect.objectContaining({
+            name: 'jira',
+            url: 'https://jira.internal/mcp',
+            auth: { type: 'oauth' },
+          }),
+          'gazelle',
+        ],
+      ]);
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+      expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+        'href',
+        '/agent-platform/connectors/jira?installation=gazelle',
+      );
+    });
+  });
+
+  it('closes a new registration to the connectors list', async () => {
+    await renderWizard('/agent-platform/connectors/new');
+
+    expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors',
+    );
+  });
 });

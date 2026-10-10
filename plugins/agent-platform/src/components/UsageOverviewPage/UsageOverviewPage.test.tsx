@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { usageRouteRef } from '../../routes';
 import type { LlmUsage } from '../../lib/llmUsage';
@@ -61,6 +62,14 @@ function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
       },
     ],
     tokensPerDay: { rows: [], series: [] },
+    callsPerDay: {
+      series: ['calls'],
+      rows: [
+        { day: '2026-10-09', calls: 40 },
+        { day: '2026-10-10', calls: 0 },
+        { day: '2026-10-11', calls: 12 },
+      ],
+    },
     reliability: {
       totalRequests: 1_234,
       errorRequests: 5,
@@ -138,11 +147,8 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-function renderPage(
-  path = '/agent-platform/usage/overview',
-  sections?: React.ReactNode[],
-) {
-  return renderInTestApp(<UsageOverviewPage sections={sections} />, {
+function renderPage(path = '/agent-platform/usage/overview') {
+  return renderInTestApp(<UsageOverviewPage />, {
     initialRouteEntries: [path],
     mountedRoutes: { '/agent-platform/usage': usageRouteRef },
   });
@@ -263,25 +269,57 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText('sonnet-4-5')).toBeNull();
   });
 
-  it('shows the token trend and the gateway health that used to be Technical details', async () => {
+  it('shows the gateway health, with the token trend folded away in place', async () => {
+    // T52: the Overview fits one desktop viewport, so the token-type chart —
+    // a detail behind the headline trend — sits in a collapsed fold-out on
+    // this view, its one home, rather than moving elsewhere.
+    const user = userEvent.setup();
     renderPage();
+
+    expect(await screen.findByText('Gateway health')).toBeInTheDocument();
+    expect(screen.getByText('Call duration p95')).toBeInTheDocument();
+    expect(screen.queryByText(/Technical details/)).toBeNull();
+    expect(screen.queryByText('Tokens per day, by type')).toBeNull();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Token breakdown by type' }),
+    );
 
     expect(
       await screen.findByText('Tokens per day, by type'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Gateway health')).toBeInTheDocument();
-    expect(screen.getByText('Call duration p95')).toBeInTheDocument();
-    expect(screen.queryByText(/Technical details/)).toBeNull();
   });
 
-  it('renders the muster-contributed section below the gateway figures', async () => {
-    renderPage('/agent-platform/usage/overview', [
-      <div key="mcp">contributed tool-call section</div>,
-    ]);
+  it('draws model calls per day as an activity heatmap', async () => {
+    renderPage();
+
+    const grid = await screen.findByRole('img', {
+      name: /^Model calls per day:/,
+    });
+    // The day is formatted in the reader's locale, so only its parts are
+    // pinned here.
+    expect(grid).toHaveAccessibleName(
+      /^Model calls per day: 52 model calls over 3 days, on 2 of them\. Busiest: Fri, .*9.*, 40 model calls\.$/,
+    );
+    expect(grid.querySelectorAll('rect[data-day]')).toHaveLength(3);
+    // The last day is today, still filling up — its cell says so.
+    expect(
+      within(grid).getByText(/^Sun, .*11.* \(today, so far\): 12 model calls$/),
+    ).toBeInTheDocument();
+  });
+
+  it('says the daily figures failed rather than drawing idle days', async () => {
+    view.usage = { ...usage(), callsPerDay: null } as unknown as LlmUsage;
+
+    renderPage();
 
     expect(
-      await screen.findByText('contributed tool-call section'),
+      await screen.findByText(/could not be loaded from the metrics store/),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('img', { name: /^Model calls per day:/ }),
+    ).toBeNull();
+    // The rest of the view is still true without them.
     expect(screen.getByText('Gateway health')).toBeInTheDocument();
   });
 
@@ -344,17 +382,6 @@ describe('UsageOverviewPage', () => {
       expect(await screen.findByText('Your sessions')).toBeInTheDocument();
       expect(screen.queryByText('Reported cost')).toBeNull();
       expect(screen.queryByText('$12.50')).toBeNull();
-    });
-
-    it('still renders the muster-contributed section', async () => {
-      // Its data source (muster's own metrics) is independent of the gateway's.
-      renderPage('/agent-platform/usage/overview', [
-        <div key="mcp">contributed tool-call section</div>,
-      ]);
-
-      expect(
-        await screen.findByText('contributed tool-call section'),
-      ).toBeInTheDocument();
     });
 
     it('keeps the plain unavailable state when kagent is absent too', async () => {

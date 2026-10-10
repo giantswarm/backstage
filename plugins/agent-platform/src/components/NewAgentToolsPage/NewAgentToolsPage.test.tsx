@@ -429,7 +429,7 @@ const summaryBar = () =>
  * so anything opened by group name has to say which of the two it means.
  */
 const catalogueCard = () =>
-  screen.getByRole('heading', { name: 'Catalogue' }).parentElement!
+  screen.getByRole('heading', { name: 'Individual tools' }).parentElement!
     .parentElement as HTMLElement;
 
 /**
@@ -438,7 +438,7 @@ const catalogueCard = () =>
  */
 async function browseCatalogue(user: UserEvent) {
   await user.click(
-    await screen.findByRole('button', { name: 'Browse the catalogue' }),
+    await screen.findByRole('button', { name: 'Choose individual tools' }),
   );
 }
 async function open(user: UserEvent, name: RegExp) {
@@ -477,6 +477,10 @@ describe('NewAgentToolsPage', () => {
       'aria-current',
       'step',
     );
+    // The artboard's question, in its plain words.
+    expect(
+      screen.getByRole('heading', { name: 'What may it do?' }),
+    ).toBeInTheDocument();
     expect(toolsetOutput()).toBe('');
     expect(continueButton()).toBeEnabled();
     expect(
@@ -554,7 +558,7 @@ describe('NewAgentToolsPage', () => {
     const user = userEvent.setup();
 
     expect(
-      await screen.findByRole('button', { name: 'Browse the catalogue' }),
+      await screen.findByRole('button', { name: 'Choose individual tools' }),
     ).toHaveAttribute('aria-expanded', 'false');
     // 3 CRs (kubernetes family, agent-manager, pro) and github, 28 server
     // tools + 1 core tool, 1 workflow.
@@ -597,11 +601,83 @@ describe('NewAgentToolsPage', () => {
     ).not.toBeInTheDocument();
 
     await user.click(
-      screen.getByRole('button', { name: 'Hide the catalogue' }),
+      screen.getByRole('button', { name: 'Hide individual tools' }),
     );
     expect(
       screen.queryByRole('button', { name: /^Infrastructure/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('filters a long catalogue to the tools that read or that change things, and puts it away again', async () => {
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: GITHUB_TOOLS,
+    });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    // Reads: get_pods and the workflow (annotated). Everything else changes
+    // things — github's tools carry no annotation, which counts as changing.
+    const chips = await screen.findByRole('radiogroup', {
+      name: 'Filter by what it does',
+    });
+    expect(
+      within(chips)
+        .getAllByRole('radio')
+        .map(chip => chip.textContent),
+    ).toEqual(['All 30', 'Reads 2', 'Changes things 28']);
+
+    // A pick is asking to see what is left: the catalogue opens to it.
+    await user.click(within(chips).getByRole('radio', { name: 'Reads 2' }));
+    expect(
+      screen.queryByRole('button', { name: 'Choose individual tools' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('1 tool and 1 workflow match')).toBeInTheDocument();
+    const catalogue = within(catalogueCard());
+    expect(
+      catalogue.getByRole('button', {
+        name: 'Infrastructure — 1 server · 1 tool',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      catalogue.getByRole('button', { name: 'Workflows — 1 workflow' }),
+    ).toBeInTheDocument();
+    // Groups with nothing that only reads are gone, the sign-in-gated server
+    // (tools unknown) with them.
+    expect(
+      catalogue.queryByRole('button', { name: /^Registered servers/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      catalogue.queryByRole('button', { name: /^Agent Platform/ }),
+    ).not.toBeInTheDocument();
+
+    // With a search, the counts follow it, and an emptied list says why.
+    await user.type(screen.getByLabelText('Search tools'), 'github');
+    expect(
+      screen.getByText('Nothing matches "github" with this filter.'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('radiogroup', { name: 'Filter by what it does' }))
+        .getAllByRole('radio')
+        .map(chip => chip.textContent),
+    ).toEqual(['All 25', 'Reads 0', 'Changes things 25']);
+
+    // One way back from both.
+    await user.click(
+      screen.getByRole('button', { name: 'Show everything again' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Choose individual tools' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getByText('4 servers · 29 tools · 1 workflow'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Infrastructure/ }),
+    ).not.toBeInTheDocument();
+    // Picking never touched the toolset.
+    expect(toolsetOutput()).toBe('');
   });
 
   it('opens a three-entry catalogue from the start, with no search, toggle or paging', async () => {
@@ -630,7 +706,11 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText('Search tools')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: /the catalogue$/ }),
+      screen.queryByRole('button', { name: /individual tools$/ }),
+    ).not.toBeInTheDocument();
+    // Reads and changes both present, but three entries get no filter chips.
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by what it does' }),
     ).not.toBeInTheDocument();
 
     await open(user, /^Infrastructure — /);
@@ -662,7 +742,7 @@ describe('NewAgentToolsPage', () => {
     const user = userEvent.setup();
 
     expect(
-      await screen.findByRole('button', { name: 'Browse the catalogue' }),
+      await screen.findByRole('button', { name: 'Choose individual tools' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Search tools')).toBeInTheDocument();
     expect(
@@ -773,6 +853,10 @@ describe('NewAgentToolsPage', () => {
     expect(
       within(summaryBar()).getByTitle('preset:read-only'),
     ).toHaveTextContent('Read-only tools');
+    // Everything it resolves to only reads.
+    expect(
+      within(summaryBar()).queryByText(/change things/),
+    ).not.toBeInTheDocument();
 
     const resolved = within(toolsetCard());
     await resolved.findByText('x_kubernetes_get_pods');
@@ -806,6 +890,16 @@ describe('NewAgentToolsPage', () => {
     // pick the destructive tool from its rows.
     await open(user, /^Infrastructure — /);
     await open(user, /^kubernetes \(family\) — 2 tools/);
+    // Each row says what the tool does; the destructive one keeps its marker.
+    const rows = within(
+      within(catalogueCard()).getByRole('group', {
+        name: 'Tools of kubernetes',
+      }),
+    );
+    expect(rows.getByText('Reads')).toBeInTheDocument();
+    expect(rows.getByText('Changes things')).toBeInTheDocument();
+    expect(rows.getByText('destructive')).toBeInTheDocument();
+    expect(rows.queryByText('read-only')).not.toBeInTheDocument();
     await user.click(
       await screen.findByRole('checkbox', {
         name: 'Tool x_kubernetes_delete_pod',
@@ -830,6 +924,10 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
     expect(
       await within(summaryBar()).findByText('Resolves to 3 tools for you'),
+    ).toBeInTheDocument();
+    // The artboard's rail line, without claiming the agent asks first.
+    expect(
+      within(summaryBar()).getByText('1 of them change things'),
     ).toBeInTheDocument();
     // The resolution card lists the destructive tool, marked.
     await waitFor(() =>
@@ -919,7 +1017,7 @@ describe('NewAgentToolsPage', () => {
       screen.queryByRole('checkbox', { name: 'Tool x_kubernetes_get_pods' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Browse the catalogue' }),
+      screen.getByRole('button', { name: 'Choose individual tools' }),
     ).toBeInTheDocument();
   });
 
@@ -1013,8 +1111,9 @@ describe('NewAgentToolsPage', () => {
       'Workflow mc-etcd-space-low',
       'Workflow mc-node-not-ready',
     ]);
-    // Rows carry the markers and one line of the description.
-    expect(screen.getAllByText('read-only').length).toBeGreaterThanOrEqual(3);
+    // Rows say what they do and carry one line of the description.
+    expect(screen.getAllByText('Reads').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText('read-only')).not.toBeInTheDocument();
     expect(
       screen.getByRole('checkbox', { name: 'Workflow mc-api-down' }),
     ).toHaveAttribute('title', 'Triage mc-api-down');

@@ -123,6 +123,9 @@ export type LlmDailySeries = {
   series: string[];
 };
 
+/** The one series key of {@link LlmUsage.callsPerDay}. */
+export const CALLS_SERIES = 'calls';
+
 export type LlmReliability = {
   totalRequests: number;
   errorRequests: number;
@@ -169,6 +172,13 @@ export type LlmUsage = {
   byAgentModel: LlmAgentModelRow[];
   costPerDay: LlmDailySeries;
   tokensPerDay: LlmDailySeries;
+  /**
+   * Model calls per day — one series, keyed {@link CALLS_SERIES} — for the
+   * Overview's activity heatmap. Absent unless the view asked for it
+   * (`dailyCalls`); `null` when its query failed, so the heatmap can say so
+   * rather than draw a calendar of empty days under a non-zero call total.
+   */
+  callsPerDay?: LlmDailySeries | null;
   reliability: LlmReliability;
   unpricedModels: UnpricedModelRow[];
   rates: TokenRates;
@@ -711,6 +721,13 @@ export function buildLlmUsage(options: {
   today: string;
   costToday: MimirMetricSample[] | undefined;
   tokensToday: MimirMetricSample[] | undefined;
+  /**
+   * Model calls per day, from `callsPerDay`, when the view asked for them:
+   * `null` when that query failed, absent when it was not asked for.
+   */
+  callsPerDay?: MimirMatrixSample[] | null;
+  /** Today's partial call count, for the last row of {@link callsPerDay}. */
+  callsToday?: MimirMetricSample[];
   /** The window the vectors cover. Defaults to {@link WINDOW_DAYS}. */
   windowDays?: number;
   /**
@@ -764,6 +781,22 @@ export function buildLlmUsage(options: {
     }),
     { day: options.today, samples: options.tokensToday, label: typeLabel },
   );
+  const callsLabel = () => CALLS_SERIES;
+  const callsPerDay =
+    options.callsPerDay === null
+      ? null
+      : options.callsPerDay &&
+        applyTodayPartial(
+          reduceDaily(options.callsPerDay, {
+            label: callsLabel,
+            days: options.days,
+          }),
+          {
+            day: options.today,
+            samples: options.callsToday,
+            label: callsLabel,
+          },
+        );
 
   return {
     windowDays: options.windowDays ?? WINDOW_DAYS,
@@ -789,6 +822,7 @@ export function buildLlmUsage(options: {
     byAgentModel: reduceByAgentModel({ cost, tokens, calls }),
     costPerDay,
     tokensPerDay,
+    ...(callsPerDay !== undefined && { callsPerDay }),
     reliability: reduceReliability({
       requestsByStatus: options.requestsByStatus,
       p50: options.p50,

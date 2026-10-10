@@ -1,8 +1,10 @@
 import {
   canonicalRepoUrl,
   canonicalSkillId,
+  canProposeSkillTo,
   normalizedRepoUrl,
   parseSkillDetailPath,
+  resolveSkillDetailPath,
   skillCommitUrl,
   skillDetailPath,
   skillSourceUrl,
@@ -114,11 +116,110 @@ describe('skillDetailPath / parseSkillDetailPath', () => {
     });
   });
 
-  it('has no detail path outside github.com, and refuses a bare owner', () => {
-    expect(
-      skillDetailPath({ repoUrl: 'https://gitlab.com/g/skills', path: 'x' }),
-    ).toBeUndefined();
+  it('addresses a skill outside github.com under `-`, which no GitHub owner can be', () => {
+    const skill = {
+      repoUrl: 'https://gitlab.example.com/group/sub/skills.git',
+      path: 'support/ticket-triage',
+    };
+    const path = skillDetailPath(skill);
+    expect(path).toBe(
+      '-/gitlab.example.com/group/sub/skills/-/support/ticket-triage',
+    );
+    const parsed = parseSkillDetailPath(path!);
+    expect(parsed).toEqual({
+      repoUrl: 'https://gitlab.example.com/group/sub/skills',
+      path: 'support/ticket-triage',
+    });
+    expect(canonicalSkillId(parsed!)).toBe(canonicalSkillId(skill));
+  });
+
+  it('round-trips a plain-http lab repository at its root, port included', () => {
+    const skill = {
+      repoUrl: 'http://gitserver.agent-platform.svc:8080/skills.git',
+      path: '',
+    };
+    const path = skillDetailPath(skill);
+    expect(path).toBe('-/gitserver.agent-platform.svc%3A8080/skills');
+    const parsed = parseSkillDetailPath(path!);
+    expect(parsed).toEqual({
+      repoUrl: 'https://gitserver.agent-platform.svc:8080/skills',
+      path: '',
+    });
+    // Same skill whatever the scheme it was configured with.
+    expect(canonicalSkillId(parsed!)).toBe(canonicalSkillId(skill));
+  });
+
+  it('refuses a bare owner, a bare host and a non-http(s) URL', () => {
     expect(parseSkillDetailPath('giantswarm')).toBeUndefined();
+    expect(parseSkillDetailPath('-/gitea.lab.local')).toBeUndefined();
+    expect(
+      skillDetailPath({ repoUrl: 'file:///srv/skills', path: 'x' }),
+    ).toBeUndefined();
+  });
+});
+
+describe('resolveSkillDetailPath', () => {
+  const triage = {
+    repoUrl: 'https://github.com/giantswarm/skills',
+    path: 'ticket-triage',
+  };
+  const lab = { repoUrl: 'http://gitea.lab.local/lab/skills', path: '' };
+  const shadow = {
+    repoUrl: 'https://github.com/giantswarm/skills',
+    path: 'ticket-triage/used-by',
+  };
+
+  it('reads the skill itself as its Overview', () => {
+    expect(
+      resolveSkillDetailPath('giantswarm/skills/ticket-triage', [triage]),
+    ).toMatchObject({ skill: triage, tab: 'overview' });
+  });
+
+  it('reads a trailing tab segment as the tab of the skill before it', () => {
+    expect(
+      resolveSkillDetailPath('giantswarm/skills/ticket-triage/instructions', [
+        triage,
+      ]),
+    ).toMatchObject({ skill: triage, tab: 'instructions' });
+    expect(
+      resolveSkillDetailPath('-/gitea.lab.local/lab/skills/used-by', [lab]),
+    ).toMatchObject({ skill: lab, tab: 'used-by' });
+  });
+
+  it('prefers a skill whose directory is named like a tab', () => {
+    expect(
+      resolveSkillDetailPath('giantswarm/skills/ticket-triage/used-by', [
+        triage,
+        shadow,
+      ]),
+    ).toMatchObject({ skill: shadow, tab: 'overview' });
+  });
+
+  it('names the address it could not find, and nothing without a repository', () => {
+    expect(
+      resolveSkillDetailPath('giantswarm/skills/gone/instructions', [triage]),
+    ).toEqual({
+      target: {
+        repoUrl: 'https://github.com/giantswarm/skills',
+        path: 'gone/instructions',
+      },
+      skill: undefined,
+      tab: 'overview',
+    });
+    expect(resolveSkillDetailPath('giantswarm', [triage])).toBeUndefined();
+  });
+});
+
+describe('canProposeSkillTo', () => {
+  it('accepts exactly what the pull-request endpoint accepts', () => {
+    expect(canProposeSkillTo('https://github.com/giantswarm/skills')).toBe(
+      true,
+    );
+    expect(canProposeSkillTo('https://gitlab.com/g/skills')).toBe(false);
+    expect(canProposeSkillTo('http://gitea.lab.local/lab/skills')).toBe(false);
+    expect(canProposeSkillTo('git@github.com:giantswarm/skills.git')).toBe(
+      false,
+    );
   });
 });
 

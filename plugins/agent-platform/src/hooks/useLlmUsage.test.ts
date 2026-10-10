@@ -218,3 +218,69 @@ describe('useLlmUsage with options', () => {
     ).toBe(false);
   });
 });
+
+describe('useLlmUsage daily calls (the Overview heatmap)', () => {
+  it('neither runs nor reports them unless asked', () => {
+    const { result } = renderHook(() => useLlmUsage('gazelle'));
+
+    expect(issued).not.toContain(llmUsageRangeQueries.callsPerDay);
+    expect(result.current.usage).not.toHaveProperty('callsPerDay');
+  });
+
+  it('reports one row per day of the window when asked', () => {
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { days: 7, dailyCalls: true }),
+    );
+
+    expect(issued).toContain(llmUsageRangeQueries.callsPerDay);
+    expect(result.current.usage?.callsPerDay?.rows).toHaveLength(7);
+  });
+
+  it('labels a point by the day it covers, and fills today from its own query', () => {
+    const { callsPerDay } = llmUsageRangeQueries;
+    // A point at a midnight totals the day before it.
+    const end = Number(
+      jest
+        .requireActual<typeof import('../lib/llmUsageQueries')>(
+          '../lib/llmUsageQueries',
+        )
+        .dailyRangeWindow(Date.now(), 7).end,
+    );
+    answers.set(callsPerDay, [{ metric: {}, values: [[end, '42']] }]);
+    const { todayPartialQueries, todayPartialRange } = jest.requireActual<
+      typeof import('../lib/llmUsageQueries')
+    >('../lib/llmUsageQueries');
+    answers.set(todayPartialQueries(todayPartialRange()).calls, [
+      { metric: {}, value: [end, '5'] },
+    ]);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { days: 7, dailyCalls: true }),
+    );
+
+    const rows = result.current.usage?.callsPerDay?.rows ?? [];
+    expect(rows.slice(-2).map(row => row.calls)).toEqual([42, 5]);
+  });
+
+  it('blocks the page on the daily range query, like the other charts', () => {
+    pending.add(llmUsageRangeQueries.callsPerDay);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { dailyCalls: true }),
+    );
+
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  it('isolates a failure to the heatmap rather than failing the page', () => {
+    failed.add(llmUsageRangeQueries.callsPerDay);
+
+    const { result } = renderHook(() =>
+      useLlmUsage('gazelle', { dailyCalls: true }),
+    );
+
+    expect(result.current.isError).toBe(false);
+    expect(result.current.usage).toBeDefined();
+    expect(result.current.usage?.callsPerDay).toBeNull();
+  });
+});

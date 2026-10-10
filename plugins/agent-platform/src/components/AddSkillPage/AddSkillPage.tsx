@@ -29,7 +29,12 @@ import {
   type SkillPullRequest,
 } from '../../hooks/useProposeSkill';
 import type { SkillContent } from '../../hooks/useSkillContent';
-import { repoSlug, shortCommit, type DiscoveredSkill } from '../../lib/skills';
+import {
+  canProposeSkillTo,
+  repoSlug,
+  shortCommit,
+  type DiscoveredSkill,
+} from '../../lib/skills';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
 /** An existing skill to edit, and the SKILL.md it currently reads. */
@@ -91,28 +96,34 @@ function SkillPullRequestOutcome({
  * `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
  * name are fixed, description and instructions start from the SKILL.md the
  * skill reads now, and the pull request rewrites `<dir>/SKILL.md` on
- * `update-skill/<name>`. Submitting waits for an actual change.
+ * `update-skill/<directory as a slug>` (the repository name for a skill at
+ * the root). Submitting waits for an actual change; a skill that changed
+ * since the edit started is refused (409) with the backend's reason shown.
  *
- * The same single-step in-content wizard frame as Add model, so the Customize
+ * The same single-step in-content wizard frame as Connect a model, so the Customize
  * screen's create flows all read the same. A person without a GitHub grant in
  * muster is bounced through muster's connect once (the `githubAuthApiRef` the
  * mutation mints its token from does that) and comes back to this page.
  */
 export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
-  // The target repositories: the same signed-in-config list the catalog is
-  // discovered from. An edit targets the skill's own repository.
+  // The target repositories: the github.com entries of the same
+  // signed-in-config list the catalog is discovered from — the pull-request
+  // endpoint refuses any other repository, so offering one would only end in
+  // an error. An edit targets the skill's own repository.
   const { config } = useSignedInConfig();
   const editRepoUrl = edit?.skill.repoUrl;
-  const repositories = useMemo(
+  const configured = useMemo(
     () =>
-      editRepoUrl
-        ? [editRepoUrl]
-        : (config?.getOptionalStringArray(
-            'agentPlatform.skills.repositories',
-          ) ?? []),
-    [config, editRepoUrl],
+      config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [],
+    [config],
   );
+  const repositories = useMemo(
+    () => (editRepoUrl ? [editRepoUrl] : configured.filter(canProposeSkillTo)),
+    [configured, editRepoUrl],
+  );
+  /** Configured repositories left out of the targets for not being on github.com. */
+  const skippedCount = edit ? 0 : configured.length - repositories.length;
   const closeHref = edit?.skillHref ?? `${SHELL_CUSTOMIZE_PATH}/skills`;
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
@@ -253,10 +264,16 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         </WizardStepHeading>
       )}
 
-      {repositories.length === 0 && (
+      {repositories.length === 0 && skippedCount === 0 && (
         <EmptyStateCard
           title="No skill repositories"
           description="Skills are proposed to the repositories a platform admin configures, and none is configured."
+        />
+      )}
+      {repositories.length === 0 && skippedCount > 0 && (
+        <EmptyStateCard
+          title="No repository to propose to"
+          description="Skills are proposed as GitHub pull requests, and none of the configured skill repositories is on github.com. Add the skill in its repository instead."
         />
       )}
 
@@ -291,6 +308,12 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
           {!edit && repositories.length === 1 && repoUrl && (
             <Text variant="body-small" color="secondary">
               Repository: {repoSlug(repoUrl)}
+            </Text>
+          )}
+          {skippedCount > 0 && (
+            <Text variant="body-small" color="secondary">
+              Only github.com repositories are offered: skills are proposed as
+              GitHub pull requests.
             </Text>
           )}
           {edit ? (

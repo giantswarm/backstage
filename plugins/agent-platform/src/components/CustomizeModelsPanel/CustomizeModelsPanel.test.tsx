@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { AgentRow } from '../AgentsDataProvider';
@@ -178,5 +178,84 @@ describe('CustomizeModelsPanel', () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeModelsPanel provider filter (T49)', () => {
+  const bodyRows = () => screen.getAllByRole('row').slice(1);
+  const chips = () =>
+    within(screen.getByRole('radiogroup', { name: 'Filter by provider' }))
+      .getAllByRole('radio')
+      .map(chip => chip.textContent);
+  const model = (index: number, provider: string): ModelRow => ({
+    ...sonnet,
+    id: `golem/support/m-${index}`,
+    name: `m-${index}`,
+    displayName: `Model ${String(index).padStart(3, '0')}`,
+    provider,
+  });
+
+  beforeEach(() => {
+    mockModelsLoading = false;
+    mockServingInstallations = [];
+  });
+
+  it('draws no filter over three models of one provider', async () => {
+    mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
+    await renderPanel();
+
+    expect(bodyRows()).toHaveLength(3);
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters three models by provider, together with the search', async () => {
+    mockModelRows = [sonnet, qwen, model(3, 'Anthropic')];
+    await renderPanel();
+
+    expect(chips()).toEqual(['All 3', 'Anthropic 2', 'Ollama 1']);
+    await userEvent.click(screen.getByRole('radio', { name: 'Ollama 1' }));
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
+  });
+
+  it('says when a provider and the search leave nothing, and clears the filter', async () => {
+    mockModelRows = [sonnet, qwen];
+    await renderPanel('sonnet');
+
+    expect(chips()).toEqual(['All 1', 'Anthropic 1', 'Ollama 0']);
+    await userEvent.click(screen.getByRole('radio', { name: 'Ollama 0' }));
+    expect(
+      screen.getByText('No models match “sonnet” with these filters.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear filters' }),
+    );
+    expect(bodyRows()).toHaveLength(1);
+  });
+
+  it('filters 300 models from four providers, paging from the first page', async () => {
+    const providers = ['Anthropic', 'OpenAI', 'Ollama', 'vLLM'];
+    mockModelRows = Array.from({ length: 300 }, (_, index) =>
+      model(index, providers[index % 4]),
+    );
+    await renderPanel();
+
+    expect(chips()).toEqual([
+      'All 300',
+      'Anthropic 75',
+      'Ollama 75',
+      'OpenAI 75',
+      'vLLM 75',
+    ]);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more models' }),
+    );
+    expect(bodyRows()).toHaveLength(40);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'vLLM 75' }));
+    expect(bodyRows()).toHaveLength(20);
+    expect(screen.getByText('20 models shown, 55 more')).toBeInTheDocument();
   });
 });

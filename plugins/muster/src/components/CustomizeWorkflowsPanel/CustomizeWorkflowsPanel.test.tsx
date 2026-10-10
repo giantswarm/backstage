@@ -71,26 +71,69 @@ function makeWorkflow(
 
 const yesterday = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
 
+type Summary = {
+  execution_id: string;
+  workflow_name: string;
+  status: 'completed' | 'failed' | 'inprogress';
+  started_at: string;
+  duration_ms: number;
+  step_count: number;
+};
+
+const run = (
+  workflow: string,
+  status: Summary['status'],
+  index = 0,
+): Summary => ({
+  execution_id: `${workflow}-${index}`,
+  workflow_name: workflow,
+  status,
+  started_at: yesterday,
+  duration_ms: 10,
+  step_count: 1,
+});
+
+/** The installation's newest runs: what the Last run filter reads. */
+let mockLastRuns: { executions: Summary[]; has_more: boolean } = {
+  executions: [],
+  has_more: false,
+};
+
+/** One workflow's latest run, as the table's per-row read gets it. */
+function latestRunOf(workflowName: string) {
+  if (workflowName !== 'ticket-report') {
+    return { executions: [], total: 0, limit: 1, offset: 0, has_more: false };
+  }
+  return {
+    executions: [
+      {
+        execution_id: 'e1',
+        workflow_name: workflowName,
+        status: 'completed' as const,
+        started_at: yesterday,
+        duration_ms: 10,
+        step_count: 4,
+      },
+    ],
+    total: 12,
+    limit: 1,
+    offset: 0,
+    has_more: true,
+  };
+}
+
 const api = {
-  listExecutions: jest.fn(async ({ workflowName }: { workflowName: string }) =>
-    workflowName === 'ticket-report'
-      ? {
-          executions: [
-            {
-              execution_id: 'e1',
-              workflow_name: workflowName,
-              status: 'completed' as const,
-              started_at: yesterday,
-              duration_ms: 10,
-              step_count: 4,
-            },
-          ],
-          total: 12,
-          limit: 1,
-          offset: 0,
-          has_more: true,
-        }
-      : { executions: [], total: 0, limit: 1, offset: 0, has_more: false },
+  listExecutions: jest.fn(
+    async ({ workflowName }: { workflowName?: string }) =>
+      workflowName === undefined
+        ? {
+            executions: mockLastRuns.executions,
+            total: mockLastRuns.executions.length,
+            limit: 500,
+            offset: 0,
+            has_more: mockLastRuns.has_more,
+          }
+        : latestRunOf(workflowName),
   ),
   // The honest badge comes from the catalogue's `workflow_<name>` tools: the
   // aggregator derives readOnlyHint only when every reachable tool reads.
@@ -107,6 +150,11 @@ const api = {
     ],
   })),
 };
+
+/** The per-row reads of one workflow's latest run, without the bulk read. */
+const perWorkflowReads = () =>
+  api.listExecutions.mock.calls.filter(([options]) => options.workflowName)
+    .length;
 
 function renderPanel(search = '') {
   const client = new QueryClient({
@@ -134,6 +182,7 @@ describe('CustomizeWorkflowsPanel', () => {
       }),
       makeWorkflow('upgrade-check', 1),
     ];
+    mockLastRuns = { executions: [], has_more: false };
     api.listExecutions.mockClear();
     api.filterTools.mockClear();
   });
@@ -240,7 +289,7 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(screen.queryByText(/shown/)).toBeNull();
     // bui's page mode draws "Next"/"Previous" and a page-size select.
     expect(screen.queryByRole('button', { name: /next|previous/i })).toBeNull();
-    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(perWorkflowReads()).toBe(3));
   });
 
   it('windows 300 workflows by name and reads runs only for the rows shown', async () => {
@@ -259,14 +308,14 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(
       screen.getByText('20 workflows shown, 280 more'),
     ).toBeInTheDocument();
-    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(20));
+    await waitFor(() => expect(perWorkflowReads()).toBe(20));
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Show 20 more workflows' }),
     );
     expect(screen.getAllByRole('row')).toHaveLength(41);
     // The next page asks for its own 20 runs, and nothing beyond it.
-    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(40));
+    await waitFor(() => expect(perWorkflowReads()).toBe(40));
     expect(api.listExecutions).not.toHaveBeenCalledWith(
       expect.objectContaining({ workflowName: 'wf-040' }),
     );
@@ -277,6 +326,153 @@ describe('CustomizeWorkflowsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No workflows yet')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
+  const rows = () => screen.getAllByRole('row').slice(1);
+  const chips = () =>
+    within(screen.getByRole('radiogroup', { name: 'Filter by last run' }))
+      .getAllByRole('radio')
+      .map(chip => chip.textContent);
+
+  beforeEach(() => {
+    mockAuthenticated = true;
+    api.listExecutions.mockClear();
+    api.filterTools.mockClear();
+  });
+
+  it('draws no filter over three workflows whose last runs all went the same way', async () => {
+    mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
+      makeWorkflow(name, 2),
+    );
+    mockLastRuns = {
+      executions: ['alpha', 'bravo', 'charlie'].map(name =>
+        run(name, 'completed'),
+      ),
+      has_more: false,
+    };
+    await renderPanel();
+
+    await waitFor(() =>
+      expect(api.listExecutions).toHaveBeenCalledWith({
+        installation: 'gazelle',
+        limit: 500,
+      }),
+    );
+    expect(rows()).toHaveLength(3);
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters three workflows by their last run, the newest run deciding', async () => {
+    mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
+      makeWorkflow(name, 2),
+    );
+    mockLastRuns = {
+      // Newest first: alpha failed last, after an older success.
+      executions: [
+        run('alpha', 'failed', 2),
+        run('bravo', 'inprogress', 1),
+        run('alpha', 'completed', 0),
+      ],
+      has_more: false,
+    };
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
+    ).toBeInTheDocument();
+    expect(chips()).toEqual([
+      'All 3',
+      'Failed 1',
+      'Running 1',
+      'Not run yet 1',
+    ]);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Failed 1' }));
+    expect(rows()).toHaveLength(1);
+    expect(screen.getByRole('row', { name: /alpha/ })).toBeInTheDocument();
+  });
+
+  it('says "No recent run", not "Not run yet", when the window does not hold every run', async () => {
+    mockWorkflows = ['alpha', 'bravo'].map(name => makeWorkflow(name, 2));
+    mockLastRuns = { executions: [run('alpha', 'completed')], has_more: true };
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
+    ).toBeInTheDocument();
+    expect(chips()).toEqual(['All 2', 'Succeeded 1', 'No recent run 1']);
+  });
+
+  it('offers no last-run filter without a muster session', async () => {
+    mockAuthenticated = false;
+    mockWorkflows = ['alpha', 'bravo'].map(name => makeWorkflow(name, 2));
+    mockLastRuns = { executions: [run('alpha', 'failed')], has_more: false };
+    await renderPanel();
+
+    expect(screen.getAllByRole('row')).toHaveLength(3);
+    expect(api.listExecutions).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters 300 workflows with one bulk read, paging the result from its first page', async () => {
+    const names = Array.from(
+      { length: 300 },
+      (_, i) => `wf-${String(i).padStart(3, '0')}`,
+    );
+    mockWorkflows = names.map(name => makeWorkflow(name, 1));
+    mockLastRuns = {
+      // Every third workflow failed last; the others succeeded.
+      executions: names.map((name, i) =>
+        run(name, i % 3 === 0 ? 'failed' : 'completed'),
+      ),
+      has_more: false,
+    };
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
+    ).toBeInTheDocument();
+    expect(chips()).toEqual(['All 300', 'Failed 100', 'Succeeded 200']);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more workflows' }),
+    );
+    expect(rows()).toHaveLength(40);
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Failed 100' }));
+
+    expect(rows()).toHaveLength(20);
+    expect(screen.getByRole('row', { name: /wf-000/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /wf-001/ })).toBeNull();
+    expect(screen.getByText('20 workflows shown, 80 more')).toBeInTheDocument();
+    // One bulk read for the filter, whatever the count.
+    expect(
+      api.listExecutions.mock.calls.filter(
+        ([options]) => options.workflowName === undefined,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('says when the filter leaves nothing of a search, and clears it', async () => {
+    mockWorkflows = ['alpha', 'bravo'].map(name => makeWorkflow(name, 2));
+    mockLastRuns = { executions: [run('alpha', 'failed')], has_more: false };
+    await renderPanel('bravo');
+
+    await userEvent.click(
+      await screen.findByRole('radio', { name: 'Failed 0' }),
+    );
+    expect(
+      screen.getByText('No workflows match “bravo” with these filters.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Clear filters' }),
+    );
+    expect(screen.getByRole('row', { name: /bravo/ })).toBeInTheDocument();
   });
 });
 

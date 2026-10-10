@@ -1,8 +1,10 @@
 import {
   createSkillPullRequest,
+  existingSkillName,
   isSkillDirectory,
   renderSkillMarkdown,
   SKILL_NAME_RE,
+  updateBranchName,
 } from './createSkillPullRequest';
 import { GitHubApiError } from './discoverAgentSkills';
 import { parseFrontmatter, splitSkillMarkdown } from './frontmatter';
@@ -37,13 +39,15 @@ function mockGithub(handlers: Record<string, Handler>) {
 }
 
 const API = 'https://api.github.com/repos/giantswarm/skills';
+/** The default branch's head in the create fixtures. */
+const HEAD_A = 'a'.repeat(40);
 
 const happyHandlers: Record<string, Handler> = {
   [`GET ${API}`]: () => ({
     status: 200,
     body: { default_branch: 'main', permissions: { push: true } },
   }),
-  [`GET ${API}/contents/ticket-triage/SKILL.md?ref=main`]: () => ({
+  [`GET ${API}/contents/ticket-triage/SKILL.md?ref=${HEAD_A}`]: () => ({
     status: 404,
   }),
   [`GET ${API}/commits/main`]: () => ({
@@ -142,7 +146,7 @@ describe('createSkillPullRequest', () => {
   it('refuses with 409 when the skill already exists on the default branch', async () => {
     mockGithub({
       ...happyHandlers,
-      [`GET ${API}/contents/ticket-triage/SKILL.md?ref=main`]: () => ({
+      [`GET ${API}/contents/ticket-triage/SKILL.md?ref=${HEAD_A}`]: () => ({
         status: 200,
         body: {},
       }),
@@ -182,36 +186,49 @@ describe('createSkillPullRequest', () => {
 });
 
 describe('createSkillPullRequest — update', () => {
-  const existingMarkdown = [
-    '---',
-    'name: ticket-triage',
-    'description: Old description.',
-    'license: Apache-2.0',
-    '---',
-    '',
-    'Old body.',
-    '',
-  ].join('\n');
+  const markdown = (name: string) =>
+    [
+      '---',
+      `name: ${name}`,
+      'description: Old description.',
+      'license: Apache-2.0',
+      '---',
+      '',
+      'Old body.',
+      '',
+    ].join('\n');
+  const existingMarkdown = markdown('ticket-triage');
   const FILE = 'plugins/support/ticket-triage/SKILL.md';
+  const BRANCH = 'update-skill/plugins-support-ticket-triage';
+  /** The default branch's head now. */
+  const HEAD = 'b'.repeat(40);
+  /** The commit the edit started from (an older one). */
+  const START = 'c'.repeat(40);
+
+  const fileAnswer =
+    (content: string, sha = 'blob-sha-1'): Handler =>
+    () => ({
+      status: 200,
+      body: {
+        type: 'file',
+        sha,
+        encoding: 'base64',
+        content: Buffer.from(content, 'utf8').toString('base64'),
+      },
+    });
 
   const updateHandlers: Record<string, Handler> = {
     [`GET ${API}`]: () => ({
       status: 200,
       body: { default_branch: 'main', permissions: { push: true } },
     }),
-    [`GET ${API}/contents/${FILE}?ref=main`]: () => ({
-      status: 200,
-      body: {
-        type: 'file',
-        sha: 'blob-sha-1',
-        encoding: 'base64',
-        content: Buffer.from(existingMarkdown, 'utf8').toString('base64'),
-      },
-    }),
     [`GET ${API}/commits/main`]: () => ({
       status: 200,
-      body: { sha: 'b'.repeat(40) },
+      body: { sha: HEAD },
     }),
+    // Unchanged between the start commit and the head: the same blob.
+    [`GET ${API}/contents/${FILE}?ref=${HEAD}`]: fileAnswer(existingMarkdown),
+    [`GET ${API}/contents/${FILE}?ref=${START}`]: fileAnswer(existingMarkdown),
     [`POST ${API}/git/refs`]: () => ({ status: 201, body: {} }),
     [`PUT ${API}/contents/${FILE}`]: () => ({ status: 200, body: {} }),
     [`POST ${API}/pulls`]: () => ({
@@ -229,10 +246,10 @@ describe('createSkillPullRequest — update', () => {
     instructions: 'New body.',
     kind: 'update' as const,
     path: 'plugins/support/ticket-triage',
-    baseCommit: 'c'.repeat(40),
+    baseCommit: START,
   };
 
-  it('rewrites the existing SKILL.md with its blob sha on update-skill/<name>', async () => {
+  it('rewrites the SKILL.md the edit started from, on a branch named after its directory', async () => {
     const calls = mockGithub(updateHandlers);
 
     const result = await createSkillPullRequest(update);
@@ -240,20 +257,17 @@ describe('createSkillPullRequest — update', () => {
     expect(result).toEqual({
       pullRequestUrl: 'https://github.com/giantswarm/skills/pull/43',
       number: 43,
-      branch: 'update-skill/ticket-triage',
+      branch: BRANCH,
       base: 'main',
       path: FILE,
     });
     expect(
       calls.find(call => call.key === `POST ${API}/git/refs`)?.body,
-    ).toEqual({
-      ref: 'refs/heads/update-skill/ticket-triage',
-      sha: 'b'.repeat(40),
-    });
+    ).toEqual({ ref: `refs/heads/${BRANCH}`, sha: HEAD });
 
     const put = calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
       ?.body as { branch: string; content: string; sha: string };
-    expect(put.branch).toBe('update-skill/ticket-triage');
+    expect(put.branch).toBe(BRANCH);
     expect(put.sha).toBe('blob-sha-1');
     const written = Buffer.from(put.content, 'base64').toString('utf8');
     // The form's fields replace theirs; the keys the form does not show stay.
@@ -270,7 +284,7 @@ describe('createSkillPullRequest — update', () => {
       calls.find(call => call.key === `POST ${API}/pulls`)?.body,
     ).toMatchObject({
       title: 'Update skill: ticket-triage',
-      head: 'update-skill/ticket-triage',
+      head: BRANCH,
       base: 'main',
       body: expect.stringContaining('starting from commit ccccccc'),
     });
@@ -280,6 +294,38 @@ describe('createSkillPullRequest — update', () => {
         Authorization: 'Bearer gh-token',
       });
     }
+  });
+
+  it('refuses with 409, and creates no branch, when the skill changed since the edit started', async () => {
+    const calls = mockGithub({
+      ...updateHandlers,
+      // Someone merged a change to the skill after the edit was opened.
+      [`GET ${API}/contents/${FILE}?ref=${HEAD}`]: fileAnswer(
+        markdown('ticket-triage').replace('Old body.', 'Their change.'),
+        'blob-sha-2',
+      ),
+    });
+
+    await expect(createSkillPullRequest(update)).rejects.toThrow(
+      new GitHubApiError(
+        409,
+        `The skill changed since you started editing: ${FILE} on main is no longer the version of commit ccccccc. Reload the skill and make the edit on its current version.`,
+      ),
+    );
+    expect(calls.map(call => call.key)).not.toContain(`POST ${API}/git/refs`);
+    expect(calls.map(call => call.key)).not.toContain(
+      `PUT ${API}/contents/${FILE}`,
+    );
+  });
+
+  it('reads the file once when the edit started from the current head', async () => {
+    const calls = mockGithub(updateHandlers);
+
+    await createSkillPullRequest({ ...update, baseCommit: HEAD });
+
+    expect(
+      calls.filter(call => call.key.startsWith(`GET ${API}/contents/`)),
+    ).toHaveLength(1);
   });
 
   it('writes the root SKILL.md for a skill at the repository root', async () => {
@@ -292,12 +338,49 @@ describe('createSkillPullRequest — update', () => {
     const result = await createSkillPullRequest({ ...update, path: '' });
 
     expect(result.path).toBe('SKILL.md');
+    // The repository's name stands in for the directory.
+    expect(result.branch).toBe('update-skill/skills');
+  });
+
+  it('keeps a frontmatter name that is not a slug, branching off the directory', async () => {
+    const named = markdown('Ticket Triage (v2)');
+    const calls = mockGithub({
+      ...updateHandlers,
+      [`GET ${API}/contents/${FILE}?ref=${HEAD}`]: fileAnswer(named),
+      [`GET ${API}/contents/${FILE}?ref=${START}`]: fileAnswer(named),
+    });
+
+    const result = await createSkillPullRequest({
+      ...update,
+      skillName: 'Ticket Triage (v2)',
+    });
+
+    expect(result.branch).toBe(BRANCH);
+    const put = calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
+      ?.body as { content: string };
+    const written = Buffer.from(put.content, 'base64').toString('utf8');
+    expect(parseFrontmatter(written)).toEqual({
+      name: 'Ticket Triage (v2)',
+      description: 'New description.',
+    });
+    expect(
+      calls.find(call => call.key === `POST ${API}/pulls`)?.body,
+    ).toMatchObject({ title: 'Update skill: Ticket Triage (v2)' });
+  });
+
+  it('refuses with 422 a name that is neither a slug nor the existing one', async () => {
+    const calls = mockGithub(updateHandlers);
+
+    await expect(
+      createSkillPullRequest({ ...update, skillName: 'Something Else' }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(calls.map(call => call.key)).not.toContain(`POST ${API}/git/refs`);
   });
 
   it('refuses with 404 when the skill is gone from the default branch', async () => {
     mockGithub({
       ...updateHandlers,
-      [`GET ${API}/contents/${FILE}?ref=main`]: () => ({ status: 404 }),
+      [`GET ${API}/contents/${FILE}?ref=${HEAD}`]: () => ({ status: 404 }),
     });
 
     await expect(createSkillPullRequest(update)).rejects.toThrow(
@@ -336,10 +419,35 @@ describe('createSkillPullRequest — update', () => {
     await expect(createSkillPullRequest(update)).rejects.toThrow(
       new GitHubApiError(
         409,
-        'The branch update-skill/ticket-triage already exists in giantswarm/skills — a pull request for this skill may already be open.',
+        `The branch ${BRANCH} already exists in giantswarm/skills — a pull request for this skill may already be open.`,
       ),
     );
   });
+});
+
+describe('existingSkillName', () => {
+  it('follows discovery: frontmatter name, else directory, else repository', () => {
+    expect(existingSkillName({ name: ' Notes ' }, 'a/notes', 'skills')).toBe(
+      'Notes',
+    );
+    expect(existingSkillName({}, 'a/My_Notes', 'skills')).toBe('My_Notes');
+    expect(existingSkillName({ name: 3 }, '', 'skills')).toBe('skills');
+  });
+});
+
+describe('updateBranchName', () => {
+  it.each([
+    ['ticket-triage', 'update-skill/ticket-triage'],
+    [
+      'plugins/gs-base/skills/registries',
+      'update-skill/plugins-gs-base-skills-registries',
+    ],
+    ['My_Skill.v2', 'update-skill/my-skill-v2'],
+    ['', 'update-skill/skills'],
+    ['___', 'update-skill/skill'],
+  ])('%p → %p', (dir, branch) =>
+    expect(updateBranchName(dir, 'skills')).toBe(branch),
+  );
 });
 
 describe('isSkillDirectory', () => {

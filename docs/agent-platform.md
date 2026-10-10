@@ -121,14 +121,19 @@ where agent-manager allows writes.
 ### Skills
 
 The skill catalog discovered from the configured skill repositories, most-used
-skills first. A skill's page (github.com skills only) shows its instructions
-and which agents use it.
+skills first. A skill's page has the Agent page's shape: its actions (Edit,
+View source, Evaluate) at the header's right and three tabs — **Overview**
+(what it is for, with its source, path, branch and pinned commit beside it),
+**Instructions** (the SKILL.md body rendered as Markdown, without raw HTML or
+remote images; only when the portal can read the file) and **Used by** (the
+agents mounting it).
 
 - **Add skill** and **Edit** open a pull request against the skill's
   repository, authored as the person with their own GitHub account (connected
   once through muster if needed). Nothing changes until someone merges it; the
   skill then appears in the catalog. Pull requests work for github.com
-  repositories only.
+  repositories only: Add skill offers only those, and a skill from another git
+  repository has a read-only page (no Edit, no Evaluate) that says why.
 - **Evaluate** (where a `skillEvaluation` meta-agent is configured) starts a
   session with that agent about the skill — repository, path, commit — and
   opens it; the evaluator reports on the skill and may propose improvements.
@@ -148,9 +153,10 @@ instead.
 
 ### Models
 
-The models agents can use (kagent ModelConfigs). **Add model** and a model's
-page create and edit them for OpenAI-compatible endpoints, Anthropic, Gemini
-and Ollama; the API key is write-only. Where the installation runs
+The models agents can use (kagent ModelConfigs). **Connect a model** creates
+them for OpenAI-compatible endpoints, Anthropic, Gemini and Ollama, and a
+model's **Edit** reopens the same flow prefilled; the API key is optional and
+write-only. Where the installation runs
 model-manager, **Model hosting** adds running models, GPU capacity and the
 model cache.
 
@@ -162,13 +168,18 @@ overview and runs.
 
 ## Usage
 
-`/agent-platform/usage`, three views over a window of 7, 30 (the default) or 90
-days, with an environment selector when there is more than one:
+`/agent-platform/usage`, up to four views over a window of 7, 30 (the default)
+or 90 days, with an environment selector when there is more than one:
 
-- **Overview** — platform health and trends from the LLM gateway: calls,
-  tokens, latency, errors; the connectors' tool calls (always 30 days) at the
-  bottom.
+- **Overview** — platform health and headline trends from the LLM gateway, on
+  one screen: spend (a teaser for Cost), tokens and calls, your session count,
+  active agents; model calls per day as an activity heatmap beside the top
+  agents; gateway latency, errors and rate limits; the token breakdown by type
+  in a fold-out.
 - **Cost** — estimated spend from the gateway, by agent and model.
+- **Connectors** — every caller's tool calls to the connectors and their tools,
+  from muster's metrics (always 30 days). Only offered where the muster plugin
+  is registered.
 - **Your sessions** — the person's own usage, from their kagent sessions
   (limited to what kagent keeps, so wider windows are disabled there).
 
@@ -269,15 +280,20 @@ Not accepted / Pending (a ModelConfig has no workload, so there is no separate
 `Ready`), with the condition's message as the tooltip — typically "which Secret is
 missing".
 
-The create/edit form (`NewModelPage` / `ModelDetailPage`, sharing
-`ModelConfigFormFields`) speaks four providers — **OpenAI** (which covers
+The Connect-a-model flow (`NewModelPage`, with `ModelConfigFormFields`; a
+model's Edit opens it prefilled through `EditModelPage` at
+`/agent-platform/models/edit/<installation>/<namespace>/<name>`, primary
+**Save changes**) speaks four providers — **OpenAI** (which covers
 every OpenAI-compatible endpoint: vLLM, llama.cpp, OpenRouter, …),
 **Anthropic**, **Gemini** and **Ollama** — plus a per-provider endpoint
 (`spec.openAI.baseUrl` / `spec.anthropic.baseUrl` / `spec.ollama.host`) and
-`spec.tls.disableVerify` for self-signed lab endpoints. CRs using the CRD's
-other providers (AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore)
-render read-only. The detail page doubles as the read view: a CR the portal
-must not write renders the same form disabled, with an alert saying why.
+`spec.tls.disableVerify` for self-signed lab endpoints. Plain fields first —
+display name, provider and model, the optional key — with the technical name
+(filled in from the display name) and skipping TLS verification under **More
+options**, the agent wizard's idiom. CRs using the CRD's other providers
+(AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore) are not editable here.
+The detail page is a read view: a CR the portal must not write offers no
+Edit, with an alert saying why (and the edit address says so too).
 
 **Key Secrets follow the agentlab contract** (`platform.extraModels`,
 giantswarm/agentlab#44), so models provisioned by either tool look the same on
@@ -286,18 +302,20 @@ namespace, and its one key is the provider's **canonical env-var name**
 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`). That key name is
 not configurable — the kagent controller injects it as an env var of the same
 name into agent pods, and the ADK runtime looks up exactly those names.
-Corollary: a keyless endpoint (a local vLLM, say) still gets a
-placeholder-valued Secret, because an agent pod without the env var
-crashloops even against an endpoint that never checks the value. Ollama is
-the one truly keyless provider (no Secret at all).
+Corollary: the API key is optional, and a model connected without one (a
+local vLLM, say) still gets a placeholder-valued Secret, because an agent pod
+without the env var crashloops even against an endpoint that never checks the
+value. The ModelConfig spec is the same either way. Ollama is the one truly
+keyless provider (no Secret at all).
 
 **The API key is write-only.** The portal never reads Secret values back: the
 edit form's key field is empty and means "leave the Secret alone"; entering a
 value replaces the Secret's contents (`data: null` + `stringData` in one merge
 patch, so a provider switch does not leave the old canonical key behind). This
-is also why changing a model's provider requires re-entering the key: the old
-Secret holds the old provider's env-var name, and the portal cannot carry a
-value it refuses to read. The portal only ever writes Secrets named by its own
+is also why changing a model's provider always rewrites the Secret — with the
+key entered, or the placeholder when the field is left empty: the old Secret
+holds the old provider's env-var name, and the portal cannot carry a value it
+refuses to read. The portal only ever writes Secrets named by its own
 convention — a CR referencing a hand-provisioned (possibly shared) Secret
 keeps that reference untouched, and such a Secret never rides along on delete.
 
@@ -560,14 +578,23 @@ Skills are added and edited as pull requests, never written directly.
 `AddSkillPage` (`/agent-platform/skills/new`) and its edit mode
 (`EditSkillPage`, `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`) both call
 gs-backend's `POST /agent-skills/pull-request` with the person's own GitHub
-token (`useProposeSkill`). That route only works for github.com repositories.
+token (`useProposeSkill`). That route only works for github.com repositories,
+so both offer github.com repositories only: the add form's target list leaves
+the others out (and says so), Customize → Skills shows no "Add skill" when no
+configured repository is on github.com, and a skill elsewhere has a read-only
+detail page with no Edit (`canProposeSkillTo` in `lib/skills.ts` mirrors the
+route's check).
 
 - **Adding a skill** creates `add-skill/<name>` and puts `<name>/SKILL.md`. It
   refuses with 409 when a skill with that name already exists.
-- **Editing a skill** (`kind: 'update'`) creates `update-skill/<name>` and
-  rewrites the existing `<dir>/SKILL.md`. It writes with the file's blob sha
-  and keeps the frontmatter keys the form does not show. It refuses with 404
-  when the file is gone and with 422 when the edit changes nothing.
+- **Editing a skill** (`kind: 'update'`) creates
+  `update-skill/<directory as a slug>` (the repository name for a skill at the
+  root) and rewrites the existing `<dir>/SKILL.md`. It writes with the file's
+  blob sha and keeps the frontmatter keys the form does not show. It refuses
+  with 409 when the skill changed since the edit started (the default
+  branch's file is no longer the version at the commit the form was prefilled
+  from — reload the skill and edit its current version), with 404 when the
+  file is gone and with 422 when the edit changes nothing.
 
 Either way, 409 means the branch already exists. The edit form is prefilled
 from `GET /agent-skills/content`, which reads the SKILL.md at the commit the
@@ -1927,7 +1954,9 @@ the kebab. `DELETE /kagent/sessions/:sessionId` calls `SessionService/DeleteSess
 over gRPC with the same installation resolution, forwarded Dex token and status
 mapping as the reads. The controller answers with the session as it moves to
 `DELETING`, suspending the runtime before removing it; a session that does not exist
-answers 404.
+answers 404. The delete is soft: the session ends `DELETED` (reason `user_requested`)
+with its record, tasks and events kept in the controller's database, and every read
+answers 404 for it from then on — which is what the dialog's copy says.
 
 **There is no permission check to make, which is why there is no gating.** Unlike
 the agent delete, a session is not a Kubernetes object, and the controller derives

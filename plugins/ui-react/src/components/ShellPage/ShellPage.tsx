@@ -129,6 +129,8 @@ export interface ShellPageProps {
   tabs?: RouteTabSpec[];
   /** The query string every tab link keeps, e.g. `?installation=gazelle`. */
   tabsSearch?: string;
+  /** The tab hrefs' base, when not the splat route's (see `RouteTabs`). */
+  tabsBasePath?: string;
   /** A narrow column beside the content, e.g. a `FactsColumn`. */
   aside?: ReactNode;
   /** Below the content and the aside. */
@@ -158,6 +160,7 @@ export function ShellPage({
   menu,
   tabs,
   tabsSearch,
+  tabsBasePath,
   aside,
   footer,
   children,
@@ -212,7 +215,7 @@ export function ShellPage({
       </div>
       {tabs && tabs.length > 0 && (
         <div className={classes.tabs}>
-          <RouteTabs tabs={tabs} search={tabsSearch} />
+          <RouteTabs tabs={tabs} search={tabsSearch} basePath={tabsBasePath} />
         </div>
       )}
       <div className={classes.body}>

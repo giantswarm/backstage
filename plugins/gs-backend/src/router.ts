@@ -22,7 +22,10 @@ import {
   createSkillPullRequest,
   GITHUB_TOKEN_HEADER,
   isSkillDirectory,
+  MAX_SKILL_DISPLAY_NAME,
+  MAX_SKILL_INSTRUCTIONS,
   SKILL_NAME_RE,
+  SKILL_PULL_REQUEST_BODY_LIMIT,
 } from './agentSkills/createSkillPullRequest';
 import {
   readSkillContentFromGit,
@@ -54,6 +57,13 @@ export async function createRouter({
   logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
+  // The skill pull request carries a whole SKILL.md (up to
+  // MAX_SKILL_INSTRUCTIONS characters), more than the 100 KB default allows.
+  // Registered first: the general parser below skips a body already read.
+  router.use(
+    '/agent-skills/pull-request',
+    express.json({ limit: SKILL_PULL_REQUEST_BODY_LIMIT }),
+  );
   router.use(express.json());
 
   // The skill listings this instance read, per repository and ref (see
@@ -506,12 +516,16 @@ export async function createRouter({
    * Body:
    * - repoUrl: one of `agentPlatform.skills.repositories` (compared
    *   case-insensitively, tolerating `.git` and a trailing slash)
-   * - skillName: the skill's directory and frontmatter name (lowercase slug)
+   * - skillName: the frontmatter name; for `create` also the directory, so a
+   *   lowercase slug; an `update` may send the skill's existing name even
+   *   when it is not one (checked against the file)
    * - description: frontmatter `description`
-   * - instructions: the SKILL.md body
+   * - instructions: the SKILL.md body (up to 100,000 characters; the route's
+   *   JSON body limit is raised to fit it)
    * - kind: `create` (default) or `update`
    * - path: for `update`, the skill directory ('' at the repository root)
-   * - baseCommit: for `update`, optionally the commit the edit started from
+   * - baseCommit: for `update`, the commit the edit started from — a 409 when
+   *   the skill's SKILL.md changed on the default branch since
    *
    * Returns { pullRequestUrl, number, branch, base, path }. A person without
    * the header gets 401 (the frontend connects GitHub through muster first);
@@ -539,12 +553,17 @@ export async function createRouter({
         .refine(u => u.startsWith('https://github.com/'), {
           message: 'Only github.com repository URLs are allowed',
         }),
-      skillName: z.string().regex(SKILL_NAME_RE, {
-        message:
-          'skillName must be a lowercase slug (letters, digits and dashes, up to 63 characters)',
-      }),
+      // A slug for `create` (checked below); an update's existing name may be
+      // any single line.
+      skillName: z
+        .string()
+        .min(1)
+        .max(MAX_SKILL_DISPLAY_NAME)
+        .refine(name => !/\p{Cc}/u.test(name), {
+          message: 'skillName must be a single line of text',
+        }),
       description: z.string().trim().min(1).max(1024),
-      instructions: z.string().trim().min(1).max(100_000),
+      instructions: z.string().trim().min(1).max(MAX_SKILL_INSTRUCTIONS),
       kind: z.enum(['create', 'update']).optional(),
       path: z
         .string()
@@ -562,9 +581,20 @@ export async function createRouter({
       throw new InputError(parsed.error.toString());
     }
     const { repoUrl, skillName, description, instructions, kind } = parsed.data;
-    if (kind === 'update' && parsed.data.path === undefined) {
+    if (kind === 'update') {
+      if (parsed.data.path === undefined) {
+        throw new InputError(
+          'An update needs the path of the skill directory it rewrites',
+        );
+      }
+      if (parsed.data.baseCommit === undefined) {
+        throw new InputError(
+          'An update needs the baseCommit the edit started from, so a change made since is not overwritten',
+        );
+      }
+    } else if (!SKILL_NAME_RE.test(skillName)) {
       throw new InputError(
-        'An update needs the path of the skill directory it rewrites',
+        'skillName must be a lowercase slug (letters, digits and dashes, up to 63 characters)',
       );
     }
 
@@ -609,9 +639,10 @@ export async function createRouter({
       );
     } catch (error) {
       // Expected outcomes keep their upstream status (409 skill or branch
-      // exists, 403 no push access or rate limit, 404 no read access or the
-      // edited skill gone, 422 an edit that changes nothing), like the discovery
-      // route above — not 500s, keeping Sentry quiet.
+      // exists, or the edited skill changed since the edit started; 403 no
+      // push access or rate limit; 404 no read access or the edited skill
+      // gone; 422 an edit that changes nothing or renames to a non-slug), like
+      // the discovery route above — not 500s, keeping Sentry quiet.
       if (error instanceof GitHubApiError) {
         res.status(error.status).json({
           error: {

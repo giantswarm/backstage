@@ -12,11 +12,15 @@ import {
 } from '@backstage/ui';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import {
+  type CatalogFacet,
+  CatalogFilterBar,
+  CatalogNoMatch,
   EmptyStateCard,
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
   StatusDot,
+  useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -39,6 +43,15 @@ export type CustomizeModelsPanelProps = {
 };
 
 type Row = ModelRow & { usedBy?: string };
+
+/** The Models tab's one facet (T49): who serves the model. */
+const MODEL_FACETS: CatalogFacet<ModelRow>[] = [
+  {
+    id: 'provider',
+    label: 'Provider',
+    value: row => row.provider || undefined,
+  },
+];
 
 /** The way into model hosting, for installations with a serving layer. */
 function ModelHostingBanner() {
@@ -69,7 +82,8 @@ function ModelHostingBanner() {
 /**
  * The Models tab of the shell's Customize screen: the model configurations in
  * scope, how many agents run on each and whether it answers, each opening the
- * model's page. Must be mounted inside a `CustomizeDataProvider`.
+ * model's page; filtered by provider once there is more than one (T49). Must
+ * be mounted inside a `CustomizeDataProvider`.
  */
 export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const { modelRows } = useCustomizeData();
@@ -79,15 +93,24 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const modelDetailRoute = useRouteRef(modelDetailRouteRef);
 
   const usage = useMemo(() => agentsByModel(agents), [agents]);
+  const searched = useMemo(
+    () => searchModels(modelRows, search),
+    [modelRows, search],
+  );
+  const filters = useCatalogFilters({
+    items: modelRows,
+    searched,
+    facets: MODEL_FACETS,
+  });
   const rows = useMemo<Row[]>(
     () =>
-      searchModels(modelRows, search).map(row => ({
+      filters.filtered.map(row => ({
         ...row,
         ...(agentsLoading
           ? {}
           : { usedBy: usedByLabel(usage.get(row.id) ?? 0) }),
       })),
-    [modelRows, search, usage, agentsLoading],
+    [filters.filtered, usage, agentsLoading],
   );
   const showInstallation =
     new Set(modelRows.map(row => row.installation)).size > 1;
@@ -147,22 +170,26 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       unreachableInstallations.length > 0 ? null : (
         <EmptyStateCard
           title="No models yet"
-          description="Add a model for agents to run on."
+          description="Connect a model for agents to run on."
         />
       );
   } else if (rows.length === 0) {
     body = (
-      <Text as="p" variant="body-medium" color="secondary">
-        No models match “{search.trim()}”.
-      </Text>
+      <CatalogNoMatch
+        plural="models"
+        search={search}
+        isFiltered={filters.isFiltered}
+        onClearFilters={filters.clear}
+      />
     );
   } else {
     // A page of rows at a time: tens of models are realistic, hundreds are
     // not ruled out. Never bui's page mode, which draws its footer even at
-    // three rows. Keyed on the search, so a new query starts at its first page.
+    // three rows. Keyed on the search and filters, so a new query starts at
+    // its first page.
     body = (
       <ShowMore
-        key={search.trim()}
+        key={`${search.trim()}|${filters.key}`}
         items={rows}
         initial={INITIAL_ROWS}
         noun="model"
@@ -188,6 +215,10 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
 
   return (
     <Flex direction="column" gap="5">
+      <CatalogFilterBar
+        dimensions={filters.dimensions}
+        onSelect={filters.select}
+      />
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Models"

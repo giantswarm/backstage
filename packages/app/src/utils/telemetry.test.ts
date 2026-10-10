@@ -384,6 +384,20 @@ describe('getTelemetryPageViewPayload', () => {
         path: pathname,
       });
     });
+
+    // Editing is the Connect-a-model flow at `models/edit/<installation>/
+    // <namespace>/<name>`: one page, the model in neither dimension — not a
+    // `view: 'edit'` of the tab, nor a detail page of a model named by its
+    // last three segments.
+    it('counts the model edit flow as one page, not one per model', () => {
+      const pathname =
+        '/agent-platform/models/edit/gazelle/agent-platform/gpt-4o';
+
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model edit',
+        path: pathname,
+      });
+    });
   });
 
   it('should return correct payload for one agent', () => {
@@ -600,10 +614,14 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/skills/new',
       '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
       '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage/instructions',
+      '/agent-platform/skills/giantswarm/agent-skills/ticket-triage/used-by',
+      '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
       '/agent-platform/profile',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
       '/agent-platform/usage/cost',
+      '/agent-platform/usage/connectors',
       '/agent-platform/usage/conversations',
       '/agent-platform/usage/mcp',
       // Pre-existing gaps in this list, closed while adding the one above.
@@ -611,6 +629,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/models/serving',
       '/agent-platform/models/new',
       '/agent-platform/models/gazelle/agent-platform/gpt-4o',
+      '/agent-platform/models/edit/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
       '/agent-platform/models/cache',
       '/agent-platform/models/hosting',
@@ -651,6 +670,7 @@ describe('Usage sub-tabs', () => {
   it.each([
     ['overview', '/agent-platform/usage/overview'],
     ['cost', '/agent-platform/usage/cost'],
+    ['connectors', '/agent-platform/usage/connectors'],
     ['conversations', '/agent-platform/usage/conversations'],
     ['mcp', '/agent-platform/usage/mcp'],
   ])('reports the %s view under page Usage', (view, path) => {
@@ -693,6 +713,37 @@ describe('Skill detail', () => {
     expect(getTelemetryPageViewPayload('/agent-platform/skills').page).toBe(
       'Skill detail',
     );
+  });
+
+  it.each(['instructions', 'used-by'])(
+    'reports the %s tab as the view, for GitHub and other git skills',
+    tab => {
+      expect(
+        getTelemetryPageViewPayload(
+          `/agent-platform/skills/giantswarm/agent-skills/ticket-triage/${tab}`,
+        ),
+      ).toEqual({
+        page: 'Skill detail',
+        view: tab,
+        path: `/agent-platform/skills/giantswarm/agent-skills/ticket-triage/${tab}`,
+      });
+      expect(
+        getTelemetryPageViewPayload(
+          `/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage/${tab}`,
+        ),
+      ).toMatchObject({ page: 'Skill detail', view: tab });
+    },
+  );
+
+  it('reports a skill outside github.com as a skill page, with no view', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Skill detail',
+      path: '/agent-platform/skills/-/gitea.lab.local/lab/skills/-/ticket-triage',
+    });
   });
 
   it('reports the add-skill form as its own page, not a skill', () => {

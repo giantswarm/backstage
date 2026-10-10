@@ -228,6 +228,15 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Model detail' };
       break;
 
+    // Editing one model: the Connect-a-model flow prefilled, at
+    // `…/models/edit/<installation>/<namespace>/<name>`. One page, the model in
+    // neither `page` nor `view` (it is in `path`, as on every page), like
+    // Agent edit. Four segments, so the detail case above never takes it; it
+    // must stay above the views case, which would report `view: 'edit'`.
+    case /^\/agent-platform\/models\/edit\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Model edit' };
+      break;
+
     // What hangs off the Models tab: the serving views (`serving`, `capacity`,
     // the agent-platform shell's `hosting`), `new`, and the `configs` paths an
     // older release's links still carry. Only the first segment, so anything
@@ -255,16 +264,23 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Edit skill' };
       break;
 
-    // One skill: `/agent-platform/skills/<owner>/<repo>[/<skill dir>]`. No
-    // `view`, like Session detail: the varying segments name a repository and
-    // a skill directory, which would open the dimension up per skill. The bare
-    // path only redirects to Customize → Skills and is folded in like the
+    // One skill: `/agent-platform/skills/<owner>/<repo>[/<skill dir>]`, or
+    // `/agent-platform/skills/-/<host>/<repo path>[/-/<skill dir>]` for a
+    // skill outside github.com. The varying segments name a repository and a
+    // skill directory, which would open the dimension up per skill, so the
+    // only `view` is the tab — a closed set, the trailing `instructions` or
+    // `used-by` (the Overview, the skill's own path, has none). The bare path
+    // only redirects to Customize → Skills and is folded in like the
     // mcp-servers redirect above. Must stay above the generic '/agent-platform'
     // cases below for the reason the Sessions cases give.
     case pathname === '/agent-platform/skills' ||
-      pathname.startsWith('/agent-platform/skills/'):
-      payload = { page: 'Skill detail' };
+      pathname.startsWith('/agent-platform/skills/'): {
+      const tab = /\/(instructions|used-by)\/?$/.exec(pathname)?.[1];
+      payload = tab
+        ? { page: 'Skill detail', view: tab }
+        : { page: 'Skill detail' };
       break;
+    }
 
     // Must stay above the generic '/agent-platform' cases below: `switch (true)`
     // takes the first match, so after them this would be dead and the Sessions
@@ -358,9 +374,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Usage' };
       break;
 
-    // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // and the retired `mcp` and `technical` addresses, which now only
-    // redirect to `overview`), with the view as its one segment. The bare path above keeps its existing name rather than
+    // The Usage tab's second-level views (`overview`, `cost`, `connectors`,
+    // `conversations`, and the retired `mcp` and `technical` addresses, which
+    // now only redirect to `connectors` and `overview`), with the view as its
+    // one segment. The bare path above keeps its existing name rather than
     // becoming 'Usage index': it now only ever redirects here, and renaming it
     // would break continuity in TelemetryDeck for nothing.
     //

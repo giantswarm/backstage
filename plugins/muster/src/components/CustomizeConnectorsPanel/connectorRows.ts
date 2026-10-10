@@ -105,3 +105,60 @@ export function connectorStatus(
   }
   return { label: state ?? 'Unknown', tone: SEVERITY_TONE[severity] };
 }
+
+/** Whether a person can reach a connector's tools now, in a few buckets. */
+export type ConnectorReach =
+  'connected' | 'partial' | 'sign-in' | 'not-connected' | 'deactivated';
+
+export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
+  connected: 'Connected',
+  partial: 'Partly connected',
+  'sign-in': 'Sign-in needed',
+  'not-connected': 'Not connected',
+  deactivated: 'Deactivated',
+};
+
+/** The order the Connection filter offers its buckets in. */
+export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
+  'connected',
+  'partial',
+  'sign-in',
+  'not-connected',
+  'deactivated',
+];
+
+/**
+ * A row's {@link connectorStatus} as a filter bucket (T49): the many states
+ * muster reports fold into whether the tools answer, answer for some of a
+ * family, wait on this person's sign-in, do not answer, or are switched off.
+ */
+export function connectorReach(
+  entry: ServerListEntry,
+  authStatus?: ServerAuthStatus,
+): ConnectorReach | undefined {
+  if (entry.row.kind === 'family') {
+    const healthy = entry.row.servers.filter(
+      server => mcpServerStateSeverity(server.getState()) === 'ok',
+    ).length;
+    if (healthy === entry.row.servers.length) {
+      return 'connected';
+    }
+    return healthy > 0 ? 'partial' : 'not-connected';
+  }
+  if (entry.row.kind !== 'server') {
+    return undefined;
+  }
+  const server = entry.row.server;
+  if (server.getSuspended()) {
+    return 'deactivated';
+  }
+  if (
+    authStatus?.status === 'reauth_required' ||
+    authStatus?.status === 'auth_required'
+  ) {
+    return 'sign-in';
+  }
+  return mcpServerStateSeverity(server.getState()) === 'ok'
+    ? 'connected'
+    : 'not-connected';
+}

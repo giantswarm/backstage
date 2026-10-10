@@ -833,19 +833,21 @@ export async function createRouter(
   });
 
   /**
-   * Delete one session. kagent soft-deletes it, scoped to the forwarded token's
-   * user id — the same scoping the reads rely on.
+   * Delete one session (`SessionService/DeleteSession`), scoped to the caller
+   * like the reads. kagent tears the session's runtime down and marks it
+   * deleted; the record and its tasks stay in kagent's database, but no read
+   * returns it again (it answers 404).
    *
    * The token is **required**, and it is the whole authorization story for this
    * route: kagent decides who the caller is from it, and a controller running in
    * `unsecure` mode would otherwise delete the shared default user's session on
    * behalf of nobody in particular.
    *
-   * Nothing expected reaches a 5xx here. kagent answers 200 even when the session
-   * does not exist or belongs to somebody else (its statement matches no rows), and
-   * `KagentClient` maps an unreachable installation to a 404 — so this route should
-   * never hit `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to
-   * Sentry.
+   * Nothing expected reaches a 5xx here. A session the controller does not find
+   * for this caller — never existed, somebody else's, already deleted — is a
+   * gRPC `NotFound`, which `KagentClient` maps to a 404, as it does an
+   * unreachable installation — so this route should never hit
+   * `MiddlewareFactory.error()`'s `>= 500` branch, which forwards to Sentry.
    */
   router.delete('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);
@@ -854,8 +856,8 @@ export async function createRouter(
     });
 
     // Pass an empty upstream success through as one, rather than as `res.json()`'s
-    // empty body with a JSON content-type. Only reachable if a future kagent
-    // answers 204 to the delete; today it returns its envelope with a 200.
+    // empty body with a JSON content-type. Not reached today: the controller
+    // answers the session as it moves to deleting, passed through as `{session}`.
     if (result === undefined) {
       res.status(204).end();
       return;
@@ -872,14 +874,15 @@ export async function createRouter(
    * `unsecure` mode this would otherwise rename the shared default user's
    * session on behalf of nobody in particular.
    *
-   * The name is all this takes. On a kagent too old to rename properly the
-   * client reads the session back and echoes its own agent and source into the
-   * upsert — deliberately not something the caller supplies, since those fields
-   * are overwritten by that write and a stale value from a browser would blank a
-   * column nobody asked to touch.
+   * The name is all this takes: it goes to `SessionService/UpdateSessionName`,
+   * which changes the name and nothing else. It is trimmed and bounded here
+   * ({@link readSessionName}, the same check as the create) and validated again
+   * by the controller (200 characters, no control characters, no surrounding
+   * whitespace).
    *
    * A rejected name is the caller's mistake and answers 400, not a 5xx —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
+   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry. So does a
+   * session the controller does not find for this caller: 404.
    */
   router.put('/kagent/sessions/:sessionId', async (req, res) => {
     const { client } = resolveInstallation(req);

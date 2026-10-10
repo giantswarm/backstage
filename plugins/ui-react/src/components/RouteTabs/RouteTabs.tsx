@@ -14,6 +14,13 @@ export interface RouteTabsProps {
   tabs: RouteTabSpec[];
   /** The query string every tab link keeps, e.g. `?installation=gazelle`. */
   search?: string;
+  /**
+   * The page's own path, the tab hrefs' base. Defaults to the splat route's
+   * base path; pass it when the page's address is itself part of the splat
+   * (a skill addressed as `<owner>/<repo>/<nested dir>`), where the route
+   * cannot tell the page's segments from the tab's.
+   */
+  basePath?: string;
 }
 
 /**
@@ -27,8 +34,13 @@ export interface RouteTabsProps {
  * route), and the index matches exactly (its href is a prefix of every other
  * tab's).
  */
-export function RouteTabs({ tabs, search = '' }: RouteTabsProps) {
-  const basePath = useSplatBasePath();
+export function RouteTabs({
+  tabs,
+  search = '',
+  basePath: explicitBasePath,
+}: RouteTabsProps) {
+  const splatBasePath = useSplatBasePath();
+  const basePath = explicitBasePath ?? splatBasePath;
 
   return (
     <Tabs>

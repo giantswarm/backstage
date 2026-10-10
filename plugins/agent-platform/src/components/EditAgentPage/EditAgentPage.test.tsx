@@ -94,6 +94,13 @@ jest.mock('../NewAgentToolsPage', () => ({
   },
 }));
 jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
+// The skills step reads the fleet's agents for its Usage filter (T60); the
+// filters have their own suite, so here no agent is known.
+jest.mock('../AgentsDataProvider', () => ({
+  ...jest.requireActual('../AgentsDataProvider'),
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
+  useAgents: () => ({ rows: [], isLoading: false }),
+}));
 jest.mock('../CreateAgentAssist', () => ({
   CreateAgentAssist: () => <p>create assist</p>,
 }));

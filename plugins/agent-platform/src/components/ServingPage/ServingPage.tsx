@@ -93,7 +93,7 @@ const TOAST_TIMEOUT_MS = 6000;
  * inside a ServingProvider, a ModelConfigsProvider, a ServedModelRowsProvider
  * (the rows) and the plugin's QueryClientProvider (the writes are react-query
  * mutations). The primary actions — Serve, Import, Pull — are surfaced in the
- * shared page header, like "Add model" on the Model configs view.
+ * shared page header, like "Connect a model" on the Model configs view.
  *
  * Every control and panel keys off the installation's `ServingCapabilities`
  * (the model-manager source's flags), never off a backend's name. `pull` puts

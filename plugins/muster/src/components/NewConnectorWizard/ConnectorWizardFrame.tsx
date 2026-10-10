@@ -13,17 +13,31 @@ import {
 } from '../../routes';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { withEditParam } from '../NewMcpServerEditGate';
+import { useServerPageLinks } from '../shared';
 
 /** The shell connector wizard's three steps, in order. */
 export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
 
 /**
- * Where leaving the shell connector wizard lands: the Customize screen's
- * Connectors tab when the app binds it, else the connectors list.
+ * Where leaving the shell connector wizard lands. An edit — a run seeded from
+ * a registered connector, its Edit — goes back to that connector's page,
+ * where it started. A registration goes to the Customize screen's Connectors
+ * tab when the app binds it, else the connectors list (also where it goes on
+ * after "Add connector", so "Done" ends where adding began).
  */
 export function useConnectorWizardCloseHref(): string {
   const customizeRoute = useRouteRef(customizeExternalRouteRef);
   const serversLink = useRouteRef(mcpServersRouteRef);
+  const pageLinks = useServerPageLinks();
+  const { registeredName, registeredInstallation, lastSave } =
+    useNewMcpServerForm();
+  const editedPage =
+    registeredName && lastSave !== 'create'
+      ? pageLinks.server(registeredName, registeredInstallation)
+      : undefined;
+  if (editedPage) {
+    return editedPage;
+  }
   const customize = customizeRoute?.();
   return customize ? `${customize}/connectors` : (serversLink?.() ?? '/');
 }

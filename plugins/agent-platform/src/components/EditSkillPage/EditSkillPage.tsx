@@ -13,6 +13,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
 import {
   canonicalSkillId,
+  canProposeSkillTo,
   isSkillContentReadable,
   parseSkillDetailPath,
   skillDetailPath,
@@ -29,7 +30,9 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
  * mode — submitting opens a pull request that rewrites the skill's SKILL.md,
  * as the signed-in person. A skill whose SKILL.md the portal could not read
  * (`contentReadable: false` in the catalog) is not read again here: the page
- * says the portal cannot read its source, and there is no form.
+ * says the portal cannot read its source, and there is no form. Neither is
+ * there one for a skill outside github.com, whose repository the pull-request
+ * endpoint refuses.
  */
 export function EditSkillPage() {
   const splat = useParams()['*'] ?? '';
@@ -47,8 +50,12 @@ export function EditSkillPage() {
     );
   }, [catalog.skills, target]);
   const readable = skill ? isSkillContentReadable(skill) : false;
+  // Pull requests are github.com only (the skill-PR endpoint refuses any
+  // other repository), so a skill elsewhere is not read for a form it could
+  // never submit.
+  const proposable = skill ? canProposeSkillTo(skill.repoUrl) : false;
   const { content, isLoading, error } = useSkillContent(
-    readable ? skill : undefined,
+    readable && proposable ? skill : undefined,
   );
 
   if (!target) {
@@ -61,12 +68,20 @@ export function EditSkillPage() {
       ? `${skillsRoute()}/${detailPath}`
       : `${SHELL_CUSTOMIZE_PATH}/skills`;
 
-  if (skill && content) {
+  if (skill && content && proposable) {
     return <AddSkillPage edit={{ skill, content, skillHref }} />;
   }
 
   let body;
-  if (skill && !readable) {
+  if (skill && !proposable) {
+    body = (
+      <Alert
+        status="info"
+        title="Read-only in the portal"
+        description="This skill's repository is not on github.com. The portal proposes skill changes as GitHub pull requests, so it cannot edit this skill here — change it in its repository."
+      />
+    );
+  } else if (skill && !readable) {
     body = (
       <Alert
         status="info"

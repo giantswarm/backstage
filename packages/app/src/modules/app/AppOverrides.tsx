@@ -29,7 +29,6 @@ import {
   identityApiRef,
   oauthRequestApiRef,
   storageApiRef,
-  useApi,
 } from '@backstage/core-plugin-api';
 import {
   ScmAuth,
@@ -59,7 +58,6 @@ import {
 import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
-import { signInProviders } from './signInProviders';
 import { ScopedStorageApi } from './scopedStorageApi';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
@@ -303,30 +301,9 @@ export const appOverrides = createFrontendModule({
     }),
     SignInPageBlueprint.make({
       params: {
-        loader: async () => {
-          const { SignInPage, ProxiedSignInPage } =
-            await import('@backstage/core-components');
-          const CustomSignInPage = (props: {
-            onSignInSuccess: (identityApi: any) => void;
-          }) => {
-            const configApi = useApi(configApiRef);
-            if (configApi.has('gs.authProvider')) {
-              const providers = signInProviders(configApi);
-              // One option signs in automatically (existing session, else
-              // an instant popup). Several show the chooser; an existing
-              // session with any of them is still picked up silently.
-              return (
-                <SignInPage
-                  {...props}
-                  auto={providers.length === 1}
-                  providers={providers}
-                />
-              );
-            }
-            return <ProxiedSignInPage {...props} provider="guest" />;
-          };
-          return CustomSignInPage;
-        },
+        // Shell-styled where the deployment serves the Agent Platform,
+        // upstream's classic page otherwise (see AppSignInPage).
+        loader: async () => (await import('./AppSignInPage')).AppSignInPage,
       },
     }),
   ],

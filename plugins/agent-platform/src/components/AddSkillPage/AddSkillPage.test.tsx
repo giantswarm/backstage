@@ -203,6 +203,31 @@ describe('AddSkillPage', () => {
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();
   });
+
+  it('offers only github.com repositories, and says why the others are missing', async () => {
+    mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
+    await renderPage();
+
+    // One target left, so no select: the GitHub one, named.
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Only github.com repositories are offered/),
+    ).toBeInTheDocument();
+  });
+
+  it('has nothing to propose to when no configured repository is on github.com', async () => {
+    mockRepositories = ['http://gitea.lab.local/lab/skills'];
+    await renderPage();
+
+    expect(screen.getByText('No repository to propose to')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('AddSkillPage · the repository select at scale', () => {

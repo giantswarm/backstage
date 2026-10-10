@@ -8,12 +8,12 @@ import {
   Card,
   CardBody,
   Flex,
-  Grid,
   Text,
   TextField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  FormFieldGrid,
   SectionHeader,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -225,47 +225,42 @@ export function NewMcpServerPage() {
                 description="How this connector appears across the platform."
               />
               <Flex direction="column" gap="4">
-                <Grid.Root
-                  columns={{ initial: '1', sm: registeredName ? '1' : '2' }}
-                  gap="4"
-                >
+                {/* Name and technical name side by side, their inputs on one
+                    line however long each description runs. */}
+                <FormFieldGrid columns={registeredName ? 1 : 2}>
                   {/* The display name is not stored on the server — it only
                       derives the technical name, which a registered server has
                       locked. So an edit has nothing to ask here. */}
                   {!registeredName && (
-                    <Grid.Item>
-                      <TextField
-                        label="Name"
-                        isRequired
-                        value={state.name}
-                        onChange={setName}
-                        placeholder="e.g. Weather"
-                        description="The user-friendly name humans will use to refer to this connector."
-                      />
-                    </Grid.Item>
-                  )}
-                  <Grid.Item>
                     <TextField
-                      label="Technical name"
-                      secondaryLabel={
-                        registeredName ? 'registered' : 'auto-derived'
-                      }
+                      label="Name"
                       isRequired
-                      // Locked once registered: this is the CR's name, and a
-                      // rename here would make the save target a different CR
-                      // instead of updating the one just created.
-                      isDisabled={Boolean(registeredName)}
-                      value={state.slug}
-                      onChange={setSlug}
-                      placeholder="weather"
-                      description={
-                        registeredName
-                          ? 'The connector is already registered under this name; changes are saved as an update to it.'
-                          : "Becomes the connector's resource name and its tools' prefix."
-                      }
+                      value={state.name}
+                      onChange={setName}
+                      placeholder="e.g. Weather"
+                      description="The user-friendly name humans will use to refer to this connector."
                     />
-                  </Grid.Item>
-                </Grid.Root>
+                  )}
+                  <TextField
+                    label="Technical name"
+                    secondaryLabel={
+                      registeredName ? 'registered' : 'auto-derived'
+                    }
+                    isRequired
+                    // Locked once registered: this is the CR's name, and a
+                    // rename here would make the save target a different CR
+                    // instead of updating the one just created.
+                    isDisabled={Boolean(registeredName)}
+                    value={state.slug}
+                    onChange={setSlug}
+                    placeholder="weather"
+                    description={
+                      registeredName
+                        ? 'The connector is already registered under this name; changes are saved as an update to it.'
+                        : "Becomes the connector's resource name and its tools' prefix."
+                    }
+                  />
+                </FormFieldGrid>
                 <TextAreaField
                   label="Description"
                   secondaryLabel="optional"

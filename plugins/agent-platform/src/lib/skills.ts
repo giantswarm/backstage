@@ -106,40 +106,95 @@ export function githubRepoParts(
   return match ? { owner: match[1], repo: match[2] } : undefined;
 }
 
+/**
+ * Whether the portal can propose a skill change to the repository as a pull
+ * request — the add-skill and edit flows. Exactly the check
+ * `POST /agent-skills/pull-request` makes (gs-backend), which refuses any
+ * other URL with a 400: pull requests are opened through GitHub's API, so a
+ * generic-git repository can be read (discovery, SKILL.md content) but not
+ * written to from here.
+ */
+export function canProposeSkillTo(repoUrl: string): boolean {
+  return repoUrl.startsWith('https://github.com/');
+}
+
 /** A skill's directory with no leading/trailing slashes ('' at repo root). */
 function cleanSkillPath(path: string): string {
   return path.replace(/^\.?\/+/, '').replace(/\/+$/, '');
 }
 
 /**
- * The skill detail page's path under the skills route
- * (`/<owner>/<repo>[/<skill dir>]`), each segment URL-encoded. Undefined for a
- * skill outside github.com, which has no detail page.
+ * The first segment of a detail address for a skill outside github.com, and
+ * the separator between its repository path and skill directory. A GitHub
+ * account name cannot be `-` (nor start with one), so the address can never
+ * shadow a github.com skill's; a git host's repository path does not contain
+ * a bare `-` segment either (GitLab uses the same separator for the same
+ * reason).
+ */
+const GIT_ADDRESS_MARK = '-';
+
+/**
+ * The skill detail page's path under the skills route, each segment
+ * URL-encoded:
+ *
+ * - github.com: `<owner>/<repo>[/<skill dir>]`
+ * - any other http(s) git repository: `-/<host>/<repo path>[/-/<skill dir>]`,
+ *   e.g. `-/gitea.lab.local/lab/skills/-/ticket-triage`
+ *
+ * Undefined for a repository URL that is neither.
  */
 export function skillDetailPath(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path'>,
 ): string | undefined {
+  const dir = cleanSkillPath(skill.path).split('/').filter(Boolean);
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (parts) {
+    return [parts.owner, parts.repo, ...dir].map(encodeURIComponent).join('/');
+  }
+  const generic = normalizedRepoUrl(skill.repoUrl).match(
+    /^https:\/\/([^/]+)\/(.+)$/,
+  );
+  if (!generic || generic[1] === 'github.com') {
     return undefined;
   }
-  const segments = [
-    parts.owner,
-    parts.repo,
-    ...cleanSkillPath(skill.path).split('/').filter(Boolean),
-  ];
-  return segments.map(encodeURIComponent).join('/');
+  const repoPath = generic[2].split('/').filter(Boolean);
+  if (repoPath.length === 0 || repoPath.includes(GIT_ADDRESS_MARK)) {
+    return undefined;
+  }
+  return [
+    GIT_ADDRESS_MARK,
+    generic[1],
+    ...repoPath,
+    ...(dir.length > 0 ? [GIT_ADDRESS_MARK, ...dir] : []),
+  ]
+    .map(encodeURIComponent)
+    .join('/');
 }
 
 /**
  * The inverse of {@link skillDetailPath}: a detail route's splat back into the
  * repository and skill directory it names. Undefined when the splat does not
- * carry at least `owner/repo`.
+ * carry at least `owner/repo` (or `-/<host>/<repo>`). A non-GitHub address
+ * comes back as `https://<host>/<repo path>`, which compares equal to the
+ * configured URL under {@link canonicalSkillId} whatever its scheme was.
  */
 export function parseSkillDetailPath(
   splat: string,
 ): { repoUrl: string; path: string } | undefined {
   const segments = splat.split('/').filter(Boolean).map(decodeURIComponent);
+  if (segments[0] === GIT_ADDRESS_MARK) {
+    const [, host, ...rest] = segments;
+    const mark = rest.indexOf(GIT_ADDRESS_MARK);
+    const repoPath = mark === -1 ? rest : rest.slice(0, mark);
+    const dir = mark === -1 ? [] : rest.slice(mark + 1);
+    if (!host || repoPath.length === 0) {
+      return undefined;
+    }
+    return {
+      repoUrl: `https://${host}/${repoPath.join('/')}`,
+      path: dir.join('/'),
+    };
+  }
   if (segments.length < 2) {
     return undefined;
   }
@@ -148,6 +203,62 @@ export function parseSkillDetailPath(
     repoUrl: `https://github.com/${owner}/${repo}`,
     path: rest.join('/'),
   };
+}
+
+/** The skill detail page's tabs below the Overview, by path segment. */
+export const SKILL_DETAIL_TABS = ['instructions', 'used-by'] as const;
+export type SkillDetailTab = 'overview' | (typeof SKILL_DETAIL_TABS)[number];
+
+function findSkill<T extends Pick<DiscoveredSkill, 'repoUrl' | 'path'>>(
+  skills: T[],
+  target: { repoUrl: string; path: string },
+): T | undefined {
+  const wanted = canonicalSkillId(target);
+  return skills.find(candidate => canonicalSkillId(candidate) === wanted);
+}
+
+/**
+ * A detail route's splat, resolved against the catalog: the skill it names
+ * and which tab. A tab is a trailing segment (`…/instructions`,
+ * `…/used-by`), and a skill directory may be nested, so the whole splat is
+ * tried as a skill first and only then with its last segment read as a tab —
+ * a skill whose directory is literally named like a tab keeps its own page,
+ * at the price of its parent's tab of that name (an accepted corner).
+ *
+ * `target` is what the splat names when no skill matched (the not-found
+ * page); undefined when the splat does not even carry a repository.
+ */
+export function resolveSkillDetailPath<
+  T extends Pick<DiscoveredSkill, 'repoUrl' | 'path'>,
+>(
+  splat: string,
+  skills: T[],
+):
+  | {
+      target: { repoUrl: string; path: string };
+      skill: T | undefined;
+      tab: SkillDetailTab;
+    }
+  | undefined {
+  const target = parseSkillDetailPath(splat);
+  if (!target) {
+    return undefined;
+  }
+  const skill = findSkill(skills, target);
+  if (skill) {
+    return { target, skill, tab: 'overview' };
+  }
+  const segments = splat.split('/').filter(Boolean);
+  const last = segments[segments.length - 1];
+  const tab = SKILL_DETAIL_TABS.find(candidate => candidate === last);
+  if (tab) {
+    const parent = parseSkillDetailPath(segments.slice(0, -1).join('/'));
+    const parentSkill = parent ? findSkill(skills, parent) : undefined;
+    if (parent && parentSkill) {
+      return { target: parent, skill: parentSkill, tab };
+    }
+  }
+  return { target, skill: undefined, tab: 'overview' };
 }
 
 /**

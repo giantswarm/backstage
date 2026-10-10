@@ -38,6 +38,12 @@ export type LlmUsageOptions = LlmUsageQueryOptions & {
    * `usage.totals.previousCostUsd`. Off by default: one more query.
    */
   comparePrevious?: boolean;
+  /**
+   * Also query model calls per day, reported as `usage.callsPerDay` — the
+   * Overview's activity heatmap. Off by default: two more queries (the daily
+   * range and today's partial count) no other view reads.
+   */
+  dailyCalls?: boolean;
 };
 
 /** Copy for the gateway's own `unknown`: a call it could attribute to no caller. */
@@ -49,8 +55,8 @@ const UNKNOWN_MODEL = 'Unknown model';
  * default its last `WINDOW_DAYS` across every organization, or the window and
  * the organization `options` name.
  *
- * Twelve queries (a thirteenth with `comparePrevious`): ten instant and two
- * range, written out one call at a time.
+ * Twelve queries (a thirteenth with `comparePrevious`, two more with
+ * `dailyCalls`): ten instant and two range, written out one call at a time.
  * A *fixed* list of hook calls rather than `useQueries` — the same shape
  * `useMimirResourceUsage` uses for its four — and not wrapped in a local
  * helper either, because a helper that calls a hook is unverifiable by
@@ -73,7 +79,7 @@ export function useLlmUsage(
   installation: string | undefined,
   options: LlmUsageOptions = {},
 ): LlmUsageView {
-  const { org, comparePrevious = false } = options;
+  const { org, comparePrevious = false, dailyCalls = false } = options;
   const windowDays = windowDaysOf(options.days);
   const enabled = Boolean(installation);
   const installationName = installation ?? '';
@@ -199,6 +205,24 @@ export function useLlmUsage(
     keepPreviousAnswer: true,
   });
 
+  // The activity heatmap's day-by-day model calls: the same range window and
+  // today's-partial split as the two charts above, only when asked for.
+  const callsPerDay = useMimirRangeQuery({
+    installationName,
+    query: llmUsageRangeQueries.callsPerDay,
+    start,
+    end,
+    step,
+    enabled: rangeEnabled && dailyCalls,
+    keepPreviousAnswer: true,
+  });
+  const callsToday = useMimirQuery({
+    installationName,
+    query: todayQueries.calls,
+    enabled: enabled && dailyCalls,
+    keepPreviousAnswer: true,
+  });
+
   const previousCost = useMimirQuery({
     installationName,
     query: llmUsageQueries.previousCost,
@@ -229,13 +253,18 @@ export function useLlmUsage(
     unpricedLookups.isLoading ||
     costPerDay.isLoading ||
     tokensPerDay.isLoading ||
-    (comparePrevious && previousCost.isLoading);
+    (comparePrevious && previousCost.isLoading) ||
+    (dailyCalls && callsPerDay.isLoading);
   // The two **range** queries count as page failures alongside the instant
   // vectors. A failed range query leaves `reduceDaily` with nothing, and since
   // `days` is always supplied it densifies to a row of zeros per day — a chart of empty
   // bars directly beneath a strip showing a real non-zero total, with nothing
   // saying a query failed. A refused quantile degrades honestly to `—`; a
   // silently zeroed chart does not.
+  //
+  // The daily-calls query is *not* among them: it feeds one card, which says
+  // so itself when the query failed (`callsPerDay: null`), and the rest of
+  // the Overview is still true without it.
   const isError = Boolean(
     cost.error || tokens.error || costPerDay.error || tokensPerDay.error,
   );
@@ -272,6 +301,12 @@ export function useLlmUsage(
       today,
       costToday: costToday.data?.data?.result,
       tokensToday: tokensToday.data?.data?.result,
+      ...(dailyCalls && {
+        callsPerDay: callsPerDay.error
+          ? null
+          : (callsPerDay.data?.data?.result ?? []),
+        callsToday: callsToday.data?.data?.result,
+      }),
       windowDays,
       previousCost: comparePrevious
         ? (previousCost.data?.data?.result ?? [])
@@ -301,6 +336,10 @@ export function useLlmUsage(
     windowDays,
     comparePrevious,
     previousCost.data,
+    dailyCalls,
+    callsPerDay.data,
+    callsPerDay.error,
+    callsToday.data,
   ]);
 
   return { usage, isLoading, isError, isAvailable };

@@ -298,6 +298,113 @@ describe('CustomizeConnectorsPanel', () => {
     });
   });
 
+  describe('filters (T49)', () => {
+    const bodyRows = () => screen.getAllByRole('row').slice(1);
+    const chips = (name: string) =>
+      within(screen.getByRole('radiogroup', { name }))
+        .getAllByRole('radio')
+        .map(chip => chip.textContent);
+
+    it('draws no filter over three connectors that sign in alike and all answer', async () => {
+      mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
+      await renderPanel();
+
+      await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
+      expect(bodyRows()).toHaveLength(3);
+      expect(
+        screen.queryByRole('group', { name: 'Filters' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('filters three connectors by sign-in and by connection', async () => {
+      await renderPanel();
+
+      expect(
+        await screen.findByRole('radiogroup', { name: 'Filter by connection' }),
+      ).toBeInTheDocument();
+      expect(chips('Filter by sign-in')).toEqual([
+        'All 3',
+        'Company login 1',
+        'No sign-in 1',
+        'Your own account 1',
+      ]);
+      expect(chips('Filter by connection')).toEqual([
+        'All 3',
+        'Connected 2',
+        'Sign-in needed 1',
+      ]);
+
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Sign-in needed 1' }),
+      );
+      expect(bodyRows()).toHaveLength(1);
+      expect(rowOf('github')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('radio', { name: 'All 3' }));
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'No sign-in 1' }),
+      );
+      expect(bodyRows()).toHaveLength(1);
+      expect(rowOf('web-search')).toBeInTheDocument();
+    });
+
+    it('says when a search and a filter leave nothing, and clears the filter', async () => {
+      await renderPanel('github');
+
+      await userEvent.click(
+        await screen.findByRole('radio', { name: 'No sign-in 0' }),
+      );
+      expect(
+        screen.getByText(
+          'No connectors or tools match “github” with these filters.',
+        ),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Clear filters' }),
+      );
+      expect(rowOf('github')).toBeInTheDocument();
+    });
+
+    it('filters 300 connectors, paging the result from its first page', async () => {
+      mockServers = Array.from({ length: 300 }, (_, i) =>
+        makeServer(`connector-${String(i).padStart(3, '0')}`, {
+          ...(i % 3 === 0 ? { auth: { type: 'oauth' } } : {}),
+          ...(i % 5 === 0 ? { state: 'Failed' as MCPServerState } : {}),
+        }),
+      );
+      await renderPanel();
+
+      expect(chips('Filter by connection')).toEqual([
+        'All 300',
+        'Connected 240',
+        'Not connected 60',
+      ]);
+      expect(chips('Filter by sign-in')).toEqual([
+        'All 300',
+        'No sign-in 200',
+        'Your own account 100',
+      ]);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 20 more connectors' }),
+      );
+      expect(bodyRows()).toHaveLength(40);
+
+      await userEvent.click(
+        screen.getByRole('radio', { name: 'Not connected 60' }),
+      );
+      expect(bodyRows()).toHaveLength(20);
+      expect(
+        screen.getByText('20 connectors shown, 40 more'),
+      ).toBeInTheDocument();
+      // The sign-in counts follow the connection pick.
+      expect(chips('Filter by sign-in')).toEqual([
+        'All 60',
+        'No sign-in 40',
+        'Your own account 20',
+      ]);
+    });
+  });
+
   it('says when muster has no connector', async () => {
     mockServers = [];
     await renderPanel();

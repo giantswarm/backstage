@@ -60,7 +60,12 @@ export type KagentSession = {
    * or waiting on a human, and only its tasks can tell.
    */
   state?: string;
-  /** The A2A context every turn of the session shares. */
+  /**
+   * The A2A context every turn of the session shares. Equal to the session id on
+   * every supported controller (enforced by its schema); only earlier-build
+   * recordings such as `sessions.kagent-a8353a0.json` differ. See
+   * `KagentClient.targetOf` in agent-platform-backend.
+   */
   contextId?: string;
   /** Why a `failed` session failed, in the controller's words. */
   failure?: { reason?: string; message?: string };

@@ -1,6 +1,9 @@
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
+  EffectBadge,
+  isDestructive,
   ServerSignIn,
+  toolEffect,
   ToolTable,
   toolTableItem,
   type ToolTableItem,
@@ -23,6 +26,12 @@ import { ShowMore } from '../ShowMore';
 /**
  * One catalogue entry as a checkbox row. A workflow is shown under its own
  * name, without the `workflow_` prefix it carries as a tool.
+ *
+ * Every row says what the tool does — Reads or Changes things — as the
+ * Connector Tools tab and the CreateAgentTools artboard do (T60): it is what
+ * the catalogue's effect filter sorts by, and an unannotated tool counts as
+ * changing things. The read-only marker would only repeat the badge, so of
+ * the server's markers only *destructive* stays: the sharper warning.
  */
 function toolRowItem(
   tool: ToolSummary,
@@ -34,6 +43,8 @@ function toolRowItem(
   const title = isWorkflow ? workflowNameOf(tool.name) : tool.name;
   return toolTableItem(tool, {
     name: title,
+    annotations: isDestructive(tool) ? tool.annotations : undefined,
+    meta: <EffectBadge effect={toolEffect(tool)} />,
     ariaLabel: `${isWorkflow ? 'Workflow' : 'Tool'} ${title}`,
     mode: {
       kind: 'select',

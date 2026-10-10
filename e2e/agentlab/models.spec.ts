@@ -6,13 +6,15 @@ import { expect, open, test } from './fixtures';
  * `default-model-config` (its `aiModel`), so the table has a row to show.
  */
 
-test('Model configs lists the lab default ModelConfig and offers Add model', async ({
+test('Model configs lists the lab default ModelConfig and offers Connect a model', async ({
   admin,
 }) => {
   await open(admin, '/agent-platform/models');
   // The list is the tab's own page, so the location is left where it is.
   await expect(admin).toHaveURL(/\/agent-platform\/models$/);
-  await expect(admin.getByRole('button', { name: 'Add model' })).toBeVisible();
+  await expect(
+    admin.getByRole('button', { name: 'Connect a model' }),
+  ).toBeVisible();
   await expect(
     admin.getByText('default-model-config').first(),
     'the ModelConfig the lab provisions is listed',

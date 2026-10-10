@@ -15,6 +15,7 @@ import {
   Select,
   Text,
 } from '@backstage/ui';
+import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   searchableIf,
   SectionHeader,
@@ -37,8 +38,10 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
-  ModelConfigFormValues,
   modelConfigFieldErrors,
+  modelConfigFormChanged,
+  modelConfigFormValues,
+  ModelConfigFormValues,
 } from '../../lib/modelConfigs';
 import { slugify } from '../../lib/slugify';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
@@ -47,7 +50,32 @@ import { ModelConfigFormFields } from '../ModelConfigForm';
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-export function NewModelPage() {
+/** An existing model, for the flow to change instead of connecting a new one. */
+export type ModelEdit = {
+  installation: string;
+  /**
+   * The CR as last read: the form is seeded from it once, and the save
+   * patches it. Only one the portal may write and whose provider the form
+   * speaks — `EditModelPage` decides that before handing over.
+   */
+  modelConfig: ModelConfig;
+  /** The model's own page: where Close, Cancel and a save lead. */
+  detailHref: string;
+};
+
+/**
+ * Connect a model (`/agent-platform/models/new`): one step that writes a
+ * kagent ModelConfig and its key Secret. Plain fields first — display name,
+ * provider and model, the optional API key — and the technical name (filled
+ * in from the display name) and TLS verification under More options, the
+ * agent wizard's idiom.
+ *
+ * With `edit`, the same flow changes an existing model (`EditModelPage`,
+ * `/agent-platform/models/edit/<installation>/<namespace>/<name>`): prefilled
+ * from the CR, its environment and technical name fixed, the key field empty
+ * meaning "keep the stored key", and **Save changes** waiting for a change.
+ */
+export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelsRouteRef);
@@ -62,7 +90,10 @@ export function NewModelPage() {
   const reachableInstallations = inventory.installationsWith('kagent');
   const isProbing = inventory.isLoading || inventory.isProbing;
 
-  const [installation, setInstallation] = useState<string | undefined>();
+  // An existing model stays where it is.
+  const [installation, setInstallation] = useState<string | undefined>(
+    edit?.installation,
+  );
 
   // A pinned installation scope is the obvious default here: the person came
   // from a list narrowed to it. Only ever fills an empty choice, and only once
@@ -70,6 +101,7 @@ export function NewModelPage() {
   const { scope } = useInstallationScope();
   useEffect(() => {
     if (
+      !edit &&
       installation === undefined &&
       scope !== ALL_INSTALLATIONS &&
       reachableInstallations.includes(scope)
@@ -78,15 +110,24 @@ export function NewModelPage() {
     }
     // reachableInstallations is derived fresh each render; key on its contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installation, scope, reachableInstallations.join(',')]);
-  const [values, setValues] = useState<ModelConfigFormValues>(
-    INITIAL_MODEL_CONFIG_FORM,
+  }, [edit, installation, scope, reachableInstallations.join(',')]);
+
+  // Seeded once: a later re-read of the CR does not reset what the person is
+  // changing (the same rule as the agent edit wizard).
+  const [initialValues] = useState<ModelConfigFormValues>(
+    () =>
+      (edit && modelConfigFormValues(edit.modelConfig)) ??
+      INITIAL_MODEL_CONFIG_FORM,
   );
+  const [values, setValues] = useState<ModelConfigFormValues>(initialValues);
   // Each field shows its own problem once the person has tried to submit —
   // not before, so the form doesn't shout about empty fields up front — and a
   // blocked submit moves the focus to the first one.
   const validation = useFieldValidation();
   const { reveal } = validation;
+  // More options (technical name, TLS verification) starts folded: its
+  // defaults fit most models.
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   const { save, isSaving, error, reset } = useSaveModelConfig();
 
@@ -97,13 +138,14 @@ export function NewModelPage() {
       ? installations[0].name
       : undefined;
   useEffect(() => {
-    if (singleInstallation && installation !== singleInstallation) {
+    if (!edit && singleInstallation && installation !== singleInstallation) {
       setInstallation(singleInstallation);
     }
-  }, [singleInstallation, installation]);
+  }, [edit, singleInstallation, installation]);
 
   // The technical name is filled in from the display name until the person
-  // types one of their own (the same rule as agent creation's slug).
+  // types one of their own (the same rule as agent creation's slug). An
+  // existing model's name is fixed.
   const [nameEdited, setNameEdited] = useState(false);
   const onChange = useCallback(
     (patch: Partial<ModelConfigFormValues>) => {
@@ -113,6 +155,7 @@ export function NewModelPage() {
       setValues(prev => {
         const next = { ...prev, ...patch };
         if (
+          !edit &&
           patch.displayName !== undefined &&
           patch.name === undefined &&
           !nameEdited
@@ -122,38 +165,76 @@ export function NewModelPage() {
         return next;
       });
     },
-    [nameEdited],
+    [edit, nameEdited],
   );
 
-  const installationError = installation ? undefined : 'Select an environment';
-  const fieldErrors = modelConfigFieldErrors(values);
+  const installationError =
+    edit || installation ? undefined : 'Select an environment';
+  const fieldErrors = modelConfigFieldErrors(values, {
+    isEdit: Boolean(edit),
+  });
+  // A technical name that is only empty because the display name is: the
+  // display name's own problem says it all, so More options is not opened on
+  // a field the person never touched.
+  if (!edit && !nameEdited && fieldErrors.displayName && !values.name) {
+    delete fieldErrors.name;
+  }
   const errorCount =
     (installationError ? 1 : 0) + Object.keys(fieldErrors).length;
   const installationSelectError = useSelectFieldError(
     validation.errorFor(installationError),
   );
+  // A problem with a field behind More options opens it, so the field that
+  // says what is wrong is never out of sight (nor out of the focus's reach).
+  const hasHiddenProblem = Boolean(fieldErrors.name);
+  // An edit with nothing changed has nothing to save — not a field's fault,
+  // so the button waits instead of pointing at one.
+  const isChanged = !edit || modelConfigFormChanged(values, initialValues);
 
-  // Where Close and Cancel leave to: the shell's Customize screen's Models
-  // tab, or the classic chrome's models list.
+  // Where Close and Cancel leave to: the model itself when editing; else the
+  // shell's Customize screen's Models tab, or the classic chrome's list.
   const agentShell = useAgentShell();
-  const closeHref = agentShell
-    ? `${SHELL_CUSTOMIZE_PATH}/models`
-    : (modelsLink?.() ?? '/');
+  let closeHref = modelsLink?.() ?? '/';
+  if (edit) {
+    closeHref = edit.detailHref;
+  } else if (agentShell) {
+    closeHref = `${SHELL_CUSTOMIZE_PATH}/models`;
+  }
 
   const onSubmit = useCallback(async () => {
     if (errorCount > 0) {
+      if (hasHiddenProblem) {
+        setMoreOptionsOpen(true);
+      }
       reveal();
+      return;
+    }
+    if (!isChanged) {
       return;
     }
     reset();
     try {
-      await save({ installation: installation!, values });
+      await save({
+        installation: installation!,
+        values,
+        original: edit?.modelConfig,
+      });
     } catch {
       // Left on the page: the mutation error renders in the alert below.
       return;
     }
+    const label = values.displayName.trim() || values.name;
+    if (edit) {
+      toastApi.post({
+        title: `Model "${label}" saved`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      });
+      navigate(edit.detailHref);
+      return;
+    }
     toastApi.post({
-      title: `Model "${values.displayName.trim() || values.name}" added`,
+      title: `Model "${label}" connected`,
       // The controller still has to accept it (it resolves the key Secret
       // first), which the list's status column reports.
       description:
@@ -165,6 +246,7 @@ export function NewModelPage() {
       navigate(modelsLink());
     }
   }, [
+    edit,
     installation,
     values,
     save,
@@ -173,12 +255,11 @@ export function NewModelPage() {
     modelsLink,
     navigate,
     errorCount,
+    hasHiddenProblem,
+    isChanged,
     reveal,
   ]);
 
-  // Memoized so the frame's footer slot only updates when the handlers change,
-  // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
-  // to the frame's footer, so only the primary lives here.
   // The way to self-hosted models, where a serving layer exists to host one.
   const servingRoute = useRouteRef(servingRouteRef);
   const serving = useOptionalServing();
@@ -187,35 +268,58 @@ export function NewModelPage() {
       ? servingRoute()
       : undefined;
 
-  const actions = useMemo(
-    () => (
-      <Button variant="primary" onPress={onSubmit} isDisabled={isSaving}>
-        {isSaving ? 'Adding…' : 'Add model'}
+  // Memoized so the frame's footer slot only updates when the handlers change,
+  // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
+  // to the frame's footer, so only the primary lives here.
+  const actions = useMemo(() => {
+    let label: string;
+    if (edit) {
+      label = isSaving ? 'Saving…' : 'Save changes';
+    } else {
+      label = isSaving ? 'Connecting…' : 'Connect model';
+    }
+    return (
+      <Button
+        variant="primary"
+        onPress={onSubmit}
+        isDisabled={isSaving || !isChanged}
+      >
+        {label}
       </Button>
-    ),
-    [onSubmit, isSaving],
-  );
+    );
+  }, [edit, onSubmit, isSaving, isChanged]);
   useProvidePageHeaderActions(actions);
 
   return (
     <WizardFrame
-      title="Add model"
-      context="Customize / Models"
+      title={edit ? 'Edit model' : 'Connect a model'}
+      context={
+        edit
+          ? `Customize / Models / ${edit.modelConfig.getDisplayName()}`
+          : 'Customize / Models'
+      }
       closeHref={closeHref}
       width="medium"
     >
-      <WizardStepHeading title="Connect a model">
-        Agents run on the models you add here.
-        {hostingHref ? (
-          <>
-            {' '}
-            To run a model on your own GPUs instead, use{' '}
-            <Link href={hostingHref}>Model hosting</Link>.
-          </>
-        ) : null}
-      </WizardStepHeading>
+      {edit ? (
+        <WizardStepHeading title="Change the model">
+          Agents that run on it pick up the change once you save it. Nothing
+          changes before.
+        </WizardStepHeading>
+      ) : (
+        <WizardStepHeading title="Describe the model">
+          Agents run on the models you connect here.
+          {hostingHref ? (
+            <>
+              {' '}
+              To run a model on your own GPUs instead, use{' '}
+              <Link href={hostingHref}>Model hosting</Link>.
+            </>
+          ) : null}
+        </WizardStepHeading>
+      )}
 
-      {!singleInstallation && (
+      {!edit && !singleInstallation && (
         <Card>
           <CardBody>
             <SectionHeader
@@ -251,14 +355,21 @@ export function NewModelPage() {
       <ModelConfigFormFields
         values={values}
         onChange={onChange}
-        mode="create"
+        mode={edit ? 'edit' : 'create'}
         errors={validation.shown ? fieldErrors : undefined}
+        moreOptionsOpen={moreOptionsOpen}
+        onMoreOptionsOpenChange={setMoreOptionsOpen}
+        originalProvider={edit?.modelConfig.getProvider()}
       />
 
       {error && (
         <Alert
           status="danger"
-          title="The model could not be added"
+          title={
+            edit
+              ? 'The model could not be saved'
+              : 'The model could not be connected'
+          }
           description={error.message}
         />
       )}

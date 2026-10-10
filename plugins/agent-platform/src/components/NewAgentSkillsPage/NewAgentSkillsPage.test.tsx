@@ -1,12 +1,12 @@
 import { ReactNode, useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent, {
   PointerEventsCheckLevel,
 } from '@testing-library/user-event';
 
 import { agentsRouteRef } from '../../routes';
-import type { DiscoveredSkill } from '../../lib/skills';
+import { canonicalSkillId, type DiscoveredSkill } from '../../lib/skills';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentSkillsPage } from './NewAgentSkillsPage';
 
@@ -56,9 +56,35 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => mockCatalog,
 }));
 
+// The agents the Usage filter reads: rows carry the canonical ids of the
+// skills they mount. Loaded and empty unless a test says otherwise.
+const mockAgents: {
+  rows: { skillIds?: string[] }[];
+  isLoading: boolean;
+} = { rows: [], isLoading: false };
+
+jest.mock('../AgentsDataProvider', () => ({
+  ...jest.requireActual('../AgentsDataProvider'),
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => children,
+  useAgents: () => mockAgents,
+}));
+
+jest.mock('../ModelConfigsProvider', () => ({
+  ...jest.requireActual('../ModelConfigsProvider'),
+  ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
+}));
+
 beforeEach(() => {
   Object.assign(mockCatalog, RESOLVED);
+  Object.assign(mockAgents, { rows: [], isLoading: false });
 });
+
+/** The chip labels of one filter row, in order. */
+function chips(name: string) {
+  return within(screen.getByRole('radiogroup', { name }))
+    .getAllByRole('radio')
+    .map(chip => chip.textContent);
+}
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
@@ -405,6 +431,122 @@ describe('NewAgentSkillsPage', () => {
       expect(
         screen.queryByRole('button', { name: /agent-skills/ }),
       ).not.toBeInTheDocument();
+    });
+
+    describe('filters, as on Customize → Skills', () => {
+      it('draws no filter row for three unused skills of one repository', async () => {
+        Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+        await renderStep();
+
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('filters three skills by usage, without a search, and clears', async () => {
+        const user = userEvent.setup();
+        const skills = skillsIn(REPO_A, 3, 'Alpha');
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
+        });
+        await renderStep();
+
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(chips('Filter by usage')).toEqual([
+          'All 3',
+          'Used by agents 1',
+          'Not used 2',
+        ]);
+        // One repository: no Source row.
+        expect(
+          screen.queryByRole('radiogroup', { name: 'Filter by source' }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+
+        await user.click(
+          screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
+        );
+        await user.click(screen.getByRole('radio', { name: 'Not used 2' }));
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+        ).toHaveLength(2);
+        // The pick is out of sight now, so the step says it is still there.
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
+      });
+
+      it('holds the Usage row back while the agents load', async () => {
+        Object.assign(mockAgents, { isLoading: true });
+        await renderStep();
+
+        await screen.findByRole('checkbox', { name: 'Skill PR review' });
+        // Two repositories: the Source row is there from the start.
+        expect(chips('Filter by source')).toEqual([
+          'All 2',
+          'giantswarm/agent-skills 1',
+          'giantswarm/claude-code 1',
+        ]);
+        expect(
+          screen.queryByRole('radiogroup', { name: 'Filter by usage' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('narrows 300 skills across repositories by source and usage', async () => {
+        const user = userEvent.setup();
+        const skills = [
+          ...skillsIn(REPO_A, 100, 'Alpha'),
+          ...skillsIn(REPO_B, 100, 'Beta'),
+          ...skillsIn(REPO_C, 100, 'Gamma'),
+        ];
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: skills.slice(100, 130).map(canonicalSkillId) }],
+        });
+        await renderStep();
+
+        await screen.findByRole('button', {
+          name: /giantswarm\/agent-skills \(100\)/,
+        });
+        expect(chips('Filter by usage')).toEqual([
+          'All 300',
+          'Used by agents 30',
+          'Not used 270',
+        ]);
+        // Collapsed until something narrows the list.
+        expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+        // A pick opens the repositories that hold a match, windowed.
+        await user.click(
+          screen.getByRole('radio', { name: 'Used by agents 30' }),
+        );
+        expect(
+          screen.getByRole('button', {
+            name: /giantswarm\/claude-code \(30\)/,
+          }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: /agent-skills/ }),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Beta/ }),
+        ).toHaveLength(20);
+        expect(
+          screen.getByRole('button', { name: 'Show 10 more skills' }),
+        ).toBeInTheDocument();
+
+        // Search and filter together can empty the list; the way back is
+        // offered.
+        await user.type(screen.getByRole('searchbox'), 'Gamma');
+        expect(
+          screen.getByText('No skills match “Gamma” with these filters.'),
+        ).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+        expect(
+          screen.getAllByRole('checkbox', { name: /^Skill Gamma/ }),
+        ).toHaveLength(20);
+      });
     });
   });
 

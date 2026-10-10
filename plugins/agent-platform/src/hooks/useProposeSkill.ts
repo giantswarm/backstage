@@ -25,7 +25,8 @@ export type ProposedSkill = {
   /** The SKILL.md body under the frontmatter. */
   instructions: string;
   /**
-   * `update` rewrites an existing skill's SKILL.md (on `update-skill/<name>`)
+   * `update` rewrites an existing skill's SKILL.md (on
+   * `update-skill/<directory as a slug>`; the repo name for a root skill)
    * instead of adding `<name>/SKILL.md`; absent means a new skill.
    */
   kind?: 'update';

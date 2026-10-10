@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -57,15 +57,6 @@ jest.mock('../InstallationChip', () => ({
   InstallationChip: () => null,
 }));
 
-const mockSave = jest.fn();
-jest.mock('../../hooks/useSaveModelConfig', () => ({
-  useSaveModelConfig: () => ({
-    save: mockSave,
-    isSaving: false,
-    error: null,
-    reset: jest.fn(),
-  }),
-}));
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
   useDeleteModelConfig: () => ({
     isDeletable: false,
@@ -198,6 +189,10 @@ function renderPage() {
           path="/agent-platform/models/:installation/:namespace/:name"
           element={<ModelDetailPage />}
         />
+        <Route
+          path="/agent-platform/models/edit/:installation/:namespace/:name"
+          element={<p>The Connect-a-model flow, prefilled</p>}
+        />
       </Routes>
     </PageHeaderActionsProvider>,
     {
@@ -215,8 +210,6 @@ describe('ModelDetailPage', () => {
     mockAgentShell = true;
     mockMayUpdate = true;
     mockContextWindows = undefined;
-    mockSave.mockReset();
-    mockSave.mockResolvedValue(undefined);
     mockUseResource.mockReturnValue({
       resource: sonnet(),
       isLoading: false,
@@ -243,7 +236,7 @@ describe('ModelDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Available')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-    // No form until Edit: the fields are not on the page.
+    // No form on this page at all: Edit opens the Connect-a-model flow.
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
   });
@@ -344,64 +337,16 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Memory (context)')).toBeNull();
   });
 
-  it('turns into the form on Edit and back on Cancel', async () => {
+  it('opens the Connect-a-model flow, prefilled, on Edit', async () => {
+    // No form swapped in place any more: Edit goes to the model's edit
+    // address, where the create flow reopens with the model's values.
     await renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
 
     expect(
-      screen.getAllByRole('button', { name: 'Save changes' }).length,
-    ).toBeGreaterThan(0);
-    expect(screen.queryByText('Used by')).toBeNull();
-
-    await userEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0]);
-
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
-    expect(screen.getByText('Used by')).toBeInTheDocument();
-  });
-
-  it('saves from the form and returns to the read view', async () => {
-    await renderPage();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    await userEvent.click(
-      screen.getAllByRole('button', { name: 'Save changes' })[0],
-    );
-
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0]).toMatchObject({
-      installation: 'inst-1',
-      values: expect.objectContaining({ model: 'claude-sonnet-4-5' }),
-    });
-    expect(
-      await screen.findByRole('button', { name: 'Edit' }),
+      await screen.findByText('The Connect-a-model flow, prefilled'),
     ).toBeInTheDocument();
-  });
-
-  it('marks the field a blocked save is about, not a summary box', async () => {
-    await renderPage();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    const model = screen.getByLabelText(/^Model/);
-    // Untouched, nothing is flagged.
-    expect(model).not.toHaveAttribute('aria-invalid');
-    await userEvent.clear(model);
-    await userEvent.click(
-      screen.getAllByRole('button', { name: 'Save changes' })[0],
-    );
-
-    // The field says what is wrong under itself, is marked invalid and has the
-    // focus; nothing is saved and there is no "Please fix" summary.
-    expect(await screen.findByText('Model is required')).toBeInTheDocument();
-    expect(model).toHaveAttribute('aria-invalid', 'true');
-    await waitFor(() => expect(model).toHaveFocus());
-    expect(mockSave).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Please fix/)).toBeNull();
-
-    // Reopened, the form starts quiet again.
-    await userEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0]);
-    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.queryByText('Model is required')).toBeNull();
   });
 
   it('offers no Edit without permission to change the model', async () => {
@@ -423,6 +368,28 @@ describe('ModelDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('Managed by Helm')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+
+  it('offers no Edit on a provider the form does not speak, and says so', async () => {
+    mockUseResource.mockReturnValue({
+      resource: new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'sonnet', namespace: 'kagent' },
+          spec: { provider: 'Bedrock', model: 'claude-sonnet' },
+        } as ModelConfigInterface,
+        'inst-1',
+      ),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('Provider Bedrock is not editable here'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 });

@@ -19,7 +19,6 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
-  SEARCH_MIN,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -81,7 +80,7 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     searchLabel: 'Search models',
     component: 'kagent',
     create: {
-      label: 'Add model',
+      label: 'Connect a model',
       routeRef: agentPlatformPlugin.routes.newModel,
     },
   },
@@ -130,11 +129,11 @@ function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
  * One tab: its search and action, and its panel. Global-only (D4): no
  * organization filter; the Environment select shows only with more than one.
  *
- * The search shows only once the tab lists more than `SEARCH_MIN` entries:
- * three agents are read, not searched. It stays hidden while the count is
- * still loading, and stays shown while a search is typed (or arrived as
- * `?q=`), so a list that shrinks under the bar never keeps a filter nobody can
- * clear.
+ * The search is always there (T49): these five tabs are the catalog's front
+ * door, and the PO missed the field over a short list. The `SEARCH_MIN` gate
+ * stays on the secondary and embedded lists. Each panel draws its own filters
+ * under the search, from its own data, and only those that would change the
+ * list.
  */
 function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const { counts, hasSkillRepositories } = useCustomizeData();
@@ -153,9 +152,6 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const tabs = CUSTOMIZE_TABS.filter(
     candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
-  const count = tabCounts[tab.id];
-  const showSearch =
-    (count !== undefined && count > SEARCH_MIN) || search !== '';
 
   return (
     <ShellPage
@@ -169,27 +165,22 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
           Without it every tab carried the bare "Customize" (live round 2, R5). */}
       <Helmet title={`${tab.title} · Customize`} />
       <Flex direction="column" gap="5">
-        {(showSearch || tab.create) && (
-          <Flex
-            align="center"
-            // Without the search, the create action keeps its place on the right.
-            justify={showSearch ? 'between' : 'end'}
-            gap="4"
-            style={{ flexWrap: 'wrap' }}
-          >
-            {showSearch && (
-              <div style={{ flex: '0 1 360px', minWidth: 0 }}>
-                <SearchField
-                  aria-label={tab.searchLabel}
-                  placeholder={tab.searchLabel}
-                  value={search}
-                  onChange={setSearch}
-                />
-              </div>
-            )}
-            {tab.create && <CreateAction create={tab.create} />}
-          </Flex>
-        )}
+        <Flex
+          align="center"
+          justify="between"
+          gap="4"
+          style={{ flexWrap: 'wrap' }}
+        >
+          <div style={{ flex: '0 1 360px', minWidth: 0 }}>
+            <SearchField
+              aria-label={tab.searchLabel}
+              placeholder={tab.searchLabel}
+              value={search}
+              onChange={setSearch}
+            />
+          </div>
+          {tab.create && <CreateAction create={tab.create} />}
+        </Flex>
         <TabPanel tab={tab.id} search={search} />
       </Flex>
     </ShellPage>

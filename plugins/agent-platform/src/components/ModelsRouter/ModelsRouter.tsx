@@ -21,6 +21,7 @@ import {
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ModelConfigsPage } from '../ModelConfigsPage';
 import { NewModelPage } from '../NewModelPage';
+import { EditModelPage } from '../EditModelPage';
 import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
@@ -167,13 +168,17 @@ const ShellModelHosting = () => {
 
 /**
  * The tab's views inside the agent-platform shell. The list is the Customize
- * screen's Models tab, so the index sends there; the create flow and one
- * model's page frame themselves; everything else is model hosting.
+ * screen's Models tab, so the index sends there; the create and edit flows and
+ * one model's page frame themselves; everything else is model hosting.
  */
 const ShellModelsViews = () => (
   <Routes>
     <Route index element={<ShellCustomizeRedirect tab="models" />} />
     <Route path="new" element={<NewModelPage />} />
+    <Route
+      path="edit/:installation/:namespace/:name"
+      element={<EditModelPage />}
+    />
     <Route
       path=":installation/:namespace/:name"
       element={<ModelDetailPage />}
@@ -246,8 +251,13 @@ const ModelsViews = () => {
       <Routes>
         <Route index element={<ModelConfigsPage />} />
         <Route path="new" element={<NewModelPage />} />
-        {/* `new` (one segment) can never be swallowed by the three-segment
-            detail path: react-router matches on segment count. */}
+        {/* `new` (one segment) and the four-segment edit path can never be
+            swallowed by the three-segment detail path: react-router matches
+            on segment count. */}
+        <Route
+          path="edit/:installation/:namespace/:name"
+          element={<EditModelPage />}
+        />
         <Route
           path=":installation/:namespace/:name"
           element={<ModelDetailPage />}

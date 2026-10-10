@@ -260,7 +260,7 @@ export const llmUsageQueries = (() => {
 })();
 
 /**
- * The two range queries, optionally for one organization. `[1d]` rather than
+ * The daily range queries, optionally for one organization. `[1d]` rather than
  * the window: each evaluation point totals the day it closes, which is what a
  * daily bar means.
  */
@@ -271,6 +271,13 @@ export function llmUsageRangeQueriesFor({
   return {
     costPerDayByModel: `sum by (gen_ai_response_model) ${counterIncrease(`${Cost.name}${only}`, '1d')}`,
     tokensPerDayByType: `sum by (gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum${only}`, '1d')}`,
+    /**
+     * Model calls per day, for the Overview's activity heatmap: the same
+     * duration-histogram count `calls` totals over the window, one day at a
+     * time and ungrouped — the heatmap is one figure per day. Only run when a
+     * view asks for it (`dailyCalls`), so the Cost tab does not pay for it.
+     */
+    callsPerDay: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, '1d')}`,
   };
 }
 
@@ -415,6 +422,8 @@ export function todayPartialQueries(
   return {
     costByModel: `sum by (gen_ai_response_model) ${counterIncrease(`${Cost.name}${only}`, range)}`,
     tokensByType: `sum by (gen_ai_token_type) ${counterIncrease(`${TokenUsage.name}_sum${only}`, range)}`,
+    /** Today's cell of the activity heatmap — see `callsPerDay`. */
+    calls: `sum ${counterIncrease(`${RequestDuration.name}_count${only}`, range)}`,
   };
 }
 

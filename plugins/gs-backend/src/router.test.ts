@@ -846,6 +846,19 @@ describe('POST /agent-skills/pull-request', () => {
     ['without the skill directory', { kind: 'update' }],
     ['with a path leaving the repository', { kind: 'update', path: '../x' }],
     ['with an unknown kind', { kind: 'delete', path: 'notes' }],
+    [
+      'without the commit the edit started from',
+      { kind: 'update', path: 'notes' },
+    ],
+    [
+      'with a name of more than one line',
+      {
+        kind: 'update',
+        path: 'notes',
+        baseCommit: 'c'.repeat(40),
+        skillName: 'Notes\nmore',
+      },
+    ],
   ])('refuses an update %s', async (_, extra) => {
     const app = await buildSkillsApp();
 
@@ -858,13 +871,71 @@ describe('POST /agent-skills/pull-request', () => {
     expect(createSkillPullRequest).not.toHaveBeenCalled();
   });
 
-  it('refuses a skill name that is not a slug', async () => {
+  it.each(['../escape', 'Ticket Triage'])(
+    'refuses a new skill named %p, which is not a slug',
+    async skillName => {
+      const app = await buildSkillsApp();
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .send({ ...body, skillName });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain('lowercase slug');
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    },
+  );
+
+  it('passes an update of a skill whose existing name is not a slug through', async () => {
+    const app = await buildSkillsApp();
+    const update = {
+      ...body,
+      skillName: 'Ticket Triage (v2)',
+      kind: 'update',
+      path: 'support/Ticket_Triage',
+      baseCommit: 'c'.repeat(40),
+    };
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send(update);
+
+    // Whether it is the skill's name is checked against the file there.
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith({
+      ...update,
+      token: 'gh-token',
+    });
+  });
+
+  it('accepts instructions at the 100,000-character cap, beyond the default 100 KB body', async () => {
+    const app = await buildSkillsApp();
+    // Two bytes each in UTF-8: a ~200 KB body.
+    const instructions = 'ü'.repeat(100_000);
+    expect(
+      Buffer.byteLength(JSON.stringify({ ...body, instructions })),
+    ).toBeGreaterThan(200_000);
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({ ...body, instructions });
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ instructions }),
+    );
+  });
+
+  it('refuses instructions over the cap as invalid input, not as a too-large body', async () => {
     const app = await buildSkillsApp();
 
     const response = await request(app)
       .post('/agent-skills/pull-request')
       .set('gs-github-token', 'gh-token')
-      .send({ ...body, skillName: '../escape' });
+      .send({ ...body, instructions: 'x'.repeat(100_001) });
 
     expect(response.status).toBe(400);
     expect(createSkillPullRequest).not.toHaveBeenCalled();
