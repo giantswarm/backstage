@@ -6,10 +6,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   Harness,
   isNotFoundError,
+  type KubeObjectInterface,
   ModelConfig,
   RemoteMCPServer,
   useResources,
@@ -21,6 +23,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { useOptionalServing } from '../ServingProvider';
@@ -29,6 +32,7 @@ import {
   BASELINE_REFETCH_INTERVAL_MS,
   getAgentsRefetchInterval,
   ResolveModelServing,
+  TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
 } from './helpers';
@@ -77,6 +81,17 @@ const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
  */
+/**
+ * The Agents list's interval: {@link getAgentsRefetchInterval}, tightened to
+ * the transitional tier while the installation's list does not show an agent
+ * deployed from this tab yet.
+ */
+function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
+  return awaitsDeployedAgent(query)
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : getAgentsRefetchInterval(query);
+}
+
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
@@ -151,12 +166,13 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // The refetch interval is two-tier and evaluated per installation — see
   // `getAgentsRefetchInterval`. It keeps agent readiness fresh without polling
   // the whole fleet fast: only installations with an agent that is still
-  // converging get the short interval.
+  // converging, or one just deployed from this portal that the list does not
+  // show yet (`awaitsDeployedAgent`), get the short interval.
   const { resources, clustersData, isLoading, errors } = useResources(
     queriedInstallations,
     Agent,
     {},
-    { enableDiscovery: false, refetchInterval: getAgentsRefetchInterval },
+    { enableDiscovery: false, refetchInterval: agentsRefetchInterval },
   );
 
   // The Harnesses the agents name, for what the list calls each one. A failed

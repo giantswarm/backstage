@@ -1,6 +1,8 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import type { Query } from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { markAgentDeployed } from '../../lib/pendingAgentCreations';
 import { buildResourceErrors } from '../resourceErrorFixtures';
 import { AgentsDataProvider, useAgents } from './AgentsDataProvider';
 
@@ -157,6 +159,7 @@ const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
 
 describe('AgentsDataProvider', () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     mockUseResources.mockReset();
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
@@ -524,5 +527,42 @@ describe('AgentsDataProvider installation scope', () => {
       ['alpha', 'a1'],
       ['alpha', 'a2'],
     ]);
+  });
+
+  it('polls the Agents list of an installation every 5 s while it awaits an agent deployed here', () => {
+    mockUseResources.mockReturnValue(result({ succeeded: { alpha: [] } }));
+    markAgentDeployed('alpha', {
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+    });
+
+    renderUseAgents();
+
+    const { refetchInterval } = mockUseResources.mock.calls[0][3] as {
+      refetchInterval: (query: Query<unknown[]>) => number;
+    };
+    const agentsList = (installation: string, items: unknown[]) =>
+      ({
+        queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
+        state: { data: items },
+      }) as unknown as Query<unknown[]>;
+    expect(refetchInterval(agentsList('alpha', []))).toBe(5_000);
+    expect(refetchInterval(agentsList('beta', []))).toBe(60_000);
+    // Listed (and ready): back on the baseline.
+    expect(
+      refetchInterval(
+        agentsList('alpha', [
+          {
+            metadata: { namespace: 'kagent', name: 'pr-reviewer' },
+            status: {
+              conditions: [
+                { type: 'Accepted', status: 'True' },
+                { type: 'Ready', status: 'True' },
+              ],
+            },
+          },
+        ]),
+      ),
+    ).toBe(60_000);
   });
 });
