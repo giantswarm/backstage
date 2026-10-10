@@ -140,12 +140,12 @@ export type SessionCostPopoverProps = {
   estimatedCostUsd?: number;
   /** The one line naming the rate the estimate used — see `describeCostBasis`. */
   costBasis: string;
-  /** Display name of the session's agent. */
-  agentName?: string;
 };
 
 /**
- * The session's cost and memory, behind one chip in the header.
+ * The session's cost and memory, behind one chip in the composer's controls —
+ * always on screen, like the prototype's, rather than scrolled away with the
+ * page header. The popover opens upward for the same reason.
  *
  * - **Estimated cost** prices kagent's token counts at an observed $/token
  *   rate (see `costEstimate.ts`) and is always labeled an estimate; the basis
@@ -169,7 +169,6 @@ export function SessionCostPopover({
   taskCount,
   estimatedCostUsd,
   costBasis,
-  agentName,
 }: SessionCostPopoverProps) {
   const classes = useStyles();
   const [isOpen, setOpen] = useState(false);
@@ -192,7 +191,6 @@ export function SessionCostPopover({
 
   let memoryChip: ReactNode = null;
   let memoryValue: ReactNode = '—';
-  let memoryNote: string | undefined;
   if (memory.percent !== undefined && memory.windowTokens !== undefined) {
     memoryChip = (
       <span className={classes.memory}>
@@ -210,9 +208,6 @@ export function SessionCostPopover({
       </span>
     );
     memoryValue = `${formatTokens(memory.usedTokens)} tokens`;
-    memoryNote = model
-      ? `No context-window size is configured for ${model}, so only the token count is shown.`
-      : 'The session’s model is not known, so only the token count is shown.';
   }
 
   return (
@@ -241,7 +236,7 @@ export function SessionCostPopover({
         triggerRef={triggerRef}
         isOpen={isOpen}
         onOpenChange={setOpen}
-        placement="bottom end"
+        placement="top end"
       >
         <div
           className={classes.content}
@@ -283,15 +278,9 @@ export function SessionCostPopover({
               />
             </div>
           )}
-          {agentName && <Row label="Agent" value={agentName} />}
-          <div className={classes.footnote}>
-            {costBasis}
-            {reportedCostUsd !== undefined &&
-              ' The reported cost comes from the agent’s runtime; a turn that reported none is not in it.'}
-            {memoryNote && ` ${memoryNote}`}
-            {memory.percent !== undefined &&
-              ' Memory is the newest turn’s input tokens against the model’s context window — an approximation, summed over that turn’s model calls.'}
-          </div>
+          {/* One minimal sentence, per the design: the disclosure that keeps
+              the estimate honest. Everything else the rows already say. */}
+          <div className={classes.footnote}>{costBasis}</div>
         </div>
       </Popover>
     </>

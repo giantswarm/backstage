@@ -431,9 +431,16 @@ agentPlatform:
     contextWindows:
       'claude-*': 200000
   skills:
-    # GitHub repositories to discover agent skills from. Every SKILL.md file
+    # Git repositories to discover agent skills from. Every SKILL.md file
     # defines one skill (its directory is the skill root); a selected skill
-    # becomes a kagent spec.skills.gitRefs entry.
+    # becomes a kagent spec.skills.gitRefs entry. A github.com entry is read
+    # through the GitHub REST API (token via the GitHub integration, else
+    # anonymous at 60 requests/hour); any other http(s) entry is read over the
+    # plain git protocol (depth-1 clone, no API rate limit), so a self-hosted
+    # or lab-local git server works, e.g.
+    #   - http://gitserver.agent-platform.svc.cluster.local/skills.git
+    # The URL travels into the agent chart's `git.url` unchanged, so agents
+    # must be able to `git fetch` it at boot too.
     repositories:
       - https://github.com/giantswarm/agent-skills
   # Which agent serves each meta-agent role. Values are agent names (the Agent

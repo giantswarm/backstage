@@ -338,6 +338,34 @@ describe('SessionComposer', () => {
     expect(field()).toHaveValue('something else entirely');
   });
 
+  it('renders the details slot inside the box, next to the action', async () => {
+    // The cost/memory chip docks here so it stays on screen with the composer.
+    // It must survive every trailing state: beside Send, beside Stop, and when
+    // a lost runtime removes Send entirely.
+    renderComposer({ details: <span data-testid="details-chip" /> });
+
+    const box = screen.getByTestId('composer-card');
+    expect(box).toContainElement(screen.getByTestId('details-chip'));
+    expect(sendButton()).toBeInTheDocument();
+  });
+
+  it('keeps the details slot when a new session replaces Send', () => {
+    renderComposer({
+      details: <span data-testid="details-chip" />,
+      newSession: {
+        label: 'Start a new session with this agent',
+        onStart: jest.fn(),
+        replacesSend: true,
+        caption: 'This session cannot continue.',
+      },
+    });
+
+    expect(screen.getByTestId('details-chip')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Send' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows why a send failed', () => {
     renderComposer({ error: 'kagent said no' });
 

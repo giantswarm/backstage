@@ -10,26 +10,25 @@ import { UsageOverviewPage } from '../UsageOverviewPage';
 import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
 import { UsageTechnicalPage } from '../UsageTechnicalPage';
+import { UsageColumn } from '../UsageColumn';
 import { UsageScopeBar } from './UsageScopeBar';
 
 // The Usage screen's views, per the prototype: Overview · Cost · Your
 // sessions · Technical details. The first three are for anyone who spends;
 // the last is the raw-numbers view for admins and platform engineers, and it
 // is also where the muster plugin's tool-call section lands.
+//
+// The time-range control applies to every view. The gateway views scope
+// their queries by it directly; Your sessions narrows the kagent fan-out's
+// fixed-window answer client-side and says so when the selection asks for
+// more than that window holds (the fan-out's window is a backend caching
+// contract this screen must not reach into).
 const VIEWS = [
   { path: 'overview', title: 'Overview' },
   { path: 'cost', title: 'Cost' },
   { path: 'conversations', title: 'Your sessions' },
   { path: 'technical', title: 'Technical details' },
 ] as const;
-
-/**
- * The views the screen-level time-range control scopes: the gateway-derived
- * ones. Your sessions reads the kagent fan-out's own fixed window, which the
- * section names itself, so the control hides there rather than claiming a
- * scope it does not apply.
- */
-const WINDOWED_VIEWS = new Set(['overview', 'cost', 'technical']);
 
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {
@@ -53,8 +52,7 @@ const IndexRedirect = () => {
  */
 const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
-  const { pathname, search } = useLocation();
-  const activeSegment = pathname.slice(basePath.length).split('/')[1];
+  const { search } = useLocation();
 
   return (
     <>
@@ -62,35 +60,39 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
           up with the level-1 header tabs and the content below. `px="5"` is
           hand-matched to the horizontal padding the bui PluginHeader / Content
           apply (bui space-5 = 20px), the same value ModelsRouter uses; if bui
-          ever changes that gutter both have to follow. */}
+          ever changes that gutter both have to follow. Inside the gutter the
+          strip sits in the same centered column as the content below it, so
+          the two stay aligned on wide screens. */}
       <Box px="5">
-        <Flex
-          justify="between"
-          align="end"
-          gap="3"
-          style={{ flexWrap: 'wrap' }}
-        >
-          <Tabs>
-            <TabList>
-              {VIEWS.map(view => (
-                <Tab
-                  key={view.path}
-                  id={view.path}
-                  // Absolute, from the splat base path. A *relative* bui href
-                  // inside a splat route resolves against the whole current
-                  // pathname, so it appends the active segment instead of
-                  // replacing it. The search keeps the scope (installation,
-                  // window) across the switch.
-                  href={`${basePath}/${view.path}${search}`}
-                  matchStrategy="prefix"
-                >
-                  {view.title}
-                </Tab>
-              ))}
-            </TabList>
-          </Tabs>
-          <UsageScopeBar windowApplies={WINDOWED_VIEWS.has(activeSegment)} />
-        </Flex>
+        <UsageColumn>
+          <Flex
+            justify="between"
+            align="end"
+            gap="3"
+            style={{ flexWrap: 'wrap' }}
+          >
+            <Tabs>
+              <TabList>
+                {VIEWS.map(view => (
+                  <Tab
+                    key={view.path}
+                    id={view.path}
+                    // Absolute, from the splat base path. A *relative* bui href
+                    // inside a splat route resolves against the whole current
+                    // pathname, so it appends the active segment instead of
+                    // replacing it. The search keeps the scope (installation,
+                    // window) across the switch.
+                    href={`${basePath}/${view.path}${search}`}
+                    matchStrategy="prefix"
+                  >
+                    {view.title}
+                  </Tab>
+                ))}
+              </TabList>
+            </Tabs>
+            <UsageScopeBar />
+          </Flex>
+        </UsageColumn>
       </Box>
       <Routes>
         <Route path="overview" element={<UsageOverviewPage />} />

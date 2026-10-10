@@ -129,12 +129,31 @@ describe('SessionCostPopover', () => {
 
     const dialog = await open();
 
+    // The count without a share: claiming a percentage of an unknown window
+    // would be invented precision.
     expect(within(dialog).getByText('24.0k tokens')).toBeInTheDocument();
     expect(
-      within(dialog).getByText(/No context-window size is configured/),
+      within(dialog).queryByRole('img', { name: /Memory/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the footnote to the one basis sentence', async () => {
+    // The popover's explanatory text is a single minimal sentence — the
+    // disclosure that keeps the estimate honest. The paragraphs about
+    // reported costs and the memory approximation are gone.
+    publishConfig({ contextWindows: { 'claude-*': 200000 } });
+    await render({ tokens: { ...baseProps.tokens, costUsd: 0.13148115 } });
+
+    const dialog = await open();
+
+    expect(
+      within(dialog).getByText('Estimated: an observed rate.'),
     ).toBeInTheDocument();
     expect(
-      within(dialog).queryByRole('img', { name: /Memory/ }),
+      within(dialog).queryByText(/reported cost comes from/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/an approximation, summed over/),
     ).not.toBeInTheDocument();
   });
 
@@ -161,13 +180,12 @@ describe('SessionCostPopover', () => {
     ).toBeInTheDocument();
   });
 
-  it('names the agent when it is known', async () => {
+  it('names no agent — the page is already that agent’s session', async () => {
     publishConfig();
-    await render({ agentName: 'Support Triage' });
+    await render();
 
     const dialog = await open();
 
-    expect(within(dialog).getByText('Agent')).toBeInTheDocument();
-    expect(within(dialog).getByText('Support Triage')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Agent')).not.toBeInTheDocument();
   });
 });

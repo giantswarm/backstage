@@ -3,7 +3,10 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  useProvidePageHeaderActions,
+  WizardStepHeading,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { newMcpServerRouteRef, newMcpServerVerifyRouteRef } from '../../routes';
 import {
@@ -22,12 +25,6 @@ import { withEditParam } from '../NewMcpServerEditGate';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
-  heading: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 500,
-    letterSpacing: -0.2,
-  },
   callbackUrl: {
     fontFamily: 'monospace',
     userSelect: 'all',
@@ -250,13 +247,10 @@ export function NewConnectorSignInPage() {
 
   return (
     <ConnectorWizardFrame step="signin" onBack={onBack}>
-      <Flex direction="column" gap="2">
-        <h2 className={classes.heading}>How do people sign in?</h2>
-        <Text as="p" color="secondary">
-          Answer for the app behind this connector — it decides whose
-          permissions apply when an agent uses its tools.
-        </Text>
-      </Flex>
+      <WizardStepHeading title="How do people sign in?">
+        Answer for the app behind this connector — it decides whose permissions
+        apply when an agent uses its tools.
+      </WizardStepHeading>
 
       <div
         className={classes.choices}

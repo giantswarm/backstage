@@ -15,6 +15,8 @@ const state = {
   isError: false,
   isNotDeployed: false,
   probedInstallations: [] as string[],
+  /** The screen-level time window (useUsageWindow), 30 by default. */
+  selectedDays: 30,
 };
 
 const DEFAULTS = { ...state };
@@ -53,6 +55,12 @@ jest.mock('../../hooks/useTokenRates', () => ({
     isAvailable: true,
     window: '7d',
   }),
+}));
+
+// The screen's time-window control is URL state; mocking it keeps the test
+// free of a router while the narrowing behaviour stays real.
+jest.mock('../../hooks/useUsageWindow', () => ({
+  useUsageWindow: () => ({ days: state.selectedDays, setDays: () => {} }),
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
@@ -345,5 +353,77 @@ describe('AgentUsageSection', () => {
 
     expect(screen.getByText(/were not read/i)).toBeInTheDocument();
     expect(screen.getByText(/could not be read at all/i)).toBeInTheDocument();
+  });
+
+  describe('the screen-level time window', () => {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const dayKey = (daysAgo: number) =>
+      new Date(Date.now() - daysAgo * DAY_MS).toISOString().slice(0, 10);
+
+    it('narrows the totals to the daily buckets inside the window', () => {
+      // Selected 7 against a 30-day backend window: turns and tokens re-total
+      // from the buckets the window keeps; sessions and tool calls exist only
+      // over the full window, so they read `—` rather than full-window numbers
+      // under a 7-day label.
+      state.selectedDays = 7;
+      state.usage = usage({
+        daily: [
+          // Outside the 7 days: must not count.
+          {
+            day: dayKey(20),
+            inputTokens: 1_000_000,
+            outputTokens: 100,
+            turns: 2,
+          },
+          // Inside: the narrowed totals.
+          {
+            day: dayKey(1),
+            inputTokens: 8_400_000,
+            outputTokens: 50,
+            turns: 3,
+          },
+        ],
+      });
+      render(<AgentUsageSection />);
+
+      // The narrowed input-token total — 8.4M, not 9.4M.
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.getByText('3')).toBeInTheDocument();
+      // Sessions and tool calls cannot be re-cut (est. cost reads `—` too,
+      // since this suite mocks the rates away).
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+      // And the tables below keep the full window, said plainly.
+      expect(
+        screen.getByText(/cannot be re-cut to 7 days/i),
+      ).toBeInTheDocument();
+    });
+
+    it('says a wider selection shows the same backend window', () => {
+      // 90 selected against a 30-day fan-out: the backend's window is a
+      // caching contract, so nothing widens — the section says so instead of
+      // claiming 90 days it never read.
+      state.selectedDays = 90;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(
+        screen.getByText(/computes session usage over its own 30-day window/i),
+      ).toBeInTheDocument();
+      // The totals stay the full window's, un-dashed.
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+    });
+
+    it('changes nothing when the selection equals the backend window', () => {
+      state.selectedDays = 30;
+      state.usage = usage();
+      render(<AgentUsageSection />);
+
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      expect(screen.queryByText(/cannot be re-cut/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/over its own 30-day window/i),
+      ).not.toBeInTheDocument();
+    });
   });
 });

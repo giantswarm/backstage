@@ -1,5 +1,6 @@
 import {
   SessionUsageResponse,
+  SessionUsageTotals,
   UsageDayEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
@@ -131,6 +132,57 @@ export function fillMissingDays(
     );
   }
   return filled;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The UTC day key (`YYYY-MM-DD`) of an epoch-ms instant. */
+function dayKey(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
+/**
+ * The day entries of the last `days` UTC days (today included), for the
+ * screen's time-window control.
+ *
+ * The kagent fan-out's window is fixed — a backend caching contract — so a
+ * narrower selection is cut **client-side** from the daily buckets, which are
+ * the finest-grained time axis the response carries. Day keys compare
+ * lexicographically, so no entry is parsed.
+ */
+export function narrowDaily(
+  daily: UsageDayEntry[],
+  days: number,
+  now: number = Date.now(),
+): UsageDayEntry[] {
+  if (days <= 0) {
+    return [];
+  }
+  const cutoff = dayKey(now - (days - 1) * DAY_MS);
+  return daily.filter(entry => entry.day >= cutoff);
+}
+
+/**
+ * What a narrowed window can honestly total: the figures the daily buckets
+ * carry. Sessions, tool calls and the reported cost are **not** among them —
+ * the backend reports those only over its full window, and a narrowed view
+ * renders them as unknown rather than re-labelling full-window numbers.
+ */
+export type NarrowedTotals = Pick<
+  SessionUsageTotals,
+  'turns' | 'inputTokens' | 'outputTokens'
+>;
+
+/** Sum the day entries into the totals a narrowed window can claim. */
+export function sumDaily(daily: UsageDayEntry[]): NarrowedTotals {
+  return daily.reduce<NarrowedTotals>(
+    (acc, entry) => ({
+      turns: acc.turns + entry.turns,
+      inputTokens: acc.inputTokens + entry.inputTokens,
+      outputTokens: acc.outputTokens + entry.outputTokens,
+    }),
+    { turns: 0, inputTokens: 0, outputTokens: 0 },
+  );
 }
 
 /**

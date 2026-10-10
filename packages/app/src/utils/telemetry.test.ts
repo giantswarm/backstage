@@ -572,6 +572,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/skills',
+      '/agent-platform/skills/new',
       '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
@@ -657,5 +658,12 @@ describe('Skill detail', () => {
     expect(getTelemetryPageViewPayload('/agent-platform/skills').page).toBe(
       'Skill detail',
     );
+  });
+
+  it('reports the add-skill form as its own page, not a skill', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform/skills/new')).toEqual({
+      page: 'Add skill',
+      path: '/agent-platform/skills/new',
+    });
   });
 });

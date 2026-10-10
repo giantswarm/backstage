@@ -141,7 +141,7 @@ describe('shell connector wizard', () => {
   });
 
   describe('Connect step', () => {
-    it('renders the full-screen frame with the three steps', async () => {
+    it('renders the in-content wizard frame with the three steps', async () => {
       await renderWizard('/agent-platform/connectors/new');
 
       expect(

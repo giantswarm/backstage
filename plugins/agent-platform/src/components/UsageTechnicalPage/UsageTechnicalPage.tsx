@@ -13,6 +13,7 @@ import {
   TokensByTypeCard,
   UsageCard,
 } from '../LlmUsage';
+import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -52,58 +53,63 @@ export function UsageTechnicalPage({ sections }: { sections?: ReactNode[] }) {
 
   return (
     <Content>
-      <Flex direction="column" gap="6" style={{ maxWidth: 1024 }}>
-        <SectionHeader
-          as="h2"
-          variant="title-medium"
-          title="Technical details"
-          description={
-            installation ? (
-              <>
-                The numbers behind the cost views on{' '}
-                <strong>{installation}</strong>, over the last {days} days: raw
-                token counts, model calls and gateway health. They explain the
-                spend — they don't add to it.
-              </>
-            ) : (
-              `The numbers behind the cost views: raw token counts, model calls and gateway health. They explain the spend — they don't add to it.`
-            )
-          }
-        />
+      <UsageColumn>
+        <Flex direction="column" gap="6">
+          <SectionHeader
+            as="h2"
+            variant="title-medium"
+            title="Technical details"
+            description={
+              installation ? (
+                <>
+                  The numbers behind the cost views on{' '}
+                  <strong>{installation}</strong>, over the last {days} days:
+                  raw token counts, model calls and gateway health. They explain
+                  the spend — they don't add to it.
+                </>
+              ) : (
+                `The numbers behind the cost views: raw token counts, model calls and gateway health. They explain the spend — they don't add to it.`
+              )
+            }
+          />
 
-        <LlmUsageState view={view} />
+          <LlmUsageState view={view} />
 
-        {view.state === 'ready' && usage && (
-          <>
-            <CostTotalsStrip
-              usage={usage}
-              windowDays={days}
-              currency={currency}
-            />
+          {view.state === 'ready' && usage && (
+            <>
+              <CostTotalsStrip
+                usage={usage}
+                windowDays={days}
+                currency={currency}
+              />
 
-            <div className={classes.row}>
-              <TokensByTypeCard daily={usage.tokensPerDay} note={windowNote} />
-            </div>
+              <div className={classes.row}>
+                <TokensByTypeCard
+                  daily={usage.tokensPerDay}
+                  note={windowNote}
+                />
+              </div>
 
-            <UsageCard
-              title="Gateway health"
-              wide
-              // Each figure explains its own arithmetic in its hint, so the
-              // note carries only what none of them says: these are the model
-              // calls, not the turns that made them.
-              note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
-            >
-              <ReliabilityStrip reliability={usage.reliability} />
-            </UsageCard>
-          </>
-        )}
+              <UsageCard
+                title="Gateway health"
+                wide
+                // Each figure explains its own arithmetic in its hint, so the
+                // note carries only what none of them says: these are the model
+                // calls, not the turns that made them.
+                note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
+              >
+                <ReliabilityStrip reliability={usage.reliability} />
+              </UsageCard>
+            </>
+          )}
 
-        {/* The muster-contributed connector tool-call section renders below
+          {/* The muster-contributed connector tool-call section renders below
             the gateway figures whatever state those are in: its data source
             (muster's own Prometheus metrics) is independent of Mimir's
             gen_ai series, so one being absent says nothing about the other. */}
-        {hasSections && <>{sections}</>}
-      </Flex>
+          {hasSections && <>{sections}</>}
+        </Flex>
+      </UsageColumn>
     </Content>
   );
 }

@@ -1,4 +1,4 @@
-import { expect, open, rosterLinkOf, test } from './fixtures';
+import { expect, expectWizardStep, open, rosterLinkOf, test } from './fixtures';
 
 /**
  * The Agents tab as the admin reads it: the roster from the installation's
@@ -79,7 +79,7 @@ test('the New agent wizard opens on Details, derives the slug and lists the Mode
   await open(admin, '/agent-platform/agents');
   await admin.getByRole('button', { name: 'New agent' }).click();
   await expect(admin).toHaveURL(/\/agent-platform\/agents\/new$/);
-  await expect(admin.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   await expect(
     admin.getByRole('heading', { name: 'Create an agent' }),
   ).toBeVisible();
@@ -96,6 +96,6 @@ test('the New agent wizard opens on Details, derives the slug and lists the Mode
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 
-  await admin.getByRole('button', { name: 'Cancel' }).first().click();
+  await admin.getByRole('link', { name: 'Cancel' }).click();
   await expect(admin).toHaveURL(/\/agent-platform\/agents$/);
 });

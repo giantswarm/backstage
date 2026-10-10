@@ -1,4 +1,11 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Button,
@@ -109,6 +116,13 @@ export type SessionComposerProps = {
   /** A Stop has been asked for and the server has not answered yet. */
   isStopping?: boolean;
   /**
+   * A compact, always-visible session detail beside the submit control — the
+   * cost/memory chip, per the prototype's composer. Rendered inside the box's
+   * own controls row so it stays on screen with the docked composer, whatever
+   * the conversation's length. Presentation only; the caller owns it.
+   */
+  details?: ReactNode;
+  /**
    * The way out of a session whose runtime kagent cannot bring back: start a
    * new session with the same agent, taking the box's text along.
    *
@@ -172,6 +186,7 @@ export function SessionComposer({
   onSubmit,
   onStop,
   isStopping = false,
+  details,
   newSession,
 }: SessionComposerProps) {
   const [value, setValue] = useState('');
@@ -332,27 +347,32 @@ export function SessionComposer({
             />
           }
           trailing={
-            showStop ? (
-              // Secondary rather than primary: stopping is not the action
-              // this box invites.
-              <ButtonIcon
-                type="button"
-                aria-label="Stop"
-                variant="secondary"
-                icon={<StopIcon />}
-                isPending={isStopping}
-                onPress={onStop}
-              />
-            ) : (
-              !newSessionReplacesSend && (
+            <>
+              {/* Before the action, like the prototype: the chip reads as
+                  context for the box, not as something that submits. */}
+              {details}
+              {showStop ? (
+                // Secondary rather than primary: stopping is not the action
+                // this box invites.
                 <ButtonIcon
-                  type="submit"
-                  aria-label="Send"
-                  icon={<ArrowUpwardIcon />}
-                  isDisabled={!canSubmit}
+                  type="button"
+                  aria-label="Stop"
+                  variant="secondary"
+                  icon={<StopIcon />}
+                  isPending={isStopping}
+                  onPress={onStop}
                 />
-              )
-            )
+              ) : (
+                !newSessionReplacesSend && (
+                  <ButtonIcon
+                    type="submit"
+                    aria-label="Send"
+                    icon={<ArrowUpwardIcon />}
+                    isDisabled={!canSubmit}
+                  />
+                )
+              )}
+            </>
           }
         />
 

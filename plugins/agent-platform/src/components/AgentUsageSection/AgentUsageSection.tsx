@@ -7,6 +7,7 @@ import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useTokenRates } from '../../hooks/useTokenRates';
+import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
 import { useCurrency } from '../../lib/formatNumbers';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
@@ -24,6 +25,8 @@ import {
   couldNotTell,
   fillMissingDays,
   hasAnyUsage,
+  narrowDaily,
+  sumDaily,
   toByAgentRows,
 } from './helpers';
 
@@ -171,9 +174,24 @@ export function AgentUsageSection() {
   // 0 days" — and made `fillMissingDays` short-circuit. `0` is not a value the
   // backend can mean: the reader floors it at 1.
   const windowDays = usage?.windowDays || FALLBACK_WINDOW_DAYS;
+
+  // The screen's time-window control, shared with the gateway views. The
+  // fan-out's own window is fixed (a backend caching contract), so a narrower
+  // selection is cut client-side from the daily buckets, and a wider one shows
+  // the backend's window with a note saying so — never silently either way.
+  const { days: selectedDays } = useUsageWindow();
+  const appliedDays = Math.min(selectedDays, windowDays);
+  const narrowed = useMemo(() => {
+    if (appliedDays >= windowDays) {
+      return undefined;
+    }
+    const cut = narrowDaily(usage?.daily ?? [], appliedDays);
+    return { daily: cut, totals: sumDaily(cut) };
+  }, [usage?.daily, appliedDays, windowDays]);
+
   const daily = useMemo(
-    () => fillMissingDays(usage?.daily ?? [], windowDays),
-    [usage?.daily, windowDays],
+    () => fillMissingDays(narrowed?.daily ?? usage?.daily ?? [], appliedDays),
+    [narrowed, usage?.daily, appliedDays],
   );
   const byAgentRows = useMemo(
     () =>
@@ -206,8 +224,8 @@ export function AgentUsageSection() {
       // response — only a section that has read one can name it truthfully.
       description={
         installation
-          ? copy.description(windowDays, installation)
-          : copy.descriptionWithoutInstallation(windowDays)
+          ? copy.description(appliedDays, installation)
+          : copy.descriptionWithoutInstallation(appliedDays)
       }
     />
   );
@@ -292,11 +310,18 @@ export function AgentUsageSection() {
       </Text>
     );
   } else if (usage) {
+    // A narrowed window totals only what the daily buckets carry; the strip
+    // renders the rest as unknown (see `TotalsStrip`), so the zeros here are
+    // placeholders it never shows.
+    const stripTotals = narrowed
+      ? { sessions: 0, toolCalls: 0, totalTokens: 0, ...narrowed.totals }
+      : usage.totals;
     body = (
       <>
         <TotalsStrip
-          totals={usage.totals}
-          windowDays={windowDays}
+          totals={stripTotals}
+          windowDays={appliedDays}
+          narrowedFromDays={narrowed ? windowDays : undefined}
           rates={rates}
           currency={currency}
           isRateLoading={isRateLoading}
@@ -305,7 +330,7 @@ export function AgentUsageSection() {
             model: undefined,
             installation: installation ?? '',
             window: rateWindow,
-            tokens: usage.totals.inputTokens + usage.totals.outputTokens,
+            tokens: stripTotals.inputTokens + stripTotals.outputTokens,
           })}
         />
         <div className={classes.row}>
@@ -322,6 +347,14 @@ export function AgentUsageSection() {
             variant="output"
           />
         </div>
+        {narrowed && (
+          <Text variant="body-small" color="secondary">
+            The by-agent table and the top tools and connectors below always
+            cover kagent's full {windowDays}-day window — the backend computes
+            them over that fixed window, so they cannot be re-cut to{' '}
+            {appliedDays} days here.
+          </Text>
+        )}
         <ByAgentTable
           rows={byAgentRows}
           rates={rates}
@@ -371,6 +404,12 @@ export function AgentUsageSection() {
         <Text variant="body-small" color="secondary">
           Showing {installation}. Usage is read one installation at a time —
           pick another in the Environment control to switch.
+        </Text>
+      )}
+      {usage && selectedDays > windowDays && (
+        <Text variant="body-small" color="secondary">
+          kagent computes session usage over its own {windowDays}-day window, so
+          the last {selectedDays} days show the same figures as {windowDays}.
         </Text>
       )}
       {isUserScoped === false && (

@@ -73,8 +73,36 @@ jest.mock('../../hooks/useLlmUsageView', () => ({
   useLlmUsageView: () => view,
 }));
 
+/** Enough of a `SessionUsageResponse` for the sessions tile and the fallback. */
+function sessionUsage(overrides: Record<string, unknown> = {}) {
+  return {
+    totals: {
+      sessions: 37,
+      turns: 120,
+      inputTokens: 8_000_000,
+      outputTokens: 400_000,
+      totalTokens: 8_400_000,
+      toolCalls: 300,
+    },
+    windowDays: 30,
+    daily: [],
+    byAgent: [
+      { agentId: 'kagent__NS__writer', sessions: 30, turns: 100 },
+      { agentId: 'kagent__NS__triage', sessions: 7, turns: 20 },
+      // The row kagent could not attribute: not an agent, so not counted.
+      { agentId: null, sessions: 1, turns: 1 },
+    ],
+    topTools: [],
+    topMcpServers: [],
+    undatedTurns: 0,
+    unreadable: [],
+    skipped: 0,
+    ...overrides,
+  };
+}
+
 const sessionUsageState = {
-  usage: { totals: { sessions: 37 }, windowDays: 30 },
+  usage: sessionUsage() as ReturnType<typeof sessionUsage> | undefined,
   isLoading: false,
   isError: false,
   isNotDeployed: false,
@@ -109,7 +137,9 @@ describe('UsageOverviewPage', () => {
     view.state = 'ready';
     view.usage = usage();
     currencyFor = {};
+    sessionUsageState.usage = sessionUsage();
     sessionUsageState.isNotDeployed = false;
+    sessionUsageState.isError = false;
   });
 
   it('renders the KPI tiles from the gateway totals', async () => {
@@ -176,5 +206,78 @@ describe('UsageOverviewPage', () => {
     renderPage('/agent-platform/usage/overview?window=7d');
 
     expect(await screen.findByText(/over the last 7 days/)).toBeInTheDocument();
+  });
+
+  it('lays its content out in the platform content column', async () => {
+    // The Usage views used to fill the whole content area; they follow the
+    // rest of the platform now (the ShellPage idiom: a centered max-width
+    // column).
+    const { container } = await renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(
+      container.querySelector('[style*="max-width: 1080px"]'),
+    ).not.toBeNull();
+  });
+
+  describe('without gateway metrics (mimirEnabled: false)', () => {
+    beforeEach(() => {
+      view.state = 'unavailable';
+      view.usage = undefined;
+    });
+
+    it('shows the kagent-derived tiles instead of a mostly-empty page', async () => {
+      renderPage();
+
+      // What kagent alone can answer: the reader's own figures.
+      expect(await screen.findByText('Your sessions')).toBeInTheDocument();
+      expect(screen.getByText('37')).toBeInTheDocument();
+      expect(screen.getByText('Your tokens')).toBeInTheDocument();
+      expect(screen.getByText('8.4M')).toBeInTheDocument();
+      // Two agents attributed; the null row is not an agent.
+      expect(screen.getByText('Your agents')).toBeInTheDocument();
+      expect(screen.getByText('2')).toBeInTheDocument();
+      // And why the fleet-wide figures are missing, in one note.
+      expect(
+        screen.getByText(/need the gateway's gen_ai metrics/i),
+      ).toBeInTheDocument();
+      // No gateway tiles, and nothing invented: no spend figure at all.
+      expect(screen.queryByText('Spend')).toBeNull();
+      expect(screen.queryByText('Top agents')).toBeNull();
+    });
+
+    it('shows the reported cost only when a runtime reported one', async () => {
+      sessionUsageState.usage = sessionUsage({
+        totals: {
+          ...sessionUsage().totals,
+          reportedCostUsd: 12.5,
+        },
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Reported cost')).toBeInTheDocument();
+      expect(screen.getByText('$12.50')).toBeInTheDocument();
+    });
+
+    it('omits the reported-cost tile when no runtime reported one', async () => {
+      renderPage();
+
+      expect(await screen.findByText('Your sessions')).toBeInTheDocument();
+      // "Not reported" is not "$0.00".
+      expect(screen.queryByText('Reported cost')).toBeNull();
+    });
+
+    it('keeps the plain unavailable state when kagent is absent too', async () => {
+      sessionUsageState.isNotDeployed = true;
+      sessionUsageState.usage = undefined;
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/has no observability stack/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Your tokens')).toBeNull();
+    });
   });
 });

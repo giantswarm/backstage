@@ -280,6 +280,19 @@ export async function open(
 }
 
 /**
+ * Asserts the in-content wizard frame is on `step`: the step strip marks it
+ * as the current one. Replaces the old "Step N of M: <label>" line the pages
+ * carried before the shared `WizardFrame`.
+ */
+export async function expectWizardStep(page: Page, step: string) {
+  await expect(
+    page
+      .getByRole('list', { name: 'Steps' })
+      .locator('li[aria-current="step"]'),
+  ).toContainText(step);
+}
+
+/**
  * Opens the muster session for the page's user when the page shows the gate.
  * The backend keeps that session server-side per user, so a page that
  * connected earlier in the run finds no gate — the same signed-in portal.
@@ -326,7 +339,7 @@ export async function createAgentInWizard(
 ): Promise<string> {
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
-  await expect(page.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expectWizardStep(page, 'Details');
   await expect(
     page.getByText('No installations with models'),
     `the wizard sees no reachable installation with a ModelConfig — the lab's kagent route may be unreachable from Backstage, or the backend cached an unreachable probe after a pod roll (5 min TTL)`,
@@ -348,11 +361,11 @@ export async function createAgentInWizard(
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 2: Skills (none) -----------------------------------------------
-  await expect(page.getByText('Step 2 of 4: Skills')).toBeVisible();
+  await expectWizardStep(page, 'Skills');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 3: Tools (none) ------------------------------------------------
-  await expect(page.getByText('Step 3 of 4: Tools')).toBeVisible();
+  await expectWizardStep(page, 'Tools');
   await expect(
     page.getByLabel('Selected so far').getByText('No tools'),
     'nothing selected is the empty toolset, and the step says so',
@@ -360,7 +373,7 @@ export async function createAgentInWizard(
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 4: Review = agent-manager's dry run, then Deploy ---------------
-  await expect(page.getByText('Step 4 of 4: Review')).toBeVisible();
+  await expectWizardStep(page, 'Review');
   await expect(page.getByText(agentSlug).first()).toBeVisible();
   const deploy = page.getByRole('button', { name: 'Deploy agent' }).first();
   await expect(

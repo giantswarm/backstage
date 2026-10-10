@@ -2,6 +2,7 @@ import {
   createAgentInWizard,
   deleteAgentInPortal,
   expect,
+  expectWizardStep,
   open,
   startSessionOnReadyAgent,
   test,
@@ -35,16 +36,13 @@ test('agent lifecycle: a system prompt past the limit stays on Details', async (
   admin,
 }) => {
   await open(admin, '/agent-platform/agents/new');
-  await expect(admin.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   const field = admin.getByRole('textbox', { name: 'System prompt' });
   await field.fill('a'.repeat(20001));
   await expect(admin.getByText('20,001 / 20,000 characters')).toBeVisible();
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await admin.getByRole('button', { name: 'Continue' }).first().click();
-  await expect(
-    admin.getByText('Step 1 of 4: Details'),
-    'a prompt past the limit never reaches the dry run',
-  ).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   await expect(
     admin
       .getByText(/System prompt is 20,001 characters; the limit is 20,000/)

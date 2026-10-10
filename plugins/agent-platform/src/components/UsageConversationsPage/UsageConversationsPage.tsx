@@ -1,6 +1,7 @@
 import { Content } from '@backstage/core-components';
 import { Flex } from '@backstage/ui';
 import { AgentUsageSection } from '../AgentUsageSection';
+import { UsageColumn } from '../UsageColumn';
 
 /**
  * The session-level half of the Usage tab: sessions, turns, tool calls and an
@@ -14,14 +15,17 @@ import { AgentUsageSection } from '../AgentUsageSection';
  *
  * A shell, deliberately: `AgentUsageSection` owns every state, including the
  * unsecure-mode case where kagent resolves all callers to one built-in user
- * and the numbers stop being personal.
+ * and the numbers stop being personal — and the screen-level time window,
+ * which it narrows the backend's fixed-window answer by.
  */
 export function UsageConversationsPage() {
   return (
     <Content>
-      <Flex direction="column" gap="6" style={{ maxWidth: 1024 }}>
-        <AgentUsageSection />
-      </Flex>
+      <UsageColumn>
+        <Flex direction="column" gap="6">
+          <AgentUsageSection />
+        </Flex>
+      </UsageColumn>
     </Content>
   );
 }

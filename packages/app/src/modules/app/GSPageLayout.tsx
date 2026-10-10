@@ -10,6 +10,7 @@ import type { HeaderTab } from '@backstage/ui';
 import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
+  usePageHeaderOwned,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -73,7 +74,13 @@ function PageLayoutWithHeader(props: PageLayoutProps & { appTitle: string }) {
   // (`useProvidePageHeaderActions`, e.g. a tab's "New agent" button) come and
   // go with it. Both render, the page's first: a section-wide control must
   // not vanish because a tab registered a button.
-  const dynamicActions = usePageHeaderActionsSlot();
+  //
+  // Content that renders the slot itself (`WizardFrame`, `ShellPage`) claims
+  // the page header; its registered actions then render where it draws them —
+  // a wizard step's footer — and not in this header too.
+  const owned = usePageHeaderOwned();
+  const slotActions = usePageHeaderActionsSlot();
+  const dynamicActions = owned ? null : slotActions;
   const staticActions = headerActions?.filter(Boolean) ?? [];
   const customActions =
     staticActions.length > 0 || dynamicActions

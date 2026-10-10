@@ -63,30 +63,31 @@ describe('CustomizeAgentsPanel', () => {
     };
   });
 
-  it('shows a card per agent, grouped by organization, linking to the agent', async () => {
+  it('shows a row per agent with its organization and state, linking to the agent', async () => {
     await renderPanel();
 
-    expect(
-      screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent),
-    ).toEqual(['engineering', 'support']);
-    const link = screen.getByRole('link', { name: 'Support triage' });
-    const card = link.closest('article') as HTMLElement;
-    expect(link).toHaveAttribute(
-      'href',
+    // One flat table — the Connectors tab's presentation — instead of
+    // per-organization card sections: the organization is a column.
+    const table = screen.getByRole('grid');
+    const triageRow = within(table)
+      .getByText('Support triage')
+      .closest('tr') as HTMLElement;
+    expect(triageRow).toHaveAttribute(
+      'data-href',
       '/agent-platform/agents/golem/support/triage',
     );
-    expect(within(card).getByText('Ready')).toBeInTheDocument();
-    expect(within(card).getByText('Sonnet 4.5')).toBeInTheDocument();
+    expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
+    expect(within(triageRow).getByText('support')).toBeInTheDocument();
+    expect(within(triageRow).getByText('Ready')).toBeInTheDocument();
+    expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
     expect(
-      within(card).getByText('2 skills · 2 connectors'),
+      within(triageRow).getByText('2 skills · 2 connectors'),
     ).toBeInTheDocument();
-    expect(
-      within(
-        screen
-          .getByRole('link', { name: 'Release notes' })
-          .closest('article') as HTMLElement,
-      ).getByText('Failed'),
-    ).toBeInTheDocument();
+    const notesRow = within(table)
+      .getByText('Release notes')
+      .closest('tr') as HTMLElement;
+    expect(within(notesRow).getByText('engineering')).toBeInTheDocument();
+    expect(within(notesRow).getByText('Failed')).toBeInTheDocument();
   });
 
   it('narrows to the organization and the search', async () => {

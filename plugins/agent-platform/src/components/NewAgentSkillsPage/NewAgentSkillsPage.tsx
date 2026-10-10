@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Accordion,
@@ -9,8 +8,6 @@ import {
   AccordionTrigger,
   Alert,
   Button,
-  Card,
-  CardBody,
   Flex,
   SearchField,
   Text,
@@ -20,6 +17,7 @@ import {
   LoadingIndicator,
   matchesQuery,
   useProvidePageHeaderActions,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newAgentRouteRef, newAgentToolsRouteRef } from '../../routes';
@@ -32,6 +30,7 @@ import {
   skillId,
 } from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
+import { AgentWizardFrame } from '../AgentWizardFrame';
 import {
   SelectableCard,
   SelectableCardGrid,
@@ -40,19 +39,6 @@ import {
 } from '../SelectableCard';
 
 const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  stepLabel: {
-    marginBottom: theme.spacing(0.5),
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
   // bui gives an expanded panel 4px of padding, which leaves the first row of
   // cards crowding the repo it belongs to. A margin rather than more padding,
   // because the panel's own rule is the more specific one -- and scoped to the
@@ -75,10 +61,6 @@ const useStyles = makeStyles(theme => ({
   subgroupHeading: {
     marginTop: theme.spacing(2),
     marginBottom: theme.spacing(1),
-  },
-  footerNote: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
   },
 }));
 
@@ -253,7 +235,6 @@ function GroupedSkills({
 }
 
 export function NewAgentSkillsPage() {
-  const classes = useStyles();
   const navigate = useNavigate();
   const newAgentLink = useRouteRef(newAgentRouteRef);
   const toolsLink = useRouteRef(newAgentToolsRouteRef);
@@ -301,25 +282,24 @@ export function NewAgentSkillsPage() {
     [visibleSkills],
   );
 
+  // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
-      <Flex gap="2">
-        <Button
-          variant="tertiary"
-          onPress={() => newAgentLink && navigate(newAgentLink())}
-        >
-          Back
-        </Button>
-        <Button
-          variant="primary"
-          onPress={() => toolsLink && navigate(toolsLink())}
-        >
-          Continue
-        </Button>
-      </Flex>
+      <Button
+        variant="primary"
+        onPress={() => toolsLink && navigate(toolsLink())}
+      >
+        Continue
+      </Button>
     ),
-    [newAgentLink, toolsLink, navigate],
+    [toolsLink, navigate],
   );
+
+  const onBack = useCallback(() => {
+    if (newAgentLink) {
+      navigate(newAgentLink());
+    }
+  }, [newAgentLink, navigate]);
 
   // Guarded like NewAgentReviewPage: when this render only produces a redirect,
   // pushing this step's actions into the shared section header would flash
@@ -342,127 +322,96 @@ export function NewAgentSkillsPage() {
   }
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          className={classes.stepLabel}
-        >
-          Step 2 of 4: Skills
-        </Text>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Select skills
-        </Text>
-        <Text as="p" className={classes.intro}>
-          Packaged instructions the agent can reuse for specific kinds of tasks,
-          discovered from the configured skill repositories. Each skill is
-          pinned to the commit shown on its card — the head of its repository
-          when it was discovered — and stays there until you update it. Optional
-          — you can continue without selecting any.
-        </Text>
+    <AgentWizardFrame step="skills" onBack={onBack}>
+      <WizardStepHeading title="Select skills">
+        Packaged instructions the agent can reuse for specific kinds of tasks,
+        discovered from the configured skill repositories. Each skill is pinned
+        to the commit shown on its card — the head of its repository when it was
+        discovered — and stays there until you update it. Optional — you can
+        continue without selecting any.
+      </WizardStepHeading>
 
-        <Flex direction="column" gap="4">
-          <Card>
-            <CardBody>
-              <Flex direction="column" gap="3">
-                {isLoading && skills.length === 0 && (
-                  <LoadingIndicator label="Discovering skills…" />
-                )}
+      <Flex direction="column" gap="3">
+        {isLoading && skills.length === 0 && (
+          <LoadingIndicator label="Discovering skills…" />
+        )}
 
-                {error && skills.length === 0 && (
-                  <Alert
-                    status="warning"
-                    title="Couldn't discover skills"
-                    description="The skill repositories couldn't be read. You can still create the agent without skills."
-                  />
-                )}
+        {error && skills.length === 0 && (
+          <Alert
+            status="warning"
+            title="Couldn't discover skills"
+            description="The skill repositories couldn't be read. You can still create the agent without skills."
+          />
+        )}
 
-                {failedRepositories.length > 0 && (
-                  <Alert
-                    status="warning"
-                    title="Some skill repositories couldn't be read"
-                    description={`Skipped: ${failedRepositories.join(', ')}.`}
-                  />
-                )}
+        {failedRepositories.length > 0 && (
+          <Alert
+            status="warning"
+            title="Some skill repositories couldn't be read"
+            description={`Skipped: ${failedRepositories.join(', ')}.`}
+          />
+        )}
 
-                {truncated && (
-                  <Alert
-                    status="warning"
-                    title="Skill list may be incomplete"
-                    description="A repository was too large to list fully (or a skill couldn't be read), so some skills may be missing."
-                  />
-                )}
+        {truncated && (
+          <Alert
+            status="warning"
+            title="Skill list may be incomplete"
+            description="A repository was too large to list fully (or a skill couldn't be read), so some skills may be missing."
+          />
+        )}
 
-                {!isLoading && !error && skills.length === 0 && (
-                  <Alert
-                    status="info"
-                    title="No skills found"
-                    description="No SKILL.md files were found in the configured repositories."
-                  />
-                )}
+        {!isLoading && !error && skills.length === 0 && (
+          <Alert
+            status="info"
+            title="No skills found"
+            description="No SKILL.md files were found in the configured repositories."
+          />
+        )}
 
-                {skills.length > 0 && (
-                  <>
-                    <Flex
-                      align="center"
-                      justify="between"
-                      gap="2"
-                      style={{ flexWrap: 'wrap' }}
-                    >
-                      <Flex grow basis="240px" direction="column">
-                        <SearchField
-                          aria-label="Search skills"
-                          placeholder="Search by name, description, or path…"
-                          value={query}
-                          onChange={setQuery}
-                        />
-                      </Flex>
-                      {/* The only place the step reports its own output: a
-                          search can hide every selected card, and the review
-                          summary lists them only inside the values YAML. */}
-                      <Text variant="body-small" color="secondary">
-                        {selectedIds.size} selected
-                      </Text>
-                    </Flex>
-
-                    {visibleSkills.length > 0 ? (
-                      <GroupedSkills
-                        groups={groups}
-                        query={trimmed}
-                        selectedIds={selectedIds}
-                        onToggle={toggleSkill}
-                      />
-                    ) : (
-                      <Text color="secondary">
-                        No skills match &quot;{trimmed}&quot;.
-                      </Text>
-                    )}
-                  </>
-                )}
+        {skills.length > 0 && (
+          <>
+            <Flex
+              align="center"
+              justify="between"
+              gap="2"
+              style={{ flexWrap: 'wrap' }}
+            >
+              <Flex grow basis="240px" direction="column">
+                <SearchField
+                  aria-label="Search skills"
+                  placeholder="Search by name, description, or path…"
+                  value={query}
+                  onChange={setQuery}
+                />
               </Flex>
-            </CardBody>
-          </Card>
+              {/* The only place the step reports its own output: a
+                  search can hide every selected card, and the review
+                  summary lists them only inside the values YAML. */}
+              <Text variant="body-small" color="secondary">
+                {selectedIds.size} selected
+              </Text>
+            </Flex>
 
-          <Card>
-            <CardBody>
-              <Flex direction="column" gap="3">
-                <Text as="p" color="secondary" className={classes.footerNote}>
-                  The next step chooses the agent's tools — the toolset it can
-                  discover and call through the gateway.
-                </Text>
-                {actions}
-              </Flex>
-            </CardBody>
-          </Card>
-        </Flex>
-      </div>
-    </Content>
+            {visibleSkills.length > 0 ? (
+              <GroupedSkills
+                groups={groups}
+                query={trimmed}
+                selectedIds={selectedIds}
+                onToggle={toggleSkill}
+              />
+            ) : (
+              <Text color="secondary">
+                No skills match &quot;{trimmed}&quot;.
+              </Text>
+            )}
+          </>
+        )}
+      </Flex>
+
+      <Text as="p" color="secondary">
+        The next step chooses the agent's tools — the toolset it can discover
+        and call through the gateway.
+      </Text>
+    </AgentWizardFrame>
   );
 }

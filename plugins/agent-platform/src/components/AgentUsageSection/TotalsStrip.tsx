@@ -41,10 +41,19 @@ const useStyles = makeStyles((theme: Theme) => ({
  * "nothing was priced" and "nothing was spent" are different facts — and a
  * skeleton rather than either while the rate is still being fetched, because
  * "not yet" is a third thing again.
+ *
+ * **Narrowed windows**: the screen's time control can ask for fewer days than
+ * the backend's fixed fan-out window. Turns and tokens re-total from the daily
+ * buckets, but the backend reports sessions, tool calls and the reported cost
+ * only over its full window — so with `narrowedFromDays` set those render `—`
+ * ("not knowable for this window", the same meaning the em dash carries
+ * everywhere else here) rather than full-window numbers under a narrower
+ * label, and the reported-cost stat stays out entirely.
  */
 export function TotalsStrip({
   totals,
   windowDays,
+  narrowedFromDays,
   rates,
   isRateLoading,
   costBasis,
@@ -53,6 +62,11 @@ export function TotalsStrip({
   totals: SessionUsageTotals;
   /** The window the totals cover, as the response reports it. */
   windowDays: number;
+  /**
+   * Set when `windowDays` is a client-side cut of the backend's own window:
+   * the backend's window, for the hints on the figures that cannot be re-cut.
+   */
+  narrowedFromDays?: number;
   rates?: TokenRates;
   /** The rate's two Mimir queries are still in flight. */
   isRateLoading?: boolean;
@@ -64,12 +78,19 @@ export function TotalsStrip({
   const classes = useStyles();
   const windowNote = `in the last ${windowDays} days`;
   const spend = sessionSpend(totals, rates);
+  const narrowed = narrowedFromDays !== undefined;
+  const notNarrowable = (figure: string) =>
+    `kagent reports ${figure} only over its full ${narrowedFromDays}-day window; they cannot be re-cut to ${windowDays} days here. Select ${narrowedFromDays} days to see them.`;
   return (
     <div className={classes.strip}>
       <Stat
         label="Sessions"
-        value={formatCount(totals.sessions)}
-        hint={`Sessions with at least one turn ${windowNote}.`}
+        value={narrowed ? '—' : formatCount(totals.sessions)}
+        hint={
+          narrowed
+            ? notNarrowable('session counts')
+            : `Sessions with at least one turn ${windowNote}.`
+        }
       />
       <Stat
         label="Turns"
@@ -88,8 +109,12 @@ export function TotalsStrip({
       />
       <Stat
         label="Tool calls"
-        value={formatCount(totals.toolCalls)}
-        hint="Tools the agents called in these turns. A hand-off to another agent is not counted as one."
+        value={narrowed ? '—' : formatCount(totals.toolCalls)}
+        hint={
+          narrowed
+            ? notNarrowable('tool-call counts')
+            : 'Tools the agents called in these turns. A hand-off to another agent is not counted as one.'
+        }
       />
       {/* A skeleton, not an em dash, while the rate is in flight. The counts
           beside it come from kagent and land first, so an em dash here reads
@@ -112,7 +137,7 @@ export function TotalsStrip({
           the turns that reported one. Absent means not reported, so a window
           with none shows no stat rather than "$0.00". Stays in USD — it is
           what the runtime said, not a figure we price. */}
-      {spend.reportedUsd !== undefined && (
+      {!narrowed && spend.reportedUsd !== undefined && (
         <Stat
           label="Reported cost"
           value={formatUsd(spend.reportedUsd)}

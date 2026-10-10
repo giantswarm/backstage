@@ -18,16 +18,11 @@ import {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+
 import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentToolsPage } from './NewAgentToolsPage';
-
-// Header actions land in the shared plugin header, outside this tree; the page
-// renders the same actions in its footer card, which is what is asserted.
-jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  useProvidePageHeaderActions: jest.fn(),
-}));
 
 // No skill repositories: the Tools step is step 2 of 3 and "Back" is step 1.
 jest.mock('../../hooks/useSkillCatalog', () => ({
@@ -385,12 +380,16 @@ async function renderStep(
   });
   const tree = (
     <QueryClientProvider client={queryClient}>
-      <NewAgentFormProvider>
-        <Seed>
-          <NewAgentToolsPage />
-          <ToolsetProbe />
-        </Seed>
-      </NewAgentFormProvider>
+      {/* The wizard frame's footer renders the actions the step registers, so
+          the slot provider the page routes mount is mounted here too. */}
+      <PageHeaderActionsProvider>
+        <NewAgentFormProvider>
+          <Seed>
+            <NewAgentToolsPage />
+            <ToolsetProbe />
+          </Seed>
+        </NewAgentFormProvider>
+      </PageHeaderActionsProvider>
     </QueryClientProvider>
   );
   return renderInTestApp(
@@ -458,7 +457,18 @@ describe('NewAgentToolsPage', () => {
     await renderStep({ api });
     const user = userEvent.setup();
 
-    expect(screen.getByText('Step 2 of 3: Tools')).toBeInTheDocument();
+    // Without skill repositories the step strip skips Skills, and Tools is
+    // the current (second) step.
+    const strip = screen.getByRole('list', { name: 'Steps' });
+    expect(
+      within(strip)
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['Details', '2Tools', '3Review']);
+    expect(within(strip).getByText('Tools').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
     expect(toolsetOutput()).toBe('');
     expect(continueButton()).toBeEnabled();
     expect(

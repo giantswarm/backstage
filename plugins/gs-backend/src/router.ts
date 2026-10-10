@@ -14,6 +14,10 @@ import {
   parseRepoUrl,
 } from './agentSkills/discoverAgentSkills';
 import {
+  discoverAgentSkillsFromGit,
+  GitFetchError,
+} from './agentSkills/discoverAgentSkillsFromGit';
+import {
   createSkillPullRequest,
   GITHUB_TOKEN_HEADER,
   SKILL_NAME_RE,
@@ -266,14 +270,26 @@ export async function createRouter({
   /**
    * GET /agent-skills
    *
-   * Discovers agent skills in a GitHub repository by finding every `SKILL.md`
+   * Discovers agent skills in a git repository by finding every `SKILL.md`
    * file and reading its `name`/`description` frontmatter, at the head commit
    * of the ref. Each skill maps to a chart `skills[]` entry pinned to that
    * commit (`{ name, path, git: { url, commit } }`).
    *
+   * Two providers, chosen by the repository's host:
+   * - github.com URLs go through the GitHub REST API (no clone; subject to
+   *   GitHub's API rate limit — 60/h unauthenticated — with precise wording
+   *   when it bites). Any github.com repository may be asked for.
+   * - Every other http(s) URL is read over the plain git protocol (a depth-1
+   *   clone, no REST API and no API rate limit) — a Gitea in a lab cluster,
+   *   any git host. To keep the backend from cloning arbitrary URLs a caller
+   *   names (it can reach cluster-internal hosts), a non-GitHub URL must be
+   *   one of the configured `agentPlatform.skills.repositories`.
+   *
    * Query parameters:
-   * - repoUrl: The github.com repository URL (https://github.com/<owner>/<repo>)
-   * - ref: Optional git ref (branch/tag/SHA); defaults to the default branch
+   * - repoUrl: The repository URL (https://github.com/<owner>/<repo>, or a
+   *   configured http(s) git URL)
+   * - ref: Optional git ref (branch; for GitHub also a tag/SHA); defaults to
+   *   the default branch
    *
    * Returns:
    * - skills: Array of { name, description, repoUrl, path, ref, commit }
@@ -286,8 +302,8 @@ export async function createRouter({
       repoUrl: z
         .string()
         .url()
-        .refine(u => u.startsWith('https://github.com/'), {
-          message: 'Only github.com repository URLs are allowed',
+        .refine(u => /^https?:\/\//.test(u), {
+          message: 'Only http(s) repository URLs are allowed',
         }),
       ref: z.string().optional(),
     });
@@ -297,20 +313,43 @@ export async function createRouter({
     }
 
     const { repoUrl, ref } = parsed.data;
+    const isGitHub = repoUrl.toLowerCase().startsWith('https://github.com/');
+
+    if (!isGitHub) {
+      // Only the configured sources: the generic provider clones whatever URL
+      // it is handed, and this backend can reach hosts the browser cannot.
+      const repositories =
+        config.getOptionalStringArray('agentPlatform.skills.repositories') ??
+        [];
+      const normalize = (url: string) =>
+        url
+          .trim()
+          .replace(/\/+$/, '')
+          .replace(/\.git$/i, '')
+          .toLowerCase();
+      const target = normalize(repoUrl);
+      if (!repositories.some(url => normalize(url) === target)) {
+        throw new InputError(
+          `${repoUrl} is not one of the configured skill repositories; only github.com repositories can be discovered ad hoc`,
+        );
+      }
+    }
 
     try {
-      const result = await discoverAgentSkills({
-        repoUrl,
-        ref,
-        githubCredentialsProvider,
-      });
+      const result = isGitHub
+        ? await discoverAgentSkills({
+            repoUrl,
+            ref,
+            githubCredentialsProvider,
+          })
+        : await discoverAgentSkillsFromGit({ repoUrl, ref });
       res.json(result);
     } catch (error) {
-      // Forward the upstream GitHub status (repo not found → 404, rate limit →
-      // 403/429) rather than letting it surface as a 500 (which the sibling
-      // /github/raw-content route also avoids, keeping Sentry quiet for these
-      // expected outcomes).
-      if (error instanceof GitHubApiError) {
+      // Forward the upstream status (repo not found → 404, rate limit →
+      // 403/429, unreachable git host → 502) rather than letting it surface
+      // as a 500 (which the sibling /github/raw-content route also avoids,
+      // keeping Sentry quiet for these expected outcomes).
+      if (error instanceof GitHubApiError || error instanceof GitFetchError) {
         res.status(error.status).json({
           error: { message: `Failed to discover skills: ${error.message}` },
         });

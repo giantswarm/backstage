@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import type { Meta, StoryObj } from '@storybook/react';
-import { Button, Text } from '@backstage/ui';
+import { Button } from '@backstage/ui';
 import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
 } from '../PageHeaderActions';
-import { FullScreenWizardFrame } from './FullScreenWizardFrame';
+import { WizardFrame } from './WizardFrame';
+import { WizardStepHeading } from './WizardStepHeading';
 import { componentDocs } from '../../storybook/docs';
 
 function ContinueButton() {
@@ -18,8 +19,8 @@ function ContinueButton() {
 }
 
 const meta = {
-  title: 'Components/FullScreenWizardFrame',
-  component: FullScreenWizardFrame,
+  title: 'Components/WizardFrame',
+  component: WizardFrame,
   tags: ['autodocs'],
   args: {
     title: 'New agent',
@@ -34,19 +35,19 @@ const meta = {
     closeHref: '#customize',
     onBack: () => {},
     children: (
-      <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 32px' }}>
-        <Text as="h2" variant="title-small">
-          Choose individual tools
-        </Text>
+      <>
+        <WizardStepHeading title="Choose individual tools">
+          The toolset bounds which of the gateway’s tools this agent can
+          discover and call.
+        </WizardStepHeading>
         <ContinueButton />
-      </div>
+      </>
     ),
   },
-  // A transformed ancestor contains the frame's fixed position in the canvas.
   decorators: [
     Story => (
       <PageHeaderActionsProvider>
-        <div style={{ height: 560, transform: 'translateZ(0)' }}>
+        <div style={{ height: 560, overflowY: 'auto' }}>
           <Story />
         </div>
       </PageHeaderActionsProvider>
@@ -58,20 +59,20 @@ const meta = {
       description: {
         component: componentDocs({
           summary:
-            'A create flow over the whole viewport: Close, the title and a ' +
-            'step strip on top, the step in the middle, Cancel, Back and the ' +
-            'step’s own buttons at the bottom.',
+            'A create flow in the content area — the shell’s rail stays ' +
+            'visible: Close, the title and a step strip on top, the step in a ' +
+            'centered column, Cancel, Back and the step’s own buttons in a ' +
+            'sticky footer.',
           whenToUse:
-            'For a create flow inside the agent-platform shell (add a model, ' +
-            'add a connector, a new agent’s tools). The step registers its ' +
-            'primary and secondary buttons with `useProvidePageHeaderActions`; ' +
-            'Escape leaves to `closeHref`.',
+            'For any create flow (new agent, add connector, add skill, add ' +
+            'model). The step registers its primary and secondary buttons ' +
+            'with `useProvidePageHeaderActions`.',
           migration: 'mixed',
         }),
       },
     },
   },
-} satisfies Meta<typeof FullScreenWizardFrame>;
+} satisfies Meta<typeof WizardFrame>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -83,5 +84,10 @@ export const FirstStep: Story = {
 };
 
 export const WithoutSteps: Story = {
-  args: { steps: undefined, title: 'Add model', context: 'Customize / Models' },
+  args: {
+    steps: undefined,
+    title: 'Add model',
+    context: 'Customize / Models',
+    width: 'medium',
+  },
 };

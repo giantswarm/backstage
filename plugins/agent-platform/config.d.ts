@@ -30,7 +30,7 @@ export interface Config {
     /** Skill discovery for the create flow. */
     skills?: {
       /**
-       * GitHub repositories to discover agent skills from. Every `SKILL.md`
+       * Git repositories to discover agent skills from. Every `SKILL.md`
        * file in a repo defines one skill (its containing directory is the
        * skill root); the frontmatter `name`/`description` are shown in the
        * picker. A selected skill is pinned to the head commit of the
@@ -38,6 +38,14 @@ export interface Config {
        * `skills[]` entry (`{ name, path, git: { url, commit } }`) of the
        * agent's chart values. The frontend reads the list from the signed-in
        * config.
+       *
+       * A `https://github.com/<owner>/<repo>` entry is read through the
+       * GitHub REST API (authenticated when a GitHub integration covers it;
+       * otherwise on GitHub's anonymous 60-requests-an-hour limit). Any other
+       * http(s) entry is read over the plain git protocol — a depth-1 clone,
+       * no REST API and no API rate limit — so a lab-local git server (Gitea,
+       * `git http-backend`) works; the URL must be one agents can also fetch
+       * at boot, since it travels into the chart's `git.url` unchanged.
        */
       repositories?: string[];
     };

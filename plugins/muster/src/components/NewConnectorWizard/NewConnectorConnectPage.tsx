@@ -4,7 +4,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  useProvidePageHeaderActions,
+  WizardStepHeading,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { newMcpServerAuthRouteRef } from '../../routes';
 import { useMusterInstance } from '../MusterInstanceProvider';
@@ -16,12 +19,6 @@ import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
-  heading: {
-    margin: 0,
-    fontSize: 24,
-    fontWeight: 500,
-    letterSpacing: -0.2,
-  },
   found: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -118,7 +115,6 @@ function DetectionStatus({
  * per-person visibility to map it to, so the wizard does not pretend to ask.
  */
 export function NewConnectorConnectPage() {
-  const classes = useStyles();
   const navigate = useNavigate();
   const signInLink = useRouteRef(newMcpServerAuthRouteRef);
   const { activeInstallation } = useMusterInstance();
@@ -182,16 +178,13 @@ export function NewConnectorConnectPage() {
 
   return (
     <ConnectorWizardFrame step="connect">
-      <Flex direction="column" gap="2">
-        <h2 className={classes.heading}>
-          {registeredName ? 'Connection' : 'Connect an app'}
-        </h2>
-        <Text as="p" color="secondary">
-          {registeredName
-            ? 'Where the connector is reached. Saving updates the registered connector in place.'
-            : 'A connector gives agents access to another app through its MCP server. Paste the server address you got from the app or your admin.'}
-        </Text>
-      </Flex>
+      <WizardStepHeading
+        title={registeredName ? 'Connection' : 'Connect an app'}
+      >
+        {registeredName
+          ? 'Where the connector is reached. Saving updates the registered connector in place.'
+          : 'A connector gives agents access to another app through its MCP server. Paste the server address you got from the app or your admin.'}
+      </WizardStepHeading>
 
       <ActiveInstallationNote />
 

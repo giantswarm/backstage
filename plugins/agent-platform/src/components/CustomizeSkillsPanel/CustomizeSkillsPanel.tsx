@@ -1,6 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Card, CardBody, Flex, Grid, Text } from '@backstage/ui';
+import {
+  Alert,
+  ButtonLink,
+  CellText,
+  ColumnConfig,
+  Flex,
+  Table,
+  Text,
+} from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   EmptyStateCard,
@@ -23,13 +31,22 @@ import {
   skillDetailPath,
 } from '../../lib/skills';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
-import { skillsRouteRef } from '../../routes';
-import { AddSkillDialog } from '../AddSkillDialog';
+import { newSkillRouteRef, skillsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 
 export type CustomizeSkillsPanelProps = {
   search: string;
+};
+
+type Row = {
+  id: string;
+  name: string;
+  description?: string;
+  source: string;
+  usedBy?: string;
+  /** The skill's detail page; a skill outside github.com has none. */
+  href?: string;
 };
 
 function plural(count: number, noun: string): string {
@@ -86,19 +103,20 @@ function UnreadRepositoriesAlert({
 
 /**
  * The Skills tab of the shell's Customize screen: the skills discovered in
- * the configured repositories, the ones the agents in scope use most first.
- * Must be mounted inside a `CustomizeDataProvider`.
+ * the configured repositories as flat rows — the Connectors tab's
+ * presentation — the ones the agents in scope use most first, each row
+ * opening the skill's page. Must be mounted inside a `CustomizeDataProvider`.
  */
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillsRoute = useRouteRef(skillsRouteRef);
-  // The dialog's target repositories: the same signed-in-config list the
+  const newSkillRoute = useRouteRef(newSkillRouteRef);
+  // The add form's target repositories: the same signed-in-config list the
   // catalog is discovered from.
   const { config } = useSignedInConfig();
   const repositories =
     config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-  const [isAddOpen, setAddOpen] = useState(false);
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const ranked = useMemo(
     () => rankSkills(searchSkills(skillCatalog.skills, search), usage),
@@ -108,6 +126,46 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     () => skillsTotalLine(skillCatalog.skills),
     [skillCatalog.skills],
   );
+  const tableRows = useMemo<Row[]>(
+    () =>
+      ranked.map(skill => {
+        const id = canonicalSkillId(skill);
+        const detailPath = skillDetailPath(skill);
+        return {
+          id,
+          name: skill.name,
+          ...(skill.description ? { description: skill.description } : {}),
+          source: skillSource(skill),
+          ...(agentsLoading ? {} : { usedBy: usedByLabel(usage.get(id) ?? 0) }),
+          ...(skillsRoute && detailPath
+            ? { href: `${skillsRoute()}/${detailPath}` }
+            : {}),
+        };
+      }),
+    [ranked, agentsLoading, usage, skillsRoute],
+  );
+
+  const columns: ColumnConfig<Row>[] = [
+    {
+      id: 'name',
+      label: 'Skill',
+      isRowHeader: true,
+      defaultWidth: '3fr',
+      cell: row => <CellText title={row.name} description={row.description} />,
+    },
+    {
+      id: 'source',
+      label: 'Source',
+      defaultWidth: '1.4fr',
+      cell: row => <CellText title={row.source} />,
+    },
+    {
+      id: 'usedBy',
+      label: 'Used by',
+      defaultWidth: '1.2fr',
+      cell: row => <CellText title={row.usedBy ?? ''} />,
+    },
+  ];
 
   const anyListed = skillCatalog.skills.length > 0;
   const unread =
@@ -168,53 +226,16 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
             </Text>
           </Text>
         )}
-        <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
-          {ranked.map(skill => {
-            const id = canonicalSkillId(skill);
-            const detailPath = skillDetailPath(skill);
-            const cardBody = (
-              <CardBody>
-                <Flex direction="column" gap="3">
-                  <Text as="h3" variant="body-large" weight="bold">
-                    {skill.name}
-                  </Text>
-                  {skill.description && (
-                    <Text as="p" variant="body-medium" color="secondary">
-                      {skill.description}
-                    </Text>
-                  )}
-                  <Flex justify="between" gap="2">
-                    <Text variant="body-small" color="secondary">
-                      {skillSource(skill)}
-                    </Text>
-                    {!agentsLoading && (
-                      <Text variant="body-small" color="secondary">
-                        {usedByLabel(usage.get(id) ?? 0)}
-                      </Text>
-                    )}
-                  </Flex>
-                </Flex>
-              </CardBody>
-            );
-            // Each card opens the skill's page; a skill outside github.com (or
-            // with the route unbound) has no page and stays a plain card.
-            return (
-              <Grid.Item key={id}>
-                {skillsRoute && detailPath ? (
-                  <Card
-                    href={`${skillsRoute()}/${detailPath}`}
-                    label={skill.name}
-                    style={{ height: '100%' }}
-                  >
-                    {cardBody}
-                  </Card>
-                ) : (
-                  <Card style={{ height: '100%' }}>{cardBody}</Card>
-                )}
-              </Grid.Item>
-            );
-          })}
-        </Grid.Root>
+        <Table<Row>
+          columnConfig={columns}
+          data={tableRows}
+          pagination={{ type: 'none' }}
+          rowConfig={{
+            // Each row opens the skill's page; a skill outside github.com
+            // (or with the route unbound) has no page and stays plain.
+            getHref: row => row.href,
+          }}
+        />
       </Flex>
     );
   }
@@ -222,25 +243,22 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   return (
     <Flex direction="column" gap="4">
       {/* Add skill = a pull request to a source repository, opened as the
-          person (G16 B) — offered whenever a repository to target exists. */}
-      {!skillCatalog.isLoading && repositories.length > 0 && (
+          person (G16 B) — offered whenever a repository to target exists.
+          A page of its own (`/agent-platform/skills/new`), in the same
+          in-content wizard frame as the other create flows. */}
+      {!skillCatalog.isLoading && repositories.length > 0 && newSkillRoute && (
         <Flex justify="end">
-          <Button
+          <ButtonLink
+            href={newSkillRoute()}
             variant="primary"
             iconStart={<AddIcon />}
-            onPress={() => setAddOpen(true)}
           >
             Add skill
-          </Button>
+          </ButtonLink>
         </Flex>
       )}
       {notes}
       {body}
-      <AddSkillDialog
-        repositories={repositories}
-        isOpen={isAddOpen}
-        onOpenChange={setAddOpen}
-      />
     </Flex>
   );
 }

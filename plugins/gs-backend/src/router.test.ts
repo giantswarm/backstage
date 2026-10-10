@@ -13,6 +13,21 @@ jest.mock('./agentSkills/createSkillPullRequest', () => ({
   ...jest.requireActual('./agentSkills/createSkillPullRequest'),
   createSkillPullRequest: jest.fn(),
 }));
+// Likewise for discovery: which provider the route picks and what it forwards
+// is under test here; each provider has its own suite.
+jest.mock('./agentSkills/discoverAgentSkills', () => ({
+  ...jest.requireActual('./agentSkills/discoverAgentSkills'),
+  discoverAgentSkills: jest.fn(),
+}));
+jest.mock('./agentSkills/discoverAgentSkillsFromGit', () => ({
+  ...jest.requireActual('./agentSkills/discoverAgentSkillsFromGit'),
+  discoverAgentSkillsFromGit: jest.fn(),
+}));
+import { discoverAgentSkills } from './agentSkills/discoverAgentSkills';
+import {
+  discoverAgentSkillsFromGit,
+  GitFetchError,
+} from './agentSkills/discoverAgentSkillsFromGit';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
@@ -291,6 +306,148 @@ describe('GET /installations/versions', () => {
     const response = await request(app).get('/installations/versions');
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('GET /agent-skills', () => {
+  const discovered = {
+    skills: [],
+    ref: 'main',
+    commit: 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1',
+    truncated: false,
+  };
+
+  /** An app with a GitHub and a lab-local git skill source configured. */
+  async function buildDiscoveryApp() {
+    const router = await createRouter({
+      config: makeConfig({
+        agentPlatform: {
+          skills: {
+            repositories: [
+              'https://github.com/giantswarm/skills',
+              'http://gitserver.agent-platform.svc.cluster.local/skills.git',
+            ],
+          },
+        },
+      }),
+      containerRegistry,
+      mimir,
+      githubCredentialsProvider,
+      httpAuth: mockServices.httpAuth(),
+      managementClusterVersions,
+    });
+    const app = express();
+    app.use(router);
+    app.use(
+      (
+        err: Error,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(err.name === 'InputError' ? 400 : 500).json({
+          error: { name: err.name, message: err.message },
+        });
+      },
+    );
+    return app;
+  }
+
+  beforeEach(() => {
+    jest.mocked(discoverAgentSkills).mockReset().mockResolvedValue(discovered);
+    jest
+      .mocked(discoverAgentSkillsFromGit)
+      .mockReset()
+      .mockResolvedValue(discovered);
+  });
+
+  it('sends a github.com repository through the GitHub API provider', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'https://github.com/giantswarm/other-skills' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(discovered);
+    expect(discoverAgentSkills).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoUrl: 'https://github.com/giantswarm/other-skills',
+      }),
+    );
+    expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+  });
+
+  it('sends a configured non-GitHub repository through the git provider', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app).get('/agent-skills').query({
+      repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills.git',
+      ref: 'main',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(discovered);
+    expect(discoverAgentSkillsFromGit).toHaveBeenCalledWith({
+      repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills.git',
+      ref: 'main',
+    });
+    expect(discoverAgentSkills).not.toHaveBeenCalled();
+  });
+
+  it('accepts the configured non-GitHub repository written another way', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app).get('/agent-skills').query({
+      repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills/',
+    });
+
+    expect(response.status).toBe(200);
+    expect(discoverAgentSkillsFromGit).toHaveBeenCalled();
+  });
+
+  it('refuses a non-GitHub repository that is not configured (no ad-hoc clones)', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'http://169.254.169.254/latest/meta-data' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain(
+      'not one of the configured skill repositories',
+    );
+    expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-http(s) URL', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'ftp://example.com/skills' });
+
+    expect(response.status).toBe(400);
+    expect(discoverAgentSkills).not.toHaveBeenCalled();
+    expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+  });
+
+  it("forwards the git provider's refusal with its upstream status", async () => {
+    jest
+      .mocked(discoverAgentSkillsFromGit)
+      .mockRejectedValue(
+        new GitFetchError(502, 'Could not fetch the repository over git'),
+      );
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app).get('/agent-skills').query({
+      repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills.git',
+    });
+
+    expect(response.status).toBe(502);
+    expect(response.body.error.message).toBe(
+      'Failed to discover skills: Could not fetch the repository over git',
+    );
   });
 });
 

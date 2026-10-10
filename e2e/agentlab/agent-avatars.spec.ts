@@ -1,5 +1,5 @@
 import { Response } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, expectWizardStep, open, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -34,7 +34,7 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   // The New agent wizard's live preview requests an avatar for whatever is
   // typed, so the proof needs no agent on the installation.
   await open(admin, '/agent-platform/agents/new');
-  await expect(admin.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   await admin.getByRole('textbox', { name: 'Name' }).fill('Avatar Probe');
   await expect(admin.getByRole('textbox', { name: 'Slug' })).toHaveValue(
     'avatar-probe',
@@ -70,6 +70,6 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   );
   expect(csp, 'no installation host in the policy').not.toMatch(/avatars\./);
 
-  await admin.getByRole('button', { name: 'Cancel' }).first().click();
+  await admin.getByRole('link', { name: 'Cancel' }).click();
   await expect(admin).toHaveURL(/\/agent-platform\/agents$/);
 });

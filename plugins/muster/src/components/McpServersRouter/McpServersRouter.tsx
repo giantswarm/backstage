@@ -63,9 +63,10 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
       <Routes>
         <Route index element={<McpServersPage />} />
         {/* The registration wizard's steps, on the same addresses in both
-            chromes: the shell renders the prototype's full-screen three-step
-            wizard (Connect / Sign-in / Test), classic keeps the four-step
-            pages — the same shell/classic split as the server routes below. */}
+            chromes: the shell renders the prototype's three-step wizard
+            (Connect / Sign-in / Test) in the content area, classic keeps the
+            four-step pages — the same shell/classic split as the server
+            routes below. */}
         <Route
           path="new"
           element={

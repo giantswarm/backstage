@@ -48,11 +48,13 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // `mimirEnabled: false`. Not an error: a standalone installation has no
       // Mimir at all, and the sessions tab still works — which is worth saying,
       // because "no metrics" otherwise reads as the whole page being broken.
+      // "Fleet-wide", because the Overview and Cost views render the reader's
+      // own kagent-derived figures right under this where kagent answered.
       return (
         <Text variant="body-medium" color="secondary">
           {installation} has no observability stack this portal can query, so
-          there are no token or cost figures for it. Your sessions still have
-          their own counts.
+          there are no fleet-wide token or cost figures for it. Your sessions
+          still have their own counts.
         </Text>
       );
 

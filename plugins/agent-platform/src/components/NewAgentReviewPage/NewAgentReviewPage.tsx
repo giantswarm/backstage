@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { dump } from 'js-yaml';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  useProvidePageHeaderActions,
+  WizardStepHeading,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -42,24 +44,12 @@ import {
   newAgentToolsRouteRef,
 } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { AgentWizardFrame } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  stepLabel: {
-    marginBottom: theme.spacing(0.5),
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
   summary: {
     display: 'flex',
     flexWrap: 'wrap',
@@ -67,6 +57,7 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(2, 0),
     borderTop: `1px solid ${theme.palette.divider}`,
     borderBottom: `1px solid ${theme.palette.divider}`,
+    marginTop: theme.spacing(3),
     marginBottom: theme.spacing(4),
   },
   code: {
@@ -383,23 +374,18 @@ export function NewAgentReviewPage() {
 
   const deployLabel = creation.isDeploying ? 'Deploying…' : 'Deploy agent';
 
-  // "Back" goes to the immediately preceding step, which is always the Tools
-  // step.
+  // "Back" (in the frame's footer) goes to the immediately preceding step,
+  // which is always the Tools step.
   const backLink = toolsLink;
-  const stepNumber = hasRepositories ? 4 : 3;
+  const onBack = useCallback(() => {
+    navigate(backLink ? backLink() : '..');
+  }, [backLink, navigate]);
 
-  // Memoized so the header actions slot only updates when the handlers/labels
+  // Memoized so the frame's footer slot only updates when the handlers/labels
   // actually change (see useProvidePageHeaderActions).
   const actions = useMemo(
     () => (
       <Flex gap="2">
-        <Button
-          variant="tertiary"
-          isDisabled={isBusy}
-          onPress={() => navigate(backLink ? backLink() : '..')}
-        >
-          Back to edit
-        </Button>
         {canCommit && (
           <Button
             variant="secondary"
@@ -422,8 +408,6 @@ export function NewAgentReviewPage() {
       isBusy,
       canWrite,
       canCommit,
-      backLink,
-      navigate,
       onCommit,
       onDeploy,
       deployLabel,
@@ -455,25 +439,9 @@ export function NewAgentReviewPage() {
   const valuesYaml = dryRun ? dump(dryRun.manifests.values, YAML_OPTS) : '';
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          className={classes.stepLabel}
-        >
-          Step {stepNumber} of {stepNumber}: Review & deploy
-        </Text>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Create an agent: review and deploy
-        </Text>
-        <Text as="p" color="secondary" className={classes.intro}>
+    <AgentWizardFrame step="review" onBack={onBack}>
+      <div>
+        <WizardStepHeading title="Review and deploy">
           agent-manager composes your configuration into a release of the{' '}
           <span className={classes.code}>agent</span> chart
           {chart ? (
@@ -494,7 +462,7 @@ export function NewAgentReviewPage() {
             </>
           ) : null}
           . What you see below is agent-manager's dry run of exactly that.
-        </Text>
+        </WizardStepHeading>
 
         <div className={classes.summary}>
           <SummaryItem label="Release">
@@ -781,6 +749,6 @@ export function NewAgentReviewPage() {
           )}
         </div>
       </div>
-    </Content>
+    </AgentWizardFrame>
   );
 }

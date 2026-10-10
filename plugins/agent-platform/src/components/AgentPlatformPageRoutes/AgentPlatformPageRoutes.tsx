@@ -85,7 +85,7 @@ function SubPageHeader({ title, path }: { title: string; path: string }) {
  * The page renders without the app's page layout, so the header-actions slot
  * that layout would provide is mounted here: the actions a sub-page registers
  * with `useProvidePageHeaderActions` render in its header. A route that renders
- * its own header (`ShellPage`, `FullScreenWizardFrame`) claims it, and the
+ * its own header (`ShellPage`, `WizardFrame`) claims it, and the
  * sub-page header then stands aside, so the page has one h1 and each action
  * once.
  */

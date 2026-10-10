@@ -14,7 +14,7 @@ import {
   Progress,
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Badge, Button, ButtonIcon, Flex, Text } from '@backstage/ui';
+import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
   Tooltip,
@@ -23,6 +23,7 @@ import {
 } from '@material-ui/core';
 import {
   DateComponent,
+  ShellPage,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -69,7 +70,6 @@ import {
 } from '../SessionsDataProvider/helpers';
 import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
 import { SessionCostPopover } from '../SessionCostPopover';
-import { SessionShareDialog, ShareIcon } from '../SessionShareDialog';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
@@ -165,7 +165,16 @@ function BackToSessions({ children }: { children: ReactNode }) {
 }
 
 /**
- * The page's outer frame: the switcher rail, then the conversation column.
+ * The page's outer frame.
+ *
+ * Inside the agent-platform shell it is the platform-standard page frame
+ * (`ShellPage`, the one All Sessions and Customize use): breadcrumbs reading
+ * "Sessions / Session", the session's name as the h1 at the standard scale,
+ * and the badges beside it. The actions the page registers land in that
+ * header's slot, and the shell's generic "Sessions" sub-page header stands
+ * aside because `ShellPage` claims the page header.
+ *
+ * In classic chrome it is the switcher rail, then the conversation column.
  *
  * A separate component so every one of the page's exits gets it — loading,
  * not-found, unreadable, and the real thing. A session that has been deleted is
@@ -181,18 +190,48 @@ function Shell({
   installation,
   sessionId,
   currentSessionState,
+  title,
+  badges,
+  meta,
   children,
 }: {
   installation: string;
   sessionId: string;
   /** Only the loaded path knows this; the early returns leave it undefined. */
   currentSessionState?: SessionStateEntry;
+  /** The shell header's h1; the exits leave it to the fallback "Session". */
+  title?: ReactNode;
+  /** The shell header's badge row: state, agent, installation. */
+  badges?: ReactNode;
+  /** Muted text at the end of that row: when the session started. */
+  meta?: ReactNode;
   children: ReactNode;
 }) {
   const classes = useStyles();
   const theme = useTheme();
   const agentShell = useAgentShell();
   const showRail = useMediaQuery(theme.breakpoints.up('sm')) && !agentShell;
+  const sessionsRoute = useRouteRef(sessionsRouteRef);
+
+  if (agentShell) {
+    return (
+      <ShellPage
+        // The exits (loading, not found, unreadable) have no name to show;
+        // "Session" keeps the frame honest about where the reader is.
+        title={title ?? 'Session'}
+        // Singular "Session" last: this page is one conversation, and the
+        // linked "Sessions" ancestor is the way back to the list.
+        breadcrumbs={[
+          { label: 'Sessions', href: sessionsRoute?.() },
+          { label: 'Session' },
+        ]}
+        badges={badges}
+        meta={meta}
+      >
+        {children}
+      </ShellPage>
+    );
+  }
 
   return (
     <Content className={classes.page}>
@@ -243,13 +282,17 @@ function describeStopFailure(error: Error | null): string | undefined {
  * tokens-per-second, the owning team, the trigger that started the session, a
  * linked work item, produced results, and evaluation. Please don't re-add them
  * speculatively — there is no data behind them. Cost (estimated + reported) and
- * context-window usage live in the header's `SessionCostPopover`, from the
- * data that does exist.
+ * context-window usage live in the composer's `SessionCostPopover` chip, from
+ * the data that does exist.
  */
 export function SessionDetailPage() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
+  // Which frame this page renders in — see `Shell`. Read here too because the
+  // header's parts live in the `ShellPage` header inside the shell and in the
+  // conversation column in classic chrome.
+  const agentShell = useAgentShell();
 
   // Before the reads, because it gates them: a delete is in flight from this very
   // page, and an interval landing between "kagent accepted the delete" and the
@@ -519,9 +562,6 @@ export function SessionDetailPage() {
 
     return { ...timeline, items };
   }, [timeline, send.pending, send.stream, answerStream]);
-
-  // The share dialog, opened by the icon beside the cost chip.
-  const [isShareOpen, setShareOpen] = useState(false);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -851,6 +891,30 @@ export function SessionDetailPage() {
     );
   }
 
+  /* Cost and memory, per the prototype: one chip in the composer's own
+     controls, so it stays on screen with the docked box however long the
+     conversation gets. Estimated cost is labeled as one and names its basis;
+     reported cost appears only when the runtime reported any; memory is a
+     share only when the model's context window is configured. The details
+     popover opens above the chip. */
+  const costChip = (
+    <SessionCostPopover
+      installation={row.installation}
+      model={row.agentModel}
+      tokens={timeline.tokens}
+      lastTurnTokens={timeline.lastTurnTokens}
+      taskCount={taskCount}
+      estimatedCostUsd={estimatedCostUsd}
+      costBasis={describeCostBasis({
+        tier: rateTier,
+        model: row.agentModel,
+        installation: row.installation,
+        window: rateWindow,
+        tokens: timeline.tokens.total,
+      })}
+    />
+  );
+
   /**
    * Why the composer is not offered, when it is not.
    *
@@ -892,10 +956,15 @@ export function SessionDetailPage() {
    */
   let bottomControl: ReactNode;
   if (composerWithheldReason) {
+    // The chip keeps the session's totals in reach even where there is no box
+    // to carry it — a read-only share still has a cost worth seeing.
     bottomControl = (
-      <Text variant="body-small" color="secondary">
-        {composerWithheldReason}
-      </Text>
+      <Flex align="center" justify="between" gap="2">
+        <Text variant="body-small" color="secondary">
+          {composerWithheldReason}
+        </Text>
+        {costChip}
+      </Flex>
     );
   } else {
     // The composer — and, while the agent is waiting on an answer, the panel
@@ -1001,6 +1070,7 @@ export function SessionDetailPage() {
           restore={send.failed ?? redraft}
           onStop={isConfirming ? undefined : stopTurn}
           isStopping={cancellation.isCancelling}
+          details={costChip}
           newSession={
             offersNewSession
               ? {
@@ -1054,11 +1124,126 @@ export function SessionDetailPage() {
         })
       : undefined;
 
+  /* The header's parts, built once and placed by the frame: in the shell they
+     are the `ShellPage` header's title, badges and meta — the same scale and
+     position every platform page uses — and in classic chrome the conversation
+     column's own header below. */
+
+  /* The underline on hover says "this does something"; it does not say what.
+     Everything else up here is inert text, so without a label the affordance is
+     only findable by clicking a heading on the off chance — which nobody does.
+
+     A real <button>, stripped of its chrome, rather than a click handler on
+     the heading: the title is an editing affordance, and only a button is
+     reachable by keyboard and announced as actionable. Everything visual is
+     inherited — in the shell from `ShellPage`'s h1, in classic chrome from the
+     `Text` inside — so it still reads as the heading it replaces.
+
+     MUI's tooltip rather than bui's: bui wraps react-aria's `TooltipTrigger`,
+     which only wires up its own focusable components, and this trigger is a
+     bare <button> so it can inherit the heading's typography. */
+  const titleButton = (
+    <Tooltip title="Rename session">
+      <button
+        type="button"
+        className={classes.titleButton}
+        onClick={openRename}
+        // The accessible name has to say what pressing this does, since the
+        // visible text is the session's name and says nothing about renaming.
+        // The tooltip is the sighted equivalent of this.
+        aria-label={`Rename session "${sessionTitle}"`}
+      >
+        {agentShell ? (
+          // Bare text, so the button inherits ShellPage's h1 typography — the
+          // platform-standard title scale.
+          sessionTitle
+        ) : (
+          // `as="span"`: Text renders a <p> by default, which is not valid
+          // inside a button.
+          <Text as="span" variant="title-medium">
+            {sessionTitle}
+          </Text>
+        )}
+      </button>
+    </Tooltip>
+  );
+
+  /* The raw A2A state is kept as the label for anything we don't recognise, so
+     a future kagent state shows as itself. The runtime-lost mark is the same
+     one the list and the rail carry; only kagent's own word earns it. */
+  const stateBadges = (
+    <>
+      {state && <Badge size="small">{state.label}</Badge>}
+      {!state && <Badge size="small">no activity</Badge>}
+      {runtimeLoss?.reported && (
+        <Badge size="small" title={RUNTIME_LOST_TITLE}>
+          {RUNTIME_LOST_LABEL}
+        </Badge>
+      )}
+    </>
+  );
+
+  const agentIdentity = (
+    <>
+      {row.agentName && (
+        <Flex align="center" gap="2">
+          <AgentAvatar
+            size="small"
+            purpose="decoration"
+            name={row.agentName}
+            src={avatarUrl ?? ''}
+          />
+          {/* core-components' `Link`, which routes client-side — a bui
+              link would reload the page. */}
+          {agentHref ? (
+            <Link to={agentHref}>
+              {/* bui `Text` sets its own colour, which would leave a
+                  link that doesn't look like one; `inherit` hands it back
+                  to the anchor. `as="span"`: Text renders a <p> by
+                  default. */}
+              <Text
+                as="span"
+                variant="body-medium"
+                style={{ color: 'inherit' }}
+              >
+                {row.agentName}
+              </Text>
+            </Link>
+          ) : (
+            <Text variant="body-medium">{row.agentName}</Text>
+          )}
+        </Flex>
+      )}
+      <Flex align="center" gap="1">
+        <Text variant="body-medium" color="secondary">
+          on
+        </Text>
+        <InstallationChip installation={row.installation} />
+      </Flex>
+    </>
+  );
+
+  /* Absolute, not relative: the list keeps the relative form, where scanning
+     for recency is the point. No last activity and no duration: kagent API v2
+     does not move `updated_at` on a turn, so both would only restate the start
+     (kagent-dev/kagent#2397). */
+  const startedMeta = (
+    <>Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}</>
+  );
+
   return (
     <Shell
       installation={installation}
       sessionId={sessionId}
       currentSessionState={currentSessionState}
+      title={titleButton}
+      badges={
+        <>
+          {stateBadges}
+          {agentIdentity}
+        </>
+      }
+      meta={startedMeta}
     >
       <Flex direction="column" gap="4" className={classes.column}>
         {/* A refresh that failed after the page had loaded. Shown rather than
@@ -1072,131 +1257,25 @@ export function SessionDetailPage() {
           />
         )}
 
-        <Flex direction="column" gap="2">
-          <BackToSessions>← Sessions</BackToSessions>
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            {/* The underline on hover says "this does something"; it does not say
-                what. Everything else on this page is inert text, so without a label
-                the affordance is only findable by clicking a heading on the off
-                chance — which nobody does.
-
-                MUI's tooltip rather than bui's: bui wraps react-aria's
-                `TooltipTrigger`, which only wires up its own focusable components,
-                and this trigger is a bare <button> so it can inherit the heading's
-                typography. */}
-            <Tooltip title="Rename session">
-              <button
-                type="button"
-                className={classes.titleButton}
-                onClick={openRename}
-                // The accessible name has to say what pressing this does, since the
-                // visible text is the session's name and says nothing about
-                // renaming. The tooltip is the sighted equivalent of this.
-                aria-label={`Rename session "${sessionTitle}"`}
-              >
-                {/* `as="span"`: Text renders a <p> by default, which is not valid
-                    inside a button. */}
-                <Text as="span" variant="title-medium">
-                  {sessionTitle}
-                </Text>
-              </button>
-            </Tooltip>
-            {/* The raw A2A state is kept as the label for anything we don't
-                recognise, so a future kagent state shows as itself. */}
-            {state && <Badge size="small">{state.label}</Badge>}
-            {!state && <Badge size="small">no activity</Badge>}
-            {/* The same mark the list and the rail carry, so the session reads
-                the same on the way in as on the page. Only kagent's own word
-                earns it; the interim reading is the notice's. */}
-            {runtimeLoss?.reported && (
-              <Badge size="small" title={RUNTIME_LOST_TITLE}>
-                {RUNTIME_LOST_LABEL}
-              </Badge>
-            )}
-            {/* Cost and memory, per the prototype: one chip in the header with
-                the session's totals behind it. Estimated cost is labeled as
-                one and names its basis; reported cost appears only when the
-                runtime reported any; memory is a share only when the model's
-                context window is configured. The row wraps, so on a phone the
-                chip simply drops to its own line. */}
-            <Flex align="center" gap="1" style={{ marginLeft: 'auto' }}>
-              <SessionCostPopover
-                installation={row.installation}
-                model={row.agentModel}
-                tokens={timeline.tokens}
-                lastTurnTokens={timeline.lastTurnTokens}
-                taskCount={taskCount}
-                estimatedCostUsd={estimatedCostUsd}
-                costBasis={describeCostBasis({
-                  tier: rateTier,
-                  model: row.agentModel,
-                  installation: row.installation,
-                  window: rateWindow,
-                  tokens: timeline.tokens.total,
-                })}
-                agentName={row.agentName || undefined}
-              />
-              {/* Sharing is the owner's act, so a session that arrived here
-                  shared read-only does not offer it — the controller would
-                  refuse the create anyway. */}
-              {!detail.readOnly && (
-                <ButtonIcon
-                  variant="tertiary"
-                  icon={<ShareIcon />}
-                  aria-label="Share session"
-                  onPress={() => setShareOpen(true)}
-                />
-              )}
+        {/* In the shell the header above already carries all of this at the
+            platform-standard scale; repeating it here would double the title. */}
+        {!agentShell && (
+          <Flex direction="column" gap="2">
+            <BackToSessions>← Sessions</BackToSessions>
+            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+              {titleButton}
+              {stateBadges}
             </Flex>
-          </Flex>
 
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            {row.agentName && (
-              <Flex align="center" gap="2">
-                <AgentAvatar
-                  size="small"
-                  purpose="decoration"
-                  name={row.agentName}
-                  src={avatarUrl ?? ''}
-                />
-                {/* core-components' `Link`, which routes client-side — a bui
-                    link would reload the page. */}
-                {agentHref ? (
-                  <Link to={agentHref}>
-                    {/* bui `Text` sets its own colour, which would leave a
-                        link that doesn't look like one; `inherit` hands it back
-                        to the anchor. `as="span"`: Text renders a <p> by
-                        default. */}
-                    <Text
-                      as="span"
-                      variant="body-medium"
-                      style={{ color: 'inherit' }}
-                    >
-                      {row.agentName}
-                    </Text>
-                  </Link>
-                ) : (
-                  <Text variant="body-medium">{row.agentName}</Text>
-                )}
-              </Flex>
-            )}
-            <Flex align="center" gap="1">
-              <Text variant="body-medium" color="secondary">
-                on
-              </Text>
-              <InstallationChip installation={row.installation} />
+            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+              {agentIdentity}
             </Flex>
-          </Flex>
 
-          {/* Absolute, not relative: the list keeps the relative form, where
-              scanning for recency is the point. No last activity and no
-              duration: kagent API v2 does not move `updated_at` on a turn, so
-              both would only restate the start (kagent-dev/kagent#2397). */}
-          <Text variant="body-small" color="secondary">
-            Started{' '}
-            {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
-          </Text>
-        </Flex>
+            <Text variant="body-small" color="secondary">
+              {startedMeta}
+            </Text>
+          </Flex>
+        )}
 
         <SessionTimeline
           timeline={timelineWithLive}
@@ -1231,16 +1310,6 @@ export function SessionDetailPage() {
           setRenameOpen(false);
         }}
         isUserScoped={isUserScoped}
-      />
-
-      {/* Rendered here rather than beside its button so it sits inside the
-          plugin's QueryClientProvider, where its reads and writes have a
-          client — same reasoning as the rename hooks above. */}
-      <SessionShareDialog
-        installation={installation}
-        sessionId={sessionId}
-        isOpen={isShareOpen}
-        onOpenChange={setShareOpen}
       />
     </Shell>
   );

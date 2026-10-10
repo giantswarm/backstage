@@ -8901,6 +8901,7 @@ __metadata:
     "@types/supertest": "npm:^7.0.0"
     express: "npm:^5.0.0"
     express-promise-router: "npm:^4.1.0"
+    isomorphic-git: "npm:^1.27.1"
     js-yaml: "npm:^5.0.0"
     node-fetch: "npm:^3.3.2"
     supertest: "npm:^7.0.0"
@@ -31986,6 +31987,27 @@ __metadata:
   bin:
     isogit: cli.cjs
   checksum: 10c0/2816bfda84beac04e91e9e3937bc6443f674af54187a1bd9d4a1f68fe82d048b77ce23dbe727fd3a75459d205187b16d9f5c9f4b1924e0a8b2d941414894f04c
+  languageName: node
+  linkType: hard
+
+"isomorphic-git@npm:^1.27.1":
+  version: 1.43.2
+  resolution: "isomorphic-git@npm:1.43.2"
+  dependencies:
+    async-lock: "npm:^1.4.1"
+    clean-git-ref: "npm:^2.0.1"
+    crc-32: "npm:^1.2.0"
+    diff3: "npm:0.0.3"
+    ignore: "npm:^5.1.4"
+    minimisted: "npm:^2.0.0"
+    pako: "npm:^1.0.10"
+    pify: "npm:^4.0.1"
+    readable-stream: "npm:^4.0.0"
+    sha.js: "npm:^2.4.12"
+    simple-get: "npm:^4.0.1"
+  bin:
+    isogit: cli.cjs
+  checksum: 10c0/6beed51d4b5eb900b89062693a0bc88fc4a2cf63ca8f66c7741d84035072eae513dd485f2bd095cf0bb5c9684555d3a8ffaa1edc5184803fe5161530e6e10bc1
   languageName: node
   linkType: hard
 

@@ -1,5 +1,4 @@
-import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen, within } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { skillsRouteRef } from '../../routes';
@@ -14,17 +13,6 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
     config: { getOptionalStringArray: () => mockRepositories },
     isLoading: false,
   }),
-}));
-
-jest.mock('../AddSkillDialog', () => ({
-  AddSkillDialog: ({
-    isOpen,
-    repositories,
-  }: {
-    isOpen: boolean;
-    repositories: string[];
-  }) =>
-    isOpen ? <div>Add skill dialog for {repositories.join(', ')}</div> : null,
 }));
 
 function skill(name: string) {
@@ -65,6 +53,14 @@ function renderPanel(search = '') {
   });
 }
 
+/** The table's data rows, in order (the header row skipped). */
+function listedRows(): HTMLElement[] {
+  const table = screen.getByRole('grid');
+  return within(table)
+    .getAllByRole('row')
+    .filter(row => within(row).queryAllByRole('columnheader').length === 0);
+}
+
 describe('CustomizeSkillsPanel', () => {
   beforeEach(() => {
     mockCatalog = loaded;
@@ -75,11 +71,13 @@ describe('CustomizeSkillsPanel', () => {
   it('lists the most used skills first, with their source and usage', async () => {
     await renderPanel();
 
-    expect(
-      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
-    ).toEqual(['triage', 'summarise']);
-    expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
-    expect(screen.getByText('Not used yet')).toBeInTheDocument();
+    // One flat table — the Connectors tab's presentation — most used first.
+    const rows = listedRows();
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText('triage')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('Used by 1 agent')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('summarise')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Not used yet')).toBeInTheDocument();
     expect(screen.getAllByText('giantswarm/skills')).toHaveLength(2);
   });
 
@@ -136,9 +134,11 @@ describe('CustomizeSkillsPanel', () => {
     };
     await renderPanel();
 
-    expect(
-      screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent),
-    ).toEqual(['triage', 'notes', 'summarise']);
+    const rows = listedRows();
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText('triage')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('notes')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('summarise')).toBeInTheDocument();
     expect(
       screen.getByText('The skills your agents use most come first.', {
         exact: false,
@@ -186,23 +186,23 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     mockRepositories = [REPO];
   });
 
-  it('links each skill card to its detail page', async () => {
+  it('links each skill row to its detail page', async () => {
     await renderPanel();
 
-    expect(screen.getByRole('link', { name: 'triage' })).toHaveAttribute(
-      'href',
+    const row = screen.getByText('triage').closest('tr') as HTMLElement;
+    expect(row).toHaveAttribute(
+      'data-href',
       '/agent-platform/skills/giantswarm/skills/triage',
     );
   });
 
-  it('opens the Add skill dialog targeting the configured repositories', async () => {
+  it('links Add skill to the add-skill page', async () => {
     await renderPanel();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Add skill' }));
-
-    expect(
-      screen.getByText(`Add skill dialog for ${REPO}`),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Add skill/ })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/new',
+    );
   });
 
   it('offers no Add skill without a configured repository', async () => {
@@ -211,7 +211,7 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     await renderPanel();
 
     expect(
-      screen.queryByRole('button', { name: 'Add skill' }),
+      screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
   });
 });

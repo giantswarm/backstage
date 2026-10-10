@@ -3,7 +3,9 @@ import { AgentRow } from '../AgentsDataProvider';
 import {
   fillMissingDays,
   hasAnyUsage,
+  narrowDaily,
   sortUsageRows,
+  sumDaily,
   toByAgentRows,
 } from './helpers';
 
@@ -121,6 +123,60 @@ describe('fillMissingDays', () => {
   it('leaves an unparseable first day alone rather than inventing a range', () => {
     const sparse = [day('not-a-date', 5)];
     expect(fillMissingDays(sparse, 3)).toBe(sparse);
+  });
+});
+
+describe('narrowDaily', () => {
+  const NOW = Date.parse('2026-09-04T12:00:00Z');
+  const day = (d: string, turns = 1): UsageDayEntry => ({
+    day: d,
+    inputTokens: 100,
+    outputTokens: 10,
+    turns,
+  });
+
+  it('keeps the last N UTC days, today included', () => {
+    const daily = [
+      day('2026-08-20'),
+      day('2026-08-29'), // the cutoff day itself, 7 days back incl. today
+      day('2026-09-04'),
+    ];
+
+    expect(narrowDaily(daily, 7, NOW).map(entry => entry.day)).toEqual([
+      '2026-08-29',
+      '2026-09-04',
+    ]);
+  });
+
+  it('drops the day just outside the window', () => {
+    const daily = [day('2026-08-28'), day('2026-08-29')];
+
+    expect(narrowDaily(daily, 7, NOW).map(entry => entry.day)).toEqual([
+      '2026-08-29',
+    ]);
+  });
+
+  it('returns nothing for a non-positive window', () => {
+    expect(narrowDaily([day('2026-09-04')], 0, NOW)).toEqual([]);
+  });
+});
+
+describe('sumDaily', () => {
+  it('totals the figures the daily buckets carry', () => {
+    expect(
+      sumDaily([
+        { day: '2026-09-03', inputTokens: 100, outputTokens: 10, turns: 2 },
+        { day: '2026-09-04', inputTokens: 50, outputTokens: 5, turns: 1 },
+      ]),
+    ).toEqual({ turns: 3, inputTokens: 150, outputTokens: 15 });
+  });
+
+  it('totals an empty window to zeros', () => {
+    expect(sumDaily([])).toEqual({
+      turns: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
   });
 });
 

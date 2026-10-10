@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { makeStyles } from '@material-ui/core';
 import {
-  FullScreenWizardFrame,
+  WizardFrame,
   type WizardStep,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -14,22 +13,6 @@ import {
 } from '../../routes';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { withEditParam } from '../NewMcpServerEditGate';
-
-const NARROW_BREAKPOINT = 720;
-
-const useStyles = makeStyles({
-  column: {
-    maxWidth: 640,
-    margin: '0 auto',
-    padding: '40px 32px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 24,
-    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
-      padding: '24px 16px',
-    },
-  },
-});
 
 /** The shell connector wizard's three steps, in order. */
 export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
@@ -47,12 +30,12 @@ export function useConnectorWizardCloseHref(): string {
 
 /**
  * The agent-platform shell's connector registration wizard chrome: the
- * full-screen frame (header with Close and the Connect / Sign-in / Test step
- * strip, sticky footer with Cancel, Back and the step's own actions) around a
- * centered column. Each step page provides its primary buttons through
- * `useProvidePageHeaderActions`, exactly like the classic steps do — the frame
- * renders them in its footer and claims the page header, so the surrounding
- * layout draws none.
+ * in-content wizard frame (header with Close and the Connect / Sign-in / Test
+ * step strip, sticky footer with Cancel, Back and the step's own actions)
+ * around a centered column — the rail stays visible beside it. Each step page
+ * provides its primary buttons through `useProvidePageHeaderActions`, exactly
+ * like the classic steps do — the frame renders them in its footer and claims
+ * the page header, so the surrounding layout draws none.
  */
 export function ConnectorWizardFrame({
   step,
@@ -64,7 +47,6 @@ export function ConnectorWizardFrame({
   onBack?: () => void;
   children: ReactNode;
 }) {
-  const classes = useStyles();
   const connectLink = useRouteRef(newMcpServerRouteRef);
   const signInLink = useRouteRef(newMcpServerAuthRouteRef);
   const closeHref = useConnectorWizardCloseHref();
@@ -85,7 +67,7 @@ export function ConnectorWizardFrame({
   ];
 
   return (
-    <FullScreenWizardFrame
+    <WizardFrame
       title={
         registeredName ? `Edit connector: ${registeredName}` : 'Add connector'
       }
@@ -95,7 +77,7 @@ export function ConnectorWizardFrame({
       closeHref={closeHref}
       onBack={onBack}
     >
-      <div className={classes.column}>{children}</div>
-    </FullScreenWizardFrame>
+      {children}
+    </WizardFrame>
   );
 }

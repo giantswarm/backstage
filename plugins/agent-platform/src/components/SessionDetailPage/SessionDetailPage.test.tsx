@@ -1,6 +1,6 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
@@ -75,15 +75,6 @@ jest.mock('../SessionSwitcherRail', () => ({
       {installation}/{currentSessionId}
     </div>
   ),
-}));
-
-// Stubbed like the switcher rail: the share dialog runs its own queries and
-// reads `kagentApiRef`, and its own suite covers what it renders. What matters
-// here is that the header's share button opens it.
-jest.mock('../SessionShareDialog', () => ({
-  SessionShareDialog: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="share-dialog" /> : null,
-  ShareIcon: () => null,
 }));
 
 // jsdom implements no matchMedia, so MUI's useMediaQuery answers false and the
@@ -354,26 +345,13 @@ describe('SessionDetailPage', () => {
     );
   });
 
-  it('opens the share dialog from the header’s share button', async () => {
-    await render();
-
-    expect(screen.queryByTestId('share-dialog')).not.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Share session' }),
-    );
-    expect(await screen.findByTestId('share-dialog')).toBeInTheDocument();
-  });
-
-  it('offers no share on a session that arrived shared read-only', async () => {
-    // Sharing is the owner's act, and the controller would refuse the create.
-    mockUseSessionDetail.mockReturnValue({
-      ...loadedView,
-      detail: { ...detail, readOnly: true },
-    });
+  it('offers no share — shared sessions have no UI surface yet', async () => {
+    // The backend's share routes exist for kagent-compatible clients, but the
+    // portal cannot open a session from a token, so the UI offers no share.
     await render();
 
     expect(
-      screen.queryByRole('button', { name: 'Share session' }),
+      screen.queryByRole('button', { name: /share/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -436,19 +414,40 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Working')).toBeInTheDocument();
   });
 
-  it('puts the session totals behind the header chip', async () => {
+  it('puts the session totals behind the composer’s chip', async () => {
     // The prototype's cost + memory popover: tokens, turns and costs live
-    // behind one chip in the header rather than a stats strip.
+    // behind one chip in the composer's controls — always on screen with the
+    // docked box — rather than in the page header, which scrolls away.
     await render();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Session cost and memory/ }),
-    );
+    const chip = screen.getByRole('button', {
+      name: /Session cost and memory/,
+    });
+    expect(
+      within(screen.getByTestId('composer-card')).getByRole('button', {
+        name: /Session cost and memory/,
+      }),
+    ).toBe(chip);
+    await userEvent.click(chip);
 
     expect(screen.getByText('Tokens in / out')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
     expect(screen.getByText('Estimated cost')).toBeInTheDocument();
     expect(screen.getByText('Memory used')).toBeInTheDocument();
+  });
+
+  it('keeps the chip in reach when the composer is withheld', async () => {
+    // A read-only share has no box to carry the chip, but its cost is still
+    // worth seeing — the chip docks beside the withheld reason instead.
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      detail: { ...detail, readOnly: true },
+    });
+    await render();
+
+    expect(
+      screen.getByRole('button', { name: /Session cost and memory/ }),
+    ).toBeInTheDocument();
   });
 
   it('shows the cost a claude Harness turn reported beside the estimate', async () => {
@@ -2087,6 +2086,77 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
+    });
+  });
+
+  describe('the header inside the agent shell', () => {
+    const renderShell = () => render({ agentShell: FeatureFlagState.Active });
+
+    it('heads the page with the platform-standard frame', async () => {
+      // The ShellPage idiom every platform page uses (All Sessions, Customize):
+      // the session's name is the h1 at the standard scale, under a breadcrumb
+      // that reads "Sessions / Session" — this page is one conversation, and
+      // the linked ancestor is the way back to the list.
+      await renderShell();
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Which GitHub issues...',
+      );
+
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Sessions' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions');
+      expect(within(breadcrumbs).getByText('Session')).toBeInTheDocument();
+    });
+
+    it('does not repeat the title in the conversation column', async () => {
+      // The shell header carries the title; a second copy below it is exactly
+      // the "bigger, weird position" duplicate this layout replaces.
+      await renderShell();
+
+      expect(
+        screen.getAllByRole('button', { name: /Rename session/ }),
+      ).toHaveLength(1);
+    });
+
+    it('keeps the header title as the way into renaming', async () => {
+      await renderShell();
+
+      await userEvent.click(
+        screen.getByRole('button', {
+          name: 'Rename session "Which GitHub issues..."',
+        }),
+      );
+
+      expect(
+        await screen.findByRole('textbox', { name: /Session name/ }),
+      ).toHaveValue('Which GitHub issues...');
+    });
+
+    it('keeps the state, the agent and the installation beside the title', async () => {
+      await renderShell();
+
+      expect(screen.getByText('Working')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Issue tracker' }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('installation-chip')).toHaveTextContent(
+        'gazelle',
+      );
+      expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    });
+
+    it('keeps the cost chip in the composer there too', async () => {
+      await renderShell();
+
+      expect(
+        within(screen.getByTestId('composer-card')).getByRole('button', {
+          name: /Session cost and memory/,
+        }),
+      ).toBeInTheDocument();
     });
   });
 });

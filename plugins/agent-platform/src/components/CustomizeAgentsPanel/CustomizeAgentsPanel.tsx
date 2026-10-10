@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Badge, Card, CardBody, Flex, Grid, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
 import {
   EmptyStateCard,
   LoadingIndicator,
@@ -14,7 +13,6 @@ import {
   agentParts,
   agentStatus,
   inOrganization,
-  organizationsOf,
   searchAgents,
 } from '../../lib/customize';
 import { agentDetailRouteRef } from '../../routes';
@@ -22,19 +20,8 @@ import { AgentAvatar } from '../AgentAvatar';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
-const CARD_AVATAR_SIZE: AvatarSize = 96;
-
-const useStyles = makeStyles({
-  card: {
-    height: '100%',
-  },
-  description: {
-    minHeight: '2.8em',
-  },
-  name: {
-    overflowWrap: 'anywhere',
-  },
-});
+/** Twice the rendered 32px (bui's medium avatar), for sharp 2x displays. */
+const ROW_AVATAR_SIZE: AvatarSize = 96;
 
 export type CustomizeAgentsPanelProps = {
   search: string;
@@ -42,70 +29,36 @@ export type CustomizeAgentsPanelProps = {
   organization: string;
 };
 
-function AgentCard({
-  row,
-  href,
-  avatarUrl,
-  showInstallation,
-}: {
-  row: AgentRow;
-  href?: string;
-  avatarUrl?: string;
-  showInstallation: boolean;
-}) {
-  const classes = useStyles();
-  const status = agentStatus(row);
-  const body = (
-    <CardBody>
-      <Flex direction="column" gap="3">
-        <Flex align="center" gap="3">
-          <AgentAvatar
-            size="large"
-            purpose="decoration"
-            name={row.name}
-            src={avatarUrl ?? ''}
-          />
-          <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-            <Text
-              as="h3"
-              variant="body-large"
-              weight="bold"
-              className={classes.name}
-            >
-              {row.name}
+function AgentName({ row, avatarUrl }: { row: AgentRow; avatarUrl?: string }) {
+  return (
+    <Cell>
+      <Flex align="center" gap="3" style={{ minWidth: 0 }}>
+        <AgentAvatar
+          size="medium"
+          purpose="decoration"
+          name={row.name}
+          src={avatarUrl ?? ''}
+        />
+        <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+          <Text variant="body-medium" weight="bold" truncate>
+            {row.name}
+          </Text>
+          {row.description && (
+            <Text variant="body-small" color="secondary" truncate>
+              {row.description}
             </Text>
-            <StatusDot tone={status.tone} label={status.label} />
-          </Flex>
-        </Flex>
-        <Text
-          as="p"
-          variant="body-medium"
-          color="secondary"
-          className={classes.description}
-        >
-          {row.description}
-        </Text>
-        <Flex gap="2" style={{ flexWrap: 'wrap' }}>
-          {row.model && <Badge size="small">{row.model}</Badge>}
-          <Badge size="small">{agentParts(row)}</Badge>
-          {showInstallation && <Badge size="small">{row.installation}</Badge>}
+          )}
         </Flex>
       </Flex>
-    </CardBody>
-  );
-  return href ? (
-    <Card href={href} label={row.name} className={classes.card}>
-      {body}
-    </Card>
-  ) : (
-    <Card className={classes.card}>{body}</Card>
+    </Cell>
   );
 }
 
 /**
- * The Agents tab of the shell's Customize screen: the agents in scope as
- * cards, grouped by organization, each opening the agent's page. Must be
- * mounted inside a `CustomizeDataProvider`.
+ * The Agents tab of the shell's Customize screen: the agents in scope as flat
+ * rows — the Connectors tab's presentation — with their organization, model,
+ * parts and state, each row opening the agent's page. Must be mounted inside a
+ * `CustomizeDataProvider`.
  */
 export function CustomizeAgentsPanel({
   search,
@@ -120,15 +73,65 @@ export function CustomizeAgentsPanel({
     () => searchAgents(inOrganization(rows, organization), search),
     [rows, organization, search],
   );
-  const groups = useMemo(
-    () =>
-      organizationsOf(visible).map(namespace => ({
-        namespace,
-        rows: visible.filter(row => row.namespace === namespace),
-      })),
-    [visible],
-  );
   const showInstallation = new Set(rows.map(row => row.installation)).size > 1;
+
+  const columns: ColumnConfig<AgentRow>[] = [
+    {
+      id: 'name',
+      label: 'Agent',
+      isRowHeader: true,
+      defaultWidth: '3fr',
+      cell: row => (
+        <AgentName
+          row={row}
+          avatarUrl={buildAvatarUrl(row.installation, row.technicalName, {
+            size: ROW_AVATAR_SIZE,
+          })}
+        />
+      ),
+    },
+    {
+      id: 'organization',
+      label: 'Organization',
+      defaultWidth: '1fr',
+      cell: row => <CellText title={row.namespace} />,
+    },
+    {
+      id: 'model',
+      label: 'Model',
+      defaultWidth: '1.2fr',
+      cell: row => <CellText title={row.model ?? ''} />,
+    },
+    {
+      id: 'parts',
+      label: 'Skills & connectors',
+      defaultWidth: '1.4fr',
+      cell: row => <CellText title={agentParts(row)} />,
+    },
+    ...(showInstallation
+      ? [
+          {
+            id: 'installation',
+            label: 'Environment',
+            defaultWidth: '1fr',
+            cell: (row: AgentRow) => <CellText title={row.installation} />,
+          } satisfies ColumnConfig<AgentRow>,
+        ]
+      : []),
+    {
+      id: 'status',
+      label: 'Status',
+      defaultWidth: '1.2fr',
+      cell: row => {
+        const status = agentStatus(row);
+        return (
+          <Cell>
+            <StatusDot tone={status.tone} label={status.label} />
+          </Cell>
+        );
+      },
+    },
+  ];
 
   let body;
   if (isLoading) {
@@ -158,44 +161,23 @@ export function CustomizeAgentsPanel({
     );
   } else {
     body = (
-      <Flex direction="column" gap="8">
-        {groups.map(group => (
-          <section
-            key={group.namespace}
-            aria-labelledby={`org-${group.namespace}`}
-          >
-            <Flex direction="column" gap="3">
-              <Text
-                as="h2"
-                variant="title-x-small"
-                id={`org-${group.namespace}`}
-              >
-                {group.namespace}
-              </Text>
-              <Grid.Root columns={{ initial: '1', sm: '2', lg: '3' }} gap="4">
-                {group.rows.map(row => (
-                  <Grid.Item key={row.id}>
-                    <AgentCard
-                      row={row}
-                      showInstallation={showInstallation}
-                      avatarUrl={buildAvatarUrl(
-                        row.installation,
-                        row.technicalName,
-                        { size: CARD_AVATAR_SIZE },
-                      )}
-                      href={agentDetailRoute?.({
-                        installation: row.installation,
-                        namespace: row.namespace,
-                        name: row.technicalName,
-                      })}
-                    />
-                  </Grid.Item>
-                ))}
-              </Grid.Root>
-            </Flex>
-          </section>
-        ))}
-      </Flex>
+      // The table keeps its column grid at phone width; the wrapper lets it
+      // scroll sideways instead of breaking the page's 375px layout.
+      <div style={{ overflowX: 'auto' }}>
+        <Table<AgentRow>
+          columnConfig={columns}
+          data={visible}
+          pagination={{ type: 'none' }}
+          rowConfig={{
+            getHref: row =>
+              agentDetailRoute?.({
+                installation: row.installation,
+                namespace: row.namespace,
+                name: row.technicalName,
+              }),
+          }}
+        />
+      </div>
     );
   }
 

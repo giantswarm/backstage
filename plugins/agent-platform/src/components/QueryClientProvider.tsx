@@ -86,9 +86,6 @@ const USER_SCOPED_RESOURCES = new Set([
   'session',
   'session-tasks',
   'session-states',
-  // Who a session is shared with and until when — the owner's business, and
-  // nothing another user of the same workstation should rehydrate.
-  'session-shares',
   // A per-user breakdown of what someone ran, which agents they spent on and
   // which tools they reached for. The same rule as the rows above, with the
   // sharpest reason to hold it: it is a behavioural profile, and small enough

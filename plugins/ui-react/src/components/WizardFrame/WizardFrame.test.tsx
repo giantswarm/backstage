@@ -6,7 +6,8 @@ import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
 } from '../PageHeaderActions';
-import { FullScreenWizardFrame } from './FullScreenWizardFrame';
+import { WizardFrame } from './WizardFrame';
+import { WizardStepHeading } from './WizardStepHeading';
 
 const steps = [
   { id: 'basics', label: 'Basics', href: '/agents/new' },
@@ -21,6 +22,14 @@ function ContinueAction() {
   return null;
 }
 
+// Deliberately NOT memoized: a fresh element every render. The frame renders
+// the slot in an isolated child, so a registering step inside it must not
+// re-render when the slot updates — otherwise this would re-register forever.
+function UnstableAction() {
+  useProvidePageHeaderActions(<button>Unstable</button>);
+  return null;
+}
+
 function renderFrame(props: { onBack?: () => void } = {}) {
   return render(
     <MemoryRouter initialEntries={['/agents/new/tools']}>
@@ -29,7 +38,7 @@ function renderFrame(props: { onBack?: () => void } = {}) {
           <Route
             path="/agents/new/tools"
             element={
-              <FullScreenWizardFrame
+              <WizardFrame
                 title="New agent"
                 context="Customize / Agents"
                 steps={steps}
@@ -37,12 +46,9 @@ function renderFrame(props: { onBack?: () => void } = {}) {
                 closeHref="/customize/agents"
                 {...props}
               >
-                <h2>Choose individual tools</h2>
+                <WizardStepHeading title="Choose individual tools" />
                 <ContinueAction />
-                <div role="dialog" aria-label="Picker">
-                  <input aria-label="Filter" />
-                </div>
-              </FullScreenWizardFrame>
+              </WizardFrame>
             }
           />
           <Route path="/customize/agents" element={<p>Customize page</p>} />
@@ -52,7 +58,7 @@ function renderFrame(props: { onBack?: () => void } = {}) {
   );
 }
 
-describe('FullScreenWizardFrame', () => {
+describe('WizardFrame', () => {
   it('titles the flow with its h1 and the step content below', () => {
     renderFrame();
 
@@ -66,6 +72,17 @@ describe('FullScreenWizardFrame', () => {
         name: 'Choose individual tools',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('nests in the content area instead of covering the viewport', () => {
+    const { container } = renderFrame();
+
+    const frame = container.querySelector('div')!;
+    // In-content: a normal flow element, not a fixed overlay — the shell's
+    // rail (and the classic chrome) stay visible and usable around it.
+    expect(frame.className).not.toMatch(/fixed/i);
+    const { position } = getComputedStyle(frame);
+    expect(position === 'static' || position === 'relative').toBe(true);
   });
 
   it('marks the current step and links the steps already done', () => {
@@ -116,30 +133,28 @@ describe('FullScreenWizardFrame', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it('renders a step’s non-memoized actions without looping', () => {
+    render(
+      <MemoryRouter>
+        <PageHeaderActionsProvider>
+          <WizardFrame title="New agent" closeHref="/customize/agents">
+            <UnstableAction />
+          </WizardFrame>
+        </PageHeaderActionsProvider>
+      </MemoryRouter>,
+    );
+
+    const footer = screen.getByRole('contentinfo');
+    expect(
+      within(footer).getByRole('button', { name: 'Unstable' }),
+    ).toBeInTheDocument();
+  });
+
   it('has no Back button without onBack', () => {
     renderFrame();
 
     expect(
       screen.queryByRole('button', { name: 'Back' }),
     ).not.toBeInTheDocument();
-  });
-
-  it('leaves on Escape', async () => {
-    renderFrame();
-
-    await userEvent.keyboard('{Escape}');
-
-    expect(screen.getByText('Customize page')).toBeInTheDocument();
-  });
-
-  it('stays when Escape is pressed inside a dialog', async () => {
-    renderFrame();
-
-    await userEvent.click(screen.getByRole('textbox', { name: 'Filter' }));
-    await userEvent.keyboard('{Escape}');
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'New agent' }),
-    ).toBeInTheDocument();
   });
 });

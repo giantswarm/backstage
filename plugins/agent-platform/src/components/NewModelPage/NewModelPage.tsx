@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
 import {
   toastApiRef,
   useApi,
@@ -15,10 +14,11 @@ import {
   Select,
   Text,
 } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import {
   SectionHeader,
   useProvidePageHeaderActions,
+  WizardFrame,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ALL_INSTALLATIONS,
@@ -28,6 +28,8 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 import { modelsRouteRef } from '../../routes';
+import { useAgentShell } from '../../hooks/useAgentShell';
+import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   MODEL_CONFIG_NAMESPACE,
@@ -40,21 +42,7 @@ import { ModelConfigFormFields } from '../ModelConfigForm';
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
-}));
-
 export function NewModelPage() {
-  const classes = useStyles();
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelsRouteRef);
@@ -116,11 +104,12 @@ export function NewModelPage() {
     ...validateModelConfigForm(values),
   ];
 
-  const onCancel = useCallback(() => {
-    if (modelsLink) {
-      navigate(modelsLink());
-    }
-  }, [modelsLink, navigate]);
+  // Where Close and Cancel leave to: the shell's Customize screen's Models
+  // tab, or the classic chrome's models list.
+  const agentShell = useAgentShell();
+  const closeHref = agentShell
+    ? `${SHELL_CUSTOMIZE_PATH}/models`
+    : (modelsLink?.() ?? '/');
 
   const onSubmit = useCallback(async () => {
     if (validationErrors.length > 0) {
@@ -160,100 +149,82 @@ export function NewModelPage() {
     validationErrors.length,
   ]);
 
-  // Memoized so the header actions slot only updates when the handlers change,
-  // not on every keystroke (see useProvidePageHeaderActions).
+  // Memoized so the frame's footer slot only updates when the handlers change,
+  // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
+  // to the frame's footer, so only the primary lives here.
   const actions = useMemo(
     () => (
-      <Flex gap="2">
-        <Button variant="tertiary" onPress={onCancel} isDisabled={isSaving}>
-          Cancel
-        </Button>
-        <Button variant="primary" onPress={onSubmit} isDisabled={isSaving}>
-          {isSaving ? 'Adding…' : 'Add model'}
-        </Button>
-      </Flex>
+      <Button variant="primary" onPress={onSubmit} isDisabled={isSaving}>
+        {isSaving ? 'Adding…' : 'Add model'}
+      </Button>
     ),
-    [onCancel, onSubmit, isSaving],
+    [onSubmit, isSaving],
   );
   useProvidePageHeaderActions(actions);
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Add a model
-        </Text>
-        <Text as="p" className={classes.intro}>
-          Make a model available for agents on an installation. It is stored as
-          a kagent ModelConfig in the <code>{MODEL_CONFIG_NAMESPACE}</code>{' '}
-          namespace; the API key, if any, goes into a Secret next to it.
-        </Text>
+    <WizardFrame
+      title="Add model"
+      context="Customize / Models"
+      closeHref={closeHref}
+      width="medium"
+    >
+      <WizardStepHeading title="Connect a model">
+        Make a model available for agents on an installation. It is stored as a
+        kagent ModelConfig in the <code>{MODEL_CONFIG_NAMESPACE}</code>{' '}
+        namespace; the API key, if any, goes into a Secret next to it.
+      </WizardStepHeading>
 
-        <Flex direction="column" gap="4">
-          {!singleInstallation && (
-            <Card>
-              <CardBody>
-                <SectionHeader
-                  title="Installation"
-                  description="The management cluster this model becomes available on."
-                />
-                <Flex direction="column" gap="2">
-                  <Select
-                    aria-label="Installation"
-                    isRequired
-                    options={reachableInstallations.map(name => ({
-                      id: name,
-                      label: name,
-                    }))}
-                    selectedKey={installation ?? null}
-                    onSelectionChange={key =>
-                      setInstallation(key ? String(key) : undefined)
-                    }
-                  />
-                  {isProbing && (
-                    <Text variant="body-small" color="secondary">
-                      Still checking the remaining installations…
-                    </Text>
-                  )}
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
+      {!singleInstallation && (
+        <Card>
+          <CardBody>
+            <SectionHeader
+              title="Installation"
+              description="The management cluster this model becomes available on."
+            />
+            <Flex direction="column" gap="2">
+              <Select
+                aria-label="Installation"
+                isRequired
+                options={reachableInstallations.map(name => ({
+                  id: name,
+                  label: name,
+                }))}
+                selectedKey={installation ?? null}
+                onSelectionChange={key =>
+                  setInstallation(key ? String(key) : undefined)
+                }
+              />
+              {isProbing && (
+                <Text variant="body-small" color="secondary">
+                  Still checking the remaining installations…
+                </Text>
+              )}
+            </Flex>
+          </CardBody>
+        </Card>
+      )}
 
-          <ModelConfigFormFields
-            values={values}
-            onChange={onChange}
-            mode="create"
-          />
+      <ModelConfigFormFields
+        values={values}
+        onChange={onChange}
+        mode="create"
+      />
 
-          <Card>
-            <CardBody>
-              <Flex direction="column" gap="3">
-                {showValidation && validationErrors.length > 0 && (
-                  <Alert
-                    status="danger"
-                    title="Please fix the following before continuing"
-                    description={validationErrors.join('. ')}
-                  />
-                )}
-                {error && (
-                  <Alert
-                    status="danger"
-                    title="The model could not be added"
-                    description={error.message}
-                  />
-                )}
-                {actions}
-              </Flex>
-            </CardBody>
-          </Card>
-        </Flex>
-      </div>
-    </Content>
+      {showValidation && validationErrors.length > 0 && (
+        <Alert
+          status="danger"
+          title="Please fix the following before continuing"
+          description={validationErrors.join('. ')}
+        />
+      )}
+      {error && (
+        <Alert
+          status="danger"
+          title="The model could not be added"
+          description={error.message}
+        />
+      )}
+    </WizardFrame>
   );
 }

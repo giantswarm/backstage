@@ -67,6 +67,15 @@ export const agentEditRouteRef = createSubRouteRef({
 // the detail page cannot hang under it.
 export const skillsRouteRef = createRouteRef();
 
+// Adding a skill (`/agent-platform/skills/new`): the form that proposes a
+// skill to one of the configured repositories as a pull request. One static
+// segment, so it can never be mistaken for a skill's `<owner>/<repo>` detail
+// path (two or more segments).
+export const newSkillRouteRef = createSubRouteRef({
+  path: '/new',
+  parent: skillsRouteRef,
+});
+
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
 

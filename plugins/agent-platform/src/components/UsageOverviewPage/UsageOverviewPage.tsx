@@ -13,11 +13,13 @@ import type { LlmUsage } from '../../lib/llmUsage';
 import {
   LlmUsageState,
   PricingCoverageAlert,
+  SessionKpiTiles,
   TopSpendCard,
   UsageKpiTiles,
   type TopSpendRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
+import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -26,6 +28,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(3),
   },
 }));
+
+/**
+ * Shown only until the kagent response arrives — the real window travels in
+ * the response (`windowDays`), the same stance as `AgentUsageSection`.
+ */
+const FALLBACK_SESSION_WINDOW_DAYS = 30;
 
 /** The by-agent breakdown as the compact card's rows, biggest spender first. */
 function topAgentRows(usage: LlmUsage): TopSpendRow[] {
@@ -65,6 +73,16 @@ function topModelRows(usage: LlmUsage): TopSpendRow[] {
  * kagent's, which can only answer for the caller, so its tile is labelled
  * "Your sessions" and links the reader to that tab.
  *
+ * **Without the gateway metrics** (`mimirEnabled: false` — a standalone
+ * installation with no observability stack this portal can query) the page
+ * shows what kagent alone can answer: the reader's own session-derived tiles
+ * (`SessionKpiTiles`), under a note saying the fleet-wide token and cost
+ * figures need those metrics. kagent's answer is real data about the reader's
+ * own work, and an Overview that renders one paragraph while the Your
+ * sessions tab is full of numbers read as broken. Nothing is invented: no
+ * estimated cost (its $/token rate would come from the absent metrics), and
+ * the reported cost shows only when a runtime reported one.
+ *
  * The corollary — that an agent calling a provider directly bypasses the
  * listener and so appears nowhere here — is deliberately **not** in the
  * heading. It is a real limitation, documented in `docs/agent-platform.md`
@@ -87,6 +105,10 @@ export function UsageOverviewPage() {
   // sessions tab — so after either view loads, the other costs nothing. Its
   // window is the backend's own, which the tile names when it has one.
   const sessionUsage = useSessionUsage(installation);
+  const hasSessionUsage =
+    !sessionUsage.isNotDeployed &&
+    !sessionUsage.isError &&
+    !!sessionUsage.usage;
   const sessions: UsageKpiSessions | undefined =
     sessionUsage.isNotDeployed || sessionUsage.isError
       ? undefined
@@ -101,73 +123,98 @@ export function UsageOverviewPage() {
 
   return (
     <Content>
-      <Flex direction="column" gap="6" style={{ maxWidth: 1024 }}>
-        <SectionHeader
-          as="h2"
-          variant="title-medium"
-          title="Overview"
-          description={
-            installation ? (
-              <>
-                Every user's model calls on <strong>{installation}</strong> over
-                the last {days} days, as seen by the agentgateway LLM listener.
-              </>
-            ) : (
-              `Model usage across the platform, as seen by the agentgateway LLM listener.`
-            )
-          }
-        />
+      <UsageColumn>
+        <Flex direction="column" gap="6">
+          <SectionHeader
+            as="h2"
+            variant="title-medium"
+            title="Overview"
+            description={
+              installation ? (
+                <>
+                  Every user's model calls on <strong>{installation}</strong>{' '}
+                  over the last {days} days, as seen by the agentgateway LLM
+                  listener.
+                </>
+              ) : (
+                `Model usage across the platform, as seen by the agentgateway LLM listener.`
+              )
+            }
+          />
 
-        {isResolvedFromAll && installation && (
-          <Text variant="body-small" color="secondary">
-            Showing {installation}. Metrics are read one installation at a time
-            — pick another in the Environment control to switch.
-          </Text>
-        )}
-
-        <LlmUsageState view={view} />
-
-        {view.state === 'ready' && usage && (
-          <>
-            <UsageKpiTiles
-              usage={usage}
-              currency={currency}
-              windowDays={days}
-              sessions={sessions}
-            />
-
-            {/* Compact here, with the detail table one tab away: the reader of
-                this page needs to know the cost figures are incomplete, not
-                which models to add to the catalogue. */}
-            <PricingCoverageAlert
-              rows={usage.unpricedModels}
-              costHref={costRoute?.()}
-            />
-
-            <div className={classes.row}>
-              <TopSpendCard
-                title="Top agents"
-                rows={agentRows}
-                currency={currency}
-                emptyMessage="The gateway attributed no calls to an agent in this window."
-                note="Each bar is the agent's share of the window's priced spend, across every user. The Cost tab has the full table."
-              />
-              <TopSpendCard
-                title="By model"
-                rows={modelRows}
-                currency={currency}
-                emptyMessage="No model answered a call in this window."
-                note="The model that answered each call, as the gateway recorded it. The Cost tab has tokens, calls and rates per model."
-              />
-            </div>
-
+          {isResolvedFromAll && installation && (
             <Text variant="body-small" color="secondary">
-              Tokens, model calls and gateway health are under Technical
-              details.
+              Showing {installation}. Metrics are read one installation at a
+              time — pick another in the Environment control to switch.
             </Text>
-          </>
-        )}
-      </Flex>
+          )}
+
+          <LlmUsageState view={view} />
+
+          {/* The gateway metrics are configured away, but kagent answered —
+              so show what it answered instead of leaving the paragraph above
+              as the whole page. `LlmUsageState` already said why the
+              fleet-wide figures are missing; this adds the figures that are
+              not. */}
+          {view.state === 'unavailable' && hasSessionUsage && (
+            <>
+              <SessionKpiTiles
+                usage={sessionUsage.usage!}
+                windowDays={
+                  sessionUsage.usage!.windowDays || FALLBACK_SESSION_WINDOW_DAYS
+                }
+              />
+              <Text variant="body-small" color="secondary">
+                These figures come from kagent and cover your own sessions only.
+                Fleet-wide spend, token and per-model figures need the gateway's
+                gen_ai metrics, which this installation does not publish to a
+                metrics store this portal can query.
+              </Text>
+            </>
+          )}
+
+          {view.state === 'ready' && usage && (
+            <>
+              <UsageKpiTiles
+                usage={usage}
+                currency={currency}
+                windowDays={days}
+                sessions={sessions}
+              />
+
+              {/* Compact here, with the detail table one tab away: the reader
+                  of this page needs to know the cost figures are incomplete,
+                  not which models to add to the catalogue. */}
+              <PricingCoverageAlert
+                rows={usage.unpricedModels}
+                costHref={costRoute?.()}
+              />
+
+              <div className={classes.row}>
+                <TopSpendCard
+                  title="Top agents"
+                  rows={agentRows}
+                  currency={currency}
+                  emptyMessage="The gateway attributed no calls to an agent in this window."
+                  note="Each bar is the agent's share of the window's priced spend, across every user. The Cost tab has the full table."
+                />
+                <TopSpendCard
+                  title="By model"
+                  rows={modelRows}
+                  currency={currency}
+                  emptyMessage="No model answered a call in this window."
+                  note="The model that answered each call, as the gateway recorded it. The Cost tab has tokens, calls and rates per model."
+                />
+              </div>
+
+              <Text variant="body-small" color="secondary">
+                Tokens, model calls and gateway health are under Technical
+                details.
+              </Text>
+            </>
+          )}
+        </Flex>
+      </UsageColumn>
     </Content>
   );
 }

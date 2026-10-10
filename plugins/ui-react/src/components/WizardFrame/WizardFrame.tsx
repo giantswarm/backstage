@@ -1,5 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import { Button, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
@@ -11,27 +10,30 @@ import {
 
 const NARROW_BREAKPOINT = 720;
 
+/** The centered column's width per {@link WizardFrameProps.width}. */
+const COLUMN_WIDTHS = {
+  narrow: 640,
+  medium: 760,
+  wide: 960,
+} as const;
+
 const useStyles = makeStyles({
   root: {
-    position: 'fixed',
-    inset: 0,
-    // Above the shell's rail (1000), below MUI dialogs (1300); bui popovers
-    // position themselves far above both.
-    zIndex: 1200,
     display: 'flex',
     flexDirection: 'column',
+    minHeight: '100%',
     background: 'var(--bui-bg-app, var(--bui-bg-neutral-1))',
     color: 'var(--bui-fg-primary)',
   },
   header: {
     flex: 'none',
-    minHeight: 64,
+    minHeight: 56,
     boxSizing: 'border-box',
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 16,
-    padding: '0 24px',
+    padding: '8px 24px',
     borderBottom: '1px solid var(--bui-border-1)',
     [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
       padding: '8px 16px',
@@ -131,11 +133,25 @@ const useStyles = makeStyles({
   },
   body: {
     flex: '1 1 auto',
-    overflowY: 'auto',
+  },
+  column: {
+    boxSizing: 'border-box',
+    margin: '0 auto',
+    padding: '40px 32px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 24,
+    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+      padding: '24px 16px',
+    },
   },
   footer: {
     flex: 'none',
-    minHeight: 72,
+    position: 'sticky',
+    bottom: 0,
+    // Above the content that scrolls under it; far below dialogs and popovers.
+    zIndex: 2,
+    minHeight: 64,
     boxSizing: 'border-box',
     display: 'flex',
     alignItems: 'center',
@@ -143,6 +159,7 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     gap: 12,
     padding: '12px 24px',
+    background: 'var(--bui-bg-app, var(--bui-bg-neutral-1))',
     borderTop: '1px solid var(--bui-border-1)',
     [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
       padding: '12px 16px',
@@ -156,6 +173,16 @@ const useStyles = makeStyles({
   },
 });
 
+// The footer's step-provided buttons, in a component of their own so that
+// ONLY this leaf re-renders when a step registers actions. The frame renders
+// the registering step as its children: if the frame itself consumed the
+// value context, every registration would re-render the step, and a step
+// passing a fresh element each render would re-register forever.
+function StepActions() {
+  const actions = usePageHeaderActionsSlot();
+  return <>{actions}</>;
+}
+
 export interface WizardStep {
   id: string;
   label: string;
@@ -163,7 +190,7 @@ export interface WizardStep {
   href?: string;
 }
 
-export interface FullScreenWizardFrameProps {
+export interface WizardFrameProps {
   /** What the flow creates, e.g. "New agent": the page's h1. */
   title: string;
   /** Muted text after the title, e.g. "Customize / Models". */
@@ -171,62 +198,40 @@ export interface FullScreenWizardFrameProps {
   steps?: WizardStep[];
   /** The id of the step on screen. */
   currentStep?: string;
-  /** Where Close, Cancel and Escape leave to. */
+  /** Where Close and Cancel leave to. */
   closeHref: string;
   /** Shows a Back button in the footer. */
   onBack?: () => void;
+  /** The centered column's width. The connector wizard's 640px is the default. */
+  width?: keyof typeof COLUMN_WIDTHS;
   children: ReactNode;
 }
 
-function isInsideOverlay(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]') !==
-      null
-  );
-}
-
 /**
- * A create flow covering the whole viewport: a header with Close, the title
- * and a step strip, the step's content, and a footer with Cancel, Back and the
- * step's own buttons.
+ * A create flow in the page's content area — the shell's rail (or the classic
+ * chrome) stays around it: a header row with Close, the title and a step
+ * strip, the step's content in a centered column, and a sticky footer with
+ * Cancel, Back and the step's own buttons.
  *
  * The primary and secondary buttons come from the routed step through
  * `useProvidePageHeaderActions`, so a route above the frame must mount a
  * `PageHeaderActionsProvider`; the frame renders the slot and mounts none,
- * and claims the page header (`useOwnPageHeader`) like `ShellPage`.
- * Escape leaves to `closeHref`, except from inside a dialog or menu, which
- * close themselves first.
+ * and claims the page header (`useOwnPageHeader`) like `ShellPage`, so a
+ * layout header above it stands aside.
  */
-export function FullScreenWizardFrame({
+export function WizardFrame({
   title,
   context,
   steps,
   currentStep,
   closeHref,
   onBack,
+  width = 'narrow',
   children,
-}: FullScreenWizardFrameProps) {
+}: WizardFrameProps) {
   const classes = useStyles();
-  const navigate = useNavigate();
-  const actions = usePageHeaderActionsSlot();
   useOwnPageHeader();
   const currentIndex = steps?.findIndex(step => step.id === currentStep) ?? -1;
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key !== 'Escape' ||
-        event.defaultPrevented ||
-        isInsideOverlay(event.target)
-      ) {
-        return;
-      }
-      navigate(closeHref);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [closeHref, navigate]);
 
   return (
     <div className={classes.root}>
@@ -285,7 +290,14 @@ export function FullScreenWizardFrame({
         )}
         <div className={classes.spacer} />
       </header>
-      <div className={classes.body}>{children}</div>
+      <div className={classes.body}>
+        <div
+          className={classes.column}
+          style={{ maxWidth: COLUMN_WIDTHS[width] }}
+        >
+          {children}
+        </div>
+      </div>
       <footer className={classes.footer}>
         <Link href={closeHref} variant="body-medium" color="secondary">
           Cancel
@@ -296,7 +308,7 @@ export function FullScreenWizardFrame({
               Back
             </Button>
           )}
-          {actions}
+          <StepActions />
         </div>
       </footer>
     </div>

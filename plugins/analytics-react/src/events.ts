@@ -38,14 +38,6 @@ export const portalEvents = defineEvents({
       ],
     },
   },
-  'AgentPlatform.sessionShared': {
-    description:
-      'A share token for a session was created, granting access to it through the kagent API until it expires or is revoked.',
-    attributes: {
-      permission: ['read-only', 'read-write'],
-      ttl: ['1h', '24h', '7d', 'default'],
-    },
-  },
   'AgentPlatform.skillProposed': {
     description:
       'A new skill was proposed to a skill repository, as a pull request opened as the signed-in person.',

@@ -36,6 +36,25 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useInstallationScope: () => scopeState,
 }));
 
+// The scope bar reads the kagent fan-out's reported window through the same
+// cached query AgentUsageSection uses, to grey out selections the backend
+// cannot answer on Your sessions. The hooks are stubbed: the resolution and
+// the read have their own tests, and this file is about what the control does
+// with the answer — including before one arrives (`usage: undefined`).
+const usageInstallationState: { installation: string | undefined } = {
+  installation: 'alpha',
+};
+jest.mock('../../hooks/useUsageInstallation', () => ({
+  useUsageInstallation: () => usageInstallationState,
+}));
+
+const sessionUsageState: { usage: { windowDays: number } | undefined } = {
+  usage: { windowDays: 30 },
+};
+jest.mock('../../hooks/useSessionUsage', () => ({
+  useSessionUsage: () => sessionUsageState,
+}));
+
 jest.mock('../EnvironmentSelect', () => ({
   EnvironmentSelect: ({ component }: { component?: string }) => (
     <div data-testid="environment-select">environment:{component}</div>
@@ -90,6 +109,8 @@ describe('UsageRouter', () => {
   beforeEach(() => {
     scopeState.isSingleInstallation = false;
     scopeState.isLoading = false;
+    usageInstallationState.installation = 'alpha';
+    sessionUsageState.usage = { windowDays: 30 };
   });
 
   it('redirects the tab index to the Overview view, keeping the query string', async () => {
@@ -248,15 +269,76 @@ describe('UsageRouter', () => {
       });
     });
 
-    it("hides the time window on Your sessions, whose window is the backend's", async () => {
+    it('offers the time window on Your sessions too, and sets it in the URL', async () => {
+      // The fan-out's own window is fixed, but the view narrows it client-side
+      // (AgentUsageSection owns the honest labelling), so the control applies
+      // on every view rather than vanishing on one tab.
+      const user = userEvent.setup();
       renderTab('/agent-platform/usage/conversations');
 
       expect(await screen.findByText('conversations-view')).toBeInTheDocument();
-      expect(
-        screen.queryByRole('radio', { name: '7 days' }),
-      ).not.toBeInTheDocument();
+      await user.click(screen.getByRole('radio', { name: '7 days' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          '/agent-platform/usage/conversations?window=7d',
+        );
+      });
       // The Environment control still applies: the fan-out is per installation.
       expect(screen.getByTestId('environment-select')).toBeInTheDocument();
+    });
+
+    it('disables windows beyond the backend window on Your sessions, saying why', async () => {
+      // kagent computes session usage over a fixed window (30 days here), so
+      // a wider selection could only re-show the same figures under a bigger
+      // number. The reason rides on the greyed button itself — a native title
+      // is the one affordance a disabled control still offers.
+      renderTab('/agent-platform/usage/conversations');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      const ninety = screen.getByRole('radio', { name: '90 days' });
+      expect(ninety).toBeDisabled();
+      expect(ninety).toHaveAttribute(
+        'title',
+        'kagent keeps 30 days of session usage',
+      );
+      expect(screen.getByRole('radio', { name: '7 days' })).toBeEnabled();
+      expect(screen.getByRole('radio', { name: '30 days' })).toBeEnabled();
+    });
+
+    it('keeps every window enabled on the gateway views', async () => {
+      // The gateway views query any window directly — only the kagent fan-out
+      // has a fixed window, so the limit must not leak across tabs even while
+      // its cached response is at hand.
+      renderTab('/agent-platform/usage/overview');
+
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+    });
+
+    it('keeps every window enabled while the backend window is still loading', async () => {
+      // No locked control over a guess: until a response names its window,
+      // nothing is greyed out.
+      sessionUsageState.usage = undefined;
+      renderTab('/agent-platform/usage/conversations');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: '90 days' })).toBeEnabled();
+    });
+
+    it('leaves a deep-linked selection beyond the window selected, not clamped', async () => {
+      // A shared link saying ?window=90d still lands where it pointed:
+      // AgentUsageSection's note explains that the figures cover the backend's
+      // own window — the control greys the option but never rewrites the URL.
+      renderTab('/agent-platform/usage/conversations?window=90d');
+
+      expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+      const ninety = screen.getByRole('radio', { name: '90 days' });
+      expect(ninety).toBeDisabled();
+      expect(ninety).toBeChecked();
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/agent-platform/usage/conversations?window=90d',
+      );
     });
   });
 });

@@ -1,5 +1,7 @@
 export { CostPerDayCard } from './CostPerDayCard';
 export { CostTotalsStrip } from './CostTotalsStrip';
+export { KpiTile, KpiTileGrid, KpiDelta } from './KpiTile';
+export { SessionKpiTiles } from './SessionKpiTiles';
 export { LlmByAgentTable } from './LlmByAgentTable';
 export { LlmByModelTable } from './LlmByModelTable';
 export { LlmUsageState } from './LlmUsageState';

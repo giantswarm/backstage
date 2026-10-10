@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
@@ -12,17 +11,13 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import {
   SectionHeader,
   useProvidePageHeaderActions,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  agentsRouteRef,
-  newAgentSkillsRouteRef,
-  newAgentToolsRouteRef,
-} from '../../routes';
+import { newAgentSkillsRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
@@ -31,32 +26,13 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
+import { AgentWizardFrame } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import {
   MAX_SYSTEM_MESSAGE_LENGTH,
   systemMessageProblem,
 } from '../../lib/systemMessage';
-
-const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  stepLabel: {
-    marginBottom: theme.spacing(0.5),
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
-  footerNote: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
-  },
-}));
 
 export function NewAgentPage() {
   return (
@@ -67,9 +43,7 @@ export function NewAgentPage() {
 }
 
 function NewAgentPageContent() {
-  const classes = useStyles();
   const navigate = useNavigate();
-  const agentsLink = useRouteRef(agentsRouteRef);
   const skillsLink = useRouteRef(newAgentSkillsRouteRef);
   const toolsLink = useRouteRef(newAgentToolsRouteRef);
   // Called here for two reasons beyond this page's own rendering: it starts the
@@ -101,7 +75,6 @@ function NewAgentPageContent() {
   // an agent usually can't change. The Tools step always exists: every agent
   // declares a toolset.
   const nextLink = hasRepositories ? skillsLink : toolsLink;
-  const totalSteps = hasRepositories ? 4 : 3;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       setShowValidation(true);
@@ -112,168 +85,134 @@ function NewAgentPageContent() {
     }
   }, [errorCount, nextLink, navigate]);
 
-  // Memoized so the header actions slot only updates when the handlers actually
+  // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
+  // Cancel belongs to the frame's footer, so only the primary lives here.
   const actions = useMemo(
     () => (
-      <Flex gap="2">
-        <Button
-          variant="tertiary"
-          onPress={() => agentsLink && navigate(agentsLink())}
-        >
-          Cancel
-        </Button>
-        <Button variant="primary" onPress={onContinue}>
-          Continue
-        </Button>
-      </Flex>
+      <Button variant="primary" onPress={onContinue}>
+        Continue
+      </Button>
     ),
-    [agentsLink, navigate, onContinue],
+    [onContinue],
   );
 
-  // Surface the actions in the section's single header (Agent Platform) rather
-  // than a second header of our own.
   useProvidePageHeaderActions(actions);
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          className={classes.stepLabel}
-        >
-          Step 1 of {totalSteps}: Details
-        </Text>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Create an agent
-        </Text>
-        <Text as="p" className={classes.intro}>
-          Create an agent for you and your team mates to re-use for certain
-          types of tasks.
-        </Text>
+    <AgentWizardFrame step="details">
+      <WizardStepHeading title="Create an agent">
+        Create an agent for you and your team mates to re-use for certain types
+        of tasks.
+      </WizardStepHeading>
 
-        <Flex direction="column" gap="4">
-          {/* The "with Swarm Operator" assist (W6): renders nothing unless the
-              agentManagement meta-agent role resolves — see CreateAgentAssist. */}
-          <CreateAgentAssist />
+      {/* The "with Swarm Operator" assist (W6): renders nothing unless the
+          agentManagement meta-agent role resolves — see CreateAgentAssist. */}
+      <CreateAgentAssist />
 
-          <InstallationSelect />
+      <InstallationSelect />
 
-          <Card>
-            <CardBody>
-              <SectionHeader
-                title="Identity"
-                description="How this agent appears across the platform."
-              />
-              <Flex direction="column" gap="4">
-                <Flex align="start" gap="4">
-                  <AgentAvatarPreview />
-                  <Grid.Root
-                    columns={{ initial: '1', sm: '2' }}
-                    gap="4"
-                    style={{ flex: 1 }}
-                  >
-                    <Grid.Item>
-                      <TextField
-                        label="Name"
-                        isRequired
-                        value={state.name}
-                        onChange={setName}
-                        placeholder="e.g. Go service reviewer"
-                        description="The user-friendly name humans will use to refer to this agent."
-                      />
-                    </Grid.Item>
-                    <Grid.Item>
-                      <TextField
-                        label="Slug"
-                        secondaryLabel="auto-derived"
-                        isRequired
-                        value={state.slug}
-                        onChange={setSlug}
-                        placeholder="go-service-reviewer"
-                        description="URL-friendly identifier used in links and resource names."
-                      />
-                    </Grid.Item>
-                  </Grid.Root>
-                </Flex>
-                <TextAreaField
-                  label="Description"
-                  value={state.description}
-                  onChange={setDescription}
-                  rows={4}
-                  placeholder="What this agent is good at, what it's not for, example tasks…"
-                  description="Describe this agent so team mates know what to use it for."
-                />
-              </Flex>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardBody>
-              <SectionHeader
-                title="Configuration"
-                description="What powers the agent and shapes how it behaves: its system prompt, the model it uses and what runs it."
-              />
-              <Flex direction="column" gap="5">
-                <TextAreaField
-                  label="System prompt"
-                  secondaryLabel="optional"
-                  value={state.systemMessage}
-                  onChange={setSystemMessage}
-                  rows={10}
-                  mono
-                  placeholder="Leave empty to use the chart's default prompt."
-                  description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
-                  maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
-                  error={systemMessageProblem(state.systemMessage)}
-                />
-                <ModelConfigPicker />
-                <HarnessPicker />
-                <TextAreaField
-                  label="Extra egress origins"
-                  secondaryLabel="optional"
-                  value={state.egressText}
-                  onChange={setEgressText}
-                  rows={3}
-                  mono
-                  placeholder={
-                    'https://github.com:443\nhttps://*.githubusercontent.com'
-                  }
-                  description="Hosts the agent may reach beyond what it already has: its model, its connectors, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
-                  error={egressProblem(parseEgressText(state.egressText))}
-                />
-              </Flex>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardBody>
-              <Flex direction="column" gap="3">
-                <Text as="p" color="secondary" className={classes.footerNote}>
-                  {hasRepositories
-                    ? 'The next steps let you pick skills and the tools for this agent, then review and deploy it.'
-                    : 'The next step chooses the tools for this agent; then you review and deploy it.'}
-                </Text>
-                {showValidation && validationErrors.length > 0 && (
-                  <Alert
-                    status="danger"
-                    title="Please fix the following before continuing"
-                    description={validationErrors.join('. ')}
+      <Card>
+        <CardBody>
+          <SectionHeader
+            title="Identity"
+            description="How this agent appears across the platform."
+          />
+          <Flex direction="column" gap="4">
+            <Flex align="start" gap="4">
+              <AgentAvatarPreview />
+              <Grid.Root
+                columns={{ initial: '1', sm: '2' }}
+                gap="4"
+                style={{ flex: 1 }}
+              >
+                <Grid.Item>
+                  <TextField
+                    label="Name"
+                    isRequired
+                    value={state.name}
+                    onChange={setName}
+                    placeholder="e.g. Go service reviewer"
+                    description="The user-friendly name humans will use to refer to this agent."
                   />
-                )}
-                {actions}
-              </Flex>
-            </CardBody>
-          </Card>
-        </Flex>
-      </div>
-    </Content>
+                </Grid.Item>
+                <Grid.Item>
+                  <TextField
+                    label="Slug"
+                    secondaryLabel="auto-derived"
+                    isRequired
+                    value={state.slug}
+                    onChange={setSlug}
+                    placeholder="go-service-reviewer"
+                    description="URL-friendly identifier used in links and resource names."
+                  />
+                </Grid.Item>
+              </Grid.Root>
+            </Flex>
+            <TextAreaField
+              label="Description"
+              value={state.description}
+              onChange={setDescription}
+              rows={4}
+              placeholder="What this agent is good at, what it's not for, example tasks…"
+              description="Describe this agent so team mates know what to use it for."
+            />
+          </Flex>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody>
+          <SectionHeader
+            title="Configuration"
+            description="What powers the agent and shapes how it behaves: its system prompt, the model it uses and what runs it."
+          />
+          <Flex direction="column" gap="5">
+            <TextAreaField
+              label="System prompt"
+              secondaryLabel="optional"
+              value={state.systemMessage}
+              onChange={setSystemMessage}
+              rows={10}
+              mono
+              placeholder="Leave empty to use the chart's default prompt."
+              description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
+              maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
+              error={systemMessageProblem(state.systemMessage)}
+            />
+            <ModelConfigPicker />
+            <HarnessPicker />
+            <TextAreaField
+              label="Extra egress origins"
+              secondaryLabel="optional"
+              value={state.egressText}
+              onChange={setEgressText}
+              rows={3}
+              mono
+              placeholder={
+                'https://github.com:443\nhttps://*.githubusercontent.com'
+              }
+              description="Hosts the agent may reach beyond what it already has: its model, its connectors, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
+              error={egressProblem(parseEgressText(state.egressText))}
+            />
+          </Flex>
+        </CardBody>
+      </Card>
+
+      <Flex direction="column" gap="3">
+        <Text as="p" color="secondary">
+          {hasRepositories
+            ? 'The next steps let you pick skills and the tools for this agent, then review and deploy it.'
+            : 'The next step chooses the tools for this agent; then you review and deploy it.'}
+        </Text>
+        {showValidation && validationErrors.length > 0 && (
+          <Alert
+            status="danger"
+            title="Please fix the following before continuing"
+            description={validationErrors.join('. ')}
+          />
+        )}
+      </Flex>
+    </AgentWizardFrame>
   );
 }

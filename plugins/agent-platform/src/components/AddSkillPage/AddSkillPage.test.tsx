@@ -1,10 +1,19 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
-import { AddSkillDialog } from './AddSkillDialog';
+import { AddSkillPage } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
+
+let mockRepositories: string[] = [];
+jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
+  useSignedInConfig: () => ({
+    config: { getOptionalStringArray: () => mockRepositories },
+    isLoading: false,
+  }),
+}));
 
 const proposeSkill = jest.fn();
 let mockState: {
@@ -29,13 +38,13 @@ const opened: SkillPullRequest = {
   path: 'notes/SKILL.md',
 };
 
-function renderDialog(repositories = [REPO]) {
+function renderPage() {
   return renderInTestApp(
-    <AddSkillDialog
-      repositories={repositories}
-      isOpen
-      onOpenChange={() => {}}
-    />,
+    // The wizard frame's footer renders the actions the page registers, so the
+    // slot provider the skills router mounts is mounted here too.
+    <PageHeaderActionsProvider>
+      <AddSkillPage />
+    </PageHeaderActionsProvider>,
   );
 }
 
@@ -43,14 +52,28 @@ beforeEach(() => {
   proposeSkill.mockReset();
   proposeSkill.mockResolvedValue(opened);
   mockState = { isProposing: false, error: null };
+  mockRepositories = [REPO];
 });
 
-describe('AddSkillDialog', () => {
+describe('AddSkillPage', () => {
+  it('renders in the wizard frame with Cancel leaving to Customize → Skills', async () => {
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Add skill' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Customize / Skills')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/customize/skills',
+    );
+  });
+
   // Typing three fields with userEvent outruns the 5s default under a loaded
   // parallel run, hence the explicit timeouts.
   it('proposes the skill to the configured repository', async () => {
     const user = userEvent.setup();
-    await renderDialog();
+    await renderPage();
 
     expect(
       screen.getByText('Repository: giantswarm/skills'),
@@ -68,19 +91,21 @@ describe('AddSkillDialog', () => {
     });
   }, 30_000);
 
-  it('refuses to submit while the form is incomplete', async () => {
+  it('disables the submit while the form is incomplete', async () => {
     const user = userEvent.setup();
-    await renderDialog();
+    await renderPage();
 
     await user.type(screen.getByLabelText(/Name/), 'notes');
-    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
 
+    expect(
+      screen.getByRole('button', { name: 'Open pull request' }),
+    ).toBeDisabled();
     expect(proposeSkill).not.toHaveBeenCalled();
   }, 30_000);
 
-  it('shows the opened pull request and what happens next', async () => {
+  it('shows the opened pull request and what happens next, with Done to leave', async () => {
     mockState = { isProposing: false, error: null, result: opened };
-    await renderDialog();
+    await renderPage();
 
     expect(screen.getByText('Pull request #7 opened')).toBeInTheDocument();
     expect(
@@ -89,13 +114,10 @@ describe('AddSkillDialog', () => {
     expect(
       screen.getByRole('link', { name: /Open the pull request/ }),
     ).toHaveAttribute('href', opened.pullRequestUrl);
-    // Two Close buttons: the dialog's own X and the footer's. Cancel is gone.
+    const footer = screen.getByRole('contentinfo');
     expect(
-      screen.getAllByRole('button', { name: 'Close' }).length,
-    ).toBeGreaterThan(0);
-    expect(
-      screen.queryByRole('button', { name: 'Cancel' }),
-    ).not.toBeInTheDocument();
+      within(footer).getByRole('button', { name: 'Done' }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();
@@ -108,7 +130,7 @@ describe('AddSkillDialog', () => {
         'A skill named notes already exists in giantswarm/skills.',
       ),
     };
-    await renderDialog();
+    await renderPage();
 
     expect(
       screen.getByText('Could not open the pull request'),
@@ -118,5 +140,15 @@ describe('AddSkillDialog', () => {
         'A skill named notes already exists in giantswarm/skills.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('says when no repository is configured', async () => {
+    mockRepositories = [];
+    await renderPage();
+
+    expect(screen.getByText('No skill repositories')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
   });
 });
