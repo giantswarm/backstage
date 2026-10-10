@@ -846,10 +846,10 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('is replaced by the answer panel while the agent is waiting', async () => {
-      // Replaced, not shown alongside: a plain message cannot answer a pending
+    it('is disabled under the question card while the agent is waiting', async () => {
+      // Disabled, not offered alongside: a plain message cannot answer a pending
       // confirmation. kagent would open a new task and leave the question waiting
-      // forever, so offering the box would quietly strand the conversation.
+      // forever, so a live box would quietly strand the conversation.
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
         isAgentWorking: false,
@@ -863,8 +863,10 @@ describe('SessionDetailPage', () => {
       });
       await render();
 
-      // The question itself is rendered by the timeline above, not repeated here —
-      // what the panel adds is the way to answer it.
+      // The card in the chat bar prints the question it asks (T40) — the
+      // timeline's copy is the record, often scrolled away — and the way to
+      // answer it.
+      expect(screen.getByText('Which cluster?')).toBeInTheDocument();
       expect(
         screen.getByRole('textbox', { name: 'Answer' }),
       ).toBeInTheDocument();
@@ -878,8 +880,61 @@ describe('SessionDetailPage', () => {
       expect(composer()).toBeDisabled();
       // The prototype's waiting caption, naming who waits on what.
       expect(
-        screen.getByText('Issue tracker is waiting for your answer above.'),
+        screen.getByText(
+          'Issue tracker is waiting for your answer. Answer the question above to continue.',
+        ),
       ).toBeInTheDocument();
+    });
+
+    it('attaches the question card to the docked composer, above the box', async () => {
+      // T40: the escalation is answered in the chat bar, like a chat app's
+      // agent question — one docked element holding the card and the box,
+      // pinned to the view's bottom while the conversation scrolls behind it.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'input',
+          toolName: 'ask_user',
+          questions: [
+            { question: 'Which cluster?', choices: ['a'], multiple: false },
+            { question: 'Which namespace?', choices: ['b'], multiple: false },
+          ],
+        },
+      });
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      const card = within(dock).getByRole('form', {
+        name: 'Question from the agent',
+      });
+      const box = within(dock).getByTestId('composer-card');
+      expect(
+        // eslint-disable-next-line no-bitwise
+        card.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // Several questions page in the card.
+      expect(within(card).getByText('Question 1 of 2')).toBeInTheDocument();
+      // Docked while the question is open too — it used to unpin then.
+      expect(getComputedStyle(dock).position).toBe('sticky');
+    });
+
+    it('docks the composer and sizes the column to the view', async () => {
+      // The layout hook measured the chrome around the column, so a short
+      // session's composer sits at the bottom of the view.
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      expect(getComputedStyle(dock).position).toBe('sticky');
+      const column = dock.parentElement!;
+      expect(column.style.getPropertyValue('--session-column-reserve')).toMatch(
+        /^\d+px$/,
+      );
+      expect(column.style.getPropertyValue('--session-dock-height')).toMatch(
+        /^\d+px$/,
+      );
     });
 
     it('says a permission request waits for a decision', async () => {
@@ -898,7 +953,9 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.getByText('Issue tracker is waiting for your decision above.'),
+        screen.getByText(
+          'Issue tracker is waiting for your decision. Allow or decline above to continue.',
+        ),
       ).toBeInTheDocument();
       expect(
         screen.getByText('Nothing is sent until you allow it.'),
@@ -2111,11 +2168,16 @@ describe('SessionDetailPage', () => {
     it('is not rendered at all on a narrow viewport', async () => {
       // Not merely hidden: a narrow viewport should not pay for the rail's two
       // queries and their polling.
-      mockMatchesUpSm.mockReturnValueOnce(false);
+      // For every render, not just the first: the page re-renders once after
+      // mount (the docked composer's layout measures the column, T40).
+      mockMatchesUpSm.mockReturnValue(false);
+      try {
+        await render();
 
-      await render();
-
-      expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
+        expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
+      } finally {
+        mockMatchesUpSm.mockReturnValue(true);
+      }
     });
   });
 

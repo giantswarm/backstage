@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -236,6 +237,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       }
       closeHref={closeHref}
     >
+      <Helmet
+        title={edit ? `Edit ${edit.skill.name} · Skills` : 'Add skill · Skills'}
+      />
       {edit ? (
         <WizardStepHeading title="Propose a change">
           Opens a pull request that updates the skill in the repository, as you.

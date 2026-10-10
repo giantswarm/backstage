@@ -134,7 +134,7 @@ export function NewMcpServerEditGate({ children }: { children: ReactNode }) {
           missing="data"
           title="Connector not found"
           description={`There is no connector "${editName}" on ${
-            activeInstallation ?? 'this installation'
+            activeInstallation ?? 'this environment'
           }.`}
           action={backToServers}
         />

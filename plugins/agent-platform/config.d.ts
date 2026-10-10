@@ -60,7 +60,10 @@ export interface Config {
      * override.
      */
     metaAgents?: {
-      /** Answers general questions about the platform. */
+      /**
+       * Answers general questions about the platform: Customize → Agents'
+       * helper banner ("Ask <agent> about agents").
+       */
       generalInformation?: string;
       /** Creates and edits agents in conversation. */
       agentManagement?: string;

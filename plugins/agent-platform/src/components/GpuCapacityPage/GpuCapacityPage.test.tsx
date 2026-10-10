@@ -64,7 +64,7 @@ describe('GpuCapacityPage', () => {
       screen.getByRole('columnheader', { name: 'Node' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('columnheader', { name: 'Installation' }),
+      screen.queryByRole('columnheader', { name: 'Environment' }),
     ).not.toBeInTheDocument();
   });
 
@@ -82,7 +82,7 @@ describe('GpuCapacityPage', () => {
     await renderInTestApp(<GpuCapacityPage />);
 
     expect(
-      screen.getByRole('columnheader', { name: 'Installation' }),
+      screen.getByRole('columnheader', { name: 'Environment' }),
     ).toBeInTheDocument();
   });
 
@@ -99,7 +99,7 @@ describe('GpuCapacityPage', () => {
 
     expect(screen.getByText('No GPU inventory')).toBeInTheDocument();
     expect(
-      screen.getByText(/No reachable installation has a serving layer/),
+      screen.getByText(/No reachable environment has a serving layer/),
     ).toBeInTheDocument();
   });
 

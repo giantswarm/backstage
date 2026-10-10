@@ -28,11 +28,12 @@ jest.mock('../CodeBlock', () => ({
 
 // The organizations and the cloud identities are read from the installation's
 // Kubernetes API; the dialog sees them as the kubernetes-react hook returns.
+let mockOrganizationNames = ['acme'];
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: (_installation: string, resourceClass: { kind: string }) => ({
     resources: (resourceClass.kind === 'Organization'
-      ? ['acme']
+      ? mockOrganizationNames
       : ['default-identity']
     ).map(name => ({ getName: () => name })),
     isLoading: false,
@@ -181,9 +182,15 @@ function makeMusterApi(scenario: Scenario = {}) {
 
 const analyticsApi = mockApis.analytics.mock();
 
-beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
+beforeEach(() => {
+  jest.mocked(analyticsApi.captureEvent).mockClear();
+  mockOrganizationNames = ['acme'];
+});
 
-async function renderDialog(scenario: Scenario = {}) {
+async function renderDialog(
+  scenario: Scenario = {},
+  installations: string[] = ['inst-1'],
+) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -197,7 +204,7 @@ async function renderDialog(scenario: Scenario = {}) {
     >
       <QueryClientProvider client={queryClient}>
         <CreateClusterDialog
-          installations={['inst-1']}
+          installations={installations}
           isOpen
           onOpenChange={() => {}}
         />
@@ -343,6 +350,51 @@ describe('CreateClusterDialog', () => {
   });
 });
 
+describe('CreateClusterDialog · the selects at scale', () => {
+  const openOrganizations = async (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(
+      await screen.findByRole('button', { name: /Pick an organization/ }),
+    );
+
+  it('offers three organizations and installations without a search', async () => {
+    mockOrganizationNames = ['acme', 'globex', 'initech'];
+    const user = userEvent.setup();
+    await renderDialog({}, ['inst-1', 'inst-2', 'inst-3']);
+
+    await openOrganizations(user);
+    expect(
+      await screen.findByRole('option', { name: 'initech' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(
+      await screen.findByRole('option', { name: 'inst-3' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 organizations and 50 installations', async () => {
+    mockOrganizationNames = Array.from(
+      { length: 300 },
+      (_, i) => `org-${String(i).padStart(3, '0')}`,
+    );
+    const user = userEvent.setup();
+    await renderDialog(
+      {},
+      Array.from({ length: 50 }, (_, i) => `inst-${i + 1}`),
+    );
+
+    await openOrganizations(user);
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
 describe('the form’s checks', () => {
   it('checks the name while typing', () => {
     expect(clusterNameProblem('', [])).toBeUndefined();
@@ -352,7 +404,7 @@ describe('the form’s checks', () => {
       /at most 20/,
     );
     expect(clusterNameProblem('taken1', ['taken1'])).toBe(
-      'A cluster named taken1 already exists on this installation.',
+      'A cluster named taken1 already exists on this environment.',
     );
   });
 

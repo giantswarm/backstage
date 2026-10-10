@@ -72,7 +72,7 @@ describe('InstallationScopeNote', () => {
     mockScope = 'nowhere';
     render(<InstallationScopeNote component="kagent" />);
     expect(
-      screen.getByText(/knows no installation named “nowhere”/),
+      screen.getByText(/knows no environment named “nowhere”/),
     ).toBeInTheDocument();
   });
 });

@@ -270,7 +270,7 @@ export function AddModelBackendDialog({
           <Flex direction="column" gap="4">
             <Text variant="body-small" color="secondary">
               A backend you already run — an Ollama, LM Studio or Lemonade host,
-              or a KServe cluster — registered with the installation's
+              or a KServe cluster — registered with the environment's
               model-manager as you. Its models appear on this page and their
               model configs are wired for agents. One backend per kind.
             </Text>
@@ -279,7 +279,7 @@ export function AddModelBackendDialog({
               <Flex direction="column" gap="3">
                 {installations.length > 1 && (
                   <Select
-                    label="Installation"
+                    label="Environment"
                     isRequired
                     options={installations.map(id => ({ id, label: id }))}
                     selectedKey={installation ?? null}
@@ -358,7 +358,7 @@ export function AddModelBackendDialog({
                         <TextField
                           label="API server"
                           isRequired
-                          description="The target apiserver URL. It must trust the installation's Dex: every call presents your own token."
+                          description="The target apiserver URL. It must trust the environment's Dex: every call presents your own token."
                           value={form.apiServer}
                           onChange={set('apiServer')}
                           isInvalid={apiServerInvalid}

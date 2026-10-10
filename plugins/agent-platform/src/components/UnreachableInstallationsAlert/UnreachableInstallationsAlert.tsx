@@ -37,7 +37,7 @@ export function UnreachableInstallationsAlert({
   return (
     <Alert
       status="warning"
-      title={`Couldn't read ${count} installation${count === 1 ? '' : 's'}`}
+      title={`Couldn't read ${count} environment${count === 1 ? '' : 's'}`}
       description={
         failures
           ? `Skipped because their ${resourceName} couldn't be read: ${installations
@@ -45,7 +45,7 @@ export function UnreachableInstallationsAlert({
                 describe(installation, failures[installation]),
               )
               .join('; ')}.`
-          : `Skipped because their ${resourceName} couldn't be read — the installation may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
+          : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
               ', ',
             )}.`
       }

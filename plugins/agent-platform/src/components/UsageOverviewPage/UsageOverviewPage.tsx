@@ -149,8 +149,8 @@ export function UsageOverviewPage({ sections }: { sections?: ReactNode[] }) {
 
           {isResolvedFromAll && installation && (
             <Text variant="body-small" color="secondary">
-              Showing {installation}. Metrics are read one installation at a
-              time — pick another in the Environment control to switch.
+              Showing {installation}. Metrics are read one environment at a time
+              — pick another in the Environment control to switch.
             </Text>
           )}
 
@@ -172,7 +172,7 @@ export function UsageOverviewPage({ sections }: { sections?: ReactNode[] }) {
               <Text variant="body-small" color="secondary">
                 These figures come from kagent and cover your own sessions only.
                 Fleet-wide tokens, spend and gateway health need the gateway's
-                gen_ai metrics, which this installation does not publish to a
+                gen_ai metrics, which this environment does not publish to a
                 metrics store this portal can query.
               </Text>
             </>

@@ -214,7 +214,7 @@ describe('PullModelDialog', () => {
     ]);
     const dialog = screen.getByRole('dialog');
 
-    expect(within(dialog).getByText('Installation')).toBeInTheDocument();
+    expect(within(dialog).getByText('Environment')).toBeInTheDocument();
     await userEvent.type(
       within(dialog).getByLabelText(/Model reference/),
       'qwen2.5:0.5b',
@@ -237,7 +237,7 @@ describe('PullModelDialog · an installation running several backends', () => {
     ]);
 
     const select = screen.getByRole('button', {
-      name: /Installation and backend/,
+      name: /Environment and backend/,
     });
     await userEvent.click(select);
     await userEvent.click(

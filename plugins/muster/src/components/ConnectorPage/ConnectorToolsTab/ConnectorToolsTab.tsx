@@ -13,7 +13,12 @@ import {
   ToggleButtonGroup,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  INITIAL_ROWS,
+  LoadingIndicator,
+  SEARCH_MIN,
+  ShowMore,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
 import { toolEffect, ToolEffect } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
@@ -149,7 +154,9 @@ function ToolRow({
 /**
  * The connector's tools as an expandable list: a search, a filter by what a
  * tool does with a count per choice, and per tool its effect and an inline
- * Try it that runs the tool through muster.
+ * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
+ * fewer) is read, not searched, so it shows neither; a long one renders a
+ * page of tools at a time.
  */
 export function ConnectorToolsTab({
   installation,
@@ -205,37 +212,43 @@ export function ConnectorToolsTab({
     );
   }
 
+  // Three tools are read at a glance; a search and an All/Reads/Changes
+  // filter over them is volume framing.
+  const searchable = all.length > SEARCH_MIN;
+
   return (
     <Flex direction="column" gap="0">
-      <div className={classes.toolbar}>
-        <Box className={classes.search}>
-          <SearchField
-            aria-label="Search tools"
-            placeholder={`Search ${all.length} ${all.length === 1 ? 'tool' : 'tools'}`}
-            size="small"
-            value={query}
-            onChange={setQuery}
-          />
-        </Box>
-        <ToggleButtonGroup
-          aria-label="Filter by what a tool does"
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[filter]}
-          onSelectionChange={keys => {
-            const next = [...keys][0];
-            if (next === 'all' || next === 'reads' || next === 'changes') {
-              setFilter(next);
-            }
-          }}
-        >
-          {(['all', 'reads', 'changes'] as const).map(id => (
-            <ToggleButton key={id} id={id} size="small">
-              {`${FILTER_LABELS[id]} ${counts[id]}`}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </div>
+      {searchable && (
+        <div className={classes.toolbar}>
+          <Box className={classes.search}>
+            <SearchField
+              aria-label="Search tools"
+              placeholder={`Search ${all.length} tools`}
+              size="small"
+              value={query}
+              onChange={setQuery}
+            />
+          </Box>
+          <ToggleButtonGroup
+            aria-label="Filter by what a tool does"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[filter]}
+            onSelectionChange={keys => {
+              const next = [...keys][0];
+              if (next === 'all' || next === 'reads' || next === 'changes') {
+                setFilter(next);
+              }
+            }}
+          >
+            {(['all', 'reads', 'changes'] as const).map(id => (
+              <ToggleButton key={id} id={id} size="small">
+                {`${FILTER_LABELS[id]} ${counts[id]}`}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </div>
+      )}
       {tools.truncated && (
         <Text as="p" variant="body-small" color="secondary">
           muster listed only part of the installation's tools, so this list may
@@ -247,24 +260,35 @@ export function ConnectorToolsTab({
           No tools match.
         </Text>
       ) : (
-        <AccordionGroup
-          expandedKeys={openTool ? [openTool] : []}
-          onExpandedChange={keys => {
-            const [next] = [...keys];
-            setOpenTool(next === undefined ? undefined : String(next));
-          }}
+        // A server can list hundreds of tools, each an accordion; a page of
+        // them at a time, starting over when the search or filter changes.
+        <ShowMore
+          key={`${filter}|${query}`}
+          items={shown}
+          initial={INITIAL_ROWS}
+          noun="tool"
         >
-          {shown.map(tool => (
-            <ToolRow
-              key={tool.name}
-              tool={tool}
-              label={shortName(tool.name)}
-              open={openTool === tool.name}
-              installation={installation}
-              runsAsCaller={runsAsCaller}
-            />
-          ))}
-        </AccordionGroup>
+          {page => (
+            <AccordionGroup
+              expandedKeys={openTool ? [openTool] : []}
+              onExpandedChange={keys => {
+                const [next] = [...keys];
+                setOpenTool(next === undefined ? undefined : String(next));
+              }}
+            >
+              {page.map(tool => (
+                <ToolRow
+                  key={tool.name}
+                  tool={tool}
+                  label={shortName(tool.name)}
+                  open={openTool === tool.name}
+                  installation={installation}
+                  runsAsCaller={runsAsCaller}
+                />
+              ))}
+            </AccordionGroup>
+          )}
+        </ShowMore>
       )}
     </Flex>
   );

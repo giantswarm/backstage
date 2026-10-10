@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,6 +9,7 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -18,24 +21,6 @@ import type {
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import { agentsRouteRef } from '../../routes';
 import { EditAgentPage } from './EditAgentPage';
-
-// Header actions land in the shared plugin header, outside this tree; the page
-// renders the same Cancel / Commit / Save in its footer card, which is driven.
-jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  useProvidePageHeaderActions: jest.fn(),
-}));
-
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-  useParams: () => ({
-    installation: 'gazelle',
-    namespace: 'kagent',
-    name: 'pr-reviewer',
-  }),
-}));
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -69,8 +54,49 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   }),
 }));
 
-// The toolset field's muster reads (presets, resolution, the MCPServer CRs) are
-// not under test here; the field's own model is `lib/toolset.ts`.
+// The model list as kagent reads it: two in the agent's namespace and one in
+// another, which an edit cannot move the agent to.
+function modelConfig(name: string, namespace: string, displayName: string) {
+  return {
+    getName: () => name,
+    getNamespace: () => namespace,
+    getDisplayName: () => displayName,
+    getModel: () => `${name}-model`,
+    getProvider: () => 'Anthropic',
+  };
+}
+jest.mock('../ModelConfigsProvider', () => ({
+  ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
+  useModelConfigs: () => ({
+    isLoading: false,
+    unreachableInstallations: [],
+    modelConfigsFor: () => [
+      modelConfig('default-model-config', 'kagent', 'Claude Sonnet'),
+      modelConfig('opus-4-7', 'kagent', 'Claude Opus'),
+      modelConfig('elsewhere', 'other-team', 'Elsewhere'),
+    ],
+  }),
+}));
+
+// The Tools step has its own suite; here it only hands over to Review, through
+// the wizard's own links.
+jest.mock('../NewAgentToolsPage', () => ({
+  NewAgentToolsPage: function MockToolsStep() {
+    const { useNavigate } = jest.requireActual('react-router-dom');
+    const { useAgentWizardLinks } = jest.requireActual('../AgentWizardFrame');
+    const navigate = useNavigate();
+    const { review } = useAgentWizardLinks();
+    return (
+      <button type="button" onClick={() => review && navigate(review())}>
+        To review
+      </button>
+    );
+  },
+}));
+jest.mock('../AgentAvatarPreview', () => ({ AgentAvatarPreview: () => null }));
+jest.mock('../CreateAgentAssist', () => ({
+  CreateAgentAssist: () => <p>create assist</p>,
+}));
 jest.mock('../../hooks/useToolsetResolution', () => ({
   useToolsetResolution: () => ({
     tools: [],
@@ -84,8 +110,6 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
 }));
-
-// CodeMirror does not lay out in jsdom; a plain block exposes the YAML.
 jest.mock('../CodeBlock', () => ({
   CodeBlock: ({
     content,
@@ -101,6 +125,10 @@ const PR_REVIEW: AgentSkillEntry = {
   path: 'pr-review',
   git: { url: REPO, commit: HEAD },
 };
+const OCI_SKILL: AgentSkillEntry = {
+  name: 'runbooks',
+  oci: 'gsoci.azurecr.io/giantswarm/skills/runbooks@sha256:0123456789abcdef',
+};
 
 const AGENT: AgentManagerAgent = {
   name: 'pr-reviewer',
@@ -110,52 +138,27 @@ const AGENT: AgentManagerAgent = {
   description: 'Reviews pull requests.',
   systemMessage: 'You review pull requests.',
   modelConfig: 'opus-4-7',
-  skills: [PR_REVIEW],
+  harness: 'claude-code',
+  skills: [PR_REVIEW, OCI_SKILL],
   toolset: ['preset:read-only'],
   ready: true,
   managed: 'helmrelease',
-  helmRelease: {
-    name: 'pr-reviewer',
-    namespace: 'kagent',
-    ready: true,
-    suspended: false,
-    gitOpsOwned: false,
-    deleting: false,
-  },
-  values: {
-    agent: { name: 'pr-reviewer', displayName: 'PR reviewer' },
-    modelConfig: { name: 'opus-4-7' },
-    toolset: ['preset:read-only'],
-    skills: [PR_REVIEW],
-  },
+  values: { agent: { name: 'pr-reviewer' } },
 };
+
+const GITOPS_AGENT: AgentManagerAgent = { ...AGENT, managed: 'gitops' };
 
 const INFO: Partial<AgentManagerInfo> = {
-  capabilities: { commit: false },
+  capabilities: { create: true, validate: true, commit: false },
   harness: { name: 'kagent' },
-  chart: {
-    ociUrl: 'oci://gsoci.azurecr.io/charts/giantswarm/agent',
-    semver: '1.x',
-    schemaVersion: '1.0.0',
-    schemaSource: 'registry',
-  },
-};
-
-type Scenario = {
-  info?: Partial<AgentManagerInfo>;
-  agent?: AgentManagerAgent;
-  servers?: { name: string }[];
-  violations?: string[];
-  validateError?: Error;
-  updateError?: Error;
 };
 
 const PULL_REQUEST = 'https://github.com/giantswarm/agents/pull/42';
 
-const GITOPS_AGENT: AgentManagerAgent = {
-  ...AGENT,
-  managed: 'gitops',
-  helmRelease: { ...AGENT.helmRelease!, gitOpsOwned: true },
+type Scenario = {
+  agent?: AgentManagerAgent;
+  info?: Partial<AgentManagerInfo>;
+  violations?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -167,65 +170,31 @@ function makeMusterApi(scenario: Scenario = {}) {
           return { ...INFO, ...scenario.info };
         case 'x_agent-manager_get_agent':
           return agent;
-        case 'x_agent-manager_list_model_configs':
-          return {
-            modelConfigs: [
-              {
-                name: 'opus-4-7',
-                namespace: 'kagent',
-                model: 'claude-opus-4-7',
-                accepted: true,
-              },
-              {
-                name: 'sonnet-4-5',
-                namespace: 'kagent',
-                model: 'claude-sonnet-4-5',
-                accepted: true,
-              },
-            ],
-          };
-        case 'x_agent-manager_validate_agent': {
-          if (scenario.validateError) {
-            throw scenario.validateError;
-          }
-          const update = args as AgentUpdate & { update: boolean };
-          const values = {
-            ...agent.values,
-            agent: {
-              ...(agent.values?.agent as object),
-              ...(update.description !== undefined
-                ? { description: update.description }
-                : {}),
-            },
-            ...(update.skills ? { skills: update.skills } : {}),
-            ...(update.toolset ? { toolset: update.toolset } : {}),
-          };
+        case 'x_agent-manager_get_agent_status':
+          return { agent: { generation: 3 } };
+        case 'x_agent-manager_validate_agent':
           return {
             valid: !scenario.violations,
             mode: 'update',
             errors: scenario.violations,
             schemaVersion: '1.0.0',
             schemaSource: 'registry',
-            manifests: { ociRepository: '', helmRelease: '', values },
+            manifests: {
+              ociRepository: '',
+              helmRelease: '',
+              values: { agent: { description: args.description } },
+            },
           };
-        }
         case 'x_agent-manager_update_agent':
-          if (scenario.updateError) {
-            throw scenario.updateError;
-          }
           if (args.mode === 'commit') {
             return committedTo(PULL_REQUEST);
           }
           return {
             agent,
-            before: agent.values,
-            after: agent.values,
+            before: {},
+            after: {},
             changed: ['agent.description'],
-            manifests: {
-              ociRepository: '',
-              helmRelease: '',
-              values: agent.values,
-            },
+            manifests: { ociRepository: '', helmRelease: '', values: {} },
             requestedBy: 'admin@lab.local',
           };
         default:
@@ -234,7 +203,7 @@ function makeMusterApi(scenario: Scenario = {}) {
     },
   );
   const listServers = jest.fn(async () => ({
-    mcpServers: scenario.servers ?? [{ name: 'agent-manager' }],
+    mcpServers: [{ name: 'agent-manager' }],
   }));
   const filterTools = jest.fn(async () => ({
     total: 0,
@@ -249,7 +218,22 @@ function makeMusterApi(scenario: Scenario = {}) {
   };
 }
 
-async function renderPage(scenario: Scenario = {}) {
+const BASE = '/agent-platform/agents/edit/gazelle/kagent/pr-reviewer';
+
+function DetailProbe() {
+  const location = useLocation();
+  const handoff = (location.state as Record<string, unknown> | null)?.[
+    AGENT_CREATED_STATE_KEY
+  ];
+  return (
+    <p>
+      agent detail
+      {handoff ? ` after ${(handoff as { action: string }).action}` : ''}
+    </p>
+  );
+}
+
+async function renderEdit(path: string, scenario: Scenario = {}) {
   const { api, callTool } = makeMusterApi(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -257,392 +241,201 @@ async function renderPage(scenario: Scenario = {}) {
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <EditAgentPage />
+        <PageHeaderActionsProvider>
+          <Routes>
+            <Route
+              path="/agent-platform/agents/edit/:installation/:namespace/:name/*"
+              element={<EditAgentPage />}
+            />
+            <Route
+              path="/agent-platform/agents/:installation/:namespace/:name"
+              element={<DetailProbe />}
+            />
+          </Routes>
+        </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    },
   );
   return { callTool };
 }
 
-/** The Save button of the footer card (the header's twin). */
-function saveButton() {
-  return screen.getByRole('button', { name: /^Save/ });
-}
-
-/** The Commit button of the footer card, for an agent applied from git. */
-function commitButton() {
-  return screen.getByRole('button', { name: /^Commit/ });
+/** Changes what the agent is for, then walks Skills and Tools to Review. */
+async function changeDescriptionAndReview(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  const description = await screen.findByLabelText(/^What is it for\?/);
+  await user.clear(description);
+  await user.type(description, 'Reviews every pull request.');
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await screen.findByRole('checkbox', { name: 'Skill PR review' });
+  await user.click(screen.getByRole('button', { name: 'Continue' }));
+  await user.click(await screen.findByRole('button', { name: 'To review' }));
+  await screen.findByRole('heading', { name: 'Check and save' });
 }
 
 function callsOf(callTool: jest.Mock, tool: string) {
   return callTool.mock.calls.filter(([name]) => name === tool);
 }
 
-beforeEach(() => {
-  mockNavigate.mockReset();
-});
-
 describe('EditAgentPage', () => {
-  it("pre-fills every field from get_agent's reading and offers no runtime", async () => {
-    await renderPage();
+  it('opens the create wizard prefilled from the agent, its fixed parts shown, not offered', async () => {
+    await renderEdit(BASE);
 
-    expect(await screen.findByDisplayValue('PR reviewer')).toBeInTheDocument();
+    // The wizard, once the agent is read; its frame says it is an edit.
+    expect(await screen.findByLabelText(/^Name/)).toHaveValue('PR reviewer');
     expect(
-      screen.getByDisplayValue('Reviews pull requests.'),
+      screen.getByRole('heading', { name: 'Edit agent' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByDisplayValue('You review pull requests.'),
+      screen.getByText('Customize / Agents / PR reviewer'),
     ).toBeInTheDocument();
-    // The mounted skill is selected on its card, at its pin.
-    const card = screen.getByRole('checkbox', { name: 'Skill PR review' });
-    expect(card).toHaveAttribute('aria-checked', 'true');
-    expect(card).toHaveTextContent(`pinned at ${HEAD.slice(0, 12)}`);
-    // The toolset arrives as selected.
+    expect(screen.getByLabelText(/^What is it for\?/)).toHaveValue(
+      'Reviews pull requests.',
+    );
+    expect(screen.getByLabelText(/^Instructions/)).toHaveValue(
+      'You review pull requests.',
+    );
+    // No Swarm Operator assist and no installation picker: it is an edit.
+    expect(screen.queryByText('create assist')).not.toBeInTheDocument();
+
+    // More options: the agent's model preselected, only its namespace's
+    // models offered; its technical name and runtime fixed.
+    expect(screen.getByText(/Runs on Claude Opus/)).toBeInTheDocument();
     expect(
-      screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
+      screen.getByRole('radio', { name: 'Select model Claude Opus' }),
     ).toHaveAttribute('aria-checked', 'true');
-    expect(screen.queryByLabelText(/runtime/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Nothing changed yet.')).toBeInTheDocument();
-  });
-
-  it('reviews the dry run of exactly the changed fields and saves them, nothing else', async () => {
-    const { callTool } = await renderPage();
-    const description = await screen.findByDisplayValue(
-      'Reviews pull requests.',
-    );
-
-    await userEvent.clear(description);
-    await userEvent.type(description, 'Reviews Go pull requests.');
-
-    // The review names the changed field and renders agent-manager's dry run.
-    const changed = await screen.findByRole('list', { name: 'Changed fields' });
-    expect(within(changed).getByText('Description')).toBeInTheDocument();
     expect(
-      within(changed).queryByText('System prompt'),
+      screen.queryByRole('radio', { name: 'Select model Elsewhere' }),
     ).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        screen.getByTestId('code-pr-reviewer-values.yaml'),
-      ).toHaveTextContent('description: Reviews Go pull requests.');
-    });
-    const dryRun = callTool.mock.calls.filter(
-      ([tool]) => tool === 'x_agent-manager_validate_agent',
+    expect(screen.getByLabelText(/^Technical name/)).toHaveAttribute(
+      'readonly',
     );
-    expect(dryRun.at(-1)?.[1]).toEqual({
-      namespace: 'kagent',
-      name: 'pr-reviewer',
-      description: 'Reviews Go pull requests.',
-      update: true,
-    });
-
-    await waitFor(() => expect(saveButton()).toBeEnabled());
-    await userEvent.click(saveButton());
-
-    await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalled();
-    });
-    const write = callTool.mock.calls.find(
-      ([tool]) => tool === 'x_agent-manager_update_agent',
-    );
-    expect(write?.[1]).toEqual({
-      namespace: 'kagent',
-      name: 'pr-reviewer',
-      description: 'Reviews Go pull requests.',
-    });
-    expect(write?.[1]).not.toHaveProperty('force');
-    expect(write?.[1]).not.toHaveProperty('runtime');
-    // The detail page is handed the write to watch converge.
-    expect(mockNavigate).toHaveBeenCalledWith(
-      expect.stringContaining(
-        '/agent-platform/agents/gazelle/kagent/pr-reviewer',
+    const runtime = screen.getByRole('list', { name: 'Runtime' });
+    expect(runtime).toHaveTextContent('Harness claude-code');
+    expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "What runs the agent. It can't be changed once the agent exists.",
       ),
-      {
-        state: {
-          [AGENT_CREATED_STATE_KEY]: expect.objectContaining({
-            action: 'updated',
-            requestedBy: 'admin@lab.local',
-          }),
-        },
-      },
-    );
+    ).toBeInTheDocument();
   });
 
-  it('sends an emptied field as "" — back to the chart default', async () => {
-    const { callTool } = await renderPage();
-    const prompt = await screen.findByDisplayValue('You review pull requests.');
-    await userEvent.clear(prompt);
+  it('shows the skills step with the agent’s pins and the skills from elsewhere', async () => {
+    await renderEdit(`${BASE}/skills`);
 
-    await waitFor(() => expect(saveButton()).toBeEnabled());
-    await userEvent.click(saveButton());
-
-    await waitFor(() => {
-      expect(
-        callTool.mock.calls.find(
-          ([tool]) => tool === 'x_agent-manager_update_agent',
-        )?.[1],
-      ).toEqual({
-        namespace: 'kagent',
-        name: 'pr-reviewer',
-        systemMessage: '',
-      });
+    const card = await screen.findByRole('checkbox', {
+      name: 'Skill PR review',
     });
-  });
-
-  it('counts the system prompt and keeps Save locked past the limit', async () => {
-    await renderPage();
-    const prompt = await screen.findByDisplayValue('You review pull requests.');
-    expect(screen.getByText('25 / 20,000 characters')).toBeInTheDocument();
-
-    await userEvent.clear(prompt);
-    await userEvent.click(prompt);
-    await userEvent.paste('é'.repeat(20001));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'System prompt is 20,001 characters; the limit is 20,000. Move long reference material into a skill',
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    // At its pin, with where the branch is now.
+    expect(card).toHaveTextContent(
+      `pinned at ${HEAD.slice(0, 7)} · main is at ${OTHER.slice(0, 7)}`,
     );
-    expect(prompt).toHaveAttribute('aria-invalid', 'true');
-    expect(saveButton()).toBeDisabled();
-  });
-
-  it('names a bad egress origin and keeps Save locked until it is fixed', async () => {
-    const { callTool } = await renderPage();
-    const egress = await screen.findByLabelText('Extra egress origins');
-
-    await userEvent.click(egress);
-    await userEvent.paste('github.com/giantswarm');
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Egress origin "github.com/giantswarm" is not an http(s) origin',
-    );
-    expect(egress).toHaveAttribute('aria-invalid', 'true');
-    expect(saveButton()).toBeDisabled();
-
-    await userEvent.clear(egress);
-    await userEvent.paste(
-      'https://github.com:443\nhttps://*.githubusercontent.com',
-    );
-
-    const changed = await screen.findByRole('list', { name: 'Changed fields' });
-    expect(within(changed).getByText('Egress')).toBeInTheDocument();
-    await waitFor(() => {
-      const dryRun = callTool.mock.calls.filter(
-        ([tool]) => tool === 'x_agent-manager_validate_agent',
-      );
-      expect(dryRun.at(-1)?.[1]).toEqual({
-        namespace: 'kagent',
-        name: 'pr-reviewer',
-        egress: ['https://github.com:443', 'https://*.githubusercontent.com'],
-        update: true,
-      });
-    });
-  });
-
-  it('adds a skill pinned to the head commit its card shows', async () => {
-    const { callTool } = await renderPage();
-    await screen.findByDisplayValue('PR reviewer');
-
-    await userEvent.click(
+    expect(
       screen.getByRole('checkbox', { name: 'Skill Incident responder' }),
-    );
-
-    await waitFor(() => {
-      const dryRun = callTool.mock.calls
-        .filter(([tool]) => tool === 'x_agent-manager_validate_agent')
-        .at(-1);
-      expect((dryRun?.[1] as AgentUpdate).skills).toEqual([
-        PR_REVIEW,
-        {
-          name: 'Incident responder',
-          path: 'incident',
-          git: { url: REPO, commit: OTHER },
-        },
-      ]);
-    });
+    ).toHaveAttribute('aria-checked', 'false');
+    const kept = screen.getByRole('list', { name: 'Skills from elsewhere' });
+    expect(within(kept).getByText('runbooks')).toBeInTheDocument();
   });
 
-  it("shows agent-manager's violations and keeps Save locked", async () => {
-    await renderPage({
-      violations: [
-        'values do not satisfy the agent chart schema 1.0.0: agent.displayName: String length must be less than or equal to 63',
-      ],
-    });
-    const name = await screen.findByDisplayValue('PR reviewer');
-    await userEvent.type(name, ' with a longer name');
+  it('reviews an untouched agent as no change, with Save changes locked', async () => {
+    const { callTool } = await renderEdit(`${BASE}/review`);
 
     expect(
-      await screen.findByText(/String length must be less than or equal to 63/),
-    ).toBeInTheDocument();
-    expect(saveButton()).toBeDisabled();
-  });
-
-  it('never offers the form for an agent applied from git without the commit capability', async () => {
-    // agent-manager refuses every live write to it and cannot open a pull
-    // request here, so the page says so instead of pre-filling a form whose
-    // write can only be refused.
-    await renderPage({ agent: GITOPS_AGENT });
-
-    expect(
-      await screen.findByText(/This agent is applied from git/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /^Save/ }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByDisplayValue('PR reviewer')).not.toBeInTheDocument();
-  });
-
-  it("shows agent-manager's refusal for a refused update verbatim, Save locked", async () => {
-    const message =
-      'HelmRelease kagent/pr-reviewer is applied by Flux Kustomization "agents": its desired state lives in git, a live write would be undone. Change it in the GitOps repository, or pass force to write anyway';
-    await renderPage({ validateError: new Error(`conflict: ${message}`) });
-    const description = await screen.findByDisplayValue(
-      'Reviews pull requests.',
-    );
-    await userEvent.type(description, ' Again.');
-
-    expect(await screen.findByText(message)).toBeInTheDocument();
-    expect(screen.getByText('Refused')).toBeInTheDocument();
-    expect(saveButton()).toBeDisabled();
-  });
-
-  it("shows the apiserver's Forbidden when a viewer saves", async () => {
-    await renderPage({
-      updateError: new Error(
-        'forbidden: update HelmRelease kagent/pr-reviewer: helmreleases.helm.toolkit.fluxcd.io "pr-reviewer" is forbidden: User "oidc:viewer@lab.local" cannot update resource "helmreleases"',
+      await screen.findByText(
+        'Nothing changed yet. Go back to a step to change something.',
       ),
-    });
-    const description = await screen.findByDisplayValue(
-      'Reviews pull requests.',
-    );
-    await userEvent.type(description, ' Again.');
-    await waitFor(() => expect(saveButton()).toBeEnabled());
-    await userEvent.click(saveButton());
-
-    expect(await screen.findByText('Not permitted')).toBeInTheDocument();
-    expect(
-      screen.getByText(/User "oidc:viewer@lab.local" cannot update/),
     ).toBeInTheDocument();
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(callsOf(callTool, 'x_agent-manager_validate_agent')).toHaveLength(0);
   });
 
-  it('keeps only Save for an agent written live, even when agent-manager reports the capability', async () => {
-    // A pull request goes to the GitOps repository that owns the release; an
-    // agent written live has none.
-    await renderPage({ info: { capabilities: { commit: true } } });
-    await screen.findByDisplayValue('PR reviewer');
+  it('saves only what changed through update_agent and hands over to the agent’s page', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE);
 
-    expect(saveButton()).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: /Commit/ }),
-    ).not.toBeInTheDocument();
-  });
+    await changeDescriptionAndReview(user);
 
-  it('dry-runs an agent applied from git in mode commit and commits it as one pull request', async () => {
-    const { callTool } = await renderPage({
-      agent: GITOPS_AGENT,
-      info: { capabilities: { commit: true } },
-    });
-    const description = await screen.findByDisplayValue(
-      'Reviews pull requests.',
-    );
-    expect(
-      screen.queryByRole('button', { name: /^Save/ }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByText(/This agent is applied from git/)).toBeVisible();
-
-    await userEvent.clear(description);
-    await userEvent.type(description, 'Reviews Go pull requests.');
-
-    // The review is agent-manager's dry run in the write's mode: the composed
-    // values, as for a live edit.
-    await waitFor(() => {
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(within(changes).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(changes).getByText("What it's for")).toBeInTheDocument();
+    // The dry run of exactly that change, in mode apply.
+    await waitFor(() =>
       expect(
-        screen.getByTestId('code-pr-reviewer-values.yaml'),
-      ).toHaveTextContent('description: Reviews Go pull requests.');
-    });
-    expect(
-      callsOf(callTool, 'x_agent-manager_validate_agent').at(-1)?.[1],
-    ).toEqual({
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    const [, dryRunArgs] = callsOf(
+      callTool,
+      'x_agent-manager_validate_agent',
+    )[0];
+    expect(dryRunArgs).toMatchObject({
       namespace: 'kagent',
       name: 'pr-reviewer',
-      description: 'Reviews Go pull requests.',
-      update: true,
+      description: 'Reviews every pull request.',
+    });
+    expect(dryRunArgs).not.toHaveProperty('skills');
+    expect(dryRunArgs).not.toHaveProperty('toolset');
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(
+      await screen.findByText('agent detail after updated'),
+    ).toBeInTheDocument();
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    expect(written).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      description: 'Reviews every pull request.',
+    } satisfies AgentUpdate);
+  });
+
+  it('shows agent-manager’s refusal and keeps Save changes locked', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, { violations: ['agent.description: too long'] });
+
+    await changeDescriptionAndReview(user);
+
+    expect(
+      await screen.findByText('agent.description: too long'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  });
+
+  it('proposes the change as a pull request for an agent applied from git', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      agent: GITOPS_AGENT,
+      info: { ...INFO, capabilities: { commit: true } },
+    });
+
+    await changeDescriptionAndReview(user);
+    const propose = await screen.findByRole('button', {
+      name: 'Propose changes as pull request',
+    });
+    await waitFor(() => expect(propose).toBeEnabled());
+    await user.click(propose);
+
+    expect(
+      await screen.findByRole('button', { name: 'Proposed' }),
+    ).toBeDisabled();
+    const [, written] = callsOf(callTool, 'x_agent-manager_update_agent')[0];
+    expect(written).toMatchObject({
       mode: 'commit',
+      description: 'Reviews every pull request.',
     });
-
-    await waitFor(() => expect(commitButton()).toBeEnabled());
-    await userEvent.click(commitButton());
-
-    expect(
-      await screen.findByRole('link', { name: /Open the pull request/ }),
-    ).toHaveAttribute('href', PULL_REQUEST);
-    expect(screen.getByText(/Pull request #42 opened as jane/)).toBeVisible();
-    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([
-      [
-        'x_agent-manager_update_agent',
-        {
-          namespace: 'kagent',
-          name: 'pr-reviewer',
-          description: 'Reviews Go pull requests.',
-          mode: 'commit',
-        },
-        'gazelle',
-      ],
-    ]);
-    // Commit is locked for this change: a second click opens no second pull
-    // request. Nothing changed live, so the page stays where it is.
-    expect(commitButton()).toHaveTextContent('Committed');
-    expect(commitButton()).toBeDisabled();
-    await userEvent.click(commitButton());
-    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toHaveLength(1);
-    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it("shows the commit dry run's violations and keeps Commit locked", async () => {
-    await renderPage({
-      agent: GITOPS_AGENT,
-      info: { capabilities: { commit: true } },
-      violations: ['agent.displayName: String length must be at most 63'],
-    });
-    const name = await screen.findByDisplayValue('PR reviewer');
-    await userEvent.type(name, ' with a longer name');
-
-    expect(
-      await screen.findByText(/String length must be at most 63/),
-    ).toBeInTheDocument();
-    expect(commitButton()).toBeDisabled();
-  });
-
-  it('asks for the GitHub authorization a commit is refused without', async () => {
-    await renderPage({
-      agent: GITOPS_AGENT,
-      info: { capabilities: { commit: true } },
-      updateError: new Error(
-        'auth_required: commit mode needs your GitHub authorization: sign in to agent-manager through muster',
-      ),
-    });
-    const description = await screen.findByDisplayValue(
-      'Reviews pull requests.',
-    );
-    await userEvent.type(description, ' Again.');
-    await waitFor(() => expect(commitButton()).toBeEnabled());
-    await userEvent.click(commitButton());
-
-    expect(
-      await screen.findByText('Authorize GitHub first'),
-    ).toBeInTheDocument();
-    expect(commitButton()).toBeEnabled();
-  });
-
-  it('says why nothing can be edited when muster lists no agent-manager', async () => {
-    await renderPage({ servers: [{ name: 'mcp-kubernetes' }] });
+  it('has no form for an agent applied from git without the commit capability', async () => {
+    await renderEdit(BASE, { agent: GITOPS_AGENT });
 
     expect(
       await screen.findByText('This agent cannot be edited from here'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/muster on gazelle lists no agent-manager/),
-    ).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('PR reviewer')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
   });
 });

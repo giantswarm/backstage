@@ -20,7 +20,7 @@ describe('UnreachableInstallationsAlert', () => {
     );
 
     expect(
-      screen.getByText("Couldn't read 2 installations"),
+      screen.getByText("Couldn't read 2 environments"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Agents/)).toBeInTheDocument();
     expect(screen.getByText(/gremlin, gauss/)).toBeInTheDocument();
@@ -31,9 +31,7 @@ describe('UnreachableInstallationsAlert', () => {
       <UnreachableInstallationsAlert installations={['gremlin']} />,
     );
 
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
   });
 
   it('names the reason and the request id per installation', async () => {

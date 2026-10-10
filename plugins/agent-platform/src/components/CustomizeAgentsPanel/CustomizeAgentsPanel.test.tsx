@@ -1,7 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
+import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { agentsRouteRef } from '../../routes';
 import { CustomizeAgentsPanel } from './CustomizeAgentsPanel';
 
@@ -12,18 +15,39 @@ jest.mock('../AgentsDataProvider', () => ({
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
+let mockSessions: SessionRow[] = [];
+jest.mock('../SessionsDataProvider', () => ({
+  SessionsDataProvider: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
+  useSessions: () => ({
+    rows: mockSessions,
+    notUserScopedInstallations: [],
+  }),
+}));
+let mockMetaAgent: AgentRow | undefined;
+jest.mock('../../hooks/useMetaAgent', () => ({
+  useMetaAgent: () => mockMetaAgent,
+}));
 
 function row(overrides: Partial<AgentRow>): AgentRow {
-  return {
-    id: `golem/${overrides.namespace}/${overrides.technicalName}`,
+  const merged = {
     installation: 'golem',
     namespace: 'support',
     name: 'Agent',
     technicalName: 'agent',
     description: '',
     skillCount: 0,
-    readiness: 'ready',
+    readiness: 'ready' as const,
     ...overrides,
+  };
+  // The composite id `AgentRow` carries, from the row's own values, so the
+  // favorites and sessions joins resolve as they do on the fleet.
+  return {
+    ...merged,
+    id:
+      overrides.id ??
+      `${merged.installation}/${merged.namespace}/${merged.technicalName}`,
   };
 }
 
@@ -47,11 +71,47 @@ const notes = row({
   readiness: 'failed',
 });
 
-function renderPanel(search = '') {
+function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    apis: [[storageApiRef, storage]],
   });
 }
+
+/** A storage with these agents already favorited. */
+async function storageWithFavorites(rows: AgentRow[]) {
+  const storage = mockApis.storage();
+  await storage.forBucket('agent-platform').set(
+    'favoriteAgents',
+    rows.map(each => ({
+      installation: each.installation,
+      namespace: each.namespace,
+      name: each.technicalName,
+    })),
+  );
+  return storage;
+}
+
+function sessionWith(agent: AgentRow, createdAt: string): SessionRow {
+  return {
+    id: `${agent.installation}/${agent.technicalName}-${createdAt}`,
+    sessionId: `${agent.technicalName}-${createdAt}`,
+    installation: agent.installation,
+    title: 'Chat',
+    agentName: agent.name,
+    agentTechnicalName: agent.technicalName,
+    agentNamespace: agent.namespace,
+    createdAt,
+  };
+}
+
+const manyAgents = (count: number) =>
+  Array.from({ length: count }, (_, i) =>
+    row({
+      name: `Agent ${String(i + 1).padStart(3, '0')}`,
+      technicalName: `agent-${i + 1}`,
+    }),
+  );
 
 describe('CustomizeAgentsPanel', () => {
   beforeEach(() => {
@@ -61,6 +121,8 @@ describe('CustomizeAgentsPanel', () => {
       hasInstallations: true,
       unreachableInstallations: [],
     };
+    mockSessions = [];
+    mockMetaAgent = undefined;
   });
 
   it('lists each agent as an avatar row of the prototype, linking to the agent', async () => {
@@ -184,5 +246,232 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel();
     expect(screen.queryByText('No agents yet')).not.toBeInTheDocument();
     expect(screen.getByText(/lab/)).toBeInTheDocument();
+  });
+
+  describe('favorites', () => {
+    it('stars an agent into a Favorites group above the others, and back', async () => {
+      await renderPanel();
+
+      // No favorites: one list, no group headings.
+      expect(
+        screen.queryByRole('heading', { name: 'Favorites' }),
+      ).not.toBeInTheDocument();
+
+      const star = screen.getByRole('button', {
+        name: 'Add Release notes to favorites',
+      });
+      expect(star).toHaveAttribute('aria-pressed', 'false');
+      // The star sits beside the row's link, not inside it.
+      expect(star.closest('a')).toBeNull();
+
+      await userEvent.click(star);
+
+      const favorites = await screen.findByRole('list', {
+        name: 'Favorite agents',
+      });
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Favorites' }),
+      ).toBeInTheDocument();
+      expect(within(favorites).getAllByRole('listitem')).toHaveLength(1);
+      expect(within(favorites).getByText('Release notes')).toBeInTheDocument();
+      const others = screen.getByRole('list', { name: 'Agents' });
+      expect(within(others).getAllByRole('listitem')).toHaveLength(1);
+      expect(within(others).getByText('Support triage')).toBeInTheDocument();
+      // Favorites come first.
+      expect(
+        favorites.compareDocumentPosition(others) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      await userEvent.click(
+        within(favorites).getByRole('button', {
+          name: 'Remove Release notes from favorites',
+        }),
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('list', { name: 'Favorite agents' }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(
+        within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
+          'listitem',
+        ),
+      ).toHaveLength(2);
+    });
+
+    it('shows only the Favorites group when every agent is a favorite', async () => {
+      await renderPanel('', await storageWithFavorites([triage, notes]));
+
+      const favorites = await screen.findByRole('list', {
+        name: 'Favorite agents',
+      });
+      expect(within(favorites).getAllByRole('listitem')).toHaveLength(2);
+      expect(
+        screen.queryByRole('list', { name: 'Agents' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /more/ })).toBeNull();
+    });
+
+    it('keeps the search across both groups', async () => {
+      await renderPanel('notes', await storageWithFavorites([notes]));
+
+      expect(
+        await screen.findByRole('list', { name: 'Favorite agents' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Agents' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Support triage')).not.toBeInTheDocument();
+    });
+
+    it('windows both groups at 300 agents with 30 favorites', async () => {
+      const rows = manyAgents(300);
+      mockAgents = { ...mockAgents, rows };
+      await renderPanel('', await storageWithFavorites(rows.slice(0, 30)));
+
+      const favorites = await screen.findByRole('list', {
+        name: 'Favorite agents',
+      });
+      expect(within(favorites).getAllByRole('listitem')).toHaveLength(25);
+      expect(
+        screen.getByRole('heading', { level: 2, name: 'Favorites' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('30 agents')).toBeInTheDocument();
+      expect(screen.getByText('270 agents')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
+          'listitem',
+        ),
+      ).toHaveLength(25);
+      expect(screen.getByText('25 agents shown, 5 more')).toBeInTheDocument();
+      expect(screen.getByText('25 agents shown, 245 more')).toBeInTheDocument();
+      // Never the whole fleet in the DOM.
+      expect(screen.getAllByRole('listitem')).toHaveLength(50);
+    });
+  });
+
+  describe('last used by you', () => {
+    it('shows the agents of the latest sessions as cards opening a new session', async () => {
+      const docs = row({ name: 'Docs', technicalName: 'docs' });
+      mockAgents = { ...mockAgents, rows: [triage, notes, docs] };
+      mockSessions = [
+        sessionWith(triage, '2026-10-08T10:00:00Z'),
+        sessionWith(docs, '2026-10-09T10:00:00Z'),
+        // Not startable: no card.
+        sessionWith(notes, '2026-10-10T10:00:00Z'),
+      ];
+      await renderPanel();
+
+      const strip = screen.getByRole('region', { name: 'Last used by you' });
+      const cards = within(strip).getAllByRole('link');
+      expect(cards).toHaveLength(2);
+      expect(cards[0]).toHaveTextContent('Docs');
+      expect(cards[0]).toHaveAttribute(
+        'href',
+        `/?agent=${encodeURIComponent(docs.id)}`,
+      );
+      expect(cards[1]).toHaveTextContent('Support triage');
+      expect(cards[1]).toHaveTextContent('New session');
+    });
+
+    it('shows at most three cards however many sessions there are', async () => {
+      const rows = manyAgents(300);
+      mockAgents = { ...mockAgents, rows };
+      mockSessions = rows.map((each, i) =>
+        sessionWith(
+          each,
+          new Date(Date.UTC(2026, 9, 1) + i * 60_000).toISOString(),
+        ),
+      );
+      await renderPanel();
+
+      const cards = within(
+        screen.getByRole('region', { name: 'Last used by you' }),
+      ).getAllByRole('link');
+      expect(cards).toHaveLength(3);
+      expect(cards[0]).toHaveTextContent('Agent 300');
+    });
+
+    it('is left out without sessions, and while searching', async () => {
+      await renderPanel();
+      expect(
+        screen.queryByRole('region', { name: 'Last used by you' }),
+      ).not.toBeInTheDocument();
+
+      mockSessions = [sessionWith(triage, '2026-10-08T10:00:00Z')];
+      await renderPanel('triage');
+      expect(
+        screen.queryByRole('region', { name: 'Last used by you' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('helper banner', () => {
+    const swarmgeist = row({
+      namespace: 'kagent',
+      name: 'Swarmgeist',
+      technicalName: 'swarmgeist',
+    });
+
+    it('is left out while the generalInformation role is unconfigured', async () => {
+      await renderPanel();
+      expect(
+        screen.queryByRole('region', { name: /about agents/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Not sure which agent/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('points at the configured agent and opens a session with it', async () => {
+      mockMetaAgent = swarmgeist;
+      await renderPanel();
+
+      const banner = await screen.findByRole('region', {
+        name: 'Ask Swarmgeist about agents',
+      });
+      expect(
+        within(banner).getByText(/Describe your task and Swarmgeist suggests/),
+      ).toBeInTheDocument();
+      expect(
+        within(banner).getByRole('link', {
+          name: 'Ask Swarmgeist about agents',
+        }),
+      ).toHaveAttribute('href', `/?agent=${encodeURIComponent(swarmgeist.id)}`);
+    });
+
+    it('is left out while the configured agent cannot be started', async () => {
+      mockMetaAgent = { ...swarmgeist, readiness: 'failed' };
+      await renderPanel();
+      expect(
+        screen.queryByText(/Not sure which agent/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('stays away once dismissed', async () => {
+      mockMetaAgent = swarmgeist;
+      const storage = mockApis.storage();
+      const { unmount } = await renderPanel('', storage);
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: "Dismiss, and don't show this again",
+        }),
+      );
+
+      await waitFor(() =>
+        expect(
+          screen.queryByText(/Not sure which agent/),
+        ).not.toBeInTheDocument(),
+      );
+      unmount();
+
+      await renderPanel('', storage);
+      expect(
+        screen.queryByText(/Not sure which agent/),
+      ).not.toBeInTheDocument();
+    });
   });
 });

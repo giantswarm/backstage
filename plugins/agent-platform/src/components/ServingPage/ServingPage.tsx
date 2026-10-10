@@ -619,7 +619,7 @@ export function ServingPage() {
         <EmptyState
           missing="data"
           title="No serving layer"
-          description="None of the reachable installations has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+          description="None of the reachable environments has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
           action={addActions}
         />
       );
@@ -646,7 +646,7 @@ export function ServingPage() {
       : undefined);
 
   let description =
-    'Models served on the installations that have a serving layer — KServe LLMInferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
+    'Models served on the environments that have a serving layer — KServe LLMInferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
   if (canLoad || canPull || canImport) {
     description = `${description} ${[
       canLoad && 'Serve a model from a curated preset or stop one',

@@ -110,7 +110,7 @@ export function UsageCostPage() {
                 />
               </div>
               <Text variant="body-small" color="secondary">
-                The one cost figure this installation can answer without the
+                The one cost figure this environment can answer without the
                 gateway's gen_ai metrics: what your agents' runtimes reported
                 through kagent. The Your sessions tab breaks it down.
               </Text>
@@ -153,7 +153,7 @@ export function UsageCostPage() {
                   <>
                     Costs are measured in USD — the gateway prices each call
                     from its model catalogue as the call happens — and shown
-                    here converted at this installation's configured rate, which
+                    here converted at this environment's configured rate, which
                     makes the displayed amounts estimates. Still not a provider
                     invoice: the catalogue is our own price list, and a model it
                     cannot price contributes nothing rather than raising an

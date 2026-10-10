@@ -16,7 +16,9 @@ jest.mock('../AgentsIndexPage', () => ({
 jest.mock('../AgentDetailPage', () => ({
   AgentDetailPage: () => <div>agent-detail</div>,
 }));
+// The edit wizard is stubbed; the former address's redirect is the real one.
 jest.mock('../EditAgentPage', () => ({
+  ...jest.requireActual('../EditAgentPage'),
   EditAgentPage: () => <div>agent-edit</div>,
 }));
 jest.mock('../NewAgentPage', () => ({
@@ -111,10 +113,25 @@ describe('AgentsRouter', () => {
     },
   );
 
-  // The one ranking this change puts at risk: `edit` is a static segment beside
-  // the detail page's splat, and react-router scores it higher. If that ever
-  // stopped holding, Edit would silently become the detail page's Overview tab.
-  it('keeps the edit page ahead of the detail page’s splat', async () => {
+  // The edit wizard and its steps start with the static `edit` segment, which
+  // react-router scores above the detail path's dynamic installation — if
+  // that ever stopped holding, `edit/<installation>/<namespace>` would read as
+  // an agent and its name as a tab.
+  it.each(['', '/skills', '/tools', '/review'])(
+    'renders the edit wizard at edit/<agent> + "%s"',
+    async step => {
+      renderTab(
+        `/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer${step}`,
+      );
+
+      expect(await screen.findByText('agent-edit')).toBeInTheDocument();
+      expect(screen.queryByText('agent-detail')).not.toBeInTheDocument();
+    },
+  );
+
+  // The former address is a static segment beside the detail page's splat,
+  // scored higher; it only redirects to the wizard now.
+  it('redirects the former …/<agent>/edit address to the wizard', async () => {
     renderTab(`${AGENT}/edit`);
 
     expect(await screen.findByText('agent-edit')).toBeInTheDocument();

@@ -22,7 +22,7 @@ export type ModeVerdicts = Record<WriteMode, ModeVerdict>;
 
 /** Why Commit is not offered where this installation's cluster-manager does not take it. */
 export const COMMIT_NOT_OFFERED =
-  "This installation's cluster-manager does not open pull requests: it is not registered with its GitHub App.";
+  "This environment's cluster-manager does not open pull requests: it is not registered with its GitHub App.";
 
 /** A settled dry run as its verdict. */
 export function verdictOf(

@@ -126,7 +126,11 @@ describe('NewAgentSkillsPage', () => {
     );
     // A branch name is never what is selected.
     expect(screen.getByTestId('selection')).not.toHaveTextContent('main');
-    expect(screen.getByText('1 selected')).toBeInTheDocument();
+    // At two skills every card shows its own state; no count above them.
+    expect(
+      screen.getByRole('checkbox', { name: 'Skill Incident responder' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
   });
 
   it('shows a progress bar while the catalogue is being discovered', async () => {
@@ -259,6 +263,148 @@ describe('NewAgentSkillsPage', () => {
       expect(document.getElementById(describedBy!)).toHaveTextContent(
         'Triage an incident.',
       );
+    });
+  });
+
+  describe('at the scale of the catalogue', () => {
+    const REPO_A = 'https://github.com/giantswarm/agent-skills';
+    const REPO_B = 'https://github.com/giantswarm/claude-code';
+    const REPO_C = 'https://github.com/giantswarm/more-skills';
+
+    /** `count` loose skills in `repoUrl`, named `<prefix> 001` and on. */
+    const skillsIn = (repoUrl: string, count: number, prefix: string) =>
+      Array.from({ length: count }, (_, i): DiscoveredSkill => ({
+        name: `${prefix} ${String(i + 1).padStart(3, '0')}`,
+        description: `Skill number ${i + 1}.`,
+        repoUrl,
+        path: `${prefix.toLowerCase()}-${i + 1}`,
+        ref: 'main',
+        commit: HEAD,
+      }));
+
+    it('shows three skills of one repository as a plain grid', async () => {
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+      await renderStep();
+
+      expect(
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(3);
+      // No search, no count, no accordion around the only repository, and
+      // no paging chrome.
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/skills shown/)).not.toBeInTheDocument();
+    });
+
+    it('opens every repository of a short catalogue', async () => {
+      await renderStep();
+
+      // Two repositories, two skills: both open, both cards on screen.
+      expect(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill PR review' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('windows 300 skills of one repository, with search', async () => {
+      const user = userEvent.setup();
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 300, 'Alpha') });
+      await renderStep();
+
+      expect(
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(20);
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+      expect(screen.getByText('0 selected')).toBeInTheDocument();
+      // Still flat: one repository needs no accordion, however long.
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('20 skills shown, 280 more')).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Show 20 more skills' }),
+      );
+      expect(
+        screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(40);
+
+      // A search starts the matches at their first page.
+      await user.type(screen.getByRole('searchbox'), 'Alpha 25');
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill Alpha 250' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Skill Alpha 001' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('opens 300 skills across repositories as their counts', async () => {
+      const user = userEvent.setup();
+      Object.assign(mockCatalog, {
+        skills: [
+          ...skillsIn(REPO_A, 100, 'Alpha'),
+          ...skillsIn(REPO_B, 100, 'Beta'),
+          ...skillsIn(REPO_C, 100, 'Gamma'),
+        ],
+      });
+      await renderStep();
+
+      const alpha = await screen.findByRole('button', {
+        name: /giantswarm\/agent-skills \(100\)/,
+      });
+      expect(
+        screen.getByRole('button', { name: /giantswarm\/claude-code \(100\)/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /giantswarm\/more-skills \(100\)/ }),
+      ).toBeInTheDocument();
+      // Collapsed, and a collapsed repository mounts none of its cards.
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+      expect(screen.getByRole('searchbox')).toBeInTheDocument();
+
+      // Opening one shows its first page only.
+      await user.click(alpha);
+      expect(
+        screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
+      ).toHaveLength(20);
+      expect(
+        screen.getByRole('button', { name: 'Show 20 more skills' }),
+      ).toBeInTheDocument();
+
+      // A pick is counted on the repository's trigger, so a collapsed one
+      // still says it holds part of the selection.
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
+      );
+      expect(screen.getByText('1 selected')).toBeInTheDocument();
+      await user.click(alpha);
+      expect(
+        screen.getByRole('button', {
+          name: /giantswarm\/agent-skills \(100 · 1 selected\)/,
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+
+      // A search opens every repository it matched in.
+      await user.type(screen.getByRole('searchbox'), 'Gamma 042');
+      expect(
+        await screen.findByRole('checkbox', { name: 'Skill Gamma 042' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /agent-skills/ }),
+      ).not.toBeInTheDocument();
     });
   });
 

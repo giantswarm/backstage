@@ -26,6 +26,27 @@ beforeEach(() => {
 });
 
 describe('SessionComposer', () => {
+  it('carries an attached card directly above the box, under its notices', () => {
+    // T40: the agent's pending question docks with the box as one control.
+    renderComposer({
+      attachment: <div data-testid="attached-card">Which cluster?</div>,
+      disabledReason: 'Answer the question above to continue.',
+      error: 'boom',
+    });
+
+    const card = screen.getByTestId('attached-card');
+    const box = screen.getByTestId('composer-card');
+    const notice = screen.getByText('Message not sent');
+    // eslint-disable-next-line no-bitwise
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(notice, card)).toBe(true);
+    expect(follows(card, box)).toBe(true);
+    // Outside the box's own form: the real card is a form, and forms do not nest.
+    expect(card.closest('form')).toBeNull();
+    expect(field()).toBeDisabled();
+  });
+
   it('submits the trimmed message', async () => {
     renderComposer();
 

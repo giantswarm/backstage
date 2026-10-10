@@ -88,7 +88,7 @@ const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
       title: 'Connectors',
       routeRef: mcpServersRouteRef,
       loader: musterTab(
-        'The connectors of an installation are read through its Kubernetes API.',
+        'The connectors of an environment are read through its Kubernetes API.',
         () =>
           import('./components/McpServersRouter').then(m => m.McpServersRouter),
         { usedBy },
@@ -125,7 +125,7 @@ const workflowsSubPage = SubPageBlueprint.make({
     title: 'Workflows',
     routeRef: workflowsRouteRef,
     loader: musterTab(
-      'The workflows of an installation are read through its Kubernetes API.',
+      'The workflows of an environment are read through its Kubernetes API.',
       () => import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
     ),
   },

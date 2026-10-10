@@ -39,7 +39,7 @@ export function SessionsMigrationNotice() {
       description={
         <Flex direction="column" gap="2" align="start">
           <span>
-            Sessions from before this installation's agent runtime was upgraded
+            Sessions from before this environment's agent runtime was upgraded
             are no longer available. New sessions appear here.
           </span>
           <Button size="small" variant="secondary" onPress={dismiss}>

@@ -80,9 +80,31 @@ describe('segmentTurn', () => {
     ).toEqual(['item', 2, 'item']);
   });
 
-  it('keeps a lone call, and reasoning on its own, inline', () => {
+  it('folds a lone call too, the same way as many (T40)', () => {
+    // No lone-call special case: "Used 1 tool" opens onto a list of one.
     const segments = segmentTurn([
+      at('user-message', 'u'),
       tool('a'),
+      at('agent-message', 'm'),
+    ]);
+
+    expect(
+      segments.map(s => (s.kind === 'work' ? s.items.map(i => i.id) : s.kind)),
+    ).toEqual(['item', ['a'], 'item']);
+  });
+
+  it('folds a lone skill load, and a lone delegation, as a run of one', () => {
+    const segments = segmentTurn([
+      tool('s', 'load_skill'),
+      at('agent-message', 'm'),
+      at('agent-call', 'd', { agentId: 'k__NS__sre', isPending: false }),
+    ]);
+
+    expect(segments.map(s => s.kind)).toEqual(['work', 'item', 'work']);
+  });
+
+  it('keeps reasoning on its own inline', () => {
+    const segments = segmentTurn([
       at('agent-message', 'm'),
       at('reasoning', 'r1'),
       at('reasoning', 'r2'),
@@ -114,7 +136,9 @@ describe('segmentTurn', () => {
       tool('b'),
     ]);
 
-    expect(segments.map(s => s.kind)).toEqual(['item', 'item', 'item']);
+    // The calls on either side fold (each a run of one); the approval between
+    // them stays in the conversation.
+    expect(segments.map(s => s.kind)).toEqual(['work', 'item', 'work']);
   });
 });
 
@@ -174,5 +198,36 @@ describe('summarizeWork', () => {
       label: 'Used 1 tool',
       technicalLabel: '2 steps · 1 tool call',
     });
+  });
+
+  it('names skill loads apart, counting skills by name', () => {
+    const load = (id: string, args?: unknown) =>
+      ({
+        kind: 'tool-call',
+        id,
+        taskIndex: 0,
+        toolName: 'load_skill',
+        args,
+        isPending: false,
+      }) as TimelineItem;
+    const items = [
+      load('a', { name: 'cluster-triage' }),
+      load('b', { name: 'cluster-triage' }),
+      load('c', { name: 'flux-debugging' }),
+      {
+        kind: 'tool-call',
+        id: 'd',
+        taskIndex: 0,
+        toolName: 'get',
+        isPending: false,
+      },
+    ] as TimelineItem[];
+
+    expect(summarizeWork(items)).toEqual({
+      label: 'Loaded 2 skills · Used 1 tool',
+      technicalLabel: '4 steps · 4 tool calls',
+    });
+    // One load whose arguments name no skill is still one skill loaded.
+    expect(summarizeWork([load('x')]).label).toBe('Loaded 1 skill');
   });
 });

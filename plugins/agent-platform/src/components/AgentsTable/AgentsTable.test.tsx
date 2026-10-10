@@ -89,7 +89,7 @@ describe('AgentsTable', () => {
     await renderTable(<AgentsTable rows={rows} />);
 
     expect(screen.getByText('Agent')).toBeInTheDocument();
-    expect(screen.getByText('Installation')).toBeInTheDocument();
+    expect(screen.getByText('Environment')).toBeInTheDocument();
     expect(screen.getByText('Namespace')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('Toolset')).toBeInTheDocument();
@@ -262,7 +262,7 @@ describe('AgentsTable', () => {
     const search = screen.getByRole('searchbox', { name: 'Search agents' });
     expect(search).toHaveAttribute(
       'placeholder',
-      'Search by name, description or installation',
+      'Search by name, description or environment',
     );
     await userEvent.type(search, 'triages');
 

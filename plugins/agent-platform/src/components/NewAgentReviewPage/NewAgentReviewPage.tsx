@@ -2,9 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
 import { dump } from 'js-yaml';
-import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import {
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -23,7 +21,6 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
 import {
-  AGENT_MANAGER_SERVER,
   helmInstallCommand,
   type CommitAgentResult,
 } from '../../lib/agentManager';
@@ -34,221 +31,27 @@ import { shortCommit } from '../../lib/skills';
 import {
   buildCatalogue,
   declaredToolset,
-  selectorLabel,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import {
-  agentDetailRouteRef,
-  newAgentRouteRef,
-  newAgentToolsRouteRef,
-} from '../../routes';
+import { agentDetailRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { AgentWizardFrame } from '../AgentWizardFrame';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
-
-const useStyles = makeStyles(theme => ({
-  // The plain summary: one row per answer, the label in a fixed column that
-  // stacks above the value on a phone.
-  plain: {
-    margin: 0,
-    borderTop: '1px solid var(--bui-border-1)',
-  },
-  plainRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    columnGap: theme.spacing(2),
-    rowGap: theme.spacing(0.5),
-    padding: theme.spacing(1.75, 0),
-    borderBottom: '1px solid var(--bui-border-1)',
-    '& dt': {
-      flex: '0 0 140px',
-      color: 'var(--bui-fg-secondary)',
-    },
-    '& dd': {
-      margin: 0,
-      flex: '1 1 240px',
-      minWidth: 0,
-      overflowWrap: 'anywhere',
-    },
-  },
-  summary: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: theme.spacing(4),
-    padding: theme.spacing(2, 0),
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    marginBottom: theme.spacing(3),
-  },
-  code: {
-    fontFamily: 'monospace',
-    overflowWrap: 'anywhere',
-  },
-  section: {
-    marginBottom: theme.spacing(3),
-  },
-  sectionTitle: {
-    marginBottom: theme.spacing(0.5),
-  },
-  sectionDescription: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
-  },
-  files: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
-  },
-  violations: {
-    margin: 0,
-    paddingLeft: theme.spacing(2.5),
-  },
-  technical: {
-    border: '1px solid var(--bui-border-1)',
-    borderRadius: 12,
-    padding: theme.spacing(1.5, 2),
-  },
-  details: {
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius,
-    padding: theme.spacing(1.5),
-    marginTop: theme.spacing(2),
-  },
-  summaryLine: {
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  technicalSummary: {
-    cursor: 'pointer',
-    color: 'var(--bui-fg-primary)',
-  },
-  detailsBody: {
-    marginTop: theme.spacing(1.5),
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-  },
-}));
-
-// lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
-const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
-
-/** The one-line Tools summary: the loud labels, or the selectors by their labels. */
-function toolsetSummaryLabel(
-  shape: 'none' | 'full' | 'composed',
-  declared: string[],
-): string {
-  if (shape === 'none') {
-    return 'No tools';
-  }
-  if (shape === 'full') {
-    return 'Full gateway access';
-  }
-  return declared.map(selectorLabel).join(', ');
-}
-
-function SummaryItem({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Flex direction="column" gap="1">
-      <Text variant="body-x-small" color="secondary">
-        {label}
-      </Text>
-      {children}
-    </Flex>
-  );
-}
-
-/** One row of the plain summary: what the person answered, in their words. */
-function PlainRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <div className={classes.plainRow}>
-      <dt>{label}</dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function SectionTitle({
-  title,
-  description,
-}: {
-  title: string;
-  description: React.ReactNode;
-}) {
-  const classes = useStyles();
-  return (
-    <>
-      <Text
-        as="h3"
-        variant="title-small"
-        weight="bold"
-        className={classes.sectionTitle}
-      >
-        {title}
-      </Text>
-      <Text as="p" color="secondary" className={classes.sectionDescription}>
-        {description}
-      </Text>
-    </>
-  );
-}
-
-/**
- * agent-manager's refusal for the whole configuration: every schema violation
- * and precondition failure of the dry run, verbatim.
- */
-function Violations({ errors }: { errors: string[] }) {
-  const classes = useStyles();
-  return (
-    <Alert
-      status="danger"
-      title="agent-manager refuses this configuration"
-      description={
-        <ul className={classes.violations} aria-label="Violations">
-          {errors.map(error => (
-            <li key={error}>{error}</li>
-          ))}
-        </ul>
-      }
-    />
-  );
-}
-
-/**
- * The checks agent-manager's dry run could not make. Informational: the dry
- * run is still valid, so they never block Deploy.
- */
-function Notes({ notes }: { notes: string[] }) {
-  const classes = useStyles();
-  return (
-    <Alert
-      status="info"
-      title="agent-manager could not check everything"
-      description={
-        <ul className={classes.violations} aria-label="Notes">
-          {notes.map(note => (
-            <li key={note}>{note}</li>
-          ))}
-        </ul>
-      }
-    />
-  );
-}
+import { EditAgentReview } from './EditAgentReview';
+import {
+  ConnectAgentManager,
+  Notes,
+  PlainRow,
+  SectionTitle,
+  SummaryItem,
+  toolsetSummaryLabel,
+  useReviewStyles,
+  Violations,
+  YAML_OPTS,
+} from './reviewParts';
 
 /** The headline for a refused write, by agent-manager's code. */
 function refusalTitle(code: CreateAgentFailure['code']): string {
@@ -261,40 +64,19 @@ function refusalTitle(code: CreateAgentFailure['code']): string {
   return 'Could not create the agent';
 }
 
-/** The person's muster session is not connected to agent-manager yet. */
-function ConnectAgentManager({
-  installation,
-  message,
-}: {
-  installation: string;
-  message: string;
-}) {
-  return (
-    <Alert
-      status="warning"
-      title="Connect to agent-manager"
-      description={
-        <Flex direction="column" gap="2">
-          <Text variant="body-small">
-            Agents are created through agent-manager, reached through muster as
-            you. Your muster session on {installation} is not connected to it
-            yet: {message}
-          </Text>
-          <ServerSignIn
-            serverName={AGENT_MANAGER_SERVER}
-            installation={installation}
-          />
-        </Flex>
-      }
-    />
-  );
+/**
+ * The wizard's last step: "Check and create" for a new agent, "Check and
+ * save" for an edited one (`EditAgentReview`).
+ */
+export function NewAgentReviewPage() {
+  const { edit } = useNewAgentForm();
+  return edit ? <EditAgentReview edit={edit} /> : <CreateAgentReview />;
 }
 
-export function NewAgentReviewPage() {
-  const classes = useStyles();
+function CreateAgentReview() {
+  const classes = useReviewStyles();
   const navigate = useNavigate();
-  const newAgentLink = useRouteRef(newAgentRouteRef);
-  const toolsLink = useRouteRef(newAgentToolsRouteRef);
+  const { details: newAgentLink, tools: toolsLink } = useAgentWizardLinks();
   const agentDetailLink = useRouteRef(agentDetailRouteRef);
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   // Only to number the steps: with no skill repositories configured the skills
@@ -615,7 +397,7 @@ export function NewAgentReviewPage() {
               <SummaryItem label="Technical name">
                 <span className={classes.code}>{spec.name}</span>
               </SummaryItem>
-              <SummaryItem label="Installation">
+              <SummaryItem label="Environment">
                 <span className={classes.code}>{state.installation}</span>
               </SummaryItem>
               <SummaryItem label="Namespace">

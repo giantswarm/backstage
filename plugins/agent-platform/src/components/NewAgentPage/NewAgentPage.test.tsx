@@ -25,7 +25,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 let mockPreselectedModel: string | undefined;
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
-  useModelConfigs: () => ({ isLoading: false }),
+  useModelConfigs: () => ({ isLoading: false, modelConfigsFor: () => [] }),
 }));
 jest.mock('../InstallationSelect', () => ({
   InstallationSelect: function MockInstallationSelect({

@@ -127,8 +127,8 @@ function SessionsIndexPageContent() {
       <SessionsFrame agentShell={agentShell}>
         <EmptyState
           missing="data"
-          title="No installations configured"
-          description="Sessions are read from kagent on your management clusters, but no installations are configured for this instance."
+          title="No environments configured"
+          description="Sessions are read from kagent on your management clusters, but no environments are configured for this instance."
         />
       </SessionsFrame>
     );
@@ -202,7 +202,7 @@ function SessionsIndexPageContent() {
 
         {/* Same gate as the Agents tab: the installation this tab reads could
             not be asked whether it runs kagent. Renders nothing otherwise. */}
-        <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
+        <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
 
         {/* No rows yet — show activity instead of an empty table skeleton.
             Also while the agents are still resolving on an empty list: the
@@ -264,7 +264,7 @@ function SessionsIndexPageContent() {
             title="Some sessions are not scoped to you"
             description={`kagent on ${notUserScopedInstallations.join(
               ', ',
-            )} is not configured to identify individual users, so sessions from those installations are shared rather than yours alone.`}
+            )} is not configured to identify individual users, so sessions from those environments are shared rather than yours alone.`}
           />
         )}
 

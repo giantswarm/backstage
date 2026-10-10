@@ -66,6 +66,11 @@ import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
 import {
+  COLUMN_RESERVE_VAR,
+  DOCK_HEIGHT_VAR,
+  useDockedComposerLayout,
+} from './useDockedComposerLayout';
+import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
@@ -94,20 +99,46 @@ const useStyles = makeStyles(theme => ({
   },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
+  //
+  // At least the view's height less the chrome around it (measured, see
+  // `useDockedComposerLayout`), so the docked composer sits at the bottom of
+  // the view from the first message on — the T36 wizard-bar rule — and new
+  // messages fill the room above it rather than pushing it down. Until the
+  // measurement lands the reserve is the whole view, i.e. no minimum at all.
   column: {
     width: '100%',
     maxWidth: 920,
     margin: '0 auto',
+    minHeight: `calc(100dvh - var(${COLUMN_RESERVE_VAR}, 100dvh))`,
+    // JSS puts the fallback first, so browsers without dvh keep vh.
+    fallbacks: {
+      minHeight: `calc(100vh - var(${COLUMN_RESERVE_VAR}, 100vh))`,
+    },
+    // A control in the conversation that the browser scrolls into view — a
+    // fold-out opened from the keyboard, a tab stop — lands clear of the dock
+    // (and of the shell's mobile bottom bar under it), however tall a question
+    // card has made the dock.
+    '& > :not($bottomDock) :is(button, a, input, textarea, [tabindex])': {
+      scrollMarginBottom: `calc(var(${DOCK_HEIGHT_VAR}, 0px) + var(--agent-shell-mobile-bar-height, 0px) + ${theme.spacing(2)}px)`,
+    },
   },
-  // The composer stays reachable however long the conversation gets. Only the
-  // composer docks: a pending confirmation panel can be tall, and pinning it
-  // would cover the very conversation it asks about. The gap is what keeps
-  // whatever shares the dock — a lost-runtime notice, a rejected send — off the
-  // composer's box; neither bui's Alert nor the composer's form has a margin.
+  // The chat bar: the composer, its caption, and whatever must be answered or
+  // read before the next message — a question card attached to the box, a
+  // lost-runtime notice, a rejected send — docked to the view's bottom edge
+  // like a chat app's input bar (T40). Sticky at the column's end rather than
+  // `fixed`: it keeps its own room in the flow, so at full scroll the last
+  // message sits above it, never under it, and "scroll to the newest" is just
+  // the document's end. `marginTop: auto` keeps it at the bottom of a column
+  // the conversation does not fill yet. Always docked, the card included: the
+  // card is compact and caps its own height (`PendingConfirmationPanel`), so
+  // the bar cannot outgrow a phone's view. The gap keeps whatever shares the
+  // dock off the composer's box; neither bui's Alert nor the composer's form
+  // has a margin.
   bottomDock: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),
+    marginTop: 'auto',
     position: 'sticky',
     // At phone width the agent shell draws a fixed bottom bar; the variable
     // (agent-shell.css) is its height there and 0px everywhere else — the
@@ -119,15 +150,6 @@ const useStyles = makeStyles(theme => ({
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(2),
     marginBottom: theme.spacing(-2),
-  },
-  // The same slot while a confirmation is open: the panel stacked above the
-  // composer, and nothing pinned. Kept as one element with `bottomDock` (the
-  // class changes, the element does not) so the composer inside survives the
-  // panel coming and going — see the `bottomControl` assembly.
-  bottomStack: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2),
   },
   // A real <button>, stripped of its chrome, rather than a click handler on the
   // heading: the title is an editing affordance, and only a button is reachable
@@ -468,7 +490,7 @@ export function SessionDetailPage() {
   //
   // An answer to a confirmation streams the resumed turn the same way, through
   // the same reducer, so its preview merges through this one path. At most one
-  // of the two is in flight: the answer panel replaces the composer while a
+  // of the two is in flight: the question card disables the composer while a
   // question is open.
   const answerStream = confirmation.stream;
   const timelineWithLive = useMemo(() => {
@@ -668,8 +690,8 @@ export function SessionDetailPage() {
    *   the gateway cuts the request off well before a long turn ends (60 s on a
    *   stock route), so it goes false mid-turn while the agent works on;
    * - the in-flight answer, for the same gap on the turn an answer resumes —
-   *   but only once its stream has an event. Until then the answer panel is
-   *   still up saying "Sending…", and a "Working…" row under it would report
+   *   but only once its stream has an event. Until then the question card is
+   *   still up saying "Sending…", and a "Working…" row above it would report
    *   the same moment twice.
    *
    * A stalled turn overrides all three: a stream that has been open and silent
@@ -861,6 +883,16 @@ export function SessionDetailPage() {
     };
   }, [showWorking, sessionId, state, stateChangedAt]);
 
+  // The conversation column and the chat bar docked at its end, held as state
+  // through callback refs: both exist only on the loaded path (and the dock
+  // only while a composer is offered), and the layout hook re-measures when
+  // either comes or goes.
+  const [columnElement, setColumnElement] = useState<HTMLDivElement | null>(
+    null,
+  );
+  const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
+  useDockedComposerLayout(columnElement, dockElement);
+
   if (isLoading) {
     return (
       <Shell installation={installation} sessionId={sessionId}>
@@ -876,7 +908,7 @@ export function SessionDetailPage() {
           missing="data"
           title="Session not found"
           description={`No session with this id exists on ${
-            installation || 'that installation'
+            installation || 'that environment'
           }. It may have been deleted, or belong to another user — kagent only lets you read your own sessions.`}
           action={<BackToSessions>Back to sessions</BackToSessions>}
         />
@@ -960,8 +992,8 @@ export function SessionDetailPage() {
     // Withheld deliberately, and it is the opposite of "busy": the agent asked
     // something and nothing moves until it is answered. A plain message here does
     // not answer it — kagent opens a *new* task and leaves the question pending
-    // forever — so the composer is replaced by the answer panel below, which
-    // resumes the suspended task instead.
+    // forever — so the composer is disabled under the question card attached
+    // to it, which resumes the suspended task instead.
     //
     // This reason is only reached when the confirmation itself could not be read:
     // a shape we do not recognise, or a task with no id to resume. Answering then
@@ -972,7 +1004,8 @@ export function SessionDetailPage() {
   }
 
   /**
-   * What sits below the conversation: nothing, an answer panel, or the composer.
+   * What sits below the conversation: a withheld-composer note, or the docked
+   * chat bar — the composer, with a question card attached while one waits.
    *
    * Assembled here rather than as a ternary chain in the JSX — there are three
    * outcomes and two of them are multi-element.
@@ -990,31 +1023,31 @@ export function SessionDetailPage() {
       </Flex>
     );
   } else {
-    // The composer — and, while the agent is waiting on an answer, the panel
-    // above it with the composer disabled. A plain message cannot answer a
+    // The composer — and, while the agent is waiting on an answer, the question
+    // card attached to it with the box disabled (T40: the chat bar is where the
+    // agent's question is answered, as in a chat app; the timeline keeps the
+    // record of what was asked and answered). A plain message cannot answer a
     // confirmation — it opens a new task and strands this one — so the composer
     // must not submit then. But removing it outright reads as the reply feature
     // being missing rather than blocked, so it stays in place saying why. kagent's
     // own UI makes the same call, leaving its box on screen with
     // `Awaiting approval…` in it.
     //
-    // One element, one composer, whether or not the panel is there: the panel is
-    // the first child or nothing, so the composer keeps its position and React
-    // keeps its instance. That is what lets the composer notice the panel going
-    // away and take the focus back (see `SessionComposer`); as two branches with
-    // different wrappers it remounted, and the focus fell to <body> after every
-    // answered question. The wrapper's class still differs — the panel can be
-    // tall, and pinning it would cover the very conversation it asks about — but
-    // a class is not an identity.
+    // One element, one composer, whether or not the card is there: the card is
+    // the composer's attachment or nothing, so the composer keeps its position
+    // and React keeps its instance. That is what lets the composer notice the
+    // card going away and take the focus back (see `SessionComposer`); as two
+    // branches with different wrappers it remounted, and the focus fell to
+    // <body> after every answered question. The dock stays docked throughout.
     //
-    // The panel goes as soon as the answer's stream has its first event: kagent
+    // The card goes as soon as the answer's stream has its first event: kagent
     // has taken the answer and the task is no longer waiting, whatever the poll
     // — up to 10 s behind — still says. Until the next poll the composer below
     // stands in with "working", which is what the stream says is happening.
     //
     // Not while kagent has reported the runtime lost: an answer would run into
     // the same lost runtime, so the question is left where it is and the way
-    // out takes the panel's place.
+    // out takes the card's place.
     const isConfirming =
       Boolean(pendingConfirmation && agent) &&
       !answerDispatched &&
@@ -1024,7 +1057,11 @@ export function SessionDetailPage() {
     // as a row to create against; without one the notice says where else to go.
     const offersNewSession = Boolean(runtimeLoss && agentRow && !isConfirming);
     bottomControl = (
-      <div className={isConfirming ? classes.bottomStack : classes.bottomDock}>
+      <div
+        ref={setDockElement}
+        className={classes.bottomDock}
+        data-testid="session-dock"
+      >
         {runtimeLoss && (
           <RuntimeLostNotice
             loss={runtimeLoss}
@@ -1052,22 +1089,24 @@ export function SessionDetailPage() {
             }
           />
         )}
-        {isConfirming && (
-          <PendingConfirmationPanel
-            pending={pendingConfirmation!}
-            agentName={row.agentName || undefined}
-            isAnswering={confirmation.isAnswering}
-            error={confirmation.error?.message}
-            restore={confirmation.failed}
-            isUserScoped={isUserScoped}
-            onAnswer={answer => {
-              // Errors surface through the hook's `error`, which the panel renders
-              // above the choices it hands back.
-              confirmation.answer(answer).catch(() => {});
-            }}
-          />
-        )}
         <SessionComposer
+          attachment={
+            isConfirming ? (
+              <PendingConfirmationPanel
+                pending={pendingConfirmation!}
+                agentName={row.agentName || undefined}
+                isAnswering={confirmation.isAnswering}
+                error={confirmation.error?.message}
+                restore={confirmation.failed}
+                isUserScoped={isUserScoped}
+                onAnswer={answer => {
+                  // Errors surface through the hook's `error`, which the card
+                  // renders above the choices it hands back.
+                  confirmation.answer(answer).catch(() => {});
+                }}
+              />
+            ) : undefined
+          }
           // Waiting on an answer is the opposite of busy; the caption is the
           // reason below either way. A stalled turn still withholds Send —
           // kagent would refuse the message — but says so instead of promising
@@ -1075,14 +1114,17 @@ export function SessionDetailPage() {
           isAgentWorking={isConfirming ? false : showWorking || isStalled}
           isStalled={isStalled}
           isFinished={Boolean(state && !state.isActive)}
-          // The prototype's waiting caption, naming who waits on what. A
-          // plain message cannot answer it (it would open a new turn), which
-          // is why the box is disabled meanwhile.
+          // The prototype's waiting caption, naming who waits on what and
+          // pointing at the card attached just above the box. A plain message
+          // cannot answer it (it would open a new turn), which is why the box
+          // is disabled meanwhile.
           disabledReason={
             isConfirming
               ? `${row.agentName || 'The agent'} is waiting for your ${
-                  pendingConfirmation?.asks === 'input' ? 'answer' : 'decision'
-                } above.`
+                  pendingConfirmation?.asks === 'input'
+                    ? 'answer. Answer the question above to continue.'
+                    : 'decision. Allow or decline above to continue.'
+                }`
               : undefined
           }
           // A conflict has its own notice above; the composer must not also
@@ -1273,7 +1315,12 @@ export function SessionDetailPage() {
       }
       meta={startedMeta}
     >
-      <Flex direction="column" gap="4" className={classes.column}>
+      <Flex
+        ref={setColumnElement}
+        direction="column"
+        gap="4"
+        className={classes.column}
+      >
         {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}

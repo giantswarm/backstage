@@ -281,7 +281,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       // Room for the label beside the sort arrow: it is the initial sort.
       defaultWidth: '0.75fr',

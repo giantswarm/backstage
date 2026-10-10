@@ -47,7 +47,7 @@ export function describeCostBasis(basis: CostBasis): string {
 
     case 'loading':
       // Neither a figure nor a diagnosis: the queries have not landed.
-      return 'Working out the rate from this installation\u2019s gateway metrics\u2026';
+      return 'Working out the rate from this environment\u2019s gateway metrics\u2026';
 
     case 'unavailable':
       // No metrics exist here at all, so "the gateway has not priced this

@@ -106,6 +106,17 @@ function DetectionStatus({
 }
 
 /**
+ * The shared validator words its problems for the classic wizard's fields
+ * ("URL", "installation"); this step labels them "Server address" and, in the
+ * agent area, "Environment". Say them in this step's words.
+ */
+function inStepWords(message: string | undefined): string | undefined {
+  return message
+    ?.replace(/^URL\b/, 'Server address')
+    .replace(/^Select an installation$/, 'Select an environment');
+}
+
+/**
  * Step 1 (Connect) of the shell's connector wizard: the server address with a
  * live probe through muster's `core_mcpserver_detect` (the "Server found"
  * state), the connector's name and an optional description. The transport is
@@ -170,9 +181,10 @@ export function NewConnectorConnectPage() {
   }, [errorCount, reveal, signInLink, navigate, registeredName]);
   // Problems no field on this step can show: the installation comes from the
   // section, request metadata is the classic wizard's. Named in a summary.
-  const unanchoredErrors = [fieldErrors.installation, fieldErrors.meta].filter(
-    (error): error is string => Boolean(error),
-  );
+  const unanchoredErrors = [
+    inStepWords(fieldErrors.installation),
+    fieldErrors.meta,
+  ].filter((error): error is string => Boolean(error));
 
   // Memoized so the frame's footer slot only updates when the handler does,
   // not on every keystroke (see useProvidePageHeaderActions).
@@ -205,7 +217,9 @@ export function NewConnectorConnectPage() {
           value={state.url}
           onChange={setUrl}
           placeholder="https://mcp.example.com/mcp"
-          {...fieldErrorProps(validation.errorFor(fieldErrors.url))}
+          {...fieldErrorProps(
+            validation.errorFor(inStepWords(fieldErrors.url)),
+          )}
         />
         <DetectionStatus url={state.url} installation={state.installation} />
       </Flex>

@@ -26,6 +26,11 @@ import {
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
+import {
+  countNoun,
+  INITIAL_ROWS,
+  SEARCH_MIN,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -794,21 +799,11 @@ export function serverSelector(name: string): string {
   return `server:${name}`;
 }
 
-/**
- * How many rows a list on the Tools step (and a section of the resolved list)
- * shows before asking for a click: a gateway lists hundreds of tools, and a
- * page that renders every one of them at once is the page nobody scrolls.
- */
-export const INITIAL_ROWS = 20;
-
-/**
- * A list shows a search field or a filter bar only when it holds more than
- * this many entries (T39, list-scale-inventory §0): three entries are read,
- * not searched, and a filter over them is volume framing. Mirrors the
- * new-session agent picker's threshold. Lists that sit behind disclosures use
- * the higher `AUTO_EXPAND_MAX` (20) instead.
- */
-export const SEARCH_MIN = 8;
+// The list-scale constants and `countNoun` live in ui-react beside `ShowMore`
+// (muster uses them too); re-exported here for this plugin's existing imports.
+// Lists behind disclosures use the higher `AUTO_EXPAND_MAX` (20) instead of
+// `SEARCH_MIN`.
+export { countNoun, INITIAL_ROWS, SEARCH_MIN };
 
 /**
  * Below this many workflows there is nothing to group — one short list reads
@@ -949,13 +944,4 @@ export function catalogueInventory(
     inventory.workflows += group.workflows.length;
   }
   return inventory;
-}
-
-/** `1 tool` / `3 tools`. */
-export function countNoun(
-  count: number,
-  noun: string,
-  plural = `${noun}s`,
-): string {
-  return `${count} ${count === 1 ? noun : plural}`;
 }

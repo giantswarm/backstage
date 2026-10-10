@@ -219,7 +219,7 @@ describe('AgentUsageSection', () => {
     state.installation = undefined;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/none of the installations/i)).toBeInTheDocument();
+    expect(screen.getByText(/none of the environments/i)).toBeInTheDocument();
   });
 
   it('reports a portal that knows no installations', () => {
@@ -228,7 +228,7 @@ describe('AgentUsageSection', () => {
     state.installation = undefined;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/knows no installations/i)).toBeInTheDocument();
+    expect(screen.getByText(/knows no environments/i)).toBeInTheDocument();
   });
 
   it('names the installation it chose under the "all" scope', () => {

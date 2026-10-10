@@ -118,7 +118,7 @@ describe('ModelCachePanel', () => {
     expect(within(unpriced).getByText('100 GiB')).toBeInTheDocument();
     expect(within(unpriced).getByText('read-only')).toBeInTheDocument();
     expect(screen.getByTestId('cache-read-only')).toHaveTextContent(
-      'inst-2: the installation’s cluster-manager does not offer remove_model_cache yet'.replace(
+      'inst-2: the environment’s cluster-manager does not offer remove_model_cache yet'.replace(
         '’',
         "'",
       ),
@@ -145,7 +145,7 @@ describe('ModelCachePanel', () => {
       screen.getByRole('columnheader', { name: 'Claim' }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('columnheader', { name: 'Installation' }),
+      screen.queryByRole('columnheader', { name: 'Environment' }),
     ).not.toBeInTheDocument();
   });
 

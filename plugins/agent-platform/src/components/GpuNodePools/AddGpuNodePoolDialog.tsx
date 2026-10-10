@@ -89,7 +89,7 @@ export const CLUSTER_PENDING =
 /** The marks `list_clusters` reports for one cluster, as one line each. */
 export function clusterMarks(cluster: ManagedCluster): string[] {
   const marks = [
-    cluster.ownCluster ? "The installation's own cluster" : 'Workload cluster',
+    cluster.ownCluster ? "The environment's own cluster" : 'Workload cluster',
     describeComponent(cluster.gpuOperator, 'GPU operator'),
     describeComponent(cluster.serving, 'Model serving'),
     cluster.commitTarget
@@ -430,7 +430,7 @@ export function AddGpuNodePoolDialog({
         <DialogBody>
           <Flex direction="column" gap="4">
             <Text variant="body-small" color="secondary">
-              GPU capacity for the models served on this installation. The pool,
+              GPU capacity for the models served on this environment. The pool,
               the GPU operator where the cluster has none and model serving
               where it has none are composed by cluster-manager and written as
               you.
@@ -440,7 +440,7 @@ export function AddGpuNodePoolDialog({
               <Flex direction="column" gap="3">
                 {installations.length > 1 && (
                   <Select
-                    label="Installation"
+                    label="Environment"
                     isRequired
                     options={installations.map(id => ({ id, label: id }))}
                     selectedKey={installation ?? null}
@@ -486,7 +486,7 @@ export function AddGpuNodePoolDialog({
                 {!clustersLoading && clusters.length === 0 && noClusterApi && (
                   <Alert
                     status="info"
-                    title="No clusters on this installation"
+                    title="No clusters on this environment"
                     description={noClusterApi}
                     data-testid="cluster-api-note"
                   />
@@ -603,7 +603,7 @@ export function AddGpuNodePoolDialog({
                 {!canCommit && (
                   <Text variant="body-small" color="secondary">
                     Commit — a pull request in the repository owning the cluster
-                    — is not available yet on this installation's
+                    — is not available yet on this environment's
                     cluster-manager.
                   </Text>
                 )}

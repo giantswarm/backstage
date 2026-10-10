@@ -378,6 +378,32 @@ describe('ModelDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('marks the field a blocked save is about, not a summary box', async () => {
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const model = screen.getByLabelText(/^Model/);
+    // Untouched, nothing is flagged.
+    expect(model).not.toHaveAttribute('aria-invalid');
+    await userEvent.clear(model);
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Save changes' })[0],
+    );
+
+    // The field says what is wrong under itself, is marked invalid and has the
+    // focus; nothing is saved and there is no "Please fix" summary.
+    expect(await screen.findByText('Model is required')).toBeInTheDocument();
+    expect(model).toHaveAttribute('aria-invalid', 'true');
+    await waitFor(() => expect(model).toHaveFocus());
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Please fix/)).toBeNull();
+
+    // Reopened, the form starts quiet again.
+    await userEvent.click(screen.getAllByRole('button', { name: 'Cancel' })[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.queryByText('Model is required')).toBeNull();
+  });
+
   it('offers no Edit without permission to change the model', async () => {
     mockMayUpdate = false;
     await renderPage();

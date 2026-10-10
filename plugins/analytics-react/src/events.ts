@@ -24,6 +24,14 @@ export const portalEvents = defineEvents({
       'An agent was created in the Agent Platform, deployed live or committed to Git as a pull request.',
     attributes: { mode: ['deploy', 'commit'] },
   },
+  'AgentPlatform.agentUpdated': {
+    description:
+      "An agent's configuration was changed in the Agent Platform — edited, or its skills moved to their latest commits — applied live or committed to Git as a pull request.",
+    attributes: {
+      mode: ['apply', 'commit'],
+      change: ['edited', 'skillsRefreshed'],
+    },
+  },
   'AgentPlatform.sessionStarted': {
     description: 'A session with an agent was started.',
     attributes: {

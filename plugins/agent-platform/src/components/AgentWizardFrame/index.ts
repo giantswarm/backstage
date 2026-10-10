@@ -1,2 +1,6 @@
-export { AgentWizardFrame, useAgentWizardCloseHref } from './AgentWizardFrame';
-export type { AgentWizardStepId } from './AgentWizardFrame';
+export {
+  AgentWizardFrame,
+  useAgentWizardCloseHref,
+  useAgentWizardLinks,
+} from './AgentWizardFrame';
+export type { AgentWizardLinks, AgentWizardStepId } from './AgentWizardFrame';

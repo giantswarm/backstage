@@ -139,7 +139,7 @@ function UsedBySection({ skill }: { skill: DiscoveredSkill }) {
         <Text as="p" variant="body-small" color="secondary">
           {unreachableInstallations.length === 1
             ? `The agents on ${unreachableInstallations[0]} could not be read, so some users of this skill may be missing.`
-            : `The agents on ${unreachableInstallations.length} installations could not be read, so some users of this skill may be missing.`}
+            : `The agents on ${unreachableInstallations.length} environments could not be read, so some users of this skill may be missing.`}
         </Text>
       )}
       {body}

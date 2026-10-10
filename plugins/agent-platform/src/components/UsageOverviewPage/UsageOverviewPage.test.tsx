@@ -166,6 +166,15 @@ describe('UsageOverviewPage', () => {
     expect(screen.getByText('5.0M')).toBeInTheDocument();
     expect(screen.getByText('Active agents')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByText('2 models answered')).toBeInTheDocument();
+  });
+
+  // Live round L4.
+  it('says "1 model answered" for a single model', async () => {
+    view.usage = usage({ models: 1 });
+    renderPage();
+
+    expect(await screen.findByText('1 model answered')).toBeInTheDocument();
   });
 
   it('carries exactly one spend number, a teaser pointing to Cost', async () => {
@@ -240,6 +249,10 @@ describe('UsageOverviewPage', () => {
     expect(await screen.findByText('Top agents')).toBeInTheDocument();
     expect(screen.getByText('Release Notes Writer')).toBeInTheDocument();
     expect(screen.getByText('1,000')).toBeInTheDocument();
+    // Live round L3: the count and the share are read apart, not as "100081%".
+    expect(screen.getByText('1,000').textContent).toBe(
+      '1,000 model calls, 81%',
+    );
     // 1,000 of 1,234 calls.
     expect(
       screen.getByRole('img', {

@@ -1,10 +1,11 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import {
   Badge,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
+  SearchField,
   Table,
   Text,
   useTable,
@@ -15,7 +16,12 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { modelDetailRouteRef } from '../../routes';
-import { stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  INITIAL_ROWS,
+  matchesQuery,
+  ShowMore,
+  stopRowPress,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
   formatContextLength,
@@ -1040,15 +1046,23 @@ function getColumnConfig(
   return config;
 }
 
-/** One group's rows as a table, its columns derived from those rows alone. */
+/**
+ * One group's rows as a table, its columns derived from those rows alone.
+ * A backend with dozens of pulled models shows its first {@link INITIAL_ROWS}
+ * and offers the rest: the table sorts, then `ShowMore` slices the sorted
+ * rows, so the first page is the running models whatever column is sorted.
+ */
 function ServedModelsGroupTable({
   group,
   hrefFor,
   renderActions,
+  query,
 }: {
   group: ServedModelGroup;
   hrefFor: (consumer: ServedModelConsumer) => string | undefined;
   renderActions?: (row: ServedModelRow) => ReactNode;
+  /** The search in force; a new one starts the group over at its first page. */
+  query: string;
 }) {
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
@@ -1064,7 +1078,37 @@ function ServedModelsGroupTable({
     paginationOptions: { type: 'none' },
   });
 
-  return <Table<ServedModelRow> {...tableProps} columnConfig={columnConfig} />;
+  return (
+    <ShowMore
+      key={query}
+      items={tableProps.data ?? []}
+      initial={INITIAL_ROWS}
+      noun="model"
+    >
+      {visible => (
+        <Table<ServedModelRow>
+          {...tableProps}
+          data={visible}
+          columnConfig={columnConfig}
+        />
+      )}
+    </ShowMore>
+  );
+}
+
+/**
+ * How many rows, across every group, before the page offers a model search:
+ * one Ollama or LM Studio backend easily holds 50 pulled models, three are
+ * read at a glance.
+ */
+const SERVED_MODELS_SEARCH_MIN = INITIAL_ROWS;
+
+/** Whether a row is the model a search names: its served name, its display name, or its source. */
+function matchesServedModel(query: string, row: ServedModelRow): boolean {
+  return matchesQuery(
+    query,
+    [row.name, row.displayName, row.modelSource].filter(Boolean).join(' '),
+  );
 }
 
 /** What the Serving page says when no serving layer in view lists a model. */
@@ -1131,16 +1175,38 @@ export function ServedModelsTable({
     [modelDetailRoute],
   );
 
+  // The search narrows the rows *before* they are grouped, so a backend with
+  // no match drops out instead of showing an empty card; a backend that
+  // serves nothing yet has nothing to match and drops out too. Offered only
+  // once the page holds more than a screenful, and kept while a search is in
+  // force so it can still be cleared.
+  const [query, setQuery] = useState('');
+  const trimmed = query.trim();
+  const isSearchable = rows.length > SERVED_MODELS_SEARCH_MIN || trimmed !== '';
+  const matching = useMemo(
+    () =>
+      trimmed === ''
+        ? rows
+        : rows.filter(row => matchesServedModel(trimmed, row)),
+    [rows, trimmed],
+  );
+
   const groups = useMemo(
     () =>
-      [...groupServedModelRows(rows), ...(emptyGroups ?? [])].sort(
-        compareGroups,
-      ),
-    [rows, emptyGroups],
+      [
+        ...groupServedModelRows(matching),
+        ...(trimmed === '' ? (emptyGroups ?? []) : []),
+      ].sort(compareGroups),
+    [matching, trimmed, emptyGroups],
   );
-  const installations = new Set(groups.map(group => group.installation)).size;
+  // From every group, not the matching ones: the header naming the
+  // installation must not come and go as the search narrows.
+  const installations = new Set([
+    ...rows.map(row => row.installation),
+    ...(emptyGroups ?? []).map(group => group.installation),
+  ]).size;
 
-  if (groups.length === 0) {
+  if (rows.length === 0 && (emptyGroups ?? []).length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
         {NO_SERVED_MODELS}
@@ -1150,6 +1216,19 @@ export function ServedModelsTable({
 
   return (
     <Flex direction="column" gap="3">
+      {isSearchable && (
+        <SearchField
+          aria-label="Search models"
+          placeholder="Search models by name…"
+          value={query}
+          onChange={setQuery}
+        />
+      )}
+      {groups.length === 0 && (
+        <Text variant="body-medium" color="secondary">
+          No models match “{trimmed}”.
+        </Text>
+      )}
       {groups.map(group => (
         <ServedModelsGroupCard
           key={group.key}
@@ -1164,6 +1243,7 @@ export function ServedModelsTable({
                 group={group}
                 hrefFor={hrefFor}
                 renderActions={renderActions}
+                query={trimmed}
               />
               {renderGroupDetail?.(group)}
             </Flex>

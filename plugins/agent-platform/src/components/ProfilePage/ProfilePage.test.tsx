@@ -68,7 +68,7 @@ describe('ProfilePage', () => {
     mockInstallations = [{ name: 'gazelle' }, { name: 'gorilla' }];
     await renderPage();
 
-    const section = screen.getByRole('region', { name: 'Installations' });
+    const section = screen.getByRole('region', { name: 'Environments' });
     expect(
       within(section)
         .getAllByTestId('installation-chip')
@@ -81,7 +81,7 @@ describe('ProfilePage', () => {
     await renderPage();
 
     expect(
-      screen.queryByRole('region', { name: 'Installations' }),
+      screen.queryByRole('region', { name: 'Environments' }),
     ).not.toBeInTheDocument();
   });
 

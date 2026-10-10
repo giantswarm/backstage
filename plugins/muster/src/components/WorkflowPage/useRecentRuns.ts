@@ -1,5 +1,5 @@
 import { useApi } from '@backstage/frontend-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
 
 /**
@@ -30,6 +30,45 @@ export function useRecentRuns(
       }),
     enabled: hasSession,
     staleTime: 30_000,
+  });
+}
+
+/**
+ * How many older runs each *Show older runs* click reads, past the first
+ * {@link RECENT_RUNS_LIMIT}.
+ */
+export const OLDER_RUNS_PAGE = 20;
+
+/**
+ * The runs older than the first {@link RECENT_RUNS_LIMIT}, read
+ * {@link OLDER_RUNS_PAGE} at a time with muster's `offset` — one query per
+ * page the person asked for (`pages`, 0 reads nothing), newest first. Kept apart
+ * from {@link useRecentRuns} so the canvas's last-run overlay never waits on
+ * them.
+ */
+export function useOlderRuns(
+  name: string,
+  installation: string | undefined,
+  hasSession: boolean,
+  pages: number,
+) {
+  const musterApi = useApi(musterApiRef);
+  return useQueries({
+    queries: Array.from({ length: pages }, (_, page) => {
+      const offset = RECENT_RUNS_LIMIT + page * OLDER_RUNS_PAGE;
+      return {
+        queryKey: ['muster', 'workflow-older-runs', installation, name, offset],
+        queryFn: () =>
+          musterApi.listExecutions({
+            workflowName: name,
+            limit: OLDER_RUNS_PAGE,
+            offset,
+            installation,
+          }),
+        enabled: hasSession,
+        staleTime: 30_000,
+      };
+    }),
   });
 }
 

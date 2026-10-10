@@ -109,7 +109,7 @@ function servesModelImagesOnly(node: GpuNode): boolean {
 /** The hint in an empty cache cell when another node of the installation holds the cache. */
 export const NO_CACHE_ON_NODE_HINT = 'no model cache on this node';
 const NO_CACHE_ON_NODE_TITLE =
-  'Another node of this installation holds the model cache. Whether a model can be served here depends on that cache claim being mountable from this node — a node-local claim is not. The serving layer says which nodes are serving targets from model-manager 0.11 on; this one did not.';
+  'Another node of this environment holds the model cache. Whether a model can be served here depends on that cache claim being mountable from this node — a node-local claim is not. The serving layer says which nodes are serving targets from model-manager 0.11 on; this one did not.';
 
 /**
  * "Not a serving target: <reason>" for a node the serving layer will not
@@ -386,7 +386,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       cell: node => <CellText title={node.installation} />,
     },
@@ -628,7 +628,7 @@ export function GpuCapacityPanel({
         {unavailableEntries.length > 0 && (
           <Alert
             status="info"
-            title="GPU capacity is unavailable for some installations"
+            title="GPU capacity is unavailable for some environments"
             description={unavailableEntries
               .map(
                 ([installation, reason]) =>

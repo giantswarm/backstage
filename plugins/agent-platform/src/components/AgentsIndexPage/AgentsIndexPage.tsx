@@ -80,8 +80,8 @@ function AgentsIndexPageContent() {
       <Content>
         <EmptyState
           missing="data"
-          title="No installations configured"
-          description="Agents are read from your management clusters, but no installations are configured for this instance."
+          title="No environments configured"
+          description="Agents are read from your management clusters, but no environments are configured for this instance."
         />
       </Content>
     );
@@ -140,7 +140,7 @@ function AgentsIndexPageContent() {
             kagent (its API server rejected the token, refused the read, or
             did not answer): say so once, with the remedy, instead of listing
             nothing. Renders nothing otherwise. */}
-        <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
+        <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
 
         {/* No rows yet — show activity instead of an empty table skeleton. */}
         {isLoading && !kagentMissing && (

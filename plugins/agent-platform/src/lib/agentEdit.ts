@@ -5,10 +5,13 @@ import type {
 } from './agentManager';
 import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
+import { skillEntryOf } from './agentSpec';
+import { canonicalSkillId, type DiscoveredSkill } from './skills';
+import type { NewAgentFormState } from '../components/NewAgentFormProvider';
 
 /**
- * The edit form's model: the fields of an agent a person changes from the
- * detail page. Everything the 1.x values carry for an agent and nothing else —
+ * The model of an edit: the fields of an agent a person changes through the
+ * edit wizard (the create wizard prefilled, see {@link formStateOfAgent}). Everything the 1.x values carry for an agent and nothing else —
  * no runtime (every agent runs on the platform Harness), no per-skill
  * credential, no avatar (the icon URL follows the technical name).
  */
@@ -171,13 +174,133 @@ export function hasChanges(update: AgentUpdate): boolean {
   return Object.keys(update).some(key => key !== 'namespace' && key !== 'name');
 }
 
-/** How the review names a changed field. */
+/** How the review names a changed field: the wizard's own words. */
 export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
-  displayName: 'Display name',
-  description: 'Description',
-  systemMessage: 'System prompt',
+  displayName: 'Name',
+  description: "What it's for",
+  systemMessage: 'Instructions',
   modelConfig: 'Model',
-  toolset: 'Toolset',
+  toolset: 'Tools',
   skills: 'Skills',
-  egress: 'Egress',
+  egress: 'Extra egress origins',
 };
+
+/** Where a git skill entry lives, in the catalog's canonical shape. */
+function placeOfEntry(entry: AgentSkillEntry): string | undefined {
+  return 'git' in entry
+    ? canonicalSkillId({ repoUrl: entry.git.url, path: entry.path ?? '' })
+    : undefined;
+}
+
+/**
+ * The create wizard's state prefilled from an agent, for the edit wizard.
+ *
+ * - The name is the display name, else the technical name (the wizard
+ *   requires one); {@link editStateOfForm} reads an untouched technical name
+ *   back as "no display name", so prefilling it is not a change.
+ * - The technical name, installation, namespace and Harness are the agent's
+ *   and fixed: an update cannot move them. The Harness is left undefined when
+ *   it is the platform's, as the create wizard leaves it.
+ * - Each mounted git skill the catalog lists is selected as the catalog's
+ *   skill but at the commit the agent is pinned to, so its card reads
+ *   "pinned at" and an untouched skill is written back unmoved. Every other
+ *   skill (another repository, an OCI digest) is kept as it is.
+ */
+export function formStateOfAgent(
+  agent: AgentManagerAgent,
+  options: {
+    installation: string;
+    /** The configured repositories' skills, each at its head commit. */
+    catalog: DiscoveredSkill[];
+    /** agent-manager's platform Harness (`get_info`), when known. */
+    platformHarness?: string;
+  },
+): NewAgentFormState {
+  const baseline = editStateOf(agent);
+  const listed = new Map(
+    options.catalog.map(skill => [canonicalSkillId(skill), skill]),
+  );
+  const selectedSkills: DiscoveredSkill[] = [];
+  const keptSkills: AgentSkillEntry[] = [];
+  for (const entry of agent.skills ?? []) {
+    const place = placeOfEntry(entry);
+    const skill = place ? listed.get(place) : undefined;
+    if (skill && 'git' in entry) {
+      selectedSkills.push({ ...skill, commit: entry.git.commit });
+    } else {
+      keptSkills.push(entry);
+    }
+  }
+  const harness =
+    agent.harness && agent.harness !== options.platformHarness
+      ? { name: agent.harness }
+      : undefined;
+  return {
+    name: baseline.displayName || agent.name,
+    slug: agent.name,
+    description: baseline.description,
+    installation: options.installation,
+    modelConfigName: baseline.modelConfig || undefined,
+    modelConfigNamespace: agent.namespace,
+    modelDisplayName: undefined,
+    harness,
+    droppedHarness: undefined,
+    systemMessage: baseline.systemMessage,
+    egressText: baseline.egressText,
+    selectedSkills,
+    keptSkills,
+    toolset: baseline.toolset,
+  };
+}
+
+/**
+ * The skills an edit writes: the agent's entries still selected or kept, in
+ * the agent's order and exactly as pinned, then the newly selected ones,
+ * pinned to the commit their card showed. An untouched list is the agent's
+ * own, so it is no change.
+ */
+function skillEntriesOfForm(
+  agent: AgentManagerAgent,
+  form: Pick<NewAgentFormState, 'selectedSkills' | 'keptSkills'>,
+): AgentSkillEntry[] {
+  const selected = new Map(
+    form.selectedSkills.map(skill => [canonicalSkillId(skill), skill]),
+  );
+  const kept = new Set(form.keptSkills.map(skillEntryKey));
+  const written = new Set<string>();
+  const entries: AgentSkillEntry[] = [];
+  for (const entry of agent.skills ?? []) {
+    const place = placeOfEntry(entry);
+    if (kept.has(skillEntryKey(entry))) {
+      entries.push(entry);
+    } else if (place && selected.has(place) && !written.has(place)) {
+      entries.push(entry);
+      written.add(place);
+    }
+  }
+  for (const [place, skill] of selected) {
+    if (!written.has(place)) {
+      entries.push(skillEntryOf(skill));
+      written.add(place);
+    }
+  }
+  return entries;
+}
+
+/** The edit the wizard's state amounts to, for {@link updateOf}. */
+export function editStateOfForm(
+  agent: AgentManagerAgent,
+  form: NewAgentFormState,
+): AgentEditState {
+  const untouchedTechnicalName =
+    !agent.displayName && form.name.trim() === agent.name;
+  return {
+    displayName: untouchedTechnicalName ? '' : form.name,
+    description: form.description,
+    systemMessage: form.systemMessage,
+    modelConfig: form.modelConfigName ?? '',
+    toolset: form.toolset,
+    skills: skillEntriesOfForm(agent, form),
+    egressText: form.egressText,
+  };
+}

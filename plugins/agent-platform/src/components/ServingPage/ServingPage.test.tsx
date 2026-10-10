@@ -684,7 +684,7 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText(/Models served on the installations/),
+      screen.getByText(/Models served on the environments/),
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
@@ -804,9 +804,7 @@ describe('ServingPage', () => {
 
     await renderSection();
 
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
     expect(
       screen.getByText(/served models couldn't be read/),
     ).toBeInTheDocument();
@@ -1142,8 +1140,6 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
   });
 });

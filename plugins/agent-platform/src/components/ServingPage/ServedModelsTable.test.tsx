@@ -1197,3 +1197,98 @@ describe('several backends: the Lemonade group and its rows', () => {
     expect(memoryLine({ loaded: true, pinned: false })).toBeUndefined();
   });
 });
+
+describe('ServedModelsTable · at scale', () => {
+  /** A pulled Ollama-style model, `available`, on the given backend. */
+  const pulled = (
+    installation: string,
+    backend: 'ollama' | 'lemonade',
+    name: string,
+  ): ServedModelRow => ({
+    id: `${installation}/${backend}//${name}`,
+    installation,
+    backend,
+    name,
+    modelSource: name,
+    readiness: 'available',
+    internalUrl: `http://${backend}.lab.test`,
+    endpointHosts: [],
+    usedBy: [],
+  });
+
+  /** 300 rows: 280 pulled into one Ollama, 20 into a Lemonade, same installation. */
+  const many: ServedModelRow[] = [
+    ...Array.from({ length: 280 }, (_, i) =>
+      pulled('lab', 'ollama', `llama-${i}`),
+    ),
+    ...Array.from({ length: 20 }, (_, i) =>
+      pulled('lab', 'lemonade', `phi-${i}`),
+    ),
+  ];
+
+  /** The body rows of one group's table (the header row left out). */
+  const bodyRows = (key: string) =>
+    within(screen.getByTestId(`served-models-group-${key}`)).getAllByRole('row')
+      .length - 1;
+
+  it('shows three models with no search and no reveal control', async () => {
+    await renderTable(<ServedModelsTable rows={rows} />);
+
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('caps each group at 20 rows and offers a model search at 300', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+    ).toBeVisible();
+    expect(bodyRows('lab/ollama')).toBe(20);
+    expect(bodyRows('lab/lemonade')).toBe(20);
+    // Only the group with more than a page carries the reveal control.
+    expect(
+      within(screen.getByTestId('served-models-group-lab/ollama')).getByRole(
+        'button',
+        { name: 'Show 20 more models' },
+      ),
+    ).toBeVisible();
+    expect(
+      within(
+        screen.getByTestId('served-models-group-lab/lemonade'),
+      ).queryByRole('button', { name: /^Show/ }),
+    ).toBeNull();
+  });
+
+  it('filters before grouping, so a group with no match disappears', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      'phi',
+    );
+
+    expect(screen.queryByTestId('served-models-group-lab/ollama')).toBeNull();
+    expect(bodyRows('lab/lemonade')).toBe(20);
+    // The search stays while it narrows the page below the threshold, so it
+    // can still be cleared.
+    expect(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+    ).toBeVisible();
+  });
+
+  it('says so when no model matches', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      'nothing-like-it',
+    );
+
+    expect(
+      screen.getByText('No models match “nothing-like-it”.'),
+    ).toBeVisible();
+    expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+});

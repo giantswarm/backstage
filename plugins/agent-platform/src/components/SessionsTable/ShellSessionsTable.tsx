@@ -360,7 +360,7 @@ function shellColumns({
   if (showInstallation) {
     columns.push({
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       width: '12%',
       cell: row => <CellText title={row.installation} />,
     });

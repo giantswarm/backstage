@@ -26,6 +26,7 @@ const state: NewAgentFormState = {
   systemMessage: 'You review pull requests.',
   egressText: '',
   selectedSkills: [skill],
+  keptSkills: [],
   toolset: ['preset:read-only'],
 };
 

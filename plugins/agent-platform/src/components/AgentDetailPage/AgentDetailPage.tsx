@@ -779,8 +779,8 @@ function AgentDetailPageContent() {
             missing="data"
             title="Agent not found"
             description={`No agent named "${name}" exists in namespace "${namespace}" on ${
-              installation || 'that installation'
-            }. It may have been deleted or renamed, or that installation may not run kagent API v2.`}
+              installation || 'that environment'
+            }. It may have been deleted or renamed, or that environment may not run kagent API v2.`}
             action={<BackToAgents>Back to agents</BackToAgents>}
           />
         </AgentFrame>
@@ -795,7 +795,7 @@ function AgentDetailPageContent() {
             title="Could not load this agent"
             description={
               (error as Error | null)?.message ??
-              'The installation returned a response we could not read. The agent may still exist.'
+              'The environment returned a response we could not read. The agent may still exist.'
             }
           />
           <BackToAgents>Back to agents</BackToAgents>

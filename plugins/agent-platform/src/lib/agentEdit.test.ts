@@ -1,5 +1,13 @@
-import { changedFields, editStateOf, hasChanges, updateOf } from './agentEdit';
+import {
+  changedFields,
+  editStateOf,
+  editStateOfForm,
+  formStateOfAgent,
+  hasChanges,
+  updateOf,
+} from './agentEdit';
 import type { AgentManagerAgent, AgentSkillEntry } from './agentManager';
+import type { DiscoveredSkill } from './skills';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 const OTHER = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
@@ -202,5 +210,114 @@ describe('updateOf', () => {
     });
     expect('force' in update).toBe(false);
     expect('runtime' in update).toBe(false);
+  });
+});
+
+describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
+  const REPO = 'https://github.com/giantswarm/agent-skills';
+  const CATALOG_PR_REVIEW: DiscoveredSkill = {
+    name: 'PR review',
+    description: 'Review pull requests.',
+    // Written the other way round from the agent's entry: same repository.
+    repoUrl: `${REPO}.git`,
+    path: 'pr-review',
+    ref: 'main',
+    commit: OTHER,
+  };
+  const CATALOG_INCIDENT: DiscoveredSkill = {
+    ...CATALOG_PR_REVIEW,
+    name: 'Incident responder',
+    path: 'incident',
+  };
+  const seed = (current: AgentManagerAgent) =>
+    formStateOfAgent(current, {
+      installation: 'gazelle',
+      catalog: [CATALOG_PR_REVIEW, CATALOG_INCIDENT],
+      platformHarness: 'kagent',
+    });
+
+  it('prefills the wizard with the agent, its fixed parts and its pins', () => {
+    const state = seed(agent({ harness: 'kagent' }));
+
+    expect(state).toMatchObject({
+      name: 'PR reviewer',
+      slug: 'pr-reviewer',
+      description: 'Reviews pull requests.',
+      systemMessage: 'You review pull requests.',
+      installation: 'gazelle',
+      modelConfigName: 'opus-4-7',
+      modelConfigNamespace: 'kagent',
+      // The platform Harness is the wizard's "no pick".
+      harness: undefined,
+      toolset: ['preset:read-only'],
+    });
+    // The listed skill is the catalog's card, at the agent's pin — not the head.
+    expect(state.selectedSkills).toEqual([
+      { ...CATALOG_PR_REVIEW, commit: HEAD },
+    ]);
+    // The OCI skill no repository lists is kept as it is.
+    expect(state.keptSkills).toEqual([OCI_SKILL]);
+  });
+
+  it('keeps a Harness of its own by name', () => {
+    expect(seed(agent({ harness: 'claude-code' })).harness).toEqual({
+      name: 'claude-code',
+    });
+  });
+
+  it('is no change at all when nothing is touched', () => {
+    const current = agent();
+    const update = updateOf(current, editStateOfForm(current, seed(current)));
+
+    expect(hasChanges(update)).toBe(false);
+  });
+
+  it('names an agent without a display name by its technical name, which is not a change', () => {
+    const current = agent({ displayName: undefined });
+    const state = seed(current);
+
+    expect(state.name).toBe('pr-reviewer');
+    expect(changedFields(current, editStateOfForm(current, state))).toEqual([]);
+    expect(
+      updateOf(current, editStateOfForm(current, { ...state, name: 'PR bot' }))
+        .displayName,
+    ).toBe('PR bot');
+  });
+
+  it('writes untouched skills back verbatim and appends a new one at its card commit', () => {
+    const current = agent();
+    const state = seed(current);
+    const update = updateOf(
+      current,
+      editStateOfForm(current, {
+        ...state,
+        selectedSkills: [...state.selectedSkills, CATALOG_INCIDENT],
+      }),
+    );
+
+    expect(update.skills).toEqual([
+      PR_REVIEW,
+      OCI_SKILL,
+      {
+        name: 'Incident responder',
+        path: 'incident',
+        git: { url: `${REPO}.git`, commit: OTHER },
+      },
+    ]);
+  });
+
+  it('drops a deselected skill and a removed kept one', () => {
+    const current = agent();
+    const state = seed(current);
+    const update = updateOf(
+      current,
+      editStateOfForm(current, {
+        ...state,
+        selectedSkills: [],
+        keptSkills: [],
+      }),
+    );
+
+    expect(update.skills).toEqual([]);
   });
 });

@@ -3,6 +3,7 @@ import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import {
   SectionHeader,
+  ShowMore,
   useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
@@ -17,6 +18,22 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
 const DESCRIPTION =
   'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
 
+/** How many installations a note names, and links to, before the rest are a count. */
+const NAMED_INSTALLATIONS = 5;
+
+/**
+ * The installations a note names: all of them up to {@link NAMED_INSTALLATIONS},
+ * then the first few and a count — on a fleet of 50, a sentence that names
+ * every one is a paragraph nobody reads.
+ */
+function joinInstallations(installations: string[]): string {
+  if (installations.length <= NAMED_INSTALLATIONS) {
+    return installations.join(', ');
+  }
+  const named = installations.slice(0, NAMED_INSTALLATIONS).join(', ');
+  return `${named} and ${installations.length - NAMED_INSTALLATIONS} more`;
+}
+
 /**
  * Card shell, so every branch below gets the same heading and description. The
  * heading names the field, so the controls inside use `aria-label` rather than a
@@ -26,7 +43,7 @@ function InstallationCard({ children }: { children: ReactNode }) {
   return (
     <Card>
       <CardBody>
-        <SectionHeader title="Installation" description={DESCRIPTION} />
+        <SectionHeader title="Environment" description={DESCRIPTION} />
         {children}
       </CardBody>
     </Card>
@@ -41,14 +58,14 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinInstallations(installations);
   return (
     <Alert
       status="info"
       title={
         installations.length === 1
           ? `No agent-manager on ${list}`
-          : 'No agent-manager on some installations'
+          : 'No agent-manager on some environments'
       }
       description={`Agents are created through agent-manager, reached through muster as you. muster on ${list} lists no agent-manager MCPServer, so agents cannot be created there. A platform admin enables the agent-manager component of the Agent Platform.`}
     />
@@ -75,7 +92,7 @@ function AgentManagerUnknownNote({
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinInstallations(installations);
   // `info`, not `warning`: not being signed in to some installations' muster
   // is an expected state, not something broken.
   return (
@@ -84,7 +101,7 @@ function AgentManagerUnknownNote({
       title={
         installations.length === 1
           ? `Couldn't check ${list} for agent-manager`
-          : "Couldn't check some installations for agent-manager"
+          : "Couldn't check some environments for agent-manager"
       }
       description={
         <Flex direction="column" gap="1">
@@ -92,16 +109,28 @@ function AgentManagerUnknownNote({
             Sign in to muster on {list} to check whether agents can be created
             there.
           </Text>
+          {/* One link per installation, wrapping, the first few shown: on a
+              fleet of 50 where signed-out is the norm, a row of every link
+              would run off the card. */}
           {signInHref && (
-            <Flex gap="3">
-              {installations.map(installation => (
-                <Link key={installation} href={signInHref(installation)}>
-                  {installations.length === 1
-                    ? 'Sign in to muster'
-                    : `Sign in to muster on ${installation}`}
-                </Link>
-              ))}
-            </Flex>
+            <ShowMore
+              items={installations}
+              initial={NAMED_INSTALLATIONS}
+              noun="environment"
+              revealAll
+            >
+              {visible => (
+                <Flex gap="3" style={{ flexWrap: 'wrap' }}>
+                  {visible.map(installation => (
+                    <Link key={installation} href={signInHref(installation)}>
+                      {installations.length === 1
+                        ? 'Sign in to muster'
+                        : `Sign in to muster on ${installation}`}
+                    </Link>
+                  ))}
+                </Flex>
+              )}
+            </ShowMore>
           )}
         </Flex>
       }
@@ -121,14 +150,14 @@ function InaccessibleInstallationsNote({
   if (installations.length === 0) {
     return null;
   }
-  const list = installations.join(', ');
+  const list = joinInstallations(installations);
   return (
     <Alert
       status="warning"
       title={
         installations.length === 1
           ? `Couldn't check ${list}`
-          : `Couldn't check ${installations.length} installations`
+          : `Couldn't check ${installations.length} environments`
       }
       description={`Cluster access to ${list} isn't healthy (session expired, unreachable, or not signed in), so whether agents can be created there is unknown. The Cluster access status in the sidebar shows why.`}
     />
@@ -297,12 +326,12 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         <InstallationCard>
           <Flex direction="column" gap="2">
             <Select
-              aria-label="Installation"
+              aria-label="Environment"
               isRequired
               isDisabled
               icon={<CircularProgress size={16} color="inherit" />}
               options={[]}
-              placeholder="Finding installations with models and agent-manager…"
+              placeholder="Finding environments with models and agent-manager…"
               {...selectError.selectProps}
             />
             {selectError.message}
@@ -322,8 +351,8 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
             {!hasNotes && (
               <Alert
                 status="info"
-                title="No installations with models"
-                description="None of the reachable installations have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
+                title="No environments with models"
+                description="None of the reachable environments have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
               />
             )}
           </Flex>
@@ -341,7 +370,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
       <InstallationCard>
         <Flex direction="column" gap="2">
           <Text>
-            Runs on <strong>{singleUsable}</strong>, the only installation with
+            Runs on <strong>{singleUsable}</strong>, the only environment with
             models and agent-manager.
           </Text>
           {notes}
@@ -354,7 +383,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     <InstallationCard>
       <Flex direction="column" gap="2">
         <Select
-          aria-label="Installation"
+          aria-label="Environment"
           isRequired
           options={usableInstallations.map(name => ({
             id: name,
@@ -371,7 +400,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
             letting a short list look complete. */}
         {isSettling && (
           <Text variant="body-small" color="secondary">
-            Still checking the remaining installations…
+            Still checking the remaining environments…
           </Text>
         )}
         {notes}

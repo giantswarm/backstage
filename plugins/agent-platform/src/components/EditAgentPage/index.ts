@@ -1,1 +1,1 @@
-export { EditAgentPage } from './EditAgentPage';
+export { EditAgentPage, LegacyEditAgentRedirect } from './EditAgentPage';

@@ -85,7 +85,7 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Provider')).toBeInTheDocument();
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('Endpoint')).toBeInTheDocument();
-    expect(screen.getByText('Installation')).toBeInTheDocument();
+    expect(screen.getByText('Environment')).toBeInTheDocument();
   });
 
   it('leaves out the columns it is asked to hide', async () => {
@@ -94,7 +94,7 @@ describe('ModelsTable', () => {
     );
 
     expect(screen.getByText('Model config')).toBeInTheDocument();
-    expect(screen.queryByText('Installation')).not.toBeInTheDocument();
+    expect(screen.queryByText('Environment')).not.toBeInTheDocument();
   });
 
   it('sorts by name instead of the hidden Installation column', async () => {

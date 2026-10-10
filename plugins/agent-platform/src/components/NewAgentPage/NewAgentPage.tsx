@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
@@ -10,7 +9,6 @@ import {
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newAgentSkillsRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
@@ -19,7 +17,7 @@ import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
-import { AgentWizardFrame } from '../AgentWizardFrame';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { egressProblem, parseEgressText } from '../../lib/egress';
 import { harnessTitle } from '../../lib/harnesses';
@@ -63,8 +61,7 @@ export function NewAgentPage() {
 function NewAgentPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const toolsLink = useRouteRef(newAgentToolsRouteRef);
+  const links = useAgentWizardLinks();
   // Called here for two reasons beyond this page's own rendering: it starts the
   // (backend, git-tree-walking) skill discovery while the user is still filling
   // in this form, so step 2 usually has its catalogue ready instead of showing
@@ -74,6 +71,7 @@ function NewAgentPageContent() {
   const { hasRepositories } = useSkillCatalog();
   const {
     state,
+    edit,
     setName,
     setSlug,
     setDescription,
@@ -109,7 +107,7 @@ function NewAgentPageContent() {
   // empty page whose only advice is admin-side app-config the person creating
   // an agent usually can't change. The Tools step always exists: every agent
   // declares a toolset.
-  const nextLink = hasRepositories ? skillsLink : toolsLink;
+  const nextLink = hasRepositories ? links.skills : links.tools;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       if (hasHiddenProblem) {
@@ -139,7 +137,14 @@ function NewAgentPageContent() {
 
   // The disclosure's one-line summary of what it holds: the runtime (the
   // platform's standard one unless another is picked) and the technical name.
-  const runtimeName = state.harness ? harnessTitle(state.harness) : 'Standard';
+  // An edited agent's Harness is known by its name until the picker reads it.
+  let runtimeName = 'Standard';
+  if (state.harness) {
+    runtimeName =
+      state.harness.displayName || state.harness.runtime
+        ? harnessTitle(state.harness)
+        : state.harness.name;
+  }
   const defaultsSummary = `${runtimeName} runtime${
     state.slug ? `, technical name ${state.slug}` : ''
   }`;
@@ -147,8 +152,20 @@ function NewAgentPageContent() {
   // The plain view's one line about the model picked for the person (the
   // installation's default, see ModelConfigPicker), so it is never a surprise
   // on the review step.
-  const { isLoading: isLoadingModels } = useModelConfigs();
-  const modelName = state.modelDisplayName ?? state.modelConfigName;
+  const { isLoading: isLoadingModels, modelConfigsFor } = useModelConfigs();
+  // An edited agent starts with its ModelConfig's name only; its display name
+  // is the listed ModelConfig's, once the list is in.
+  const listedModel = state.installation
+    ? modelConfigsFor(state.installation).find(
+        mc =>
+          mc.getName() === state.modelConfigName &&
+          (mc.getNamespace() ?? '') === state.modelConfigNamespace,
+      )
+    : undefined;
+  const modelName =
+    state.modelDisplayName ??
+    listedModel?.getDisplayName() ??
+    state.modelConfigName;
   let modelSummary: string | undefined;
   if (modelName) {
     modelSummary = `Runs on ${modelName} · change under More options`;
@@ -160,14 +177,22 @@ function NewAgentPageContent() {
 
   return (
     <AgentWizardFrame step="details">
-      <WizardStepHeading title="Describe your agent">
-        An agent is an assistant for a certain kind of task. You and your team
-        can chat with it any time.
-      </WizardStepHeading>
+      {edit ? (
+        <WizardStepHeading title="Describe your agent">
+          Change what the agent is called, what it is for and how it works.
+          Nothing changes until you save on the last step.
+        </WizardStepHeading>
+      ) : (
+        <WizardStepHeading title="Describe your agent">
+          An agent is an assistant for a certain kind of task. You and your team
+          can chat with it any time.
+        </WizardStepHeading>
+      )}
 
       {/* The "with Swarm Operator" assist (W6): renders nothing unless the
-          agentManagement meta-agent role resolves — see CreateAgentAssist. */}
-      <CreateAgentAssist />
+          agentManagement meta-agent role resolves — see CreateAgentAssist.
+          Creating only. */}
+      {!edit && <CreateAgentAssist />}
 
       <Flex direction="column" gap="5">
         <Flex align="start" gap="4">
@@ -205,10 +230,13 @@ function NewAgentPageContent() {
         />
 
         {/* Where the agent runs: renders nothing on a single-installation
-            portal, where the sole one is picked automatically. */}
-        <InstallationSelect
-          error={validation.errorFor(fieldErrors.installation)}
-        />
+            portal, where the sole one is picked automatically. An existing
+            agent stays where it is. */}
+        {!edit && (
+          <InstallationSelect
+            error={validation.errorFor(fieldErrors.installation)}
+          />
+        )}
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
             {modelSummary}
@@ -234,16 +262,26 @@ function NewAgentPageContent() {
             </Text>
             <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
             <HarnessPicker />
-            <TextField
-              label="Technical name"
-              secondaryLabel="filled in from the name"
-              isRequired
-              value={state.slug}
-              onChange={setSlug}
-              placeholder="support-triage"
-              description="Used in links and in the agent's resource names. It can't be changed later."
-              {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
-            />
+            {edit ? (
+              <TextField
+                label="Technical name"
+                secondaryLabel="fixed"
+                isReadOnly
+                value={state.slug}
+                description={`Used in links and in the agent's resource names, on ${edit.installation}. It can't be changed.`}
+              />
+            ) : (
+              <TextField
+                label="Technical name"
+                secondaryLabel="filled in from the name"
+                isRequired
+                value={state.slug}
+                onChange={setSlug}
+                placeholder="support-triage"
+                description="Used in links and in the agent's resource names. It can't be changed later."
+                {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
+              />
+            )}
             <TextAreaField
               label="Extra egress origins"
               secondaryLabel="optional"
@@ -262,9 +300,14 @@ function NewAgentPageContent() {
       </Flex>
 
       <Text as="p" color="secondary">
-        {hasRepositories
-          ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
-          : 'Next you choose what the agent may do, then check everything and create it.'}
+        {edit &&
+          (hasRepositories
+            ? 'Next you change its skills and what it may do, then check what changes and save it.'
+            : 'Next you change what it may do, then check what changes and save it.')}
+        {!edit &&
+          (hasRepositories
+            ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
+            : 'Next you choose what the agent may do, then check everything and create it.')}
       </Text>
     </AgentWizardFrame>
   );

@@ -199,4 +199,60 @@ describe('LlmByAgentTable', () => {
 
     expect(screen.getByText('Nothing attributed.')).toBeInTheDocument();
   });
+
+  describe('at fleet scale', () => {
+    /** 300 agents, spend falling with the index so the ranking is known. */
+    const FLEET: LlmAgentRow[] = Array.from({ length: 300 }, (_, i) => ({
+      id: `kagent|agent-${i}`,
+      namespace: 'kagent',
+      agent: `agent-${i}`,
+      kind: 'agent',
+      label: `Agent ${String(i).padStart(3, '0')}`,
+      tokens: 1_000 * (300 - i),
+      calls: 300 - i,
+      costUsd: 300 - i,
+      sharePct: (300 - i) / 450,
+    }));
+
+    it('shows three agents with no reveal control', () => {
+      render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+      expect(screen.queryByText(/shown/)).toBeNull();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+    });
+
+    it('renders the top 20 spenders of 300 and offers the rest', async () => {
+      // Shuffled input: the slice must come after the sort, so the first page
+      // is the biggest spenders whatever order the query returned them in.
+      const shuffled = [...FLEET].reverse();
+      render(<LlmByAgentTable rows={shuffled} emptyMessage="none" />);
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(20);
+      expect(order[0]).toBe('Agent 000');
+      expect(order[19]).toBe('Agent 019');
+      expect(screen.getByText('20 agents shown, 280 more')).toBeVisible();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 20 more agents' }),
+      );
+      expect(renderedOrder()).toHaveLength(40);
+    });
+
+    it('slices after a column sort, not before it', async () => {
+      render(<LlmByAgentTable rows={FLEET} emptyMessage="none" />);
+
+      // Ascending by calls: the quietest agents of all 300 come first, not
+      // the quietest of the first page.
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: /Model calls/ }),
+      );
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(20);
+      expect(order[0]).toBe('Agent 299');
+    });
+  });
 });

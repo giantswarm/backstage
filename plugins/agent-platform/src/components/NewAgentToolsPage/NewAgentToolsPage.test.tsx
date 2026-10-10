@@ -639,7 +639,7 @@ describe('NewAgentToolsPage', () => {
     // itself is what has to be waited for -- a `progress` test id matches either.
     expect(
       await screen.findByRole('progressbar', {
-        name: "Reading the installation's presets…",
+        name: "Reading the environment's presets…",
       }),
     ).toBeInTheDocument();
     // The notice would state something untrue for as long as the read takes,
@@ -1077,7 +1077,7 @@ describe('NewAgentToolsPage', () => {
     expect(toolsetOutput()).toBe('preset:foo');
     expect(
       await screen.findByText(
-        'The toolset names a preset this installation does not define',
+        'The toolset names a preset this environment does not define',
       ),
     ).toBeInTheDocument();
     // In the card and in the summary.
@@ -1122,7 +1122,7 @@ describe('NewAgentToolsPage', () => {
     // and in the summary.
     expect(
       await screen.findAllByText(
-        "This installation's muster does not evaluate toolsets yet",
+        "This environment's muster does not evaluate toolsets yet",
       ),
     ).toHaveLength(2);
     // The declaration is still made and the flow can continue.

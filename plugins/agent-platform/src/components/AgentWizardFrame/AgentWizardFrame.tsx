@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   WizardFrame,
@@ -6,13 +6,16 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  agentEditRouteRef,
   agentsRouteRef,
+  newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
   newAgentToolsRouteRef,
 } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useAgentShell } from '../../hooks/useAgentShell';
+import { useNewAgentForm } from '../NewAgentFormProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
 /** The create-agent wizard's steps, in order (Skills only with repositories). */
@@ -30,6 +33,56 @@ export function useAgentWizardCloseHref(): string {
     : (agentsLink?.() ?? '/');
 }
 
+/** Where each step of the agent wizard lives, as route-ref-shaped functions. */
+export type AgentWizardLinks = {
+  details?: () => string;
+  skills?: () => string;
+  tools?: () => string;
+  review?: () => string;
+};
+
+/**
+ * The steps' addresses for the wizard as it is running: the create flow's
+ * `/agent-platform/agents/new[/skills|/tools|/review]`, or, while editing,
+ * `/agent-platform/agents/edit/<installation>/<namespace>/<name>[/…]`. Every
+ * step navigates through these, so the same pages serve both.
+ */
+export function useAgentWizardLinks(): AgentWizardLinks {
+  const { edit } = useNewAgentForm();
+  const details = useRouteRef(newAgentRouteRef);
+  const skills = useRouteRef(newAgentSkillsRouteRef);
+  const tools = useRouteRef(newAgentToolsRouteRef);
+  const review = useRouteRef(newAgentReviewRouteRef);
+  const editRoute = useRouteRef(agentEditRouteRef);
+  const installation = edit?.installation;
+  const namespace = edit?.agent.namespace;
+  const name = edit?.agent.name;
+  return useMemo(() => {
+    if (!installation || !namespace || !name) {
+      return { details, skills, tools, review };
+    }
+    const base = editRoute?.({ installation, namespace, name });
+    if (!base) {
+      return {};
+    }
+    return {
+      details: () => base,
+      skills: () => `${base}/skills`,
+      tools: () => `${base}/tools`,
+      review: () => `${base}/review`,
+    };
+  }, [
+    details,
+    skills,
+    tools,
+    review,
+    editRoute,
+    installation,
+    namespace,
+    name,
+  ]);
+}
+
 /**
  * The create-agent wizard's chrome: the shared in-content wizard frame (header
  * with Close and the Details / Skills / Tools / Review step strip, sticky
@@ -37,6 +90,8 @@ export function useAgentWizardCloseHref(): string {
  * column — the same presentation as the connector wizard. The Skills step only
  * appears when skill repositories are configured, matching the routing. Each
  * step provides its primary button through `useProvidePageHeaderActions`.
+ * Editing an agent is the same wizard, titled "Edit agent" and closing to the
+ * agent's page.
  */
 export function AgentWizardFrame({
   step,
@@ -48,25 +103,31 @@ export function AgentWizardFrame({
   onBack?: () => void;
   children: ReactNode;
 }) {
-  const detailsLink = useRouteRef(newAgentRouteRef);
-  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const toolsLink = useRouteRef(newAgentToolsRouteRef);
-  const closeHref = useAgentWizardCloseHref();
+  const links = useAgentWizardLinks();
+  const { edit } = useNewAgentForm();
+  const createCloseHref = useAgentWizardCloseHref();
+  const closeHref = edit
+    ? (edit.detailHref ?? createCloseHref)
+    : createCloseHref;
   const { hasRepositories } = useSkillCatalog();
 
   const steps: WizardStep[] = [
-    { id: 'details', label: 'Details', href: detailsLink?.() },
+    { id: 'details', label: 'Details', href: links.details?.() },
     ...(hasRepositories
-      ? [{ id: 'skills', label: 'Skills', href: skillsLink?.() }]
+      ? [{ id: 'skills', label: 'Skills', href: links.skills?.() }]
       : []),
-    { id: 'tools', label: 'Tools', href: toolsLink?.() },
+    { id: 'tools', label: 'Tools', href: links.tools?.() },
     { id: 'review', label: 'Review' },
   ];
 
   return (
     <WizardFrame
-      title="New agent"
-      context="Customize / Agents"
+      title={edit ? 'Edit agent' : 'New agent'}
+      context={
+        edit
+          ? `Customize / Agents / ${edit.agent.displayName || edit.agent.name}`
+          : 'Customize / Agents'
+      }
       steps={steps}
       currentStep={step}
       closeHref={closeHref}

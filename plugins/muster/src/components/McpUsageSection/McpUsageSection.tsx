@@ -181,7 +181,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   if (!data.available) {
     return (
       <Typography variant="body2" color="textSecondary">
-        Usage metrics are not available for this installation:{' '}
+        Usage metrics are not available for this environment:{' '}
         {data.reason ?? 'unknown reason'}
       </Typography>
     );
@@ -266,7 +266,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
       {totals.calls === 0 ? (
         <Typography variant="body2" color="textSecondary">
           No tool calls were dispatched to connectors in the last {rangeLabel}.
-          If usage on this installation is expected, its muster release may not
+          If usage on this environment is expected, its muster release may not
           export downstream dispatch metrics yet.
         </Typography>
       ) : (
@@ -484,8 +484,8 @@ function McpUsageBody() {
       <SectionHeader
         as="h3"
         variant="title-x-small"
-        title="MCP tool calls on this installation"
-        description="Every tool call dispatched to the connectors behind this installation's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+        title="MCP tool calls on this environment"
+        description="Every tool call dispatched to the connectors behind this environment's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

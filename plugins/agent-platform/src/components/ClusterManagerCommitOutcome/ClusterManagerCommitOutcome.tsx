@@ -55,7 +55,7 @@ export function ClusterManagerCommitOutcome({
           {liveSteps.length > 0 && (
             <Flex direction="column" gap="1" data-testid="live-steps">
               <Text variant="body-small">
-                After the merge, the installation still needs:
+                After the merge, the environment still needs:
               </Text>
               {liveSteps.map(step => (
                 <Text key={step} variant="body-small" color="secondary">

@@ -428,6 +428,25 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
+  // Editing is the create wizard at `agents/edit/<installation>/<namespace>/<name>`:
+  // one page, the step as its `view`, the agent in neither dimension.
+  it('counts the agent edit wizard as one page, its step as the view', () => {
+    const base =
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer';
+
+    expect(getTelemetryPageViewPayload(base)).toEqual({
+      page: 'Agent edit',
+      path: base,
+    });
+    for (const step of ['skills', 'tools', 'review']) {
+      expect(getTelemetryPageViewPayload(`${base}/${step}`)).toEqual({
+        page: 'Agent edit',
+        view: step,
+        path: `${base}/${step}`,
+      });
+    }
+  });
+
   // The create flow sits under `agents/` too and is not an agent detail view:
   // `agents/new`, `agents/new/skills` and `agents/new/review` keep reporting
   // through the generic agent-platform case.
@@ -571,6 +590,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/usage',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/skills',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/tools',
+      '/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer/review',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/skills',

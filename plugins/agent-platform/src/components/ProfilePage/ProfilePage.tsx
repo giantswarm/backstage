@@ -97,10 +97,10 @@ export function ProfilePage() {
           </Flex>
         </section>
         {(installationsLoading || installations.length > 0) && (
-          <section aria-label="Installations" className={classes.section}>
+          <section aria-label="Environments" className={classes.section}>
             <SectionHeader
-              title="Installations"
-              description="The installations this portal talks to."
+              title="Environments"
+              description="The environments this portal talks to."
             />
             {installationsLoading ? (
               <Text variant="body-medium" color="secondary">

@@ -145,7 +145,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       defaultWidth: '1fr',
       minWidth: 110,
@@ -269,7 +269,7 @@ export function AgentsTable({
   // the placeholder only offers it where the reader can see it.
   const searchPlaceholder = hiddenKey.split(',').includes('installation')
     ? 'Search by name or description'
-    : 'Search by name, description or installation';
+    : 'Search by name, description or environment';
 
   // Client-side sorting. The initial sort is installation-then-name, which is the
   // ordering this list had before it was sortable (see `sortAgentsBy`), so

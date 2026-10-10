@@ -20,7 +20,10 @@ import {
   Organization,
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  searchableIf,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -89,7 +92,7 @@ export function clusterNameProblem(
     return 'A lowercase DNS label of at most 20 characters, starting with a letter: letters, digits and dashes.';
   }
   return taken.includes(name)
-    ? `A cluster named ${name} already exists on this installation.`
+    ? `A cluster named ${name} already exists on this environment.`
     : undefined;
 }
 
@@ -287,18 +290,19 @@ export function CreateClusterDialog({
         <DialogBody>
           <Flex direction="column" gap="4">
             <Text variant="body-small" color="secondary">
-              A workload cluster on the installation, composed by
-              cluster-manager and written as you: applied on the installation,
-              or as a pull request in the repository that owns the organization.
+              A workload cluster on the environment, composed by cluster-manager
+              and written as you: applied on the environment, or as a pull
+              request in the repository that owns the organization.
             </Text>
 
             {onForm && (
               <Flex direction="column" gap="3">
                 {installations.length > 1 && (
                   <Select
-                    label="Installation"
+                    label="Environment"
                     isRequired
                     options={installations.map(id => ({ id, label: id }))}
+                    searchable={searchableIf(installations)}
                     selectedKey={target ?? null}
                     onSelectionChange={key => {
                       if (key) {
@@ -346,6 +350,7 @@ export function CreateClusterDialog({
                       label: releaseLabel(candidate),
                       disabled: !candidate.offered,
                     }))}
+                    searchable={searchableIf(lineReleases)}
                     selectedKey={chosenRelease ?? null}
                     onSelectionChange={key => key && setRelease(String(key))}
                   />
@@ -359,6 +364,7 @@ export function CreateClusterDialog({
                     organizationNames.length,
                   )}
                   options={organizationNames.map(id => ({ id, label: id }))}
+                  searchable={searchableIf(organizationNames)}
                   selectedKey={organization ?? null}
                   onSelectionChange={key =>
                     setOrganization(key ? String(key) : undefined)
@@ -458,7 +464,7 @@ export function CreateClusterDialog({
                     value="apply"
                     isDisabled={verdicts.apply.state !== 'ready'}
                   >
-                    Deploy — apply the objects on the installation as you
+                    Deploy — apply the objects on the environment as you
                   </Radio>
                 </RadioGroup>
                 <ModeNotes verdicts={verdicts} />

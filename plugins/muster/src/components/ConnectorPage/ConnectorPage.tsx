@@ -574,7 +574,7 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   if (isLoadingInstallations || isLoading) {
     return (
       <ShellPage title={key}>
-        <LoadingIndicator label="Reading the installation's connectors…" />
+        <LoadingIndicator label="Reading the environment's connectors…" />
       </ShellPage>
     );
   }
@@ -583,8 +583,8 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
       <ShellPage title={key}>
         <EmptyState
           missing="data"
-          title="No muster installation"
-          description="None of the installations this portal knows runs muster, so there are no connectors to show."
+          title="No muster environment"
+          description="None of the environments this portal knows runs muster, so there are no connectors to show."
         />
       </ShellPage>
     );
@@ -602,7 +602,7 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
         <EmptyState
           missing="data"
           title={`No connector “${key}” on ${activeInstallation}`}
-          description="It may run on another installation, or it may have been removed."
+          description="It may run on another environment, or it may have been removed."
           action={
             paths.connectors ? (
               <Link href={paths.connectors}>Back to the connectors</Link>

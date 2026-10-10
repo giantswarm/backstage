@@ -349,6 +349,31 @@ describe('AgentShellNav', () => {
     expect(skip).toHaveAttribute('href', '#content');
   });
 
+  // Live round L1: inside the bottom-anchored mobile bar the hidden skip link
+  // floated over the content and took the clicks meant for the wizard's
+  // Cancel.
+  it('keeps the skip link out of the mobile bar and out of the way of clicks until focused', async () => {
+    const user = userEvent.setup();
+    await renderNav({ isMobile: true });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const skip = screen.getByRole('link', { name: 'Skip to content' });
+    expect(nav).not.toContainElement(skip);
+
+    const hidden = window.getComputedStyle(skip);
+    expect(hidden.position).toBe('fixed');
+    expect(hidden.pointerEvents).toBe('none');
+    expect(hidden.width).toBe('1px');
+    expect(hidden.overflow).toBe('hidden');
+
+    await user.tab();
+
+    expect(skip).toHaveFocus();
+    const focused = window.getComputedStyle(skip);
+    expect(focused.pointerEvents).toBe('auto');
+    expect(focused.width).toBe('auto');
+  });
+
   it('collapses to icons without search or recent sessions when unpinned', async () => {
     await renderNav({ isPinned: false });
 

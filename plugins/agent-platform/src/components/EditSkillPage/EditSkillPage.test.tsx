@@ -1,5 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
@@ -148,6 +148,9 @@ describe('EditSkillPage', () => {
     expect(
       screen.getByText("The portal cannot read this skill's source"),
     ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.title).toBe('Edit ticket-triage · Skills'),
+    );
     expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
   });
 
@@ -156,5 +159,6 @@ describe('EditSkillPage', () => {
 
     expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
     expect(screen.getByText('Skill not found')).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Edit skill · Skills'));
   });
 });

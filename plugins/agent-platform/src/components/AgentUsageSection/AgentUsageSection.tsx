@@ -234,7 +234,7 @@ export function AgentUsageSection() {
   if (!isResolving && !hasInstallations) {
     body = (
       <Text variant="body-medium" color="secondary">
-        This portal knows no installations, so there is no usage to read.
+        This portal knows no environments, so there is no usage to read.
       </Text>
     );
   } else if (
@@ -264,7 +264,7 @@ export function AgentUsageSection() {
       <>
         <InstallationScopeNote component="kagent" />
         <Text variant="body-medium" color="secondary">
-          None of the installations this portal knows run kagent.
+          None of the environments this portal knows run kagent.
         </Text>
       </>
     );
@@ -402,8 +402,8 @@ export function AgentUsageSection() {
       {header}
       {isResolvedFromAll && installation && (
         <Text variant="body-small" color="secondary">
-          Showing {installation}. Usage is read one installation at a time —
-          pick another in the Environment control to switch.
+          Showing {installation}. Usage is read one environment at a time — pick
+          another in the Environment control to switch.
         </Text>
       )}
       {usage && selectedDays > windowDays && (
@@ -416,7 +416,7 @@ export function AgentUsageSection() {
         <Alert
           status="warning"
           title="These numbers are not scoped to you"
-          description={`kagent on ${installation} is not configured to identify individual users, so this covers everyone's sessions on that installation, not only yours.`}
+          description={`kagent on ${installation} is not configured to identify individual users, so this covers everyone's sessions on that environment, not only yours.`}
         />
       )}
       {body}

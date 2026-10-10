@@ -315,3 +315,33 @@ html[data-agent-shell] body {
     overflow-x: auto;
   }
 }
+
+/*
+ * Tab strips (ShellPage's RouteTabs: Customize, Usage, an agent's page). A
+ * label and its count — "Agents (6)" — stay on one line (live round L8: at
+ * 375px each label broke after its title). At phone width the tabs pad by
+ * half bui's space-2, with the active underline inset to match, so the usual
+ * four tabs fit; when they still don't (three-digit counts), whole tabs move
+ * to a second row instead of breaking a label or widening the page.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell] .bui-Tab {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 599.95px) {
+    html[data-agent-shell] .bui-TabList {
+      flex-wrap: wrap;
+    }
+
+    html[data-agent-shell] .bui-Tab {
+      padding-inline: var(--bui-space-1);
+    }
+
+    html[data-agent-shell] .bui-TabActive {
+      left: calc(var(--active-tab-left) + var(--bui-space-1));
+      width: calc(var(--active-tab-width) - var(--bui-space-2));
+    }
+  }
+}

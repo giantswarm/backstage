@@ -19,7 +19,7 @@ export function isMusterAuthError(error: unknown): boolean {
 
 /** User-facing prompt shown in place of a raw transport error on a 401. */
 export const MUSTER_AUTH_PROMPT =
-  'This action requires an authenticated muster session for this installation. Connect to muster (sign in) and try again.';
+  'This action requires an authenticated muster session for this environment. Connect to muster (sign in) and try again.';
 
 /**
  * Maps an error from a muster mutation (validate/save/run) to a message fit for

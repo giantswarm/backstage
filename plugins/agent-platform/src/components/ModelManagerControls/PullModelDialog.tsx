@@ -166,7 +166,7 @@ export function PullModelDialog({
       <DialogBody>
         <Flex direction="column" gap="4">
           <Text variant="body-medium" color="secondary">
-            Downloads the model onto the installation's serving backend. Give a
+            Downloads the model onto the environment's serving backend. Give a
             registry tag such as <code>qwen2.5:0.5b</code>, or a Hugging Face
             GGUF reference such as <code>hf.co/org/repo:Q4_K_M</code>.
           </Text>
@@ -175,8 +175,8 @@ export function PullModelDialog({
             <Select
               label={
                 targets.some(candidate => candidate.backend)
-                  ? 'Installation and backend'
-                  : 'Installation'
+                  ? 'Environment and backend'
+                  : 'Environment'
               }
               isRequired
               isDisabled={isBusy}

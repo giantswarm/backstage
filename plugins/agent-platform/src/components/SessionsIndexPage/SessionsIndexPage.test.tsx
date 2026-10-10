@@ -508,7 +508,7 @@ describe('SessionsIndexPage', () => {
       ).not.toBeInTheDocument();
       expect(screen.getByText('Start a new session')).toBeInTheDocument();
       expect(
-        screen.getByText(/Couldn't read 1 installation/),
+        screen.getByText(/Couldn't read 1 environment/),
       ).toBeInTheDocument();
     });
 
@@ -709,9 +709,7 @@ describe('SessionsIndexPage', () => {
 
     await render();
 
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
     expect(
       screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
     ).toBeInTheDocument();
@@ -739,7 +737,7 @@ describe('SessionsIndexPage', () => {
     });
     await render();
 
-    expect(screen.getByText('No installations configured')).toBeInTheDocument();
+    expect(screen.getByText('No environments configured')).toBeInTheDocument();
   });
 });
 
@@ -857,7 +855,7 @@ describe('SessionsIndexPage with one installation to list from', () => {
         unreachableInstallations: ['golem'],
       },
     ],
-  ])('drops the Installation column when it is %s', async (_, overrides) => {
+  ])('drops the Environment column when it is %s', async (_, overrides) => {
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       rows: [gazelleSession],

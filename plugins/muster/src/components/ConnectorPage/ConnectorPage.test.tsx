@@ -262,7 +262,7 @@ describe('ConnectorPage', () => {
     expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
   });
 
-  it('filters the tools by what they do and tries one inline', async () => {
+  it('lists a few tools without search or filter and tries one inline', async () => {
     const api = await renderAt(`${BASE}/jira`);
 
     expect(
@@ -272,12 +272,12 @@ describe('ConnectorPage', () => {
       screen.getByRole('button', { name: /add_comment/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/get_pods/)).not.toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'All 2' })).toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('radio', { name: 'Reads 1' }));
+    // Two tools are read, not searched (the filter is covered at scale in
+    // ConnectorToolsTab.test.tsx).
     expect(
-      screen.queryByRole('button', { name: /add_comment/ }),
-    ).not.toBeInTheDocument();
+      screen.queryByRole('searchbox', { name: 'Search tools' }),
+    ).toBeNull();
+    expect(screen.queryByRole('radio', { name: /Reads/ })).toBeNull();
 
     await userEvent.click(
       screen.getByRole('button', { name: /search_issues/ }),

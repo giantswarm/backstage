@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -36,13 +35,8 @@ import {
   type ToolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import {
-  newAgentReviewRouteRef,
-  newAgentRouteRef,
-  newAgentSkillsRouteRef,
-} from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { AgentWizardFrame } from '../AgentWizardFrame';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { CopyFromAgent } from './CopyFromAgent';
 import { PresetCards } from './PresetCards';
@@ -118,11 +112,14 @@ function SectionTitle({
 export function NewAgentToolsPage() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const newAgentLink = useRouteRef(newAgentRouteRef);
-  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  const {
+    details: newAgentLink,
+    skills: skillsLink,
+    review: reviewLink,
+  } = useAgentWizardLinks();
   const {
     state,
+    edit,
     toggleToolsetSelector,
     setToolset,
     isComplete,
@@ -251,6 +248,15 @@ export function NewAgentToolsPage() {
       </WizardStepHeading>
 
       <Flex direction="column" gap="4">
+        {/* An agent from before toolsets declares none and sees every tool;
+            it keeps that until something is selected here. */}
+        {edit && !edit.agent.toolset && state.toolset.length === 0 && (
+          <Alert
+            status="info"
+            title="This agent declares no toolset"
+            description="It can discover and call every tool the gateway exposes, and keeps that until you select something here."
+          />
+        )}
         <Card>
           <CardBody>
             <SectionTitle
@@ -263,7 +269,7 @@ export function NewAgentToolsPage() {
                     the cards are clickable from the first paint -- through a
                     retry too, which backs off for ~7s before it gives up. */}
               {presets.isLoading ? (
-                <LoadingIndicator label="Reading the installation's presets…" />
+                <LoadingIndicator label="Reading the environment's presets…" />
               ) : (
                 presets.source === 'built-in' &&
                 musterApi &&
@@ -273,8 +279,8 @@ export function NewAgentToolsPage() {
                     title="Only the built-in presets are known"
                     description={
                       presets.error
-                        ? `The installation's muster could not be asked for its presets (${presets.error}). The three presets built into every muster are offered.`
-                        : "This installation's muster did not list its presets — it may predate toolsets. The three presets built into every muster are offered."
+                        ? `The environment's muster could not be asked for its presets (${presets.error}). The three presets built into every muster are offered.`
+                        : "This environment's muster did not list its presets — it may predate toolsets. The three presets built into every muster are offered."
                     }
                   />
                 )

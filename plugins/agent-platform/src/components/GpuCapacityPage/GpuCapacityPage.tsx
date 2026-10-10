@@ -32,14 +32,14 @@ function emptyStateDescription(
   noBackendYet: boolean,
 ): string {
   if (installations.length === 0) {
-    return 'No reachable installation has a serving layer this portal can see. GPU capacity is read per node from installations whose serving layer reports one.';
+    return 'No reachable environment has a serving layer this portal can see. GPU capacity is read per node from environments whose serving layer reports one.';
   }
   if (noBackendYet) {
     return `model-manager on ${installations.join(
       ', ',
     )} is running with no backend registered: no GPU node pool serves models there yet, and no host reports its nodes. Add a GPU node pool, or register a backend that reports its nodes on the Serving view.`;
   }
-  return 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).';
+  return 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from environments whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).';
 }
 
 export type GpuCapacityPageProps = {
@@ -115,7 +115,7 @@ export function GpuCapacityPage({
         {pools.dialogs}
         {pools.panel}
         <Text color="secondary">
-          The nodes the served models run on, per installation: for a cluster
+          The nodes the served models run on, per environment: for a cluster
           node the product and memory from the node labels, what the device
           plugin makes schedulable and what scheduled pods already hold; for the
           host a backend runs on, its memory as the serving layer sees it and

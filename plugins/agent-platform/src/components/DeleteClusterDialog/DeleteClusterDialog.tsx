@@ -214,7 +214,7 @@ export function DeleteClusterDialog({
                   value="apply"
                   isDisabled={verdicts.apply.state !== 'ready'}
                 >
-                  Delete — remove it from the installation as you, now
+                  Delete — remove it from the environment as you, now
                 </Radio>
               </RadioGroup>
               {[

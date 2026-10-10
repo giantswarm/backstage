@@ -9,7 +9,12 @@ import {
   useTable,
 } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  INITIAL_ROWS,
+  ShowMore,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import {
   formatCount,
@@ -73,6 +78,11 @@ function AgentCell({ row }: { row: LlmAgentRow }) {
  * maximum, each on its own hue. The bars are for comparing rows **down** a
  * column; they say nothing across columns, which is what the separate hues
  * signal.
+ *
+ * One row per agent with spend in the window — on a large fleet, hundreds.
+ * The table sorts first and `ShowMore` slices the sorted rows, so the first
+ * page is always the top spenders (or the top of whatever column is sorted),
+ * and three agents render with no reveal control at all.
  */
 export function LlmByAgentTable({
   rows,
@@ -177,23 +187,32 @@ export function LlmByAgentTable({
 
   return (
     <UsageCard title="By agent" note={note} wide>
-      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
-          and passing `data` after the spread overrides them with the unsorted
-          input — which silently breaks every column header while leaving the
-          sort indicator working. */}
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. */}
       {/* The table scrolls inside the card at phone width rather than pushing
           the page wide — the 375px requirement. */}
-      <div style={{ overflowX: 'auto' }}>
-        <Table<LlmAgentRow>
-          {...tableProps}
-          columnConfig={columnConfig}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {emptyMessage}
-            </Text>
-          }
-        />
-      </div>
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="agent"
+      >
+        {visible => (
+          <div style={{ overflowX: 'auto' }}>
+            <Table<LlmAgentRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          </div>
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

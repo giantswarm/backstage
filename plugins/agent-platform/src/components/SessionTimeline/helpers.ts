@@ -129,16 +129,17 @@ export type TimelineSegment =
  *
  * Folded per **run** of consecutive work items, not per turn: an agent that
  * says "let me look" before its calls and answers after them keeps both
- * sentences where it said them. A run folds only when it holds at least one
- * call and more than one item — a lone tool call is already one line, and a
- * summary saying "Used 1 tool" over it would only hide it; reasoning on its own
- * is prose with its own expander.
+ * sentences where it said them. Every run that holds at least one call folds,
+ * a lone call included (T40): "Used 1 tool" opens onto a list of one exactly as
+ * "Used 3 tools" opens onto three, so the reader learns one gesture rather than
+ * two layouts that depend on how much the agent happened to do. Reasoning on
+ * its own is prose with its own expander, and stays inline.
  */
 export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
   let run: TimelineItem[] = [];
   const flush = () => {
-    if (run.length > 1 && run.some(isCall)) {
+    if (run.some(isCall)) {
       segments.push({ kind: 'work', id: run[0].id, items: run });
     } else {
       for (const item of run) {
@@ -164,28 +165,57 @@ function plural(count: number, one: string, many: string): string {
 }
 
 export type WorkSummary = {
-  /** The plain summary line, e.g. "Used 3 tools · Asked 1 agent". */
+  /** The plain summary line, e.g. "Loaded 1 skill · Used 3 tools". */
   label: string;
   /** The technical count, e.g. "5 steps · 45 tool calls". */
   technicalLabel: string;
 };
+
+/** The ADK built-in an agent reads one of its mounted skills with. */
+const LOAD_SKILL_TOOL = 'load_skill';
+
+/**
+ * Which skill a `load_skill` call loaded, for counting distinct skills. Falls
+ * back to the call's id when the arguments do not say, so an unreadable call
+ * still counts as one load rather than collapsing into another.
+ */
+function loadedSkillKey(
+  item: Extract<TimelineItem, { kind: 'tool-call' }>,
+): string {
+  const args = item.args;
+  if (args && typeof args === 'object' && !Array.isArray(args)) {
+    const record = args as Record<string, unknown>;
+    for (const key of ['name', 'skill_name', 'skill']) {
+      if (typeof record[key] === 'string' && record[key]) {
+        return record[key] as string;
+      }
+    }
+  }
+  return item.id;
+}
 
 /**
  * What a folded run of work amounts to, in the prototype's words.
  *
  * Tools are counted by name, not by call — the prototype's "Used 3 tools"
  * stands over 45 calls — and the exact call count is the technical line's.
- * Delegations are named apart: asking another agent is a different thing to
- * have done than running a tool. No duration: kagent records no per-call
- * timing, and a turn's one timestamp cannot say how long its work took.
+ * Skill loads and delegations are named apart: reading a skill and asking
+ * another agent are different things to have done than running a tool. No
+ * duration: kagent records no per-call timing, and a turn's one timestamp
+ * cannot say how long its work took.
  */
 export function summarizeWork(items: TimelineItem[]): WorkSummary {
+  const skills = new Set<string>();
   const tools = new Set<string>();
   const agents = new Set<string>();
   let calls = 0;
   for (const item of items) {
     if (item.kind === 'tool-call') {
-      tools.add(item.toolName);
+      if (item.toolName === LOAD_SKILL_TOOL) {
+        skills.add(loadedSkillKey(item));
+      } else {
+        tools.add(item.toolName);
+      }
       calls += 1;
     } else if (item.kind === 'agent-call') {
       agents.add(item.agentId);
@@ -193,6 +223,9 @@ export function summarizeWork(items: TimelineItem[]): WorkSummary {
     }
   }
   const parts: string[] = [];
+  if (skills.size > 0) {
+    parts.push(`Loaded ${plural(skills.size, 'skill', 'skills')}`);
+  }
   if (tools.size > 0) {
     parts.push(`Used ${plural(tools.size, 'tool', 'tools')}`);
   }

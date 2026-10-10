@@ -8,7 +8,7 @@ describe('describeReadFailure', () => {
     [{ status: 500, reason: 'unavailable' }, 'unreachable'],
     [{ status: 500, reason: 'server-error' }, 'server error'],
     [{ status: 502 }, 'server error'],
-    [{ reason: 'token' }, 'no token for the installation'],
+    [{ reason: 'token' }, 'no token for the environment'],
     [{}, 'request failed'],
   ])('%j reads as %s', (fields, reason) => {
     expect(

@@ -75,6 +75,22 @@ const useStyles = makeStyles(theme => ({
       borderRadius: 'var(--bui-radius-2)',
     },
   },
+  // The picker heading the box (`pickerPlacement: 'top'`), per the Main
+  // artboard: its own row above the text, set off by a hairline. The label
+  // shares the text's left edge (the frame's padding plus `--bui-space-1`);
+  // the row wraps at phone width rather than squeezing the picker.
+  pickerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 'var(--bui-space-2)',
+    paddingBottom: 'var(--bui-space-2)',
+    borderBottom: '1px solid var(--bui-border-1)',
+  },
+  pickerLabel: {
+    paddingInlineStart: 'var(--bui-space-1)',
+    whiteSpace: 'nowrap',
+  },
   '@global': {
     [`[role="listbox"] [data-key="${FOOTER_ACTION_ID}"]`]: {
       borderTopWidth: 1,
@@ -155,6 +171,19 @@ export type NewSessionComposerProps = {
   searchable?: boolean;
   /** What the picker says while no agent is selected. */
   pickerPlaceholder?: string;
+  /**
+   * Where the agent picker sits: in the controls row under the text
+   * (`controls`, the default), or as the box's first row above it (`top`),
+   * the Main artboard's picker-first order — the agent is chosen before the
+   * message is written, so it comes first in reading and tab order too.
+   */
+  pickerPlacement?: 'controls' | 'top';
+  /**
+   * The words before the picker when it heads the box (`pickerPlacement:
+   * 'top'`), for the selected agent or for none — the artboard's "First
+   * choose an agent", then "Agent". Not read in the controls row.
+   */
+  pickerLabel?: (agent: AgentRow | undefined) => string;
   /**
    * Listed last in the picker, after the agents and whatever the search:
    * choosing it runs the action and selects nothing.
@@ -295,6 +324,8 @@ export function NewSessionComposer({
   recentAgentIds,
   searchable,
   pickerPlaceholder = 'Select an agent',
+  pickerPlacement = 'controls',
+  pickerLabel,
   pickerFooterAction,
   initialPrompt,
   promptPlaceholder,
@@ -545,7 +576,7 @@ export function NewSessionComposer({
   } else if (isTooLong) {
     caption = `That prompt is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isLoadingAgents) {
-    caption = 'Still checking the remaining installations for agents…';
+    caption = 'Still checking the remaining environments for agents…';
   } else {
     caption =
       'Enter starts a session and sends this as the first message. Shift+Enter for a new line.';
@@ -554,6 +585,96 @@ export function NewSessionComposer({
   // A preselected agent whose model is gone is exactly what to know before
   // typing a prompt at it.
   const modelWarning = modelWarningFor(selectedAgent);
+
+  const pickerOnTop = pickerPlacement === 'top';
+
+  const field = (
+    <TextAreaField
+      aria-label="Prompt"
+      placeholder={
+        promptPlaceholder?.(selectedAgent) ?? 'What should the agent do?'
+      }
+      value={prompt}
+      onChange={setPrompt}
+      onFocus={() => setExpanded(true)}
+      onKeyDown={handleKeyDown}
+      // Disabled, not just refused on submit: agent-first surfaces say
+      // "this is step two" by the field itself. react-aria announces
+      // the disabled state, and the caption under the box says why.
+      isDisabled={awaitingAgent}
+      // The rule guards against stealing focus on page load, which is why the
+      // inline placement leaves this off. It is opt-in for the dialog, where
+      // the user has just deliberately opened a box in order to type — and
+      // react-aria focuses the dialog container rather than the field, so
+      // without it the cursor is nowhere and the field has to be clicked
+      // first. Focusing the first meaningful control is what the ARIA dialog
+      // pattern asks for. Same exception, same reason, as
+      // `SessionRenameDialog`.
+      // eslint-disable-next-line jsx-a11y/no-autofocus
+      autoFocus={autoFocus}
+    />
+  );
+
+  const picker = (
+    <>
+      <Select
+        ref={agentSelectRef}
+        aria-label="Agent"
+        className={
+          awaitingAgent
+            ? `${classes.agentSelect} ${classes.agentSelectAttention}`
+            : classes.agentSelect
+        }
+        isInvalid={showAgentMissing}
+        // `leadingIcon` only reaches the options; the trigger has its own
+        // slot, and without this the chosen agent loses the avatar it had
+        // in the list.
+        icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
+        options={pickerOptions}
+        selectedKey={selectedId ?? null}
+        onSelectionChange={key => {
+          setSearchText('');
+          const id = key ? String(key) : undefined;
+          if (id === FOOTER_ACTION_ID) {
+            pickerFooterAction?.onAction();
+            return;
+          }
+          touched.current = true;
+          setSelectedId(
+            id?.startsWith(RECENT_OPTION_PREFIX)
+              ? id.slice(RECENT_OPTION_PREFIX.length)
+              : id,
+          );
+        }}
+        onOpenChange={isOpen => {
+          if (!isOpen) {
+            setSearchText('');
+          }
+        }}
+        placeholder={pickerPlaceholder}
+        // Grouped by namespace, the search text is held here so the
+        // Recent group can step aside while a search is typed.
+        {...(groupByNamespace
+          ? isSearchable && {
+              search: {
+                inputValue: searchText,
+                onInputChange: setSearchText,
+                placeholder: `Search ${listed.length} agents`,
+                filter: searchFilter,
+              },
+            }
+          : { searchable: isSearchable })}
+        // A sole startable agent is no choice, unless unavailable ones
+        // are listed beside it with their reasons or the picker also
+        // holds its footer action.
+        isDisabled={
+          isStarting ||
+          (Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction)
+        }
+      />
+      {renderPickerAccessory?.(selectedAgent)}
+    </>
+  );
 
   return (
     <form onSubmit={handleSubmit}>
@@ -583,95 +704,31 @@ export function NewSessionComposer({
           className={STABLE_CLASS_NAMES.composer}
           minRows={expanded ? EXPANDED_ROWS : COLLAPSED_ROWS}
           maxRows={MAX_ROWS}
+          // Picker-first, the frame's input slot carries the picker row and
+          // then the text field: the frame stacks its children, so the row
+          // heads the box without a slot of its own.
           input={
-            <TextAreaField
-              aria-label="Prompt"
-              placeholder={
-                promptPlaceholder?.(selectedAgent) ??
-                'What should the agent do?'
-              }
-              value={prompt}
-              onChange={setPrompt}
-              onFocus={() => setExpanded(true)}
-              onKeyDown={handleKeyDown}
-              // Disabled, not just refused on submit: agent-first surfaces say
-              // "this is step two" by the field itself. react-aria announces
-              // the disabled state, and the caption under the box says why.
-              isDisabled={awaitingAgent}
-              // The rule guards against stealing focus on page load, which is why the
-              // inline placement leaves this off. It is opt-in for the dialog, where
-              // the user has just deliberately opened a box in order to type — and
-              // react-aria focuses the dialog container rather than the field, so
-              // without it the cursor is nowhere and the field has to be clicked
-              // first. Focusing the first meaningful control is what the ARIA dialog
-              // pattern asks for. Same exception, same reason, as
-              // `SessionRenameDialog`.
-              // eslint-disable-next-line jsx-a11y/no-autofocus
-              autoFocus={autoFocus}
-            />
+            pickerOnTop ? (
+              <>
+                <div className={classes.pickerRow}>
+                  {pickerLabel && (
+                    <Text
+                      as="span"
+                      variant="body-small"
+                      className={classes.pickerLabel}
+                    >
+                      {pickerLabel(selectedAgent)}
+                    </Text>
+                  )}
+                  {picker}
+                </div>
+                {field}
+              </>
+            ) : (
+              field
+            )
           }
-          leading={
-            <>
-              <Select
-                ref={agentSelectRef}
-                aria-label="Agent"
-                className={
-                  awaitingAgent
-                    ? `${classes.agentSelect} ${classes.agentSelectAttention}`
-                    : classes.agentSelect
-                }
-                isInvalid={showAgentMissing}
-                // `leadingIcon` only reaches the options; the trigger has its own
-                // slot, and without this the chosen agent loses the avatar it had
-                // in the list.
-                icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-                options={pickerOptions}
-                selectedKey={selectedId ?? null}
-                onSelectionChange={key => {
-                  setSearchText('');
-                  const id = key ? String(key) : undefined;
-                  if (id === FOOTER_ACTION_ID) {
-                    pickerFooterAction?.onAction();
-                    return;
-                  }
-                  touched.current = true;
-                  setSelectedId(
-                    id?.startsWith(RECENT_OPTION_PREFIX)
-                      ? id.slice(RECENT_OPTION_PREFIX.length)
-                      : id,
-                  );
-                }}
-                onOpenChange={isOpen => {
-                  if (!isOpen) {
-                    setSearchText('');
-                  }
-                }}
-                placeholder={pickerPlaceholder}
-                // Grouped by namespace, the search text is held here so the
-                // Recent group can step aside while a search is typed.
-                {...(groupByNamespace
-                  ? isSearchable && {
-                      search: {
-                        inputValue: searchText,
-                        onInputChange: setSearchText,
-                        placeholder: `Search ${listed.length} agents`,
-                        filter: searchFilter,
-                      },
-                    }
-                  : { searchable: isSearchable })}
-                // A sole startable agent is no choice, unless unavailable ones
-                // are listed beside it with their reasons or the picker also
-                // holds its footer action.
-                isDisabled={
-                  isStarting ||
-                  (Boolean(soleAgent) &&
-                    listed.length === 1 &&
-                    !pickerFooterAction)
-                }
-              />
-              {renderPickerAccessory?.(selectedAgent)}
-            </>
-          }
+          leading={pickerOnTop ? undefined : picker}
           trailing={
             <ButtonIcon
               type="submit"

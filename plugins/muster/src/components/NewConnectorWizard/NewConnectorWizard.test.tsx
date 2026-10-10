@@ -167,7 +167,7 @@ describe('shell connector wizard', () => {
       const address = screen.getByLabelText(/^Server address/);
       expect(address).toHaveAttribute('aria-invalid', 'true');
       expect(address).toHaveAccessibleDescription(
-        expect.stringContaining('URL is required'),
+        expect.stringContaining('Server address is required'),
       );
       // The first invalid field takes the focus.
       expect(address).toHaveFocus();
@@ -183,6 +183,24 @@ describe('shell connector wizard', () => {
       expect(
         screen.queryByText('How do people sign in?'),
       ).not.toBeInTheDocument();
+    });
+
+    // Live round L5: the field is labelled "Server address", so its problems
+    // say so — not the classic wizard's "URL".
+    it('words the address problems after the field label', async () => {
+      await renderWizard('/agent-platform/connectors/new');
+
+      await userEvent.type(
+        screen.getByLabelText(/^Server address/),
+        'not a url',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+      const address = screen.getByLabelText(/^Server address/);
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('Server address must be an http(s) URL'),
+      );
+      expect(address).not.toHaveAccessibleDescription(/^URL/);
     });
 
     it('shows the probe verdict as the inline "Server found" state', async () => {

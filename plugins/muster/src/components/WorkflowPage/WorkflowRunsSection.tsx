@@ -1,13 +1,20 @@
-import { Box, Flex, Text } from '@backstage/ui';
+import { useState } from 'react';
+import { Box, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  countNoun,
+  INITIAL_ROWS,
   LoadingIndicator,
+  ShowMore,
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { WorkflowExecutionSummary } from '../../apis/types';
+import type {
+  WorkflowExecutionStep,
+  WorkflowExecutionSummary,
+} from '../../apis/types';
 import { formatDuration } from '../../lib/formatDuration';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
@@ -17,7 +24,7 @@ import {
   toolDisplay,
 } from '../../lib/workflowDisplay';
 import { DisclosureAccordion } from '../shared';
-import { useRecentRuns } from './useRecentRuns';
+import { OLDER_RUNS_PAGE, useOlderRuns, useRecentRuns } from './useRecentRuns';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summaryRow: {
@@ -110,7 +117,35 @@ function RunTrace({
     );
   }
 
+  const steps = data.steps ?? [];
   const failure = failedStep(data.steps);
+  const renderStep = (step: WorkflowExecutionStep, index: number) => {
+    const outcome = executionOutcome(step.status);
+    const display = toolDisplay(step.tool, prefixes);
+    let plainTool: string;
+    if (display.kind === 'connector') {
+      plainTool = `${display.tool} (${display.connector})`;
+    } else if (display.kind === 'workflow') {
+      plainTool = `workflow ${display.workflow}`;
+    } else {
+      plainTool = display.tool;
+    }
+    return (
+      // A loop body step leaves one record per iteration under one id.
+      <div key={`${step.step_id}-${index}`} className={classes.traceStep}>
+        <StatusDot tone={outcome.tone} label={outcome.label} />
+        <code className={classes.mono}>{step.step_id}</code>
+        <span className={classes.meta}>{plainTool}</span>
+        {/* muster records 0 where it measured nothing: no made-up time. */}
+        {step.status !== 'skipped' && step.duration_ms > 0 && (
+          <span className={classes.meta}>
+            {formatDuration(step.duration_ms)}
+          </span>
+        )}
+        {step.error && <span className={classes.error}>{step.error}</span>}
+      </div>
+    );
+  };
 
   return (
     <Box>
@@ -123,42 +158,37 @@ function RunTrace({
             : `Failed${data.error ? `: ${data.error}` : ''}`}
         </Text>
       )}
-      <div className={classes.trace}>
-        {(data.steps ?? []).map((step, index) => {
-          const outcome = executionOutcome(step.status);
-          const display = toolDisplay(step.tool, prefixes);
-          let plainTool: string;
-          if (display.kind === 'connector') {
-            plainTool = `${display.tool} (${display.connector})`;
-          } else if (display.kind === 'workflow') {
-            plainTool = `workflow ${display.workflow}`;
-          } else {
-            plainTool = display.tool;
-          }
-          return (
-            // A loop body step leaves one record per iteration under one id.
-            <div key={`${step.step_id}-${index}`} className={classes.traceStep}>
-              <StatusDot tone={outcome.tone} label={outcome.label} />
-              <code className={classes.mono}>{step.step_id}</code>
-              <span className={classes.meta}>{plainTool}</span>
-              {/* muster records 0 where it measured nothing: no made-up time. */}
-              {step.status !== 'skipped' && step.duration_ms > 0 && (
-                <span className={classes.meta}>
-                  {formatDuration(step.duration_ms)}
-                </span>
-              )}
-              {step.error && (
-                <span className={classes.error}>{step.error}</span>
-              )}
-            </div>
-          );
-        })}
-        {(data.steps ?? []).length === 0 && (
-          <Text as="p" variant="body-small" color="secondary">
-            No per-step records for this run.
-          </Text>
-        )}
-      </div>
+      {steps.length === 0 ? (
+        <Text as="p" variant="body-small" color="secondary">
+          No per-step records for this run.
+        </Text>
+      ) : (
+        <ShowMore items={steps} initial={INITIAL_ROWS} noun="step">
+          {visible => {
+            // The failed step is the one row a reader opens a failed run for,
+            // and a loop can push it past the first page (step 250 of 300).
+            // So when it falls beyond the steps shown, it is pinned under
+            // them, after a line saying how many steps sit in between. Only
+            // the first failed step — the one the "Failed at step N" line
+            // names — is pinned, so the rendered rows stay bounded.
+            const pinned =
+              failure && failure.number > visible.length ? failure : undefined;
+            const between = pinned ? pinned.number - 1 - visible.length : 0;
+            return (
+              <div className={classes.trace}>
+                {visible.map((step, index) => renderStep(step, index))}
+                {between > 0 && (
+                  <span className={classes.meta}>
+                    … {countNoun(between, 'step')} not shown before the failed
+                    step {pinned!.number}
+                  </span>
+                )}
+                {pinned && renderStep(pinned.step, pinned.number - 1)}
+              </div>
+            );
+          }}
+        </ShowMore>
+      )}
       <Box mt="2">
         <DisclosureAccordion summary="Show technical information">
           <pre className={classes.json}>{JSON.stringify(data, null, 2)}</pre>
@@ -202,8 +232,9 @@ export interface WorkflowRunsSectionProps {
 /**
  * The workflow's latest few runs: when each started, its outcome, duration
  * and step count, newest first. A busy workflow keeps thousands of records,
- * so the list stays a handful (the success/failure totals sit in the page's
- * details panel). A run expands to its per-step trace (fetched on expand),
+ * so the list starts at a handful (the success/failure totals sit in the
+ * page's details panel) and *Show older runs* reads further back a page at a
+ * time. A run expands to its per-step trace (fetched on expand),
  * which names the step a failed run stopped at, with the full execution JSON
  * behind the run's own technical fold-out. Run records are retention-bounded,
  * so the section says so rather than presenting the list as complete
@@ -220,6 +251,9 @@ export function WorkflowRunsSection({
     installation,
     hasSession,
   );
+  // How many pages of older runs the person asked for (0: the newest only).
+  const [olderPages, setOlderPages] = useState(0);
+  const older = useOlderRuns(name, installation, hasSession, olderPages);
 
   if (!hasSession) {
     return (
@@ -240,7 +274,26 @@ export function WorkflowRunsSection({
     );
   }
 
-  const runs = data?.executions ?? [];
+  // A run recorded while paging shifts the offsets by one; the id dedupes the
+  // run that slides from one page into the next.
+  const seen = new Set<string>();
+  const runs = [
+    ...(data?.executions ?? []),
+    ...older.flatMap(page => page.data?.executions ?? []),
+  ].filter(run => {
+    if (seen.has(run.execution_id)) {
+      return false;
+    }
+    seen.add(run.execution_id);
+    return true;
+  });
+  const total = data?.total ?? runs.length;
+  const lastOlder = older[older.length - 1];
+  const readingOlder = Boolean(lastOlder?.isPending);
+  const olderError = older.find(page => page.error)?.error;
+  // Older runs exist while muster's total exceeds what is listed — unless the
+  // last page read said it was the end (runs expire as the list is paged).
+  const hasOlder = total > runs.length && (lastOlder?.data?.has_more ?? true);
   if (runs.length === 0) {
     return (
       <Text as="p" variant="body-medium" color="secondary">
@@ -265,9 +318,42 @@ export function WorkflowRunsSection({
           </DisclosureAccordion>
         ))}
       </Box>
+      {(hasOlder || olderPages > 0) && (
+        <Flex align="center" gap="2">
+          {hasOlder && (
+            <Button
+              variant="tertiary"
+              size="small"
+              isDisabled={readingOlder}
+              onPress={() => setOlderPages(pages => pages + 1)}
+            >
+              {readingOlder
+                ? 'Reading older runs…'
+                : `Show ${countNoun(
+                    Math.min(OLDER_RUNS_PAGE, total - runs.length),
+                    'older run',
+                  )}`}
+            </Button>
+          )}
+          {olderPages > 0 && (
+            <Button
+              variant="tertiary"
+              size="small"
+              onPress={() => setOlderPages(0)}
+            >
+              Show fewer
+            </Button>
+          )}
+        </Flex>
+      )}
+      {olderError && (
+        <Text as="p" variant="body-small" color="secondary">
+          Older runs unavailable: {(olderError as Error).message}
+        </Text>
+      )}
       <Text as="p" variant="body-small" color="secondary">
-        {data && data.total > runs.length
-          ? `The newest ${runs.length} of ${data.total.toLocaleString(
+        {total > runs.length
+          ? `The newest ${runs.length} of ${total.toLocaleString(
               'en-US',
             )} recorded runs. `
           : ''}

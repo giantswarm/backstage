@@ -182,21 +182,26 @@ function AgentShellRail() {
   const top = items.filter(item => item.position === 'top');
   const bottom = items.filter(item => item.position === 'bottom');
 
+  // The skip link sits outside the rail, fixed to the top left of the
+  // viewport: inside the bottom-anchored mobile bar its hidden state floated
+  // over the content and took the clicks meant for it.
   if (isMobile) {
     return (
-      <nav aria-label="Main" className={classes.mobileRail}>
+      <>
         <SkipLink />
-        <ul className={`${classes.list} ${classes.mobileList}`}>
-          {[...top, ...bottom].map(item => (
-            <RailItem key={item.id} item={item} compact />
-          ))}
-          <PaletteSearchItem
-            compact
-            className={classes.railButton}
-            hintClassName={classes.shortcutHint}
-          />
-        </ul>
-      </nav>
+        <nav aria-label="Main" className={classes.mobileRail}>
+          <ul className={`${classes.list} ${classes.mobileList}`}>
+            {[...top, ...bottom].map(item => (
+              <RailItem key={item.id} item={item} compact />
+            ))}
+            <PaletteSearchItem
+              compact
+              className={classes.railButton}
+              hintClassName={classes.shortcutHint}
+            />
+          </ul>
+        </nav>
+      </>
     );
   }
 
@@ -209,62 +214,70 @@ function AgentShellRail() {
     : sidebarConfig.drawerWidthClosed;
 
   return (
-    <nav aria-label="Main" className={classes.rail} style={{ width }}>
+    <>
       <SkipLink />
-      <Flex direction="column" gap="4" py="3" px="2" className={classes.column}>
+      <nav aria-label="Main" className={classes.rail} style={{ width }}>
         <Flex
-          direction={compact ? 'column' : 'row'}
-          align="center"
-          justify="between"
-          gap="2"
-          pl={compact ? undefined : '2'}
-          pr={compact ? undefined : '1'}
+          direction="column"
+          gap="4"
+          py="3"
+          px="2"
+          className={classes.column}
         >
-          <Link href="/" aria-label="Agent Platform" className={classes.logo}>
-            <Flex align="center" gap="2">
-              <LogoIcon />
-              {!compact && (
-                <Text variant="body-large" weight="bold">
-                  Agent Platform
-                </Text>
-              )}
-            </Flex>
-          </Link>
-          <ButtonIcon
-            variant="tertiary"
-            size="small"
-            icon={compact ? <ChevronRightIcon /> : <ChevronLeftIcon />}
-            aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'}
-            onPress={toggleSidebarPinState}
-          />
-        </Flex>
-        <ul className={classes.list}>
-          {desktopTop.map(item => (
-            <Fragment key={item.id}>
-              <RailItem item={item} compact={compact} />
-              {item.id === 'new-session' && (
-                <PaletteSearchItem
-                  compact={compact}
-                  className={classes.railButton}
-                  hintClassName={classes.shortcutHint}
-                />
-              )}
-            </Fragment>
-          ))}
-        </ul>
-        {!compact && (
-          <div className={classes.recent}>
-            <RecentSessions shellRail />
-          </div>
-        )}
-        <Box pt="2" className={classes.bottom}>
+          <Flex
+            direction={compact ? 'column' : 'row'}
+            align="center"
+            justify="between"
+            gap="2"
+            pl={compact ? undefined : '2'}
+            pr={compact ? undefined : '1'}
+          >
+            <Link href="/" aria-label="Agent Platform" className={classes.logo}>
+              <Flex align="center" gap="2">
+                <LogoIcon />
+                {!compact && (
+                  <Text variant="body-large" weight="bold">
+                    Agent Platform
+                  </Text>
+                )}
+              </Flex>
+            </Link>
+            <ButtonIcon
+              variant="tertiary"
+              size="small"
+              icon={compact ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+              aria-label={compact ? 'Expand sidebar' : 'Collapse sidebar'}
+              onPress={toggleSidebarPinState}
+            />
+          </Flex>
           <ul className={classes.list}>
-            {bottom.map(item => (
-              <RailItem key={item.id} item={item} compact={compact} />
+            {desktopTop.map(item => (
+              <Fragment key={item.id}>
+                <RailItem item={item} compact={compact} />
+                {item.id === 'new-session' && (
+                  <PaletteSearchItem
+                    compact={compact}
+                    className={classes.railButton}
+                    hintClassName={classes.shortcutHint}
+                  />
+                )}
+              </Fragment>
             ))}
           </ul>
-        </Box>
-      </Flex>
-    </nav>
+          {!compact && (
+            <div className={classes.recent}>
+              <RecentSessions shellRail />
+            </div>
+          )}
+          <Box pt="2" className={classes.bottom}>
+            <ul className={classes.list}>
+              {bottom.map(item => (
+                <RailItem key={item.id} item={item} compact={compact} />
+              ))}
+            </ul>
+          </Box>
+        </Flex>
+      </nav>
+    </>
   );
 }

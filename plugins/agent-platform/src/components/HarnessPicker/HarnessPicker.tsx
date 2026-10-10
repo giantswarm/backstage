@@ -34,7 +34,7 @@ import {
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
-  const { state, selectHarness } = useNewAgentForm();
+  const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
     modelConfigNamespace: namespace,
@@ -60,6 +60,52 @@ export function HarnessPicker() {
 
   if (!installation || !namespace) {
     return null;
+  }
+
+  const content = (choice: HarnessChoice) => {
+    return (
+      <>
+        <Text weight="bold">{harnessTitle(choice)}</Text>
+        {choice.name === platformHarness && (
+          <Text variant="body-small" color="secondary">
+            Platform default
+          </Text>
+        )}
+        <Text variant="body-x-small" color="secondary">
+          Harness <span className={classes.code}>{choice.name}</span>
+          {choice.imageName && (
+            <>
+              {' · '}
+              <span className={classes.code}>{choice.imageName}</span>
+            </>
+          )}
+        </Text>
+      </>
+    );
+  };
+
+  // An existing agent keeps the Harness it was created on (an update cannot
+  // move it): shown, not offered.
+  if (edit) {
+    const currentName = edit.agent.harness ?? platformHarness;
+    // Until (or unless) the namespace's Harnesses are read, it is known by
+    // its name alone.
+    const current = choices.find(choice => choice.name === currentName) ?? {
+      name: currentName,
+      displayName: currentName,
+    };
+    return (
+      <Flex direction="column" gap="2">
+        <FieldLabel
+          label="Runtime"
+          secondaryLabel="Harness"
+          description="What runs the agent. It can't be changed once the agent exists."
+        />
+        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+          <StaticCard>{content(current)}</StaticCard>
+        </SelectableCardGrid>
+      </Flex>
+    );
   }
 
   const hasChoice = choices.length > 1;
@@ -115,28 +161,6 @@ export function HarnessPicker() {
     choice => choice.name === platformHarness,
   );
   const selected = state.harness?.name ?? platformChoice?.name;
-  const content = (choice: HarnessChoice) => {
-    return (
-      <>
-        <Text weight="bold">{harnessTitle(choice)}</Text>
-        {choice.name === platformHarness && (
-          <Text variant="body-small" color="secondary">
-            Platform default
-          </Text>
-        )}
-        <Text variant="body-x-small" color="secondary">
-          Harness <span className={classes.code}>{choice.name}</span>
-          {choice.imageName && (
-            <>
-              {' · '}
-              <span className={classes.code}>{choice.imageName}</span>
-            </>
-          )}
-        </Text>
-      </>
-    );
-  };
-
   return (
     <Flex direction="column" gap="2">
       <FieldLabel

@@ -47,7 +47,7 @@ export type ModelConfigPickerProps = {
 export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const classes = useSelectableCardStyles();
   const errorId = `${useId()}-error`;
-  const { state, selectModelConfig } = useNewAgentForm();
+  const { state, edit, selectModelConfig } = useNewAgentForm();
   const { isLoading, modelConfigsFor, unreachableInstallations } =
     useModelConfigs();
   const newModelLink = useRouteRef(newModelRouteRef);
@@ -64,7 +64,20 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   );
   const invalidProps = error ? { 'data-invalid': '' } : {};
 
-  const modelConfigs = installation ? modelConfigsFor(installation) : [];
+  // An existing agent's model is a ModelConfig of its own namespace: an update
+  // cannot move the agent, so the other namespaces' models are not offered.
+  const modelConfigs = (
+    installation ? modelConfigsFor(installation) : []
+  ).filter(mc => !edit || (mc.getNamespace() ?? '') === edit.agent.namespace);
+  // The agent's current model, when the list does not carry it (a ModelConfig
+  // the person may not read, or one that is gone): the picker still says what
+  // the agent has, and picking a listed one replaces it.
+  const unlistedCurrent =
+    edit &&
+    state.modelConfigName &&
+    !modelConfigs.some(mc => mc.getName() === state.modelConfigName)
+      ? state.modelConfigName
+      : undefined;
   // The form starts with a model picked for the person -- the installation's
   // only one, else its default, else the first listed -- so the plain view of
   // step 1 needs no model decision. Only while nothing is picked, so a pick of
@@ -93,8 +106,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         {label}
         <Alert
           status="info"
-          title="Select an installation first"
-          description="Models are provisioned per installation. Choose one above to load its ModelConfigs."
+          title="Select an environment first"
+          description="Models are provisioned per environment. Choose one above to load its ModelConfigs."
         />
       </Flex>
     );
@@ -139,7 +152,14 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         </>
       )}
 
-      {showsPreselection && preselection && (
+      {unlistedCurrent && (
+        <Text variant="body-small" color="secondary">
+          Currently {unlistedCurrent}, a model that isn't listed for you
+          {isLoading ? ' yet' : ''}.
+        </Text>
+      )}
+
+      {!edit && showsPreselection && preselection && (
         <Text variant="body-small" color="secondary">
           {preselectionNote(
             preselection.reason,

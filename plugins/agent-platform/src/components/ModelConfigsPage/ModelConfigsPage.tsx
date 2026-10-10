@@ -106,8 +106,8 @@ export function ModelConfigsPage() {
       <Content>
         <EmptyState
           missing="data"
-          title="No installations configured"
-          description="Models are read from your management clusters, but no installations are configured for this instance."
+          title="No environments configured"
+          description="Models are read from your management clusters, but no environments are configured for this instance."
         />
       </Content>
     );
@@ -117,7 +117,7 @@ export function ModelConfigsPage() {
     <Content>
       <Flex direction="column" gap="3">
         <Text color="secondary">
-          The models agents can run on, provisioned per installation as kagent
+          The models agents can run on, provisioned per environment as kagent
           ModelConfigs.
         </Text>
 

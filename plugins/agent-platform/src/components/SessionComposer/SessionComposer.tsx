@@ -90,6 +90,15 @@ export type SessionComposerProps = {
    * it.
    */
   disabledReason?: string;
+  /**
+   * A card attached to the box, directly above it: the agent's pending question
+   * or permission request while the session waits on one (T40) — the live way to
+   * answer, in the chat bar, the way a chat app puts an agent's question in its
+   * input. Pair it with {@link disabledReason}: while it stands, the box cannot
+   * answer it. Rendered inside the composer, under its notices and on top of the
+   * box, so the two dock as one control.
+   */
+  attachment?: ReactNode;
   /** Why the last send failed, shown as "Message not sent". */
   error?: string;
   /**
@@ -186,6 +195,7 @@ export function SessionComposer({
   isStalled = false,
   isFinished,
   disabledReason,
+  attachment,
   error,
   stopError,
   restore,
@@ -241,8 +251,8 @@ export function SessionComposer({
   }, []);
 
   // Take the focus back when the field is re-enabled and nothing else holds it.
-  // The typical path: the user answered the agent's question from the panel above
-  // with Enter, the panel unmounted with the control that had the focus, and the
+  // The typical path: the user answered the agent's question from the card above
+  // with Enter, the card unmounted with the control that had the focus, and the
   // focus fell back to <body>. Skipped when it is anywhere real, so a user who
   // moved on to another control is not yanked back.
   const wasDisabled = useRef(isDisabled);
@@ -327,88 +337,95 @@ export function SessionComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <Flex direction="column" gap="2">
-        {error && (
-          <Alert status="danger" title="Message not sent" description={error} />
-        )}
-        {stopError && (
-          <Alert status="danger" title="Stop failed" description={stopError} />
-        )}
+    // The notices and the attachment sit outside the box's <form>: the
+    // attachment is a form of its own (the question card), and forms do not
+    // nest.
+    <Flex direction="column" gap="2">
+      {error && (
+        <Alert status="danger" title="Message not sent" description={error} />
+      )}
+      {stopError && (
+        <Alert status="danger" title="Stop failed" description={stopError} />
+      )}
 
-        <ComposerFrame
-          className={STABLE_CLASS_NAMES.composer}
-          minRows={MIN_ROWS}
-          maxRows={MAX_ROWS}
-          isDisabled={isDisabled}
-          data-testid="composer-card"
-          input={
-            <TextAreaField
-              ref={fieldRef}
-              aria-label="Message"
-              placeholder={placeholder}
-              value={value}
-              onChange={setValue}
-              onKeyDown={handleKeyDown}
-              isDisabled={isDisabled}
-            />
-          }
-          trailing={
-            <>
-              {/* Before the action, like the prototype: the chip reads as
+      {attachment}
+
+      <form onSubmit={handleSubmit}>
+        <Flex direction="column" gap="2">
+          <ComposerFrame
+            className={STABLE_CLASS_NAMES.composer}
+            minRows={MIN_ROWS}
+            maxRows={MAX_ROWS}
+            isDisabled={isDisabled}
+            data-testid="composer-card"
+            input={
+              <TextAreaField
+                ref={fieldRef}
+                aria-label="Message"
+                placeholder={placeholder}
+                value={value}
+                onChange={setValue}
+                onKeyDown={handleKeyDown}
+                isDisabled={isDisabled}
+              />
+            }
+            trailing={
+              <>
+                {/* Before the action, like the prototype: the chip reads as
                   context for the box, not as something that submits. */}
-              {details}
-              {showStop ? (
-                // Secondary rather than primary: stopping is not the action
-                // this box invites.
-                <ButtonIcon
-                  type="button"
-                  aria-label="Stop"
-                  variant="secondary"
-                  icon={<StopIcon />}
-                  isPending={isStopping}
-                  onPress={onStop}
-                />
-              ) : (
-                !newSessionReplacesSend && (
+                {details}
+                {showStop ? (
+                  // Secondary rather than primary: stopping is not the action
+                  // this box invites.
                   <ButtonIcon
-                    type="submit"
-                    aria-label="Send"
-                    icon={<ArrowUpwardIcon />}
-                    isDisabled={!canSubmit}
+                    type="button"
+                    aria-label="Stop"
+                    variant="secondary"
+                    icon={<StopIcon />}
+                    isPending={isStopping}
+                    onPress={onStop}
                   />
-                )
-              )}
-            </>
-          }
-        />
+                ) : (
+                  !newSessionReplacesSend && (
+                    <ButtonIcon
+                      type="submit"
+                      aria-label="Send"
+                      icon={<ArrowUpwardIcon />}
+                      isDisabled={!canSubmit}
+                    />
+                  )
+                )}
+              </>
+            }
+          />
 
-        <Text variant="body-small" color={isTooLong ? 'danger' : 'secondary'}>
-          {isTooLong
-            ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-            : caption}
-        </Text>
+          <Text variant="body-small" color={isTooLong ? 'danger' : 'secondary'}>
+            {isTooLong
+              ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
+              : caption}
+          </Text>
 
-        {newSession && (
-          // Under the box, not in it: it is a way out of this session, not one
-          // of the box's own controls. Worded rather than an icon — an icon
-          // could not say where the person lands. `type="button"`: only the
-          // primary control submits the form, and while Send is still there,
-          // Enter must keep sending.
-          <Flex justify="end">
-            <Button
-              type={newSessionReplacesSend ? 'submit' : 'button'}
-              size="small"
-              variant={newSessionReplacesSend ? 'primary' : 'secondary'}
-              isDisabled={!canStartNewSession}
-              isPending={newSession.isStarting}
-              onPress={newSessionReplacesSend ? undefined : startNewSession}
-            >
-              {newSession.label}
-            </Button>
-          </Flex>
-        )}
-      </Flex>
-    </form>
+          {newSession && (
+            // Under the box, not in it: it is a way out of this session, not one
+            // of the box's own controls. Worded rather than an icon — an icon
+            // could not say where the person lands. `type="button"`: only the
+            // primary control submits the form, and while Send is still there,
+            // Enter must keep sending.
+            <Flex justify="end">
+              <Button
+                type={newSessionReplacesSend ? 'submit' : 'button'}
+                size="small"
+                variant={newSessionReplacesSend ? 'primary' : 'secondary'}
+                isDisabled={!canStartNewSession}
+                isPending={newSession.isStarting}
+                onPress={newSessionReplacesSend ? undefined : startNewSession}
+              >
+                {newSession.label}
+              </Button>
+            </Flex>
+          )}
+        </Flex>
+      </form>
+    </Flex>
   );
 }

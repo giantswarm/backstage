@@ -124,7 +124,7 @@ export function NewModelPage() {
     [nameEdited],
   );
 
-  const installationError = installation ? undefined : 'Select an installation';
+  const installationError = installation ? undefined : 'Select an environment';
   const fieldErrors = modelConfigFieldErrors(values);
   const errorCount =
     (installationError ? 1 : 0) + Object.keys(fieldErrors).length;
@@ -218,12 +218,12 @@ export function NewModelPage() {
         <Card>
           <CardBody>
             <SectionHeader
-              title="Installation"
+              title="Environment"
               description="The management cluster this model becomes available on."
             />
             <Flex direction="column" gap="2">
               <Select
-                aria-label="Installation"
+                aria-label="Environment"
                 isRequired
                 options={reachableInstallations.map(name => ({
                   id: name,
@@ -238,7 +238,7 @@ export function NewModelPage() {
               {installationSelectError.message}
               {isProbing && (
                 <Text variant="body-small" color="secondary">
-                  Still checking the remaining installations…
+                  Still checking the remaining environments…
                 </Text>
               )}
             </Flex>

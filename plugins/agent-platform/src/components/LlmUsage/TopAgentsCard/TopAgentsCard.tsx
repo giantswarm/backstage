@@ -41,6 +41,19 @@ const useStyles = makeStyles((theme: Theme) => ({
     textAlign: 'right',
     whiteSpace: 'nowrap',
   },
+  // Read out, not shown: what the count is, and a pause before the share, so
+  // a screen reader (and a copy) says "12 model calls, 53%", not "1253%".
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    overflow: 'hidden',
+    clip: 'rect(0 0 0 0)',
+    whiteSpace: 'nowrap',
+    border: 0,
+  },
   share: {
     marginLeft: theme.spacing(1),
     color: theme.palette.text.secondary,
@@ -118,6 +131,7 @@ export function TopAgentsCard({
               </div>
               <span className={classes.amount}>
                 {formatCount(row.calls)}
+                <span className={classes.srOnly}> model calls, </span>
                 <span className={classes.share}>
                   {formatPercent(row.sharePct)}
                 </span>

@@ -17,7 +17,7 @@ export function KagentMissingCard({ installation }: { installation: string }) {
   return (
     <EmptyStateCard
       title={`${kagent} is not installed on ${installation}`}
-      description={`Agents run on installations with ${kagent}. Choose another installation above, or enable the Agent Platform on ${installation}.`}
+      description={`Agents run on environments with ${kagent}. Choose another environment above, or enable the Agent Platform on ${installation}.`}
       actions={
         installationsLink ? (
           <ButtonLink variant="secondary" href={installationsLink()}>

@@ -48,12 +48,14 @@ export const agentDetailRouteRef = createSubRouteRef({
   parent: agentsRouteRef,
 });
 
-// Editing one agent (`/agent-platform/agents/<installation>/<namespace>/<name>/edit`):
-// the form pre-filled from agent-manager's reading of the agent, its dry run
-// as the review, `update_agent` as the Save. Four segments, so it is clear of
-// the three-segment detail path and of the create flow.
+// Editing one agent (`/agent-platform/agents/edit/<installation>/<namespace>/<name>`,
+// then `/skills`, `/tools`, `/review`): the create wizard prefilled from
+// agent-manager's reading of the agent, its last step a dry run of the change
+// and Save changes. A static first segment, like the skill pages'
+// `/skills/edit/…`, so the wizard's steps sit under it without ever reading
+// as the detail page's tabs. The former `…/<name>/edit` redirects here.
 export const agentEditRouteRef = createSubRouteRef({
-  path: '/:installation/:namespace/:name/edit',
+  path: '/edit/:installation/:namespace/:name',
   parent: agentsRouteRef,
 });
 

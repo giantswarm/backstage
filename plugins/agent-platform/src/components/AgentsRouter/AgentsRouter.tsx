@@ -4,7 +4,7 @@ import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-reac
 import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
 import { AgentDetailPage } from '../AgentDetailPage';
-import { EditAgentPage } from '../EditAgentPage';
+import { EditAgentPage, LegacyEditAgentRedirect } from '../EditAgentPage';
 import { AgentsIndexPage } from '../AgentsIndexPage';
 import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
@@ -13,8 +13,8 @@ import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { useAgentShell } from '../../hooks/useAgentShell';
 
-// Content of the "Agents" tab: the list, one agent's details, the edit page,
-// and the create flow. The create steps share one NewAgentFormProvider so the composed
+// Content of the "Agents" tab: the list, one agent's details, and the create
+// wizard — for a new agent, and prefilled to edit one. The create steps share one NewAgentFormProvider so the composed
 // agent survives navigation across `/agent-platform/agents/new`,
 // `.../new/skills`, `.../new/tools` and `.../new/review`.
 //
@@ -27,9 +27,10 @@ import { useAgentShell } from '../../hooks/useAgentShell';
 //
 // The detail route is a splat because the detail page is tabbed (Overview,
 // Tools, Skills, Sessions) and hosts a descendant `<Routes>` of its own. The
-// edit route survives beside it: react-router scores a static segment above a
-// splat, so `…/:name/edit` matches the edit page and never falls into the
-// detail page's tabs. AgentsRouter.test.tsx holds that ranking still.
+// edit wizard (`edit/…`) starts with a static segment, which react-router
+// scores above the detail path's dynamic one; the former `…/:name/edit`
+// address survives beside the splat as a redirect, matched first for the same
+// reason. AgentsRouter.test.tsx holds both rankings.
 //
 // Inside the agent-platform shell the list is the Customize screen's Agents
 // tab, so the index sends there.
@@ -59,9 +60,15 @@ export const AgentsRouter = () => {
             path=":installation/:namespace/:name/*"
             element={<AgentDetailPage />}
           />
+          {/* Editing is the create wizard, prefilled; it nests its own steps
+              and its own form state (see EditAgentPage). */}
+          <Route
+            path="edit/:installation/:namespace/:name/*"
+            element={<EditAgentPage />}
+          />
           <Route
             path=":installation/:namespace/:name/edit"
-            element={<EditAgentPage />}
+            element={<LegacyEditAgentRedirect />}
           />
         </Routes>
       </NewAgentFormProvider>

@@ -53,11 +53,18 @@ export type UpdateAgentState = {
   reset: () => void;
 };
 
+/** What kind of change an update is, for its event: never what changed. */
+function changeOf(update: AgentUpdate): 'edited' | 'skillsRefreshed' {
+  return update.refreshSkills ? 'skillsRefreshed' : 'edited';
+}
+
 /**
- * The write behind Save and Update skills, through agent-manager over muster
- * as the signed-in person. On success the installation's cached kagent reads
- * and agent-manager's reading of the agent are dropped, so the detail page
- * shows the new revision converging rather than the old values.
+ * The write behind Save changes and Update skills, through agent-manager over
+ * muster as the signed-in person, reported as `AgentPlatform.agentUpdated`
+ * (live or as a pull request, an edit or a skills refresh). On success the
+ * installation's cached kagent reads and agent-manager's reading of the agent
+ * are dropped, so the detail page shows the new revision converging rather
+ * than the old values.
  */
 export function useUpdateAgent(
   installation: string | undefined,
@@ -101,9 +108,10 @@ export function useUpdateAgent(
   );
 
   const mutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Agent edits are not a tracked portal action yet; agentCreated measures adoption.',
+    event: (_result, update) => ({
+      name: 'AgentPlatform.agentUpdated',
+      attributes: { mode: 'apply', change: changeOf(update) },
+    }),
     mutationFn: async (update: AgentUpdate): Promise<AgentUpdateOutcome> => {
       const agentManager = requireClient();
       // Strictly before the write, so a generation past it can only be one the
@@ -126,9 +134,10 @@ export function useUpdateAgent(
     onSuccess: (_result, update) => invalidateReads(update),
   });
   const commitMutation = useTrackedMutation({
-    event: null,
-    untrackedReason:
-      'Agent edits are not a tracked portal action yet; agentCreated measures adoption.',
+    event: (_result, update) => ({
+      name: 'AgentPlatform.agentUpdated',
+      attributes: { mode: 'commit', change: changeOf(update) },
+    }),
     mutationFn: (update: AgentUpdate) =>
       requireClient().commitUpdateAgent(update),
   });

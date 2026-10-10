@@ -6,6 +6,12 @@ import {
   type ReactNode,
 } from 'react';
 
+import type {
+  AgentManagerAgent,
+  AgentSkillEntry,
+  WriteMode,
+} from '../../lib/agentManager';
+import { skillEntryKey } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
@@ -52,6 +58,12 @@ export type NewAgentFormState = {
    */
   selectedSkills: DiscoveredSkill[];
   /**
+   * Editing only: the agent's skills no configured repository lists (another
+   * repository, an OCI digest), kept exactly as pinned until removed. Always
+   * empty when creating.
+   */
+  keptSkills: AgentSkillEntry[];
+  /**
    * The agent's toolset as selected: inline selectors (`preset:`, `server:`,
    * `workflow:`, `tool:`), in selection order. Starts empty on purpose —
    * nothing the author did not consciously add — and empty is a complete
@@ -61,8 +73,24 @@ export type NewAgentFormState = {
   toolset: string[];
 };
 
+/**
+ * The wizard in edit mode: the agent it changes, as agent-manager read it when
+ * the wizard opened (the baseline the review compares against), and how a save
+ * lands. The technical name, installation, namespace and Harness are fixed.
+ */
+export type AgentWizardEdit = {
+  agent: AgentManagerAgent;
+  installation: string;
+  /** `apply` saves live; `commit` (an agent applied from git) opens a PR. */
+  writeMode: WriteMode;
+  /** The agent's page: where Close leads and a saved change lands. */
+  detailHref: string | undefined;
+};
+
 export type NewAgentFormContextValue = {
   state: NewAgentFormState;
+  /** Set when the wizard edits an existing agent rather than creating one. */
+  edit: AgentWizardEdit | undefined;
   setName: (name: string) => void;
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
@@ -78,6 +106,8 @@ export type NewAgentFormContextValue = {
   setEgressText: (egressText: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
   toggleSkill: (skill: DiscoveredSkill) => void;
+  /** Editing only: drops one of the kept skills (see `keptSkills`). */
+  removeKeptSkill: (skill: AgentSkillEntry) => void;
   /**
    * Adds the selector if absent, removes it if present. `preset:full` replaces
    * the whole selection and adding anything else drops it; `preset:none` clears
@@ -133,6 +163,7 @@ const initialState: NewAgentFormState = {
   systemMessage: '',
   egressText: '',
   selectedSkills: [],
+  keptSkills: [],
   toolset: [],
 };
 
@@ -149,10 +180,24 @@ const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
 
-export function NewAgentFormProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<NewAgentFormState>(initialState);
-  // The slug auto-derives from the name until the user edits it by hand.
-  const [slugEdited, setSlugEdited] = useState(false);
+/**
+ * The wizard's state, shared by its steps. Creating starts empty; editing
+ * (`edit` with `initialState`, see `EditAgentPage`) starts from the agent and
+ * keeps its technical name fixed — renaming never re-derives it.
+ */
+export function NewAgentFormProvider({
+  children,
+  edit,
+  initialState: seed = initialState,
+}: {
+  children: ReactNode;
+  edit?: AgentWizardEdit;
+  initialState?: NewAgentFormState;
+}) {
+  const [state, setState] = useState<NewAgentFormState>(seed);
+  // The slug auto-derives from the name until the user edits it by hand — and
+  // never while editing: an existing agent's technical name cannot change.
+  const [slugEdited, setSlugEdited] = useState(Boolean(edit));
 
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
@@ -176,7 +221,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
       fieldErrors.slug = 'Technical name is required';
     }
     if (!state.installation) {
-      fieldErrors.installation = 'Select an installation';
+      fieldErrors.installation = 'Select an environment';
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
       fieldErrors.model = 'Select a model';
@@ -205,6 +250,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
 
     return {
       state,
+      edit,
       setName: name =>
         setState(prev => ({
           ...prev,
@@ -271,15 +317,22 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
               : [...prev.selectedSkills, skill],
           };
         }),
+      removeKeptSkill: skill =>
+        setState(prev => ({
+          ...prev,
+          keptSkills: prev.keptSkills.filter(
+            kept => skillEntryKey(kept) !== skillEntryKey(skill),
+          ),
+        })),
       reset: () => {
-        setSlugEdited(false);
-        setState(initialState);
+        setSlugEdited(Boolean(edit));
+        setState(seed);
       },
       isComplete,
       validationErrors,
       fieldErrors,
     };
-  }, [state, slugEdited]);
+  }, [state, slugEdited, edit, seed]);
 
   return (
     <NewAgentFormContext.Provider value={value}>

@@ -145,7 +145,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
@@ -306,7 +306,7 @@ export function GpuNodePoolsPanel({
           {notes.length > 0 && (
             <Alert
               status="info"
-              title="No clusters to list on some installations"
+              title="No clusters to list on some environments"
               description={notes
                 .map(({ installation, note }) => `${installation}: ${note}`)
                 .join('; ')}
@@ -316,7 +316,7 @@ export function GpuNodePoolsPanel({
           {errors.length > 0 && (
             <Alert
               status="info"
-              title="Node pools could not be read for some installations"
+              title="Node pools could not be read for some environments"
               description={errors
                 .map(({ installation, error }) =>
                   installationErrorLine(installation, error),

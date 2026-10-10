@@ -67,7 +67,7 @@ export function AgentSessionsCard({
     return (
       <SessionsFrame plain={plain}>
         <Text variant="body-medium" color="secondary">
-          Sessions could not be read from this installation.
+          Sessions could not be read from this environment.
         </Text>
       </SessionsFrame>
     );
@@ -100,7 +100,7 @@ export function AgentSessionsCard({
     // `unsecure` mode the list is everyone's, so calling it "yours" would be
     // a lie in the other direction.
     caption =
-      "This installation's kagent does not scope sessions to a user, so these are everyone's sessions with this agent.";
+      "This environment's kagent does not scope sessions to a user, so these are everyone's sessions with this agent.";
   } else if (plain) {
     caption = `Your sessions with ${agentName || 'this agent'}.`;
   } else {

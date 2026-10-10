@@ -142,7 +142,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       cell: row => <CellText title={row.installation} />,
     },
@@ -233,7 +233,7 @@ function getColumnConfig(
               <Text
                 variant="body-small"
                 color="secondary"
-                title="This installation's cluster-manager does not offer remove_model_cache yet (cluster-manager 0.17+)."
+                title="This environment's cluster-manager does not offer remove_model_cache yet (cluster-manager 0.17+)."
               >
                 read-only
               </Text>
@@ -319,8 +319,8 @@ export function ModelCachePanel({
           {readOnly.length > 0 && (
             <Alert
               status="info"
-              title="Removing needs a newer cluster-manager on some installations"
-              description={`${readOnly.join(', ')}: the installation's cluster-manager does not offer remove_model_cache yet (0.17+); the cache is shown as it stands and stays until removed by other means.`}
+              title="Removing needs a newer cluster-manager on some environments"
+              description={`${readOnly.join(', ')}: the environment's cluster-manager does not offer remove_model_cache yet (0.17+); the cache is shown as it stands and stays until removed by other means.`}
               data-testid="cache-read-only"
             />
           )}

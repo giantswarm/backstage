@@ -281,6 +281,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Session detail' };
       break;
 
+    // The edit wizard for one agent:
+    // `/agent-platform/agents/edit/<installation>/<namespace>/<name>`, then its
+    // `skills`, `tools` and `review` steps. One page, like the former edit
+    // form below; the step goes in `view` — a fixed, public set like the
+    // detail page's tabs — and the identifying segments stay out of both
+    // dimensions (they are still in `path`, as on every page). Must stay above
+    // the agent-detail case, whose three dynamic segments would otherwise read
+    // `edit/<installation>/<namespace>` as an agent.
+    case /^\/agent-platform\/agents\/edit\/[^/]+\/[^/]+\/[^/]+(\/(skills|tools|review))?$/.test(
+      pathname,
+    ): {
+      const step = pathname.split('/')[7];
+      payload = step
+        ? { page: 'Agent edit', view: step }
+        : { page: 'Agent edit' };
+      break;
+    }
+
     // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`,
     // optionally followed by one of its tabs. The three identifying segments
     // are kept out of `page` and `view`, for the same reason as Session detail:
@@ -312,10 +330,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    // The edit form for one agent: `…/<installation>/<namespace>/<name>/edit`.
-    // A page of its own rather than a view of the detail page — it is a
-    // different form with its own funnel — and, like the detail case, it
-    // carries no `view`.
+    // The edit wizard's former address, `…/<installation>/<namespace>/<name>/edit`,
+    // which now only redirects to the wizard above. A page of its own rather
+    // than a view of the detail page — and, like the detail case, it carries
+    // no `view`.
     //
     // What that buys is a bounded dimension, not privacy. Every payload this
     // function returns carries `path: pathname` verbatim, so the installation,

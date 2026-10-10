@@ -288,7 +288,7 @@ export function ByAgentTable({
           <>
             Cost is estimated: your token counts priced at{' '}
             {rateWindow ? `the last ${rateWindow} of ` : ''}
-            {installation ?? 'this installation'}&apos;s observed cost per token
+            {installation ?? 'this environment'}&apos;s observed cost per token
             — <strong>a blend across every model</strong>, not each agent&apos;s
             own. The session detail page prices one session at its own
             model&apos;s rate instead, so the two will differ. Not a billed
@@ -299,7 +299,7 @@ export function ByAgentTable({
         ) : (
           <>
             No cost estimate: no rate could be derived from{' '}
-            {installation ?? 'this installation'}&apos;s gateway metrics, so
+            {installation ?? 'this environment'}&apos;s gateway metrics, so
             there is nothing to price your token counts at. The counts
             themselves are unaffected.
           </>

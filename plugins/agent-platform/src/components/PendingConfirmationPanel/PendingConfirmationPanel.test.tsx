@@ -98,12 +98,18 @@ describe('PendingConfirmationPanel', () => {
       });
     });
 
-    it('does not repeat the question the timeline already shows', async () => {
-      // One question renders directly above this panel as prose in the
-      // conversation; printing it again put the same paragraph on screen twice.
-      renderPanel(singleChoice);
+    it('prints the question it asks, since it stays docked while the conversation scrolls', async () => {
+      // T40: the card is the live surface in the chat bar, and the timeline's
+      // copy (the record) is often scrolled out of view.
+      renderPanel(singleChoice, { agentName: 'Issue tracker' });
 
-      expect(screen.queryByText('What is the actual goal?')).toBeNull();
+      expect(screen.getByText('What is the actual goal?')).toBeInTheDocument();
+      expect(screen.getByText('Issue tracker asks')).toBeInTheDocument();
+      // One question: no pager.
+      expect(screen.queryByText(/Question 1 of/)).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Next question' }),
+      ).toBeNull();
     });
   });
 
@@ -154,35 +160,130 @@ describe('PendingConfirmationPanel', () => {
       ],
     };
 
-    it('names each question, since the pairing is not otherwise recoverable', () => {
+    const nextButton = () => screen.getByRole('button', { name: 'Next' });
+
+    it('pages through them one at a time: "Question 1 of N"', async () => {
+      // A docked card has half a phone screen; a stack of choice lists would
+      // push the message box off it.
       renderPanel(two);
 
+      expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
       expect(screen.getByText('First?')).toBeInTheDocument();
+      expect(screen.queryByText('Second?')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Previous question' }),
+      ).toBeDisabled();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
       expect(screen.getByText('Second?')).toBeInTheDocument();
+      expect(screen.queryByText('First?')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Next question' }),
+      ).toBeDisabled();
     });
 
-    it('will not send until every question is answered', async () => {
+    it('moves on only once the page’s question has an answer, and sends from the last', async () => {
+      renderPanel(two);
+
+      // No Send before the last page: the answers go together.
+      expect(screen.queryByRole('button', { name: 'Send answer' })).toBeNull();
+      expect(nextButton()).toBeDisabled();
+
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      expect(sendButton()).toBeDisabled();
+    });
+
+    it('will not send until every question is answered, and says which is missing', async () => {
       // kagent treats a short entry as "not answered" rather than an error, so a
       // partial set would resume the task with a question silently dropped.
       renderPanel(two);
 
-      await userEvent.click(screen.getByLabelText('a'));
-      expect(sendButton()).toBeDisabled();
-
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
       await userEvent.click(screen.getByLabelText('d'));
+
+      expect(sendButton()).toBeDisabled();
+      expect(
+        screen.getByText('Question 1 still needs an answer.'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Previous question' }),
+      );
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
       expect(sendButton()).toBeEnabled();
     });
 
-    it('keeps the answers positional', async () => {
+    it('keeps each page’s answer while paging, and sends them positionally', async () => {
       renderPanel(two);
 
       await userEvent.click(screen.getByLabelText('b'));
+      await userEvent.click(nextButton());
       await userEvent.click(screen.getByLabelText('c'));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Previous question' }),
+      );
+      expect(screen.getByLabelText('b')).toBeChecked();
+      await userEvent.click(nextButton());
       await userEvent.click(sendButton());
 
       expect(onAnswer).toHaveBeenCalledWith(
         expect.objectContaining({ answers: [['b'], ['c']] }),
       );
+    });
+
+    it('moves to the next question on Enter, and sends on Enter from the last', async () => {
+      renderPanel(two);
+
+      screen.getByLabelText('a').focus();
+      await userEvent.keyboard(' ');
+      await userEvent.keyboard('{Enter}');
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      // The focus followed the page: the new question's first choice.
+      expect(screen.getByLabelText('c')).toHaveFocus();
+      expect(onAnswer).not.toHaveBeenCalled();
+
+      await userEvent.keyboard(' ');
+      await userEvent.keyboard('{Enter}');
+
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ answers: [['a'], ['c']] }),
+      );
+    });
+
+    it('starts again at the first page when a follow-up replaces the questions', async () => {
+      const { rerender } = renderPanel(two);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Next question' }),
+      );
+
+      rerender(
+        <PendingConfirmationPanel
+          pending={{
+            ...two,
+            questions: [
+              { question: 'Third?', choices: ['e'], multiple: false },
+              { question: 'Fourth?', choices: ['f'], multiple: false },
+            ],
+          }}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      );
+
+      expect(screen.getByText('Question 1 of 2')).toBeInTheDocument();
+      expect(screen.getByText('Third?')).toBeInTheDocument();
     });
   });
 

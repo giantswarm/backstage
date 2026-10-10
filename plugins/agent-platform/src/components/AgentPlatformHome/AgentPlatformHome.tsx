@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState, Progress } from '@backstage/core-components';
 import {
   identityApiRef,
@@ -11,6 +11,7 @@ import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 
 import { makeStyles } from '@material-ui/core/styles';
 
+import { NEW_SESSION_AGENT_PARAM } from '../../lib/newSessionLink';
 import { recentAgents } from '../../lib/recentAgents';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
@@ -23,9 +24,10 @@ import {
 } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import type {
-  NewSessionComposerFooterContext,
-  NewSessionComposerPickerAction,
+import {
+  isStartableAgent,
+  type NewSessionComposerFooterContext,
+  type NewSessionComposerPickerAction,
 } from '../NewSessionComposer';
 import { RecentAgentChips } from '../RecentAgentChips';
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -103,6 +105,11 @@ function pickerAccessory(agent: AgentRow | undefined) {
   );
 }
 
+/** Before the picker, which heads the composer: the artboard's step label. */
+function pickerLabel(agent: AgentRow | undefined): string {
+  return agent ? 'Agent' : 'First choose an agent';
+}
+
 export type AgentPlatformHomeProps = {
   /**
    * Where "Manage agents", the agent picker's last entry, leads; the entry is
@@ -120,6 +127,19 @@ function AgentPlatformHomeContent({
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
   const navigate = useNavigate();
+  // `?agent=<id>` (a "New session" link from elsewhere, e.g. Customize →
+  // Agents) preselects that agent, when it is one that can be started.
+  const [searchParams] = useSearchParams();
+  const requestedAgentId = searchParams.get(NEW_SESSION_AGENT_PARAM);
+  const requestedAgent = useMemo(
+    () =>
+      requestedAgentId
+        ? agents.find(
+            agent => agent.id === requestedAgentId && isStartableAgent(agent),
+          )
+        : undefined,
+    [agents, requestedAgentId],
+  );
   const recent = useMemo(
     () => recentAgents(sessions, agents),
     [sessions, agents],
@@ -178,6 +198,11 @@ function AgentPlatformHomeContent({
                 // The agent is unmistakably the first step: the picker carries
                 // the accent ring and the prompt field waits, per the artboard.
                 agentFirst: true,
+                // Picker-first, as the Main artboard draws it: the agent row
+                // heads the box and the message follows under it.
+                pickerPlacement: 'top',
+                pickerLabel,
+                defaultAgent: requestedAgent,
                 showUnavailable: true,
                 groupByNamespace: true,
                 recentAgentIds,
@@ -191,8 +216,13 @@ function AgentPlatformHomeContent({
               }}
             />
           )}
+          {/* The Main artboard's order: composer (recent agents or reach
+              line under it), then the Slack banner. The scope notes and the
+              read warning stand between the two only when they have something
+              to say — they render nothing otherwise — and they belong under
+              the composer, whose empty state points at "the warning below". */}
           <InstallationScopeNote component="kagent" />
-          <InstallationInventoryGate context="Which installations run kagent is read through their Kubernetes API." />
+          <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}
             resourceName="Agents"

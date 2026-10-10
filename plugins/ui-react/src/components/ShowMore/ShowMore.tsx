@@ -1,7 +1,22 @@
 import { ReactNode, useState } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 
-import { countNoun, INITIAL_ROWS } from '../../lib/toolset';
+import { countNoun } from '../../utils/countNoun';
+
+/**
+ * How many rows a long list shows before asking for a click, and how many each
+ * click adds: a gateway lists hundreds of tools, a fleet hundreds of agents,
+ * and a page that renders every one of them at once is the page nobody
+ * scrolls.
+ */
+export const INITIAL_ROWS = 20;
+
+/**
+ * A list shows a search field or a filter bar only when it holds more than
+ * this many entries: three entries are read, not searched, and a filter over
+ * them is volume framing. Lists that sit behind disclosures use a higher bar.
+ */
+export const SEARCH_MIN = 8;
 
 /**
  * How many agents a "Used by" excerpt shows before *Show all N agents* — the

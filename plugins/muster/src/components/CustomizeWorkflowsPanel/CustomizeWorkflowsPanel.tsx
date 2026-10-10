@@ -4,10 +4,16 @@ import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
 import {
   EmptyStateCard,
+  INITIAL_ROWS,
   LoadingIndicator,
+  ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { WorkflowExecutionListResponse } from '../../apis/types';
+import type {
+  ToolSummary,
+  WorkflowExecutionListResponse,
+} from '../../apis/types';
+import type { MusterWorkflow } from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
@@ -50,46 +56,32 @@ const SOURCE_LABELS = {
   manual: 'Manually added',
 } as const;
 
-function WorkflowsTable({
-  search,
+/**
+ * One rendered page of the table. The run queries live here, not above the
+ * ShowMore, so only the workflows on screen ask muster for their latest run:
+ * 300 workflows used to mean 300 `listExecutions` requests on open and again
+ * on every search keystroke. A page is 20 workflows, and react-query's cache
+ * (keyed per workflow, 30 s fresh) means a keystroke that keeps a workflow on
+ * the page does not ask again.
+ */
+function WorkflowRows({
+  workflows,
   installation,
+  hasSession,
+  tools,
 }: {
-  search: string;
+  workflows: MusterWorkflow[];
   installation: string;
+  hasSession: boolean;
+  tools: ToolSummary[] | undefined;
 }) {
-  const { workflows, activeInstallationInfo } = useMusterInstance();
-  const session = useMusterSession();
-  const hasSession =
-    session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
   const musterApi = useApi(musterApiRef);
   const detailRoute = useRouteRef(workflowDetailRouteRef);
-
-  // The whole per-session tool catalogue, one call: it carries the derived
-  // readOnlyHint of every `workflow_<name>` tool. The hint is per-session, so
-  // it is read here rather than off the CRs.
-  const catalogue = useToolCatalogue(installation, hasSession);
-
-  const needle = search.trim().toLowerCase();
-  const visible = useMemo(
-    () =>
-      workflows
-        .filter(
-          workflow =>
-            !needle ||
-            [
-              workflow.getName(),
-              workflow.getDescription() ?? '',
-              workflow.getCategory() ?? '',
-            ].some(field => field.toLowerCase().includes(needle)),
-        )
-        .sort((a, b) => a.getName().localeCompare(b.getName())),
-    [workflows, needle],
-  );
 
   // muster lists executions newest first, so one per workflow gives the
   // latest run, and `total` counts them all.
   const runs = useQueries({
-    queries: visible.map(workflow => ({
+    queries: workflows.map(workflow => ({
       queryKey: [
         'muster',
         'workflow-runs',
@@ -107,13 +99,10 @@ function WorkflowsTable({
     })),
   });
 
-  const rows = visible.map<Row>((workflow, index) => {
+  const rows = workflows.map<Row>((workflow, index) => {
     const steps = workflow.getStepCount();
     const response = runs[index]?.data;
-    const effect = workflowEffect(
-      workflow.getName(),
-      catalogue.data?.tools ?? undefined,
-    );
+    const effect = workflowEffect(workflow.getName(), tools);
     const category = workflow.getCategory();
     return {
       id: workflow.getName(),
@@ -175,6 +164,63 @@ function WorkflowsTable({
     },
   ];
 
+  return (
+    // The table keeps its column grid at phone width; the wrapper lets it
+    // scroll sideways instead of breaking the page's 375px layout.
+    <div style={{ overflowX: 'auto' }}>
+      <Table<Row>
+        columnConfig={columns}
+        data={rows}
+        // Never bui's page mode: it draws its pagination footer even at three
+        // rows. ShowMore above windows the sorted list instead.
+        pagination={{ type: 'none' }}
+        rowConfig={{
+          getHref: row =>
+            detailRoute
+              ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
+              : undefined,
+        }}
+      />
+    </div>
+  );
+}
+
+function WorkflowsTable({
+  search,
+  installation,
+}: {
+  search: string;
+  installation: string;
+}) {
+  const { workflows, activeInstallationInfo } = useMusterInstance();
+  const session = useMusterSession();
+  const hasSession =
+    session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
+
+  // The whole per-session tool catalogue, one call: it carries the derived
+  // readOnlyHint of every `workflow_<name>` tool. The hint is per-session, so
+  // it is read here rather than off the CRs.
+  const catalogue = useToolCatalogue(installation, hasSession);
+
+  const needle = search.trim().toLowerCase();
+  // Sorted before ShowMore slices it, so the first page is the first 20 by
+  // name, not whichever 20 the CR list happened to return first.
+  const visible = useMemo(
+    () =>
+      workflows
+        .filter(
+          workflow =>
+            !needle ||
+            [
+              workflow.getName(),
+              workflow.getDescription() ?? '',
+              workflow.getCategory() ?? '',
+            ].some(field => field.toLowerCase().includes(needle)),
+        )
+        .sort((a, b) => a.getName().localeCompare(b.getName())),
+    [workflows, needle],
+  );
+
   if (workflows.length === 0) {
     return (
       <EmptyStateCard
@@ -184,26 +230,27 @@ function WorkflowsTable({
     );
   }
   const list =
-    rows.length === 0 ? (
+    visible.length === 0 ? (
       <Text as="p" variant="body-medium" color="secondary">
         No workflows match “{search.trim()}”.
       </Text>
     ) : (
-      // The table keeps its column grid at phone width; the wrapper lets it
-      // scroll sideways instead of breaking the page's 375px layout.
-      <div style={{ overflowX: 'auto' }}>
-        <Table<Row>
-          columnConfig={columns}
-          data={rows}
-          pagination={{ type: 'none' }}
-          rowConfig={{
-            getHref: row =>
-              detailRoute
-                ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
-                : undefined,
-          }}
-        />
-      </div>
+      // Keyed on the search, so a new query starts again from its first page.
+      <ShowMore
+        key={needle}
+        items={visible}
+        initial={INITIAL_ROWS}
+        noun="workflow"
+      >
+        {page => (
+          <WorkflowRows
+            workflows={page}
+            installation={installation}
+            hasSession={hasSession}
+            tools={catalogue.data?.tools ?? undefined}
+          />
+        )}
+      </ShowMore>
     );
   return (
     <Flex direction="column" gap="4">

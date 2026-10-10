@@ -389,7 +389,7 @@ describe('ToolsetResolutionList', () => {
 
     expect(
       screen.getByText(
-        'The toolset names a preset this installation does not define',
+        'The toolset names a preset this environment does not define',
       ),
     ).toBeInTheDocument();
     expect(

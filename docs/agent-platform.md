@@ -1633,10 +1633,13 @@ canceled before Claude Code reports usage is not in the sum.
 Each run of an agent's work — consecutive reasoning, tool calls and delegations
 — folds under one summary line, the prototype's **"✓ Used 3 tools ›"**
 (`segmentTurn` / `summarizeWork` in `SessionTimeline/helpers.ts`; tools counted
-by name, calls by call; delegations as "Asked N agents"; no duration, since
-kagent records no per-call timing). A run folds only when it holds a call and
-more than one step: a lone call is already one line and stays inline, and
-reasoning on its own is prose with its own expander. Approvals, questions,
+by name, calls by call; `load_skill` calls as "Loaded N skills", counted by
+skill; delegations as "Asked N agents"; no duration, since kagent records no
+per-call timing). Every run that holds a call folds, a lone call included
+(T40): "Used 1 tool" / "Loaded 1 skill" opens onto a list of one exactly as
+the multi case does — summary, then the list, then a row's details — so there
+is one gesture, not two layouts. Reasoning on its own is prose with its own
+expander. Approvals, questions,
 messages, attachments and turn endings never fold. The summary is collapsed
 once the turn is done and open while the agent is still working on that run.
 
@@ -1652,9 +1655,20 @@ always shows the exact proposed arguments — they are what Allow would run.
 
 Under the composer the resting caption is the prototype's **"Agents can make
 mistakes. Check important results."** (idle and between turns); while a
-confirmation is open it reads **"<Agent> is waiting for your decision above."**
-(or "answer" for a question), and the approval card says **"Nothing is sent
-until you allow it."** under its title.
+confirmation is open it reads **"<Agent> is waiting for your decision. Allow
+or decline above to continue."** (for a question: "…waiting for your answer.
+Answer the question above to continue."), and the approval card says
+**"Nothing is sent until you allow it."** under its title.
+
+**The composer is docked to the bottom of the view** (T40), like a chat app's
+input bar: the box, its caption and the cost chip stay put while the
+conversation scrolls behind them. It is `position: sticky` at the end of the
+conversation column (offset by `--agent-shell-mobile-bar-height`, so at phone
+width it sits above the shell's bottom bar — the T36 wizard-bar rule), so it
+keeps its own room in the flow and the last message is never under it; the
+column is at least the view's height less the chrome around it
+(`useDockedComposerLayout` measures that chrome), so a short session's
+composer is at the bottom too and new messages fill the room above it.
 
 ### Pin and needs-input toasts
 
@@ -2216,8 +2230,14 @@ a body-parser 413 explains nothing.
 
 An agent can stop and ask. kagent surfaces that as a task in `input-required`, and
 the session cannot move on until it is answered — a plain message will not do it. So
-whenever a confirmation is open the detail page shows an **answer panel**, and leaves
-the reply composer on screen **disabled**, saying why.
+whenever a confirmation is open the detail page attaches an **answer card** to the
+docked composer, directly above its box (T40: the question is answered in the chat
+bar, the way a chat app handles an agent's question), and leaves the box on screen
+**disabled**, saying why. The card prints the question (the conversation may be
+scrolled far from it), pages several questions one at a time ("Question 1 of N",
+answers sent together from the last page), and caps its height so the bar fits a
+phone's view. The timeline keeps the record: what was asked, and once answered,
+the reply or the decision.
 
 Disabled rather than removed, deliberately: a message box that vanishes reads as the
 reply feature being missing, when in fact it is blocked, and the difference matters
@@ -2649,9 +2669,11 @@ unlike the create flow it runs from the page the progress renders on, and
 navigates to the URL it is already on, so nothing unmounts. `useAgentCreatedHandoff`
 picks a handoff up whenever it appears in the location, not only at mount.
 
-`AgentsRouter` therefore mounts the page at `:installation/:namespace/:name/*`, and
-`…/<name>/edit` stays a route of its own beside it — react-router scores a static
-segment above a splat, which `AgentsRouter.test.tsx` holds still.
+`AgentsRouter` therefore mounts the page at `:installation/:namespace/:name/*`.
+The edit wizard lives at `edit/:installation/:namespace/:name/*` (a static first
+segment, which react-router scores above the detail path's dynamic one), and the
+former `…/<name>/edit` stays a route beside the splat only to redirect there —
+`AgentsRouter.test.tsx` holds both rankings.
 
 **Inside the agent-platform shell** the page is the prototype's plain-language
 one, under the shell's `ShellPage` frame (breadcrumbs "Customize / Agents /
@@ -2865,60 +2887,63 @@ providers. The menu only flips the page's flags.
 
 ### Editing an agent
 
-`Edit agent…` leads to `/agent-platform/agents/<installation>/<namespace>/<name>/edit`
-(`EditAgentPage`, four segments so it is clear of the detail path and the
-create flow). The page is pre-filled from **`x_agent-manager_get_agent`** — the
-values of the agent's release as agent-manager reads them: display name,
-description, system prompt, the model (offered from
-`x_agent-manager_list_model_configs` for the agent's namespace, read through
-agent-manager rather than the admin-only fleet-wide ModelConfigs list), the
-toolset selectors, and the skills with the commit or digest each is pinned to.
-There is **no runtime field**: the Harness is fixed at create, and agent-manager
-keeps it on an update.
+Editing **is the create wizard**, prefilled — one form for the thing, not two.
+`Edit agent…` leads to `/agent-platform/agents/edit/<installation>/<namespace>/<name>`
+(`EditAgentPage`, the same idiom as the skill pages' `/skills/edit/…`), whose
+steps are `…/skills`, `…/tools` and `…/review`. `EditAgentPage` only reads what
+the wizard needs — **`x_agent-manager_get_agent`** (the values of the agent's
+release as agent-manager reads them), agent-manager's availability and, for an
+agent applied from git, its commit capability (the same gate as the detail
+page's menu: no form, a sentence why, when the write is not offered) and the
+skill catalog — then mounts the wizard's own step pages under a **second
+`NewAgentFormProvider` in edit mode** (`edit` + `initialState`), so a create
+draft in progress is left alone. The steps navigate through
+`useAgentWizardLinks`, which answers the create flow's or the edit's addresses;
+`AgentWizardFrame` titles the frame "Edit agent" and closes to the agent's page.
 
-**The review is agent-manager's dry run.** The form keeps a baseline (agent-
-manager's reading) and the edit; `lib/agentEdit.ts` derives from the two the
-fields that changed and the `update_agent` arguments that carry **exactly
-those** — an emptied string field is sent as `""` (agent-manager's "back to the
-chart default"; an omitted field would mean "unchanged"), `toolset`, `skills`
-and `egress` replace their whole list (an empty `egress` removes every extra
-origin), the empty toolset selection is declared as
-`preset:none` (never an empty list, which agent-manager refuses), and an agent
-without a declared toolset keeps its implicit full access until a selector is
-picked. Whenever something changed, the page asks **`validate_agent` with
-`update: true`** for exactly that update and renders the changed fields, the
-values the release would carry (`manifests.values`, validated against the
-chart's schema) and every violation inline, in agent-manager's words. Nothing
-is composed in the portal.
+`formStateOfAgent` (`lib/agentEdit.ts`) seeds the wizard: the name (the display
+name, else the technical name), what it's for, the instructions, extra egress,
+the toolset selectors, the model **preselected with the agent's own
+ModelConfig** (the picker offers only its namespace's, since an update cannot
+move the agent, and still names the current one when the list does not carry
+it), and the skills: each git skill the catalog lists is selected on its card
+**at the commit the agent is pinned to** (the card reads "pinned at … · main is
+at …"); every other skill — another repository, an OCI digest — is listed under
+"Also on this agent", removable, otherwise kept exactly as pinned. The technical
+name, the installation and the **Harness are fixed**: More options shows the
+technical name read-only and the agent's runtime as a static card, and the
+installation picker and the Swarm Operator assist are not shown. An agent
+without a declared toolset keeps its implicit full access until something is
+selected on the Tools step, which says so.
 
-**Save** calls **`x_agent-manager_update_agent`** with the changed fields only
-(`useUpdateAgent`), then returns to the detail page with a hand-off
-(`action: 'updated'`) so the same progress element as after a create polls
-`get_agent_status` until the platform Harness has compiled the new revision
-(`ready`) or failed. The write ran as the person: agent-manager stamps them into
-the HelmRelease's `requestedBy` annotation and the apiserver audit (and muster's
-log) attribute the write to them, never to a ServiceAccount — a Kubernetes field
-manager names the tool, so `managedFields` is not where to look. A GitOps-owned
-or suspended agent's dry run already comes
-back as agent-manager's `conflict:` refusal (verbatim, Save locked); a viewer's
-Save shows the apiserver's `forbidden:`. **Commit** (`update_agent` with
-`mode: commit`) sits behind the same capability gate as on delete.
+**The review is agent-manager's dry run.** `editStateOfForm` turns the wizard's
+state back into the edit model and `lib/agentEdit.ts` derives, against the
+agent as it was read when the wizard opened, the fields that changed and the
+`update_agent` arguments that carry **exactly those** — an emptied string
+field is sent as `""` (agent-manager's "back to the chart default"; an omitted
+field would mean "unchanged"), `toolset`, `skills` and `egress` replace their
+whole list (an empty `egress` removes every extra origin), the empty toolset
+selection is declared as `preset:none` (never an empty list, which
+agent-manager refuses), the agent's untouched skills are written back verbatim
+and an untouched technical name in the Name field is not a display name.
+Whenever something changed, the review step lists **What changes**, asks
+**`validate_agent` with `update: true`** for exactly that update and shows
+every violation inline, in agent-manager's words; the values the release would
+carry are in its Technical details fold-out. Nothing is composed in the portal.
 
-**Toolset** is edited with the same model as the create flow's Tools step
-(`lib/toolset.ts`: `toggleSelector`, `declaredToolset`, the selector grammar
-agent-manager and the chart enforce): the installation's presets as checkable
-rows, every selector of the selection as a removable tag, a field for a selector
-typed by hand, and what the selection resolves to for the person right now
-(`ToolsetResolutionList`). The catalogue browser stays with the create flow.
-
-**Skills** are edited with `SkillPicker`: the configured repositories' skills as
-selectable cards (the same cards the create flow picks from), the agent's
-mounted skills selected at their pin, and the mounted skills no repository lists
-("Mounted from elsewhere", removable, otherwise left exactly as pinned). Adding
-a skill **pins it to the head commit its card shows**, resolved by skill
-discovery when the person picks it — the same rule as the create flow (D8); a
-branch is never written. Removing one drops the entry. Editing never moves an
-existing pin: that is what "Update skills" is for.
+**Save changes** calls **`x_agent-manager_update_agent`** with the changed
+fields only (`useUpdateAgent`, reported as `AgentPlatform.agentUpdated`), then
+returns to the detail page with a hand-off (`action: 'updated'`) so the same
+progress element as after a create polls `get_agent_status` until the Harness
+has compiled the new revision (`ready`) or failed. The write runs as the
+person: agent-manager stamps them into the HelmRelease's `requestedBy`
+annotation and the apiserver audit (and muster's log) attribute the write to
+them, never to a ServiceAccount. A suspended agent's dry run comes back as
+agent-manager's `conflict:` refusal (verbatim, Save locked); a viewer's save
+shows the apiserver's `forbidden:`. For an agent applied from git, behind the
+same capability gate as on delete, the button is **Propose changes as pull
+request** (`update_agent` with `mode: commit`, dry-run in the same mode), and
+it stays locked on the change its pull request answered for.
 
 ### Updating an agent's skills
 

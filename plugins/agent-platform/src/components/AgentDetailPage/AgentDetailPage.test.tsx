@@ -1734,7 +1734,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText('Sessions could not be read from this installation.'),
+        screen.getByText('Sessions could not be read from this environment.'),
       ).toBeInTheDocument();
     });
   });

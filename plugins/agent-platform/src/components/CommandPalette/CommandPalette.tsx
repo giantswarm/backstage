@@ -444,7 +444,7 @@ function PaletteDialog({
           title: connector.page,
           meta:
             connector.installations.length > 1
-              ? `${connector.installations.length} installations`
+              ? `${connector.installations.length} environments`
               : connector.installations[0],
           href: `${serversRoute()}/${encodeURIComponent(connector.page)}`,
           haystack: [connector.page],

@@ -85,13 +85,13 @@ export function ToolPage() {
 
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
-    body = <LoadingIndicator label="Reading the installation's connectors…" />;
+    body = <LoadingIndicator label="Reading the environment's connectors…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyState
         missing="data"
-        title="No muster installation"
-        description="None of the installations this portal knows runs muster, so there are no aggregated tools to show."
+        title="No muster environment"
+        description="None of the environments this portal knows runs muster, so there are no aggregated tools to show."
       />
     );
   } else if (row && !session.authenticated) {
@@ -122,8 +122,8 @@ export function ToolPage() {
         title={`No tool “${tool}” on ${activeInstallation}`}
         description={
           row
-            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another installation — pick it in the page header.`
-            : `The installation ${activeInstallation} has no connector or connector family named “${key}”. It may run on another installation — pick it in the page header.`
+            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another environment — pick it in the page header.`
+            : `The environment ${activeInstallation} has no connector or connector family named “${key}”. It may run on another environment — pick it in the page header.`
         }
         action={
           serverHref ? (

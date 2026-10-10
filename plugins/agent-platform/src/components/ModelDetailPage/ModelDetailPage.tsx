@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Content, Progress } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
@@ -17,6 +17,7 @@ import {
   FactsColumn,
   ShellPage,
   StatusDot,
+  useFieldValidation,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -24,7 +25,7 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
-  validateModelConfigForm,
+  modelConfigFieldErrors,
 } from '../../lib/modelConfigs';
 import { contextWindowFor } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
@@ -230,7 +231,12 @@ export function ModelDetailPage() {
 
   const [isEditing, setEditing] = useState(false);
   const [values, setValues] = useState<ModelConfigFormValues | undefined>();
+  // Each field shows its own problem once a Save was blocked, and the focus
+  // moves to the first one — the create flows' per-field validation. Hidden
+  // again whenever Edit reopens the form.
   const [showValidation, setShowValidation] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const { reveal } = useFieldValidation(formRef);
   const { save, isSaving, error: saveError, reset } = useSaveModelConfig();
   const deletion = useDeleteModelConfig(modelConfig);
 
@@ -245,12 +251,13 @@ export function ModelDetailPage() {
     setValues(prev => (prev ? { ...prev, ...patch } : prev));
   }, []);
 
-  const validationErrors = values
-    ? validateModelConfigForm(values, {
+  const fieldErrors = values
+    ? modelConfigFieldErrors(values, {
         isEdit: true,
         originalProvider: modelConfig?.getProvider(),
       })
-    : [];
+    : {};
+  const errorCount = Object.keys(fieldErrors).length;
 
   // The form is seeded from the CR as it stands each time Edit opens it, so a
   // change saved (or made elsewhere) since is what the person edits.
@@ -273,8 +280,9 @@ export function ModelDetailPage() {
     if (!values || !modelConfig) {
       return;
     }
-    if (validationErrors.length > 0) {
+    if (errorCount > 0) {
       setShowValidation(true);
+      reveal();
       return;
     }
     reset();
@@ -290,8 +298,6 @@ export function ModelDetailPage() {
       timeout: TOAST_TIMEOUT_MS,
     });
     setEditing(false);
-    // validationErrors derives from `values`/`modelConfig`, both dependencies.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     values,
     modelConfig,
@@ -299,7 +305,8 @@ export function ModelDetailPage() {
     save,
     reset,
     toastApi,
-    validationErrors.length,
+    errorCount,
+    reveal,
   ]);
 
   const editing = isEditing && isEditable && Boolean(values);
@@ -452,18 +459,14 @@ export function ModelDetailPage() {
 
           {editing && values ? (
             <Flex direction="column" gap="4" className={classes.form}>
-              <ModelConfigFormFields
-                values={values}
-                onChange={onChange}
-                mode="edit"
-              />
-              {showValidation && validationErrors.length > 0 && (
-                <Alert
-                  status="danger"
-                  title="Please fix the following before saving"
-                  description={validationErrors.join('. ')}
+              <div ref={formRef}>
+                <ModelConfigFormFields
+                  values={values}
+                  onChange={onChange}
+                  mode="edit"
+                  errors={showValidation ? fieldErrors : undefined}
                 />
-              )}
+              </div>
               {saveError && (
                 <Alert
                   status="danger"

@@ -153,19 +153,58 @@ describe('SessionTimeline', () => {
     expect(screen.queryByText('Timeline')).not.toBeInTheDocument();
   });
 
-  it('keeps a lone call inline, folding out its exact call in place', async () => {
-    // A single delegation is already one line; a summary over it would only
-    // hide it. Its detail is still one fold-out away, on the row itself.
+  it('folds a lone call like many: summary, then a list of one, then its details', async () => {
+    // T40: no lone-call special case. "Asked 1 agent" behaves exactly like
+    // "Used 2 tools" — folded once the turn is done, opening onto the list.
     await render(tasksV099);
 
+    const summary = screen.getByRole('button', { name: /Asked 1 agent/ });
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
     expect(
-      screen.queryByRole('button', { name: /Asked 1 agent/ }),
+      screen.queryByRole('button', { name: /Delegated to sre-agent/ }),
     ).not.toBeInTheDocument();
+
+    await userEvent.click(summary);
+
+    expect(summary).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(summary)).toHaveTextContent('1 step · 1 tool call');
     const delegation = screen.getByRole('button', {
       name: /Delegated to sre-agent/,
     });
-    expect(delegation).toBeVisible();
     expect(delegation).toHaveAttribute('aria-expanded', 'false');
+
+    await userEvent.click(delegation);
+
+    expect(delegation).toHaveAttribute('aria-expanded', 'true');
+    expect(panelFor(delegation)).toBeVisible();
+  });
+
+  it('folds a lone skill load under "Loaded 1 skill", one click from its call', async () => {
+    const base = timelineFor(tasksV099);
+    const items: TimelineItem[] = [
+      { kind: 'user-message', id: 'u', taskIndex: 0, text: 'Triage it' },
+      {
+        kind: 'tool-call',
+        id: 's',
+        taskIndex: 0,
+        toolName: 'load_skill',
+        args: { name: 'cluster-triage' },
+        result: '# Cluster triage',
+        isPending: false,
+      },
+      { kind: 'agent-message', id: 'm', taskIndex: 0, text: 'Done.' },
+    ] as TimelineItem[];
+    await renderInTestApp(
+      <SessionTimeline timeline={{ ...base, items }} agentName="SRE" />,
+    );
+
+    const summary = screen.getByRole('button', { name: /Loaded 1 skill/ });
+    expect(summary).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(summary);
+
+    const call = screen.getByRole('button', { name: /load_skill/ });
+    await userEvent.click(call);
+    expect(panelFor(call)).toHaveTextContent('cluster-triage');
   });
 
   it('starts the summary open while the agent is still working on it', async () => {
@@ -416,6 +455,11 @@ describe('SessionTimeline', () => {
 
   it('names a delegation and its token cost', async () => {
     await render(tasksV099);
+
+    // The lone delegation folds under its summary (T40); the row is inside.
+    await userEvent.click(
+      screen.getByRole('button', { name: /Asked 1 agent/ }),
+    );
 
     expect(screen.getByText('Delegated to sre-agent')).toBeInTheDocument();
     expect(screen.getByText('3.1k tokens')).toBeInTheDocument();

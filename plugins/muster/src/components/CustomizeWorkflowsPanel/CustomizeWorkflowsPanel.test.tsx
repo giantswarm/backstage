@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { musterApiRef } from '../../apis';
@@ -225,6 +226,50 @@ describe('CustomizeWorkflowsPanel', () => {
 
     expect(screen.getByText('ticket-report')).toBeInTheDocument();
     expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('shows three workflows plainly: no reveal control, no pagination footer', async () => {
+    mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
+      makeWorkflow(name, 2),
+    );
+    await renderPanel();
+
+    // A header row plus the three workflows.
+    expect(screen.getAllByRole('row')).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+    // bui's page mode draws "Next"/"Previous" and a page-size select.
+    expect(screen.queryByRole('button', { name: /next|previous/i })).toBeNull();
+    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(3));
+  });
+
+  it('windows 300 workflows by name and reads runs only for the rows shown', async () => {
+    const names = Array.from(
+      { length: 300 },
+      (_, i) => `wf-${String(i).padStart(3, '0')}`,
+    );
+    // Out of order, so the first page has to come from a sort.
+    mockWorkflows = [...names].reverse().map(name => makeWorkflow(name, 1));
+    await renderPanel();
+
+    expect(screen.getAllByRole('row')).toHaveLength(21);
+    expect(screen.getByRole('row', { name: /wf-000/ })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /wf-019/ })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /wf-020/ })).toBeNull();
+    expect(
+      screen.getByText('20 workflows shown, 280 more'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(20));
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more workflows' }),
+    );
+    expect(screen.getAllByRole('row')).toHaveLength(41);
+    // The next page asks for its own 20 runs, and nothing beyond it.
+    await waitFor(() => expect(api.listExecutions).toHaveBeenCalledTimes(40));
+    expect(api.listExecutions).not.toHaveBeenCalledWith(
+      expect.objectContaining({ workflowName: 'wf-040' }),
+    );
   });
 
   it('says when there are no workflows', async () => {

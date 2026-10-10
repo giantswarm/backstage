@@ -304,7 +304,7 @@ export function ImportModelDialog({
 
           {targets.length > 1 && (
             <Select
-              label="Installation"
+              label="Environment"
               isRequired
               isDisabled={isBusy}
               options={targets.map(candidate => ({

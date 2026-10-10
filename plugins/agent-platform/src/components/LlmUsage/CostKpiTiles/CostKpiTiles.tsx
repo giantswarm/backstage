@@ -59,7 +59,7 @@ export function CostKpiTiles({
         label={converted ? 'Spend (estimated)' : 'Spend'}
         hint={
           converted
-            ? `What the gateway priced every model call at over ${windowNote}, converted from USD at this installation's configured rate — an estimate, not an invoice.`
+            ? `What the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate — an estimate, not an invoice.`
             : `What the gateway priced every model call at as it happened, summed over ${windowNote}. A model missing from its price catalogue contributes nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}

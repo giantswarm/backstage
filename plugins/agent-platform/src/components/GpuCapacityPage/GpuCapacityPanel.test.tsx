@@ -114,7 +114,7 @@ describe('GpuCapacityPanel', () => {
     );
 
     expect(
-      screen.getByText('GPU capacity is unavailable for some installations'),
+      screen.getByText('GPU capacity is unavailable for some environments'),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -616,7 +616,7 @@ describe('GpuCapacityPanel · serving targets', () => {
     expect(hint).toHaveAttribute(
       'title',
       expect.stringContaining(
-        'Another node of this installation holds the model cache',
+        'Another node of this environment holds the model cache',
       ),
     );
     expect(

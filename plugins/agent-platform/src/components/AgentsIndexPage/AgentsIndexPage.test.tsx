@@ -154,7 +154,7 @@ describe('AgentsIndexPage', () => {
 
     await renderPage();
 
-    expect(screen.getByText('No installations configured')).toBeInTheDocument();
+    expect(screen.getByText('No environments configured')).toBeInTheDocument();
   });
 
   it('shows a progress bar and hides the table while initially loading', async () => {
@@ -224,9 +224,7 @@ describe('AgentsIndexPage', () => {
       screen.queryByRole('heading', { name: 'No agents yet' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
   });
 
   it('renders agent rows', async () => {
@@ -290,7 +288,7 @@ describe('AgentsIndexPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText("Couldn't read 2 installations"),
+      screen.getByText("Couldn't read 2 environments"),
     ).toBeInTheDocument();
     expect(screen.getByText(/gremlin, gauss/)).toBeInTheDocument();
   });
@@ -307,9 +305,7 @@ describe('AgentsIndexPage', () => {
     await renderPage();
 
     expect(screen.getByTestId('progress')).toBeInTheDocument();
-    expect(
-      screen.getByText("Couldn't read 1 installation"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
   });
 
   it('keeps the Installation and Namespace columns when the rows differ in both', async () => {
@@ -324,7 +320,7 @@ describe('AgentsIndexPage', () => {
     expect(columnHeaders()).toEqual([
       'Agent',
       'Status',
-      'Installation',
+      'Environment',
       'Namespace',
       'Model',
       'Toolset',
@@ -343,7 +339,7 @@ describe('AgentsIndexPage', () => {
 
     await renderPage();
 
-    expect(columnHeaders()).toContain('Installation');
+    expect(columnHeaders()).toContain('Environment');
   });
 
   it.each([
@@ -360,7 +356,7 @@ describe('AgentsIndexPage', () => {
         unreachableInstallations: ['inst-2'],
       },
     ],
-  ])('drops the Installation column when it is %s', async (_, overrides) => {
+  ])('drops the Environment column when it is %s', async (_, overrides) => {
     mockUseAgents.mockReturnValue({
       ...baseValue,
       rows: [triager],
@@ -369,7 +365,7 @@ describe('AgentsIndexPage', () => {
 
     await renderPage();
 
-    expect(columnHeaders()).not.toContain('Installation');
+    expect(columnHeaders()).not.toContain('Environment');
   });
 
   it('drops the Namespace column while every agent shares one', async () => {
@@ -382,7 +378,7 @@ describe('AgentsIndexPage', () => {
     await renderPage();
 
     expect(columnHeaders()).not.toContain('Namespace');
-    expect(columnHeaders()).toContain('Installation');
+    expect(columnHeaders()).toContain('Environment');
   });
 
   it('says a pinned installation has no kagent, instead of an empty table', async () => {

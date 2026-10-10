@@ -250,7 +250,7 @@ function getColumnConfig(
     },
     {
       id: 'installation',
-      label: 'Installation',
+      label: 'Environment',
       isSortable: true,
       defaultWidth: '0.75fr',
       minWidth: 110,
@@ -511,7 +511,7 @@ function ClassicSessionsTable({
     const axes = [
       'session',
       ...(hidden.has('agentName') ? [] : ['agent']),
-      ...(hidden.has('installation') ? [] : ['installation']),
+      ...(hidden.has('installation') ? [] : ['environment']),
     ];
     const last = axes.pop();
     if (axes.length === 0) {

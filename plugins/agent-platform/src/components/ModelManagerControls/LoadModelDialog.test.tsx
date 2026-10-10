@@ -575,7 +575,7 @@ describe('LoadModelDialog', () => {
       }),
     );
     expect(
-      screen.getByRole('button', { name: /Installation and backend/ }),
+      screen.getByRole('button', { name: /Environment and backend/ }),
     ).toHaveTextContent('gazelle · KServe');
   });
 

@@ -43,7 +43,7 @@ describe('describeActiveInstallation', () => {
 
   it('names the one muster shown under "All installations", and that it is the home', () => {
     expect(describeActiveInstallation(instance({ scope: 'all' }))).toBe(
-      'One muster at a time: showing gazelle (the home installation). Pin an installation in the page header to see another.',
+      'One muster at a time: showing gazelle (the home environment). Pin an environment in the page header to see another.',
     );
   });
 
@@ -58,7 +58,7 @@ describe('describeActiveInstallation', () => {
         }),
       ),
     ).toBe(
-      'One muster at a time: showing golem. Pin an installation in the page header to see another.',
+      'One muster at a time: showing golem. Pin an environment in the page header to see another.',
     );
   });
 

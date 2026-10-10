@@ -500,8 +500,8 @@ export function LoadModelDialog({
             <Select
               label={
                 targets.some(candidate => candidate.backend)
-                  ? 'Installation and backend'
-                  : 'Installation'
+                  ? 'Environment and backend'
+                  : 'Environment'
               }
               isRequired
               isDisabled={isBusy}

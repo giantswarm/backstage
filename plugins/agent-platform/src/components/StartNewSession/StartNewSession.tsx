@@ -38,6 +38,8 @@ export type StartNewSessionComposerProps = Pick<
   | 'recentAgentIds'
   | 'searchable'
   | 'pickerPlaceholder'
+  | 'pickerPlacement'
+  | 'pickerLabel'
   | 'pickerFooterAction'
   | 'initialPrompt'
   | 'promptPlaceholder'
@@ -45,6 +47,9 @@ export type StartNewSessionComposerProps = Pick<
   | 'renderFooter'
   | 'onSelectedAgentChange'
   | 'agentFirst'
+  // A caller's own preselection (the home screen's `?agent=` link) wins over
+  // the remembered last-used agent.
+  | 'defaultAgent'
 >;
 
 export type StartNewSessionProps = {
@@ -164,7 +169,7 @@ export function StartNewSession({
       pointer = 'warning';
     } else if (agents.length === 0) {
       reason =
-        'No agents are deployed on the reachable installations, so there is none to start a session with.';
+        'No agents are deployed on the reachable environments, so there is none to start a session with.';
     } else {
       reason =
         agents.length === 1
@@ -214,7 +219,7 @@ export function StartNewSession({
       {...composerProps}
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
-      defaultAgent={lastUsedAgent}
+      defaultAgent={composerProps?.defaultAgent ?? lastUsedAgent}
       // Collapsed only when it sits above a list of sessions. Elsewhere it opens
       // showing the agent picker and the Start button: there is nothing for it
       // to make room for.

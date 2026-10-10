@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -88,6 +88,14 @@ describe('AddSkillPage', () => {
       'href',
       '/customize/skills',
     );
+  });
+
+  // Live round L2: without its own title the page fell back to the
+  // /agent-platform extension's default, "Sessions".
+  it('names itself in the document title', async () => {
+    await renderPage();
+
+    await waitFor(() => expect(document.title).toBe('Add skill · Skills'));
   });
 
   // Typing three fields with userEvent outruns the 5s default under a loaded
@@ -213,6 +221,9 @@ describe('AddSkillPage editing an existing skill', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
+    await waitFor(() =>
+      expect(document.title).toBe('Edit ticket-triage · Skills'),
+    );
     expect(screen.getByLabelText(/Name/)).toHaveValue('ticket-triage');
     expect(screen.getByLabelText(/Description/)).toHaveValue('How to triage.');
     expect(screen.getByLabelText(/Instructions/)).toHaveValue(

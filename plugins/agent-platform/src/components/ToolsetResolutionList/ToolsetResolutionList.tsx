@@ -298,7 +298,7 @@ export function ToolsetResolutionList({
       return (
         <Alert
           status="warning"
-          title="This installation's muster does not evaluate toolsets yet"
+          title="This environment's muster does not evaluate toolsets yet"
           description="It answered with its whole catalogue instead of a resolution, so the resolved list cannot be shown. An agent carries the toolset it declares, but this muster ignores it until it is upgraded — until then the agent sees everything the gateway exposes to whoever invokes it."
         />
       );
@@ -306,7 +306,7 @@ export function ToolsetResolutionList({
       return (
         <Alert
           status="danger"
-          title="The toolset names a preset this installation does not define"
+          title="The toolset names a preset this environment does not define"
           description={resolution.error}
         />
       );

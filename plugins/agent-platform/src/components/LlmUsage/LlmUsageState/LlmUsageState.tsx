@@ -21,7 +21,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
     case 'no-installations':
       return (
         <Text variant="body-medium" color="secondary">
-          This portal knows no installations, so there is no usage to read.
+          This portal knows no environments, so there is no usage to read.
         </Text>
       );
 
@@ -36,7 +36,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
         <>
           <InstallationScopeNote component="kagent" />
           <Text variant="body-medium" color="secondary">
-            None of the installations this portal knows run kagent.
+            None of the environments this portal knows run kagent.
           </Text>
         </>
       );

@@ -59,7 +59,7 @@ export function PresetCards({
               <span style={{ fontFamily: 'monospace' }}>{selector}</span>
               {preset.built_in
                 ? ' · built in'
-                : ' · defined by this installation'}
+                : ' · defined by this environment'}
             </Text>
           </SelectableCard>
         );

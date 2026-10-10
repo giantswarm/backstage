@@ -432,7 +432,7 @@ describe('AgentToolsetCard', () => {
 
     expect(
       await screen.findByText(
-        'The toolset names a preset this installation does not define',
+        'The toolset names a preset this environment does not define',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/unknown preset "legacy"/)).toBeInTheDocument();
@@ -449,7 +449,7 @@ describe('AgentToolsetCard', () => {
 
     expect(
       await screen.findByText(
-        "This installation's muster does not evaluate toolsets yet",
+        "This environment's muster does not evaluate toolsets yet",
       ),
     ).toBeInTheDocument();
   });

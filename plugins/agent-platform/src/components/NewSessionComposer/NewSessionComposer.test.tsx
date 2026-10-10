@@ -114,6 +114,52 @@ describe('NewSessionComposer', () => {
     });
   });
 
+  describe('where the picker sits', () => {
+    const follows = (first: Element, second: Element) =>
+      Boolean(
+        first.compareDocumentPosition(second) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+
+    it('puts the picker in the controls row under the text by default', () => {
+      renderComposer({
+        agents: [sre, issues],
+        pickerLabel: () => 'First choose an agent',
+      });
+
+      expect(follows(field(), agentPicker())).toBe(true);
+      // The label belongs to the picker-first row only.
+      expect(
+        screen.queryByText('First choose an agent'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('heads the box with the picker and its label when placed on top', async () => {
+      renderComposer({
+        agents: [sre, issues],
+        pickerPlacement: 'top',
+        pickerLabel: agent => (agent ? 'Agent' : 'First choose an agent'),
+        renderPickerAccessory: agent =>
+          agent ? null : <span>Required to start</span>,
+      });
+
+      const label = screen.getByText('First choose an agent');
+      expect(follows(label, agentPicker())).toBe(true);
+      expect(follows(agentPicker(), field())).toBe(true);
+      expect(
+        follows(agentPicker(), screen.getByText('Required to start')),
+      ).toBe(true);
+      // Start stays at the bottom, after the text.
+      expect(follows(field(), startButton())).toBe(true);
+
+      await userEvent.click(agentPicker());
+      await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+      expect(screen.getByText('Agent')).toBeInTheDocument();
+      expect(screen.queryByText('Required to start')).not.toBeInTheDocument();
+    });
+  });
+
   describe('what makes Start available', () => {
     it('is disabled with no prompt, even with an agent selected', () => {
       renderComposer({ defaultAgent: sre });
@@ -486,9 +532,7 @@ describe('NewSessionComposer', () => {
     renderComposer({ isLoadingAgents: true });
 
     expect(
-      screen.getByText(
-        'Still checking the remaining installations for agents…',
-      ),
+      screen.getByText('Still checking the remaining environments for agents…'),
     ).toBeInTheDocument();
   });
 

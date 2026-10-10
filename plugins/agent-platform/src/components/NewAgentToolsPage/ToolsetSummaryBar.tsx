@@ -110,13 +110,13 @@ export function toolsetEffect({
       return { line: 'Resolving…', tone: 'secondary' };
     case 'unknown-preset':
       return {
-        line: 'Names a preset this installation does not define',
+        line: 'Names a preset this environment does not define',
         hint: resolution.error,
         tone: 'danger',
       };
     case 'unsupported':
       return {
-        line: "This installation's muster does not evaluate toolsets yet",
+        line: "This environment's muster does not evaluate toolsets yet",
         hint: 'The agent carries the toolset it declares; this muster ignores it until it is upgraded.',
         tone: 'warning',
       };

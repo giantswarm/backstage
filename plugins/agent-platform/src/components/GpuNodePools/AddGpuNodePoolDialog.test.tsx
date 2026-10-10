@@ -685,7 +685,7 @@ describe('AddGpuNodePoolDialog', () => {
     expect(commit).toBeDisabled();
     expect(
       screen.getByText(
-        /is not available yet on this installation's cluster-manager/,
+        /is not available yet on this environment's cluster-manager/,
       ),
     ).toBeInTheDocument();
   });
@@ -952,7 +952,7 @@ describe('clusterMarks', () => {
     ]);
     expect(
       clusterMarks({ ...WC1, ownCluster: true, commitTarget: null })[0],
-    ).toBe("The installation's own cluster");
+    ).toBe("The environment's own cluster");
   });
 });
 

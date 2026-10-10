@@ -93,7 +93,7 @@ export function clusterApiNote(
   }
   return (
     status.note ||
-    `the Cluster API (${status.group}) is not served on this installation`
+    `the Cluster API (${status.group}) is not served on this environment`
   );
 }
 

@@ -60,7 +60,7 @@ describe('SessionsTable', () => {
       mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
     });
 
-    for (const header of ['Session', 'Agent', 'Installation', 'Started']) {
+    for (const header of ['Session', 'Agent', 'Environment', 'Started']) {
       expect(screen.getByText(header)).toBeInTheDocument();
     }
     // kagent API v2 does not move updated_at on a turn (kagent-dev/kagent#2397).
@@ -84,7 +84,7 @@ describe('SessionsTable', () => {
       screen.getByRole('searchbox', { name: 'Search sessions' }),
     ).toHaveAttribute(
       'placeholder',
-      'Search by session, agent, or installation',
+      'Search by session, agent, or environment',
     );
   });
 
@@ -224,8 +224,8 @@ describe('SessionsTable', () => {
     // than it offers, which is harmless — but a list scoped to one agent on one
     // installation must not advertise those as ways to search it.
     it.each([
-      [undefined, 'Search by session, agent, or installation'],
-      [['agentName'] as const, 'Search by session or installation'],
+      [undefined, 'Search by session, agent, or environment'],
+      [['agentName'] as const, 'Search by session or environment'],
       [['agentName', 'installation'] as const, 'Search by session'],
     ])(
       'names only the visible axes (hiding %s)',

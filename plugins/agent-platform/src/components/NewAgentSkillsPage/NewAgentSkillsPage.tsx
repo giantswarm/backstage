@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Accordion,
   AccordionGroup,
@@ -16,11 +15,12 @@ import { makeStyles } from '@material-ui/core';
 import {
   LoadingIndicator,
   matchesQuery,
+  SEARCH_MIN,
+  ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { newAgentRouteRef, newAgentToolsRouteRef } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import {
@@ -30,7 +30,9 @@ import {
   skillId,
 } from '../../lib/skills';
 import { groupSkillsByRepo, RepoSkillGroup } from '../../lib/skillGrouping';
-import { AgentWizardFrame } from '../AgentWizardFrame';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
+import { KeptSkills } from './KeptSkills';
+import { AUTO_EXPAND_MAX } from '../ToolsetResolutionList';
 import {
   SelectableCard,
   SelectableCardGrid,
@@ -67,10 +69,13 @@ const useStyles = makeStyles(theme => ({
 function SkillCard({
   skill,
   selected,
+  pinned,
   onSelect,
 }: {
   skill: DiscoveredSkill;
   selected: boolean;
+  /** The commit an edited agent is pinned to, when its repo has moved on. */
+  pinned?: string;
   onSelect: () => void;
 }) {
   const classes = useSelectableCardStyles();
@@ -109,76 +114,156 @@ function SkillCard({
           the skill was discovered. Skills never move on their own after the
           write (updating them is an explicit action on the agent's page), so
           the pin is shown where it is chosen. */}
-      <Text
-        variant="body-x-small"
-        color="secondary"
-        aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
-      >
-        {skill.ref}{' '}
-        <span className={classes.code}>@{shortCommit(skill.commit)}</span>
-      </Text>
+      {pinned ? (
+        <Text variant="body-x-small" color="secondary">
+          pinned at <span className={classes.code}>{shortCommit(pinned)}</span>
+          {' · '}
+          {skill.ref} is at{' '}
+          <span className={classes.code}>{shortCommit(skill.commit)}</span>
+        </Text>
+      ) : (
+        <Text
+          variant="body-x-small"
+          color="secondary"
+          aria-label={`Pinned to commit ${shortCommit(skill.commit)} of ${skill.ref}`}
+        >
+          {skill.ref}{' '}
+          <span className={classes.code}>@{shortCommit(skill.commit)}</span>
+        </Text>
+      )}
     </SelectableCard>
   );
 }
 
+type SkillSelection = {
+  /** The active search term; a new one starts every grid at its first page. */
+  query: string;
+  selectedIds: Map<string, DiscoveredSkill>;
+  onToggle: (skill: DiscoveredSkill) => void;
+};
+
+/**
+ * One grid of skill cards, a page at a time: a repository of hundreds of
+ * skills is found by searching, not by scrolling past every card, so only the
+ * first page mounts until more is asked for. At a handful there is no chrome.
+ */
 function SkillGrid({
   skills,
   ariaLabel,
+  query,
   selectedIds,
   onToggle,
-}: {
+}: SkillSelection & {
   skills: DiscoveredSkill[];
   /** Names the group for assistive tech — the subgroup, or the repo when flush. */
   ariaLabel: string;
-  selectedIds: Set<string>;
-  onToggle: (skill: DiscoveredSkill) => void;
 }) {
   return (
-    <SelectableCardGrid role="group" ariaLabel={ariaLabel} minWidth={240}>
-      {skills.map(skill => (
-        <SkillCard
-          key={skillId(skill)}
-          skill={skill}
-          selected={selectedIds.has(skillId(skill))}
-          onSelect={() => onToggle(skill)}
+    <ShowMore key={query} items={skills} noun="skill">
+      {visible => (
+        <SelectableCardGrid role="group" ariaLabel={ariaLabel} minWidth={240}>
+          {visible.map(skill => {
+            const pin = selectedIds.get(skillId(skill))?.commit;
+            return (
+              <SkillCard
+                key={skillId(skill)}
+                skill={skill}
+                selected={selectedIds.has(skillId(skill))}
+                pinned={pin && pin !== skill.commit ? pin : undefined}
+                onSelect={() => onToggle(skill)}
+              />
+            );
+          })}
+        </SelectableCardGrid>
+      )}
+    </ShowMore>
+  );
+}
+
+/** One repository's skills: its loose skills, then each subfolder's. */
+function RepoSkills({
+  group,
+  ...selection
+}: SkillSelection & { group: RepoSkillGroup }) {
+  const classes = useStyles();
+  return (
+    <Flex direction="column" gap="3">
+      {group.ungrouped.length > 0 && (
+        <SkillGrid
+          skills={group.ungrouped}
+          ariaLabel={`Skills in ${group.repoSlug}`}
+          {...selection}
         />
+      )}
+      {group.subgroups.map(subgroup => (
+        <div key={subgroup.key} className={classes.subgroup}>
+          {/* A real heading, so the grouping is reachable by heading
+              navigation and not just visible styling. */}
+          <Text
+            as="h4"
+            weight="bold"
+            variant="body-small"
+            className={classes.subgroupHeading}
+          >
+            {subgroup.label}
+          </Text>
+          <SkillGrid
+            skills={subgroup.skills}
+            ariaLabel={`Skills in ${group.repoSlug} / ${subgroup.label}`}
+            {...selection}
+          />
+        </div>
       ))}
-    </SelectableCardGrid>
+    </Flex>
   );
 }
 
 function GroupedSkills({
   groups,
-  query,
-  selectedIds,
-  onToggle,
-}: {
+  expandAll,
+  ...selection
+}: SkillSelection & {
   groups: RepoSkillGroup[];
-  /** The active search term; drives when expansion is re-seeded. */
-  query: string;
-  selectedIds: Set<string>;
-  onToggle: (skill: DiscoveredSkill) => void;
+  /**
+   * The catalogue is short enough to read whole ({@link AUTO_EXPAND_MAX}), so
+   * every repository opens; a longer one opens as its repositories and counts.
+   */
+  expandAll: boolean;
 }) {
   const classes = useStyles();
+  const { query, selectedIds } = selection;
   const repoKeys = groups.map(group => group.repoUrl);
   const repoSignature = repoKeys.join('|');
+  const seed = () =>
+    query !== '' || expandAll ? new Set(repoKeys) : new Set<string>();
 
   // Expansion is controlled rather than seeded via `defaultExpandedKeys` (which
   // only applies on mount): a search must always reveal its matches, and a repo
   // the user had collapsed would otherwise keep its matches hidden behind a
   // trigger that advertises a non-zero count.
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(seed);
 
-  // Re-seed to "everything shown is open" whenever the query changes or the set
-  // of matching repos changes (the latter also covers the initial load, where
-  // skills arrive asynchronously while the query stays empty). Within a stable
-  // query and repo set, a collapse the user performs sticks.
+  // Re-seed whenever the query changes or the set of matching repos changes
+  // (the latter also covers the initial load, where skills arrive
+  // asynchronously while the query stays empty): a search opens every repo it
+  // matched in, and no search opens all of a short catalogue and none of a
+  // long one. Within a stable query and repo set, a toggle the user performs
+  // sticks.
   useEffect(() => {
-    setExpandedKeys(new Set(repoKeys));
+    setExpandedKeys(seed());
     // repoSignature stands in for repoKeys (a new array each render); query is
     // read only to retrigger on search changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, repoSignature]);
+  }, [query, repoSignature, expandAll]);
+
+  // Per repository, so a collapsed one still says it holds part of the pick.
+  const selectedPerRepo = useMemo(() => {
+    const counts = new Map<string, number>();
+    selectedIds.forEach(skill =>
+      counts.set(skill.repoUrl, (counts.get(skill.repoUrl) ?? 0) + 1),
+    );
+    return counts;
+  }, [selectedIds]);
 
   return (
     <AccordionGroup
@@ -190,42 +275,19 @@ function GroupedSkills({
         const total =
           group.ungrouped.length +
           group.subgroups.reduce((sum, sub) => sum + sub.skills.length, 0);
+        const selected = selectedPerRepo.get(group.repoUrl) ?? 0;
         return (
           <Accordion id={group.repoUrl} key={group.repoUrl}>
             <AccordionTrigger>
-              {group.repoSlug} ({total})
+              {group.repoSlug} ({total}
+              {selected > 0 ? ` · ${selected} selected` : ''})
             </AccordionTrigger>
             <AccordionPanel className={classes.skillsPanel}>
-              <Flex direction="column" gap="3">
-                {group.ungrouped.length > 0 && (
-                  <SkillGrid
-                    skills={group.ungrouped}
-                    ariaLabel={`Skills in ${group.repoSlug}`}
-                    selectedIds={selectedIds}
-                    onToggle={onToggle}
-                  />
-                )}
-                {group.subgroups.map(subgroup => (
-                  <div key={subgroup.key} className={classes.subgroup}>
-                    {/* A real heading, so the grouping is reachable by heading
-                        navigation and not just visible styling. */}
-                    <Text
-                      as="h4"
-                      weight="bold"
-                      variant="body-small"
-                      className={classes.subgroupHeading}
-                    >
-                      {subgroup.label}
-                    </Text>
-                    <SkillGrid
-                      skills={subgroup.skills}
-                      ariaLabel={`Skills in ${group.repoSlug} / ${subgroup.label}`}
-                      selectedIds={selectedIds}
-                      onToggle={onToggle}
-                    />
-                  </div>
-                ))}
-              </Flex>
+              {/* Mounted only while open: a collapsed repository of hundreds
+                  of skills costs nothing. */}
+              {expandedKeys.has(group.repoUrl) && (
+                <RepoSkills group={group} {...selection} />
+              )}
             </AccordionPanel>
           </Accordion>
         );
@@ -236,9 +298,11 @@ function GroupedSkills({
 
 export function NewAgentSkillsPage() {
   const navigate = useNavigate();
-  const newAgentLink = useRouteRef(newAgentRouteRef);
-  const toolsLink = useRouteRef(newAgentToolsRouteRef);
-  const { state, toggleSkill, isComplete } = useNewAgentForm();
+  const links = useAgentWizardLinks();
+  const newAgentLink = links.details;
+  const toolsLink = links.tools;
+  const { state, edit, toggleSkill, removeKeptSkill, isComplete } =
+    useNewAgentForm();
   const {
     skills,
     isLoading,
@@ -249,10 +313,30 @@ export function NewAgentSkillsPage() {
   } = useSkillCatalog();
 
   const [query, setQuery] = useState('');
-  const trimmed = query.trim();
+  // A handful of skills is read at a glance: no search field and no count of
+  // the selection (every card shows its own state). The field comes with a
+  // catalogue long enough to need it; should it shrink back under the
+  // threshold, the query goes with the field, so nothing stays filtered by
+  // text the author can no longer see or clear.
+  const isSearchable = skills.length > SEARCH_MIN;
+  const trimmed = isSearchable ? query.trim() : '';
+  useEffect(() => {
+    if (!isSearchable) {
+      setQuery('');
+    }
+  }, [isSearchable]);
+  // A single repository needs no accordion around it, and a short catalogue
+  // opens every repository it spans. Both read the whole catalogue, not the
+  // matches, so the layout does not change shape on a keystroke.
+  const isSingleRepo = useMemo(
+    () => new Set(skills.map(skill => skill.repoUrl)).size === 1,
+    [skills],
+  );
+  const isShort = skills.length <= AUTO_EXPAND_MAX;
 
+  // By id, with the selected skill: an edited agent's carries its pin.
   const selectedIds = useMemo(
-    () => new Set(state.selectedSkills.map(skillId)),
+    () => new Map(state.selectedSkills.map(skill => [skillId(skill), skill])),
     [state.selectedSkills],
   );
 
@@ -280,6 +364,13 @@ export function NewAgentSkillsPage() {
   const groups = useMemo(
     () => groupSkillsByRepo(visibleSkills),
     [visibleSkills],
+  );
+
+  const selection = { query: trimmed, selectedIds, onToggle: toggleSkill };
+  const catalogue = isSingleRepo ? (
+    groups[0] && <RepoSkills group={groups[0]} {...selection} />
+  ) : (
+    <GroupedSkills groups={groups} expandAll={isShort} {...selection} />
   );
 
   // The frame's footer carries Cancel and Back; only the primary lives here.
@@ -323,15 +414,27 @@ export function NewAgentSkillsPage() {
 
   return (
     <AgentWizardFrame step="skills" onBack={onBack}>
-      <WizardStepHeading title="Select skills">
-        Packaged instructions the agent can reuse for specific kinds of tasks,
-        discovered from the configured skill repositories. Each skill is pinned
-        to the commit shown on its card — the head of its repository when it was
-        discovered — and stays there until you update it. Optional — you can
-        continue without selecting any.
-      </WizardStepHeading>
+      {edit ? (
+        <WizardStepHeading title="Select skills">
+          Packaged instructions the agent can reuse for specific kinds of tasks,
+          discovered from the configured skill repositories. The agent's skills
+          stay at the commit they are pinned to; a skill you add is pinned to
+          the commit shown on its card. Update skills on the agent's page moves
+          the pins.
+        </WizardStepHeading>
+      ) : (
+        <WizardStepHeading title="Select skills">
+          Packaged instructions the agent can reuse for specific kinds of tasks,
+          discovered from the configured skill repositories. Each skill is
+          pinned to the commit shown on its card — the head of its repository
+          when it was discovered — and stays there until you update it. Optional
+          — you can continue without selecting any.
+        </WizardStepHeading>
+      )}
 
       <Flex direction="column" gap="3">
+        <KeptSkills skills={state.keptSkills} onRemove={removeKeptSkill} />
+
         {isLoading && skills.length === 0 && (
           <LoadingIndicator label="Discovering skills…" />
         )}
@@ -370,35 +473,33 @@ export function NewAgentSkillsPage() {
 
         {skills.length > 0 && (
           <>
-            <Flex
-              align="center"
-              justify="between"
-              gap="2"
-              style={{ flexWrap: 'wrap' }}
-            >
-              <Flex grow basis="240px" direction="column">
-                <SearchField
-                  aria-label="Search skills"
-                  placeholder="Search by name, description, or path…"
-                  value={query}
-                  onChange={setQuery}
-                />
+            {isSearchable && (
+              <Flex
+                align="center"
+                justify="between"
+                gap="2"
+                style={{ flexWrap: 'wrap' }}
+              >
+                <Flex grow basis="240px" direction="column">
+                  <SearchField
+                    aria-label="Search skills"
+                    placeholder="Search by name, description, or path…"
+                    value={query}
+                    onChange={setQuery}
+                  />
+                </Flex>
+                {/* The only place the step reports its own output: a
+                    search, a collapsed repository or a grid's later pages
+                    can hide every selected card, and the review summary
+                    lists them only inside the values YAML. */}
+                <Text variant="body-small" color="secondary">
+                  {selectedIds.size} selected
+                </Text>
               </Flex>
-              {/* The only place the step reports its own output: a
-                  search can hide every selected card, and the review
-                  summary lists them only inside the values YAML. */}
-              <Text variant="body-small" color="secondary">
-                {selectedIds.size} selected
-              </Text>
-            </Flex>
+            )}
 
-            {visibleSkills.length > 0 ? (
-              <GroupedSkills
-                groups={groups}
-                query={trimmed}
-                selectedIds={selectedIds}
-                onToggle={toggleSkill}
-              />
+            {groups.length > 0 ? (
+              catalogue
             ) : (
               <Text color="secondary">
                 No skills match &quot;{trimmed}&quot;.
