@@ -1,5 +1,132 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.7.0
+
+### Minor Changes
+
+- 21ae39b: New `AppReadinessProcessor`: records whether a component's newest GitHub release
+  actually reached the chart registry, as the `giantswarm.io/readiness` label
+  (`releasable` / `blocked` / `unknown`) plus `giantswarm.io/readiness-flags` and
+  `giantswarm.io/readiness-checked`. Off by default
+  (`catalog.processors.appReadiness.enabled`).
+
+  This is the release precondition for the HelmRelease migration: a chart that was
+  never published has nothing for a HelmRelease to point at, however healthy the
+  repo looks, and nothing in the devportal said so.
+
+  - `unknown` is a first-class verdict, never a quiet `blocked`. An unresolvable
+    chart, a private registry we hold no credentials for, a monorepo release
+    prefix, a release tag that is not comparable semver, a release tag carrying a
+    semver prerelease, a partially unreadable set of charts, or a registry lookup
+    that could not be answered all yield `unknown`. A wrong `blocked` badge on
+    someone else's app is worse than no badge.
+  - Both blockers are confirmed by an exact-tag point lookup before they are
+    published, because the tag listing is a 500-tag window that a chart with heavy
+    CI churn can overflow. The lookup is three-state: only a 404 is an absence,
+    and anything else reports `unknown`. `NEVER-PUBLISHED` — the stronger claim —
+    is only made when the whole listing was seen; a truncated one reports
+    `RELEASE-NOT-PUBLISHED`, which is true of both states.
+  - Flags merge with whatever `backstage-catalog-importer` already published under
+    `giantswarm.io/readiness-flags`, so the release verdict and the chart-metadata
+    verdict share one list. The `giantswarm.io/readiness` label is this
+    processor's alone; the importer publishes its own
+    `giantswarm.io/readiness-standards`.
+  - Chart tags, GitHub releases and tag confirmations are cached behind one TTL
+    cache with in-flight dedup, so a repo is asked at most once per TTL rather
+    than once per processing cycle. A rejected fill is not cached, so a transient
+    failure retries on the next pass. `giantswarm.io/readiness-checked` carries
+    the time the underlying lookup ran, not the time of the pass, so the processed
+    entity is byte-stable between refreshes and the catalog engine can skip the
+    write — see `cacheTtlSeconds` in `config.d.ts` for what lowering the TTL costs
+    in catalog writes.
+  - `getRetryDelayMs` in the shared GitHub release util now caps a retry sleep at
+    60s. It returned `x-ratelimit-reset - now` uncapped, and those sleeps are
+    awaited inside `preProcessEntity`, so a rate-limited 429 could park a catalog
+    processing worker for an hour per attempt. `LatestReleaseProcessor` benefits
+    from the same fix.
+
+- 2fa183d: New `BuildStatusProcessor`: records whether a component's default branch
+  builds, as the `giantswarm.io/build-status` label (`passing` / `failing` /
+  `unknown`), the confirmed failing checks in `giantswarm.io/build-failing-checks`
+  (a JSON array, since check names contain commas),
+  the branch in `giantswarm.io/default-branch`, and `BUILD-RED` merged into
+  `giantswarm.io/readiness-flags` when failing. Off by default
+  (`catalog.processors.buildStatus.enabled`).
+
+  GitHub hangs commit statuses off a SHA, so a red from a branch cut off main, a
+  merge-queue branch or a tag shows up on main. Each failing status is therefore
+  resolved through the CircleCI build behind it and counted only when that build
+  really ran on the default branch and really reached a verdict; tag builds and
+  other branches' builds are set aside. `passing` needs positive evidence: a
+  context still running, cancelled or pending on the default branch, a red that
+  cannot be resolved, or a rollup whose every context was set aside is `unknown`,
+  never `failing` and never `passing`; a skipped or neutral check is not evidence
+  either, and where CircleCI reports to the commit only a green CircleCI build of
+  the default branch is (a green pre-commit or scorecard workflow says nothing
+  about whether the build runs). When a lookup fails (GitHub 5xx, CircleCI rate limit) the last known
+  verdict is kept for up to a day with its original `build-status-checked`, rather than every
+  affected component flipping to `unknown` for a pass. A repository GitHub cannot find writes
+  nothing, and a missing GitHub token is warned about once per owner rather than
+  written as `unknown`. The release verdict in `giantswarm.io/readiness` is not
+  touched.
+
+  `gs-common` exports `BuildReadinessFlags` / `buildReadinessFlagNames` next to the
+  release flags, so the frontend can attribute the flag to the build rather than
+  to the release or to chart metadata. `TtlCache` moves to
+  `catalog-backend-module-gs/src/util` and is shared by both processors.
+
+### Patch Changes
+
+- 2c105cc: Stop transient catalog failures from filling Sentry.
+
+  The root logger forwards every `warn` to Sentry, and Sentry fingerprints on the
+  log message — so a chart name, entity ref or URL in the _message_ turns one
+  fault into one issue per value. Two places here did that, and between them
+  accounted for roughly 65 open issues across the customer backends and
+  devportal-backend for what is really two transient upstream faults.
+
+  `LatestOciReleaseProcessor` logged every failed tag fetch at `warn` with the
+  chart ref and the full registry URL in the message, so a registry that was
+  briefly unreachable produced one issue per chart. A failure the next processing
+  round retries is now `info`; anything else keeps a message naming only the
+  error class, with the chart and error as structured metadata.
+
+  Catalog processing errors are now logged by this module instead of
+  `@backstage/plugin-catalog-backend-module-logs`. A processing error is an
+  already-handled outcome — it is stored on the entity, shown in the catalog UI,
+  and retried on the next round — so transient causes (5xx, 429, socket-level
+  faults, timeouts) drop to `info` — below the Sentry transport's `warn`
+  threshold, but still at the default log level, so an upstream outage staling
+  half the catalog stays greppable. Everything else stays at `warn` with the
+  same message and metadata as upstream, so a 401 or a file that is really gone
+  still surfaces, and no longer hides among the timeouts.
+
+- 0814404: The SBOM dependency processor now only adds a `dependsOn` entry for components that actually exist in the catalog. Giant Swarm Go packages without a catalog component (e.g. archived libraries like `versionbundle`) are skipped, so they no longer appear as dangling relations ("Entities not found are: ...") on the entity page. If the catalog can't be queried, all dependencies are kept to avoid dropping real dependencies on a transient error.
+- 103014c: The Version History card and tab list only stable releases by default. A "Show all" switch brings back release candidates and dev builds. Stable means a semantic version without a pre-release part (`isStableVersion` in `gs-common`).
+
+  The backend parses and compares versions with `@giantswarm/semver-ts` instead of npm `semver`, so tags are read the way Flux reads them (Masterminds/semver): `sortVersions` in `gs-node` now also drops tags that are no version, and accepts incomplete ones such as `1.2`. GitHub release tags in the app readiness check are still parsed strictly, so a date-named release is not mistaken for a version.
+
+  `ContainerRegistryService.getTags` without a `limit` now follows the registry's pagination (`Link: rel="next"`), so the version history lists every tag instead of the 100 most recent ones ACR returns on its first page. With a `limit` it stops once it holds that many tags, which for the catalog processors' limit of 500 is a single request. The OCI path now honours `limit` and asks for pages of 1000 tags, as the ACR path asks for 999.
+
+- Updated dependencies [71317f9]
+- Updated dependencies [21ae39b]
+- Updated dependencies [85e7d8c]
+- Updated dependencies [2fa183d]
+- Updated dependencies [8967f50]
+- Updated dependencies [9a71810]
+- Updated dependencies [32f943c]
+- Updated dependencies [e2958de]
+- Updated dependencies [e5bd97a]
+- Updated dependencies [5851bba]
+- Updated dependencies [d817adf]
+- Updated dependencies [0bba1e6]
+- Updated dependencies [cad8b48]
+- Updated dependencies [d7b3983]
+- Updated dependencies [c3ec30a]
+- Updated dependencies [103014c]
+  - @giantswarm/backstage-plugin-gs-node@0.4.0
+  - @giantswarm/backstage-plugin-gs-common@0.22.0
+
 ## 0.6.1
 
 ### Patch Changes
