@@ -2596,6 +2596,28 @@ picks a handoff up whenever it appears in the location, not only at mount.
 `…/<name>/edit` stays a route of its own beside it — react-router scores a static
 segment above a splat, which `AgentsRouter.test.tsx` holds still.
 
+**Inside the agent-platform shell** the page is the prototype's plain-language
+one, under the shell's `ShellPage` frame (breadcrumbs "Customize / Agents /
+<agent>", the name as the one h1, Edit and "Use this agent" in the header, the
+kebab beside them):
+
+| Tab      | Path                 | What it holds                                                                 |
+| -------- | -------------------- | ----------------------------------------------------------------------------- |
+| Overview | the agent URL itself | what it's for, instructions, skills, connectors; model and environment beside |
+| Sessions | `…/<name>/sessions`  | your sessions with this agent                                                 |
+| Usage    | `…/<name>/usage`     | its estimated cost, tokens and model calls; your sessions with it             |
+
+Tools and Skills are folded into the Overview: skills are cards that open each
+skill's page, and the Connectors section says in words what the agent can reach,
+with **See which tools** opening `…/<name>/tools` (the toolset card, one level
+below the agent in the breadcrumbs). A bookmarked `…/skills` lands on the
+Overview. The cards the classic Overview leads with — GitOps, configuration,
+status — plus the resource's name, Harness, revision and skill pins sit behind
+the Overview's **Show technical details** switch, which starts on for an agent
+that is not ready. The Usage tab reads the Usage screen's own sources for the
+agent's environment over 30 days: the gateway's by-agent reduction (everyone's
+calls) and kagent's session summary (yours, with any runtime-reported cost).
+
 An agent can be **edited**, have its **skills updated** and be **deleted** from the
 kebab menu — every write through agent-manager's tools over muster as the
 signed-in person (see "Editing an agent", "Updating an agent's skills" and

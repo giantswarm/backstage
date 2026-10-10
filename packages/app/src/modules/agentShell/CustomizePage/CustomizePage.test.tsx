@@ -13,15 +13,10 @@ let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, number>;
 
 function mockPanel(name: string) {
-  return ({
-    search,
-    organization,
-  }: {
-    search: string;
-    organization?: string;
-  }) => (
-    <p>{`${name} panel, search “${search}”${
-      organization ? `, organization ${organization}` : ''
+  return (props: { search: string }) => (
+    <p>{`${name} panel, search “${props.search}”${
+      // Anything beyond the search would be a filter the page hands down.
+      Object.keys(props).length > 1 ? ', with more props' : ''
     }`}</p>
   );
 }
@@ -33,7 +28,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
   const agents = createRouteRef();
   const models = createRouteRef();
   return {
-    ALL_ORGANIZATIONS: 'all',
     agentPlatformPlugin: {
       routes: {
         agents,
@@ -49,21 +43,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeModelsPanel: mockPanel('Models'),
     EnvironmentSelect: ({ component }: { component?: string }) => (
       <p>{`Environment for ${component ?? 'everything'}`}</p>
-    ),
-    OrganizationSelect: ({
-      organizations,
-      onChange,
-    }: {
-      organizations: string[];
-      onChange: (organization: string) => void;
-    }) => (
-      <div>
-        {organizations.map(organization => (
-          <button key={organization} onClick={() => onChange(organization)}>
-            {`Organization ${organization}`}
-          </button>
-        ))}
-      </div>
     ),
   };
 });
@@ -136,8 +115,6 @@ describe('CustomizePage', () => {
     mockCustomizeData = {
       counts: { agents: 5, skills: 71, models: 3 },
       hasSkillRepositories: true,
-      agentOrganizations: ['engineering', 'support'],
-      modelOrganizations: ['support'],
     };
     mockMusterCounts = { connectors: 7, workflows: 2 };
   });
@@ -214,27 +191,15 @@ describe('CustomizePage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('narrows the Agents and Models tabs by organization only', async () => {
-    await renderCustomize('/customize/agents');
+  it.each(['agents', 'models'])(
+    'is global on the %s tab: no organization filter, only the search',
+    async tab => {
+      await renderCustomize(`/customize/${tab}`);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Organization support' }),
-    );
-    expect(
-      screen.getByText('Agents panel, search “”, organization support'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Organization engineering' }),
-    ).toBeInTheDocument();
-  });
-
-  it('offers no organization on the Connectors tab', async () => {
-    await renderCustomize('/customize/connectors');
-
-    expect(
-      screen.queryByRole('button', { name: /^Organization/ }),
-    ).not.toBeInTheDocument();
-  });
+      expect(screen.getByText(/panel, search “”$/)).toBeInTheDocument();
+      expect(screen.queryByText(/organization/i)).not.toBeInTheDocument();
+    },
+  );
 
   it('hands the search to the panel', async () => {
     await renderCustomize('/customize/workflows');

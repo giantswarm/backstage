@@ -14,7 +14,18 @@ const TABS: RouteTabSpec[] = [
 ];
 
 /**
- * The detail page's tab strip, its content driven by the page's router rather
+ * The tabs inside the agent-platform shell, per the prototype: the agent in
+ * plain words (with its tools and skills folded in), the reader's sessions
+ * with it, and its usage. Drawn by `ShellPage` as the page's own strip.
+ */
+export const SHELL_AGENT_TABS: RouteTabSpec[] = [
+  { id: 'overview', path: '', title: 'Overview' },
+  { id: 'sessions', path: 'sessions', title: 'Sessions' },
+  { id: 'usage', path: 'usage', title: 'Usage' },
+];
+
+/**
+ * The detail page's tab strip in classic chrome, its content driven by the page's router rather
  * than by TabPanels -- the same shape as the second-level tab rows in
  * ModelsRouter and UsageRouter.
  *

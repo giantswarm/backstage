@@ -4,7 +4,7 @@ import {
   type SkillCatalog,
 } from '../../hooks/useSkillCatalog';
 import { clientLookupOf } from '../../lib/serving';
-import { organizationsOf, uniqueSkills } from '../../lib/customize';
+import { uniqueSkills } from '../../lib/customize';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { ModelRow, toModelRow, toModelServedBy } from '../ModelsTable';
@@ -25,10 +25,6 @@ export type CustomizeDataValue = {
    * signed-in config is known.
    */
   hasSkillRepositories?: boolean;
-  /** The namespaces the agents in scope live in. */
-  agentOrganizations: string[];
-  /** The namespaces the models in scope live in. */
-  modelOrganizations: string[];
   /** The models in scope, each with what the serving layer says about it. */
   modelRows: ModelRow[];
   skillCatalog: SkillCatalog;
@@ -111,8 +107,6 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
       hasSkillRepositories: skillCatalog.isLoading
         ? undefined
         : skillCatalog.hasRepositories,
-      agentOrganizations: organizationsOf(agents.rows),
-      modelOrganizations: organizationsOf(modelRows),
       modelRows,
       skillCatalog,
     }),

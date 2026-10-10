@@ -68,7 +68,14 @@ describe('UsageTechnicalPage', () => {
   it('renders the raw gateway figures and the health card', async () => {
     renderPage();
 
-    expect(await screen.findByText('Technical details')).toBeInTheDocument();
+    // One caption, not a heading repeating the tab's name: the tab strip and
+    // the screen's h1 already say where the reader is.
+    expect(
+      await screen.findByText(/The numbers behind the cost views/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Technical details' }),
+    ).toBeNull();
     // The totals strip: tokens, calls, the blended rate and the cache share.
     expect(screen.getByText('5.0M')).toBeInTheDocument();
     // The call count renders in the strip, and may also appear in the

@@ -1,13 +1,20 @@
 import type { ReactNode } from 'react';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { FeatureFlagState } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AgentCondition,
   AgentInterface,
   AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { agentsRouteRef, modelsRouteRef } from '../../routes';
+import {
+  agentsRouteRef,
+  modelsRouteRef,
+  skillsRouteRef,
+  usageRouteRef,
+} from '../../routes';
+import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
@@ -206,6 +213,47 @@ const READ_ONLY_TOOLSET = {
   isReading: false,
   isUnreadable: false,
 };
+
+// The shell's plain Overview names skills the way the skill catalog does,
+// when it has them. Driven per case; empty by default.
+const mockSkillCatalog: { skills: unknown[] } = { skills: [] };
+jest.mock('../../hooks/useSkillCatalog', () => ({
+  useSkillCatalog: () => ({
+    skills: mockSkillCatalog.skills,
+    isLoading: false,
+    error: null,
+    hasRepositories: true,
+    failedRepositories: [],
+    truncated: false,
+  }),
+}));
+
+// The shell's Usage tab reads the Usage screen's two sources — the gateway's
+// reduction and kagent's session summary — through their hooks, which are
+// covered with the Usage screen; here only what the tab makes of them is.
+const mockUseLlmUsage = jest.fn();
+jest.mock('../../hooks/useLlmUsage', () => ({
+  useLlmUsage: (...args: unknown[]) => mockUseLlmUsage(...args),
+}));
+const mockUseSessionUsage = jest.fn();
+jest.mock('../../hooks/useSessionUsage', () => ({
+  useSessionUsage: (...args: unknown[]) => mockUseSessionUsage(...args),
+}));
+jest.mock('../../lib/formatNumbers', () => ({
+  ...jest.requireActual('../../lib/formatNumbers'),
+  useCurrency: () => ({ code: 'USD' }),
+}));
+jest.mock('../ModelConfigsProvider', () => ({
+  ModelConfigsProvider: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+jest.mock('../AgentsDataProvider', () => ({
+  ...jest.requireActual('../AgentsDataProvider'),
+  AgentsDataProvider: ({ children }: { children: ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 
 // The serving layer's word on the model behind the agent is driven per case;
 // the provider (which would read the fleet) becomes a pass-through.
@@ -2043,5 +2091,426 @@ describe('AgentDetailPage: the model behind the agent', () => {
     expect(
       screen.queryByTestId('model-serving-readiness'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('AgentDetailPage inside the agent shell', () => {
+  const renderShell = (tab: string = '') =>
+    renderInTestApp(<AgentDetailPage />, {
+      apis: [
+        mockApis.featureFlags({
+          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
+        }),
+      ],
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        '/agent-platform/models': modelsRouteRef,
+        '/agent-platform/skills': skillsRouteRef,
+        '/agent-platform/usage': usageRouteRef,
+      },
+      mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
+      initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
+    });
+
+  beforeEach(() => {
+    mockUseResource.mockReset();
+    mockUseAgentSessions.mockReset();
+    mockUseAgentSessions.mockReturnValue(NO_SESSIONS);
+    mockServingStateFor.mockReset();
+    mockUseAgentStatus.mockReset();
+    mockUseAgentStatus.mockReturnValue(NO_STATUS);
+    mockUseAgentToolset.mockReset();
+    mockUseAgentToolset.mockReturnValue(READ_ONLY_TOOLSET);
+    mockUseLlmUsage.mockReset();
+    mockUseSessionUsage.mockReset();
+    mockSkillCatalog.skills = [];
+    agentManagerPresence = 'unknown';
+    isMusterUnavailable = true;
+    managerAgent = undefined;
+    isReadingManagerAgent = false;
+    canCommit = false;
+  });
+
+  describe('the frame', () => {
+    it('heads the page with the platform-standard frame, once', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      // One h1, the agent's name, at the ShellPage scale — no "Agents" page
+      // title above a second, agent-sized heading.
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'PR reviewer',
+      );
+      expectHeaderReadiness('Ready');
+
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Customize' }),
+      ).toHaveAttribute('href', '/customize');
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Agents' }),
+      ).toHaveAttribute('href', '/customize/agents');
+      expect(within(breadcrumbs).getByText('PR reviewer')).toBeInTheDocument();
+
+      // The classic header's back link and identifier are gone from the
+      // plain page; the identifier waits behind the technical details.
+      expect(screen.queryByText('← Agents')).toBeNull();
+      expect(screen.queryByText('agent-platform/pr-reviewer')).toBeNull();
+    });
+
+    it('offers Overview, Sessions and Usage, each at its own URL', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
+        AGENT_PATH,
+        `${AGENT_PATH}/sessions`,
+        `${AGENT_PATH}/usage`,
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+    });
+
+    it('puts Edit beside "Use this agent", with the rest in the menu', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      ).toBeInTheDocument();
+    });
+
+    it('offers no Edit to a viewer who cannot write the agent', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the frame on a missing agent', async () => {
+      stubResources({
+        error: new Error('not found'),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+
+      await renderShell();
+
+      expect(screen.getByText('Agent not found')).toBeInTheDocument();
+
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Agent',
+      );
+      expect(
+        screen.getByRole('navigation', { name: 'Breadcrumb' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('the plain Overview', () => {
+    it('leads with what the agent does, its instructions, skills and reach', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('heading', { name: 'What it’s for' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Reviews pull requests in depth.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Instructions' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Skills' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Connectors' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Can use Read-only tools')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'See which tools' }),
+      ).toHaveAttribute('href', `${AGENT_PATH}/tools`);
+
+      // The Kubernetes-resource cards wait behind the technical details.
+      expect(
+        screen.queryByRole('heading', { name: 'Configuration' }),
+      ).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Status' })).toBeNull();
+      expect(screen.queryByText('System prompt')).toBeNull();
+    });
+
+    it('shows each skill as a readable card that opens its page', async () => {
+      mockSkillCatalog.skills = [
+        {
+          repoUrl: 'https://github.com/giantswarm/skills',
+          path: 'pr-review',
+          ref: 'main',
+          commit: COMMIT,
+          name: 'PR review conventions',
+          description: 'How we review pull requests at Giant Swarm.',
+        },
+      ];
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const skills = screen.getByRole('list', { name: 'Skills' });
+      expect(
+        within(skills).getByRole('link', { name: 'PR review conventions' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/skills/giantswarm/skills/pr-review',
+      );
+      expect(
+        within(skills).getByText('How we review pull requests at Giant Swarm.'),
+      ).toBeInTheDocument();
+      expect(
+        within(skills).getByText('From giantswarm/skills'),
+      ).toBeInTheDocument();
+      // The pin is a technical detail.
+      expect(within(skills).queryByText(/0123456789ab/)).toBeNull();
+    });
+
+    it('keeps Update skills reachable for an agent agent-manager can write', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('button', { name: 'Update skills…' }),
+      ).toBeInTheDocument();
+    });
+
+    it('names the model beside the overview, linked to its page', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      expect(
+        within(facts).getByRole('link', { name: 'Claude Opus 4.7' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/models/gazelle/agent-platform/opus-4-7',
+      );
+      expect(within(facts).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    it('keeps the Kubernetes detail behind "Show technical details"', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      const toggle = screen.getByRole('switch', {
+        name: 'Show technical details',
+      });
+      expect(toggle).not.toBeChecked();
+
+      await userEvent.click(toggle);
+
+      expect(sectionTitle('Configuration')).toBeInTheDocument();
+      expect(sectionTitle('Status')).toBeInTheDocument();
+      expect(screen.getAllByText('agent-platform/pr-reviewer').length).toBe(1);
+      // Which version of each skill it is pinned to, short with the full pin
+      // on hover.
+      expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456789ab');
+    });
+
+    it('starts with the technical details shown for an agent that is not ready', async () => {
+      stubResources({
+        resource: makeAgent({
+          status: reported(
+            [
+              READY_CONDITIONS[0],
+              {
+                type: 'Ready',
+                status: 'False',
+                reason: 'Compiling',
+                message: 'Compiling revision rev-2',
+                lastTransitionTime: '2026-07-31T10:05:00Z',
+              },
+            ],
+            { observedGeneration: 1, desiredRevision: 'rev-2' },
+          ),
+        } as Partial<AgentInterface>),
+      });
+
+      await renderShell();
+
+      expect(
+        screen.getByRole('switch', { name: 'Show technical details' }),
+      ).toBeChecked();
+      expect(sectionTitle('Status')).toBeInTheDocument();
+      // Nothing to start a session with yet.
+      expect(
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
+    });
+
+    it('sends the retired Skills tab to the Overview that now shows them', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('skills');
+
+      expect(
+        screen.getByRole('heading', { name: 'Skills' }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Overview',
+      );
+    });
+
+    it('opens the exact tools one level below the agent', async () => {
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('tools');
+
+      expect(screen.getByTestId('agent-toolset-card')).toBeInTheDocument();
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'PR reviewer' }),
+      ).toHaveAttribute('href', AGENT_PATH);
+      expect(within(breadcrumbs).getByText('Tools')).toBeInTheDocument();
+      // The facts belong to the Overview.
+      expect(
+        screen.queryByRole('complementary', { name: 'About this agent' }),
+      ).toBeNull();
+    });
+  });
+
+  describe('Sessions', () => {
+    it('lists your sessions under the tab, without a second heading', async () => {
+      mockUseAgentSessions.mockReturnValue(ONE_SESSION);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('sessions');
+
+      expect(
+        screen.getByText('Your sessions with PR reviewer.'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Review #2705')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Sessions' })).toBeNull();
+    });
+  });
+
+  describe('Usage', () => {
+    const AGENT_ID = 'agent_platform__NS__pr_reviewer';
+
+    it("shows the agent's slice of the Usage screen", async () => {
+      mockUseLlmUsage.mockReturnValue({
+        usage: {
+          byAgent: [
+            {
+              id: 'agent-platform|pr-reviewer',
+              namespace: 'agent-platform',
+              agent: 'pr-reviewer',
+              kind: 'agent',
+              label: 'PR reviewer',
+              tokens: 1_500_000,
+              calls: 321,
+              costUsd: 12.5,
+              sharePct: 40,
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        isAvailable: true,
+      });
+      mockUseSessionUsage.mockReturnValue({
+        usage: {
+          windowDays: 30,
+          byAgent: [
+            {
+              agentId: AGENT_ID,
+              sessions: 4,
+              turns: 9,
+              inputTokens: 1,
+              outputTokens: 1,
+              reportedCostUsd: 1.25,
+            },
+          ],
+        },
+        isLoading: false,
+        isError: false,
+        isNotDeployed: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('usage');
+
+      expect(mockUseLlmUsage).toHaveBeenCalledWith('gazelle', { days: 30 });
+      expect(screen.getByText('$12.50')).toBeInTheDocument();
+      expect(screen.getByText('1.5M')).toBeInTheDocument();
+      expect(screen.getByText('321')).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('$1.25')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Open in Usage' }),
+      ).toHaveAttribute('href', '/agent-platform/usage/cost');
+    });
+
+    it('says why the gateway figures are missing, and keeps your own', async () => {
+      mockUseLlmUsage.mockReturnValue({
+        usage: undefined,
+        isLoading: false,
+        isError: false,
+        isAvailable: false,
+      });
+      mockUseSessionUsage.mockReturnValue({
+        usage: { windowDays: 30, byAgent: [] },
+        isLoading: false,
+        isError: false,
+        isNotDeployed: false,
+      });
+      stubResources({ resource: makeAgent() });
+
+      await renderShell('usage');
+
+      expect(
+        screen.getByText(/need the gateway's metrics, which gazelle/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Est. cost')).toBeNull();
+      expect(screen.getByText('Your sessions')).toBeInTheDocument();
+      // No runtime reported a cost, so none is shown — not "$0.00".
+      expect(screen.queryByText('Reported cost')).toBeNull();
+    });
   });
 });

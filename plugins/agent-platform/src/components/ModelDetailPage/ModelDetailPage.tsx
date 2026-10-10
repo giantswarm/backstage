@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Content, Progress } from '@backstage/core-components';
 import {
@@ -13,7 +20,10 @@ import {
   useResource,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ShellPage,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { modelsRouteRef } from '../../routes';
 import {
@@ -24,12 +34,14 @@ import {
 } from '../../lib/modelConfigs';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { clientLookupOf } from '../../lib/serving';
 import { InstallationChip } from '../InstallationChip';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
+import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { ModelActionsMenu } from './ModelActionsMenu';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -49,6 +61,54 @@ const useStyles = makeStyles(theme => ({
 }));
 
 /**
+ * The page's outer frame, the same split the session page makes.
+ *
+ * Inside the agent-platform shell it is the platform-standard page frame
+ * (`ShellPage`): breadcrumbs reading "Customize / Models / <model>", the
+ * model's name as the h1 at the standard scale, and its environment and
+ * provider beside it. The actions the page registers land in that header's
+ * slot, and the shell's generic sub-page header stands aside because
+ * `ShellPage` claims the page header.
+ *
+ * In classic chrome it is `Content` under the Agent Platform page's header,
+ * with the page's own heading inside.
+ *
+ * A component of its own so every exit — loading, not found, and the model
+ * itself — gets the same frame.
+ */
+function ModelFrame({
+  title,
+  badges,
+  meta,
+  children,
+}: {
+  /** The shell header's h1. */
+  title: string;
+  badges?: ReactNode;
+  meta?: ReactNode;
+  children: ReactNode;
+}) {
+  const agentShell = useAgentShell();
+  if (!agentShell) {
+    return <Content>{children}</Content>;
+  }
+  return (
+    <ShellPage
+      title={title}
+      breadcrumbs={[
+        { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
+        { label: 'Models', href: `${SHELL_CUSTOMIZE_PATH}/models` },
+        { label: title },
+      ]}
+      badges={badges}
+      meta={meta}
+    >
+      {children}
+    </ShellPage>
+  );
+}
+
+/**
  * One model, as an editable form — and deliberately also the read view: what
  * a ModelConfig *is* fits the same fields, so a CR the portal must not write
  * (tool-owned, no RBAC, or a provider this form does not speak) renders the
@@ -56,6 +116,7 @@ const useStyles = makeStyles(theme => ({
  */
 export function ModelDetailPage() {
   const classes = useStyles();
+  const agentShell = useAgentShell();
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const modelsLink = useRouteRef(modelsRouteRef);
@@ -215,15 +276,15 @@ export function ModelDetailPage() {
 
   if (isLoading) {
     return (
-      <Content>
+      <ModelFrame title="Model">
         <Progress aria-label="Loading model" />
-      </Content>
+      </ModelFrame>
     );
   }
 
   if (!modelConfig) {
     return (
-      <Content>
+      <ModelFrame title="Model">
         <Alert
           status="warning"
           title="Model not found"
@@ -233,27 +294,39 @@ export function ModelDetailPage() {
               : `ModelConfig ${namespace}/${name} does not exist on ${installation}.`
           }
         />
-      </Content>
+      </ModelFrame>
     );
   }
 
   return (
-    <Content>
+    <ModelFrame
+      title={modelConfig.getDisplayName()}
+      badges={<InstallationChip installation={installation} />}
+      meta={modelConfig.getProvider()}
+    >
       <div className={classes.column}>
-        <Flex
-          align="center"
-          gap="2"
-          className={classes.pageTitle}
-          style={{ flexWrap: 'wrap' }}
-        >
-          <Text as="h2" variant="title-large" weight="bold">
-            {modelConfig.getDisplayName()}
-          </Text>
-          <InstallationChip installation={installation} />
-        </Flex>
-        <Text as="p" color="secondary" className={classes.intro}>
-          ModelConfig <code>{`${namespace}/${name}`}</code> on {installation}.
-        </Text>
+        {/* In the shell the header above carries the name and where the
+            model is available, at the platform-standard scale; repeating it
+            here would double the title. */}
+        {!agentShell && (
+          <>
+            <Flex
+              align="center"
+              gap="2"
+              className={classes.pageTitle}
+              style={{ flexWrap: 'wrap' }}
+            >
+              <Text as="h2" variant="title-large" weight="bold">
+                {modelConfig.getDisplayName()}
+              </Text>
+              <InstallationChip installation={installation} />
+            </Flex>
+            <Text as="p" color="secondary" className={classes.intro}>
+              ModelConfig <code>{`${namespace}/${name}`}</code> on{' '}
+              {installation}.
+            </Text>
+          </>
+        )}
 
         <Flex direction="column" gap="4">
           {servedBy && (
@@ -351,6 +424,6 @@ export function ModelDetailPage() {
           )}
         </Flex>
       </div>
-    </Content>
+    </ModelFrame>
   );
 }

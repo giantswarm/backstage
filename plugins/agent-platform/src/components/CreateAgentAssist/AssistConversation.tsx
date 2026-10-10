@@ -70,9 +70,9 @@ export type AssistConversationProps = {
  * the full session, which has all of it.
  *
  * What makes it the *assist* conversation is the suggestion strip: the fenced
- * code blocks of the agent's newest reply, each with a "Use as system prompt"
- * button into the form (see `AssistSuggestions` for why that is the whole
- * accept mechanism).
+ * code blocks of the agent's newest reply, each with a "Use these
+ * instructions" button into the form (see `AssistSuggestions` for why that is
+ * the whole accept mechanism).
  */
 export function AssistConversation({
   installation,

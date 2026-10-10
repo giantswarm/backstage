@@ -23,13 +23,11 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
-  ALL_ORGANIZATIONS,
   CustomizeAgentsPanel,
   CustomizeDataProvider,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
-  OrganizationSelect,
   useCustomizeData,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin, {
@@ -47,8 +45,6 @@ type CustomizeTab = {
   searchLabel: string;
   /** The component whose installations the Environment control describes. */
   component?: PlatformComponent;
-  /** Whether the tab can be narrowed to one organization (namespace). */
-  byOrganization?: boolean;
   create?: {
     label: string;
     routeRef: RouteRef<undefined> | SubRouteRef<undefined>;
@@ -62,7 +58,6 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     title: 'Agents',
     searchLabel: 'Search agents',
     component: 'kagent',
-    byOrganization: true,
     create: {
       label: 'New agent',
       routeRef: agentPlatformPlugin.routes.newAgent,
@@ -84,7 +79,6 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     title: 'Models',
     searchLabel: 'Search models',
     component: 'kagent',
-    byOrganization: true,
     create: {
       label: 'Add model',
       routeRef: agentPlatformPlugin.routes.newModel,
@@ -116,44 +110,29 @@ function CreateAction({
   );
 }
 
-function TabPanel({
-  tab,
-  search,
-  organization,
-}: {
-  tab: CustomizeTabId;
-  search: string;
-  organization: string;
-}) {
+function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
   switch (tab) {
     case 'agents':
-      return (
-        <CustomizeAgentsPanel search={search} organization={organization} />
-      );
+      return <CustomizeAgentsPanel search={search} />;
     case 'skills':
       return <CustomizeSkillsPanel search={search} />;
     case 'connectors':
       return <CustomizeConnectorsPanel search={search} />;
     case 'models':
-      return (
-        <CustomizeModelsPanel search={search} organization={organization} />
-      );
+      return <CustomizeModelsPanel search={search} />;
     default:
       return <CustomizeWorkflowsPanel search={search} />;
   }
 }
 
-/** One tab: its filters, search and action, and its panel. */
+/**
+ * One tab: its search and action, and its panel. Global-only (D4): no
+ * organization filter; the Environment select shows only with more than one.
+ */
 function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
-  const {
-    counts,
-    hasSkillRepositories,
-    agentOrganizations,
-    modelOrganizations,
-  } = useCustomizeData();
+  const { counts, hasSkillRepositories } = useCustomizeData();
   const musterCounts = useMusterCustomizeCounts();
   const [search, setSearch] = useState('');
-  const [organization, setOrganization] = useState(ALL_ORGANIZATIONS);
 
   const tabCounts: Partial<Record<CustomizeTabId, number>> = {
     ...counts,
@@ -167,20 +146,7 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
     <ShellPage
       title="Customize"
       description="The agents, skills, connectors and models behind your sessions."
-      actions={
-        <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
-          {tab.byOrganization && (
-            <OrganizationSelect
-              organizations={
-                tab.id === 'models' ? modelOrganizations : agentOrganizations
-              }
-              value={organization}
-              onChange={setOrganization}
-            />
-          )}
-          <EnvironmentSelect component={tab.component} />
-        </Flex>
-      }
+      actions={<EnvironmentSelect component={tab.component} />}
       tabs={tabs}
     >
       <Flex direction="column" gap="5">
@@ -200,7 +166,7 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
           </div>
           {tab.create && <CreateAction create={tab.create} />}
         </Flex>
-        <TabPanel tab={tab.id} search={search} organization={organization} />
+        <TabPanel tab={tab.id} search={search} />
       </Flex>
     </ShellPage>
   );
@@ -228,7 +194,7 @@ function CustomizeTabPage() {
   if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
     return <DefaultTabRedirect />;
   }
-  // Keyed by tab, so the search and the organization start over on each tab.
+  // Keyed by tab, so the search starts over on each tab.
   return <CustomizeTabContent key={tab.id} tab={tab} />;
 }
 

@@ -35,10 +35,13 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   // typed, so the proof needs no agent on the installation.
   await open(admin, '/agent-platform/agents/new');
   await expectWizardStep(admin, 'Details');
-  await admin.getByRole('textbox', { name: 'Name' }).fill('Avatar Probe');
-  await expect(admin.getByRole('textbox', { name: 'Slug' })).toHaveValue(
-    'avatar-probe',
-  );
+  await admin
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill('Avatar Probe');
+  await admin.getByText('More options').click();
+  await expect(
+    admin.getByRole('textbox', { name: 'Technical name' }),
+  ).toHaveValue('avatar-probe');
   await expect
     .poll(() => avatars.length, {
       message: 'the preview requested its avatar',

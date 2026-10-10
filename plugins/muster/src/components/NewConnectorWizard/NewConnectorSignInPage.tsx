@@ -52,29 +52,32 @@ const useStyles = makeStyles({
 // The auth question is asked about the people using the connector, never as
 // muster spec fields. One card per mode the platform decided to offer; token
 // exchange, forwardIdentity and plaintext header credentials are deliberately
-// not on this list (operator-level, niche, or insecurely stored).
+// not on this list (operator-level, niche, or insecurely stored). Company login
+// leads and is where a new connector starts (the design's recommendation); each
+// description says what people experience first and the caveat second.
 const SIGN_IN_CHOICES: Array<{
   value: McpServerAuthMode;
   title: string;
   description: string;
+  recommended?: boolean;
 }> = [
+  {
+    value: 'platform-sso',
+    title: 'Company login',
+    recommended: true,
+    description:
+      'People are signed in with their company account automatically. Muster forwards each person’s platform identity token, which is not scoped to this server — use it for apps your platform team runs.',
+  },
   {
     value: 'own-account',
     title: 'Each person signs in with their own account',
     description:
-      'People sign in once through muster, which acts as the OAuth client. Each person’s own permissions apply.',
-  },
-  {
-    value: 'platform-sso',
-    title: 'Company login',
-    description:
-      'Muster forwards each person’s platform identity token to the backend. Only for backends your platform team administers — the token is not scoped to this server.',
+      'People connect their own account the first time an agent needs it, and their own permissions apply. Muster acts as the OAuth client.',
   },
   {
     value: 'none',
     title: 'No sign-in',
-    description:
-      'Muster connects without credentials. For public or network-trusted servers.',
+    description: 'For public servers, such as web search.',
   },
   {
     value: 'sigv4',
@@ -248,8 +251,8 @@ export function NewConnectorSignInPage() {
   return (
     <ConnectorWizardFrame step="signin" onBack={onBack}>
       <WizardStepHeading title="How do people sign in?">
-        Answer for the app behind this connector — it decides whose permissions
-        apply when an agent uses its tools.
+        Agents act as the person chatting with them, so with a personal sign-in
+        each person&apos;s own permissions apply.
       </WizardStepHeading>
 
       <div
@@ -266,7 +269,9 @@ export function NewConnectorSignInPage() {
           >
             <Text weight="bold">{choice.title}</Text>
             <Text variant="body-small" color="secondary">
-              {choice.description}
+              {choice.recommended
+                ? `Recommended. ${choice.description}`
+                : choice.description}
             </Text>
           </SelectableCard>
         ))}

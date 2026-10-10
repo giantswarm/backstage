@@ -1,7 +1,10 @@
 import { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Box, Flex, Tab, TabList, Tabs } from '@backstage/ui';
-import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ShellPage,
+  useSplatBasePath,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -11,6 +14,7 @@ import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
 import { UsageTechnicalPage } from '../UsageTechnicalPage';
 import { UsageColumn } from '../UsageColumn';
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { UsageScopeBar } from './UsageScopeBar';
 
 // The Usage screen's views, per the prototype: Overview · Cost · Your
@@ -30,6 +34,10 @@ const VIEWS = [
   { path: 'technical', title: 'Technical details' },
 ] as const;
 
+/** The screen's one line under its title, in the shell's header. */
+const USAGE_DESCRIPTION =
+  "What agents cost, how much they're used, and how healthy the platform is.";
+
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {
   const { search } = useLocation();
@@ -43,16 +51,99 @@ const IndexRedirect = () => {
  * details view absorbed) redirects below, and the catch-all handles a guess
  * or a typo.
  *
+ * The routed views alone, shared by both frames below.
+ */
+const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
+  const basePath = useSplatBasePath();
+  const { search } = useLocation();
+
+  return (
+    <Routes>
+      <Route path="overview" element={<UsageOverviewPage />} />
+      <Route path="cost" element={<UsageCostPage />} />
+      <Route path="conversations" element={<UsageConversationsPage />} />
+      <Route
+        path="technical"
+        element={<UsageTechnicalPage sections={sections} />}
+      />
+      {/* The Connectors tab's old address: its content lives inside
+          Technical details now, so a bookmark lands there rather than on a
+          404 or on Overview. */}
+      <Route
+        path="mcp"
+        element={
+          <Navigate
+            to={{ pathname: `${basePath}/technical`, search }}
+            replace
+          />
+        }
+      />
+      {/* Anything else lands on Overview rather than on the tab strip over
+          an empty page with no tab active — which is what
+          `/agent-platform/usage/sessions` did, a likely guess given the tab
+          reads "Your sessions" while the path is `conversations`. Absolute,
+          from the splat base path, for the reason the tab hrefs are: a
+          relative target inside a splat route resolves against the whole
+          current pathname and would append rather than replace. */}
+      <Route
+        path="*"
+        element={
+          <Navigate to={{ pathname: `${basePath}/overview`, search }} replace />
+        }
+      />
+    </Routes>
+  );
+};
+
+/**
+ * Inside the agent-platform shell: the platform-standard page frame
+ * (`ShellPage`, the one Sessions and Customize use) — "Usage" as the h1 at the
+ * standard scale with its one-line description, the scope controls at the
+ * header's right, and the views as the page's routed tabs. The shell's generic
+ * sub-page header stands aside because `ShellPage` claims the page header, so
+ * the screen has one title and each view adds none of its own.
+ */
+const ShellUsageViews = ({ sections }: { sections?: ReactNode[] }) => {
+  const { search } = useLocation();
+
+  return (
+    <ShellPage
+      title="Usage"
+      description={USAGE_DESCRIPTION}
+      actions={<UsageScopeBar />}
+      tabs={VIEWS.map(view => ({
+        id: view.path,
+        path: view.path,
+        title: view.title,
+      }))}
+      // The scope (installation, window) is URL state, so every tab keeps it.
+      tabsSearch={search}
+    >
+      <UsageViewRoutes sections={sections} />
+    </ShellPage>
+  );
+};
+
+/**
  * The tab strip plus the routed view. The tabs are navigation links whose
  * active state follows the route (`matchStrategy`); the content is driven by
- * the router below, not by TabPanels. Above the strip sit the scope controls:
- * the Environment selector (only when more than one installation is
- * configured) and the time window, both URL state so they survive the tab
- * switch — which is also why each tab's href carries the current search.
+ * the router, not by TabPanels. Beside the strip sit the scope controls: the
+ * Environment selector (only when more than one installation is configured)
+ * and the time window, both URL state so they survive the tab switch — which
+ * is also why each tab's href carries the current search.
+ *
+ * In classic chrome the Agent Platform page's header titles the screen and
+ * this draws the second-level strip under it; inside the shell the frame is
+ * `ShellUsageViews`.
  */
 const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
   const { search } = useLocation();
+  const agentShell = useAgentShell();
+
+  if (agentShell) {
+    return <ShellUsageViews sections={sections} />;
+  }
 
   return (
     <>
@@ -94,43 +185,7 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
           </Flex>
         </UsageColumn>
       </Box>
-      <Routes>
-        <Route path="overview" element={<UsageOverviewPage />} />
-        <Route path="cost" element={<UsageCostPage />} />
-        <Route path="conversations" element={<UsageConversationsPage />} />
-        <Route
-          path="technical"
-          element={<UsageTechnicalPage sections={sections} />}
-        />
-        {/* The Connectors tab's old address: its content lives inside
-            Technical details now, so a bookmark lands there rather than on a
-            404 or on Overview. */}
-        <Route
-          path="mcp"
-          element={
-            <Navigate
-              to={{ pathname: `${basePath}/technical`, search }}
-              replace
-            />
-          }
-        />
-        {/* Anything else lands on Overview rather than on the tab strip over
-            an empty page with no tab active — which is what
-            `/agent-platform/usage/sessions` did, a likely guess given the tab
-            reads "Your sessions" while the path is `conversations`. Absolute,
-            from the splat base path, for the reason the tab hrefs are: a
-            relative target inside a splat route resolves against the whole
-            current pathname and would append rather than replace. */}
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={{ pathname: `${basePath}/overview`, search }}
-              replace
-            />
-          }
-        />
-      </Routes>
+      <UsageViewRoutes sections={sections} />
     </>
   );
 };

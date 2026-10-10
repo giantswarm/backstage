@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { Content, EmptyState } from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
+import { ShellAwareContent } from '../ShellAwareContent';
 import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
 import {
   HIDE_INSTALLATION,
@@ -79,7 +80,7 @@ export function GpuCapacityPage() {
   });
   if (!reading && nodeInventoryInstallations.length === 0) {
     return (
-      <Content>
+      <ShellAwareContent>
         {pools.dialogs}
         {pools.panel}
         <EmptyState
@@ -92,12 +93,12 @@ export function GpuCapacityPage() {
           action={pools.addButton}
         />
         {pools.cachePanel}
-      </Content>
+      </ShellAwareContent>
     );
   }
 
   return (
-    <Content>
+    <ShellAwareContent>
       <Flex direction="column" gap="3">
         {pools.dialogs}
         {pools.panel}
@@ -117,6 +118,6 @@ export function GpuCapacityPage() {
         />
         {pools.cachePanel}
       </Flex>
-    </Content>
+    </ShellAwareContent>
   );
 }

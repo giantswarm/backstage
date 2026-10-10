@@ -3,6 +3,7 @@ import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-reac
 import { WorkflowsListPage } from '../WorkflowsListPage';
 import { WorkflowDetailPage } from '../WorkflowDetailPage';
 import { WorkflowPage } from '../WorkflowPage';
+import { CustomizeTabRedirect } from '../CustomizeTabRedirect';
 import { useAgentShell } from '../../hooks/useAgentShell';
 
 /**
@@ -14,7 +15,9 @@ import { useAgentShell } from '../../hooks/useAgentShell';
  * Inside the agent-platform shell a workflow's route renders the shell's
  * read-only workflow page (per decision D11 no create/edit/delete lives
  * there); the classic detail page is unchanged outside the shell — the
- * McpServersRouter/ConnectorPage pattern.
+ * McpServersRouter/ConnectorPage pattern. The list, likewise, is the Customize
+ * screen's Workflows tab inside the shell: the classic list (with its
+ * NamespacePicker and "Create workflow") only renders in the classic chrome.
  */
 export const WorkflowsRouter = () => {
   // A workflow opened from far down the list opens at its top.
@@ -22,7 +25,19 @@ export const WorkflowsRouter = () => {
   const agentShell = useAgentShell();
   return (
     <Routes>
-      <Route index element={<WorkflowsListPage />} />
+      <Route
+        index
+        element={
+          agentShell ? (
+            <CustomizeTabRedirect
+              tab="workflows"
+              fallback={<WorkflowsListPage />}
+            />
+          ) : (
+            <WorkflowsListPage />
+          )
+        }
+      />
       {agentShell ? (
         <Route path=":name/*" element={<WorkflowPage />} />
       ) : (

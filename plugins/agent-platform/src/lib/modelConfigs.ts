@@ -152,10 +152,10 @@ export function validateModelConfigForm(
   const errors: string[] = [];
 
   if (!values.name.trim()) {
-    errors.push('Name is required');
+    errors.push('Technical name is required');
   } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
     errors.push(
-      'Name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm',
+      'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm',
     );
   }
 

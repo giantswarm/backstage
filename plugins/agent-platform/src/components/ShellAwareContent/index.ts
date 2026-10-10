@@ -1,0 +1,1 @@
+export { ShellAwareContent } from './ShellAwareContent';

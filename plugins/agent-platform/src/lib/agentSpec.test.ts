@@ -20,6 +20,7 @@ const state: NewAgentFormState = {
   installation: 'gazelle',
   modelConfigName: 'opus-4-7',
   modelConfigNamespace: 'kagent',
+  modelDisplayName: 'Opus 4.7',
   harness: undefined,
   droppedHarness: undefined,
   systemMessage: 'You review pull requests.',

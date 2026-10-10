@@ -48,34 +48,33 @@ export function ModelConfigFormFields({
       <Card>
         <CardBody>
           <SectionHeader
-            title="Identity"
+            title="Name"
             description="How this model appears to people creating agents."
           />
           <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
             <Grid.Item>
               <TextField
-                label="Name"
-                isRequired
-                isDisabled={isReadOnly || mode === 'edit'}
-                value={values.name}
-                onChange={name => onChange({ name })}
-                placeholder="e.g. qwen3-vllm"
-                description={
-                  mode === 'edit'
-                    ? 'The resource name cannot be changed after creation.'
-                    : 'Lowercase identifier used as the resource name (and in the key Secret’s name).'
-                }
+                label="Display name"
+                isDisabled={isReadOnly}
+                value={values.displayName}
+                onChange={displayName => onChange({ displayName })}
+                placeholder="e.g. Sonnet 4.5"
+                description="What people see when they choose a model."
               />
             </Grid.Item>
             <Grid.Item>
               <TextField
-                label="Display name"
-                secondaryLabel="optional"
-                isDisabled={isReadOnly}
-                value={values.displayName}
-                onChange={displayName => onChange({ displayName })}
-                placeholder="e.g. Qwen 3 (lab vLLM)"
-                description="Friendly name shown in the model picker. Falls back to the name."
+                label="Technical name"
+                isRequired
+                isDisabled={isReadOnly || mode === 'edit'}
+                value={values.name}
+                onChange={name => onChange({ name })}
+                placeholder="e.g. sonnet-4-5"
+                description={
+                  mode === 'edit'
+                    ? 'The resource name cannot be changed after creation.'
+                    : 'Filled in from the display name. Lowercase letters, numbers and hyphens; it names the resource and its key Secret.'
+                }
               />
             </Grid.Item>
           </Grid.Root>

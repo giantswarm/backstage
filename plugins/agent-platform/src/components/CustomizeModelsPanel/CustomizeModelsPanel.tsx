@@ -19,7 +19,6 @@ import {
 
 import {
   agentsByModel,
-  inOrganization,
   modelStatus,
   searchModels,
   usedByLabel,
@@ -34,8 +33,6 @@ import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert'
 
 export type CustomizeModelsPanelProps = {
   search: string;
-  /** The organization (namespace) to show, or `'all'`. */
-  organization: string;
 };
 
 type Row = ModelRow & { usedBy?: string };
@@ -71,10 +68,7 @@ function ModelHostingBanner() {
  * scope, how many agents run on each and whether it answers, each opening the
  * model's page. Must be mounted inside a `CustomizeDataProvider`.
  */
-export function CustomizeModelsPanel({
-  search,
-  organization,
-}: CustomizeModelsPanelProps) {
+export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const { modelRows } = useCustomizeData();
   const { isLoading, hasInstallations, unreachableInstallations } =
     useModelConfigs();
@@ -84,15 +78,13 @@ export function CustomizeModelsPanel({
   const usage = useMemo(() => agentsByModel(agents), [agents]);
   const rows = useMemo<Row[]>(
     () =>
-      searchModels(inOrganization(modelRows, organization), search).map(
-        row => ({
-          ...row,
-          ...(agentsLoading
-            ? {}
-            : { usedBy: usedByLabel(usage.get(row.id) ?? 0) }),
-        }),
-      ),
-    [modelRows, organization, search, usage, agentsLoading],
+      searchModels(modelRows, search).map(row => ({
+        ...row,
+        ...(agentsLoading
+          ? {}
+          : { usedBy: usedByLabel(usage.get(row.id) ?? 0) }),
+      })),
+    [modelRows, search, usage, agentsLoading],
   );
   const showInstallation =
     new Set(modelRows.map(row => row.installation)).size > 1;
@@ -158,9 +150,7 @@ export function CustomizeModelsPanel({
   } else if (rows.length === 0) {
     body = (
       <Text as="p" variant="body-medium" color="secondary">
-        {search.trim()
-          ? `No models match “${search.trim()}”.`
-          : 'No models in this organization.'}
+        No models match “{search.trim()}”.
       </Text>
     );
   } else {

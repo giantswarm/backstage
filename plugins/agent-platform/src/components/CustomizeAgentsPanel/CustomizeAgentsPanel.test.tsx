@@ -46,11 +46,10 @@ const notes = row({
   readiness: 'failed',
 });
 
-function renderPanel(search = '', organization = 'all') {
-  return renderInTestApp(
-    <CustomizeAgentsPanel search={search} organization={organization} />,
-    { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
-  );
+function renderPanel(search = '') {
+  return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
+    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+  });
 }
 
 describe('CustomizeAgentsPanel', () => {
@@ -63,12 +62,15 @@ describe('CustomizeAgentsPanel', () => {
     };
   });
 
-  it('shows a row per agent with its organization and state, linking to the agent', async () => {
+  it('shows a row per agent with its state, linking to the agent', async () => {
     await renderPanel();
 
-    // One flat table — the Connectors tab's presentation — instead of
-    // per-organization card sections: the organization is a column.
+    // One flat, global table — the Connectors tab's presentation — with no
+    // organization column (D4): the namespace is no organization.
     const table = screen.getByRole('grid');
+    expect(
+      within(table).queryByRole('columnheader', { name: /Organization/ }),
+    ).not.toBeInTheDocument();
     const triageRow = within(table)
       .getByText('Support triage')
       .closest('tr') as HTMLElement;
@@ -77,7 +79,7 @@ describe('CustomizeAgentsPanel', () => {
       '/agent-platform/agents/golem/support/triage',
     );
     expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageRow).getByText('support')).toBeInTheDocument();
+    expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
     expect(within(triageRow).getByText('Ready')).toBeInTheDocument();
     expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
     expect(
@@ -86,12 +88,12 @@ describe('CustomizeAgentsPanel', () => {
     const notesRow = within(table)
       .getByText('Release notes')
       .closest('tr') as HTMLElement;
-    expect(within(notesRow).getByText('engineering')).toBeInTheDocument();
     expect(within(notesRow).getByText('Failed')).toBeInTheDocument();
   });
 
-  it('narrows to the organization and the search', async () => {
-    await renderPanel('', 'support');
+  it('narrows to the search', async () => {
+    await renderPanel('triage');
+    expect(screen.getByText('Support triage')).toBeInTheDocument();
     expect(screen.queryByText('Release notes')).not.toBeInTheDocument();
   });
 

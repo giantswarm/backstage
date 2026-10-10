@@ -1,18 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import {
-  Alert,
-  Button,
-  Card,
-  CardBody,
-  Flex,
-  Grid,
-  Text,
-  TextField,
-} from '@backstage/ui';
-import {
-  SectionHeader,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -29,10 +20,35 @@ import { HarnessPicker } from '../HarnessPicker';
 import { AgentWizardFrame } from '../AgentWizardFrame';
 import { TextAreaField } from './TextAreaField';
 import { egressProblem, parseEgressText } from '../../lib/egress';
+import { harnessTitle } from '../../lib/harnesses';
 import {
   MAX_SYSTEM_MESSAGE_LENGTH,
   systemMessageProblem,
 } from '../../lib/systemMessage';
+
+const useStyles = makeStyles(theme => ({
+  moreOptions: {
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
+    padding: theme.spacing(1.5, 2),
+  },
+  moreOptionsSummary: {
+    cursor: 'pointer',
+    color: 'var(--bui-fg-primary)',
+  },
+  moreOptionsDefaults: {
+    color: 'var(--bui-fg-secondary)',
+    fontSize: '0.875rem',
+    // A long technical name must wrap rather than widen the page at 375px.
+    overflowWrap: 'anywhere',
+  },
+  moreOptionsBody: {
+    marginTop: theme.spacing(2),
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2.5),
+  },
+}));
 
 export function NewAgentPage() {
   return (
@@ -43,6 +59,7 @@ export function NewAgentPage() {
 }
 
 function NewAgentPageContent() {
+  const classes = useStyles();
   const navigate = useNavigate();
   const skillsLink = useRouteRef(newAgentSkillsRouteRef);
   const toolsLink = useRouteRef(newAgentToolsRouteRef);
@@ -66,6 +83,17 @@ function NewAgentPageContent() {
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
   const [showValidation, setShowValidation] = useState(false);
+  // "More options" holds the technical knobs (runtime, technical name, extra
+  // egress), collapsed: their defaults fit most agents. A native <details>,
+  // so the pickers inside stay mounted while it is closed.
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+
+  const egressIssue = egressProblem(parseEgressText(state.egressText));
+  // A problem with a field behind the disclosure opens it, so the error the
+  // alert names is never out of sight.
+  const hasHiddenProblem = validationErrors.some(
+    error => error.startsWith('Technical name') || error === egressIssue,
+  );
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
@@ -78,12 +106,15 @@ function NewAgentPageContent() {
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
       setShowValidation(true);
+      if (hasHiddenProblem) {
+        setMoreOptionsOpen(true);
+      }
       return;
     }
     if (nextLink) {
       navigate(nextLink());
     }
-  }, [errorCount, nextLink, navigate]);
+  }, [errorCount, hasHiddenProblem, nextLink, navigate]);
 
   // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -99,89 +130,90 @@ function NewAgentPageContent() {
 
   useProvidePageHeaderActions(actions);
 
+  // The disclosure's one-line summary of what it holds: the runtime (the
+  // platform's standard one unless another is picked) and the technical name.
+  const runtimeName = state.harness ? harnessTitle(state.harness) : 'Standard';
+  const defaultsSummary = `${runtimeName} runtime${
+    state.slug ? `, technical name ${state.slug}` : ''
+  }`;
+
   return (
     <AgentWizardFrame step="details">
-      <WizardStepHeading title="Create an agent">
-        Create an agent for you and your team mates to re-use for certain types
-        of tasks.
+      <WizardStepHeading title="Describe your agent">
+        An agent is an assistant for a certain kind of task. You and your team
+        can chat with it any time.
       </WizardStepHeading>
 
       {/* The "with Swarm Operator" assist (W6): renders nothing unless the
           agentManagement meta-agent role resolves — see CreateAgentAssist. */}
       <CreateAgentAssist />
 
-      <InstallationSelect />
-
-      <Card>
-        <CardBody>
-          <SectionHeader
-            title="Identity"
-            description="How this agent appears across the platform."
-          />
-          <Flex direction="column" gap="4">
-            <Flex align="start" gap="4">
-              <AgentAvatarPreview />
-              <Grid.Root
-                columns={{ initial: '1', sm: '2' }}
-                gap="4"
-                style={{ flex: 1 }}
-              >
-                <Grid.Item>
-                  <TextField
-                    label="Name"
-                    isRequired
-                    value={state.name}
-                    onChange={setName}
-                    placeholder="e.g. Go service reviewer"
-                    description="The user-friendly name humans will use to refer to this agent."
-                  />
-                </Grid.Item>
-                <Grid.Item>
-                  <TextField
-                    label="Slug"
-                    secondaryLabel="auto-derived"
-                    isRequired
-                    value={state.slug}
-                    onChange={setSlug}
-                    placeholder="go-service-reviewer"
-                    description="URL-friendly identifier used in links and resource names."
-                  />
-                </Grid.Item>
-              </Grid.Root>
-            </Flex>
-            <TextAreaField
-              label="Description"
-              value={state.description}
-              onChange={setDescription}
-              rows={4}
-              placeholder="What this agent is good at, what it's not for, example tasks…"
-              description="Describe this agent so team mates know what to use it for."
+      <Flex direction="column" gap="5">
+        <Flex align="start" gap="4">
+          <AgentAvatarPreview />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TextField
+              label="Name"
+              isRequired
+              value={state.name}
+              onChange={setName}
+              placeholder="e.g. Support triage"
+              description="What people call the agent."
             />
-          </Flex>
-        </CardBody>
-      </Card>
+          </div>
+        </Flex>
+        <TextAreaField
+          label="What is it for?"
+          value={state.description}
+          onChange={setDescription}
+          rows={2}
+          placeholder="e.g. Sorts, summarises and routes support tickets"
+          description="Shown to people when they pick an agent."
+        />
+        <TextAreaField
+          label="Instructions"
+          secondaryLabel="optional"
+          value={state.systemMessage}
+          onChange={setSystemMessage}
+          rows={6}
+          placeholder="Tell the agent how to work. For example: Always group tickets by topic. Write in short, friendly sentences. Never close a ticket yourself."
+          description="Leave empty to use the standard instructions. Put long reference material in a skill; instructions are limited in length."
+          maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
+          error={systemMessageProblem(state.systemMessage)}
+        />
 
-      <Card>
-        <CardBody>
-          <SectionHeader
-            title="Configuration"
-            description="What powers the agent and shapes how it behaves: its system prompt, the model it uses and what runs it."
-          />
-          <Flex direction="column" gap="5">
-            <TextAreaField
-              label="System prompt"
-              secondaryLabel="optional"
-              value={state.systemMessage}
-              onChange={setSystemMessage}
-              rows={10}
-              mono
-              placeholder="Leave empty to use the chart's default prompt."
-              description="The agent's system message. Write one to fit the role, or leave it empty: agent-manager then keeps the chart's default prompt. Put long reference material in a skill; the prompt is limited in length."
-              maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
-              error={systemMessageProblem(state.systemMessage)}
-            />
-            <ModelConfigPicker />
+        {/* Where the agent runs: renders nothing on a single-installation
+            portal, where the sole one is picked automatically. */}
+        <InstallationSelect />
+        <ModelConfigPicker />
+
+        <details
+          className={classes.moreOptions}
+          open={moreOptionsOpen}
+          onToggle={event =>
+            setMoreOptionsOpen((event.currentTarget as HTMLDetailsElement).open)
+          }
+        >
+          <summary className={classes.moreOptionsSummary}>
+            More options{' '}
+            <span className={classes.moreOptionsDefaults}>
+              · {defaultsSummary}
+            </span>
+          </summary>
+          <div className={classes.moreOptionsBody}>
+            <Text variant="body-small" color="secondary">
+              The defaults work for most agents.
+            </Text>
             <HarnessPicker />
+            <TextField
+              label="Technical name"
+              secondaryLabel="filled in from the name"
+              isRequired
+              value={state.slug}
+              onChange={setSlug}
+              placeholder="support-triage"
+              description="Used in links and in the agent's resource names. It can't be changed later."
+            />
             <TextAreaField
               label="Extra egress origins"
               secondaryLabel="optional"
@@ -193,17 +225,17 @@ function NewAgentPageContent() {
                 'https://github.com:443\nhttps://*.githubusercontent.com'
               }
               description="Hosts the agent may reach beyond what it already has: its model, its connectors, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
-              error={egressProblem(parseEgressText(state.egressText))}
+              error={egressIssue}
             />
-          </Flex>
-        </CardBody>
-      </Card>
+          </div>
+        </details>
+      </Flex>
 
       <Flex direction="column" gap="3">
         <Text as="p" color="secondary">
           {hasRepositories
-            ? 'The next steps let you pick skills and the tools for this agent, then review and deploy it.'
-            : 'The next step chooses the tools for this agent; then you review and deploy it.'}
+            ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
+            : 'Next you choose what the agent may do, then check everything and create it.'}
         </Text>
         {showValidation && validationErrors.length > 0 && (
           <Alert

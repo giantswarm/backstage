@@ -45,8 +45,9 @@ export type AssistSuggestionsProps = {
 
 /**
  * The accept-into-form affordance of the create-agent assist: one card per
- * fenced code block of the agent's newest reply, each with a "Use as system
- * prompt" button that copies the block into the form's System prompt field.
+ * fenced code block of the agent's newest reply, each with a "Use these
+ * instructions" button that copies the block into the form's Instructions
+ * field (the agent's system prompt).
  *
  * This is the whole accept mechanism, deliberately: kagent replies are plain
  * markdown, with no structured suggestion protocol for skills, tools or other
@@ -76,7 +77,7 @@ export function AssistSuggestions({
           {appliedIndex === index ? (
             <Flex align="center" gap="2">
               <Text variant="body-small" color="secondary" role="status">
-                Added to the system prompt.
+                Added to the instructions.
               </Text>
               <Button size="small" variant="tertiary" onPress={onUndo}>
                 Undo
@@ -89,7 +90,7 @@ export function AssistSuggestions({
                 variant="secondary"
                 onPress={() => onUse(index, block.code)}
               >
-                Use as system prompt
+                Use these instructions
               </Button>
             </div>
           )}

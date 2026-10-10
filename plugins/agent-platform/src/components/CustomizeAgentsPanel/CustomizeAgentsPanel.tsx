@@ -9,12 +9,7 @@ import {
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import type { AvatarSize } from '../../lib/agentAvatar';
-import {
-  agentParts,
-  agentStatus,
-  inOrganization,
-  searchAgents,
-} from '../../lib/customize';
+import { agentParts, agentStatus, searchAgents } from '../../lib/customize';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
@@ -25,8 +20,6 @@ const ROW_AVATAR_SIZE: AvatarSize = 96;
 
 export type CustomizeAgentsPanelProps = {
   search: string;
-  /** The organization (namespace) to show, or `'all'`. */
-  organization: string;
 };
 
 function AgentName({ row, avatarUrl }: { row: AgentRow; avatarUrl?: string }) {
@@ -56,23 +49,19 @@ function AgentName({ row, avatarUrl }: { row: AgentRow; avatarUrl?: string }) {
 
 /**
  * The Agents tab of the shell's Customize screen: the agents in scope as flat
- * rows — the Connectors tab's presentation — with their organization, model,
- * parts and state, each row opening the agent's page. Must be mounted inside a
+ * rows — the Connectors tab's presentation — with their model, parts and
+ * state, each row opening the agent's page. Global, with no organization
+ * column or filter (D4): the Kubernetes namespace an agent lives in is a
+ * technical detail of its own page. Must be mounted inside a
  * `CustomizeDataProvider`.
  */
-export function CustomizeAgentsPanel({
-  search,
-  organization,
-}: CustomizeAgentsPanelProps) {
+export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const { rows, isLoading, hasInstallations, unreachableInstallations } =
     useAgents();
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
-  const visible = useMemo(
-    () => searchAgents(inOrganization(rows, organization), search),
-    [rows, organization, search],
-  );
+  const visible = useMemo(() => searchAgents(rows, search), [rows, search]);
   const showInstallation = new Set(rows.map(row => row.installation)).size > 1;
 
   const columns: ColumnConfig<AgentRow>[] = [
@@ -89,12 +78,6 @@ export function CustomizeAgentsPanel({
           })}
         />
       ),
-    },
-    {
-      id: 'organization',
-      label: 'Organization',
-      defaultWidth: '1fr',
-      cell: row => <CellText title={row.namespace} />,
     },
     {
       id: 'model',
@@ -154,9 +137,7 @@ export function CustomizeAgentsPanel({
   } else if (visible.length === 0) {
     body = (
       <Text as="p" variant="body-medium" color="secondary">
-        {search.trim()
-          ? `No agents match “${search.trim()}”.`
-          : 'No agents in this organization.'}
+        No agents match “{search.trim()}”.
       </Text>
     );
   } else {

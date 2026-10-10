@@ -237,8 +237,8 @@ describe('shell connector wizard', () => {
 
       const choices = screen.getAllByRole('radio');
       expect(choices.map(c => c.getAttribute('aria-label'))).toEqual([
-        'Each person signs in with their own account',
         'Company login',
+        'Each person signs in with their own account',
         'No sign-in',
         'AWS request signing (SigV4)',
       ]);
@@ -248,6 +248,18 @@ describe('shell connector wizard', () => {
       expect(screen.queryByText(/forwardIdentity/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/API key/i)).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    });
+
+    it('starts a new connector on Company login, marked as recommended', async () => {
+      await renderSignInStep();
+
+      const sso = screen.getByRole('radio', { name: 'Company login' });
+      expect(sso).toHaveAttribute('aria-checked', 'true');
+      expect(within(sso).getByText(/^Recommended\./)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'No sign-in' })).toHaveAttribute(
+        'aria-checked',
+        'false',
+      );
     });
 
     it('does not offer AWS request signing on a transport the CRD forbids', async () => {
@@ -261,6 +273,7 @@ describe('shell connector wizard', () => {
 
     it('registers a no-sign-in connector: validate, then create', async () => {
       await renderSignInStep();
+      await userEvent.click(screen.getByRole('radio', { name: 'No sign-in' }));
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Add connector' }),

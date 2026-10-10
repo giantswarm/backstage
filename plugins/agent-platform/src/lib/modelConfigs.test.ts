@@ -61,7 +61,7 @@ describe('validateModelConfigForm', () => {
 
   it('requires a DNS-label name', () => {
     expect(validateModelConfigForm(values({ name: '' }))).toContainEqual(
-      expect.stringContaining('Name is required'),
+      expect.stringContaining('Technical name is required'),
     );
     expect(validateModelConfigForm(values({ name: 'Qwen_3' }))).toContainEqual(
       expect.stringContaining('lowercase'),

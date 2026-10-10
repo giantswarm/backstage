@@ -11,6 +11,7 @@ import {
   Card,
   CardBody,
   Flex,
+  Link,
   Select,
   Text,
 } from '@backstage/ui';
@@ -27,15 +28,16 @@ import {
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 
-import { modelsRouteRef } from '../../routes';
+import { modelsRouteRef, servingRouteRef } from '../../routes';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
-  MODEL_CONFIG_NAMESPACE,
   ModelConfigFormValues,
   validateModelConfigForm,
 } from '../../lib/modelConfigs';
+import { slugify } from '../../lib/slugify';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 
@@ -95,9 +97,28 @@ export function NewModelPage() {
     }
   }, [singleInstallation, installation]);
 
-  const onChange = useCallback((patch: Partial<ModelConfigFormValues>) => {
-    setValues(prev => ({ ...prev, ...patch }));
-  }, []);
+  // The technical name is filled in from the display name until the person
+  // types one of their own (the same rule as agent creation's slug).
+  const [nameEdited, setNameEdited] = useState(false);
+  const onChange = useCallback(
+    (patch: Partial<ModelConfigFormValues>) => {
+      if (patch.name !== undefined) {
+        setNameEdited(true);
+      }
+      setValues(prev => {
+        const next = { ...prev, ...patch };
+        if (
+          patch.displayName !== undefined &&
+          patch.name === undefined &&
+          !nameEdited
+        ) {
+          next.name = slugify(patch.displayName);
+        }
+        return next;
+      });
+    },
+    [nameEdited],
+  );
 
   const validationErrors = [
     ...(installation ? [] : ['Select an installation']),
@@ -152,6 +173,14 @@ export function NewModelPage() {
   // Memoized so the frame's footer slot only updates when the handlers change,
   // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
   // to the frame's footer, so only the primary lives here.
+  // The way to self-hosted models, where a serving layer exists to host one.
+  const servingRoute = useRouteRef(servingRouteRef);
+  const serving = useOptionalServing();
+  const hostingHref =
+    servingRoute && serving && hasServingLayer(serving)
+      ? servingRoute()
+      : undefined;
+
   const actions = useMemo(
     () => (
       <Button variant="primary" onPress={onSubmit} isDisabled={isSaving}>
@@ -170,9 +199,14 @@ export function NewModelPage() {
       width="medium"
     >
       <WizardStepHeading title="Connect a model">
-        Make a model available for agents on an installation. It is stored as a
-        kagent ModelConfig in the <code>{MODEL_CONFIG_NAMESPACE}</code>{' '}
-        namespace; the API key, if any, goes into a Secret next to it.
+        Agents run on the models you add here.
+        {hostingHref ? (
+          <>
+            {' '}
+            To run a model on your own GPUs instead, use{' '}
+            <Link href={hostingHref}>Model hosting</Link>.
+          </>
+        ) : null}
       </WizardStepHeading>
 
       {!singleInstallation && (

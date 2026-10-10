@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -116,6 +116,63 @@ describe('ModelsRouter', () => {
     renderTab('/agent-platform/models/serving');
 
     expect(await screen.findByText('serving-view')).toBeInTheDocument();
+  });
+
+  describe('model hosting inside the agent shell', () => {
+    beforeEach(() => {
+      mockAgentShell = true;
+      mockUseServing.mockReturnValue(withServingLayer);
+    });
+
+    it('frames the serving views as one page with the standard title', async () => {
+      renderTab('/agent-platform/models/capacity');
+
+      expect(await screen.findByText('capacity-view')).toBeInTheDocument();
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Model hosting',
+      );
+      expect(
+        screen.getByText(
+          'Run models on your own GPUs, so data stays in your clusters.',
+        ),
+      ).toBeInTheDocument();
+
+      const breadcrumbs = screen.getByRole('navigation', {
+        name: 'Breadcrumb',
+      });
+      expect(
+        within(breadcrumbs).getByRole('link', { name: 'Models' }),
+      ).toHaveAttribute('href', '/customize/models');
+      expect(
+        within(breadcrumbs).getByText('Model hosting'),
+      ).toBeInTheDocument();
+    });
+
+    it('offers the serving views as the page tabs, without Model configs', async () => {
+      renderTab('/agent-platform/models/serving');
+
+      expect(await screen.findByText('serving-view')).toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Serving',
+        'GPU capacity',
+      ]);
+      expect(screen.getByRole('tab', { name: 'GPU capacity' })).toHaveAttribute(
+        'href',
+        '/agent-platform/models/capacity',
+      );
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Serving',
+      );
+    });
+
+    it('leaves the model page to frame itself, with no tab strip above it', async () => {
+      renderTab('/agent-platform/models/inst-1/kagent/qwen3');
+
+      expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+      expect(screen.queryByText('Model hosting')).toBeNull();
+    });
   });
 
   it('renders the ModelConfigs list at the tab root, with no redirect', async () => {

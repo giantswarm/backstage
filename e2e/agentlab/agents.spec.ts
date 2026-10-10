@@ -73,7 +73,7 @@ test('an agent in the roster opens its detail page', async ({
   ).toBeVisible();
 });
 
-test('the New agent wizard opens on Details, derives the slug and lists the ModelConfigs', async ({
+test('the New agent wizard opens on Details, derives the technical name and lists the ModelConfigs', async ({
   admin,
 }) => {
   await open(admin, '/agent-platform/agents');
@@ -81,13 +81,16 @@ test('the New agent wizard opens on Details, derives the slug and lists the Mode
   await expect(admin).toHaveURL(/\/agent-platform\/agents\/new$/);
   await expectWizardStep(admin, 'Details');
   await expect(
-    admin.getByRole('heading', { name: 'Create an agent' }),
+    admin.getByRole('heading', { name: 'Describe your agent' }),
   ).toBeVisible();
 
-  await admin.getByRole('textbox', { name: 'Name' }).fill('E2E Probe Agent');
+  await admin
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill('E2E Probe Agent');
+  await admin.getByText('More options').click();
   await expect(
-    admin.getByRole('textbox', { name: 'Slug' }),
-    'the slug follows the name',
+    admin.getByRole('textbox', { name: 'Technical name' }),
+    'the technical name follows the name',
   ).toHaveValue('e2e-probe-agent');
 
   const models = admin.getByRole('radiogroup', { name: 'Model' });

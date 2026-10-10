@@ -25,6 +25,11 @@ export type NewAgentFormState = {
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
+   * The picked model's display name, for the plain summaries (the review
+   * step's Model row). Undefined falls back to the ModelConfig's name.
+   */
+  modelDisplayName: string | undefined;
+  /**
    * The Harness the agent runs on, when the person picked one other than the
    * platform Harness. Undefined is the platform Harness: `harness` is then
    * left out of the request and agent-manager composes its own.
@@ -62,7 +67,11 @@ export type NewAgentFormContextValue = {
   setSlug: (slug: string) => void;
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
-  selectModelConfig: (name: string, namespace: string) => void;
+  selectModelConfig: (
+    name: string,
+    namespace: string,
+    displayName?: string,
+  ) => void;
   /** Undefined picks the platform Harness. */
   selectHarness: (harness: HarnessChoice | undefined) => void;
   setSystemMessage: (systemMessage: string) => void;
@@ -105,6 +114,7 @@ const initialState: NewAgentFormState = {
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
+  modelDisplayName: undefined,
   harness: undefined,
   droppedHarness: undefined,
   // Empty means "use the chart default": the spec sent to agent-manager omits
@@ -154,12 +164,12 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
       // isn't a valid DNS-1123 label so the deploy can't fail late at apply time.
       if (!isValidSlug(state.slug)) {
         validationErrors.push(
-          'Slug must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent',
+          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent',
         );
       }
     } else if (state.name.trim()) {
       // Only flag a missing slug once there's a name (it derives from the name).
-      validationErrors.push('Slug is required');
+      validationErrors.push('Technical name is required');
     }
     if (!state.installation) {
       validationErrors.push('Select an installation');
@@ -199,20 +209,22 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
           installation,
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
+          modelDisplayName: undefined,
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick.
-      selectModelConfig: (name, namespace) =>
+      selectModelConfig: (name, namespace, displayName) =>
         setState(prev =>
           prev.modelConfigNamespace === namespace
-            ? { ...prev, modelConfigName: name }
+            ? { ...prev, modelConfigName: name, modelDisplayName: displayName }
             : {
                 ...prev,
                 modelConfigName: name,
                 modelConfigNamespace: namespace,
+                modelDisplayName: displayName,
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               },

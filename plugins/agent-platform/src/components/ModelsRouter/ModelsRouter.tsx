@@ -6,7 +6,10 @@ import {
   useParams,
 } from 'react-router-dom';
 import { Box, Tab, TabList, Tabs } from '@backstage/ui';
-import { useSplatBasePath } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ShellPage,
+  useSplatBasePath,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -21,7 +24,10 @@ import { NewModelPage } from '../NewModelPage';
 import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
-import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
+import {
+  SHELL_CUSTOMIZE_PATH,
+  ShellCustomizeRedirect,
+} from '../ShellCustomizeRedirect';
 import { useAgentShell } from '../../hooks/useAgentShell';
 
 // The serving layer's two views, as a second-level tab row under the Agent
@@ -66,7 +72,81 @@ const LegacyDetailRedirect = () => {
   );
 };
 
-// The routed view, and the tab strip above it.
+/**
+ * Model hosting inside the agent-platform shell: the serving layer's views
+ * under the platform-standard page frame (`ShellPage`) — breadcrumbs
+ * "Customize / Models / Model hosting", the screen's title at the standard
+ * scale, and the views as its routed tabs. The actions a view registers
+ * (Serve model, Add GPU pool…) land in this header's slot, and the shell's
+ * generic sub-page header stands aside because `ShellPage` claims it.
+ *
+ * The tabs show where a serving layer exists; a deep link on a portal
+ * without one keeps the frame and lets the view's own empty state speak.
+ */
+const ShellModelHosting = () => {
+  const basePath = useSplatBasePath();
+  const { search } = useLocation();
+  const servingLayer = hasServingLayer(useServing());
+
+  return (
+    <ShellPage
+      title="Model hosting"
+      breadcrumbs={[
+        { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
+        { label: 'Models', href: `${SHELL_CUSTOMIZE_PATH}/models` },
+        { label: 'Model hosting' },
+      ]}
+      description="Run models on your own GPUs, so data stays in your clusters."
+      tabs={
+        servingLayer
+          ? SERVING_VIEWS.map(view => ({
+              id: view.path,
+              path: view.path,
+              title: view.title,
+            }))
+          : undefined
+      }
+    >
+      <Routes>
+        <Route path="serving" element={<ServingPage />} />
+        <Route path="capacity" element={<GpuCapacityPage />} />
+        {/* A guess or a retired view lands on the first view rather than
+            on the frame over an empty page. Absolute, from the splat base
+            path: a relative target inside a splat route would append. */}
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={{ pathname: `${basePath}/serving`, search }}
+              replace
+            />
+          }
+        />
+      </Routes>
+    </ShellPage>
+  );
+};
+
+/**
+ * The tab's views inside the agent-platform shell. The list is the Customize
+ * screen's Models tab, so the index sends there; the create flow and one
+ * model's page frame themselves; everything else is model hosting.
+ */
+const ShellModelsViews = () => (
+  <Routes>
+    <Route index element={<ShellCustomizeRedirect tab="models" />} />
+    <Route path="new" element={<NewModelPage />} />
+    <Route
+      path=":installation/:namespace/:name"
+      element={<ModelDetailPage />}
+    />
+    <Route path="*" element={<ShellModelHosting />} />
+  </Routes>
+);
+
+// The routed view, and the tab strip above it — in classic chrome, under the
+// Agent Platform page's header. Inside the shell the frame is
+// `ShellModelsViews` instead.
 //
 // The two serving views only exist once a reachable installation has a serving
 // layer this portal can see (or could not be asked). A model-manager that
@@ -86,9 +166,10 @@ const ModelsViews = () => {
   const servingLayer = hasServingLayer(useServing());
   const onList = pathname.replace(/\/$/, '') === basePath;
   const agentShell = useAgentShell();
-  // Inside the agent-platform shell the list is the Customize screen's Models
-  // tab, and the index sends there.
-  const showTabs = (servingLayer || !onList) && !(agentShell && onList);
+  if (agentShell) {
+    return <ShellModelsViews />;
+  }
+  const showTabs = servingLayer || !onList;
 
   return (
     <>
@@ -125,16 +206,7 @@ const ModelsViews = () => {
         </Box>
       )}
       <Routes>
-        <Route
-          index
-          element={
-            agentShell ? (
-              <ShellCustomizeRedirect tab="models" />
-            ) : (
-              <ModelConfigsPage />
-            )
-          }
-        />
+        <Route index element={<ModelConfigsPage />} />
         <Route path="new" element={<NewModelPage />} />
         {/* `new` (one segment) can never be swallowed by the three-segment
             detail path: react-router matches on segment count. */}

@@ -1,7 +1,5 @@
-import { Content } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
@@ -18,6 +16,7 @@ import {
   LlmUsageState,
   PricingCoverageNote,
 } from '../LlmUsage';
+import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -71,25 +70,21 @@ export function UsageCostPage() {
   const windowNote = `The last ${days} days.`;
 
   return (
-    <Content>
+    <ShellAwareContent>
       <UsageColumn>
         <Flex direction="column" gap="6">
-          <SectionHeader
-            as="h2"
-            variant="title-medium"
-            title="Cost"
-            description={
-              installation ? (
-                <>
-                  Spend on <strong>{installation}</strong> over the last {days}{' '}
-                  days, for every user, priced per call from the gateway's own
-                  model catalogue.
-                </>
-              ) : (
-                `Spend over the last ${days} days, for every user, priced per call from the gateway's own model catalogue.`
-              )
-            }
-          />
+          {/* One short caption, not a heading: the tab above already names
+              the view. How the spend is priced is the footnote's to say. */}
+          <Text as="p" variant="body-medium" color="secondary">
+            {installation ? (
+              <>
+                Spend on <strong>{installation}</strong> over the last {days}{' '}
+                days, for every user.
+              </>
+            ) : (
+              `Spend over the last ${days} days, for every user.`
+            )}
+          </Text>
 
           <LlmUsageState view={view} />
 
@@ -158,6 +153,6 @@ export function UsageCostPage() {
           )}
         </Flex>
       </UsageColumn>
-    </Content>
+    </ShellAwareContent>
   );
 }

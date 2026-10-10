@@ -29,12 +29,18 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  type BreadcrumbItem,
+  DateComponent,
+  FactsColumn,
+  ShellPage,
+  type ShellPageProps,
   StatusLabel,
   useProvidePageHeaderActions,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import { useAgentShell } from '../../hooks/useAgentShell';
 import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
@@ -70,16 +76,19 @@ import {
 import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
+import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
 import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
-import { AgentDetailTabs } from './AgentDetailTabs';
+import { AgentDetailTabs, SHELL_AGENT_TABS } from './AgentDetailTabs';
 import { AgentOverviewTab } from './AgentOverviewTab';
+import { agentFacts, AgentPlainOverview } from './AgentPlainOverview';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentSkillsCard } from './AgentSkillsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
+import { AgentUsageTab } from './AgentUsageTab';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -187,9 +196,91 @@ function BackToAgents({ children }: { children: ReactNode }) {
   return <Link to={agentsRoute()}>{children}</Link>;
 }
 
+/**
+ * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
+ * and one level deeper for a view below the agent (its tools).
+ */
+function agentBreadcrumbs(
+  title: string,
+  subPage?: { label: string; agentHref: string },
+): BreadcrumbItem[] {
+  const ancestors: BreadcrumbItem[] = [
+    { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
+    { label: 'Agents', href: `${SHELL_CUSTOMIZE_PATH}/agents` },
+  ];
+  return subPage
+    ? [
+        ...ancestors,
+        { label: title, href: subPage.agentHref },
+        { label: subPage.label },
+      ]
+    : [...ancestors, { label: title }];
+}
+
+/**
+ * The page's outer frame, the split the session page makes.
+ *
+ * Inside the agent-platform shell it is the platform-standard page frame
+ * (`ShellPage`): breadcrumbs reading "Customize / Agents / <agent>", the
+ * agent's name as the h1 at the standard scale with its avatar and
+ * readiness, its actions at the header's right and the routed tabs under it.
+ * The shell's generic "Agents" sub-page header stands aside because
+ * `ShellPage` claims the page header, so the page has one title.
+ *
+ * In classic chrome it is `Content` under the Agent Platform page's header
+ * and tabs, with the page's own header (`AgentHeader`) inside.
+ *
+ * A component of its own so every exit — loading, deploying, not found,
+ * unreadable, and the agent itself — gets the same frame.
+ */
+function AgentFrame({
+  title,
+  subPage,
+  children,
+  ...shellProps
+}: Omit<ShellPageProps, 'title' | 'breadcrumbs'> & {
+  /** The shell header's h1, and the breadcrumbs' last entry. */
+  title: string;
+  /** A view below the agent, named in the breadcrumbs after it. */
+  subPage?: { label: string; agentHref: string };
+}) {
+  const agentShell = useAgentShell();
+  if (!agentShell) {
+    return <Content>{children}</Content>;
+  }
+  return (
+    <ShellPage
+      title={title}
+      breadcrumbs={agentBreadcrumbs(title, subPage)}
+      {...shellProps}
+    >
+      {children}
+    </ShellPage>
+  );
+}
+
+/** The derived readiness beside the title, tagged for the tests. */
+function ReadinessBadge({ readiness }: { readiness: ReadinessPresentation }) {
+  return (
+    // Tagged because the derived readiness and the condition it came from
+    // share a label ("Ready", "Ready") — this is the derived one.
+    <span data-testid="agent-readiness">
+      <StatusLabel
+        label={readiness.label}
+        intent={readiness.intent}
+        icon={readiness.icon}
+      />
+    </span>
+  );
+}
+
 function AgentDetailPageContent() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
+  // Which frame this page renders in — see `AgentFrame`. Also decides the
+  // tabs: the shell's plain Overview · Sessions · Usage, or classic chrome's
+  // Overview · Tools · Skills · Sessions.
+  const agentShell = useAgentShell();
 
   // Same two tiers as the list: tighten while the agent is converging, relax
   // once it settles or stays broken. This page is where someone watches an
@@ -547,35 +638,55 @@ function AgentDetailPageContent() {
   // The button is withheld for an agent that is not ready: kagent would accept the
   // session and the turn would then fail at the first message. AgentSessionBlocker
   // says why in its place.
+  const menu = useMemo(
+    () =>
+      agent ? (
+        <AgentActionsMenu
+          agent={agent}
+          agentManager={agentManagerGate}
+          onEdit={openEdit}
+          onUpdateSkills={openUpdateSkills}
+          onDelete={openDelete}
+        />
+      ) : null,
+    [agent, agentManagerGate, openEdit, openUpdateSkills, openDelete],
+  );
+  const isReady = agentRow?.readiness === 'ready';
   const actions = useMemo(
     () =>
       agent ? (
         <Flex align="center" gap="2">
-          {agentRow?.readiness === 'ready' && (
+          {isReady && (
             <Button variant="primary" onPress={openNewSession}>
               Start a session
             </Button>
           )}
-          <AgentActionsMenu
-            agent={agent}
-            agentManager={agentManagerGate}
-            onEdit={openEdit}
-            onUpdateSkills={openUpdateSkills}
-            onDelete={openDelete}
-          />
+          {menu}
         </Flex>
       ) : null,
-    [
-      agent,
-      agentRow?.readiness,
-      agentManagerGate,
-      openEdit,
-      openUpdateSkills,
-      openDelete,
-      openNewSession,
-    ],
+    [agent, isReady, menu, openNewSession],
   );
-  useProvidePageHeaderActions(actions);
+  // Inside the shell the actions are `ShellPage`'s own (below), rendered in
+  // this plugin's tree; the shared header slot is classic chrome's.
+  useProvidePageHeaderActions(agentShell ? null : actions);
+
+  // The shell header's actions, per the prototype: Edit beside the primary
+  // "Use this agent", and the rest in the menu.
+  const shellActions =
+    agent && (canEditAgent || isReady) ? (
+      <>
+        {canEditAgent && (
+          <Button variant="secondary" onPress={openEdit}>
+            Edit
+          </Button>
+        )}
+        {isReady && (
+          <Button variant="primary" onPress={openNewSession}>
+            Use this agent
+          </Button>
+        )}
+      </>
+    ) : undefined;
 
   // A failed read while an agent is already in hand is reported through the
   // ErrorsProvider notice, not by replacing the page.
@@ -597,9 +708,9 @@ function AgentDetailPageContent() {
 
   if (isLoading || isAskingAgentManager) {
     return (
-      <Content>
+      <AgentFrame title={name || 'Agent'}>
         <Progress aria-label="Loading agent" />
-      </Content>
+      </AgentFrame>
     );
   }
 
@@ -617,16 +728,29 @@ function AgentDetailPageContent() {
     if (isDeploying) {
       const failed = release.status?.verdict === 'failed';
       return (
-        <Content>
-          <Flex direction="column" gap="4">
-            <AgentHeader
-              displayName={name}
-              avatarUrl={avatarUrl}
-              readiness={DEPLOYING_PRESENTATION}
+        <AgentFrame
+          title={name}
+          leading={
+            <AgentAvatar
+              size="large"
+              purpose="decoration"
               name={name}
-              installation={installation}
-              namespace={namespace}
+              src={avatarUrl ?? ''}
             />
+          }
+          badges={<ReadinessBadge readiness={DEPLOYING_PRESENTATION} />}
+        >
+          <Flex direction="column" gap="4">
+            {!agentShell && (
+              <AgentHeader
+                displayName={name}
+                avatarUrl={avatarUrl}
+                readiness={DEPLOYING_PRESENTATION}
+                name={name}
+                installation={installation}
+                namespace={namespace}
+              />
+            )}
             <Alert
               status={failed ? 'danger' : 'info'}
               title={
@@ -640,7 +764,7 @@ function AgentDetailPageContent() {
               }
             />
           </Flex>
-        </Content>
+        </AgentFrame>
       );
     }
 
@@ -650,7 +774,7 @@ function AgentDetailPageContent() {
     // kagent.dev, answers 404 for the `agents` resource.
     if (errors.some(isNotFoundError)) {
       return (
-        <Content>
+        <AgentFrame title="Agent">
           <EmptyState
             missing="data"
             title="Agent not found"
@@ -659,12 +783,12 @@ function AgentDetailPageContent() {
             }. It may have been deleted or renamed, or that installation may not run kagent API v2.`}
             action={<BackToAgents>Back to agents</BackToAgents>}
           />
-        </Content>
+        </AgentFrame>
       );
     }
 
     return (
-      <Content>
+      <AgentFrame title="Agent">
         <Flex direction="column" gap="3">
           <Alert
             status="danger"
@@ -676,91 +800,32 @@ function AgentDetailPageContent() {
           />
           <BackToAgents>Back to agents</BackToAgents>
         </Flex>
-      </Content>
+      </AgentFrame>
     );
   }
 
-  return (
-    <Content>
-      <Flex direction="column" gap="4">
-        <AgentHeader
-          displayName={agent.getDisplayName()}
-          avatarUrl={avatarUrl}
-          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
-          name={name}
-          installation={installation}
-          namespace={namespace}
-          description={agent.getDescription()}
-        />
+  const toolsHref = `${basePath}/tools${location.search}`;
 
-        <AgentCreationProgress
-          installation={installation}
-          namespace={namespace}
-          name={name}
-        />
+  /* What a write just made to the agent is doing, and why sessions cannot
+     start: true on every tab, so above the routed content in either frame. */
+  const status = (
+    <>
+      <AgentCreationProgress
+        installation={installation}
+        namespace={namespace}
+        name={name}
+      />
 
-        <AgentSessionBlocker
-          agent={agent}
-          onEdit={canEditAgent ? openEdit : undefined}
-          isGitOpsOwned={agentManagerGate.isGitOpsOwned}
-        />
+      <AgentSessionBlocker
+        agent={agent}
+        onEdit={canEditAgent ? openEdit : undefined}
+        isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+      />
+    </>
+  );
 
-        <AgentDetailTabs />
-
-        {/* The tabs are routed, so each is its own URL and a deep link or a
-            reload lands on the section it names. Overview is the index: the
-            three-segment URL every link in the portal already points at keeps
-            rendering the agent, with no redirect to flash through.
-
-            The reads above stay in this component, which the router never
-            unmounts — switching tabs neither refetches the agent nor
-            re-registers the header actions. The toolset's muster queries are the
-            deliberate exception: they live in the Tools tab and now run only
-            when someone opens it, rather than on every visit to the page. */}
-        <Routes>
-          <Route
-            index
-            element={
-              <AgentOverviewTab
-                agent={agent}
-                installation={installation}
-                modelConfig={modelConfig}
-                modelServing={agentRow?.modelServing}
-                toolsHref={`${basePath}/tools${location.search}`}
-              />
-            }
-          />
-          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
-          <Route
-            path="skills"
-            element={
-              <AgentSkillsCard
-                agent={agent}
-                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
-                onAddSkills={canEditAgent ? openEdit : undefined}
-                isGitOpsOwned={agentManagerGate.isGitOpsOwned}
-              />
-            }
-          />
-          <Route
-            path="sessions"
-            element={
-              <AgentSessionsCard
-                sessions={sessions}
-                onStartSession={
-                  agentRow?.readiness === 'ready' ? openNewSession : undefined
-                }
-              />
-            }
-          />
-          {/* A mistyped or retired tab is not a missing agent: send it to
-              Overview rather than render an empty page under a header that
-              says the agent is fine. `edit` never arrives here — AgentsRouter
-              matches its static segment ahead of this splat. */}
-          <Route path="*" element={<Navigate to={basePath} replace />} />
-        </Routes>
-      </Flex>
-
+  const dialogs = (
+    <>
       {/* In the body rather than beside the header button that opens it: the
           header slot renders outside this plugin's `QueryClientProvider`, so the
           create mutation would have no client there. */}
@@ -798,6 +863,190 @@ function AgentDetailPageContent() {
         updating={updating}
         onUpdated={onSkillsUpdated}
       />
+    </>
+  );
+
+  if (agentShell) {
+    const displayName = agent.getDisplayName();
+    const created = agent.getCreatedTimestamp();
+    const path = location.pathname.replace(/\/$/, '');
+    const onOverview = path === basePath;
+    const onTools = path === `${basePath}/tools`;
+
+    return (
+      <AgentFrame
+        title={displayName}
+        // The tools view is reached from the Overview's Connectors section
+        // rather than a tab, so the breadcrumbs are its way back.
+        subPage={
+          onTools
+            ? { label: 'Tools', agentHref: `${basePath}${location.search}` }
+            : undefined
+        }
+        leading={
+          <AgentAvatar
+            size="large"
+            purpose="decoration"
+            name={displayName}
+            src={avatarUrl ?? ''}
+          />
+        }
+        badges={
+          <ReadinessBadge
+            readiness={READINESS_PRESENTATION[agent.getReadiness()]}
+          />
+        }
+        meta={
+          created ? (
+            <>
+              Created <DateComponent value={created} />
+            </>
+          ) : undefined
+        }
+        actions={shellActions}
+        menu={menu}
+        tabs={SHELL_AGENT_TABS}
+        tabsSearch={location.search}
+        // The facts belong to the Overview; Sessions and Usage take the
+        // whole width.
+        aside={
+          onOverview ? (
+            <FactsColumn
+              aria-label="About this agent"
+              facts={agentFacts({
+                agent,
+                installation,
+                modelConfig,
+                modelServing: agentRow?.modelServing,
+              })}
+            />
+          ) : undefined
+        }
+      >
+        <Helmet title={`${displayName} · Agents · Agent Platform`} />
+        <Flex direction="column" gap="4">
+          {status}
+
+          {/* Routed like classic chrome's tabs, so each is its own URL. Tools
+              and Skills are folded into the Overview here, per the
+              prototype; the exact tools stay one link away, and a bookmarked
+              `skills` tab lands on the Overview that now shows them. */}
+          <Routes>
+            <Route
+              index
+              element={
+                <AgentPlainOverview
+                  agent={agent}
+                  installation={installation}
+                  modelConfig={modelConfig}
+                  modelServing={agentRow?.modelServing}
+                  toolsHref={toolsHref}
+                  onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
+                  onAddSkills={canEditAgent ? openEdit : undefined}
+                  isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+                />
+              }
+            />
+            <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
+            <Route
+              path="sessions"
+              element={
+                <AgentSessionsCard
+                  plain
+                  agentName={displayName}
+                  sessions={sessions}
+                  onStartSession={isReady ? openNewSession : undefined}
+                />
+              }
+            />
+            <Route
+              path="usage"
+              element={
+                <AgentUsageTab
+                  installation={installation}
+                  namespace={namespace}
+                  name={name}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to={basePath} replace />} />
+          </Routes>
+        </Flex>
+        {dialogs}
+      </AgentFrame>
+    );
+  }
+
+  return (
+    <Content>
+      <Flex direction="column" gap="4">
+        <AgentHeader
+          displayName={agent.getDisplayName()}
+          avatarUrl={avatarUrl}
+          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
+          name={name}
+          installation={installation}
+          namespace={namespace}
+          description={agent.getDescription()}
+        />
+
+        {status}
+
+        <AgentDetailTabs />
+
+        {/* The tabs are routed, so each is its own URL and a deep link or a
+            reload lands on the section it names. Overview is the index: the
+            three-segment URL every link in the portal already points at keeps
+            rendering the agent, with no redirect to flash through.
+
+            The reads above stay in this component, which the router never
+            unmounts — switching tabs neither refetches the agent nor
+            re-registers the header actions. The toolset's muster queries are the
+            deliberate exception: they live in the Tools tab and now run only
+            when someone opens it, rather than on every visit to the page. */}
+        <Routes>
+          <Route
+            index
+            element={
+              <AgentOverviewTab
+                agent={agent}
+                installation={installation}
+                modelConfig={modelConfig}
+                modelServing={agentRow?.modelServing}
+                toolsHref={toolsHref}
+              />
+            }
+          />
+          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
+          <Route
+            path="skills"
+            element={
+              <AgentSkillsCard
+                agent={agent}
+                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
+                onAddSkills={canEditAgent ? openEdit : undefined}
+                isGitOpsOwned={agentManagerGate.isGitOpsOwned}
+              />
+            }
+          />
+          <Route
+            path="sessions"
+            element={
+              <AgentSessionsCard
+                sessions={sessions}
+                onStartSession={isReady ? openNewSession : undefined}
+              />
+            }
+          />
+          {/* A mistyped or retired tab is not a missing agent: send it to
+              Overview rather than render an empty page under a header that
+              says the agent is fine. `edit` never arrives here — AgentsRouter
+              matches its static segment ahead of this splat. */}
+          <Route path="*" element={<Navigate to={basePath} replace />} />
+        </Routes>
+      </Flex>
+
+      {dialogs}
     </Content>
   );
 }
@@ -805,14 +1054,19 @@ function AgentDetailPageContent() {
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * Four routed tabs under the agent's own header — Overview, Tools, Skills,
- * Sessions — with Overview as the index, so the three-segment URL the rest of
- * the portal links to still opens the agent. The header and the creation
- * progress sit above the tab strip: which agent this is, and whether a write
- * just made to it has converged, are true on every tab.
+ * Inside the agent-platform shell, the prototype's plain-language page: three
+ * routed tabs — Overview (what it is for, its instructions, skills and
+ * connectors, with the Kubernetes detail behind "Show technical details"),
+ * Sessions and Usage — under the platform-standard `ShellPage` header, with
+ * the model and environment as facts beside the Overview. In classic chrome,
+ * four routed tabs under the agent's own header — Overview, Tools, Skills,
+ * Sessions. Overview is the index either way, so the three-segment URL the
+ * rest of the portal links to still opens the agent. The creation progress
+ * sits above the tabs: whether a write just made to the agent has converged
+ * is true on every tab.
  *
- * The agent can be edited, have its skills re-pinned and be deleted from the
- * header's actions menu — every write through agent-manager over muster as the
+ * The agent can be edited (the shell header's Edit, or the actions menu), have
+ * its skills re-pinned and be deleted from the header's actions menu — every write through agent-manager over muster as the
  * signed-in person, offered when the installation's muster lists agent-manager
  * and the agent is not applied from git.
  *

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -22,10 +23,24 @@ export function ModelConfigPicker() {
   const label = (
     <FieldLabel
       label="Model"
-      secondaryLabel="admin-provisioned"
-      description="Pick from the ModelConfigs an admin has provisioned on this installation."
+      description="What the agent thinks with. Admins add models under Customize → Models."
     />
   );
+
+  const modelConfigs = installation ? modelConfigsFor(installation) : [];
+  // The sole model of the installation: nothing to choose, so it is picked
+  // for the person, the way the sole installation is (InstallationSelect).
+  // Only while nothing is picked, so a pick of their own is never replaced.
+  const soleModel = modelConfigs.length === 1 ? modelConfigs[0] : undefined;
+  useEffect(() => {
+    if (soleModel && !state.modelConfigName) {
+      selectModelConfig(
+        soleModel.getName(),
+        soleModel.getNamespace() ?? '',
+        soleModel.getDisplayName(),
+      );
+    }
+  }, [soleModel, state.modelConfigName, selectModelConfig]);
 
   if (!installation) {
     return (
@@ -40,7 +55,6 @@ export function ModelConfigPicker() {
     );
   }
 
-  const modelConfigs = modelConfigsFor(installation);
   const hasError = unreachableInstallations.includes(installation);
 
   return (
@@ -96,18 +110,14 @@ export function ModelConfigPicker() {
                 role="radio"
                 selected={isSelected}
                 ariaLabel={`Select model ${mc.getDisplayName()}`}
-                onSelect={() => selectModelConfig(name, namespace)}
+                onSelect={() =>
+                  selectModelConfig(name, namespace, mc.getDisplayName())
+                }
               >
                 <Text weight="bold">{mc.getDisplayName()}</Text>
-                <Text variant="body-small" color="secondary">
+                <Text variant="body-x-small" color="secondary">
                   <span className={classes.code}>{mc.getModel()}</span>
                   {provider ? ` · ${provider}` : ''}
-                </Text>
-                <Text variant="body-x-small" color="secondary">
-                  ModelConfig{' '}
-                  <span className={classes.code}>
-                    {namespace}/{name}
-                  </span>
                 </Text>
               </SelectableCard>
             );

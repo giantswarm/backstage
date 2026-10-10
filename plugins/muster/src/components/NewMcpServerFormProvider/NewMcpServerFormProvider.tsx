@@ -152,13 +152,26 @@ type Draft = { state: NewMcpServerFormState; slugEdited: boolean };
  *
  * Composition and validation are pure functions in `lib/mcpServerDefinition` —
  * this only holds state and re-derives from it.
+ *
+ * `initialAuthMode` is the sign-in answer a new registration starts from: the
+ * shell's connector wizard leads with Company login, the classic pages with
+ * none. An edit always starts from the registered server's own mode.
  */
 export function NewMcpServerFormProvider({
   children,
+  initialAuthMode = emptyFormState.authMode,
 }: {
   children: ReactNode;
+  initialAuthMode?: McpServerAuthMode;
 }) {
-  const [state, setState] = useState<NewMcpServerFormState>(emptyFormState);
+  // What an untouched new registration holds — the empty form with the
+  // provider's starting sign-in answer. Fixed for the provider's lifetime.
+  const [initialState] = useState<NewMcpServerFormState>(() =>
+    initialAuthMode === emptyFormState.authMode
+      ? emptyFormState
+      : { ...emptyFormState, authMode: initialAuthMode },
+  );
+  const [state, setState] = useState<NewMcpServerFormState>(initialState);
   // The technical name auto-derives from the display name until the user edits
   // it by hand (same rule as agent creation).
   const [slugEdited, setSlugEdited] = useState(false);
@@ -187,25 +200,32 @@ export function NewMcpServerFormProvider({
     setBase({ definition: saved, form: current.state });
   }, []);
 
-  const startEdit = useCallback((server: MCPServer) => {
-    const current = latest.current;
-    // Only a registration in progress is a draft; an edit replaced by another
-    // edit has nothing to come back to.
-    if (!current.registeredName && hasUserInput(current.state)) {
-      draft.current = {
-        state: current.state,
-        slugEdited: current.slugEdited,
-      };
-    }
-    const form = formStateFromServer(server);
-    setSlugEdited(true);
-    setRegisteredName(server.getName());
-    setRegisteredInstallation(server.cluster);
-    setLastSave(undefined);
-    setLastSaveAt(undefined);
-    setBase({ definition: toMcpServerDefinition(server), form });
-    setState(form);
-  }, []);
+  const startEdit = useCallback(
+    (server: MCPServer) => {
+      const current = latest.current;
+      // Only a registration in progress is a draft; an edit replaced by another
+      // edit has nothing to come back to.
+      if (
+        !current.registeredName &&
+        hasUserInput(current.state, initialState)
+      ) {
+        draft.current = {
+          state: current.state,
+          slugEdited: current.slugEdited,
+        };
+      }
+      const form = formStateFromServer(server);
+      setSlugEdited(true);
+      setRegisteredName(server.getName());
+      setRegisteredInstallation(server.cluster);
+      setLastSave(undefined);
+      setLastSaveAt(undefined);
+      setBase({ definition: toMcpServerDefinition(server), form });
+      setState(form);
+    },
+    // initialState is fixed for the provider's lifetime, so this stays stable.
+    [initialState],
+  );
 
   const reset = useCallback(() => {
     const restored = draft.current;
@@ -216,8 +236,8 @@ export function NewMcpServerFormProvider({
     setLastSave(undefined);
     setLastSaveAt(undefined);
     setBase(undefined);
-    setState(restored?.state ?? emptyFormState);
-  }, []);
+    setState(restored?.state ?? initialState);
+  }, [initialState]);
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     // The display name only derives the technical name, which an edit locks —

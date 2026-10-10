@@ -5,11 +5,8 @@ import {
   agentsByModel,
   agentsBySkill,
   agentStatus,
-  ALL_ORGANIZATIONS,
   connectorCount,
-  inOrganization,
   modelStatus,
-  organizationsOf,
   rankSkills,
   searchAgents,
   searchModels,
@@ -235,7 +232,7 @@ describe('usage', () => {
   });
 });
 
-describe('search and organizations', () => {
+describe('search', () => {
   it('searches what a reader looks things up by', () => {
     expect(searchAgents([agent()], 'TICKETS')).toHaveLength(1);
     expect(searchAgents([agent()], 'nothing')).toHaveLength(0);
@@ -243,21 +240,5 @@ describe('search and organizations', () => {
     expect(searchSkills([skill('triage')], 'giantswarm/skills')).toHaveLength(
       1,
     );
-  });
-
-  it('lists the organizations once, sorted', () => {
-    expect(
-      organizationsOf([
-        { namespace: 'support' },
-        { namespace: 'engineering' },
-        { namespace: 'support' },
-      ]),
-    ).toEqual(['engineering', 'support']);
-  });
-
-  it('narrows to one organization, or keeps all', () => {
-    const rows = [agent(), agent({ id: 'x', namespace: 'engineering' })];
-    expect(inOrganization(rows, ALL_ORGANIZATIONS)).toHaveLength(2);
-    expect(inOrganization(rows, 'engineering').map(r => r.id)).toEqual(['x']);
   });
 });

@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Content, EmptyState } from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
@@ -22,6 +22,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
+import { ShellAwareContent } from '../ShellAwareContent';
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
@@ -591,7 +592,7 @@ export function ServingPage() {
     ) : undefined;
 
   // No serving layer anywhere: the empty state (or the registered backends
-  // that serve nothing yet). Rendered under the same <Content> as the table,
+  // that serve nothing yet). Rendered under the same content area as the table,
   // with the dialogs as its sibling in both cases, so Deploy turning the
   // first backend into a group does not remount the dialog mid-flow.
   const noServingLayer =
@@ -660,7 +661,7 @@ export function ServingPage() {
   }
 
   return (
-    <Content>
+    <ShellAwareContent>
       {emptyBody ?? (
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
@@ -735,6 +736,6 @@ export function ServingPage() {
       )}
       {backends.dialogs}
       {pools.dialogs}
-    </Content>
+    </ShellAwareContent>
   );
 }

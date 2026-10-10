@@ -206,22 +206,3 @@ export function rankSkills(
         (usage.get(canonicalSkillId(a)) ?? 0) || a.name.localeCompare(b.name),
   );
 }
-
-/** The namespaces of the rows, sorted: the shell's organizations. */
-export function organizationsOf(rows: { namespace: string }[]): string[] {
-  return [...new Set(rows.map(row => row.namespace).filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b),
-  );
-}
-
-/** The value of the organization select that keeps every row. */
-export const ALL_ORGANIZATIONS = 'all';
-
-export function inOrganization<T extends { namespace: string }>(
-  rows: T[],
-  organization: string,
-): T[] {
-  return organization === ALL_ORGANIZATIONS
-    ? rows
-    : rows.filter(row => row.namespace === organization);
-}

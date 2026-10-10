@@ -76,8 +76,6 @@ function Probe() {
       {JSON.stringify({
         counts: data.counts,
         hasSkillRepositories: data.hasSkillRepositories,
-        agentOrganizations: data.agentOrganizations,
-        modelOrganizations: data.modelOrganizations,
       })}
     </pre>
   );
@@ -101,12 +99,10 @@ describe('CustomizeDataProvider', () => {
     mockFailedRepositories = [];
   });
 
-  it('counts each tab and names the organizations', () => {
+  it('counts each tab', () => {
     expect(read()).toEqual({
       counts: { agents: 2, models: 1, skills: 1 },
       hasSkillRepositories: true,
-      agentOrganizations: ['engineering', 'support'],
-      modelOrganizations: ['support'],
     });
   });
 
@@ -129,10 +125,6 @@ describe('CustomizeDataProvider', () => {
     mockAgentsLoading = true;
     mockModelsLoading = true;
     mockSkillsLoading = true;
-    expect(read()).toEqual({
-      counts: {},
-      agentOrganizations: [],
-      modelOrganizations: [],
-    });
+    expect(read()).toEqual({ counts: {} });
   });
 });

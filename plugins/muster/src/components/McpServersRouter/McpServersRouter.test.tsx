@@ -4,7 +4,7 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { mcpServersRouteRef } from '../../routes';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { McpServersRouter } from './McpServersRouter';
 
 function mockPassThrough({ children }: { children: ReactNode }) {
@@ -50,18 +50,28 @@ jest.mock('../ConnectorPage', () => ({
 }));
 jest.mock('../ToolPage', () => ({ ToolPage: () => <p>Tool page</p> }));
 
-function renderAt(path: string, flag: FeatureFlagState, usedBy?: ReactElement) {
+function renderAt(
+  path: string,
+  flag: FeatureFlagState,
+  usedBy?: ReactElement,
+  { withCustomize = true }: { withCustomize?: boolean } = {},
+) {
   return renderInTestApp(
     <Routes>
       <Route
         path="/agent-platform/connectors/*"
         element={<McpServersRouter usedBy={usedBy} />}
       />
+      <Route path="/customize/*" element={<p>Customize screen</p>} />
     </Routes>,
     {
       initialRouteEntries: [path],
-      // The shell review redirect resolves its target through the route ref.
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      // The shell review redirect resolves its target through the route ref,
+      // the shell list redirect through the app-bound Customize page.
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        ...(withCustomize ? { '/customize': customizeExternalRouteRef } : {}),
+      },
       apis: [
         mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
       ],
@@ -75,6 +85,7 @@ describe('McpServersRouter', () => {
       'outside the shell',
       FeatureFlagState.None,
       {
+        list: 'Servers list',
         server: 'Server page',
         connect: 'Wizard',
         auth: 'Wizard auth',
@@ -86,6 +97,8 @@ describe('McpServersRouter', () => {
       'inside the shell',
       FeatureFlagState.Active,
       {
+        // The shell's list is the Customize screen's Connectors tab.
+        list: 'Customize screen',
         server: 'Connector page',
         connect: 'Shell wizard connect',
         auth: 'Shell wizard sign-in',
@@ -96,7 +109,7 @@ describe('McpServersRouter', () => {
     ],
   ])('%s', (_, flag, pages) => {
     it.each([
-      ['/agent-platform/connectors', 'Servers list'],
+      ['/agent-platform/connectors', pages.list],
       ['/agent-platform/connectors/new', pages.connect],
       ['/agent-platform/connectors/new/auth', pages.auth],
       ['/agent-platform/connectors/new/review', pages.review],
@@ -109,6 +122,18 @@ describe('McpServersRouter', () => {
       await renderAt(path, flag);
       expect(await screen.findByText(text)).toBeInTheDocument();
     });
+  });
+
+  it('keeps the classic list inside the shell when the app binds no Customize page', async () => {
+    await renderAt(
+      '/agent-platform/connectors',
+      FeatureFlagState.Active,
+      undefined,
+      {
+        withCustomize: false,
+      },
+    );
+    expect(await screen.findByText('Servers list')).toBeInTheDocument();
   });
 
   it('hands the attached Used by element to the shell connector page only', async () => {

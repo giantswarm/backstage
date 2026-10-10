@@ -283,8 +283,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // `path: pathname` verbatim, so the names are transmitted for this page as
     // for every other one; it is about keeping the dimension bounded.
     //
-    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` is a
-    // fixed, public set, so it stays bounded — the same argument the Usage
+    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` (and
+    // the agent shell's `usage`) is a fixed, public set, so it stays bounded — the same argument the Usage
     // views case makes. Overview is the index and keeps carrying no `view`, so
     // the existing `Agent detail` numbers stay continuous across this split.
     //
@@ -293,7 +293,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // required so it cannot swallow the create flow's `agents/new`,
     // `agents/new/skills` or `agents/new/review` — all of which keep reporting
     // through the generic case below.
-    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions))?$/.test(
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions|usage))?$/.test(
       pathname,
     ): {
       // Absent for Overview, and left out of the payload entirely rather than

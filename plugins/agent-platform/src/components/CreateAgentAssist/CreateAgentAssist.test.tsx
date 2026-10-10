@@ -271,7 +271,7 @@ describe('CreateAgentAssist', () => {
     );
   });
 
-  it('copies a fenced suggestion into the system prompt, with undo', async () => {
+  it('copies a fenced suggestion into the instructions, with undo', async () => {
     configuredRoles = { agentManagement: 'swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     mockView = viewWithDraft();
@@ -289,7 +289,7 @@ describe('CreateAgentAssist', () => {
     await userEvent.click(within(panel).getByRole('button', { name: 'Start' }));
 
     const use = await within(panel).findByRole('button', {
-      name: 'Use as system prompt',
+      name: 'Use these instructions',
     });
     await userEvent.click(use);
 
@@ -297,7 +297,7 @@ describe('CreateAgentAssist', () => {
       'You are a support triage agent.',
     );
     expect(
-      within(panel).getByText('Added to the system prompt.'),
+      within(panel).getByText('Added to the instructions.'),
     ).toBeInTheDocument();
 
     await userEvent.click(within(panel).getByRole('button', { name: 'Undo' }));

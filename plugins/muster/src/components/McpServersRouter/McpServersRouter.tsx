@@ -17,6 +17,7 @@ import {
   NewConnectorTestPage,
 } from '../NewConnectorWizard';
 import { ConnectorPage } from '../ConnectorPage';
+import { CustomizeTabRedirect } from '../CustomizeTabRedirect';
 import { ServerPage } from '../ServerPage';
 import { ToolPage } from '../ToolPage';
 import { useAgentShell } from '../../hooks/useAgentShell';
@@ -59,9 +60,27 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
   useScrollToTopOnNavigation();
   const agentShell = useAgentShell();
   return (
-    <NewMcpServerFormProvider>
+    // The shell's wizard leads with Company login, as the design does; the
+    // classic pages keep starting from no sign-in.
+    <NewMcpServerFormProvider
+      initialAuthMode={agentShell ? 'platform-sso' : undefined}
+    >
       <Routes>
-        <Route index element={<McpServersPage />} />
+        {/* Inside the shell the list is the Customize screen's Connectors
+            tab; the classic list page stays for the classic chrome. */}
+        <Route
+          index
+          element={
+            agentShell ? (
+              <CustomizeTabRedirect
+                tab="connectors"
+                fallback={<McpServersPage />}
+              />
+            ) : (
+              <McpServersPage />
+            )
+          }
+        />
         {/* The registration wizard's steps, on the same addresses in both
             chromes: the shell renders the prototype's three-step wizard
             (Connect / Sign-in / Test) in the content area, classic keeps the

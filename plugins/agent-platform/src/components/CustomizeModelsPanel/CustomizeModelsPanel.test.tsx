@@ -63,11 +63,10 @@ jest.mock('../ServingProvider', () => ({
   }),
 }));
 
-function renderPanel(search = '', organization = 'all') {
-  return renderInTestApp(
-    <CustomizeModelsPanel search={search} organization={organization} />,
-    { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
-  );
+function renderPanel(search = '') {
+  return renderInTestApp(<CustomizeModelsPanel search={search} />, {
+    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+  });
 }
 
 describe('CustomizeModelsPanel', () => {
@@ -89,8 +88,9 @@ describe('CustomizeModelsPanel', () => {
     ]);
   });
 
-  it('narrows to the organization and the search', async () => {
-    await renderPanel('', 'engineering');
+  it('narrows to the search', async () => {
+    await renderPanel('qwen');
+    expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
     expect(screen.queryByText('Sonnet 4.5')).not.toBeInTheDocument();
   });
 

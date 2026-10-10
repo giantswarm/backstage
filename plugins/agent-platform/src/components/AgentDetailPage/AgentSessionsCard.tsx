@@ -1,9 +1,25 @@
+import { ReactNode } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+
+/** The card around the list, or nothing for the plain variant. */
+function SessionsFrame({
+  plain,
+  children,
+}: {
+  plain: boolean;
+  children: ReactNode;
+}) {
+  return plain ? (
+    <>{children}</>
+  ) : (
+    <InfoCard title="Sessions">{children}</InfoCard>
+  );
+}
 
 /**
  * The signed-in user's sessions with this agent.
@@ -20,14 +36,24 @@ import { SessionsTable } from '../SessionsTable';
  *
  * With no sessions there is nothing to search, sort or page, so the table gives
  * way to the one thing to do next: start one, when the agent is ready.
+ *
+ * Inside the agent-platform shell the list is a tab of its own named
+ * "Sessions", so it drops the card and its heading (`plain`) and says whose
+ * sessions these are in the prototype's words.
  */
 export function AgentSessionsCard({
   sessions,
   onStartSession,
+  plain = false,
+  agentName,
 }: {
   sessions: AgentSessionsView;
   /** Opens the new-session dialog. Absent while the agent is not ready. */
   onStartSession?: () => void;
+  /** Without the card and its heading, for a tab that already names it. */
+  plain?: boolean;
+  /** The agent's name, for the plain variant's caption. */
+  agentName?: string;
 }) {
   const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
     sessions;
@@ -39,17 +65,17 @@ export function AgentSessionsCard({
 
   if (isUnavailable) {
     return (
-      <InfoCard title="Sessions">
+      <SessionsFrame plain={plain}>
         <Text variant="body-medium" color="secondary">
           Sessions could not be read from this installation.
         </Text>
-      </InfoCard>
+      </SessionsFrame>
     );
   }
 
   if (!isLoading && rows.length === 0) {
     return (
-      <InfoCard title="Sessions">
+      <SessionsFrame plain={plain}>
         <Flex direction="column" gap="3" align="start">
           <Text variant="body-medium" color="secondary">
             {/* "No sessions", not "none started": a runtime upgrade or kagent's
@@ -64,20 +90,29 @@ export function AgentSessionsCard({
             </Button>
           )}
         </Flex>
-      </InfoCard>
+      </SessionsFrame>
     );
   }
 
+  let caption: string;
+  if (isNotUserScoped) {
+    // Not a caveat we can hide: on an installation running kagent in
+    // `unsecure` mode the list is everyone's, so calling it "yours" would be
+    // a lie in the other direction.
+    caption =
+      "This installation's kagent does not scope sessions to a user, so these are everyone's sessions with this agent.";
+  } else if (plain) {
+    caption = `Your sessions with ${agentName || 'this agent'}.`;
+  } else {
+    caption =
+      'Your own sessions with this agent. kagent only lets you read sessions you started, so this is not a usage total.';
+  }
+
   return (
-    <InfoCard title="Sessions">
+    <SessionsFrame plain={plain}>
       <Flex direction="column" gap="3">
         <Text variant="body-small" color="secondary">
-          {isNotUserScoped
-            ? // Not a caveat we can hide: on an installation running kagent in
-              // `unsecure` mode the list is everyone's, so calling it "yours"
-              // would be a lie in the other direction.
-              "This installation's kagent does not scope sessions to a user, so these are everyone's sessions with this agent."
-            : 'Your own sessions with this agent. kagent only lets you read sessions you started, so this is not a usage total.'}
+          {caption}
         </Text>
 
         <SessionsTable
@@ -87,6 +122,6 @@ export function AgentSessionsCard({
           hideColumns={['agentName', 'installation']}
         />
       </Flex>
-    </InfoCard>
+    </SessionsFrame>
   );
 }

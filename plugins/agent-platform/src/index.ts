@@ -38,7 +38,4 @@ export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
 export { EnvironmentSelect } from './components/EnvironmentSelect';
 export type { EnvironmentSelectProps } from './components/EnvironmentSelect';
-export { OrganizationSelect } from './components/OrganizationSelect';
-export type { OrganizationSelectProps } from './components/OrganizationSelect';
-export { ALL_ORGANIZATIONS } from './lib/customize';
 export { useMetaAgent } from './hooks/useMetaAgent';

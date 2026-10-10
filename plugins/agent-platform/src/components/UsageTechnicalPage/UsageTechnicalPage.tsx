@@ -1,8 +1,6 @@
 import { ReactNode } from 'react';
-import { Content } from '@backstage/core-components';
-import { Flex } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useCurrency } from '../../lib/formatNumbers';
@@ -13,6 +11,7 @@ import {
   TokensByTypeCard,
   UsageCard,
 } from '../LlmUsage';
+import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -52,26 +51,23 @@ export function UsageTechnicalPage({ sections }: { sections?: ReactNode[] }) {
   const windowNote = `The last ${days} days.`;
 
   return (
-    <Content>
+    <ShellAwareContent>
       <UsageColumn>
         <Flex direction="column" gap="6">
-          <SectionHeader
-            as="h2"
-            variant="title-medium"
-            title="Technical details"
-            description={
-              installation ? (
-                <>
-                  The numbers behind the cost views on{' '}
-                  <strong>{installation}</strong>, over the last {days} days:
-                  raw token counts, model calls and gateway health. They explain
-                  the spend — they don't add to it.
-                </>
-              ) : (
-                `The numbers behind the cost views: raw token counts, model calls and gateway health. They explain the spend — they don't add to it.`
-              )
-            }
-          />
+          {/* One short caption, not a heading: the tab above already names
+              the view. It still leads with the framing, because a token
+              total next to a spend total otherwise reads as a second bill. */}
+          <Text as="p" variant="body-medium" color="secondary">
+            {installation ? (
+              <>
+                The numbers behind the cost views on{' '}
+                <strong>{installation}</strong>, over the last {days} days. They
+                explain the spend — they don't add to it.
+              </>
+            ) : (
+              `The numbers behind the cost views. They explain the spend — they don't add to it.`
+            )}
+          </Text>
 
           <LlmUsageState view={view} />
 
@@ -110,6 +106,6 @@ export function UsageTechnicalPage({ sections }: { sections?: ReactNode[] }) {
           {hasSections && <>{sections}</>}
         </Flex>
       </UsageColumn>
-    </Content>
+    </ShellAwareContent>
   );
 }

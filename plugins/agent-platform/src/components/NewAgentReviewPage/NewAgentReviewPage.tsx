@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { dump } from 'js-yaml';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
@@ -50,21 +50,44 @@ import { CommitOutcome } from '../CommitOutcome';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
+  // The plain summary: one row per answer, the label in a fixed column that
+  // stacks above the value on a phone.
+  plain: {
+    margin: 0,
+    borderTop: '1px solid var(--bui-border-1)',
+  },
+  plainRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    columnGap: theme.spacing(2),
+    rowGap: theme.spacing(0.5),
+    padding: theme.spacing(1.75, 0),
+    borderBottom: '1px solid var(--bui-border-1)',
+    '& dt': {
+      flex: '0 0 140px',
+      color: 'var(--bui-fg-secondary)',
+    },
+    '& dd': {
+      margin: 0,
+      flex: '1 1 240px',
+      minWidth: 0,
+      overflowWrap: 'anywhere',
+    },
+  },
   summary: {
     display: 'flex',
     flexWrap: 'wrap',
     gap: theme.spacing(4),
     padding: theme.spacing(2, 0),
-    borderTop: `1px solid ${theme.palette.divider}`,
     borderBottom: `1px solid ${theme.palette.divider}`,
-    marginTop: theme.spacing(3),
-    marginBottom: theme.spacing(4),
+    marginBottom: theme.spacing(3),
   },
   code: {
     fontFamily: 'monospace',
+    overflowWrap: 'anywhere',
   },
   section: {
-    marginBottom: theme.spacing(4),
+    marginBottom: theme.spacing(3),
   },
   sectionTitle: {
     marginBottom: theme.spacing(0.5),
@@ -82,6 +105,11 @@ const useStyles = makeStyles(theme => ({
     margin: 0,
     paddingLeft: theme.spacing(2.5),
   },
+  technical: {
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
+    padding: theme.spacing(1.5, 2),
+  },
   details: {
     border: `1px solid ${theme.palette.divider}`,
     borderRadius: theme.shape.borderRadius,
@@ -91,6 +119,10 @@ const useStyles = makeStyles(theme => ({
   summaryLine: {
     cursor: 'pointer',
     fontWeight: 600,
+  },
+  technicalSummary: {
+    cursor: 'pointer',
+    color: 'var(--bui-fg-primary)',
   },
   detailsBody: {
     marginTop: theme.spacing(1.5),
@@ -131,6 +163,23 @@ function SummaryItem({
       </Text>
       {children}
     </Flex>
+  );
+}
+
+/** One row of the plain summary: what the person answered, in their words. */
+function PlainRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  const classes = useStyles();
+  return (
+    <div className={classes.plainRow}>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
+    </div>
   );
 }
 
@@ -209,7 +258,7 @@ function refusalTitle(code: CreateAgentFailure['code']): string {
   if (code === 'conflict') {
     return 'Refused';
   }
-  return 'Deploy failed';
+  return 'Could not create the agent';
 }
 
 /** The person's muster session is not connected to agent-manager yet. */
@@ -372,7 +421,7 @@ export function NewAgentReviewPage() {
     }
   }, [creation, spec]);
 
-  const deployLabel = creation.isDeploying ? 'Deploying…' : 'Deploy agent';
+  const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
 
   // "Back" (in the frame's footer) goes to the immediately preceding step,
   // which is always the Tools step.
@@ -385,14 +434,16 @@ export function NewAgentReviewPage() {
   // actually change (see useProvidePageHeaderActions).
   const actions = useMemo(
     () => (
-      <Flex gap="2">
+      <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
         {canCommit && (
           <Button
-            variant="secondary"
+            variant="tertiary"
             isDisabled={isBusy || !canWrite}
             onPress={onCommit}
           >
-            {creation.isCommitting ? 'Committing…' : 'Commit'}
+            {creation.isCommitting
+              ? 'Proposing…'
+              : 'Propose as pull request instead'}
           </Button>
         )}
         <Button
@@ -400,7 +451,7 @@ export function NewAgentReviewPage() {
           isDisabled={isBusy || !canWrite}
           onPress={onDeploy}
         >
-          {deployLabel}
+          {createLabel}
         </Button>
       </Flex>
     ),
@@ -410,7 +461,7 @@ export function NewAgentReviewPage() {
       canCommit,
       onCommit,
       onDeploy,
-      deployLabel,
+      createLabel,
       creation.isCommitting,
     ],
   );
@@ -440,191 +491,246 @@ export function NewAgentReviewPage() {
 
   return (
     <AgentWizardFrame step="review" onBack={onBack}>
-      <div>
-        <WizardStepHeading title="Review and deploy">
-          agent-manager composes your configuration into a release of the{' '}
-          <span className={classes.code}>agent</span> chart
-          {chart ? (
-            <>
-              {' '}
-              (<span className={classes.code}>{chart.semver}</span>)
-            </>
-          ) : null}
-          : a Flux <span className={classes.code}>HelmRelease</span> and the
-          shared <span className={classes.code}>OCIRepository</span> that
-          sources the chart. Deploying applies them to{' '}
-          <strong>{state.installation}</strong> as you, and the agent runs on
-          {state.harness ? ' the Harness' : ' the platform Harness'}
-          {harnessName ? (
-            <>
-              {' '}
-              <span className={classes.code}>{harnessName}</span>
-            </>
-          ) : null}
-          . What you see below is agent-manager's dry run of exactly that.
+      <Flex direction="column" gap="5">
+        <WizardStepHeading title="Check and create">
+          The agent is ready to chat with about a minute after you create it.
         </WizardStepHeading>
 
-        <div className={classes.summary}>
-          <SummaryItem label="Release">
-            <span className={classes.code}>{spec.name}</span>
-          </SummaryItem>
-          <SummaryItem label="Installation">
-            <span className={classes.code}>{state.installation}</span>
-          </SummaryItem>
-          <SummaryItem label="Namespace">
-            <span className={classes.code}>{namespace}</span>
-          </SummaryItem>
-          <SummaryItem label="Chart">
-            {chart ? (
-              <Text variant="body-small">
-                <span className={classes.code}>
-                  {chart.ociUrl}:{chart.semver}
-                </span>
-                {chart.latestVersion ? (
-                  <Text variant="body-x-small" color="secondary">
-                    latest {chart.latestVersion}
-                  </Text>
-                ) : null}
-              </Text>
-            ) : (
-              <Text variant="body-small" color="secondary">
-                Reported by agent-manager
-              </Text>
-            )}
-          </SummaryItem>
-          <SummaryItem label="Runtime (Harness)">
-            {harnessName ? (
-              <span className={classes.code}>{harnessName}</span>
-            ) : (
-              <Text variant="body-small" color="secondary">
-                The platform Harness
-              </Text>
-            )}
-            <Text variant="body-x-small" color="secondary">
-              {state.harness ? harnessTitle(state.harness) : 'Platform default'}
-            </Text>
-          </SummaryItem>
-          <SummaryItem label="Tools">
-            <Text variant="body-small">
-              {toolsetSummaryLabel(shape, declared)}
-            </Text>
-            <Text variant="body-x-small" color="secondary">
-              <span className={classes.code}>{declared.join(', ')}</span>
-            </Text>
-          </SummaryItem>
-          {egressOrigins.length > 0 && (
-            <SummaryItem label="Extra egress">
-              <Text variant="body-small">
-                <span className={classes.code}>{egressOrigins.join(', ')}</span>
-              </Text>
-            </SummaryItem>
+        {/* The plain summary first: what the person chose, in their words. */}
+        <dl className={classes.plain} aria-label="Summary">
+          <PlainRow label="Name">{state.name}</PlainRow>
+          {state.description.trim() && (
+            <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
-          {/* Named here, not just buried in the values YAML — skills are chosen
-              on their own step, so this is the only compact confirmation of
-              what that step produced: each skill at the commit it is pinned to. */}
+          <PlainRow label="Model">
+            {state.modelDisplayName ?? state.modelConfigName}
+          </PlainRow>
+          <PlainRow label="Runtime">
+            {state.harness
+              ? harnessTitle(state.harness)
+              : 'Standard (platform default)'}
+          </PlainRow>
           {hasRepositories && (
-            <SummaryItem label="Skills">
-              {state.selectedSkills.length === 0 ? (
-                <Text variant="body-small" color="secondary">
-                  None
-                </Text>
-              ) : (
-                <Text variant="body-small">
-                  {state.selectedSkills.map((skill, index) => (
-                    <span key={`${skill.repoUrl}#${skill.path}`}>
-                      {index > 0 ? ', ' : ''}
-                      {skill.name}{' '}
-                      <span className={classes.code}>
-                        @{shortCommit(skill.commit)}
-                      </span>
-                    </span>
-                  ))}
-                </Text>
-              )}
-            </SummaryItem>
+            <PlainRow label="Skills">
+              {state.selectedSkills.length === 0
+                ? 'None'
+                : state.selectedSkills.map(skill => skill.name).join(', ')}
+            </PlainRow>
           )}
-        </div>
+          <PlainRow label="Tools">
+            {toolsetSummaryLabel(shape, declared)}
+          </PlainRow>
+        </dl>
 
-        <div className={classes.section}>
-          <SectionTitle
-            title="Tools"
-            description="The toolset this agent declares, and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
+        {shape === 'full' && (
+          <Alert
+            status="warning"
+            title="Full gateway access"
+            description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
           />
-          <Flex direction="column" gap="3">
-            {shape === 'full' && (
-              <Alert
-                status="warning"
-                title="Full gateway access"
-                description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
-              />
-            )}
-            {shape === 'none' && (
-              <Alert
-                status="info"
-                title="No tools"
-                description="A chat-only agent: the release renders no gateway entry."
-              />
-            )}
-            {unsignedServers.length > 0 && (
-              <Alert
-                status="info"
-                title="Selected without a sign-in"
-                description={`${unsignedServers.join(
-                  ', ',
-                )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
-              />
-            )}
-            <ToolsetResolutionList resolution={resolution} servers={servers} />
-          </Flex>
-        </div>
+        )}
 
-        <div className={classes.section}>
-          <SectionTitle
-            title="Resources to apply"
-            description={
-              <>
-                agent-manager's dry run (
-                <span className={classes.code}>validate_agent</span>): the Flux{' '}
-                <span className={classes.code}>OCIRepository</span> that sources
-                the chart and the{' '}
-                <span className={classes.code}>HelmRelease</span> that installs
-                the agent, with its values inlined and every skill pinned to a
-                commit. Applied to{' '}
-                <span className={classes.code}>{state.installation}</span>{' '}
-                exactly as shown.
-              </>
-            }
+        {/* What decides whether Create is offered, in sight: the check is
+            agent-manager's dry run of exactly what gets applied. */}
+        {validation.isLoading && !dryRun && (
+          <Text color="secondary">Checking the configuration…</Text>
+        )}
+        {validation.failure?.kind === 'not-connected' && (
+          <ConnectAgentManager
+            installation={state.installation!}
+            message={validation.failure.message}
           />
-          <Flex direction="column" gap="3">
-            {validation.isLoading && !dryRun && (
-              <Text color="secondary">
-                Asking agent-manager for the dry run…
-              </Text>
-            )}
-            {validation.failure?.kind === 'not-connected' && (
-              <ConnectAgentManager
-                installation={state.installation!}
-                message={validation.failure.message}
+        )}
+        {validation.failure?.kind === 'refused' && (
+          <Alert
+            status="danger"
+            title="agent-manager refused the dry run"
+            description={validation.failure.message}
+          />
+        )}
+        {validation.failure?.kind === 'error' && (
+          <Alert
+            status="danger"
+            title="Could not reach agent-manager"
+            description={validation.failure.message}
+          />
+        )}
+        {violations.length > 0 && <Violations errors={violations} />}
+        {notes.length > 0 && <Notes notes={notes} />}
+
+        {creation.failure?.kind === 'not-connected' && (
+          <ConnectAgentManager
+            installation={state.installation!}
+            message={creation.failure.message}
+          />
+        )}
+        {creation.failure?.kind === 'refused' && (
+          <Alert
+            status="danger"
+            title={refusalTitle(creation.failure.code)}
+            description={creation.failure.message}
+          />
+        )}
+        {creation.failure?.kind === 'error' && (
+          <Alert
+            status="danger"
+            title="Could not create the agent"
+            description={creation.failure.message}
+          />
+        )}
+        {commitResult && <CommitOutcome result={commitResult} />}
+
+        {/* Everything Kubernetes-shaped, collapsed: the release, where it
+            lands, what the toolset resolves to and agent-manager's dry run. */}
+        <details className={classes.technical}>
+          <summary className={classes.technicalSummary}>
+            Technical details
+          </summary>
+          <div className={classes.detailsBody}>
+            <Text as="p" variant="body-small" color="secondary">
+              agent-manager composes your configuration into a release of the{' '}
+              <span className={classes.code}>agent</span> chart
+              {chart ? (
+                <>
+                  {' '}
+                  (<span className={classes.code}>{chart.semver}</span>)
+                </>
+              ) : null}
+              : a Flux <span className={classes.code}>HelmRelease</span> and the
+              shared <span className={classes.code}>OCIRepository</span> that
+              sources the chart. Creating applies them to{' '}
+              <strong>{state.installation}</strong> as you, and the agent runs
+              on
+              {state.harness ? ' the Harness' : ' the platform Harness'}
+              {harnessName ? (
+                <>
+                  {' '}
+                  <span className={classes.code}>{harnessName}</span>
+                </>
+              ) : null}
+              . What you see below is agent-manager's dry run of exactly that.
+            </Text>
+
+            <div className={classes.summary}>
+              <SummaryItem label="Technical name">
+                <span className={classes.code}>{spec.name}</span>
+              </SummaryItem>
+              <SummaryItem label="Installation">
+                <span className={classes.code}>{state.installation}</span>
+              </SummaryItem>
+              <SummaryItem label="Namespace">
+                <span className={classes.code}>{namespace}</span>
+              </SummaryItem>
+              <SummaryItem label="Model">
+                <span className={classes.code}>{spec.modelConfig}</span>
+              </SummaryItem>
+              <SummaryItem label="Chart">
+                {chart ? (
+                  <Text variant="body-small">
+                    <span className={classes.code}>
+                      {chart.ociUrl}:{chart.semver}
+                    </span>
+                    {chart.latestVersion ? (
+                      <Text variant="body-x-small" color="secondary">
+                        latest {chart.latestVersion}
+                      </Text>
+                    ) : null}
+                  </Text>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    Reported by agent-manager
+                  </Text>
+                )}
+              </SummaryItem>
+              <SummaryItem label="Harness">
+                {harnessName ? (
+                  <span className={classes.code}>{harnessName}</span>
+                ) : (
+                  <Text variant="body-small" color="secondary">
+                    The platform Harness
+                  </Text>
+                )}
+              </SummaryItem>
+              <SummaryItem label="Toolset">
+                <Text variant="body-small">
+                  <span className={classes.code}>{declared.join(', ')}</span>
+                </Text>
+              </SummaryItem>
+              {egressOrigins.length > 0 && (
+                <SummaryItem label="Extra egress">
+                  <Text variant="body-small">
+                    <span className={classes.code}>
+                      {egressOrigins.join(', ')}
+                    </span>
+                  </Text>
+                </SummaryItem>
+              )}
+              {/* Each skill at the commit it is pinned to: the plain summary
+                  names them, this is what is written. */}
+              {hasRepositories && state.selectedSkills.length > 0 && (
+                <SummaryItem label="Skill pins">
+                  <Text variant="body-small">
+                    {state.selectedSkills.map((skill, index) => (
+                      <span key={`${skill.repoUrl}#${skill.path}`}>
+                        {index > 0 ? ', ' : ''}
+                        {skill.name}{' '}
+                        <span className={classes.code}>
+                          @{shortCommit(skill.commit)}
+                        </span>
+                      </span>
+                    ))}
+                  </Text>
+                </SummaryItem>
+              )}
+            </div>
+
+            <div className={classes.section}>
+              <SectionTitle
+                title="What the tools resolve to"
+                description="The toolset this agent declares, and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
               />
-            )}
-            {validation.failure?.kind === 'refused' && (
-              <Alert
-                status="danger"
-                title="agent-manager refused the dry run"
-                description={validation.failure.message}
-              />
-            )}
-            {validation.failure?.kind === 'error' && (
-              <Alert
-                status="danger"
-                title="Could not reach agent-manager"
-                description={validation.failure.message}
-              />
-            )}
-            {violations.length > 0 && <Violations errors={violations} />}
-            {notes.length > 0 && <Notes notes={notes} />}
+              <Flex direction="column" gap="3">
+                {shape === 'none' && (
+                  <Alert
+                    status="info"
+                    title="No tools"
+                    description="A chat-only agent: the release renders no gateway entry."
+                  />
+                )}
+                {unsignedServers.length > 0 && (
+                  <Alert
+                    status="info"
+                    title="Selected without a sign-in"
+                    description={`${unsignedServers.join(
+                      ', ',
+                    )} — part of the toolset, resolving for the people who have access to them. The list below is incomplete for you until you sign in to them.`}
+                  />
+                )}
+                <ToolsetResolutionList
+                  resolution={resolution}
+                  servers={servers}
+                />
+              </Flex>
+            </div>
+
             {dryRun && (
-              <>
+              <div className={classes.section}>
+                <SectionTitle
+                  title="Resources to apply"
+                  description={
+                    <>
+                      agent-manager's dry run (
+                      <span className={classes.code}>validate_agent</span>): the
+                      Flux <span className={classes.code}>OCIRepository</span>{' '}
+                      that sources the chart and the{' '}
+                      <span className={classes.code}>HelmRelease</span> that
+                      installs the agent, with its values inlined and every
+                      skill pinned to a commit. Applied to{' '}
+                      <span className={classes.code}>{state.installation}</span>{' '}
+                      exactly as shown.
+                    </>
+                  }
+                />
                 <div className={classes.files}>
                   <CodeBlock
                     filename={`${spec.name}.yaml`}
@@ -642,113 +748,33 @@ export function NewAgentReviewPage() {
                   <span className={classes.code}>{dryRun.schemaVersion}</span> (
                   {dryRun.schemaSource}).
                 </Text>
-              </>
-            )}
-          </Flex>
-        </div>
-
-        <div className={classes.section}>
-          <SectionTitle
-            title="Deploy"
-            description={
-              <>
-                Applies the resources to{' '}
-                <span className={classes.code}>{state.installation}</span>{' '}
-                through agent-manager, as you — the release names you as its
-                author and your own cluster access decides. The agent's page
-                then shows it becoming ready on its Harness.
-              </>
-            }
-          />
-
-          <Card>
-            <CardBody>
-              <Flex justify="between" align="center" gap="4">
-                <Flex direction="column" gap="1">
-                  <Text weight="bold">Deploy to {state.installation}</Text>
-                  <Text variant="body-small" color="secondary">
-                    Creates the HelmRelease (and the shared OCIRepository when
-                    the namespace has none yet) live on the installation. Flux
-                    reconciles the agent from there.
-                  </Text>
-                </Flex>
-                <Flex gap="2">
-                  {canCommit && (
-                    <Button
-                      variant="secondary"
-                      isDisabled={isBusy || !canWrite}
-                      onPress={onCommit}
-                    >
-                      {creation.isCommitting ? 'Committing…' : 'Commit'}
-                    </Button>
-                  )}
-                  <Button
-                    variant="primary"
-                    isDisabled={isBusy || !canWrite}
-                    onPress={onDeploy}
-                  >
-                    {deployLabel}
-                  </Button>
-                </Flex>
-              </Flex>
-            </CardBody>
-          </Card>
-
-          {creation.failure?.kind === 'not-connected' && (
-            <Box mt="3">
-              <ConnectAgentManager
-                installation={state.installation!}
-                message={creation.failure.message}
-              />
-            </Box>
-          )}
-          {creation.failure?.kind === 'refused' && (
-            <Box mt="3">
-              <Alert
-                status="danger"
-                title={refusalTitle(creation.failure.code)}
-                description={creation.failure.message}
-              />
-            </Box>
-          )}
-          {creation.failure?.kind === 'error' && (
-            <Box mt="3">
-              <Alert
-                status="danger"
-                title="Deploy failed"
-                description={creation.failure.message}
-              />
-            </Box>
-          )}
-          {commitResult && (
-            <Box mt="3">
-              <CommitOutcome result={commitResult} />
-            </Box>
-          )}
-
-          {dryRun && chart && (
-            <details className={classes.details}>
-              <summary className={classes.summaryLine}>
-                Install manually instead
-              </summary>
-              <div className={classes.detailsBody}>
-                <Text variant="body-small" color="secondary">
-                  Prefer to keep this in your own GitOps repo, or apply it
-                  yourself? Copy the resources above, or save the values
-                  agent-manager composed and run the command once against the
-                  cluster.
-                </Text>
-                <CodeBlock
-                  filename={`${spec.name}-values.yaml`}
-                  content={valuesYaml}
-                  language="yaml"
-                />
-                <CodeBlock content={helmInstallCommand(spec, chart)} />
               </div>
-            </details>
-          )}
-        </div>
-      </div>
+            )}
+
+            {dryRun && chart && (
+              <details className={classes.details}>
+                <summary className={classes.summaryLine}>
+                  Install manually instead
+                </summary>
+                <div className={classes.detailsBody}>
+                  <Text variant="body-small" color="secondary">
+                    Prefer to keep this in your own GitOps repo, or apply it
+                    yourself? Copy the resources above, or save the values
+                    agent-manager composed and run the command once against the
+                    cluster.
+                  </Text>
+                  <CodeBlock
+                    filename={`${spec.name}-values.yaml`}
+                    content={valuesYaml}
+                    language="yaml"
+                  />
+                  <CodeBlock content={helmInstallCommand(spec, chart)} />
+                </div>
+              </details>
+            )}
+          </div>
+        </details>
+      </Flex>
     </AgentWizardFrame>
   );
 }

@@ -328,7 +328,7 @@ export async function connectToMuster(page: Page, ready: Locator) {
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
  * page's user: Details (no skills, no tools, the lab's default ModelConfig),
- * agent-manager's dry run on Review, then Deploy. Resolves on the agent's
+ * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  */
@@ -344,15 +344,19 @@ export async function createAgentInWizard(
     page.getByText('No installations with models'),
     `the wizard sees no reachable installation with a ModelConfig — the lab's kagent route may be unreachable from Backstage, or the backend cached an unreachable probe after a pod roll (5 min TTL)`,
   ).toBeHidden();
-  await page.getByRole('textbox', { name: 'Name' }).fill(agentName);
-  await expect(page.getByRole('textbox', { name: 'Slug' })).toHaveValue(
-    agentSlug,
-  );
   await page
-    .getByRole('textbox', { name: 'Description' })
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill(agentName);
+  // The technical name sits behind "More options", derived from the name.
+  await page.getByText('More options').click();
+  await expect(
+    page.getByRole('textbox', { name: 'Technical name' }),
+  ).toHaveValue(agentSlug);
+  await page
+    .getByRole('textbox', { name: 'What is it for?' })
     .fill('Throwaway agent of the Playwright suite; deleted by the same run.');
   await page
-    .getByRole('textbox', { name: 'System prompt' })
+    .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
   await page
     .getByRole('radiogroup', { name: 'Model' })
@@ -372,13 +376,16 @@ export async function createAgentInWizard(
   ).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
-  // --- Step 4: Review = agent-manager's dry run, then Deploy ---------------
+  // --- Step 4: Check and create = agent-manager's dry run, then Create -----
   await expectWizardStep(page, 'Review');
+  await expect(page.getByText(agentName).first()).toBeVisible();
+  // The release and its manifests are collapsed under Technical details.
+  await page.getByText('Technical details').click();
   await expect(page.getByText(agentSlug).first()).toBeVisible();
-  const deploy = page.getByRole('button', { name: 'Deploy agent' }).first();
+  const deploy = page.getByRole('button', { name: 'Create agent' }).first();
   await expect(
     deploy,
-    'the dry run through agent-manager completed and Deploy is offered',
+    'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
   await deploy.click();
 

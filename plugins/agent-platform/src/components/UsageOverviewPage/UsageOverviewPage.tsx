@@ -1,8 +1,6 @@
 import { useMemo } from 'react';
-import { Content } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usageCostRouteRef } from '../../routes';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
@@ -19,6 +17,7 @@ import {
   type TopSpendRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
+import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -122,25 +121,21 @@ export function UsageOverviewPage() {
   const modelRows = useMemo(() => (usage ? topModelRows(usage) : []), [usage]);
 
   return (
-    <Content>
+    <ShellAwareContent>
       <UsageColumn>
         <Flex direction="column" gap="6">
-          <SectionHeader
-            as="h2"
-            variant="title-medium"
-            title="Overview"
-            description={
-              installation ? (
-                <>
-                  Every user's model calls on <strong>{installation}</strong>{' '}
-                  over the last {days} days, as seen by the agentgateway LLM
-                  listener.
-                </>
-              ) : (
-                `Model usage across the platform, as seen by the agentgateway LLM listener.`
-              )
-            }
-          />
+          {/* One short caption, not a heading: the tab above already names
+              the view, and the screen's title is the page's h1. */}
+          <Text as="p" variant="body-medium" color="secondary">
+            {installation ? (
+              <>
+                Everyone's model use on <strong>{installation}</strong> over the
+                last {days} days.
+              </>
+            ) : (
+              `Everyone's model use over the last ${days} days.`
+            )}
+          </Text>
 
           {isResolvedFromAll && installation && (
             <Text variant="body-small" color="secondary">
@@ -215,6 +210,6 @@ export function UsageOverviewPage() {
           )}
         </Flex>
       </UsageColumn>
-    </Content>
+    </ShellAwareContent>
   );
 }

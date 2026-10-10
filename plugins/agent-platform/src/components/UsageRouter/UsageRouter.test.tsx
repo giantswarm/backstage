@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
@@ -78,6 +78,11 @@ jest.mock('../AgentsDataProvider', () => ({
   ),
 }));
 
+let mockAgentShell = false;
+jest.mock('../../hooks/useAgentShell', () => ({
+  useAgentShell: () => mockAgentShell,
+}));
+
 const CurrentPath = () => {
   const { pathname, search } = useLocation();
   return <div data-testid="path">{`${pathname}${search}`}</div>;
@@ -107,6 +112,7 @@ const MCP_SECTION = [<div key="mcp">contributed section</div>];
 
 describe('UsageRouter', () => {
   beforeEach(() => {
+    mockAgentShell = false;
     scopeState.isSingleInstallation = false;
     scopeState.isLoading = false;
     usageInstallationState.installation = 'alpha';
@@ -339,6 +345,61 @@ describe('UsageRouter', () => {
       expect(screen.getByTestId('path')).toHaveTextContent(
         '/agent-platform/usage/conversations?window=90d',
       );
+    });
+  });
+
+  describe('inside the agent shell', () => {
+    beforeEach(() => {
+      mockAgentShell = true;
+    });
+
+    it('heads the screen with the platform-standard frame, once', async () => {
+      // The ShellPage idiom every platform page uses: "Usage" as the one h1
+      // at the standard scale with its description, no per-view heading.
+      renderTab('/agent-platform/usage/overview');
+
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Usage',
+      );
+      expect(
+        screen.getByText(
+          "What agents cost, how much they're used, and how healthy the platform is.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('draws the views as the page tabs, carrying the scope', async () => {
+      renderTab('/agent-platform/usage/cost?installation=alpha');
+
+      expect(await screen.findByText('cost-view')).toBeInTheDocument();
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Cost',
+        'Your sessions',
+        'Technical details',
+      ]);
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'href',
+        '/agent-platform/usage/overview?installation=alpha',
+      );
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Cost',
+      );
+    });
+
+    it('puts the scope controls in the header', async () => {
+      renderTab('/agent-platform/usage/overview');
+
+      expect(await screen.findByText('overview-view')).toBeInTheDocument();
+      const header = screen.getByRole('heading', { level: 1 }).closest('div')
+        ?.parentElement?.parentElement as HTMLElement;
+      expect(
+        within(header).getByRole('radiogroup', { name: 'Time range' }),
+      ).toBeInTheDocument();
+      expect(within(header).getByTestId('environment-select')).toBeVisible();
     });
   });
 });

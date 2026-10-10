@@ -196,15 +196,18 @@ export const emptyFormState: NewMcpServerFormState = {
 };
 
 /**
- * Whether the state holds anything the user entered. The installation does not
- * count: it mirrors the page header's selector rather than being typed in.
+ * Whether the state holds anything the user entered, compared with what an
+ * untouched registration starts from (`baseline`, the empty form unless the
+ * wizard starts with another sign-in answer). The installation does not count:
+ * it mirrors the page header's selector rather than being typed in.
  */
-export function hasUserInput(state: NewMcpServerFormState): boolean {
-  return (Object.keys(emptyFormState) as Array<keyof NewMcpServerFormState>)
+export function hasUserInput(
+  state: NewMcpServerFormState,
+  baseline: NewMcpServerFormState = emptyFormState,
+): boolean {
+  return (Object.keys(baseline) as Array<keyof NewMcpServerFormState>)
     .filter(key => key !== 'installation')
-    .some(
-      key => JSON.stringify(state[key]) !== JSON.stringify(emptyFormState[key]),
-    );
+    .some(key => JSON.stringify(state[key]) !== JSON.stringify(baseline[key]));
 }
 
 /** `spec.url` pattern from the CRD. */

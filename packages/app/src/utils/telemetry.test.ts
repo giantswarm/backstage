@@ -398,7 +398,7 @@ describe('getTelemetryPageViewPayload', () => {
     });
   });
 
-  it.each(['tools', 'skills', 'sessions'])(
+  it.each(['tools', 'skills', 'sessions', 'usage'])(
     "should name the agent detail page's %s tab without naming the agent",
     tab => {
       const pathname = `/agent-platform/agents/gazelle/agent-platform/pr-reviewer/${tab}`;
@@ -568,6 +568,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/tools',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/skills',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/sessions',
+      '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/usage',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer/edit',
       '/agent-platform/sessions',
       '/agent-platform/sessions/gazelle/abc123',
