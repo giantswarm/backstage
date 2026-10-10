@@ -235,7 +235,7 @@ describe('SessionsIndexPage', () => {
         screen.getByRole('heading', { name: 'No agents yet' }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: /Create your first agent/ }),
+        screen.getByRole('link', { name: /Create your first agent/ }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('textbox', { name: 'Prompt' }),
