@@ -48,4 +48,12 @@ export const agentShellLightColors = {
   composerShadow:
     '0 1px 2px rgba(0, 38, 69, 0.04), 0 8px 24px rgba(0, 38, 69, 0.06)',
   settledStatus: '#9fb2c0',
+  // Form fields (T30): one step darker than the artboards' #d6e1e7 so a field
+  // reads at a glance; the focus edge is the accent's darker step, which
+  // clears 3:1 against the field where #009fff itself does not.
+  inputBackground: '#ffffff',
+  inputBorder: '#c4d3dc',
+  inputBorderHover: '#b9c8d2',
+  inputFocusBorder: '#0088db',
+  inputFocusHalo: 'rgba(0, 159, 255, 0.15)',
 } as const;

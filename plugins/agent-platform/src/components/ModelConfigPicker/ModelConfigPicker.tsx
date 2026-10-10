@@ -5,12 +5,34 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { newModelRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import {
+  isDefaultModelConfig,
+  preselectedModelConfig,
+  type PreselectionReason,
+} from './helpers';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import {
   SelectableCard,
   SelectableCardGrid,
   useSelectableCardStyles,
 } from '../SelectableCard';
+
+/** Says which model the form picked for the person, and why. */
+function preselectionNote(
+  reason: PreselectionReason,
+  displayName: string,
+  installation: string,
+): string {
+  switch (reason) {
+    case 'only':
+      return `Preselected: ${displayName}, the only model on ${installation}.`;
+    case 'default':
+      return `Preselected: ${displayName}, the default model on ${installation}.`;
+    case 'first':
+    default:
+      return `Preselected: ${displayName}, the first one listed, since ${installation} has no default model.`;
+  }
+}
 
 export function ModelConfigPicker() {
   const classes = useSelectableCardStyles();
@@ -28,19 +50,27 @@ export function ModelConfigPicker() {
   );
 
   const modelConfigs = installation ? modelConfigsFor(installation) : [];
-  // The sole model of the installation: nothing to choose, so it is picked
-  // for the person, the way the sole installation is (InstallationSelect).
-  // Only while nothing is picked, so a pick of their own is never replaced.
-  const soleModel = modelConfigs.length === 1 ? modelConfigs[0] : undefined;
+  // The form starts with a model picked for the person -- the installation's
+  // only one, else its default, else the first listed -- so the plain view of
+  // step 1 needs no model decision. Only while nothing is picked, so a pick of
+  // their own is never replaced; an installation change clears the pick and
+  // the new installation's default takes its place.
+  const preselection = preselectedModelConfig(modelConfigs);
+  const preselected = preselection?.modelConfig;
   useEffect(() => {
-    if (soleModel && !state.modelConfigName) {
+    if (preselected && !state.modelConfigName) {
       selectModelConfig(
-        soleModel.getName(),
-        soleModel.getNamespace() ?? '',
-        soleModel.getDisplayName(),
+        preselected.getName(),
+        preselected.getNamespace() ?? '',
+        preselected.getDisplayName(),
       );
     }
-  }, [soleModel, state.modelConfigName, selectModelConfig]);
+  }, [preselected, state.modelConfigName, selectModelConfig]);
+  const showsPreselection =
+    preselection !== undefined &&
+    state.modelConfigName === preselection.modelConfig.getName() &&
+    state.modelConfigNamespace ===
+      (preselection.modelConfig.getNamespace() ?? '');
 
   if (!installation) {
     return (
@@ -94,6 +124,16 @@ export function ModelConfigPicker() {
         </>
       )}
 
+      {showsPreselection && preselection && (
+        <Text variant="body-small" color="secondary">
+          {preselectionNote(
+            preselection.reason,
+            preselection.modelConfig.getDisplayName(),
+            installation,
+          )}
+        </Text>
+      )}
+
       {modelConfigs.length > 0 && (
         <SelectableCardGrid role="radiogroup" ariaLabel="Model" minWidth={220}>
           {modelConfigs.map(mc => {
@@ -109,12 +149,19 @@ export function ModelConfigPicker() {
                 key={`${namespace}/${name}`}
                 role="radio"
                 selected={isSelected}
-                ariaLabel={`Select model ${mc.getDisplayName()}`}
+                ariaLabel={`Select model ${mc.getDisplayName()}${
+                  isDefaultModelConfig(mc) ? ', installation default' : ''
+                }`}
                 onSelect={() =>
                   selectModelConfig(name, namespace, mc.getDisplayName())
                 }
               >
                 <Text weight="bold">{mc.getDisplayName()}</Text>
+                {isDefaultModelConfig(mc) && (
+                  <Text variant="body-small" color="secondary">
+                    Installation default
+                  </Text>
+                )}
                 <Text variant="body-x-small" color="secondary">
                   <span className={classes.code}>{mc.getModel()}</span>
                   {provider ? ` · ${provider}` : ''}

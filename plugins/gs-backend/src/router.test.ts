@@ -23,7 +23,15 @@ jest.mock('./agentSkills/discoverAgentSkillsFromGit', () => ({
   ...jest.requireActual('./agentSkills/discoverAgentSkillsFromGit'),
   discoverAgentSkillsFromGit: jest.fn(),
 }));
+jest.mock('./agentSkills/readSkillContent', () => ({
+  readSkillContentFromGitHub: jest.fn(),
+  readSkillContentFromGit: jest.fn(),
+}));
 import { discoverAgentSkills } from './agentSkills/discoverAgentSkills';
+import {
+  readSkillContentFromGit,
+  readSkillContentFromGitHub,
+} from './agentSkills/readSkillContent';
 import {
   discoverAgentSkillsFromGit,
   GitFetchError,
@@ -451,6 +459,147 @@ describe('GET /agent-skills', () => {
   });
 });
 
+describe('GET /agent-skills/content', () => {
+  const COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
+  const GIT_REPO =
+    'http://gitserver.agent-platform.svc.cluster.local/skills.git';
+  const content = {
+    repoUrl: 'https://github.com/giantswarm/skills',
+    path: 'notes',
+    commit: COMMIT,
+    name: 'notes',
+    description: 'How to take notes.',
+    instructions: 'Write things down.',
+  };
+
+  async function buildContentApp() {
+    const router = await createRouter({
+      config: makeConfig({
+        agentPlatform: {
+          skills: {
+            repositories: ['https://github.com/giantswarm/skills', GIT_REPO],
+          },
+        },
+      }),
+      containerRegistry,
+      mimir,
+      githubCredentialsProvider,
+      httpAuth: mockServices.httpAuth(),
+      managementClusterVersions,
+    });
+    const app = express();
+    app.use(router);
+    app.use(
+      (
+        err: Error,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(err.name === 'InputError' ? 400 : 500).json({
+          error: { name: err.name, message: err.message },
+        });
+      },
+    );
+    return app;
+  }
+
+  beforeEach(() => {
+    jest
+      .mocked(readSkillContentFromGitHub)
+      .mockReset()
+      .mockResolvedValue(content);
+    jest.mocked(readSkillContentFromGit).mockReset().mockResolvedValue(content);
+  });
+
+  it('reads a configured github.com skill through the GitHub provider', async () => {
+    const app = await buildContentApp();
+
+    const response = await request(app).get('/agent-skills/content').query({
+      repoUrl: 'https://github.com/GiantSwarm/skills.git',
+      path: 'notes',
+      commit: COMMIT,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(content);
+    expect(readSkillContentFromGitHub).toHaveBeenCalledWith({
+      repoUrl: 'https://github.com/GiantSwarm/skills.git',
+      path: 'notes',
+      commit: COMMIT,
+      githubCredentialsProvider,
+    });
+    expect(readSkillContentFromGit).not.toHaveBeenCalled();
+  });
+
+  it('reads a configured non-GitHub skill through the git provider, root path by default', async () => {
+    const app = await buildContentApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content')
+      .query({ repoUrl: GIT_REPO, commit: COMMIT, ref: 'main' });
+
+    expect(response.status).toBe(200);
+    expect(readSkillContentFromGit).toHaveBeenCalledWith({
+      repoUrl: GIT_REPO,
+      path: '',
+      commit: COMMIT,
+      ref: 'main',
+    });
+  });
+
+  it.each([
+    [
+      'an unconfigured github.com repository',
+      { repoUrl: 'https://github.com/evil/repo', commit: COMMIT },
+    ],
+    [
+      'an unconfigured git host',
+      { repoUrl: 'http://169.254.169.254/latest', commit: COMMIT },
+    ],
+    [
+      'a path leaving the repository',
+      {
+        repoUrl: 'https://github.com/giantswarm/skills',
+        path: '../etc',
+        commit: COMMIT,
+      },
+    ],
+    [
+      'a ref instead of a commit',
+      { repoUrl: 'https://github.com/giantswarm/skills', commit: 'main' },
+    ],
+  ])('refuses %s', async (_, query) => {
+    const app = await buildContentApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content')
+      .query(query);
+
+    expect(response.status).toBe(400);
+    expect(readSkillContentFromGitHub).not.toHaveBeenCalled();
+    expect(readSkillContentFromGit).not.toHaveBeenCalled();
+  });
+
+  it("forwards a provider's refusal with its upstream status", async () => {
+    jest
+      .mocked(readSkillContentFromGit)
+      .mockRejectedValue(
+        new GitFetchError(409, 'main has moved on; reload the skill.'),
+      );
+    const app = await buildContentApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content')
+      .query({ repoUrl: GIT_REPO, commit: COMMIT });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toBe(
+      'Failed to read the skill: main has moved on; reload the skill.',
+    );
+  });
+});
+
 describe('POST /agent-skills/pull-request', () => {
   const opened = {
     pullRequestUrl: 'https://github.com/giantswarm/skills/pull/7',
@@ -558,6 +707,43 @@ describe('POST /agent-skills/pull-request', () => {
       .send({ ...body, repoUrl: 'https://github.com/GiantSwarm/Skills.git' });
 
     expect(response.status).toBe(200);
+  });
+
+  it('passes an update through with the skill directory and base commit', async () => {
+    const app = await buildSkillsApp();
+    const update = {
+      ...body,
+      kind: 'update',
+      path: 'plugins/notes',
+      baseCommit: 'c'.repeat(40),
+    };
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send(update);
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith({
+      ...update,
+      token: 'gh-token',
+    });
+  });
+
+  it.each([
+    ['without the skill directory', { kind: 'update' }],
+    ['with a path leaving the repository', { kind: 'update', path: '../x' }],
+    ['with an unknown kind', { kind: 'delete', path: 'notes' }],
+  ])('refuses an update %s', async (_, extra) => {
+    const app = await buildSkillsApp();
+
+    const response = await request(app)
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({ ...body, ...extra });
+
+    expect(response.status).toBe(400);
+    expect(createSkillPullRequest).not.toHaveBeenCalled();
   });
 
   it('refuses a skill name that is not a slug', async () => {

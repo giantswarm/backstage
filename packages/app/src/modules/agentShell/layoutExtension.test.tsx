@@ -175,4 +175,91 @@ describe('the app layout', () => {
       screen.queryByRole('link', { name: /Agent Platform/ }),
     ).not.toBeInTheDocument();
   });
+
+  describe('per the deployment’s portals (no flag set)', () => {
+    // No mocked FeatureFlagsApi: the shell module's own, config-aware one
+    // decides, as in the real app.
+    function renderDeployment(
+      portals: { platformPortal?: boolean; agentPlatform?: boolean },
+      route: string,
+    ) {
+      return renderTestApp({
+        features: [navModule, agentShellModule, stubPagePlugin],
+        initialRouteEntries: [route],
+        config: {
+          app: { baseUrl: 'http://localhost:3000', portals },
+          backend: { baseUrl: 'http://localhost:7007' },
+        },
+      });
+    }
+
+    it('serves the shell with a Platform Portal cross-link when both are on', async () => {
+      renderDeployment(
+        { platformPortal: true, agentPlatform: true },
+        '/agent-platform',
+      );
+
+      const page = await screen.findByTestId('agent-stub-page');
+      expect(screen.getByRole('main')).toContainElement(page);
+      const portal = screen.getByRole('link', { name: 'Platform Portal' });
+      expect(portal).toHaveAttribute('href', '/clusters');
+      expect(portal).toHaveAttribute('target', '_blank');
+      expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
+    });
+
+    it('keeps the classic chrome, cross-linked, outside the agent area when both are on', async () => {
+      renderDeployment({ platformPortal: true, agentPlatform: true }, '/stub');
+
+      expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
+      expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /Agent Platform/ }),
+      ).toHaveAttribute('target', '_blank');
+    });
+
+    it('serves the shell without a Platform Portal item on an agent-only deployment', async () => {
+      renderDeployment(
+        { platformPortal: false, agentPlatform: true },
+        '/agent-platform',
+      );
+
+      const page = await screen.findByTestId('agent-stub-page');
+      expect(screen.getByRole('main')).toContainElement(page);
+      expect(
+        screen.getByRole('navigation', { name: 'Main' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Platform Portal' }),
+      ).not.toBeInTheDocument();
+      expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
+    });
+
+    it('still serves a classic page reached by URL on an agent-only deployment, linking home in the same tab', async () => {
+      renderDeployment({ platformPortal: false, agentPlatform: true }, '/stub');
+
+      expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
+      expect(screen.queryByRole('main')).not.toBeInTheDocument();
+      const home = screen.getByRole('link', { name: /Agent Platform/ });
+      expect(home).toHaveAttribute('href', '/');
+      expect(home).not.toHaveAttribute('target');
+    });
+
+    it('is the classic portal everywhere on a platform-only deployment', async () => {
+      renderDeployment(
+        { platformPortal: true, agentPlatform: false },
+        '/agent-platform',
+      );
+
+      expect(await screen.findByTestId('agent-stub-page')).toBeInTheDocument();
+      expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+      expect(screen.queryByRole('main')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('navigation', { name: 'Main' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: /Agent Platform/ }),
+      ).not.toBeInTheDocument();
+      expect(document.documentElement).not.toHaveAttribute('data-agent-shell');
+    });
+  });
 });

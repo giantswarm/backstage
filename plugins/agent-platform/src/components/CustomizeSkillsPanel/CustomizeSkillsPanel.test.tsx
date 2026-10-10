@@ -53,12 +53,13 @@ function renderPanel(search = '') {
   });
 }
 
-/** The table's data rows, in order (the header row skipped). */
+/** The catalog's cards, in order. */
 function listedRows(): HTMLElement[] {
-  const table = screen.getByRole('grid');
-  return within(table)
-    .getAllByRole('row')
-    .filter(row => within(row).queryAllByRole('columnheader').length === 0);
+  // The prototype's presentation: a grid of cards, no table.
+  expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+  return within(screen.getByRole('list', { name: 'Skills' })).getAllByRole(
+    'listitem',
+  );
 }
 
 describe('CustomizeSkillsPanel', () => {
@@ -71,7 +72,7 @@ describe('CustomizeSkillsPanel', () => {
   it('lists the most used skills first, with their source and usage', async () => {
     await renderPanel();
 
-    // One flat table — the Connectors tab's presentation — most used first.
+    // A card per skill, as the prototype draws the tab, most used first.
     const rows = listedRows();
     expect(rows).toHaveLength(2);
     expect(within(rows[0]).getByText('triage')).toBeInTheDocument();
@@ -186,14 +187,27 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     mockRepositories = [REPO];
   });
 
-  it('links each skill row to its detail page', async () => {
+  it('links each skill card to its detail page', async () => {
     await renderPanel();
 
-    const row = screen.getByText('triage').closest('tr') as HTMLElement;
-    expect(row).toHaveAttribute(
-      'data-href',
+    expect(screen.getByRole('link', { name: 'triage' })).toHaveAttribute(
+      'href',
       '/agent-platform/skills/giantswarm/skills/triage',
     );
+  });
+
+  it('keeps a skill without a detail page as a plain card', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        { ...skill('local'), repoUrl: 'https://git.example.com/team/skills' },
+      ],
+    };
+    await renderPanel();
+
+    const [card] = listedRows();
+    expect(within(card).getByText('local')).toBeInTheDocument();
+    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('links Add skill to the add-skill page', async () => {

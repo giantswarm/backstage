@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
-import { AddSkillPage } from './AddSkillPage';
+import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
@@ -38,15 +38,36 @@ const opened: SkillPullRequest = {
   path: 'notes/SKILL.md',
 };
 
-function renderPage() {
+function renderPage(edit?: SkillEdit) {
   return renderInTestApp(
     // The wizard frame's footer renders the actions the page registers, so the
     // slot provider the skills router mounts is mounted here too.
     <PageHeaderActionsProvider>
-      <AddSkillPage />
+      <AddSkillPage edit={edit} />
     </PageHeaderActionsProvider>,
   );
 }
+
+const COMMIT = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+const edit: SkillEdit = {
+  skill: {
+    name: 'ticket-triage',
+    description: 'How to triage.',
+    repoUrl: REPO,
+    path: 'support/ticket-triage',
+    ref: 'main',
+    commit: COMMIT,
+  },
+  content: {
+    repoUrl: REPO,
+    path: 'support/ticket-triage',
+    commit: COMMIT,
+    name: 'ticket-triage',
+    description: 'How to triage.',
+    instructions: 'Classify, prioritise, route.',
+  },
+  skillHref: '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
+};
 
 beforeEach(() => {
   proposeSkill.mockReset();
@@ -150,5 +171,81 @@ describe('AddSkillPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('AddSkillPage editing an existing skill', () => {
+  it('opens prefilled from the SKILL.md, with the name fixed and Cancel back to the skill', async () => {
+    await renderPage(edit);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Edit skill' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Customize / Skills / ticket-triage'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /support\/ticket-triage\/SKILL.md in giantswarm\/skills/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/Name/)).toHaveValue('ticket-triage');
+    expect(screen.getByLabelText(/Description/)).toHaveValue('How to triage.');
+    expect(screen.getByLabelText(/Instructions/)).toHaveValue(
+      'Classify, prioritise, route.',
+    );
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      edit.skillHref,
+    );
+    // Nothing changed yet: nothing to propose.
+    expect(
+      screen.getByRole('button', { name: 'Open pull request' }),
+    ).toBeDisabled();
+  });
+
+  it('proposes the change as an update of the skill directory', async () => {
+    const user = userEvent.setup();
+    await renderPage(edit);
+
+    await user.type(screen.getByLabelText(/Instructions/), ' Then close.');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
+
+    expect(proposeSkill).toHaveBeenCalledWith({
+      repoUrl: REPO,
+      skillName: 'ticket-triage',
+      description: 'How to triage.',
+      instructions: 'Classify, prioritise, route. Then close.',
+      kind: 'update',
+      path: 'support/ticket-triage',
+      baseCommit: COMMIT,
+    });
+  }, 30_000);
+
+  it('ends on the opened pull request, like adding one', async () => {
+    mockState = {
+      isProposing: false,
+      error: null,
+      result: {
+        ...opened,
+        branch: 'update-skill/ticket-triage',
+        path: 'support/ticket-triage/SKILL.md',
+      },
+    };
+    await renderPage(edit);
+
+    expect(screen.getByText('Pull request #7 opened')).toBeInTheDocument();
+    expect(
+      screen.getByText(/A teammate reviews and approves it/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /the change reaches the catalog once the pull request merges/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Open the pull request/ }),
+    ).toHaveAttribute('href', opened.pullRequestUrl);
   });
 });

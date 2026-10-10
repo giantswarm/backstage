@@ -13,7 +13,8 @@ import { kagentInstallationsQueryKey } from '../lib/queryKeys';
  * The backend's kagent installation list changes with config, not with
  * navigation -- except for its reachability, which the backend learns from a
  * probe that may not have settled when the list is first read (see
- * {@link REFETCH_WHILE_UNKNOWN_MS}).
+ * {@link REFETCH_WHILE_UNKNOWN_MS}), and which may say "not reachable" for
+ * an outage that ends (see {@link NEGATIVE_REACHABILITY_STALE_TIME_MS}).
  */
 export const KAGENT_INSTALLATIONS_STALE_TIME_MS = 60 * 60 * 1000;
 
@@ -26,12 +27,73 @@ export const KAGENT_INSTALLATIONS_STALE_TIME_MS = 60 * 60 * 1000;
  */
 export const REFETCH_WHILE_UNKNOWN_MS = 5_000;
 
+/**
+ * How long a list reporting any installation **not reachable** counts as
+ * fresh, and how often it is re-read while it says so.
+ *
+ * The positive answer is cached for {@link KAGENT_INSTALLATIONS_STALE_TIME_MS}
+ * and persisted to localStorage, which is right for a fact that changes with
+ * config. A negative answer is a transient fact -- a kagent controller
+ * restarting, a lab coming up -- and under the hour-long stale time it
+ * outlived the outage by up to an hour: every Usage and Sessions view read
+ * "not reachable from this portal" and made no calls, across reloads, while
+ * the backend's own probe already said reachable again. The backend re-probes
+ * a negative after 30 s (gs-node's `DEFAULT_NEGATIVE_REACHABILITY_TTL_MS`), so
+ * a minute here sees a recovery within about 90 s, at the price of one cheap,
+ * backend-cached call a minute while an installation stays unreachable.
+ */
+export const NEGATIVE_REACHABILITY_STALE_TIME_MS = 60_000;
+
 export function hasUnknownReachability(
   installations: KagentInstallation[] | undefined,
 ): boolean {
   return Boolean(
     installations?.some(installation => installation.reachable === 'unknown'),
   );
+}
+
+export function hasNegativeReachability(
+  installations: KagentInstallation[] | undefined,
+): boolean {
+  return Boolean(
+    installations?.some(installation => installation.reachable === false),
+  );
+}
+
+/**
+ * How long a list counts as fresh: briefly while a probe is unsettled or an
+ * installation is reported unreachable, an hour once every one is reachable.
+ * Applied to a list rehydrated from localStorage too (`dataUpdatedAt` is
+ * persisted), so a negative answer from an earlier visit is re-read on the
+ * first mount after a minute rather than trusted for the rest of its hour.
+ * Takes `unknown` because a rehydrated entry may be of a foreign shape.
+ */
+export function kagentInstallationsStaleTime(data: unknown): number {
+  const installations = isKagentInstallationList(data) ? data : undefined;
+  if (hasUnknownReachability(installations)) {
+    return REFETCH_WHILE_UNKNOWN_MS;
+  }
+  if (hasNegativeReachability(installations)) {
+    return NEGATIVE_REACHABILITY_STALE_TIME_MS;
+  }
+  return KAGENT_INSTALLATIONS_STALE_TIME_MS;
+}
+
+/**
+ * The poll while the answer is provisional, so a page left open notices a
+ * recovery without a navigation; none once every installation is reachable.
+ */
+export function kagentInstallationsRefetchInterval(
+  data: unknown,
+): number | false {
+  const installations = isKagentInstallationList(data) ? data : undefined;
+  if (hasUnknownReachability(installations)) {
+    return REFETCH_WHILE_UNKNOWN_MS;
+  }
+  if (hasNegativeReachability(installations)) {
+    return NEGATIVE_REACHABILITY_STALE_TIME_MS;
+  }
+  return false;
 }
 
 export type KagentInstallations = {
@@ -59,7 +121,9 @@ export type KagentInstallations = {
  * kagent endpoint is reachable from this portal.
  *
  * One cheap backend call, cached for an hour and persisted by the plugin's
- * `QueryClientProvider` (installation state, identical for every user). Shared
+ * `QueryClientProvider` (installation state, identical for every user) --
+ * an hour only while every installation is reachable; a negative answer is
+ * fresh for {@link NEGATIVE_REACHABILITY_STALE_TIME_MS}. Shared
  * by the sessions provider (which decides whom to query) and the capabilities
  * probe (which must not identity-probe an installation nothing can reach), so
  * the two never disagree about an installation.
@@ -70,14 +134,9 @@ export function useKagentInstallations(): KagentInstallations {
   const { data, isError, refetch, isPending, fetchStatus } = useQuery({
     queryKey: kagentInstallationsQueryKey(),
     queryFn: () => kagentApi.listInstallations(),
-    staleTime: query =>
-      hasUnknownReachability(query.state.data)
-        ? REFETCH_WHILE_UNKNOWN_MS
-        : KAGENT_INSTALLATIONS_STALE_TIME_MS,
+    staleTime: query => kagentInstallationsStaleTime(query.state.data),
     refetchInterval: query =>
-      hasUnknownReachability(query.state.data)
-        ? REFETCH_WHILE_UNKNOWN_MS
-        : false,
+      kagentInstallationsRefetchInterval(query.state.data),
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
 

@@ -1,5 +1,12 @@
 import fs from 'node:fs';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import {
+  lstat,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import git from 'isomorphic-git';
@@ -236,6 +243,72 @@ export async function discoverAgentSkillsFromGit(options: {
       // A full checkout was scanned; nothing can be missing.
       truncated: false,
     };
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Reads one file of a skill repository at a commit, over the same depth-1
+ * clone discovery makes: the branch is cloned and its head must still be the
+ * commit asked for. Discovery pins every skill to the head it read, so the
+ * commit a caller holds is that head unless the branch moved since — then the
+ * answer is a 409 saying so (re-reading the catalog picks up the new head),
+ * not a deeper fetch.
+ *
+ * `filePath` is relative to the repository root; the file must be a regular
+ * file inside the checkout (no symlink out of it — the checkout is untrusted
+ * content).
+ */
+export async function readFileFromGit(options: {
+  repoUrl: string;
+  /** The branch the commit is the head of; the default branch when absent. */
+  ref?: string;
+  /** The full commit id the file is read at. */
+  commit: string;
+  filePath: string;
+  /** Test seam; the real isomorphic-git client when absent. */
+  gitClient?: GitClient;
+}): Promise<string> {
+  const { ref, commit, filePath, gitClient = isomorphicGitClient } = options;
+  const repoUrl = canonicalGitUrl(options.repoUrl);
+  if (!/^https?:\/\//.test(repoUrl)) {
+    throw new InputError(
+      `Not an http(s) git repository URL: ${repoUrl} (expected http(s)://<host>/<path-to-repo>)`,
+    );
+  }
+
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-skills-'));
+  try {
+    let cloned: GitCloneResult;
+    try {
+      cloned = await gitClient.clone(dir, repoUrl, ref);
+    } catch (error) {
+      throw toGitFetchError(error, repoUrl, ref);
+    }
+    if (cloned.commit !== commit) {
+      throw new GitFetchError(
+        409,
+        `${cloned.ref} of ${repoUrl} has moved on from ${commit.slice(0, 7)} to ${cloned.commit.slice(0, 7)}; reload the skill to read its current version.`,
+      );
+    }
+
+    const root = await realpath(dir);
+    const target = path.join(root, ...filePath.split('/'));
+    const notFound = new GitFetchError(
+      404,
+      `${filePath} was not found in ${repoUrl} at ${commit.slice(0, 7)}.`,
+    );
+    const stat = await lstat(target).catch(() => undefined);
+    if (!stat?.isFile()) {
+      throw notFound;
+    }
+    // A directory on the way may still be a symlink pointing elsewhere.
+    const resolved = await realpath(target);
+    if (!resolved.startsWith(`${root}${path.sep}`)) {
+      throw notFound;
+    }
+    return await readFile(resolved, 'utf8');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

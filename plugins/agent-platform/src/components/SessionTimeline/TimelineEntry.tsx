@@ -150,11 +150,12 @@ export type TimelineEntryProps = {
    */
   isAgentWorking?: boolean;
   /**
-   * Whether to show the technical trace. Plain (the default) renders each tool
-   * call, delegation and approval as a readable line — what it did, via which
-   * connector, and its status — with nothing to expand. Technical shows the
-   * exact tool names, with arguments and results behind the expander.
-   * Reasoning is prose either way and keeps its expander in both modes.
+   * The row's register. Plain (the default) heads each tool call, delegation
+   * and approval with a readable line — what it did, via which connector, and
+   * its status — and folds the exact call (tool identifier, arguments,
+   * result) out in place. Technical heads it with the exact tool name and the
+   * argument summary, as inside an opened work summary. Either way the detail
+   * is a disclosure on the row, never a view-wide switch.
    */
   technical?: boolean;
 };
@@ -179,16 +180,31 @@ function argsLabel(item: TimelineItem): string {
 }
 
 /** Label and payloads for a tool call or a delegation. */
-function CallDetail({ item }: { item: TimelineItem }) {
+function CallDetail({
+  item,
+  technical,
+}: {
+  item: TimelineItem;
+  technical: boolean;
+}) {
   const classes = useStyles();
   const payloads = expandablePayloads(item);
   if (!payloads) {
     return null;
   }
   const { args, result } = payloads;
+  // A plain row's header names the tool in words; opening it is asking for
+  // the exact call, so the identifier leads the detail.
+  const exactName =
+    item.kind === 'tool-call' || item.kind === 'approval'
+      ? item.toolName
+      : undefined;
 
   return (
     <div className={classes.payloads}>
+      {!technical && exactName && (
+        <span className={classes.rowName}>{exactName}</span>
+      )}
       {args && <PayloadBlock label={argsLabel(item)} content={args} />}
       {result && <PayloadBlock label="Result" content={result} />}
     </div>
@@ -346,9 +362,7 @@ function ApprovalVerdict({ item }: { item: TimelineItem }) {
  * approvals — is a quiet one-line disclosure row, because the agent's working is
  * what makes this screen worth opening but a wall of tool payloads is unreadable.
  *
- * `defaultExpanded` only applies on mount; the list keys each entry on the
- * global detail setting so changing it remounts them and the new default takes
- * effect.
+ * `defaultExpanded` only applies on mount.
  */
 export function TimelineEntry({
   item,
@@ -456,12 +470,10 @@ export function TimelineEntry({
   }
 
   // No expander when there is nothing behind it. A disclosure that opens onto an
-  // empty panel invites a click and answers with nothing. The plain view keeps
-  // only reasoning expandable — it is prose, not payload — and renders every
-  // call and approval as a readable line, with the raw arguments and results
-  // one toggle away in the technical view.
-  const isExpandable =
-    (technical || item.kind === 'reasoning') && hasExpandableDetail(item);
+  // empty panel invites a click and answers with nothing. Everything else
+  // folds its detail out in place — reasoning its prose, a call or an approval
+  // its exact arguments and result.
+  const isExpandable = hasExpandableDetail(item);
   if (!isExpandable) {
     const questions =
       item.kind === 'approval' ? (item.questions ?? []) : undefined;
@@ -512,7 +524,7 @@ export function TimelineEntry({
             <MessageBody text={item.text} />
           </div>
         ) : (
-          <CallDetail item={item} />
+          <CallDetail item={item} technical={technical} />
         )}
       </ActivityRow>
     </div>

@@ -13,11 +13,12 @@ import {
   NavContentComponentProps,
 } from '@backstage/plugin-app-react';
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
+import type { Portals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useLocation } from 'react-router-dom';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
 import { AgentShellNav } from '../agentShell/AgentShellNav';
-import { isAgentArea, useAgentShellAvailable } from '../agentShell/agentArea';
+import { isAgentArea, usePortals } from '../agentShell/agentArea';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import AndroidIcon from '@material-ui/icons/Android';
 import FolderIcon from '@material-ui/icons/Folder';
@@ -59,10 +60,10 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
 
 function ClassicSidebar({
   navItems,
-  agentShellAvailable,
+  portals,
 }: {
   navItems: NavContentComponentProps['navItems'];
-  agentShellAvailable: boolean;
+  portals: Portals;
 }) {
   const searchItem = navItems.take('page:search');
   const catalogItem = navItems.take('page:catalog');
@@ -77,14 +78,16 @@ function ClassicSidebar({
 
   // With the shell available, the agent platform lives in its own shell: the
   // in-place entry becomes a cross-link to the shell's home, in a new tab so
-  // the classic portal stays where it is.
+  // the classic portal stays where it is. On an agent-only deployment the
+  // classic pages are reachable by URL alone, and this entry is the way back
+  // home — in the same tab, as there is no portal to keep open.
   const agentPlatformItem = nav.take('page:agent-platform');
-  const agentPlatformEntry = agentShellAvailable ? (
+  const agentPlatformEntry = portals.agentPlatform ? (
     <SidebarItem
       key="agent-platform"
       icon={AndroidIcon}
       to="/"
-      target="_blank"
+      target={portals.platformPortal ? '_blank' : undefined}
       text="Agent Platform"
     />
   ) : (
@@ -166,23 +169,19 @@ function ClassicSidebar({
 
 /**
  * The app's one nav (`AppNav` takes its content as a singleton): the agent
- * shell's rail on the agent area's routes while the `agent-platform-shell`
- * flag is on, the classic sidebar everywhere else — and, with the flag off,
- * everywhere. Decided per location at render time, in step with the layout
- * extension's choice of content region.
+ * shell's rail on the agent area's routes while the Agent Platform is
+ * available (`app.portals`, or the person's opt-in flag), the classic sidebar
+ * everywhere else — and, without the Agent Platform, everywhere. Decided per
+ * location at render time, in step with the layout extension's choice of
+ * content region.
  */
 function AppNavContent({ navItems }: NavContentComponentProps) {
-  const agentShellAvailable = useAgentShellAvailable();
+  const portals = usePortals();
   const { pathname } = useLocation();
-  if (agentShellAvailable && isAgentArea(pathname)) {
+  if (portals.agentPlatform && isAgentArea(pathname)) {
     return <AgentShellNav />;
   }
-  return (
-    <ClassicSidebar
-      navItems={navItems}
-      agentShellAvailable={agentShellAvailable}
-    />
-  );
+  return <ClassicSidebar navItems={navItems} portals={portals} />;
 }
 
 export const SidebarContent = NavContentBlueprint.make({

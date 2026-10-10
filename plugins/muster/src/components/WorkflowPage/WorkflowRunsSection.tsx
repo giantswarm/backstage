@@ -17,9 +17,7 @@ import {
   toolDisplay,
 } from '../../lib/workflowDisplay';
 import { DisclosureAccordion } from '../shared';
-
-/** How many recent runs the section lists. */
-const RECENT_RUNS_LIMIT = 10;
+import { useRecentRuns } from './useRecentRuns';
 
 const useStyles = makeStyles((theme: Theme) => ({
   summaryRow: {
@@ -81,19 +79,17 @@ const useStyles = makeStyles((theme: Theme) => ({
 /**
  * One run's per-step trace, read lazily (`GET /executions/:id` with steps)
  * when the row is expanded. Shows where a failed run stopped ("Failed at step
- * N"), each step's outcome and duration, skipped steps included; the technical
- * toggle adds the full execution record as JSON — resolved inputs, results and
- * errors per step.
+ * N"), each step's outcome and duration, skipped steps included; the run's
+ * own "Show technical information" fold-out holds the full execution record
+ * as JSON — exact tool names, resolved inputs, results and errors per step.
  */
 function RunTrace({
   executionId,
   installation,
-  technical,
   prefixes,
 }: {
   executionId: string;
   installation?: string;
-  technical: boolean;
   prefixes: ServerPrefixInfo[];
 }) {
   const classes = useStyles();
@@ -128,7 +124,7 @@ function RunTrace({
         </Text>
       )}
       <div className={classes.trace}>
-        {(data.steps ?? []).map(step => {
+        {(data.steps ?? []).map((step, index) => {
           const outcome = executionOutcome(step.status);
           const display = toolDisplay(step.tool, prefixes);
           let plainTool: string;
@@ -140,17 +136,13 @@ function RunTrace({
             plainTool = display.tool;
           }
           return (
-            <div key={step.step_id} className={classes.traceStep}>
+            // A loop body step leaves one record per iteration under one id.
+            <div key={`${step.step_id}-${index}`} className={classes.traceStep}>
               <StatusDot tone={outcome.tone} label={outcome.label} />
               <code className={classes.mono}>{step.step_id}</code>
-              <span className={classes.meta}>
-                {technical ? (
-                  <code className={classes.mono}>{step.tool}</code>
-                ) : (
-                  plainTool
-                )}
-              </span>
-              {step.status !== 'skipped' && (
+              <span className={classes.meta}>{plainTool}</span>
+              {/* muster records 0 where it measured nothing: no made-up time. */}
+              {step.status !== 'skipped' && step.duration_ms > 0 && (
                 <span className={classes.meta}>
                   {formatDuration(step.duration_ms)}
                 </span>
@@ -167,9 +159,11 @@ function RunTrace({
           </Text>
         )}
       </div>
-      {technical && (
-        <pre className={classes.json}>{JSON.stringify(data, null, 2)}</pre>
-      )}
+      <Box mt="2">
+        <DisclosureAccordion summary="Show technical information">
+          <pre className={classes.json}>{JSON.stringify(data, null, 2)}</pre>
+        </DisclosureAccordion>
+      </Box>
     </Box>
   );
 }
@@ -202,36 +196,30 @@ export interface WorkflowRunsSectionProps {
   installation?: string;
   /** Whether the muster session can read executions. */
   hasSession: boolean;
-  technical: boolean;
   prefixes: ServerPrefixInfo[];
 }
 
 /**
- * The workflow's recent runs: when each started, its outcome, duration and
- * step count, newest first. A run expands to its per-step trace (fetched on
- * expand), which names the step a failed run stopped at; the technical toggle
- * adds the full execution JSON. Run records are retention-bounded, so the
- * section says so rather than presenting the list as complete history.
+ * The workflow's latest few runs: when each started, its outcome, duration
+ * and step count, newest first. A busy workflow keeps thousands of records,
+ * so the list stays a handful (the success/failure totals sit in the page's
+ * details panel). A run expands to its per-step trace (fetched on expand),
+ * which names the step a failed run stopped at, with the full execution JSON
+ * behind the run's own technical fold-out. Run records are retention-bounded,
+ * so the section says so rather than presenting the list as complete
+ * history.
  */
 export function WorkflowRunsSection({
   name,
   installation,
   hasSession,
-  technical,
   prefixes,
 }: WorkflowRunsSectionProps) {
-  const musterApi = useApi(musterApiRef);
-  const { data, error, isLoading } = useQuery({
-    queryKey: ['muster', 'workflow-recent-runs', installation, name],
-    queryFn: () =>
-      musterApi.listExecutions({
-        workflowName: name,
-        limit: RECENT_RUNS_LIMIT,
-        installation,
-      }),
-    enabled: hasSession,
-    staleTime: 30_000,
-  });
+  const { data, error, isLoading } = useRecentRuns(
+    name,
+    installation,
+    hasSession,
+  );
 
   if (!hasSession) {
     return (
@@ -272,7 +260,6 @@ export function WorkflowRunsSection({
             <RunTrace
               executionId={run.execution_id}
               installation={installation}
-              technical={technical}
               prefixes={prefixes}
             />
           </DisclosureAccordion>
@@ -280,7 +267,9 @@ export function WorkflowRunsSection({
       </Box>
       <Text as="p" variant="body-small" color="secondary">
         {data && data.total > runs.length
-          ? `The newest ${runs.length} of ${data.total} recorded runs. `
+          ? `The newest ${runs.length} of ${data.total.toLocaleString(
+              'en-US',
+            )} recorded runs. `
           : ''}
         muster keeps run records for about three weeks (at most 10,000 runs).
       </Text>

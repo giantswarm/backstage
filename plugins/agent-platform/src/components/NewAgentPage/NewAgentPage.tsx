@@ -13,7 +13,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
-import { ModelConfigsProvider } from '../ModelConfigsProvider';
+import { ModelConfigsProvider, useModelConfigs } from '../ModelConfigsProvider';
 import { InstallationSelect } from '../InstallationSelect';
 import { ModelConfigPicker } from '../ModelConfigPicker';
 import { HarnessPicker } from '../HarnessPicker';
@@ -83,16 +83,21 @@ function NewAgentPageContent() {
   // Show validation feedback only once the user has tried to proceed, so the
   // form doesn't shout about empty fields before they've done anything.
   const [showValidation, setShowValidation] = useState(false);
-  // "More options" holds the technical knobs (runtime, technical name, extra
-  // egress), collapsed: their defaults fit most agents. A native <details>,
-  // so the pickers inside stay mounted while it is closed.
+  // "More options" holds the technical knobs (model, runtime, technical name,
+  // extra egress), collapsed: their defaults fit most agents. A native
+  // <details>, so the pickers inside stay mounted while it is closed — the
+  // model picker's preselection of the installation's default model runs
+  // without the person ever opening it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   const egressIssue = egressProblem(parseEgressText(state.egressText));
   // A problem with a field behind the disclosure opens it, so the error the
   // alert names is never out of sight.
   const hasHiddenProblem = validationErrors.some(
-    error => error.startsWith('Technical name') || error === egressIssue,
+    error =>
+      error.startsWith('Technical name') ||
+      error === 'Select a model' ||
+      error === egressIssue,
   );
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
@@ -136,6 +141,20 @@ function NewAgentPageContent() {
   const defaultsSummary = `${runtimeName} runtime${
     state.slug ? `, technical name ${state.slug}` : ''
   }`;
+
+  // The plain view's one line about the model picked for the person (the
+  // installation's default, see ModelConfigPicker), so it is never a surprise
+  // on the review step.
+  const { isLoading: isLoadingModels } = useModelConfigs();
+  const modelName = state.modelDisplayName ?? state.modelConfigName;
+  let modelSummary: string | undefined;
+  if (modelName) {
+    modelSummary = `Runs on ${modelName} · change under More options`;
+  } else if (state.installation) {
+    modelSummary = isLoadingModels
+      ? 'Loading models…'
+      : 'No model picked yet · choose one under More options';
+  }
 
   return (
     <AgentWizardFrame step="details">
@@ -185,7 +204,11 @@ function NewAgentPageContent() {
         {/* Where the agent runs: renders nothing on a single-installation
             portal, where the sole one is picked automatically. */}
         <InstallationSelect />
-        <ModelConfigPicker />
+        {modelSummary && (
+          <Text as="p" variant="body-small" color="secondary">
+            {modelSummary}
+          </Text>
+        )}
 
         <details
           className={classes.moreOptions}
@@ -204,6 +227,7 @@ function NewAgentPageContent() {
             <Text variant="body-small" color="secondary">
               The defaults work for most agents.
             </Text>
+            <ModelConfigPicker />
             <HarnessPicker />
             <TextField
               label="Technical name"

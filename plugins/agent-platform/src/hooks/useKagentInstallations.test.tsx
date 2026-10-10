@@ -6,7 +6,13 @@ import { kagentApiRef } from '../apis';
 import { KagentApi, KagentInstallation } from '../apis/types';
 import { kagentInstallationsQueryKey } from '../lib/queryKeys';
 import {
+  hasNegativeReachability,
   hasUnknownReachability,
+  KAGENT_INSTALLATIONS_STALE_TIME_MS,
+  kagentInstallationsRefetchInterval,
+  kagentInstallationsStaleTime,
+  NEGATIVE_REACHABILITY_STALE_TIME_MS,
+  REFETCH_WHILE_UNKNOWN_MS,
   useKagentInstallations,
 } from './useKagentInstallations';
 
@@ -119,6 +125,118 @@ describe('useKagentInstallations', () => {
     rerender();
 
     expect(result.current).toBe(before);
+  });
+});
+
+describe('a cached answer from an earlier visit', () => {
+  // The persisted cache restores `dataUpdatedAt` with the data, so seeding the
+  // client with an old timestamp is what a reload after the outage looks like.
+  const REACHABLE: KagentInstallation[] = [
+    { name: 'gazelle', reachable: true },
+  ];
+  const UNREACHABLE: KagentInstallation[] = [
+    { name: 'gazelle', reachable: false, reason: 'connection refused' },
+  ];
+
+  function seeded(data: KagentInstallation[], ageMs: number) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(kagentInstallationsQueryKey(), data, {
+      updatedAt: Date.now() - ageMs,
+    });
+    return queryClient;
+  }
+
+  it('re-reads a negative answer older than the negative stale time', async () => {
+    // The lab regression: "not reachable" cached while the controller was
+    // down hid Usage and Sessions for the rest of the hour after it was back.
+    listInstallations.mockResolvedValue(REACHABLE);
+
+    const { result } = renderWith(
+      seeded(UNREACHABLE, NEGATIVE_REACHABILITY_STALE_TIME_MS + 1_000),
+    );
+
+    // The stale negative is shown while the re-read is in flight ...
+    expect(result.current.notReachable).toEqual(['gazelle']);
+    // ... and replaced by the recovery.
+    await waitFor(() => expect(result.current.proxied).toEqual(['gazelle']));
+    expect(result.current.notReachable).toEqual([]);
+    expect(listInstallations).toHaveBeenCalledTimes(1);
+  });
+
+  it('trusts a fresh negative answer for the short window', () => {
+    const { result } = renderWith(seeded(UNREACHABLE, 10_000));
+
+    expect(result.current.notReachable).toEqual(['gazelle']);
+    expect(listInstallations).not.toHaveBeenCalled();
+  });
+
+  it('keeps a positive answer cached for the hour', () => {
+    const { result } = renderWith(
+      seeded(REACHABLE, NEGATIVE_REACHABILITY_STALE_TIME_MS * 10),
+    );
+
+    expect(result.current.proxied).toEqual(['gazelle']);
+    expect(listInstallations).not.toHaveBeenCalled();
+  });
+});
+
+describe('kagentInstallationsStaleTime', () => {
+  it('caches a list that reports every installation reachable for the hour', () => {
+    expect(
+      kagentInstallationsStaleTime([{ name: 'gazelle', reachable: true }]),
+    ).toBe(KAGENT_INSTALLATIONS_STALE_TIME_MS);
+    expect(kagentInstallationsRefetchInterval([])).toBe(false);
+  });
+
+  it('keeps a negative answer at most two minutes, and polls for the recovery', () => {
+    const list: KagentInstallation[] = [
+      { name: 'gazelle', reachable: true },
+      { name: 'golem', reachable: false },
+    ];
+
+    expect(kagentInstallationsStaleTime(list)).toBe(
+      NEGATIVE_REACHABILITY_STALE_TIME_MS,
+    );
+    expect(NEGATIVE_REACHABILITY_STALE_TIME_MS).toBeLessThanOrEqual(120_000);
+    expect(kagentInstallationsRefetchInterval(list)).toBe(
+      NEGATIVE_REACHABILITY_STALE_TIME_MS,
+    );
+  });
+
+  it("re-reads fastest while a probe is still 'unknown'", () => {
+    const list: KagentInstallation[] = [
+      { name: 'golem', reachable: false },
+      { name: 'wombat', reachable: 'unknown' },
+    ];
+
+    expect(kagentInstallationsStaleTime(list)).toBe(REFETCH_WHILE_UNKNOWN_MS);
+    expect(kagentInstallationsRefetchInterval(list)).toBe(
+      REFETCH_WHILE_UNKNOWN_MS,
+    );
+  });
+
+  it('leaves a foreign shape to the hook, which refetches it once', () => {
+    expect(kagentInstallationsStaleTime(['gazelle'])).toBe(
+      KAGENT_INSTALLATIONS_STALE_TIME_MS,
+    );
+    expect(kagentInstallationsRefetchInterval(undefined)).toBe(false);
+  });
+});
+
+describe('hasNegativeReachability', () => {
+  it('is true only when some installation is reported not reachable', () => {
+    expect(hasNegativeReachability(undefined)).toBe(false);
+    expect(hasNegativeReachability([{ name: 'a', reachable: true }])).toBe(
+      false,
+    );
+    expect(hasNegativeReachability([{ name: 'a', reachable: 'unknown' }])).toBe(
+      false,
+    );
+    expect(hasNegativeReachability([{ name: 'a', reachable: false }])).toBe(
+      true,
+    );
   });
 });
 

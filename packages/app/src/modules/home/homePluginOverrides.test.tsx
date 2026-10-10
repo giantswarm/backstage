@@ -134,4 +134,49 @@ describe('the page at /', () => {
       '',
     );
   });
+
+  describe('per the deployment’s portals (no flag set)', () => {
+    // No mocked FeatureFlagsApi: the shell module's config-aware one decides
+    // which home page extension exists, as in the real app.
+    function renderDeployment(portals: {
+      platformPortal?: boolean;
+      agentPlatform?: boolean;
+    }) {
+      return renderTestApp({
+        features: [homePlugin, homePluginOverrides, agentShellModule],
+        initialRouteEntries: ['/'],
+        config: {
+          app: { baseUrl: 'http://localhost:3000', portals },
+          backend: { baseUrl: 'http://localhost:7007' },
+        },
+      });
+    }
+
+    it('is the new-session screen for everyone when both portals are on', async () => {
+      renderDeployment({ platformPortal: true, agentPlatform: true });
+
+      expect(await screen.findByTestId('agent-shell-home')).toBeInTheDocument();
+      expect(screen.queryByTestId('classic-home')).not.toBeInTheDocument();
+    });
+
+    it('is the new-session screen for everyone on an agent-only deployment', async () => {
+      renderDeployment({ platformPortal: false, agentPlatform: true });
+
+      expect(await screen.findByTestId('agent-shell-home')).toBeInTheDocument();
+      expect(screen.queryByTestId('classic-home')).not.toBeInTheDocument();
+    });
+
+    it('is the classic home page on a platform-only deployment', async () => {
+      renderDeployment({ platformPortal: true, agentPlatform: false });
+
+      expect(await screen.findByTestId('classic-home')).toBeInTheDocument();
+      expect(screen.queryByTestId('agent-shell-home')).not.toBeInTheDocument();
+    });
+
+    it('is the classic home page when the deployment sets no portals', async () => {
+      renderDeployment({});
+
+      expect(await screen.findByTestId('classic-home')).toBeInTheDocument();
+    });
+  });
 });

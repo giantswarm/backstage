@@ -2,6 +2,17 @@ app:
   title: Dev Portal
   baseUrl: http://localhost:3000
   releaseVersion: ${VERSION}
+  # Which portals this deployment serves (schema and full semantics:
+  # packages/app/config.d.ts). Both on: the Agent Platform shell on `/`,
+  # `/agent-platform/**` and `/customize/**`, the classic Platform Portal
+  # everywhere else, cross-linked in new tabs. Only agentPlatform: the shell is
+  # the whole navigation (no "Platform Portal" item; classic pages reachable by
+  # URL only). Only platformPortal (the default): the classic portal, where the
+  # `agent-platform-shell` feature flag lets one browser opt into the shell.
+  # `agentPlatform` needs `page:agent-platform` enabled below.
+  portals:
+    platformPortal: true
+    agentPlatform: false
   extensions:
     - api:home/visits
     - app-root-element:home/visit-listener
@@ -453,6 +464,12 @@ agentPlatform:
   #   workflowManagement: swarm-operator
   #   platformOperations: platform-manager
   #   skillEvaluation: skill-evaluator
+  # Integrations living outside the portal that it points people at. `slack`
+  # shows the dismissible "Use your agents right in Slack" banner on the
+  # new-session home; leave it off until the installation's Slack integration
+  # is set up. Off by default.
+  # integrations:
+  #   slack: true
   # kagent API v2 access (gRPC), used by the Sessions list, the session chat
   # and the Usage tab. The backend speaks gRPC to each installation's
   # controller route and forwards the user's Dex ID token.

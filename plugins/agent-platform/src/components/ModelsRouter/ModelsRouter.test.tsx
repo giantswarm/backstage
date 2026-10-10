@@ -24,7 +24,25 @@ jest.mock('../ServingPage', () => ({
   ServingPage: () => <div>serving-view</div>,
 }));
 jest.mock('../GpuCapacityPage', () => ({
-  GpuCapacityPage: () => <div>capacity-view</div>,
+  GpuCapacityPage: ({ showModelCache }: { showModelCache?: boolean }) => (
+    <div>capacity-view{showModelCache === false ? ' without cache' : ''}</div>
+  ),
+}));
+jest.mock('../ModelCachePage', () => ({
+  ModelCachePage: () => <div>cache-view</div>,
+}));
+jest.mock('../ModelHostingKpis', () => ({
+  ModelHostingKpis: () => <div>hosting-kpis</div>,
+}));
+
+// Whether an installation in view runs cluster-manager: what offers the GPU
+// pools and the Model cache tab.
+let mockClusterManager: string[] = [];
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => ({
+    available: mockClusterManager,
+    isLoading: false,
+  }),
 }));
 
 // The providers are pass-throughs; the serving snapshot the tab strip reads is
@@ -93,6 +111,7 @@ const withServingLayer: Partial<ServingContextValue> = {
 describe('ModelsRouter', () => {
   beforeEach(() => {
     mockAgentShell = false;
+    mockClusterManager = [];
     mockUseServing.mockReset();
     mockUseServing.mockReturnValue(noServingLayer);
   });
@@ -127,7 +146,7 @@ describe('ModelsRouter', () => {
     it('frames the serving views as one page with the standard title', async () => {
       renderTab('/agent-platform/models/capacity');
 
-      expect(await screen.findByText('capacity-view')).toBeInTheDocument();
+      expect(await screen.findByText(/^capacity-view/)).toBeInTheDocument();
       expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
         'Model hosting',
@@ -154,7 +173,7 @@ describe('ModelsRouter', () => {
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
-        'Serving',
+        'Running models',
         'GPU capacity',
       ]);
       expect(screen.getByRole('tab', { name: 'GPU capacity' })).toHaveAttribute(
@@ -162,8 +181,47 @@ describe('ModelsRouter', () => {
         '/agent-platform/models/capacity',
       );
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Serving',
+        'Running models',
       );
+    });
+
+    it('names the tabs per the prototype where cluster-manager runs, the cache a tab of its own', async () => {
+      mockClusterManager = ['inst-1'];
+      renderTab('/agent-platform/models/capacity');
+
+      expect(
+        await screen.findByText('capacity-view without cache'),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Running models',
+        'GPU pools',
+        'Model cache',
+      ]);
+      expect(screen.getByRole('tab', { name: 'Model cache' })).toHaveAttribute(
+        'href',
+        '/agent-platform/models/cache',
+      );
+    });
+
+    it('routes the Model cache view', async () => {
+      mockClusterManager = ['inst-1'];
+      renderTab('/agent-platform/models/cache');
+
+      expect(await screen.findByText('cache-view')).toBeInTheDocument();
+    });
+
+    it('heads every view with the hosting figures', async () => {
+      renderTab('/agent-platform/models/serving');
+
+      expect(await screen.findByText('hosting-kpis')).toBeInTheDocument();
+    });
+
+    it('shows no figures on a portal without a serving layer', async () => {
+      mockUseServing.mockReturnValue(noServingLayer);
+      renderTab('/agent-platform/models/serving');
+
+      expect(await screen.findByText('serving-view')).toBeInTheDocument();
+      expect(screen.queryByText('hosting-kpis')).toBeNull();
     });
 
     it('leaves the model page to frame itself, with no tab strip above it', async () => {
@@ -278,7 +336,7 @@ describe('ModelsRouter', () => {
     first.unmount();
 
     renderTab('/agent-platform/models/capacity');
-    expect(await screen.findByText('capacity-view')).toBeInTheDocument();
+    expect(await screen.findByText(/^capacity-view/)).toBeInTheDocument();
   });
 
   it('keeps a way back on a deep-linked Serving view without a serving layer', async () => {

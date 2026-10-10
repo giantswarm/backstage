@@ -3,6 +3,14 @@ import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-co
 
 export { AGENT_SHELL_FLAG };
 
+/**
+ * The extension predicates for "the Agent Platform shell is available" and its
+ * negation. Extension predicates can only read feature flags, so they read the
+ * `agent-platform-shell` flag — which the app's FeatureFlagsApi
+ * (`PortalFeatureFlags`) reports from the deployment's `app.portals` config,
+ * with the person's own flag as the opt-in while the deployment has the Agent
+ * Platform off. Evaluated once, at app start.
+ */
 export const agentShellOn: FilterPredicate = {
   featureFlags: { $contains: AGENT_SHELL_FLAG },
 };

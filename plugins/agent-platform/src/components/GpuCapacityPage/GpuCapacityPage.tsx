@@ -42,7 +42,18 @@ function emptyStateDescription(
   return 'The serving layers this portal can see do not report their nodes. GPU capacity is read per node from installations whose serving layer reports one: the nodes of a KServe-backed serving layer, or the host an Ollama-backed model-manager proxies (from model-manager 0.7 on — an older one reports no nodes).';
 }
 
-export function GpuCapacityPage() {
+export type GpuCapacityPageProps = {
+  /**
+   * Whether the Model cache card closes the view. Inside the shell Model
+   * hosting gives the cache a tab of its own (ModelCachePage), so it is left
+   * out here; classic chrome keeps it on this view.
+   */
+  showModelCache?: boolean;
+};
+
+export function GpuCapacityPage({
+  showModelCache = true,
+}: GpuCapacityPageProps = {}) {
   const serving = useServing();
   const pools = useGpuNodePoolControls(
     serving.reachableInstallations,
@@ -50,6 +61,7 @@ export function GpuCapacityPage() {
     serving.scope,
   );
   useProvidePageHeaderActions(pools.addButton);
+  const cachePanel = showModelCache ? pools.cachePanel : undefined;
 
   const nodeInventoryInstallations = useMemo(
     () =>
@@ -92,7 +104,7 @@ export function GpuCapacityPage() {
           )}
           action={pools.addButton}
         />
-        {pools.cachePanel}
+        {cachePanel}
       </ShellAwareContent>
     );
   }
@@ -116,7 +128,7 @@ export function GpuCapacityPage() {
           isLoading={reading}
           hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
         />
-        {pools.cachePanel}
+        {cachePanel}
       </Flex>
     </ShellAwareContent>
   );

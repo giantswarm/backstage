@@ -308,34 +308,61 @@ describe('shell connector wizard', () => {
       ).toBeInTheDocument();
 
       await userEvent.click(
-        screen.getByText('Advanced: authorization server override'),
+        screen.getByText(
+          "Advanced: sign-in settings for apps muster can't look up",
+        ),
       );
       await userEvent.type(
-        await screen.findByLabelText(/^Issuer/),
+        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
         'https://github.com',
       );
-      await userEvent.type(screen.getByLabelText(/^Scopes/), 'repo');
       await userEvent.type(
-        screen.getByLabelText(/^Authorization endpoint/),
+        screen.getByLabelText(/^Permissions to ask for \(scopes\)/),
+        'repo',
+      );
+      await userEvent.type(
+        screen.getByLabelText(
+          /^Sign-in page address \(authorization endpoint\)/,
+        ),
         'https://github.com/login/oauth/authorize',
       );
       await userEvent.type(
-        screen.getByLabelText(/^Token endpoint/),
+        screen.getByLabelText(/^Token address \(token endpoint\)/),
         'https://github.com/login/oauth/access_token',
       );
+
+      // The client credentials ask where the Secret is and which keys to read,
+      // never for the credentials themselves.
+      const credentials = screen.getByRole('group', {
+        name: 'Client credentials — stored in a Kubernetes Secret',
+      });
+      expect(
+        within(credentials).getByText(
+          /never the client ID or secret themselves/,
+        ),
+      ).toBeInTheDocument();
       await userEvent.type(
-        screen.getByLabelText(/^Client credentials Secret/),
+        within(credentials).getByLabelText(/^Secret name(?!space)/),
         'github-oauth-client',
       );
       await userEvent.type(
-        screen.getByLabelText(/^Secret namespace/),
+        within(credentials).getByLabelText(/^Secret namespace/),
         'muster',
       );
-      await userEvent.type(screen.getByLabelText(/^Client id key/), 'clientId');
       await userEvent.type(
-        screen.getByLabelText(/^Client secret key/),
+        within(credentials).getByLabelText(/^Key holding the client ID/),
+        'clientId',
+      );
+      await userEvent.type(
+        within(credentials).getByLabelText(/^Key holding the client secret/),
         'clientSecret',
       );
+      // The grant's lifetime in plain words, muster's term in parentheses.
+      expect(
+        screen.getAllByText(
+          'Sign in again in every new session (session, default)',
+        ).length,
+      ).toBeGreaterThan(0);
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Add connector' }),

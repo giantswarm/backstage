@@ -1,11 +1,11 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import { agentsRouteRef } from '../../routes';
-import { NewAgentFormProvider } from '../NewAgentFormProvider';
+import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentPage } from './NewAgentPage';
 
 const mockNavigate = jest.fn();
@@ -19,15 +19,43 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 // The pickers read installations, ModelConfigs and Harnesses; this page only
-// decides where they sit, so they render as markers.
+// decides where they sit, so they render as markers. The installation and
+// model markers pick what the real ones would preselect on a portal with one
+// installation whose default model is `mockPreselectedModel`.
+let mockPreselectedModel: string | undefined;
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
+  useModelConfigs: () => ({ isLoading: false }),
 }));
 jest.mock('../InstallationSelect', () => ({
-  InstallationSelect: () => <p>installation select</p>,
+  InstallationSelect: function MockInstallationSelect() {
+    const { state, setInstallation } = useNewAgentForm();
+    useEffect(() => {
+      if (!state.installation) {
+        setInstallation('gazelle');
+      }
+    }, [state.installation, setInstallation]);
+    return <p>installation select</p>;
+  },
 }));
 jest.mock('../ModelConfigPicker', () => ({
-  ModelConfigPicker: () => <p>model picker</p>,
+  ModelConfigPicker: function MockModelConfigPicker() {
+    const { state, selectModelConfig } = useNewAgentForm();
+    useEffect(() => {
+      if (
+        mockPreselectedModel &&
+        state.installation &&
+        !state.modelConfigName
+      ) {
+        selectModelConfig(
+          'default-model-config',
+          'kagent',
+          mockPreselectedModel,
+        );
+      }
+    }, [state.installation, state.modelConfigName, selectModelConfig]);
+    return <p>model picker</p>;
+  },
 }));
 jest.mock('../HarnessPicker', () => ({
   HarnessPicker: () => <p>runtime picker</p>,
@@ -51,6 +79,7 @@ const moreOptions = () =>
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockPreselectedModel = 'Claude Sonnet';
 });
 
 describe('NewAgentPage', () => {
@@ -63,19 +92,51 @@ describe('NewAgentPage', () => {
     expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^What is it for\?/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Instructions/)).toBeInTheDocument();
-    // The model stays a plain, visible choice.
-    expect(screen.getByText('model picker').closest('details')).toBeNull();
 
-    // Runtime, technical name and egress sit in the collapsed disclosure.
+    // Model, runtime, technical name and egress sit in the collapsed
+    // disclosure.
     const details = moreOptions();
     expect(details.open).toBe(false);
     for (const inside of [
+      screen.getByText('model picker'),
       screen.getByText('runtime picker'),
       screen.getByLabelText(/^Technical name/),
       screen.getByLabelText(/^Extra egress origins/),
     ]) {
       expect(inside.closest('details')).toBe(details);
     }
+  });
+
+  it('names the preselected model under the plain fields', async () => {
+    await renderPage();
+
+    const summary = await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+    expect(summary.closest('details')).toBeNull();
+  });
+
+  it('says no model is picked yet when the installation offers none', async () => {
+    mockPreselectedModel = undefined;
+    await renderPage();
+
+    expect(
+      await screen.findByText(
+        'No model picked yet · choose one under More options',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('opens More options when no model is picked and Continue is pressed', async () => {
+    mockPreselectedModel = undefined;
+    await renderPage();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Support triage');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(moreOptions().open).toBe(true);
+    expect(screen.getByText(/Select a model/)).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('fills the technical name from the name and sums up the defaults', async () => {

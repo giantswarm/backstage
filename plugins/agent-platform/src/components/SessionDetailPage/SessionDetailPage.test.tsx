@@ -1,6 +1,6 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
 
@@ -876,8 +876,32 @@ describe('SessionDetailPage', () => {
       // open a new task and strand this one, yet removing the box entirely reads
       // as the reply feature being missing rather than blocked.
       expect(composer()).toBeDisabled();
+      // The prototype's waiting caption, naming who waits on what.
       expect(
-        screen.getByText(/would start a new turn instead of answering it/),
+        screen.getByText('Issue tracker is waiting for your answer above.'),
+      ).toBeInTheDocument();
+    });
+
+    it('says a permission request waits for a decision', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'approval',
+          toolName: 'flux_reconcile',
+          args: { name: 'demo' },
+          questions: [],
+        },
+      });
+      await render();
+
+      expect(
+        screen.getByText('Issue tracker is waiting for your decision above.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Nothing is sent until you allow it.'),
       ).toBeInTheDocument();
     });
 
@@ -2069,6 +2093,12 @@ describe('SessionDetailPage', () => {
       expect(screen.getByTestId('session-switcher-rail')).toBeInTheDocument();
     });
 
+    it('offers no header pin outside the shell, where pins show nowhere', async () => {
+      await render({ agentShell: FeatureFlagState.None });
+
+      expect(lastProvidedActions().props.pin).toBeUndefined();
+    });
+
     it('is not rendered inside the agent shell, whose rail lists the sessions', async () => {
       await render({ agentShell: FeatureFlagState.Active });
 
@@ -2147,6 +2177,20 @@ describe('SessionDetailPage', () => {
         'gazelle',
       );
       expect(screen.getByText(/^Started/)).toBeInTheDocument();
+    });
+
+    it('pins the session from the header, and shows that it is pinned', async () => {
+      // The prototype's header pin. Handed to the shared header with the
+      // menu, and backed by the same per-user store the rail reads.
+      await renderShell();
+
+      expect(lastProvidedActions().props.pin.isPinned).toBe(false);
+
+      await act(async () => lastProvidedActions().props.pin.onToggle());
+
+      await waitFor(() =>
+        expect(lastProvidedActions().props.pin.isPinned).toBe(true),
+      );
     });
 
     it('keeps the cost chip in the composer there too', async () => {

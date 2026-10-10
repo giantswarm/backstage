@@ -1,37 +1,33 @@
-import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Content, Progress } from '@backstage/core-components';
-import {
-  toastApiRef,
-  useApi,
-  useRouteRef,
-} from '@backstage/frontend-plugin-api';
-import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
+import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import EditIcon from '@material-ui/icons/Edit';
 import {
   ModelConfig,
   useResource,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
+  DateComponent,
+  type Fact,
+  FactsColumn,
   ShellPage,
+  StatusDot,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
 import {
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
   validateModelConfigForm,
 } from '../../lib/modelConfigs';
+import { contextWindowFor } from '../../lib/contextWindows';
+import { modelStatus } from '../../lib/customize';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { useAgentShell } from '../../hooks/useAgentShell';
@@ -39,10 +35,12 @@ import { clientLookupOf } from '../../lib/serving';
 import { InstallationChip } from '../InstallationChip';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { toModelServedBy } from '../ModelsTable';
+import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { ModelActionsMenu } from './ModelActionsMenu';
+import { ModelReadView } from './ModelReadView';
+import { describeContextWindow } from './modelUsage';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -50,6 +48,9 @@ const TOAST_TIMEOUT_MS = 6000;
 const useStyles = makeStyles(theme => ({
   column: {
     maxWidth: 960,
+  },
+  form: {
+    maxWidth: 640,
   },
   pageTitle: {
     marginBottom: theme.spacing(1),
@@ -65,13 +66,14 @@ const useStyles = makeStyles(theme => ({
  *
  * Inside the agent-platform shell it is the platform-standard page frame
  * (`ShellPage`): breadcrumbs reading "Customize / Models / <model>", the
- * model's name as the h1 at the standard scale, and its environment and
- * provider beside it. The actions the page registers land in that header's
- * slot, and the shell's generic sub-page header stands aside because
- * `ShellPage` claims the page header.
+ * model's name as the h1 at the standard scale, its status, environment and
+ * provider beside it, and the facts in the column beside the content. The
+ * actions the page registers land in that header's slot, and the shell's
+ * generic sub-page header stands aside because `ShellPage` claims the page
+ * header.
  *
  * In classic chrome it is `Content` under the Agent Platform page's header,
- * with the page's own heading inside.
+ * with the page's own heading inside and the facts under the content.
  *
  * A component of its own so every exit — loading, not found, and the model
  * itself — gets the same frame.
@@ -80,17 +82,24 @@ function ModelFrame({
   title,
   badges,
   meta,
+  aside,
   children,
 }: {
   /** The shell header's h1. */
   title: string;
   badges?: ReactNode;
   meta?: ReactNode;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   const agentShell = useAgentShell();
   if (!agentShell) {
-    return <Content>{children}</Content>;
+    return (
+      <Content>
+        {children}
+        {aside && <Box mt="5">{aside}</Box>}
+      </Content>
+    );
   }
   return (
     <ShellPage
@@ -102,24 +111,69 @@ function ModelFrame({
       ]}
       badges={badges}
       meta={meta}
+      aside={aside}
     >
       {children}
     </ShellPage>
   );
 }
 
+/** The facts beside the model: what it calls, where, and since when. */
+export function modelFacts({
+  modelConfig,
+  installation,
+  contextWindow,
+}: {
+  modelConfig: ModelConfig;
+  installation: string;
+  /** The window the context-window table names for the model, when it does. */
+  contextWindow: number | undefined;
+}): Fact[] {
+  const created = modelConfig.getCreatedTimestamp();
+  const facts: Fact[] = [
+    { label: 'Model ID', value: modelConfig.getModel() ?? '—' },
+    {
+      label: 'Endpoint',
+      value: modelConfig.getEndpoint() ?? 'Provider default',
+    },
+  ];
+  if (contextWindow !== undefined) {
+    facts.push({
+      label: 'Memory (context)',
+      value: describeContextWindow(contextWindow),
+    });
+  }
+  facts.push({ label: 'Environment', value: installation });
+  if (created) {
+    facts.push({
+      label: 'Created',
+      value: (
+        <Text variant="body-small">
+          <DateComponent value={created} />
+        </Text>
+      ),
+    });
+  }
+  facts.push({
+    label: 'Technical name',
+    value: `${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
+  });
+  return facts;
+}
+
 /**
- * One model, as an editable form — and deliberately also the read view: what
- * a ModelConfig *is* fits the same fields, so a CR the portal must not write
- * (tool-owned, no RBAC, or a provider this form does not speak) renders the
- * identical page with the fields disabled and an alert saying why.
+ * One model, as a read view with Edit as an action, per the prototype: what it
+ * cost and how much it was used, the agents that run on it, and the facts
+ * beside it. **Edit** turns the main column into the form in place; Save
+ * returns to the read view. A CR the portal must not write (tool-owned, no
+ * RBAC, or a provider the form does not speak) offers no Edit, and an alert
+ * says why where the reason is not just the reader's permissions.
  */
 export function ModelDetailPage() {
   const classes = useStyles();
   const agentShell = useAgentShell();
-  const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
-  const modelsLink = useRouteRef(modelsRouteRef);
+  const { config } = useSignedInConfig();
   const {
     installation = '',
     namespace = '',
@@ -139,10 +193,9 @@ export function ModelDetailPage() {
   );
 
   const owner = modelConfig ? modelConfigOwner(modelConfig) : undefined;
-  const prefilled = modelConfig
-    ? modelConfigFormValues(modelConfig)
-    : undefined;
-  const isUnsupportedProvider = Boolean(modelConfig) && !prefilled;
+  const isUnsupportedProvider = modelConfig
+    ? !modelConfigFormValues(modelConfig)
+    : false;
 
   // The same block the Model configs list shows in its Endpoint cell: what
   // the serving layer says about the model behind this config, and the fix
@@ -175,17 +228,8 @@ export function ModelDetailPage() {
       { enabled: Boolean(modelConfig) },
     );
 
+  const [isEditing, setEditing] = useState(false);
   const [values, setValues] = useState<ModelConfigFormValues | undefined>();
-  // Seed the form once when the CR first resolves; a ref makes this a one-shot
-  // so a background refetch never clobbers in-progress edits.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (!seeded.current && prefilled) {
-      seeded.current = true;
-      setValues(prefilled);
-    }
-  }, [prefilled]);
-
   const [showValidation, setShowValidation] = useState(false);
   const { save, isSaving, error: saveError, reset } = useSaveModelConfig();
   const deletion = useDeleteModelConfig(modelConfig);
@@ -208,11 +252,22 @@ export function ModelDetailPage() {
       })
     : [];
 
-  const onCancel = useCallback(() => {
-    if (modelsLink) {
-      navigate(modelsLink());
+  // The form is seeded from the CR as it stands each time Edit opens it, so a
+  // change saved (or made elsewhere) since is what the person edits.
+  const onEdit = useCallback(() => {
+    if (!modelConfig) {
+      return;
     }
-  }, [modelsLink, navigate]);
+    reset();
+    setShowValidation(false);
+    setValues(modelConfigFormValues(modelConfig));
+    setEditing(true);
+  }, [modelConfig, reset]);
+
+  const onCancel = useCallback(() => {
+    reset();
+    setEditing(false);
+  }, [reset]);
 
   const onSave = useCallback(async () => {
     if (!values || !modelConfig) {
@@ -226,7 +281,7 @@ export function ModelDetailPage() {
     try {
       await save({ installation, values, original: modelConfig });
     } catch {
-      // Left on the page: the mutation error renders in the alert below.
+      // Left on the form: the mutation error renders in the alert below.
       return;
     }
     toastApi.post({
@@ -234,9 +289,7 @@ export function ModelDetailPage() {
       status: 'success',
       timeout: TOAST_TIMEOUT_MS,
     });
-    if (modelsLink) {
-      navigate(modelsLink());
-    }
+    setEditing(false);
     // validationErrors derives from `values`/`modelConfig`, both dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -246,10 +299,10 @@ export function ModelDetailPage() {
     save,
     reset,
     toastApi,
-    modelsLink,
-    navigate,
     validationErrors.length,
   ]);
+
+  const editing = isEditing && isEditable && Boolean(values);
 
   // Memoized so the header actions slot only updates when the handlers change.
   // The kebab gets the page's deletion result as a prop: it renders in the
@@ -257,20 +310,41 @@ export function ModelDetailPage() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center">
-        <Button variant="tertiary" onPress={onCancel} isDisabled={isSaving}>
-          {isEditable ? 'Cancel' : 'Back to models'}
-        </Button>
-        {isEditable && (
-          <Button variant="primary" onPress={onSave} isDisabled={isSaving}>
-            {isSaving ? 'Saving…' : 'Save changes'}
-          </Button>
+        {editing ? (
+          <>
+            <Button variant="tertiary" onPress={onCancel} isDisabled={isSaving}>
+              Cancel
+            </Button>
+            <Button variant="primary" onPress={onSave} isDisabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </>
+        ) : (
+          isEditable && (
+            <Button
+              variant="secondary"
+              iconStart={<EditIcon fontSize="small" />}
+              onPress={onEdit}
+            >
+              Edit
+            </Button>
+          )
         )}
         {modelConfig && (
           <ModelActionsMenu modelConfig={modelConfig} deletion={deletion} />
         )}
       </Flex>
     ),
-    [onCancel, onSave, isSaving, isEditable, modelConfig, deletion],
+    [
+      editing,
+      onCancel,
+      onSave,
+      onEdit,
+      isSaving,
+      isEditable,
+      modelConfig,
+      deletion,
+    ],
   );
   useProvidePageHeaderActions(actions);
 
@@ -298,11 +372,26 @@ export function ModelDetailPage() {
     );
   }
 
+  const status = modelStatus(toModelRow(modelConfig, servedBy));
+  const contextWindow = contextWindowFor(
+    modelConfig.getModel(),
+    config?.getOptional<Record<string, unknown>>(
+      'agentPlatform.models.contextWindows',
+    ),
+  );
+  const facts = modelFacts({ modelConfig, installation, contextWindow });
+
   return (
     <ModelFrame
       title={modelConfig.getDisplayName()}
-      badges={<InstallationChip installation={installation} />}
+      badges={
+        <>
+          <StatusDot tone={status.tone} label={status.label} />
+          <InstallationChip installation={installation} />
+        </>
+      }
       meta={modelConfig.getProvider()}
+      aside={<FactsColumn aria-label="About this model" facts={facts} />}
     >
       <div className={classes.column}>
         {/* In the shell the header above carries the name and where the
@@ -319,6 +408,7 @@ export function ModelDetailPage() {
               <Text as="h2" variant="title-large" weight="bold">
                 {modelConfig.getDisplayName()}
               </Text>
+              <StatusDot tone={status.tone} label={status.label} />
               <InstallationChip installation={installation} />
             </Flex>
             <Text as="p" color="secondary" className={classes.intro}>
@@ -328,7 +418,7 @@ export function ModelDetailPage() {
           </>
         )}
 
-        <Flex direction="column" gap="4">
+        <Flex direction="column" gap="5">
           {servedBy && (
             <Card>
               <CardBody>
@@ -356,71 +446,56 @@ export function ModelDetailPage() {
             <Alert
               status="info"
               title={`Provider ${modelConfig.getProvider()} is not editable here`}
-              description="This form covers OpenAI-compatible, Anthropic, Gemini and Ollama models. Manage this config with kubectl."
+              description="The edit form covers OpenAI-compatible, Anthropic, Gemini and Ollama models. Manage this config with kubectl."
             />
           )}
-          {!owner &&
-            !isUnsupportedProvider &&
-            !mayUpdate &&
-            !isCheckingPermission && (
-              <Alert
-                status="info"
-                title="Read-only"
-                description="You don't have permission to change ModelConfigs on this installation."
+
+          {editing && values ? (
+            <Flex direction="column" gap="4" className={classes.form}>
+              <ModelConfigFormFields
+                values={values}
+                onChange={onChange}
+                mode="edit"
               />
-            )}
-
-          {values ? (
-            <ModelConfigFormFields
-              values={values}
-              onChange={onChange}
-              mode="edit"
-              isReadOnly={!isEditable}
-            />
+              {showValidation && validationErrors.length > 0 && (
+                <Alert
+                  status="danger"
+                  title="Please fix the following before saving"
+                  description={validationErrors.join('. ')}
+                />
+              )}
+              {saveError && (
+                <Alert
+                  status="danger"
+                  title="The model could not be saved"
+                  description={saveError.message}
+                />
+              )}
+              <Flex gap="2" justify="end">
+                <Button
+                  variant="secondary"
+                  onPress={onCancel}
+                  isDisabled={isSaving}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onPress={onSave}
+                  isDisabled={isSaving}
+                >
+                  {isSaving ? 'Saving…' : 'Save changes'}
+                </Button>
+              </Flex>
+            </Flex>
           ) : (
-            // Unsupported provider: no form values to edit, but the essentials
-            // are still worth showing.
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="2">
-                  <Text>
-                    Provider: <code>{modelConfig.getProvider() ?? '—'}</code>
-                  </Text>
-                  <Text>
-                    Model: <code>{modelConfig.getModel() ?? '—'}</code>
-                  </Text>
-                  {modelConfig.getEndpoint() && (
-                    <Text>
-                      Endpoint: <code>{modelConfig.getEndpoint()}</code>
-                    </Text>
-                  )}
-                </Flex>
-              </CardBody>
-            </Card>
-          )}
-
-          {isEditable && (
-            <Card>
-              <CardBody>
-                <Flex direction="column" gap="3">
-                  {showValidation && validationErrors.length > 0 && (
-                    <Alert
-                      status="danger"
-                      title="Please fix the following before saving"
-                      description={validationErrors.join('. ')}
-                    />
-                  )}
-                  {saveError && (
-                    <Alert
-                      status="danger"
-                      title="The model could not be saved"
-                      description={saveError.message}
-                    />
-                  )}
-                  {actions}
-                </Flex>
-              </CardBody>
-            </Card>
+            <ModelReadView
+              installation={installation}
+              namespace={namespace}
+              name={name}
+              model={modelConfig.getModel()}
+              label={modelConfig.getDisplayName()}
+            />
           )}
         </Flex>
       </div>

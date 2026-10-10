@@ -20,8 +20,13 @@ import {
 import {
   createSkillPullRequest,
   GITHUB_TOKEN_HEADER,
+  isSkillDirectory,
   SKILL_NAME_RE,
 } from './agentSkills/createSkillPullRequest';
+import {
+  readSkillContentFromGit,
+  readSkillContentFromGitHub,
+} from './agentSkills/readSkillContent';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { readSignedInConfig } from './signedInConfig';
@@ -45,6 +50,28 @@ export async function createRouter({
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
+
+  /**
+   * Whether a repository URL is one of `agentPlatform.skills.repositories`,
+   * compared case-insensitively and tolerating `.git` and trailing slashes.
+   * The skill routes that read or clone a caller-named repository act only on
+   * these: this backend can reach hosts the browser cannot.
+   */
+  const isConfiguredSkillRepository = (repoUrl: string): boolean => {
+    const repositories =
+      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+    const normalize = (url: string) =>
+      url
+        .trim()
+        .replace(/\/+$/, '')
+        .replace(/\.git$/i, '')
+        .toLowerCase();
+    const target = normalize(repoUrl);
+    return repositories.some(url => normalize(url) === target);
+  };
+
+  /** A full commit id (SHA-1 or SHA-256). */
+  const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
   /**
    * GET /config
@@ -318,17 +345,7 @@ export async function createRouter({
     if (!isGitHub) {
       // Only the configured sources: the generic provider clones whatever URL
       // it is handed, and this backend can reach hosts the browser cannot.
-      const repositories =
-        config.getOptionalStringArray('agentPlatform.skills.repositories') ??
-        [];
-      const normalize = (url: string) =>
-        url
-          .trim()
-          .replace(/\/+$/, '')
-          .replace(/\.git$/i, '')
-          .toLowerCase();
-      const target = normalize(repoUrl);
-      if (!repositories.some(url => normalize(url) === target)) {
+      if (!isConfiguredSkillRepository(repoUrl)) {
         throw new InputError(
           `${repoUrl} is not one of the configured skill repositories; only github.com repositories can be discovered ad hoc`,
         );
@@ -360,10 +377,84 @@ export async function createRouter({
   });
 
   /**
+   * GET /agent-skills/content
+   *
+   * One skill's SKILL.md at a commit, split into frontmatter `name`,
+   * `description` and the Markdown body (`instructions`): what the portal
+   * prefills a skill edit with. github.com repositories are read through the
+   * contents API (with the GitHub integration's token, like discovery); any
+   * other http(s) repository from the same depth-1 clone discovery makes,
+   * whose head must still be the commit asked for (409 otherwise — re-reading
+   * the catalog picks up the new head).
+   *
+   * Only the configured `agentPlatform.skills.repositories`, for both
+   * providers: the route reads what the catalog lists and nothing else.
+   *
+   * Query parameters:
+   * - repoUrl: one of the configured skill repositories
+   * - path: the skill directory ('' or absent for a skill at the root)
+   * - commit: the full commit id to read at
+   * - ref: optional branch the commit is the head of (git provider only)
+   *
+   * Returns { repoUrl, path, commit, name, description, instructions }.
+   */
+  router.get('/agent-skills/content', async (req, res) => {
+    const schema = z.object({
+      repoUrl: z
+        .string()
+        .url()
+        .refine(u => /^https?:\/\//.test(u), {
+          message: 'Only http(s) repository URLs are allowed',
+        }),
+      path: z.string().default('').refine(isSkillDirectory, {
+        message: 'path must be a relative skill directory',
+      }),
+      commit: z.string().regex(COMMIT_RE, {
+        message: 'commit must be a full commit id',
+      }),
+      ref: z.string().min(1).max(255).optional(),
+    });
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+    const { repoUrl, path, commit, ref } = parsed.data;
+    if (!isConfiguredSkillRepository(repoUrl)) {
+      throw new InputError(
+        `${repoUrl} is not one of the configured skill repositories`,
+      );
+    }
+
+    try {
+      const content = repoUrl.toLowerCase().startsWith('https://github.com/')
+        ? await readSkillContentFromGitHub({
+            repoUrl,
+            path,
+            commit,
+            githubCredentialsProvider,
+          })
+        : await readSkillContentFromGit({ repoUrl, path, commit, ref });
+      res.json(content);
+    } catch (error) {
+      // Expected outcomes keep their upstream status (404 file gone, 409 the
+      // branch moved on, 403/429 rate limit), like discovery — not 500s.
+      if (error instanceof GitHubApiError || error instanceof GitFetchError) {
+        res.status(error.status).json({
+          error: { message: `Failed to read the skill: ${error.message}` },
+        });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /**
    * POST /agent-skills/pull-request
    *
    * Opens a pull request that adds a new skill (`<skillName>/SKILL.md`) to one
-   * of the configured skill repositories, authored **as the signed-in person**:
+   * of the configured skill repositories — or, with `kind: 'update'`, one that
+   * rewrites an existing skill's `<path>/SKILL.md` — authored **as the
+   * signed-in person**:
    * their GitHub access token — minted by the frontend through
    * `githubAuthApiRef`, i.e. their own GitHub grant in muster — travels in the
    * `gs-github-token` header, and every GitHub call runs with it. Nothing is
@@ -376,6 +467,9 @@ export async function createRouter({
    * - skillName: the skill's directory and frontmatter name (lowercase slug)
    * - description: frontmatter `description`
    * - instructions: the SKILL.md body
+   * - kind: `create` (default) or `update`
+   * - path: for `update`, the skill directory ('' at the repository root)
+   * - baseCommit: for `update`, optionally the commit the edit started from
    *
    * Returns { pullRequestUrl, number, branch, base, path }. A person without
    * the header gets 401 (the frontend connects GitHub through muster first);
@@ -409,12 +503,28 @@ export async function createRouter({
       }),
       description: z.string().trim().min(1).max(1024),
       instructions: z.string().trim().min(1).max(100_000),
+      kind: z.enum(['create', 'update']).optional(),
+      path: z
+        .string()
+        .refine(isSkillDirectory, {
+          message: 'path must be a relative skill directory',
+        })
+        .optional(),
+      baseCommit: z
+        .string()
+        .regex(COMMIT_RE, { message: 'baseCommit must be a full commit id' })
+        .optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
-    const { repoUrl, skillName, description, instructions } = parsed.data;
+    const { repoUrl, skillName, description, instructions, kind } = parsed.data;
+    if (kind === 'update' && parsed.data.path === undefined) {
+      throw new InputError(
+        'An update needs the path of the skill directory it rewrites',
+      );
+    }
 
     // Only the configured sources: the catalog lists these and nothing else,
     // so a pull request anywhere else would add a skill no one can see.
@@ -446,11 +556,19 @@ export async function createRouter({
           description,
           instructions,
           token,
+          ...(kind === 'update'
+            ? {
+                kind,
+                path: parsed.data.path,
+                baseCommit: parsed.data.baseCommit,
+              }
+            : {}),
         }),
       );
     } catch (error) {
-      // Expected outcomes keep their upstream status (409 skill exists, 403 no
-      // push access or rate limit, 404 no read access), like the discovery
+      // Expected outcomes keep their upstream status (409 skill or branch
+      // exists, 403 no push access or rate limit, 404 no read access or the
+      // edited skill gone, 422 an edit that changes nothing), like the discovery
       // route above — not 500s, keeping Sentry quiet.
       if (error instanceof GitHubApiError) {
         res.status(error.status).json({

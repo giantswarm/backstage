@@ -42,6 +42,13 @@ html[data-agent-shell] body[data-theme-mode='light'] {
 
   --agent-platform-state-dot-success: #9fb2c0;
   --agent-platform-state-dot-neutral: #9fb2c0;
+
+  --agent-shell-input-bg: #ffffff;
+  --agent-shell-input-border: #c4d3dc;
+  --agent-shell-input-border-hover: #b9c8d2;
+  --agent-shell-input-focus-border: #0088db;
+  --agent-shell-input-focus-halo: rgba(0, 159, 255, 0.15);
+  --agent-shell-input-radius: 10px;
 }
 
 /* Native fields that draw their own focus outline take the ring's colour. */
@@ -69,6 +76,144 @@ html[data-agent-shell]
     .bui-Link[data-color='primary']:hover {
     color: #002645;
   }
+}
+
+/*
+ * Form fields. bui draws a field as a borderless fill (`--bui-bg-neutral-1`,
+ * one step darker on a raised surface) with a 1px inset `--bui-ring` only
+ * while focused — no token gives a field an edge at rest, so on the shell's
+ * white surfaces a field cannot be told from the page until it is clicked.
+ * Every field box takes the artboards' input idiom instead: a white fill, a
+ * visible 1px edge, a 10px radius, and an accent edge with a soft halo while
+ * focused. The edge is an inset shadow, like bui's own ring, so no field
+ * changes size. The composer keeps its own look: its frame is the field's
+ * visible box (ComposerFrame), and the picker in it reads as part of the box.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *) {
+    border-radius: var(--agent-shell-input-radius);
+    background-color: var(--agent-shell-input-bg);
+    box-shadow: inset 0 0 0 1px var(--agent-shell-input-border);
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *):hover {
+    box-shadow: inset 0 0 0 1px var(--agent-shell-input-border-hover);
+  }
+
+  /* Select and Combobox mark focus on their root, which keeps it while their
+     popover holds the keyboard focus. */
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-SearchFieldInputWrapper,
+      .bui-SelectTrigger,
+      .bui-ComboboxInput,
+      .bui-DatePickerGroup,
+      .bui-SearchAutocomplete
+    ):not(.agent-platform-composer *):focus-within,
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Select[data-focused]
+    .bui-SelectTrigger:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Combobox[data-focus-within]
+    .bui-ComboboxInput:not(.agent-platform-composer *) {
+    outline: none;
+    box-shadow:
+      inset 0 0 0 1px var(--agent-shell-input-focus-border),
+      0 0 0 3px var(--agent-shell-input-focus-halo);
+  }
+
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    :is(
+      .bui-Input,
+      .bui-PasswordFieldInput,
+      .bui-TextArea,
+      .bui-DatePickerGroup
+    )[data-invalid]:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-SearchFieldInputWrapper:has([data-invalid]):not(
+      .agent-platform-composer *
+    ),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Select[data-invalid]
+    .bui-SelectTrigger:not(.agent-platform-composer *),
+  html[data-agent-shell]
+    body[data-theme-mode='light']
+    .bui-Combobox[data-invalid]
+    .bui-ComboboxInput:not(.agent-platform-composer *) {
+    box-shadow: inset 0 0 0 1px var(--bui-border-danger);
+  }
+}
+
+/*
+ * The hand-rolled fields that sit right after a bui FieldLabel (ui-react's
+ * TextAreaField, agent-platform's SecretTextField) take the same idiom.
+ * Unlayered, because their own styles are.
+ */
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input) {
+  border: none;
+  border-radius: var(--agent-shell-input-radius);
+  background: var(--agent-shell-input-bg);
+  box-shadow: inset 0 0 0 1px var(--agent-shell-input-border);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input):hover {
+  box-shadow: inset 0 0 0 1px var(--agent-shell-input-border-hover);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input):focus {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--agent-shell-input-focus-border),
+    0 0 0 3px var(--agent-shell-input-focus-halo);
+}
+
+html[data-agent-shell]
+  body[data-theme-mode='light']
+  .bui-FieldLabelWrapper
+  + :is(textarea, input)[aria-invalid='true'] {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--bui-border-danger);
 }
 
 /*

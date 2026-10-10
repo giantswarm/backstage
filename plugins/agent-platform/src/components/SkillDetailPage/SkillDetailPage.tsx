@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -34,14 +34,19 @@ import {
   parseSkillDetailPath,
   shortCommit,
   skillCommitUrl,
+  skillDetailPath,
   skillSourceUrl,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
+import {
+  agentDetailRouteRef,
+  sessionDetailRouteRef,
+  skillsRouteRef,
+} from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
-import { EvaluateSkillDialog } from './EvaluateSkillDialog';
+import { evaluationPrompt } from './evaluationPrompt';
 
 const AVATAR_SIZE = 96;
 
@@ -139,49 +144,58 @@ function UsedBySection({ skill }: { skill: DiscoveredSkill }) {
 function SkillPage({ skill }: { skill: DiscoveredSkill }) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  const skillsRoute = useRouteRef(skillsRouteRef);
 
   // "Evaluate" exists only where the Skill Evaluator role is configured and
   // resolves to a live agent (decisions G8/G13); unresolved, no button.
   const evaluator = useMetaAgent('skillEvaluation');
-  const creation = useCreateSession('skillDetail');
-  const [isEvaluateOpen, setEvaluateOpen] = useState(false);
-  const { reset: resetCreation, createSession } = creation;
-  const openEvaluate = useCallback(() => {
-    resetCreation();
-    setEvaluateOpen(true);
-  }, [resetCreation]);
+  const {
+    createSession,
+    isCreating,
+    error: evaluateError,
+  } = useCreateSession('skillDetail');
 
-  const onStartEvaluation = useCallback(
-    async (agent: AgentRow, prompt: string) => {
-      let sessionId: string;
-      try {
-        sessionId = await createSession({ agent, prompt });
-      } catch {
-        // Left to the dialog, which stays open and shows the hook's error.
-        return;
-      }
-      const href = sessionDetailRoute?.({
-        installation: agent.installation,
-        sessionId,
-      });
-      if (!href) {
-        setEvaluateOpen(false);
-        return;
-      }
-      // The prompt travels with the navigation and is sent by the session
-      // detail page — see "Starting a session" in docs/agent-platform.md.
-      navigate(href, {
-        state: {
-          [NEW_SESSION_STATE_KEY]: {
-            text: prompt,
-            agentNamespace: agent.namespace,
-            agentName: agent.technicalName,
-          },
+  // Evaluate is a session, not a form: one press creates it with the
+  // evaluator and the prompt naming this skill, then hands over to the
+  // session page like every other entry point.
+  const onEvaluate = useCallback(async () => {
+    if (!evaluator) {
+      return;
+    }
+    const prompt = evaluationPrompt(skill);
+    let sessionId: string;
+    try {
+      sessionId = await createSession({ agent: evaluator, prompt });
+    } catch {
+      // Shown from the hook's error, above the page's content.
+      return;
+    }
+    const href = sessionDetailRoute?.({
+      installation: evaluator.installation,
+      sessionId,
+    });
+    if (!href) {
+      return;
+    }
+    // The prompt travels with the navigation and is sent by the session
+    // detail page — see "Starting a session" in docs/agent-platform.md.
+    navigate(href, {
+      state: {
+        [NEW_SESSION_STATE_KEY]: {
+          text: prompt,
+          agentNamespace: evaluator.namespace,
+          agentName: evaluator.technicalName,
         },
-      });
-    },
-    [createSession, navigate, sessionDetailRoute],
-  );
+      },
+    });
+  }, [createSession, evaluator, navigate, sessionDetailRoute, skill]);
+
+  // Editing is the add-skill flow, prefilled; it opens a pull request.
+  const detailPath = skillDetailPath(skill);
+  const editHref =
+    skillsRoute && detailPath
+      ? `${skillsRoute()}/edit/${detailPath}`
+      : undefined;
 
   const source = skillSource(skill);
   const sourceUrl = skillSourceUrl(skill);
@@ -239,9 +253,18 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
         meta={`Read from ${source} at ${shortCommit(skill.commit)}`}
         actions={
           <>
+            {editHref && (
+              <ButtonLink href={editHref} variant="secondary">
+                Edit
+              </ButtonLink>
+            )}
             {evaluator && (
-              <Button variant="secondary" onPress={openEvaluate}>
-                Evaluate
+              <Button
+                variant="secondary"
+                onPress={onEvaluate}
+                isDisabled={isCreating}
+              >
+                {isCreating ? 'Starting…' : 'Evaluate'}
               </Button>
             )}
             {sourceUrl && (
@@ -258,19 +281,15 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
         }
         aside={<FactsColumn facts={facts} />}
       >
+        {evaluateError && (
+          <Alert
+            status="danger"
+            title="Could not start the evaluation"
+            description={evaluateError.message}
+          />
+        )}
         <UsedBySection skill={skill} />
       </ShellPage>
-      {evaluator && (
-        <EvaluateSkillDialog
-          isOpen={isEvaluateOpen}
-          onOpenChange={setEvaluateOpen}
-          skill={skill}
-          evaluator={evaluator}
-          isStarting={creation.isCreating}
-          error={creation.error?.message}
-          onStart={onStartEvaluation}
-        />
-      )}
     </>
   );
 }
@@ -280,7 +299,11 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
  * history, no SKILL.md body — the catalog has neither): name and description
  * from the frontmatter, where it lives and the commit it was read at, the
  * agents using it, and a "View source" link into the repository at that
- * commit. "Evaluate" appears only where `metaAgents.skillEvaluation` resolves.
+ * commit. "Edit" opens the add-skill flow prefilled (`EditSkillPage`), which
+ * proposes the change as a pull request. "Evaluate" appears only where
+ * `metaAgents.skillEvaluation` resolves, and starts a session with that agent
+ * straight away — the prompt names the skill and asks for a report and an
+ * improvement pull request — then opens it.
  *
  * Addressed as `<owner>/<repo>[/<skill dir>]` under `/agent-platform/skills`;
  * the skill itself is found in the discovered catalog, so an unknown address

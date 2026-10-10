@@ -23,11 +23,26 @@ import {
   useProposeSkill,
   type SkillPullRequest,
 } from '../../hooks/useProposeSkill';
-import { repoSlug } from '../../lib/skills';
+import type { SkillContent } from '../../hooks/useSkillContent';
+import { repoSlug, shortCommit, type DiscoveredSkill } from '../../lib/skills';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
+/** An existing skill to edit, and the SKILL.md it currently reads. */
+export type SkillEdit = {
+  skill: DiscoveredSkill;
+  content: SkillContent;
+  /** Where Cancel and Done lead: the skill's own page. */
+  skillHref: string;
+};
+
 /** The outcome: the pull request, and what happens next, in words. */
-function SkillPullRequestOutcome({ result }: { result: SkillPullRequest }) {
+function SkillPullRequestOutcome({
+  result,
+  isUpdate,
+}: {
+  result: SkillPullRequest;
+  isUpdate: boolean;
+}) {
   return (
     <Alert
       status="success"
@@ -37,8 +52,10 @@ function SkillPullRequestOutcome({ result }: { result: SkillPullRequest }) {
         <Flex direction="column" gap="2">
           <Text variant="body-small">
             Opened as you: {result.path} on {result.branch}, against{' '}
-            {result.base}. A teammate reviews and approves it — the skill
-            appears in the catalog once the pull request merges.
+            {result.base}. A teammate reviews and approves it —{' '}
+            {isUpdate
+              ? 'the change reaches the catalog once the pull request merges.'
+              : 'the skill appears in the catalog once the pull request merges.'}
           </Text>
           <div>
             <ButtonLink
@@ -65,27 +82,42 @@ function SkillPullRequestOutcome({ result }: { result: SkillPullRequest }) {
  * Nothing deploys from here — a teammate approves the PR, and discovery picks
  * the skill up once it merges.
  *
+ * With `edit`, the same flow changes an existing skill (`EditSkillPage`,
+ * `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`): the repository and
+ * name are fixed, description and instructions start from the SKILL.md the
+ * skill reads now, and the pull request rewrites `<dir>/SKILL.md` on
+ * `update-skill/<name>`. Submitting waits for an actual change.
+ *
  * The same single-step in-content wizard frame as Add model, so the Customize
  * screen's create flows all read the same. A person without a GitHub grant in
  * muster is bounced through muster's connect once (the `githubAuthApiRef` the
  * mutation mints its token from does that) and comes back to this page.
  */
-export function AddSkillPage() {
+export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
   // The target repositories: the same signed-in-config list the catalog is
-  // discovered from.
+  // discovered from. An edit targets the skill's own repository.
   const { config } = useSignedInConfig();
+  const editRepoUrl = edit?.skill.repoUrl;
   const repositories = useMemo(
     () =>
-      config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [],
-    [config],
+      editRepoUrl
+        ? [editRepoUrl]
+        : (config?.getOptionalStringArray(
+            'agentPlatform.skills.repositories',
+          ) ?? []),
+    [config, editRepoUrl],
   );
-  const closeHref = `${SHELL_CUSTOMIZE_PATH}/skills`;
+  const closeHref = edit?.skillHref ?? `${SHELL_CUSTOMIZE_PATH}/skills`;
 
   const [repoUrl, setRepoUrl] = useState<string | undefined>(repositories[0]);
-  const [skillName, setSkillName] = useState('');
-  const [description, setDescription] = useState('');
-  const [instructions, setInstructions] = useState('');
+  const [skillName, setSkillName] = useState(edit?.skill.name ?? '');
+  const [description, setDescription] = useState(
+    edit?.content.description ?? '',
+  );
+  const [instructions, setInstructions] = useState(
+    edit?.content.instructions ?? '',
+  );
   const { proposeSkill, isProposing, error, result } = useProposeSkill();
 
   useEffect(() => {
@@ -95,11 +127,16 @@ export function AddSkillPage() {
   }, [repoUrl, repositories]);
 
   const nameInvalid = skillName.length > 0 && !SKILL_NAME_RE.test(skillName);
+  const isChanged =
+    !edit ||
+    description.trim() !== edit.content.description.trim() ||
+    instructions.trim() !== edit.content.instructions.trim();
   const isComplete =
     Boolean(repoUrl) &&
     SKILL_NAME_RE.test(skillName) &&
     description.trim().length > 0 &&
-    instructions.trim().length > 0;
+    instructions.trim().length > 0 &&
+    isChanged;
 
   const onSubmit = useCallback(async () => {
     if (!repoUrl || !isComplete) {
@@ -111,11 +148,26 @@ export function AddSkillPage() {
         skillName,
         description: description.trim(),
         instructions: instructions.trim(),
+        ...(edit
+          ? {
+              kind: 'update' as const,
+              path: edit.skill.path,
+              baseCommit: edit.content.commit,
+            }
+          : {}),
       });
     } catch {
       // Shown from `error`, beside the form the user still has.
     }
-  }, [repoUrl, isComplete, proposeSkill, skillName, description, instructions]);
+  }, [
+    repoUrl,
+    isComplete,
+    proposeSkill,
+    skillName,
+    description,
+    instructions,
+    edit,
+  ]);
 
   const onDone = useCallback(() => {
     navigate(closeHref);
@@ -149,14 +201,23 @@ export function AddSkillPage() {
 
   return (
     <WizardFrame
-      title="Add skill"
-      context="Customize / Skills"
+      title={edit ? 'Edit skill' : 'Add skill'}
+      context={
+        edit ? `Customize / Skills / ${edit.skill.name}` : 'Customize / Skills'
+      }
       closeHref={closeHref}
     >
-      <WizardStepHeading title="Propose a skill">
-        Opens a pull request that adds the skill to the repository, as you. A
-        teammate approves it; the skill appears in the catalog once it merges.
-      </WizardStepHeading>
+      {edit ? (
+        <WizardStepHeading title="Propose a change">
+          Opens a pull request that updates the skill in the repository, as you.
+          A teammate approves it; the change reaches the catalog once it merges.
+        </WizardStepHeading>
+      ) : (
+        <WizardStepHeading title="Propose a skill">
+          Opens a pull request that adds the skill to the repository, as you. A
+          teammate approves it; the skill appears in the catalog once it merges.
+        </WizardStepHeading>
+      )}
 
       {repositories.length === 0 && (
         <EmptyStateCard
@@ -167,7 +228,14 @@ export function AddSkillPage() {
 
       {repositories.length > 0 && !result && (
         <Flex direction="column" gap="3">
-          {repositories.length > 1 ? (
+          {edit && (
+            <Text variant="body-small" color="secondary">
+              {edit.skill.path ? `${edit.skill.path}/SKILL.md` : 'SKILL.md'} in{' '}
+              {repoSlug(edit.skill.repoUrl)}, as of{' '}
+              {shortCommit(edit.content.commit)}
+            </Text>
+          )}
+          {!edit && repositories.length > 1 && (
             <Select
               label="Repository"
               isRequired
@@ -182,21 +250,29 @@ export function AddSkillPage() {
                 }
               }}
             />
-          ) : (
-            repoUrl && (
-              <Text variant="body-small" color="secondary">
-                Repository: {repoSlug(repoUrl)}
-              </Text>
-            )
           )}
-          <TextField
-            label="Name"
-            isRequired
-            description="Becomes the skill's folder: lowercase letters, digits and dashes, e.g. ticket-triage."
-            value={skillName}
-            onChange={setSkillName}
-            isInvalid={nameInvalid}
-          />
+          {!edit && repositories.length === 1 && repoUrl && (
+            <Text variant="body-small" color="secondary">
+              Repository: {repoSlug(repoUrl)}
+            </Text>
+          )}
+          {edit ? (
+            <TextField
+              label="Name"
+              description="The skill's name stays as it is; agents find it by its folder."
+              value={skillName}
+              isReadOnly
+            />
+          ) : (
+            <TextField
+              label="Name"
+              isRequired
+              description="Becomes the skill's folder: lowercase letters, digits and dashes, e.g. ticket-triage."
+              value={skillName}
+              onChange={setSkillName}
+              isInvalid={nameInvalid}
+            />
+          )}
           <TextField
             label="Description"
             isRequired
@@ -220,7 +296,9 @@ export function AddSkillPage() {
           description={error.message}
         />
       )}
-      {result && <SkillPullRequestOutcome result={result} />}
+      {result && (
+        <SkillPullRequestOutcome result={result} isUpdate={Boolean(edit)} />
+      )}
     </WizardFrame>
   );
 }

@@ -14,6 +14,7 @@ import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { sessionsRouteRef } from '../../routes';
+import { PinIcon } from '../PinIcon';
 import {
   describeSessionDeleteFailure,
   SessionDeleteDialog,
@@ -48,6 +49,7 @@ export function SessionActionsMenu({
   runtimeLoss,
   triggerLabel = 'Session actions',
   onDeleted,
+  pin,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -67,6 +69,13 @@ export function SessionActionsMenu({
    * row that held this menu.
    */
   onDeleted?: () => void;
+  /**
+   * The session's pin toggle, before the menu — the prototype's header pin.
+   * Pinned sessions lead the shell rail and the sessions list. Absent where
+   * pins show nowhere (classic chrome) and in a list, whose rows carry their
+   * own.
+   */
+  pin?: { isPinned: boolean; onToggle: () => void };
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
@@ -117,6 +126,15 @@ export function SessionActionsMenu({
 
   return (
     <>
+      {pin && (
+        <ButtonIcon
+          icon={<PinIcon filled={pin.isPinned} size={17} />}
+          aria-pressed={pin.isPinned}
+          aria-label={pin.isPinned ? 'Unpin session' : 'Pin session'}
+          variant="tertiary"
+          onPress={pin.onToggle}
+        />
+      )}
       <MenuTrigger>
         <ButtonIcon
           icon={<MoreVertIcon />}

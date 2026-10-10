@@ -62,33 +62,52 @@ describe('CustomizeAgentsPanel', () => {
     };
   });
 
-  it('shows a row per agent with its state, linking to the agent', async () => {
+  it('lists each agent as an avatar row of the prototype, linking to the agent', async () => {
     await renderPanel();
 
-    // One flat, global table — the Connectors tab's presentation — with no
-    // organization column (D4): the namespace is no organization.
-    const table = screen.getByRole('grid');
-    expect(
-      within(table).queryByRole('columnheader', { name: /Organization/ }),
-    ).not.toBeInTheDocument();
-    const triageRow = within(table)
-      .getByText('Support triage')
-      .closest('tr') as HTMLElement;
-    expect(triageRow).toHaveAttribute(
-      'data-href',
+    // The prototype's presentation: one rounded list, an avatar row per agent
+    // — no table and no column headers. Global, with no organization (D4):
+    // the namespace is no organization.
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Agents' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+
+    const triageLink = within(items[0]).getByRole('link');
+    expect(triageLink).toHaveAttribute(
+      'href',
       '/agent-platform/agents/golem/support/triage',
     );
-    expect(within(triageRow).getByText('Sorts tickets')).toBeInTheDocument();
-    expect(within(triageRow).queryByText('support')).not.toBeInTheDocument();
-    expect(within(triageRow).getByText('Ready')).toBeInTheDocument();
-    expect(within(triageRow).getByText('Sonnet 4.5')).toBeInTheDocument();
+    expect(within(triageLink).getByText('Support triage')).toBeInTheDocument();
+    expect(within(triageLink).getByText('Sorts tickets')).toBeInTheDocument();
+    expect(within(triageLink).getByText('Sonnet 4.5')).toBeInTheDocument();
     expect(
-      within(triageRow).getByText('2 skills · 2 connectors'),
+      within(triageLink).getByText('2 skills · 2 connectors'),
     ).toBeInTheDocument();
-    const notesRow = within(table)
-      .getByText('Release notes')
-      .closest('tr') as HTMLElement;
-    expect(within(notesRow).getByText('Failed')).toBeInTheDocument();
+    expect(within(triageLink).queryByText('support')).not.toBeInTheDocument();
+    // A Ready agent shows no state; one that needs a look says so inline.
+    expect(within(triageLink).queryByText('Ready')).not.toBeInTheDocument();
+    expect(within(items[1]).getByText('Release notes')).toBeInTheDocument();
+    expect(within(items[1]).getByText('Failed')).toBeInTheDocument();
+    // One environment: no environment fact.
+    expect(within(list).queryByText('golem')).not.toBeInTheDocument();
+  });
+
+  it('names the environment when the agents span more than one', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: [
+        triage,
+        { ...notes, id: 'lab/engineering/notes', installation: 'lab' },
+      ],
+    };
+    await renderPanel();
+
+    const items = within(
+      screen.getByRole('list', { name: 'Agents' }),
+    ).getAllByRole('listitem');
+    expect(within(items[0]).getByText('golem')).toBeInTheDocument();
+    expect(within(items[1]).getByText('lab')).toBeInTheDocument();
   });
 
   it('narrows to the search', async () => {

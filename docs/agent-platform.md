@@ -367,6 +367,36 @@ runs, until they update it explicitly on the agent's page. Repo-root skills omit
 per-skill credential in the request (private skill repositories are a separate
 piece of platform work).
 
+### Adding, editing and evaluating a skill
+
+Skills are added and edited as pull requests, never written directly.
+`AddSkillPage` (`/agent-platform/skills/new`) and its edit mode
+(`EditSkillPage`, `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`) both call
+gs-backend's `POST /agent-skills/pull-request` with the person's own GitHub
+token (`useProposeSkill`). That route only works for github.com repositories.
+
+- **Adding a skill** creates `add-skill/<name>` and puts `<name>/SKILL.md`. It
+  refuses with 409 when a skill with that name already exists.
+- **Editing a skill** (`kind: 'update'`) creates `update-skill/<name>` and
+  rewrites the existing `<dir>/SKILL.md`. It writes with the file's blob sha
+  and keeps the frontmatter keys the form does not show. It refuses with 404
+  when the file is gone and with 422 when the edit changes nothing.
+
+Either way, 409 means the branch already exists. The edit form is prefilled
+from `GET /agent-skills/content`, which reads the SKILL.md at the commit the
+catalog pinned:
+
+- github.com repositories are read through the contents API.
+- Any other configured git repository is read from discovery's depth-1 clone.
+  That clone has to still be at the pinned commit; if the branch moved on, the
+  route answers 409.
+
+**Evaluate** on a skill's page starts a session with the
+`metaAgents.skillEvaluation` agent straight away (`useCreateSession('skillDetail')`)
+and navigates to it with the standard handoff (see "Starting a session"). The
+first message names the skill, its repository, path, commit and branch, and
+asks for a report plus a pull request with improvements.
+
 ### The runtime is a Harness
 
 Below the model, the details step lists the **Harnesses of the chosen model's
@@ -1598,19 +1628,46 @@ turns, deduplicated by message id like the tokens. ADK reports no cost, so a
 session on the platform Harness shows no row rather than `$0.00`. A turn
 canceled before Claude Code reports usage is not in the sum.
 
-### Plain ⇄ technical trace
+### Work summaries and technical detail in place
 
-The timeline's trace — tool calls, delegations, reasoning, approvals — defaults
-to the **plain** register: each tool call as a readable line (the tool's name as
-words via `humanizeToolName`, the connector it went through, its status), with
-nothing to expand. The **Show technical details** switch reveals the exact tool
-names, the argument summary and the collapsible argument/result payloads. One
-toggle for the whole view, remembered per user through the StorageApi (bucket
-`agent-platform`, key `chatTechnicalDetails` — `useChatTechnicalDetails`).
-Reasoning keeps its expander in both registers (it is prose, not payload), and
-messages, attachments and turn endings read the same in both. The pending
-approval card always shows the exact proposed arguments, whatever the register
-— they are what Allow would run.
+Each run of an agent's work — consecutive reasoning, tool calls and delegations
+— folds under one summary line, the prototype's **"✓ Used 3 tools ›"**
+(`segmentTurn` / `summarizeWork` in `SessionTimeline/helpers.ts`; tools counted
+by name, calls by call; delegations as "Asked N agents"; no duration, since
+kagent records no per-call timing). A run folds only when it holds a call and
+more than one step: a lone call is already one line and stays inline, and
+reasoning on its own is prose with its own expander. Approvals, questions,
+messages, attachments and turn endings never fold. The summary is collapsed
+once the turn is done and open while the agent is still working on that run.
+
+**Technical detail is a fold-out in place, never a view-wide toggle** (PO,
+2026-10-10). Opening a summary shows the full technical trace directly — a
+"N steps · M tool calls" line, the exact tool names with their argument
+summary, each call folding out its argument/result payloads — with no second
+"show technical details" step: clicking the summary is the decision to learn
+more. A row outside a summary reads plainly (the tool's name as words via
+`humanizeToolName`, the connector, its status) and folds out its exact call —
+identifier, arguments, result — on the row itself. The pending approval card
+always shows the exact proposed arguments — they are what Allow would run.
+
+Under the composer the resting caption is the prototype's **"Agents can make
+mistakes. Check important results."** (idle and between turns); while a
+confirmation is open it reads **"<Agent> is waiting for your decision above."**
+(or "answer" for a question), and the approval card says **"Nothing is sent
+until you allow it."** under its title.
+
+### Pin and needs-input toasts
+
+In the shell, the session header carries a pin toggle before the actions menu
+(`usePinnedSessions`, the same per-user store the rail and the sessions list
+read). `NeedsInputToasts`, mounted with the shell rail's `RecentSessions`,
+watches the same polled `session-states` (same query keys, fast tier — no
+extra requests) and posts a `ToastApi` toast — "<Agent> is waiting for you",
+the session's title, an **Open session** link — when a session flips to
+waiting while the person is elsewhere. Nothing persists: sessions already
+waiting when watching began are left to the dots, a toast closes itself when
+its session stops waiting or is opened, and the session on screen never
+raises one. The rail's colored dots stay the primary signal.
 
 ### Timestamps are absolute here, relative in the list
 

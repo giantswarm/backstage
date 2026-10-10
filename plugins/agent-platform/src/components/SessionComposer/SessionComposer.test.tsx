@@ -236,20 +236,31 @@ describe('SessionComposer', () => {
     expect(
       screen.getByPlaceholderText('Send a message to resume this session…'),
     ).toBeInTheDocument();
+    // Between turns is the usual state of a session, so the caption is the
+    // prototype's disclaimer there too; the placeholder says what Send does.
     expect(
-      screen.getByText('Sending a message resumes this finished session.'),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
   });
 
-  it('describes an ongoing session as a conversation to add to', () => {
+  it('carries the prototype’s disclaimer under an idle box', () => {
     renderComposer();
 
     expect(
       screen.getByPlaceholderText('Send a message to this session…'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Your reply is added to the conversation/),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
+  });
+
+  it('gives the disclaimer way to what is happening while the agent works', () => {
+    renderComposer({ isAgentWorking: true });
+
+    expect(
+      screen.queryByText('Agents can make mistakes. Check important results.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/The agent is working/)).toBeInTheDocument();
   });
 
   it('refuses an over-long message and says how long it is', async () => {

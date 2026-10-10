@@ -40,8 +40,8 @@ export const portalEvents = defineEvents({
   },
   'AgentPlatform.skillProposed': {
     description:
-      'A new skill was proposed to a skill repository, as a pull request opened as the signed-in person.',
-    attributes: {},
+      'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
+    attributes: { kind: ['created', 'updated'] },
   },
   'AgentPlatform.clusterCreated': {
     description:

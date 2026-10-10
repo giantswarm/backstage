@@ -5,6 +5,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { agentsRouteRef, sessionsRouteRef, skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
+import { evaluationPrompt } from './evaluationPrompt';
 import { SkillDetailPage } from './SkillDetailPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
@@ -50,26 +51,18 @@ jest.mock('../../hooks/useMetaAgent', () => ({
 }));
 
 const createSession = jest.fn();
+let mockCreationError: Error | null = null;
+const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
-  useCreateSession: () => ({
-    createSession,
-    isCreating: false,
-    error: null,
-    reset: jest.fn(),
-  }),
-}));
-
-// The composer drags in the full picker; the dialog's own wiring is what this
-// page test covers.
-jest.mock('./EvaluateSkillDialog', () => ({
-  ...jest.requireActual('./EvaluateSkillDialog'),
-  EvaluateSkillDialog: ({
-    isOpen,
-    evaluator,
-  }: {
-    isOpen: boolean;
-    evaluator: AgentRow;
-  }) => (isOpen ? <div>Evaluate dialog with {evaluator.name}</div> : null),
+  useCreateSession: (entryPoint: string) => {
+    mockUseCreateSession(entryPoint);
+    return {
+      createSession,
+      isCreating: false,
+      error: mockCreationError,
+      reset: jest.fn(),
+    };
+  },
 }));
 
 function agent(technicalName: string, skillIds: string[]): AgentRow {
@@ -116,7 +109,29 @@ beforeEach(() => {
   mockRows = [];
   mockUnreachable = [];
   mockEvaluator = undefined;
+  mockCreationError = null;
   createSession.mockReset();
+  mockNavigate.mockReset();
+});
+
+describe('evaluationPrompt', () => {
+  it('names the skill, where it lives at which commit, and asks for a report and a PR', () => {
+    const prompt = evaluationPrompt(skill);
+
+    expect(prompt).toContain('"Ticket triage"');
+    expect(prompt).toContain(REPO);
+    expect(prompt).toContain('ticket-triage/SKILL.md');
+    expect(prompt).toContain(skill.commit);
+    expect(prompt).toContain('branch main');
+    expect(prompt).toMatch(/evaluation report/);
+    expect(prompt).toMatch(/pull request/);
+  });
+
+  it('names the root SKILL.md for a skill at the repository root', () => {
+    expect(evaluationPrompt({ ...skill, path: '' })).toContain(
+      'file SKILL.md,',
+    );
+  });
 });
 
 describe('SkillDetailPage', () => {
@@ -168,15 +183,56 @@ describe('SkillDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('offers Evaluate when the role resolves, opening the evaluation dialog', async () => {
+  it('offers Edit, opening the add-skill flow for this skill', async () => {
+    await renderPage();
+
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/edit/giantswarm/skills/ticket-triage',
+    );
+  });
+
+  it('starts an evaluation session with the evaluator and opens it', async () => {
     mockEvaluator = agent('skill-evaluator', []);
+    createSession.mockResolvedValue('session-1');
     await renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: 'Evaluate' }));
 
+    expect(mockUseCreateSession).toHaveBeenCalledWith('skillDetail');
+    const prompt = evaluationPrompt(skill);
+    expect(createSession).toHaveBeenCalledWith({
+      agent: mockEvaluator,
+      prompt,
+    });
+    // The standard handoff: the session page sends the first message.
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/sessions/gazelle/session-1',
+      {
+        state: {
+          newSession: {
+            text: prompt,
+            agentNamespace: 'kagent',
+            agentName: 'skill-evaluator',
+          },
+        },
+      },
+    );
+  }, 30_000);
+
+  it('stays on the page and says why when the session could not start', async () => {
+    mockEvaluator = agent('skill-evaluator', []);
+    mockCreationError = new Error('kagent is unreachable');
+    createSession.mockRejectedValue(mockCreationError);
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Evaluate' }));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Evaluate dialog with skill-evaluator'),
+      screen.getByText('Could not start the evaluation'),
     ).toBeInTheDocument();
+    expect(screen.getByText('kagent is unreachable')).toBeInTheDocument();
   }, 30_000);
 
   it('says when no skill exists at the address', async () => {

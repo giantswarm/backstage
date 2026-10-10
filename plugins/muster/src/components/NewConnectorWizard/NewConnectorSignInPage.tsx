@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
@@ -35,6 +35,12 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 16,
     padding: '0 12px 12px',
+  },
+  fieldGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+    margin: 0,
   },
   disclosureSummary: {
     padding: '4px 0',
@@ -87,9 +93,17 @@ const SIGN_IN_CHOICES: Array<{
   },
 ];
 
+// Plain first, muster's `grantScope` value in parentheses for whoever is
+// matching this up with the MCPServer resource.
 const GRANT_SCOPE_OPTIONS = [
-  { id: 'session', label: 'Each login session (default)' },
-  { id: 'subject', label: 'Each person — reused across their sessions' },
+  {
+    id: 'session',
+    label: 'Sign in again in every new session (session, default)',
+  },
+  {
+    id: 'subject',
+    label: "Sign in once, reused across the person's sessions (subject)",
+  },
 ];
 
 /**
@@ -101,6 +115,7 @@ const GRANT_SCOPE_OPTIONS = [
  */
 export function NewConnectorSignInPage() {
   const classes = useStyles();
+  const credentialsHeadingId = useId();
   const navigate = useNavigate();
   const connectLink = useRouteRef(newMcpServerRouteRef);
   const testLink = useRouteRef(newMcpServerVerifyRouteRef);
@@ -292,28 +307,28 @@ export function NewConnectorSignInPage() {
           <DisclosureAccordion
             summary={
               <span className={classes.disclosureSummary}>
-                Advanced: authorization server override
+                Advanced: sign-in settings for apps muster can&apos;t look up
               </span>
             }
             defaultExpanded={hasAdvancedAuthorizationServer(state)}
           >
             <div className={classes.disclosureBody}>
               <Text variant="body-small" color="secondary">
-                Only needed when the app&apos;s authorization server publishes
-                no discovery metadata (GitHub-style). Leave everything empty to
-                discover it automatically — the default, and what compliant
-                servers expect.
+                Only needed when the app doesn&apos;t publish its sign-in
+                settings (GitHub, for example). Leave everything empty and
+                muster looks them up by itself — the default, and what most apps
+                expect.
               </Text>
               <TextField
-                label="Issuer"
+                label="Where people sign in (issuer URL)"
                 secondaryLabel="optional"
                 value={state.issuer}
                 onChange={setIssuer}
                 placeholder="https://auth.example.com"
-                description="The authorization server's issuer URL. Everything below belongs to it."
+                description="The address of the app's sign-in service. Every setting below needs this one filled in."
               />
               <TextField
-                label="Scopes"
+                label="Permissions to ask for (scopes)"
                 secondaryLabel="optional"
                 isDisabled={!authFields.scopes.available}
                 value={state.scopes}
@@ -321,60 +336,82 @@ export function NewConnectorSignInPage() {
                 placeholder="read write"
                 description={
                   authFields.scopes.available
-                    ? 'Space-separated OAuth scopes to request from the issuer.'
+                    ? "The scopes as the app's documentation names them, separated by spaces."
                     : authFields.scopes.reason
                 }
               />
               <TextField
-                label="Authorization endpoint"
+                label="Sign-in page address (authorization endpoint)"
                 secondaryLabel="optional"
                 value={state.authorizationEndpoint}
                 onChange={setAuthorizationEndpoint}
                 placeholder="https://github.com/login/oauth/authorize"
-                description="Pinned for authorization servers without RFC 8414 discovery. Set together with the token endpoint."
+                description="Where people are sent to sign in. Fill it in together with the token address below, or leave both empty."
               />
               <TextField
-                label="Token endpoint"
+                label="Token address (token endpoint)"
                 secondaryLabel="optional"
                 value={state.tokenEndpoint}
                 onChange={setTokenEndpoint}
                 placeholder="https://github.com/login/oauth/access_token"
-                description="Pinned together with the authorization endpoint."
+                description="Where muster picks up the result of a sign-in. Fill it in together with the sign-in page address."
               />
-              <TextField
-                label="Client credentials Secret"
-                secondaryLabel="optional"
-                value={state.clientSecretName}
-                onChange={setClientSecretName}
-                placeholder="github-oauth-client"
-                description="Name of a Kubernetes Secret holding an out-of-band registered OAuth client (e.g. a GitHub App) — the credential itself never enters this definition. Leave empty when the server supports dynamic client registration."
-              />
-              <TextField
-                label="Secret namespace"
-                secondaryLabel="optional"
-                value={state.clientSecretNamespace}
-                onChange={setClientSecretNamespace}
-                placeholder="muster"
-                description="Where that Secret lives. Leave empty for muster's own namespace."
-              />
-              <TextField
-                label="Client id key"
-                secondaryLabel="optional"
-                value={state.clientIdKey}
-                onChange={setClientIdKey}
-                placeholder="clientId"
-                description="The Secret key holding the client id."
-              />
-              <TextField
-                label="Client secret key"
-                secondaryLabel="optional"
-                value={state.clientSecretKey}
-                onChange={setClientSecretKey}
-                placeholder="clientSecret"
-                description="The Secret key holding the client secret."
-              />
+              <div
+                className={classes.fieldGroup}
+                role="group"
+                aria-labelledby={credentialsHeadingId}
+              >
+                <Text
+                  as="h3"
+                  id={credentialsHeadingId}
+                  variant="body-medium"
+                  weight="bold"
+                >
+                  Client credentials — stored in a Kubernetes Secret
+                </Text>
+                <Text variant="body-small" color="secondary">
+                  If you registered this app with its provider yourself (a
+                  GitHub App, for example), its client ID and client secret are
+                  kept in a Kubernetes Secret. Enter where to find them: the
+                  Secret&apos;s name and the names of the keys inside it — never
+                  the client ID or secret themselves. Leave this empty when
+                  muster can register itself with the app.
+                </Text>
+                <TextField
+                  label="Secret name"
+                  secondaryLabel="optional"
+                  value={state.clientSecretName}
+                  onChange={setClientSecretName}
+                  placeholder="github-oauth-client"
+                  description="The name of the Kubernetes Secret, not its contents."
+                />
+                <TextField
+                  label="Secret namespace"
+                  secondaryLabel="optional"
+                  value={state.clientSecretNamespace}
+                  onChange={setClientSecretNamespace}
+                  placeholder="muster"
+                  description="Leave empty when the Secret is in the connector's own namespace."
+                />
+                <TextField
+                  label="Key holding the client ID"
+                  secondaryLabel="optional"
+                  value={state.clientIdKey}
+                  onChange={setClientIdKey}
+                  placeholder="client-id"
+                  description="The key's name inside the Secret. Leave empty for client-id."
+                />
+                <TextField
+                  label="Key holding the client secret"
+                  secondaryLabel="optional"
+                  value={state.clientSecretKey}
+                  onChange={setClientSecretKey}
+                  placeholder="client-secret"
+                  description="The key's name inside the Secret. Leave empty for client-secret."
+                />
+              </div>
               <Select
-                label="Sign-in grant lasts for"
+                label="How long a sign-in lasts"
                 options={GRANT_SCOPE_OPTIONS}
                 selectedKey={state.grantScope}
                 onSelectionChange={key => {
@@ -382,7 +419,7 @@ export function NewConnectorSignInPage() {
                     setGrantScope(key);
                   }
                 }}
-                description="By default a person signs in once per login session; per person, the grant is reused across their sessions."
+                description="Reusing a sign-in suits accounts people own, like GitHub: it lasts until they sign out of this connector."
               />
             </div>
           </DisclosureAccordion>

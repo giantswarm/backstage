@@ -11,9 +11,9 @@ import { ShellMain } from './ShellMain';
 /**
  * The app's layout, as `@backstage/plugin-app` builds it, with the page
  * content in the shell's main region on the agent area's routes while the
- * agent-platform shell is available (feature flag on). Everywhere else — and
- * with the flag off, everywhere — the layout is exactly the upstream one, so
- * the classic portal keeps its chrome. The shell is decided per location at
+ * Agent Platform is available (`app.portals`, or the person's opt-in flag).
+ * Everywhere else — and without the Agent Platform, everywhere — the layout
+ * is exactly the upstream one, so the classic portal keeps its chrome. The shell is decided per location at
  * render time; the nav element makes the same choice for the rail vs the
  * classic sidebar.
  */

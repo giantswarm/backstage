@@ -21,7 +21,9 @@ import {
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
+import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { poolPhaseLabel } from '../../lib/poolLifecycle';
+import { describeHourlyRange } from '../../lib/poolPricing';
 import {
   PoolLifecyclePanel,
   type OpenedPool,
@@ -51,7 +53,43 @@ export type GpuNodePoolsPanelProps = {
   onCloseLifecycle: () => void;
   /** Columns to leave out: the page drops Installation where it would repeat. */
   hideColumns?: ReadonlyArray<'installation'>;
+  /** What each pool's nodes cost per hour; without it there is no Cost column. */
+  prices?: NodeSizePrices;
 };
+
+/**
+ * The pool's Cost cell: what its running nodes cost now and, under it, what
+ * one node costs while it runs — cluster-manager's on-demand list prices. A
+ * pool of several sizes shows the range from its cheapest to its dearest.
+ */
+export function PoolCostCell({
+  row,
+  prices,
+}: {
+  row: GpuNodePoolRow;
+  prices: NodeSizePrices;
+}) {
+  const price = prices.priceOf(row);
+  if (!price) {
+    return (
+      <CellText
+        title={prices.isReading(row) ? 'Reading…' : '—'}
+        description={
+          prices.isReading(row) ? undefined : 'No price listed for its sizes'
+        }
+      />
+    );
+  }
+  return (
+    <CellText
+      title={`${describeHourlyRange(price.nowMinUSD, price.nowMaxUSD)} now`}
+      description={`${describeHourlyRange(
+        price.perNodeMinUSD,
+        price.perNodeMaxUSD,
+      )} per node · ${price.nodes} running`}
+    />
+  );
+}
 
 export function sortGpuNodePoolsBy(
   rows: GpuNodePoolRow[],
@@ -84,7 +122,17 @@ function getColumnConfig(
   onRemove: (row: GpuNodePoolRow) => void,
   openedId: string | undefined,
   onToggleLifecycle: (row: GpuNodePoolRow) => void,
+  prices: NodeSizePrices | undefined,
 ): ColumnConfig<GpuNodePoolRow>[] {
+  const costColumn: ColumnConfig<GpuNodePoolRow>[] = prices
+    ? [
+        {
+          id: 'cost',
+          label: 'Cost',
+          cell: row => <PoolCostCell row={row} prices={prices} />,
+        },
+      ]
+    : [];
   return [
     {
       id: 'name',
@@ -129,6 +177,7 @@ function getColumnConfig(
       isSortable: true,
       cell: row => <CellText title={poolPhaseLabel(row.pool, row.cluster)} />,
     },
+    ...costColumn,
     {
       id: 'version',
       label: 'Pool Kubernetes',
@@ -194,13 +243,14 @@ export function GpuNodePoolsPanel({
   onToggleLifecycle,
   onCloseLifecycle,
   hideColumns,
+  prices,
 }: GpuNodePoolsPanelProps) {
   const columnConfig = useMemo(
     () =>
-      getColumnConfig(onRemove, opened?.id, onToggleLifecycle).filter(
+      getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices).filter(
         column => !hideColumns?.includes(column.id as 'installation'),
       ),
-    [onRemove, opened?.id, onToggleLifecycle, hideColumns],
+    [onRemove, opened?.id, onToggleLifecycle, prices, hideColumns],
   );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
@@ -241,6 +291,8 @@ export function GpuNodePoolsPanel({
             per cluster. A pool runs nodes exactly while something is scheduled
             on them; removing a pool that still runs nodes is refused until the
             models on it are stopped.
+            {prices &&
+              " Costs are the cloud's on-demand list prices for the pool's node sizes, as cluster-manager reads them."}
           </Text>
           {body}
           {opened && (

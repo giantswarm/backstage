@@ -29,6 +29,43 @@ export interface Config {
      */
     releaseVersion?: string;
 
+    /**
+     * Which portals this deployment serves. Public: the app decides which of
+     * its pages and navigations exist when it starts, before sign-in.
+     *
+     * - Both on: the Agent Platform shell on its routes (`/`,
+     *   `/agent-platform/**`, `/customize/**`), the classic Platform Portal
+     *   everywhere else, each cross-linking to the other in a new tab.
+     * - Only `agentPlatform`: the shell is the navigation — `/` is the
+     *   new-session screen for everyone and the rail has no "Platform Portal"
+     *   item. Classic pages stay reachable by URL (in classic chrome, whose
+     *   "Agent Platform" item leads back in the same tab) but nothing in the
+     *   shell links to them.
+     * - Only `platformPortal` (the default): exactly the classic portal, no
+     *   agent shell and no cross-link. The person's `agent-platform-shell`
+     *   feature flag then opts one browser into the shell, as an override
+     *   for trying it out; it is not offered while `agentPlatform` is on.
+     *
+     * The shell's Sessions, Agents, Models and Usage screens live on the
+     * `page:agent-platform` extension, which is disabled by default: enable it
+     * in `app.extensions` wherever `agentPlatform` is on. Both off reads as
+     * the default.
+     */
+    portals?: {
+      /**
+       * The classic Platform Portal (clusters, deployments, catalog, …) in
+       * its classic chrome. Default: true.
+       * @visibility frontend
+       */
+      platformPortal?: boolean;
+      /**
+       * The Agent Platform shell. Default: false, so a rollout switches it
+       * on per deployment.
+       * @visibility frontend
+       */
+      agentPlatform?: boolean;
+    };
+
     branding?: {
       /**
        * Filesystem path where custom branding assets (logos, favicons) are stored.

@@ -66,10 +66,13 @@ async function renderSidebar({
   isMobile = false,
   flag = FeatureFlagState.None,
   path = '/clusters',
+  portals,
 }: {
   isMobile?: boolean;
   flag?: FeatureFlagState;
   path?: string;
+  /** The deployment's `app.portals`; unset is the classic-only default. */
+  portals?: { platformPortal?: boolean; agentPlatform?: boolean };
 } = {}) {
   const Content = createExtensionTester(SidebarContent).get(
     NavContentBlueprint.dataRefs.component,
@@ -82,6 +85,10 @@ async function renderSidebar({
     </SidebarPinStateProvider>,
     {
       initialRouteEntries: [path],
+      config: {
+        app: { baseUrl: 'http://localhost:3000', portals },
+        backend: { baseUrl: 'http://localhost:7007' },
+      },
       apis: [
         mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
       ],
@@ -144,5 +151,82 @@ describe('SidebarContent', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Main' }),
     ).not.toBeInTheDocument();
+  });
+
+  describe('per the deployment’s portals', () => {
+    it('cross-links to the agent shell in a new tab when both portals are on, flag or not', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: true },
+      });
+
+      const link = screen.getByRole('link', { name: /Agent Platform/ });
+      expect(link).toHaveAttribute('href', '/');
+      expect(link).toHaveAttribute('target', '_blank');
+    });
+
+    it('renders the rail at / when both portals are on', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: true },
+        path: '/',
+      });
+
+      expect(
+        screen.getByRole('navigation', { name: 'Main' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('cluster-access-item'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders the rail at / on an agent-only deployment', async () => {
+      await renderSidebar({
+        portals: { platformPortal: false, agentPlatform: true },
+        path: '/',
+      });
+
+      expect(
+        screen.getByRole('navigation', { name: 'Main' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: 'Platform Portal' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('leads a classic page reached by URL on an agent-only deployment back home in the same tab', async () => {
+      await renderSidebar({
+        portals: { platformPortal: false, agentPlatform: true },
+        path: '/clusters',
+      });
+
+      const link = screen.getByRole('link', { name: /Agent Platform/ });
+      expect(link).toHaveAttribute('href', '/');
+      expect(link).not.toHaveAttribute('target');
+    });
+
+    it('is the classic portal with no cross-link on a platform-only deployment', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: false },
+        path: '/',
+      });
+
+      expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('navigation', { name: 'Main' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('link', { name: /Agent Platform/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('lets the flag opt one browser in on a platform-only deployment', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: false },
+        flag: FeatureFlagState.Active,
+      });
+
+      expect(
+        screen.getByRole('link', { name: /Agent Platform/ }),
+      ).toHaveAttribute('target', '_blank');
+    });
   });
 });

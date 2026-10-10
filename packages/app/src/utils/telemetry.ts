@@ -248,6 +248,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Add skill' };
       break;
 
+    // Editing a skill: `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`.
+    // No `view`, like the skill page itself. Must stay above the skill-detail
+    // case below for the same reason as the add-skill form.
+    case pathname.startsWith('/agent-platform/skills/edit/'):
+      payload = { page: 'Edit skill' };
+      break;
+
     // One skill: `/agent-platform/skills/<owner>/<repo>[/<skill dir>]`. No
     // `view`, like Session detail: the varying segments name a repository and
     // a skill directory, which would open the dimension up per skill. The bare

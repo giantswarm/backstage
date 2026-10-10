@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EmptyState } from '@backstage/core-components';
-import { Alert, Box, Flex, Link, Switch, Text } from '@backstage/ui';
+import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import BarChart from '@material-ui/icons/BarChart';
 import Code from '@material-ui/icons/Code';
@@ -31,11 +31,17 @@ import {
   workflowDetailRouteRef,
 } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { SectionHeader, SessionGate, StateBadge } from '../shared';
+import {
+  DisclosureAccordion,
+  SectionHeader,
+  SessionGate,
+  StateBadge,
+} from '../shared';
 import { WorkflowStatsPanel } from '../WorkflowDetailPage/WorkflowStatsPanel';
 import { WorkflowEffectBadge } from './WorkflowEffectBadge';
+import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
+import { useRunCounts } from './useRecentRuns';
 import { WorkflowRunsSection } from './WorkflowRunsSection';
-import { WorkflowStepsSection } from './WorkflowStepsSection';
 
 const WORKFLOW_TOOL_PREFIX = 'workflow_';
 
@@ -239,12 +245,12 @@ function WorkflowPageContent({
   const session = useMusterSession();
   const hasSession =
     session.authenticated || !(activeInstallationInfo?.requiresAuth ?? false);
-  const [technical, setTechnical] = useState(false);
 
   const name = workflow.getName();
   const toolName = `${WORKFLOW_TOOL_PREFIX}${name}`;
   const gitOps = isGitOpsManaged(workflow);
   const steps = workflow.getSteps();
+  const onFailure = workflow.getOnFailureSteps();
   const args = Object.entries(workflow.getArgs());
   const created = workflow.getCreatedTimestamp();
   const category = workflow.getCategory();
@@ -268,6 +274,8 @@ function WorkflowPageContent({
     staleTime: 30_000,
   });
   const effect = toolQuery.data ? toolEffect(toolQuery.data) : undefined;
+  // muster's own per-status totals: the run list itself stays a handful.
+  const runCounts = useRunCounts(name, installation, hasSession);
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
@@ -293,6 +301,19 @@ function WorkflowPageContent({
       label: 'Tool name',
       value: <code className={classes.mono}>{toolName}</code>,
     },
+    ...(runCounts
+      ? [
+          {
+            label: 'Runs',
+            value: (
+              <Text variant="body-small">
+                {runCounts.succeeded.toLocaleString('en-US')} succeeded ·{' '}
+                {runCounts.failed.toLocaleString('en-US')} failed
+              </Text>
+            ),
+          },
+        ]
+      : []),
     ...(created
       ? [
           {
@@ -321,13 +342,6 @@ function WorkflowPageContent({
       // Plain text, not GSMarkdownContent: ShellPage wraps the description in
       // a `<p>`, and a markdown block's `<div>` inside it is invalid HTML.
       description={workflow.getDescription()}
-      actions={
-        <Switch
-          label="Show technical details"
-          isSelected={technical}
-          onChange={setTechnical}
-        />
-      }
       aside={<FactsColumn facts={facts} aria-label="Workflow details" />}
     >
       <Flex direction="column" gap="6">
@@ -373,12 +387,13 @@ function WorkflowPageContent({
             title="How it runs"
             description="The steps, in order. A step with a condition is skipped when the condition does not hold — it never branches to another path."
           />
-          <WorkflowStepsSection
+          <WorkflowFlowCanvas
+            name={name}
             steps={steps}
-            onFailure={workflow.getOnFailureSteps()}
+            onFailure={onFailure}
             prefixes={prefixes}
-            technical={technical}
             installation={installation}
+            hasSession={hasSession}
           />
         </Box>
 
@@ -392,7 +407,6 @@ function WorkflowPageContent({
             name={name}
             installation={installation}
             hasSession={hasSession}
-            technical={technical}
             prefixes={prefixes}
           />
         </Box>
@@ -455,20 +469,20 @@ function WorkflowPageContent({
           </Flex>
         </Box>
 
-        {technical && (
-          <Box>
-            <SectionHeader
-              icon={<Code />}
-              title="Technical details"
-              description="The raw definition and the CR's bookkeeping."
-            />
+        <Box>
+          <SectionHeader
+            icon={<Code />}
+            title="Technical details"
+            description="The raw definition and the CR's bookkeeping."
+          />
+          <DisclosureAccordion summary="Show the raw definition">
             <TechnicalDetails
               workflow={workflow}
               installation={installation}
               hasSession={hasSession}
             />
-          </Box>
-        )}
+          </DisclosureAccordion>
+        </Box>
       </Flex>
     </ShellPage>
   );
@@ -477,10 +491,12 @@ function WorkflowPageContent({
 /**
  * A workflow's page in the agent-platform shell — read-only by decision D11:
  * no create, edit or delete affordances; changes happen through Git or agents
- * via muster. Plain level: what it needs, how it runs, recent runs,
- * statistics and where agents use it. The "Show technical details" toggle
- * adds exact tool names, templated arguments, condition specs, per-run
- * execution JSON and the raw definition YAML.
+ * via muster. Plain level: what it needs, how it runs (the flow canvas — a
+ * step opens its details on click), the latest few runs, statistics and where
+ * agents use it. Technical detail is disclosed where it belongs, never by a
+ * page-wide toggle: each step's own fold-out (exact tool, templated
+ * arguments, condition spec), each run's (execution JSON), and the raw
+ * definition at the bottom.
  */
 export function WorkflowPage() {
   const { name = '' } = useParams<{ name: string }>();

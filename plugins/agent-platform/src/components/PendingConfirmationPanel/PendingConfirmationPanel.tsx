@@ -323,7 +323,10 @@ export function PendingConfirmationPanel({
     submitLabel = isQuestion ? 'Send answer' : 'Allow';
   }
 
-  let caption: string;
+  // A permission request carries no resting caption: its reassurance ("Nothing
+  // is sent until you allow it.") stands under its title, as the prototype
+  // places it, and its buttons sit at the card's end.
+  let caption: string | undefined;
   if (isAnswerTooLong) {
     caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isReasonTooLong) {
@@ -331,8 +334,6 @@ export function PendingConfirmationPanel({
   } else if (isQuestion) {
     caption =
       'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.';
-  } else {
-    caption = 'Your decision resumes the agent where it stopped.';
   }
 
   const send = () => {
@@ -508,7 +509,7 @@ export function PendingConfirmationPanel({
                   {approvalTitle}
                 </Text>
                 <Text variant="body-small" color="secondary">
-                  Nothing runs until you allow it.
+                  Nothing is sent until you allow it.
                 </Text>
               </Flex>
               {/* The accent: this call has effects outside the conversation,
@@ -541,13 +542,15 @@ export function PendingConfirmationPanel({
             instead of squeezing beside it. */}
         <Flex
           align="center"
-          justify="between"
+          justify={caption ? 'between' : 'end'}
           gap="2"
           style={{ flexWrap: 'wrap' }}
         >
-          <Text variant="body-small" color="secondary">
-            {caption}
-          </Text>
+          {caption && (
+            <Text variant="body-small" color="secondary">
+              {caption}
+            </Text>
+          )}
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
             <Button
               variant="secondary"

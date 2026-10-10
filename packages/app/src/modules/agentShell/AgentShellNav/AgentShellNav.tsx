@@ -4,7 +4,6 @@ import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
   CommandPalette,
   RecentSessions,
-  SessionNotificationsBell,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
 import { makeStyles } from '@material-ui/core/styles';
@@ -12,6 +11,7 @@ import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
+import { usePortals } from '../agentArea';
 import { agentShellNavItems } from '../navItems';
 import { RailItem } from './RailItem';
 import { SkipLink } from './SkipLink';
@@ -90,8 +90,9 @@ const useStyles = makeStyles({
     color: 'var(--bui-fg-secondary)',
     background: 'var(--bui-bg-neutral-1)',
   },
-  // The bell's trigger, dressed as a rail item (it is a button, not a link).
-  bell: {
+  // A button dressed as a rail item (the Search trigger opens an overlay, it
+  // does not navigate).
+  railButton: {
     display: 'block',
     width: '100%',
     padding: 'var(--bui-space-2)',
@@ -110,32 +111,11 @@ const useStyles = makeStyles({
 });
 
 /**
- * The notification bell, guarded: several test files mock the agent-platform
- * plugin module with only the exports they know about, and a partial mock
- * must degrade to "no bell" rather than crash the whole rail.
- */
-function BellItem({
-  compact,
-  className,
-}: {
-  compact: boolean;
-  className: string;
-}) {
-  if (!SessionNotificationsBell) {
-    return null;
-  }
-  return (
-    <li>
-      <SessionNotificationsBell compact={compact} className={className} />
-    </li>
-  );
-}
-
-/**
  * The rail's Search item: opens the ⌘K command palette the agent-platform
- * plugin provides. A button dressed as a rail item, like the bell — opening
- * the palette is an overlay, not a navigation. Guarded like {@link BellItem}:
- * a partial mock of the plugin module degrades to "no Search item".
+ * plugin provides. A button dressed as a rail item — opening the palette is
+ * an overlay, not a navigation. Guarded: several test files mock the
+ * agent-platform plugin module with only the exports they know about, and a
+ * partial mock must degrade to "no Search item" rather than crash the rail.
  */
 function PaletteSearchItem({
   compact,
@@ -194,8 +174,13 @@ export function AgentShellNav() {
 function AgentShellRail() {
   const classes = useStyles();
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
-  const top = agentShellNavItems.filter(item => item.position === 'top');
-  const bottom = agentShellNavItems.filter(item => item.position === 'bottom');
+  const portals = usePortals();
+  // A cross-link into the other portal only while the deployment serves it.
+  const items = agentShellNavItems.filter(
+    item => !item.crossLinkTo || portals[item.crossLinkTo],
+  );
+  const top = items.filter(item => item.position === 'top');
+  const bottom = items.filter(item => item.position === 'bottom');
 
   if (isMobile) {
     return (
@@ -207,10 +192,9 @@ function AgentShellRail() {
           ))}
           <PaletteSearchItem
             compact
-            className={classes.bell}
+            className={classes.railButton}
             hintClassName={classes.shortcutHint}
           />
-          <BellItem compact className={classes.bell} />
         </ul>
       </nav>
     );
@@ -261,7 +245,7 @@ function AgentShellRail() {
               {item.id === 'new-session' && (
                 <PaletteSearchItem
                   compact={compact}
-                  className={classes.bell}
+                  className={classes.railButton}
                   hintClassName={classes.shortcutHint}
                 />
               )}
@@ -278,7 +262,6 @@ function AgentShellRail() {
             {bottom.map(item => (
               <RailItem key={item.id} item={item} compact={compact} />
             ))}
-            <BellItem compact={compact} className={classes.bell} />
           </ul>
         </Box>
       </Flex>

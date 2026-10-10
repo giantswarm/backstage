@@ -12,6 +12,7 @@ import {
   type GpuNodePoolRow,
   type ModelCacheRow,
 } from '../../hooks/useClusterManager';
+import { useNodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { useServeIntentRunner } from '../../hooks/useServeIntentRunner';
 import { useServeIntents } from '../../hooks/useServeIntents';
 import {
@@ -84,6 +85,8 @@ export function useGpuNodePoolControls(
 ): GpuNodePoolControls {
   const availability = useClusterManagerAvailability(installations);
   const pools = useGpuNodePools(availability.available);
+  // What each pool's nodes cost per hour, from cluster-manager's list prices.
+  const prices = useNodeSizePrices(pools.rows);
   const [addOpen, setAddOpen] = useState(false);
   const [removing, setRemoving] = useState<GpuNodePoolRow>();
   const [removingCache, setRemovingCache] = useState<ModelCacheRow>();
@@ -268,6 +271,7 @@ export function useGpuNodePoolControls(
         onToggleLifecycle={onToggleLifecycle}
         onCloseLifecycle={onCloseLifecycle}
         hideColumns={hideColumns}
+        prices={prices}
       />
     ) : undefined,
     cachePanel: shown ? (

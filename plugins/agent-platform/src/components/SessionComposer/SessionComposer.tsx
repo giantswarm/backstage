@@ -34,6 +34,13 @@ import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
  */
 export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
 
+/**
+ * What the composer says under the box when nothing more pressing applies —
+ * the prototype's reminder that an agent's answer is not a verified one.
+ */
+export const COMPOSER_DISCLAIMER =
+  'Agents can make mistakes. Check important results.';
+
 /** Rows the box shows when empty, and grows to before it scrolls. */
 const MIN_ROWS = 2;
 const MAX_ROWS = 12;
@@ -312,11 +319,11 @@ export function SessionComposer({
     caption = showStop
       ? 'The agent is working. Stop it, or reply once this turn finishes.'
       : 'The agent is working. You can reply once this turn finishes.';
-  } else if (isFinished) {
-    caption = 'Sending a message resumes this finished session.';
   } else {
-    caption =
-      'Your reply is added to the conversation. Enter sends, Shift+Enter for a new line.';
+    // The prototype's resting caption, whether or not the last turn finished:
+    // a finished session is the usual state between turns, and the
+    // placeholder already says a message resumes it.
+    caption = COMPOSER_DISCLAIMER;
   }
 
   return (

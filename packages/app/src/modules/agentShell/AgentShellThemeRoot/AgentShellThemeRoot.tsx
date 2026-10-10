@@ -5,8 +5,9 @@ import '../agent-shell.css';
 /**
  * Marks the document root with `data-agent-shell` — the key of every CSS
  * override in agent-shell.css — exactly while the current location renders
- * the agent shell (flag on, agent-area route). The mark follows the location,
- * so classic pages keep classic styling even for flag users.
+ * the agent shell (Agent Platform available, agent-area route). The mark
+ * follows the location, so classic pages keep classic styling even where the
+ * Agent Platform is on.
  */
 export function AgentShellThemeRoot() {
   const active = useAgentShellArea();

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -94,6 +95,47 @@ describe('SessionActionsMenu', () => {
     expect(
       screen.getByRole('button', { name: 'Session actions' }),
     ).toBeInTheDocument();
+  });
+
+  it('offers no pin unless the page hands one over', async () => {
+    await renderMenu();
+
+    expect(
+      screen.queryByRole('button', { name: /Pin session/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('puts the pin before the menu and says whether the session is pinned', async () => {
+    const onToggle = jest.fn();
+    function Harness() {
+      const [isPinned, setPinned] = useState(false);
+      return (
+        <SessionActionsMenu
+          title="What issues are assigned to me?"
+          deletion={deletion}
+          onRename={onRename}
+          pin={{
+            isPinned,
+            onToggle: () => {
+              onToggle();
+              setPinned(pinned => !pinned);
+            },
+          }}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    const pin = screen.getByRole('button', { name: 'Pin session' });
+    expect(pin).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(pin);
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'Unpin session' }),
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('gives the menu a definite width', async () => {

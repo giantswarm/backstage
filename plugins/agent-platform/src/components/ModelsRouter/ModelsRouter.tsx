@@ -5,7 +5,7 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { Box, Tab, TabList, Tabs } from '@backstage/ui';
+import { Box, Flex, Tab, TabList, Tabs } from '@backstage/ui';
 import {
   ShellPage,
   useSplatBasePath,
@@ -24,11 +24,14 @@ import { NewModelPage } from '../NewModelPage';
 import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
+import { ModelCachePage } from '../ModelCachePage';
+import { ModelHostingKpis } from '../ModelHostingKpis';
 import {
   SHELL_CUSTOMIZE_PATH,
   ShellCustomizeRedirect,
 } from '../ShellCustomizeRedirect';
 import { useAgentShell } from '../../hooks/useAgentShell';
+import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 
 // The serving layer's two views, as a second-level tab row under the Agent
 // Platform page's "Models" tab. The ModelConfigs list is not among them: it is
@@ -73,20 +76,56 @@ const LegacyDetailRedirect = () => {
 };
 
 /**
+ * Model hosting's tabs inside the shell, named per the prototype where the
+ * view holds what the name says:
+ *
+ * - **Running models** — the Serving view: the served models, grouped by the
+ *   backend that serves them. The backends are those groups' headers (with
+ *   Add and Remove), so the prototype's separate Backends tab is folded in
+ *   here rather than repeated as a list of the same data.
+ * - **GPU pools** — the GPU capacity view: cluster-manager's pools and the
+ *   node inventory. Without cluster-manager it lists nodes only, so it keeps
+ *   its old name, "GPU capacity".
+ * - **Model cache** — the cache volumes cluster-manager lists, offered where
+ *   an installation runs cluster-manager (or while that is being asked).
+ */
+function shellHostingTabs(clusterManager: boolean) {
+  return [
+    { id: 'serving', path: 'serving', title: 'Running models' },
+    {
+      id: 'capacity',
+      path: 'capacity',
+      title: clusterManager ? 'GPU pools' : 'GPU capacity',
+    },
+    ...(clusterManager
+      ? [{ id: 'cache', path: 'cache', title: 'Model cache' }]
+      : []),
+  ];
+}
+
+/**
  * Model hosting inside the agent-platform shell: the serving layer's views
  * under the platform-standard page frame (`ShellPage`) — breadcrumbs
  * "Customize / Models / Model hosting", the screen's title at the standard
- * scale, and the views as its routed tabs. The actions a view registers
- * (Serve model, Add GPU pool…) land in this header's slot, and the shell's
- * generic sub-page header stands aside because `ShellPage` claims it.
+ * scale, the views as its routed tabs and, above every view, the headline
+ * figures (`ModelHostingKpis`). The actions a view registers (Serve model,
+ * Add GPU pool…) land in this header's slot, and the shell's generic sub-page
+ * header stands aside because `ShellPage` claims it.
  *
- * The tabs show where a serving layer exists; a deep link on a portal
- * without one keeps the frame and lets the view's own empty state speak.
+ * The tabs and figures show where a serving layer exists; a deep link on a
+ * portal without one keeps the frame and lets the view's own empty state
+ * speak.
  */
 const ShellModelHosting = () => {
   const basePath = useSplatBasePath();
   const { search } = useLocation();
-  const servingLayer = hasServingLayer(useServing());
+  const serving = useServing();
+  const servingLayer = hasServingLayer(serving);
+  const clusterManager = useClusterManagerAvailability(
+    serving.reachableInstallations ?? [],
+  );
+  const offersCache =
+    clusterManager.available.length > 0 || clusterManager.isLoading;
 
   return (
     <ShellPage
@@ -97,32 +136,31 @@ const ShellModelHosting = () => {
         { label: 'Model hosting' },
       ]}
       description="Run models on your own GPUs, so data stays in your clusters."
-      tabs={
-        servingLayer
-          ? SERVING_VIEWS.map(view => ({
-              id: view.path,
-              path: view.path,
-              title: view.title,
-            }))
-          : undefined
-      }
+      tabs={servingLayer ? shellHostingTabs(offersCache) : undefined}
     >
-      <Routes>
-        <Route path="serving" element={<ServingPage />} />
-        <Route path="capacity" element={<GpuCapacityPage />} />
-        {/* A guess or a retired view lands on the first view rather than
-            on the frame over an empty page. Absolute, from the splat base
-            path: a relative target inside a splat route would append. */}
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to={{ pathname: `${basePath}/serving`, search }}
-              replace
-            />
-          }
-        />
-      </Routes>
+      <Flex direction="column" gap="5">
+        {servingLayer && <ModelHostingKpis />}
+        <Routes>
+          <Route path="serving" element={<ServingPage />} />
+          <Route
+            path="capacity"
+            element={<GpuCapacityPage showModelCache={false} />}
+          />
+          <Route path="cache" element={<ModelCachePage />} />
+          {/* A guess or a retired view lands on the first view rather than
+              on the frame over an empty page. Absolute, from the splat base
+              path: a relative target inside a splat route would append. */}
+          <Route
+            path="*"
+            element={
+              <Navigate
+                to={{ pathname: `${basePath}/serving`, search }}
+                replace
+              />
+            }
+          />
+        </Routes>
+      </Flex>
     </ShellPage>
   );
 };

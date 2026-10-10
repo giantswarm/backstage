@@ -195,9 +195,14 @@ describe('PendingConfirmationPanel', () => {
       expect(
         screen.getByText('Support Triage wants to run “Delete file”'),
       ).toBeInTheDocument();
+      // The prototype's reassurance, under the title — and no resting caption
+      // beside the buttons repeating what a decision does.
       expect(
-        screen.getByText('Nothing runs until you allow it.'),
+        screen.getByText('Nothing is sent until you allow it.'),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/resumes the agent where it stopped/),
+      ).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Decline' }),

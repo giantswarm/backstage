@@ -1,16 +1,19 @@
 import { ReactNode, useMemo } from 'react';
-import { Alert, Button, Flex, Switch, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
-import { SessionTimeline as Timeline } from '../../lib/kagentTimeline';
-import { useChatTechnicalDetails } from '../../hooks/useChatTechnicalDetails';
+import {
+  SessionTimeline as Timeline,
+  TimelineItem,
+} from '../../lib/kagentTimeline';
 import { TimelineEntry } from './TimelineEntry';
+import { WorkSummary } from './WorkSummary';
 import {
   authorLabel,
   groupIntoTurns,
-  isTraceItem,
   isUserItem,
+  segmentTurn,
 } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -197,20 +200,8 @@ export function SessionTimeline({
   isCancellingTurn = false,
 }: SessionTimelineProps) {
   const classes = useStyles();
-  // Plain by default: tool calls read as what they did, via which connector,
-  // with the exact names, arguments and results one toggle away. The setting is
-  // per user and remembered across sessions — see the hook.
-  const { isTechnical, setTechnical } = useChatTechnicalDetails();
 
   const turns = useMemo(() => groupIntoTurns(timeline.items), [timeline.items]);
-
-  // Offered whenever the toggle would change anything — the session has a
-  // trace. A plain conversation with no tool calls, reasoning, delegations or
-  // approvals renders identically in both modes, so the control would be a lie.
-  const hasTrace = useMemo(
-    () => timeline.items.some(isTraceItem),
-    [timeline.items],
-  );
 
   // Rendered in both branches below. An unreadable session produces *no* items
   // and a non-zero `skippedMessages`, so keeping this inside the populated branch
@@ -284,63 +275,73 @@ export function SessionTimeline({
     );
   }
 
+  /*
+   * No page-wide plain ⇄ technical switch: technical detail is a fold-out in
+   * place (PO, 2026-10-10). A row outside a work summary reads plainly and
+   * opens onto its exact call; a row inside one is technical, because opening
+   * the summary was already the decision to see how the work was done.
+   */
+  const renderEntry = (item: TimelineItem, technical = false) => (
+    <TimelineEntry
+      key={item.id}
+      item={item}
+      isAgentWorking={isAgentWorking}
+      technical={technical}
+    />
+  );
+
   return (
     <Flex direction="column" gap="3">
-      <Flex
-        align="center"
-        justify="between"
-        gap="2"
-        style={{ flexWrap: 'wrap' }}
-      >
-        <Text variant="title-small">Timeline</Text>
-        {hasTrace && (
-          // One toggle for the whole view, per the prototype: plain is the
-          // conversation's register, technical is the trace's.
-          <Switch
-            label="Show technical details"
-            isSelected={isTechnical}
-            onChange={setTechnical}
-          />
-        )}
-      </Flex>
-
       {skippedAlert}
 
       {turns.map((turn, turnIndex) => {
+        const isLastTurn = turnIndex === turns.length - 1;
+        const segments = segmentTurn(turn.items);
         // The agent's side of the turn opens with its name and face, once —
         // everything until the next user bubble is then implicitly the agent's.
         const entries: ReactNode[] = [];
         let needsHeader = true;
-        for (const item of turn.items) {
-          if (isUserItem(item)) {
+        segments.forEach((segment, segmentIndex) => {
+          const first =
+            segment.kind === 'item' ? segment.item : segment.items[0];
+          if (isUserItem(first)) {
             needsHeader = true;
           } else if (needsHeader) {
             entries.push(
               <AgentHeader
-                key={`author:${item.id}`}
-                name={authorLabel(item, agentName) ?? 'Agent'}
+                key={`author:${first.id}`}
+                name={authorLabel(first, agentName) ?? 'Agent'}
                 avatarUrl={agentAvatarUrl}
               />,
             );
             needsHeader = false;
           }
+          if (segment.kind === 'item') {
+            entries.push(renderEntry(segment.item));
+            return;
+          }
+          // Live while the agent works and this is where its work lands: the
+          // newest run of the newest turn, or a run with a call still out.
+          const isLive =
+            isAgentWorking &&
+            ((isLastTurn && segmentIndex === segments.length - 1) ||
+              segment.items.some(
+                item =>
+                  (item.kind === 'tool-call' || item.kind === 'agent-call') &&
+                  item.isPending,
+              ));
           entries.push(
-            <TimelineEntry
-              // Keyed on the register as well as the item: an entry's expanded
-              // state is only read on mount, so flipping the toggle takes
-              // effect by remounting the entries. An attachment reads the same
-              // in both modes, and remounting it would decode its image again.
-              key={
-                item.kind === 'attachment'
-                  ? item.id
-                  : `${item.id}:${isTechnical ? 'technical' : 'plain'}`
-              }
-              item={item}
+            <WorkSummary
+              key={`work:${segment.id}`}
+              id={segment.id}
+              items={segment.items}
+              isLive={isLive}
               isAgentWorking={isAgentWorking}
-              technical={isTechnical}
-            />,
+            >
+              {segment.items.map(item => renderEntry(item, true))}
+            </WorkSummary>,
           );
-        }
+        });
 
         return (
           // Keyed on the position in `turns`, not on `taskIndex`: `groupIntoTurns`

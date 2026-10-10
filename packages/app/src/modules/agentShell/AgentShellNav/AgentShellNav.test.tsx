@@ -33,22 +33,6 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
       <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
     ),
-    SessionNotificationsBell: ({
-      compact,
-      className,
-    }: {
-      compact?: boolean;
-      className?: string;
-    }) => (
-      <button
-        type="button"
-        data-testid="session-notifications-bell"
-        data-compact={String(compact)}
-        className={className}
-      >
-        Notifications
-      </button>
-    ),
   };
 });
 
@@ -70,18 +54,23 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 
 const signOut = jest.fn().mockResolvedValue(undefined);
 
+/** The deployment's `app.portals`; both portals unless a test says otherwise. */
+type PortalsConfig = { platformPortal?: boolean; agentPlatform?: boolean };
+
 async function renderNav({
   bound = true,
   isPinned = true,
   isMobile = false,
   path = '/',
   profile = { displayName: 'Jane Doe', email: 'jane@example.com' },
+  portals = { platformPortal: true, agentPlatform: true },
 }: {
   profile?: { displayName?: string; email?: string };
   bound?: boolean;
   isPinned?: boolean;
   isMobile?: boolean;
   path?: string;
+  portals?: PortalsConfig;
 } = {}) {
   await renderInTestApp(
     <SidebarPinStateProvider
@@ -91,6 +80,10 @@ async function renderNav({
     </SidebarPinStateProvider>,
     {
       initialRouteEntries: [path],
+      config: {
+        app: { baseUrl: 'http://localhost:3000', portals },
+        backend: { baseUrl: 'http://localhost:7007' },
+      },
       apis: [
         [
           identityApiRef,
@@ -215,36 +208,28 @@ describe('AgentShellNav', () => {
     expect(screen.getByTestId('cluster-access-connector')).toBeInTheDocument();
   });
 
-  it('puts exactly one notification bell in the rail footer, after the bottom items', async () => {
+  it('has no notification bell: the session dots are the signal', async () => {
     await renderNav();
 
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    // Exactly one: the bell must never appear both as a nav item and in the
-    // footer, nor once per list.
-    const bells = within(nav).getAllByTestId('session-notifications-bell');
-    expect(bells).toHaveLength(1);
-    const bell = bells[0];
-    expect(bell).toHaveAttribute('data-compact', 'false');
-    const portal = within(nav).getByRole('link', { name: 'Platform Portal' });
+    expect(within(nav).queryByText('Notifications')).not.toBeInTheDocument();
     expect(
-      portal.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    // And no second "Notifications" entry anywhere in the rail besides it.
-    expect(within(nav).getAllByText('Notifications')).toHaveLength(1);
+      within(nav).queryByRole('button', { name: /notification/i }),
+    ).not.toBeInTheDocument();
   });
 
-  it('keeps the bell, compacted and alone, in the collapsed rail', async () => {
-    await renderNav({ isPinned: false });
-    const bells = screen.getAllByTestId('session-notifications-bell');
-    expect(bells).toHaveLength(1);
-    expect(bells[0]).toHaveAttribute('data-compact', 'true');
-  });
-
-  it('shows exactly one bell in the mobile bar', async () => {
+  it('has no notification bell in the mobile bar either', async () => {
     await renderNav({ isMobile: true });
-    const bells = screen.getAllByTestId('session-notifications-bell');
-    expect(bells).toHaveLength(1);
-    expect(bells[0]).toHaveAttribute('data-compact', 'true');
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(nav).queryByRole('button', { name: /notification/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(nav)
+        .getAllByRole('button')
+        .map(button => button.getAttribute('aria-label') ?? button.textContent),
+    ).toEqual(['Profile and settings', 'Search']);
   });
 
   it('hides the items whose route is not bound', async () => {
@@ -267,6 +252,47 @@ describe('AgentShellNav', () => {
     expect(
       screen.getByRole('link', { name: 'New session' }),
     ).not.toHaveAttribute('target');
+  });
+
+  it('leaves the Platform Portal cross-link out on an agent-only deployment', async () => {
+    await renderNav({
+      portals: { platformPortal: false, agentPlatform: true },
+    });
+
+    expect(railLinks()).toEqual([
+      ['Agent Platform', '/'],
+      ['New session', '/'],
+      ['Customize', '/customize'],
+      ['Usage', '/agent-platform/usage'],
+    ]);
+    expect(
+      screen.queryByRole('link', { name: 'Platform Portal' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('leaves the Platform Portal cross-link out of the mobile bar on an agent-only deployment', async () => {
+    await renderNav({
+      isMobile: true,
+      portals: { platformPortal: false, agentPlatform: true },
+    });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(
+      within(nav).queryByRole('link', { name: 'Platform Portal' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(nav).getByRole('link', { name: 'New session' }),
+    ).toHaveAttribute('href', '/');
+  });
+
+  it('keeps the Platform Portal cross-link when the deployment sets no portals', async () => {
+    // A person who opted in by flag on a classic-only deployment still has
+    // the classic portal to go back to.
+    await renderNav({ portals: {} });
+
+    expect(
+      screen.getByRole('link', { name: 'Platform Portal' }),
+    ).toHaveAttribute('target', '_blank');
   });
 
   it('links the logo to the home page', async () => {

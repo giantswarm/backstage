@@ -51,12 +51,12 @@ const EMPTY_VIEW: FleetSessionStatesView = {
 
 export type FleetSessionStatesOptions = {
   /**
-   * Poll interval, defaulting to the baseline tier. The shell rail and the
-   * notification bell pass `ACTIVE_REFETCH_INTERVAL_MS`: they are the surfaces
-   * that exist to say something started needing a person, so they poll on the
+   * Poll interval, defaulting to the baseline tier. The shell rail passes
+   * `ACTIVE_REFETCH_INTERVAL_MS`: its colored session dots are the surface
+   * that exists to say something started needing a person, so it polls on the
    * fast tier the way `useSessionStates` does — the backend's 15 s cache keeps
    * the cost flat, and react-query shares one cache entry per installation, so
-   * a list open beside them simply reads fresher data. Interval refetches pause
+   * a list open beside it simply reads fresher data. Interval refetches pause
    * while the tab is hidden (`refetchIntervalInBackground` defaults to false).
    */
   refetchIntervalMs?: number;

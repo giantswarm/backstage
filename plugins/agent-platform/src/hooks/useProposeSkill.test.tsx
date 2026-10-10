@@ -85,7 +85,30 @@ describe('useProposeSkill', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'AgentPlatform.skillProposed',
-        attributes: {},
+        attributes: { kind: 'created' },
+      }),
+    );
+  });
+
+  it('sends an update with its skill directory and reports it as updated', async () => {
+    const { result } = renderUseProposeSkill();
+    const update: ProposedSkill = {
+      ...skill,
+      kind: 'update',
+      path: 'plugins/notes',
+      baseCommit: 'c'.repeat(40),
+    };
+
+    await act(async () => {
+      await result.current.proposeSkill(update);
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual(update);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.skillProposed',
+        attributes: { kind: 'updated' },
       }),
     );
   });

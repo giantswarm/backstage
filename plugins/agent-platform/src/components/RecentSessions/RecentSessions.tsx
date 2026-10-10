@@ -10,6 +10,7 @@ import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
+import { NeedsInputToasts } from '../NeedsInputToasts';
 import { PinIcon } from '../PinIcon';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
@@ -389,6 +390,12 @@ export function RecentSessions({
         sessionDetailRoute={sessionDetailRoute}
         shellRail={shellRail}
       />
+      {/* The shell rail is mounted once, wherever the person is in the
+          shell — which makes it the place to watch for a session starting to
+          wait on them. Classic chrome keeps its quieter list. */}
+      {shellRail && (
+        <NeedsInputToasts sessionDetailRoute={sessionDetailRoute} />
+      )}
     </AgentPlatformProviders>
   );
 }

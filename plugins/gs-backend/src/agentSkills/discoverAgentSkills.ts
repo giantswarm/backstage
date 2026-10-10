@@ -197,7 +197,8 @@ async function resolveHeadCommit(
   return sha;
 }
 
-async function fetchRawContent(
+/** A file's raw content at a ref (or commit) through the contents API. */
+export async function fetchRawContent(
   owner: string,
   repo: string,
   path: string,
@@ -213,6 +214,26 @@ async function fetchRawContent(
     'application/vnd.github.raw+json',
   );
   return response.text();
+}
+
+/**
+ * The GitHub integration's token for a repository, or undefined when no
+ * integration provides credentials for it — public repositories are read
+ * unauthenticated then (subject to GitHub's lower anonymous rate limit).
+ */
+export async function integrationToken(
+  githubCredentialsProvider: GithubCredentialsProvider,
+  canonicalRepoUrl: string,
+): Promise<string | undefined> {
+  try {
+    const { token } = await githubCredentialsProvider.getCredentials({
+      url: canonicalRepoUrl,
+    });
+    return token;
+  } catch {
+    // No integration/credentials — proceed unauthenticated for public repos.
+    return undefined;
+  }
 }
 
 /**
@@ -234,14 +255,10 @@ export async function discoverAgentSkills(options: {
   const { owner, repo } = parseRepoUrl(repoUrl);
   const canonicalRepoUrl = `https://github.com/${owner}/${repo}`;
 
-  let token: string | undefined;
-  try {
-    ({ token } = await githubCredentialsProvider.getCredentials({
-      url: canonicalRepoUrl,
-    }));
-  } catch {
-    // No integration/credentials — proceed unauthenticated for public repos.
-  }
+  const token = await integrationToken(
+    githubCredentialsProvider,
+    canonicalRepoUrl,
+  );
 
   const branch = ref ?? (await resolveDefaultBranch(owner, repo, token));
   const commit = await resolveHeadCommit(owner, repo, branch, token);

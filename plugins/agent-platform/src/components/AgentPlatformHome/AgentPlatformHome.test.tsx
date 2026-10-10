@@ -225,6 +225,14 @@ describe('AgentPlatformHome', () => {
     expect(screen.getByTestId('inventory-gate')).toBeInTheDocument();
   });
 
+  it('leaves the Slack promo out on a portal that has not enabled it', async () => {
+    await render();
+
+    expect(
+      screen.queryByRole('region', { name: 'Use agents in Slack' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('says why no session can be started when the agents could not be read', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,

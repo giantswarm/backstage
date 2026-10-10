@@ -43,6 +43,7 @@ import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { useAgentShell } from '../../hooks/useAgentShell';
+import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
@@ -581,6 +582,27 @@ export function SessionDetailPage() {
   // `openRename` is stable, so this element's identity only changes when one of them
   // actually does — which is what keeps the header slot from re-registering (and
   // re-rendering) on every poll.
+  // The header's pin, inside the shell only: pins are what order the shell's
+  // rail and sessions list, and classic chrome shows them nowhere. Storage
+  // backed rather than react-query backed, so it works from the shared header.
+  const { isPinned, togglePin } = usePinnedSessions();
+  const rowId = row?.id;
+  const pinned = rowId ? isPinned(rowId) : false;
+  const pin = useMemo(
+    () =>
+      agentShell && rowId
+        ? {
+            isPinned: pinned,
+            onToggle: () => {
+              // A failed write only loses the pin; the button keeps showing
+              // the stored state.
+              togglePin(rowId).catch(() => {});
+            },
+          }
+        : undefined,
+    [agentShell, rowId, pinned, togglePin],
+  );
+
   const actions = useMemo(
     () =>
       row ? (
@@ -590,9 +612,10 @@ export function SessionDetailPage() {
           onRename={openRename}
           isUserScoped={isUserScoped}
           runtimeLoss={runtimeLoss}
+          pin={pin}
         />
       ) : null,
-    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss],
+    [row, sessionTitle, deletion, openRename, isUserScoped, runtimeLoss, pin],
   );
   useProvidePageHeaderActions(actions);
 
@@ -1052,9 +1075,14 @@ export function SessionDetailPage() {
           isAgentWorking={isConfirming ? false : showWorking || isStalled}
           isStalled={isStalled}
           isFinished={Boolean(state && !state.isActive)}
+          // The prototype's waiting caption, naming who waits on what. A
+          // plain message cannot answer it (it would open a new turn), which
+          // is why the box is disabled meanwhile.
           disabledReason={
             isConfirming
-              ? "Answer the agent's question above to carry on. A plain message would start a new turn instead of answering it."
+              ? `${row.agentName || 'The agent'} is waiting for your ${
+                  pendingConfirmation?.asks === 'input' ? 'answer' : 'decision'
+                } above.`
               : undefined
           }
           // A conflict has its own notice above; the composer must not also

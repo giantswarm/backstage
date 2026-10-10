@@ -98,7 +98,37 @@ describe('agentShellLightColors', () => {
       composerShadow:
         '0 1px 2px rgba(0, 38, 69, 0.04), 0 8px 24px rgba(0, 38, 69, 0.06)',
       settledStatus: '#9fb2c0',
+      inputBackground: '#ffffff',
+      inputBorder: '#c4d3dc',
+      inputBorderHover: '#b9c8d2',
+      inputFocusBorder: '#0088db',
+      inputFocusHalo: 'rgba(0, 159, 255, 0.15)',
     });
+  });
+
+  it('edges a focused form field at 3:1 or more against its fill', () => {
+    expect(
+      contrast(
+        agentShellLightColors.inputFocusBorder,
+        agentShellLightColors.inputBackground,
+      ),
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it('draws a resting form field edge darker than the card border', () => {
+    // The PO's ask: a field is findable at a glance, so its edge must read
+    // stronger than the hairlines around it.
+    expect(
+      contrast(
+        agentShellLightColors.inputBorder,
+        agentShellLightColors.inputBackground,
+      ),
+    ).toBeGreaterThan(
+      contrast(
+        agentShellLightColors.borderStrong,
+        agentShellLightColors.background,
+      ),
+    );
   });
 
   it('sizes the mobile bottom bar from sidebarConfig, plus the safe area', () => {

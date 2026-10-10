@@ -31,6 +31,7 @@ import { RecentAgentChips } from '../RecentAgentChips';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ServingProvider } from '../ServingProvider';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
+import { SlackPromoBanner } from '../SlackPromoBanner';
 import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { greeting } from './helpers';
@@ -196,6 +197,7 @@ function AgentPlatformHomeContent({
             installations={unreachableInstallations}
             resourceName="Agents"
           />
+          <SlackPromoBanner />
         </Flex>
       </Box>
     </Container>

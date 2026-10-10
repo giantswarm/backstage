@@ -360,6 +360,7 @@ describe('getTelemetryPageViewPayload', () => {
     it.each([
       ['/agent-platform/models/serving', 'serving'],
       ['/agent-platform/models/capacity', 'capacity'],
+      ['/agent-platform/models/cache', 'cache'],
       ['/agent-platform/models/hosting', 'hosting'],
       ['/agent-platform/models/new', 'new'],
       // The paths an older release's links still carry, before the redirect to
@@ -574,6 +575,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/skills',
       '/agent-platform/skills/new',
+      '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
       '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
       '/agent-platform/profile',
       '/agent-platform/usage',
@@ -588,6 +590,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/models/new',
       '/agent-platform/models/gazelle/agent-platform/gpt-4o',
       '/agent-platform/models/capacity',
+      '/agent-platform/models/cache',
       '/agent-platform/models/hosting',
       '/plans',
       '/bot-prs',
@@ -675,6 +678,17 @@ describe('Skill detail', () => {
     expect(getTelemetryPageViewPayload('/agent-platform/skills/new')).toEqual({
       page: 'Add skill',
       path: '/agent-platform/skills/new',
+    });
+  });
+
+  it('reports editing a skill as its own page, whatever the skill', () => {
+    expect(
+      getTelemetryPageViewPayload(
+        '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
+      ),
+    ).toEqual({
+      page: 'Edit skill',
+      path: '/agent-platform/skills/edit/giantswarm/agent-skills/ticket-triage',
     });
   });
 });

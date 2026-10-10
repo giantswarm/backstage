@@ -40,11 +40,9 @@ function toolTrigger(): HTMLElement {
   return screen.getByRole('button', { name: /github_search_issues/ });
 }
 
-/** Flip the session view into the technical register. */
-async function enableTechnical() {
-  await userEvent.click(
-    screen.getByRole('switch', { name: 'Show technical details' }),
-  );
+/** The fixture's first turn folds its two tool calls under one summary. */
+function workSummary(): HTMLElement {
+  return screen.getByRole('button', { name: /Used 2 tools/ });
 }
 
 /**
@@ -82,32 +80,38 @@ describe('SessionTimeline', () => {
     expect(screen.getAllByText('Issue tracker').length).toBeGreaterThan(0);
   });
 
-  it('renders the trace plainly by default: what ran, not its payload', async () => {
-    // The plain register is the default: each tool call reads as a line — the
-    // tool's name as words, its status — with the raw identifiers, arguments and
-    // results one toggle away.
+  it('folds a turn’s work into one summary line, collapsed once the turn is done', async () => {
+    // The prototype's "✓ Used 3 tools ›": the turn's calls stand behind one
+    // line, and the reply is what the reader sees first.
     await render(tasksV099);
 
-    expect(screen.getByText('Github search issues')).toBeInTheDocument();
-    // Not the exact identifier, not an expander, not the argument summary.
-    expect(
-      screen.queryByRole('button', { name: /github_search_issues/ }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/assignee:@me/)).not.toBeInTheDocument();
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
+    expect(panelFor(workSummary())).not.toBeVisible();
+    // The conversation around the work stays where it was said.
+    expect(screen.getByText(/You have two open issues/)).toBeVisible();
   });
 
-  it('shows exact names, arguments and results when technical details are on', async () => {
+  it('opens the summary straight onto the technical trace', async () => {
+    // Clicking "Used N tools" is the decision to learn more, so there is no
+    // second "show technical details" step: the exact names and the argument
+    // summary are right there, each call folding out its payloads.
     await render(tasksV099);
 
-    await enableTechnical();
+    await userEvent.click(workSummary());
 
-    // The exact tool name, collapsed — a wall of expanded payloads is unreadable.
-    //
-    // Asserted on `aria-expanded`, not absence from the DOM: react-aria renders a
-    // collapsed disclosure panel and hides it, so its text is present throughout.
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'true');
+    const work = panelFor(workSummary());
+    expect(work).toBeVisible();
+    expect(work).toHaveTextContent('2 steps · 2 tool calls');
+    expect(toolTrigger()).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /technical details/i }),
+    ).not.toBeInTheDocument();
+
+    // Each call's payloads are its own fold-out — a wall of expanded payloads
+    // is unreadable. Asserted on `aria-expanded`, not absence from the DOM: a
+    // collapsed panel is rendered and hidden, so its text is present throughout.
     expect(toolTrigger()).toHaveAttribute('aria-expanded', 'false');
-    expect(panelFor(toolTrigger())).not.toBeVisible();
-
     await userEvent.click(toolTrigger());
 
     expect(toolTrigger()).toHaveAttribute('aria-expanded', 'true');
@@ -117,44 +121,72 @@ describe('SessionTimeline', () => {
     expect(panel).toHaveTextContent('Result');
   });
 
-  it('returns to the plain trace when technical details are turned off', async () => {
+  it('folds the summary away again', async () => {
     await render(tasksV099);
 
-    await enableTechnical();
-    expect(toolTrigger()).toBeInTheDocument();
+    await userEvent.click(workSummary());
+    await userEvent.click(workSummary());
 
-    await userEvent.click(
-      screen.getByRole('switch', { name: 'Show technical details' }),
+    expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('has no view-wide technical switch', async () => {
+    // Technical detail is a fold-out in place, never a page-level toggle.
+    await render(tasksV099);
+
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    expect(screen.queryByText('Timeline')).not.toBeInTheDocument();
+  });
+
+  it('keeps a lone call inline, folding out its exact call in place', async () => {
+    // A single delegation is already one line; a summary over it would only
+    // hide it. Its detail is still one fold-out away, on the row itself.
+    await render(tasksV099);
+
+    expect(
+      screen.queryByRole('button', { name: /Asked 1 agent/ }),
+    ).not.toBeInTheDocument();
+    const delegation = screen.getByRole('button', {
+      name: /Delegated to sre-agent/,
+    });
+    expect(delegation).toBeVisible();
+    expect(delegation).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('starts the summary open while the agent is still working on it', async () => {
+    // Progress is what the reader is watching for; the run folds when the
+    // turn ends.
+    const timeline = timelineFor(tasksV099);
+    const firstTurn = {
+      ...timeline,
+      items: timeline.items.filter(
+        item => item.taskIndex === 0 && item.id !== '0:6:5',
+      ),
+    };
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={firstTurn}
+        agentName="Issue tracker"
+        isAgentWorking
+      />,
     );
 
     expect(
-      screen.queryByRole('button', { name: /github_search_issues/ }),
-    ).not.toBeInTheDocument();
-    // The conversation itself reads the same in both registers.
-    expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
+      screen.getByRole('button', { name: /Used 2 tools/ }),
+    ).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('offers the toggle when the only trace entry is an approval', async () => {
-    // This fixture has no reasoning, tool calls or delegations — just an
-    // approval, whose proposed arguments are still behind the technical view.
+  it('renders an approval readably, with its proposed call one fold-out away', async () => {
     await render(tasksApproval);
 
-    expect(
-      screen.getByRole('switch', { name: 'Show technical details' }),
-    ).toBeInTheDocument();
-  });
-
-  it('renders an approval readably in the plain trace', async () => {
-    await render(tasksApproval);
-
+    // The proposed tool as words, and the user's decision.
     expect(screen.getByText('Approval requested')).toBeInTheDocument();
-    // The proposed tool as words, and the user's decision — but no expander
-    // onto the raw payload.
     expect(screen.getByText('Flux reconcile')).toBeInTheDocument();
     expect(screen.getByText('Approved')).toBeInTheDocument();
+    // The raw payload is a disclosure on the row, collapsed.
     expect(
-      screen.queryByRole('button', { name: /Approval requested/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /Approval requested/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   describe('ask_user, which ADK wraps like an approval', () => {
@@ -310,13 +342,13 @@ describe('SessionTimeline', () => {
       expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
     });
 
-    it('is not trace, so there is no toggle and nothing to expand', async () => {
-      // A failed turn reads the same in both registers, and this fixture has no
-      // other trace — so a toggle here would change nothing.
+    it('is not trace, so there is nothing to fold away or expand', async () => {
+      // A failed turn is the turn's outcome: always in view, never behind a
+      // summary or an expander.
       await render(tasksFailed);
 
       expect(
-        screen.queryByRole('switch', { name: 'Show technical details' }),
+        screen.queryByTestId('timeline-work-summary'),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /This turn failed/ }),
@@ -340,7 +372,6 @@ describe('SessionTimeline', () => {
     await renderInTestApp(
       <SessionTimeline timeline={stripped} agentName="Issue tracker" />,
     );
-    await enableTechnical();
 
     // Still shown, and still carries its verdict.
     expect(screen.getByText('Approval requested')).toBeInTheDocument();
@@ -351,17 +382,19 @@ describe('SessionTimeline', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('shows an approval’s proposed arguments in the technical view', async () => {
+  it('folds out an approval’s exact proposed call in place', async () => {
     await render(tasksApproval);
-    await enableTechnical();
 
     const trigger = screen.getByRole('button', { name: /Approval requested/ });
     await userEvent.click(trigger);
 
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    const panel = panelFor(trigger);
+    // The exact identifier the plain header put in words.
+    expect(panel).toHaveTextContent('flux_reconcile');
     // Labelled "proposed", because these are arguments the agent asked to run —
     // not something it did.
-    expect(screen.getByText('Proposed arguments')).toBeInTheDocument();
-    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(panel).toHaveTextContent('Proposed arguments');
   });
 
   it('names a delegation and its token cost', async () => {
@@ -794,8 +827,8 @@ describe('SessionTimeline — a turn the person canceled', () => {
     expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
   });
 
-  it('reads the same in both registers — it is the turn’s outcome, not trace', async () => {
-    // How the turn ended must never disappear behind the toggle — otherwise the
+  it('stays in view beside folded work — it is the turn’s outcome, not trace', async () => {
+    // How the turn ended must never disappear behind a summary — otherwise the
     // page is back to a message that went unanswered for no visible reason.
     const working = timelineFor(tasksV099);
     const canceled = timelineFor(canceledTasks);
@@ -809,11 +842,10 @@ describe('SessionTimeline — a turn the person canceled', () => {
       />,
     );
 
-    expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
-
-    await enableTechnical();
-
-    expect(screen.getByTestId('timeline-turn-canceled')).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-turn-canceled')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: /Used 2 tools/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
@@ -889,9 +921,9 @@ describe('SessionTimeline — an attached file', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
-  it('is conversation, so the register toggle does not disturb it', async () => {
+  it('is conversation, so opening the work does not disturb it', async () => {
     // The file someone attached is part of what was said, not part of the
-    // agent's trace — it reads the same in both registers.
+    // agent's trace — it never folds under a work summary.
     const conversation = timelineFor(tasksV099);
     const attachment = timelineFor(
       withAttachment({ name: 'shot.png', bytes: PNG_BYTES }),
@@ -906,7 +938,7 @@ describe('SessionTimeline — an attached file', () => {
       />,
     );
 
-    await enableTechnical();
+    await userEvent.click(screen.getByRole('button', { name: /Used 2 tools/ }));
 
     expect(screen.getByRole('img', { name: 'shot.png' })).toBeInTheDocument();
   });

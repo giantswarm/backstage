@@ -2,6 +2,7 @@ import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import { agentShellLayout } from './layoutExtension';
 import { agentShellThemeRoot } from './themeRootExtension';
 import { agentShellCustomizePage } from './customizePageExtension';
+import { agentShellFeatureFlagsApi } from './featureFlagsApiExtension';
 import { AGENT_SHELL_FLAG } from './predicates';
 
 export { AGENT_SHELL_FLAG, agentShellOff, agentShellOn } from './predicates';
@@ -9,6 +10,7 @@ export {
   isAgentArea,
   useAgentShellArea,
   useAgentShellAvailable,
+  usePortals,
 } from './agentArea';
 
 export const agentShellModule = createFrontendModule({
@@ -17,8 +19,13 @@ export const agentShellModule = createFrontendModule({
     {
       name: AGENT_SHELL_FLAG,
       description:
-        'Agent Platform shell on its own routes, next to the classic portal (takes effect after a reload)',
+        'Opt in to the Agent Platform shell on its own routes, next to the classic portal, while this deployment has it switched off (takes effect after a reload)',
     },
   ],
-  extensions: [agentShellLayout, agentShellThemeRoot, agentShellCustomizePage],
+  extensions: [
+    agentShellFeatureFlagsApi,
+    agentShellLayout,
+    agentShellThemeRoot,
+    agentShellCustomizePage,
+  ],
 });

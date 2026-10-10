@@ -5,26 +5,9 @@ import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 // here so this directory's public surface is unchanged.
 
 /**
- * Items the plain ⇄ technical toggle changes: the agent's trace. Everything
- * else — messages, attachments, failed turns — reads the same in both modes,
- * so a session with none of these gets no toggle.
- */
-const TRACE_KINDS = new Set<TimelineItem['kind']>([
-  'reasoning',
-  'tool-call',
-  'agent-call',
-  'approval',
-]);
-
-/** Whether the toggle would change how this item renders. */
-export function isTraceItem(item: TimelineItem): boolean {
-  return TRACE_KINDS.has(item.kind);
-}
-
-/**
  * A tool's name as a readable phrase, for the plain trace: `github_search_issues`
- * → `Github search issues`. Lossy on purpose — the exact identifier stays one
- * toggle away in the technical view — and left alone when there is nothing to
+ * → `Github search issues`. Lossy on purpose — the exact identifier is one
+ * fold-out away, on the row itself — and left alone when there is nothing to
  * split, so an unrecognisable name still names the tool.
  */
 export function humanizeToolName(name: string): string {
@@ -114,6 +97,116 @@ export function groupIntoTurns(items: TimelineItem[]): TimelineTurn[] {
     turns.push({ taskIndex: item.taskIndex, at: item.at, items: [item] });
   }
   return turns;
+}
+
+/**
+ * Items a turn's work summary folds away: what the agent did on its way to the
+ * reply. Approvals are not among them — a question is the last thing the agent
+ * said, and a permission request is a decision the person took, so both stay
+ * in the conversation where they can be read.
+ */
+const WORK_KINDS = new Set<TimelineItem['kind']>([
+  'reasoning',
+  'tool-call',
+  'agent-call',
+]);
+
+function isCall(item: TimelineItem): boolean {
+  return item.kind === 'tool-call' || item.kind === 'agent-call';
+}
+
+/**
+ * One piece of a turn as the timeline lays it out: an entry on its own, or a
+ * run of the agent's work folded under one summary line.
+ */
+export type TimelineSegment =
+  | { kind: 'item'; item: TimelineItem }
+  | { kind: 'work'; id: string; items: TimelineItem[] };
+
+/**
+ * Split a turn's items into what reads as conversation and what folds into a
+ * work summary, preserving order.
+ *
+ * Folded per **run** of consecutive work items, not per turn: an agent that
+ * says "let me look" before its calls and answers after them keeps both
+ * sentences where it said them. A run folds only when it holds at least one
+ * call and more than one item — a lone tool call is already one line, and a
+ * summary saying "Used 1 tool" over it would only hide it; reasoning on its own
+ * is prose with its own expander.
+ */
+export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
+  const segments: TimelineSegment[] = [];
+  let run: TimelineItem[] = [];
+  const flush = () => {
+    if (run.length > 1 && run.some(isCall)) {
+      segments.push({ kind: 'work', id: run[0].id, items: run });
+    } else {
+      for (const item of run) {
+        segments.push({ kind: 'item', item });
+      }
+    }
+    run = [];
+  };
+  for (const item of items) {
+    if (WORK_KINDS.has(item.kind)) {
+      run.push(item);
+      continue;
+    }
+    flush();
+    segments.push({ kind: 'item', item });
+  }
+  flush();
+  return segments;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+export type WorkSummary = {
+  /** The plain summary line, e.g. "Used 3 tools · Asked 1 agent". */
+  label: string;
+  /** The technical count, e.g. "5 steps · 45 tool calls". */
+  technicalLabel: string;
+};
+
+/**
+ * What a folded run of work amounts to, in the prototype's words.
+ *
+ * Tools are counted by name, not by call — the prototype's "Used 3 tools"
+ * stands over 45 calls — and the exact call count is the technical line's.
+ * Delegations are named apart: asking another agent is a different thing to
+ * have done than running a tool. No duration: kagent records no per-call
+ * timing, and a turn's one timestamp cannot say how long its work took.
+ */
+export function summarizeWork(items: TimelineItem[]): WorkSummary {
+  const tools = new Set<string>();
+  const agents = new Set<string>();
+  let calls = 0;
+  for (const item of items) {
+    if (item.kind === 'tool-call') {
+      tools.add(item.toolName);
+      calls += 1;
+    } else if (item.kind === 'agent-call') {
+      agents.add(item.agentId);
+      calls += 1;
+    }
+  }
+  const parts: string[] = [];
+  if (tools.size > 0) {
+    parts.push(`Used ${plural(tools.size, 'tool', 'tools')}`);
+  }
+  if (agents.size > 0) {
+    parts.push(`Asked ${plural(agents.size, 'agent', 'agents')}`);
+  }
+  return {
+    label: parts.join(' · '),
+    technicalLabel: `${plural(items.length, 'step', 'steps')} · ${plural(
+      calls,
+      'tool call',
+      'tool calls',
+    )}`,
+  };
 }
 
 /** Whether an item is on the user's side of the conversation. */

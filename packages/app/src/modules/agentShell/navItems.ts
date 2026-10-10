@@ -23,6 +23,12 @@ type AgentShellNavItemBase = {
   mobileOnly?: boolean;
   /** Opens in a new tab — for links that leave the shell. */
   newTab?: boolean;
+  /**
+   * A cross-link into the other portal: shown only while the deployment serves
+   * that portal too (`app.portals`), left out when the shell is the whole
+   * navigation.
+   */
+  crossLinkTo?: 'platformPortal';
 };
 
 /**
@@ -70,13 +76,15 @@ export const agentShellNavItems: AgentShellNavItem[] = [
   },
   {
     // The way back into the classic portal, whose own routes render classic
-    // chrome; a new tab so the shell stays where it is.
+    // chrome; a new tab so the shell stays where it is. Absent on an
+    // agent-only deployment.
     id: 'platform-portal',
     title: 'Platform Portal',
     icon: LaunchIcon,
     path: '/clusters',
     position: 'bottom',
     newTab: true,
+    crossLinkTo: 'platformPortal',
   },
   {
     id: 'profile',

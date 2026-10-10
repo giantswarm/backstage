@@ -1,4 +1,5 @@
 import {
+  counterIncrease,
   dailyRangeWindow,
   llmUsageQueries,
   llmUsageQueriesFor,
@@ -118,7 +119,10 @@ describe('llmUsageQueries.outputTokensPerSecond', () => {
     // that emitted three tokens after a long wait counts as much as a long
     // one — on `graveler` that turned a 63 tok/s median into 2 tok/s.
     expect(llmUsageQueries.outputTokensPerSecond).toBe(
-      '1 / histogram_quantile(0.50, sum by (le) (rate(agentgateway_gen_ai_server_time_per_output_token_bucket[30d])))',
+      `1 / histogram_quantile(0.50, sum by (le) ${counterIncrease(
+        'agentgateway_gen_ai_server_time_per_output_token_bucket',
+        '30d',
+      )})`,
     );
   });
 });
@@ -129,7 +133,7 @@ describe('llmUsageQueriesFor', () => {
 
     expect(queries).toEqual(llmUsageQueries);
     expect(previousCost).toBe(
-      'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d))',
+      'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d) or label_replace(min_over_time(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d) unless last_over_time(agentgateway_gen_ai_client_cost_usd_total[1h] offset 60d), "first_sample", "true", "__name__", ".*"))',
     );
   });
 
@@ -139,6 +143,8 @@ describe('llmUsageQueriesFor', () => {
     expect(queries.cost).toContain('[7d]');
     expect(queries.durationP95).toContain('[7d]');
     expect(queries.previousCost).toContain('[7d] offset 7d');
+    // Newborn series are judged at the start of the previous window.
+    expect(queries.previousCost).toContain('[1h] offset 14d');
     expect(queries.cost).not.toContain('30d');
   });
 
@@ -174,7 +180,11 @@ describe('llmUsageQueriesFor', () => {
 
   it('compares one organization over the window just before this one', () => {
     expect(llmUsageQueriesFor({ days: 7, org: 'support' }).previousCost).toBe(
-      'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}[7d] offset 7d))',
+      `sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) ${counterIncrease(
+        'agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}',
+        '7d',
+        '7d',
+      )}`,
     );
   });
 
@@ -187,10 +197,16 @@ describe('llmUsageQueriesFor', () => {
   it('filters the daily and today queries the same way', () => {
     expect(llmUsageRangeQueriesFor()).toEqual(llmUsageRangeQueries);
     expect(llmUsageRangeQueriesFor({ org: 'support' }).costPerDayByModel).toBe(
-      'sum by (gen_ai_response_model) (increase(agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}[1d]))',
+      `sum by (gen_ai_response_model) ${counterIncrease(
+        'agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}',
+        '1d',
+      )}`,
     );
     expect(todayPartialQueries('600s', { org: 'support' }).tokensByType).toBe(
-      'sum by (gen_ai_token_type) (increase(agentgateway_gen_ai_client_token_usage_sum{agent_namespace="support"}[600s]))',
+      `sum by (gen_ai_token_type) ${counterIncrease(
+        'agentgateway_gen_ai_client_token_usage_sum{agent_namespace="support"}',
+        '600s',
+      )}`,
     );
   });
 });
@@ -247,6 +263,56 @@ describe('dailyWindowDayKeys over another window', () => {
 
     expect(dailyWindowDayKeys(range)).toEqual(['2026-09-11']);
     expect(todayDayKey(range)).toBe('2026-09-11');
+  });
+});
+
+describe('counterIncrease', () => {
+  it('adds the first value of a series born inside the window to its increase()', () => {
+    // Verified against Prometheus 3.12 (promtool) with a series older than the
+    // window, one born in it holding 0.02 then 0.05, and one scraped once at
+    // 0.03: bare increase() said 0.6303, this 0.6803, and the counters really
+    // grew by 0.68.
+    expect(counterIncrease('c{a="b"}', '30d')).toBe(
+      '(increase(c{a="b"}[30d]) or label_replace(min_over_time(c{a="b"}[30d]) unless last_over_time(c{a="b"}[1h] offset 30d), "first_sample", "true", "__name__", ".*"))',
+    );
+  });
+
+  it('judges a series newborn at the start of an offset window', () => {
+    expect(counterIncrease('c', '7d', '7d')).toContain(
+      'min_over_time(c[7d] offset 7d) unless last_over_time(c[1h] offset 14d)',
+    );
+    expect(counterIncrease('c', '7d', '7d')).toContain(
+      'increase(c[7d] offset 7d)',
+    );
+  });
+
+  it('adds seconds-based ranges up in seconds', () => {
+    expect(counterIncrease('c', '600s')).toContain(
+      'last_over_time(c[1h] offset 600s)',
+    );
+    expect(counterIncrease('c', '600s', '1d')).toContain('offset 87000s');
+  });
+
+  it('rejects a duration it cannot add up', () => {
+    expect(() => counterIncrease('c', '1h30m')).toThrow(
+      'Not a simple PromQL duration',
+    );
+  });
+
+  it('is what every usage query counts with — no bare increase() or rate()', () => {
+    const all = [
+      ...Object.values(llmUsageQueriesFor({ days: 7, org: 'support' })),
+      ...Object.values(llmUsageRangeQueries),
+      ...Object.values(todayPartialQueries('600s')),
+    ];
+    for (const query of all) {
+      expect(query).not.toMatch(/\brate\(/);
+      // Each increase() is the left term of a counterIncrease.
+      expect(query.split('increase(').length - 1).toBe(
+        query.split('min_over_time(').length - 1,
+      );
+      expect(query).toContain('"first_sample", "true"');
+    }
   });
 });
 

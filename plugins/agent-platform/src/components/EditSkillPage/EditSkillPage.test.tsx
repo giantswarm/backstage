@@ -1,0 +1,146 @@
+import { Route, Routes } from 'react-router-dom';
+import { screen } from '@testing-library/react';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import type { SkillCatalog } from '../../hooks/useSkillCatalog';
+import type { SkillContent } from '../../hooks/useSkillContent';
+import { skillsRouteRef } from '../../routes';
+import { EditSkillPage } from './EditSkillPage';
+
+const REPO = 'https://github.com/giantswarm/skills';
+const COMMIT = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2';
+
+const skill = {
+  name: 'ticket-triage',
+  description: 'How to triage.',
+  repoUrl: REPO,
+  path: 'support/ticket-triage',
+  ref: 'main',
+  commit: COMMIT,
+};
+
+let mockCatalog: SkillCatalog;
+jest.mock('../../hooks/useSkillCatalog', () => ({
+  useSkillCatalog: () => mockCatalog,
+}));
+
+let mockContent: {
+  content?: SkillContent;
+  isLoading: boolean;
+  error: Error | null;
+};
+const mockUseSkillContent = jest.fn();
+jest.mock('../../hooks/useSkillContent', () => ({
+  useSkillContent: (target: unknown) => {
+    mockUseSkillContent(target);
+    return mockContent;
+  },
+}));
+
+jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
+  useSignedInConfig: () => ({
+    config: { getOptionalStringArray: () => [REPO] },
+    isLoading: false,
+  }),
+}));
+
+jest.mock('../../hooks/useProposeSkill', () => ({
+  ...jest.requireActual('../../hooks/useProposeSkill'),
+  useProposeSkill: () => ({
+    proposeSkill: jest.fn(),
+    reset: jest.fn(),
+    isProposing: false,
+    error: null,
+  }),
+}));
+
+const loaded: SkillCatalog = {
+  skills: [skill],
+  isLoading: false,
+  error: null,
+  hasRepositories: true,
+  failedRepositories: [],
+  truncated: false,
+};
+
+function renderPage(path = 'giantswarm/skills/support/ticket-triage') {
+  return renderInTestApp(
+    <PageHeaderActionsProvider>
+      <Routes>
+        <Route
+          path="/agent-platform/skills/edit/*"
+          element={<EditSkillPage />}
+        />
+      </Routes>
+    </PageHeaderActionsProvider>,
+    {
+      initialRouteEntries: [`/agent-platform/skills/edit/${path}`],
+      mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+    },
+  );
+}
+
+beforeEach(() => {
+  mockCatalog = loaded;
+  mockContent = { isLoading: false, error: null };
+  mockUseSkillContent.mockReset();
+});
+
+describe('EditSkillPage', () => {
+  it('reads the skill’s SKILL.md at its pinned commit and opens the form prefilled', async () => {
+    mockContent = {
+      isLoading: false,
+      error: null,
+      content: {
+        repoUrl: REPO,
+        path: skill.path,
+        commit: COMMIT,
+        name: 'ticket-triage',
+        description: 'How to triage.',
+        instructions: 'Classify, prioritise, route.',
+      },
+    };
+    await renderPage();
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(skill);
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Edit skill' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Instructions/)).toHaveValue(
+      'Classify, prioritise, route.',
+    );
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
+    );
+  });
+
+  it('waits for the skill while it is being read', async () => {
+    mockContent = { isLoading: true, error: null };
+    await renderPage();
+
+    // The label shows after the indicator's short hold-back.
+    expect(await screen.findByText('Reading the skill…')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
+  });
+
+  it('says why when the SKILL.md could not be read', async () => {
+    mockContent = {
+      isLoading: false,
+      error: new Error('main has moved on; reload the skill.'),
+    };
+    await renderPage();
+
+    expect(screen.getByText('Could not read the skill')).toBeInTheDocument();
+    expect(
+      screen.getByText('main has moved on; reload the skill.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says when no skill exists at the address', async () => {
+    await renderPage('giantswarm/skills/gone');
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
+    expect(screen.getByText('Skill not found')).toBeInTheDocument();
+  });
+});

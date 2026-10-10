@@ -71,5 +71,20 @@ export interface Config {
       /** Reviews a skill: the skill detail page's Evaluate button. */
       skillEvaluation?: string;
     };
+    /**
+     * Integrations of the platform that live outside the portal, which the
+     * portal only points people at. Read by the frontend from the signed-in
+     * config.
+     */
+    integrations?: {
+      /**
+       * Whether the new-session home shows the "Use your agents right in
+       * Slack" banner (dismissible, per person). Set it to `true` once the
+       * installation's Slack integration (klaus-gateway) is set up for the
+       * people using this portal. Off by default: an unconfigured portal shows
+       * nothing.
+       */
+      slack?: boolean;
+    };
   };
 }

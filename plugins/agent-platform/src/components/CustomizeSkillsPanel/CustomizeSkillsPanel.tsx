@@ -1,14 +1,7 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  ButtonLink,
-  CellText,
-  ColumnConfig,
-  Flex,
-  Table,
-  Text,
-} from '@backstage/ui';
+import { Alert, ButtonLink, Card, Flex, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
 import AddIcon from '@material-ui/icons/Add';
 import {
   EmptyStateCard,
@@ -38,6 +31,48 @@ import { useCustomizeData } from '../CustomizeDataProvider';
 export type CustomizeSkillsPanelProps = {
   search: string;
 };
+
+const useStyles = makeStyles({
+  // The prototype's tinted note above the catalog.
+  banner: {
+    padding: 'var(--bui-space-3) var(--bui-space-4)',
+    borderRadius: 12,
+    background: 'var(--agent-shell-rail-bg, #f0f7f9)',
+  },
+  // Three across at the page's width, stacking to one at phone width.
+  grid: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))',
+    gap: 'var(--bui-space-4)',
+  },
+  card: {
+    height: '100%',
+    boxSizing: 'border-box',
+    gap: 'var(--bui-space-2)',
+    padding: 'var(--bui-space-4)',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
+    '&[data-interactive]:hover': {
+      borderColor: 'var(--bui-border-2)',
+    },
+  },
+  description: {
+    flex: '1 1 auto',
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 'var(--bui-space-1) var(--bui-space-3)',
+  },
+});
 
 type Row = {
   id: string;
@@ -102,12 +137,59 @@ function UnreadRepositoriesAlert({
 }
 
 /**
- * The Skills tab of the shell's Customize screen: the skills discovered in
- * the configured repositories as flat rows — the Connectors tab's
- * presentation — the ones the agents in scope use most first, each row
- * opening the skill's page. Must be mounted inside a `CustomizeDataProvider`.
+ * One skill as the prototype's catalog card: its name, what it does in its
+ * own words, where it comes from and how many agents use it — the whole card
+ * opening the skill's page when it has one (a skill outside github.com, or
+ * with the route unbound, has none and stays a plain card).
+ */
+function SkillCard({ card }: { card: Row }) {
+  const classes = useStyles();
+  const content = (
+    <>
+      <Text as="h2" variant="body-medium" weight="bold">
+        {card.name}
+      </Text>
+      {card.description && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          className={classes.description}
+          title={card.description}
+        >
+          {card.description}
+        </Text>
+      )}
+      <div className={classes.footer}>
+        <Text variant="body-x-small" color="secondary">
+          {card.source}
+        </Text>
+        {card.usedBy && (
+          <Text variant="body-x-small" color="secondary">
+            {card.usedBy}
+          </Text>
+        )}
+      </div>
+    </>
+  );
+  return card.href ? (
+    <Card href={card.href} label={card.name} className={classes.card}>
+      {content}
+    </Card>
+  ) : (
+    <Card className={classes.card}>{content}</Card>
+  );
+}
+
+/**
+ * The Skills tab of the shell's Customize screen, in the prototype's
+ * presentation: the skills discovered in the configured repositories as a
+ * grid of catalog cards, the ones the agents in scope use most first, each
+ * card opening the skill's page. Must be mounted inside a
+ * `CustomizeDataProvider`.
  */
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
+  const classes = useStyles();
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillsRoute = useRouteRef(skillsRouteRef);
@@ -126,7 +208,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     () => skillsTotalLine(skillCatalog.skills),
     [skillCatalog.skills],
   );
-  const tableRows = useMemo<Row[]>(
+  const cards = useMemo<Row[]>(
     () =>
       ranked.map(skill => {
         const id = canonicalSkillId(skill);
@@ -144,28 +226,6 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
       }),
     [ranked, agentsLoading, usage, skillsRoute],
   );
-
-  const columns: ColumnConfig<Row>[] = [
-    {
-      id: 'name',
-      label: 'Skill',
-      isRowHeader: true,
-      defaultWidth: '3fr',
-      cell: row => <CellText title={row.name} description={row.description} />,
-    },
-    {
-      id: 'source',
-      label: 'Source',
-      defaultWidth: '1.4fr',
-      cell: row => <CellText title={row.source} />,
-    },
-    {
-      id: 'usedBy',
-      label: 'Used by',
-      defaultWidth: '1.2fr',
-      cell: row => <CellText title={row.usedBy ?? ''} />,
-    },
-  ];
 
   const anyListed = skillCatalog.skills.length > 0;
   const unread =
@@ -217,25 +277,24 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   } else {
     body = (
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="4">
         {totalLine && (
-          <Text as="p" variant="body-medium">
-            The skills your agents use most come first.{' '}
-            <Text variant="body-medium" color="secondary">
-              {totalLine}
+          <div className={classes.banner}>
+            <Text as="p" variant="body-medium">
+              The skills your agents use most come first.{' '}
+              <Text variant="body-medium" color="secondary">
+                {totalLine}
+              </Text>
             </Text>
-          </Text>
+          </div>
         )}
-        <Table<Row>
-          columnConfig={columns}
-          data={tableRows}
-          pagination={{ type: 'none' }}
-          rowConfig={{
-            // Each row opens the skill's page; a skill outside github.com
-            // (or with the route unbound) has no page and stays plain.
-            getHref: row => row.href,
-          }}
-        />
+        <ul className={classes.grid} aria-label="Skills">
+          {cards.map(card => (
+            <li key={card.id}>
+              <SkillCard card={card} />
+            </li>
+          ))}
+        </ul>
       </Flex>
     );
   }
