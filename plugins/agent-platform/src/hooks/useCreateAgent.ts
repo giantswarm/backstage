@@ -9,6 +9,7 @@ import {
   type CommitAgentResult,
   type CreateAgentResult,
 } from '../lib/agentManager';
+import { markAgentDeployed } from '../lib/pendingAgentCreations';
 import { useAgentManagerClient } from './useAgentManager';
 
 /**
@@ -51,7 +52,9 @@ export function classifyCreateFailure(error: unknown): CreateAgentFailure {
  * person. agent-manager composes the release, validates it against the chart
  * schema and applies it with the person's own credentials — the HelmRelease's
  * `managedFields` name the person. On success the installation's cached kagent
- * reads are dropped so the roster picks the new agent up on its next render.
+ * reads are dropped, and the Agents list polls on the transitional tier until it
+ * lists the new agent (see `markAgentDeployed`): the refetch the invalidation
+ * triggers usually lands before Flux has rendered the `Agent`.
  */
 export function useCreateAgent(
   installation: string | undefined,
@@ -68,17 +71,21 @@ export function useCreateAgent(
     return client;
   }, [client]);
 
-  const invalidateKagentReads = useCallback(() => {
-    if (!installation) {
-      return Promise.resolve();
-    }
-    // Every api.kagent.dev list on this installation, keyed the way the
-    // kubernetes-react read hooks key them; the roster re-reads on its next
-    // render and the detail page reads fresh anyway.
-    return queryClient.invalidateQueries({
-      queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
-    });
-  }, [queryClient, installation]);
+  const onDeployed = useCallback(
+    (spec: AgentSpec) => {
+      if (!installation) {
+        return Promise.resolve();
+      }
+      markAgentDeployed(queryClient, installation, spec);
+      // Every api.kagent.dev list on this installation, keyed the way the
+      // kubernetes-react read hooks key them; the roster re-reads on its next
+      // render and the detail page reads fresh anyway.
+      return queryClient.invalidateQueries({
+        queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
+      });
+    },
+    [queryClient, installation],
+  );
 
   const deployMutation = useTrackedMutation({
     mutationFn: (spec: AgentSpec) => requireClient().createAgent(spec),
@@ -86,7 +93,7 @@ export function useCreateAgent(
       name: 'AgentPlatform.agentCreated',
       attributes: { mode: 'deploy' },
     }),
-    onSuccess: () => invalidateKagentReads(),
+    onSuccess: (_result, spec) => onDeployed(spec),
   });
   const commitMutation = useTrackedMutation({
     mutationFn: (spec: AgentSpec) => requireClient().commitAgent(spec),
