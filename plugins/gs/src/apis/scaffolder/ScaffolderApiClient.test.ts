@@ -6,7 +6,6 @@ import type {
 } from '@backstage/plugin-kubernetes-react';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ScaffolderApiClient } from './ScaffolderApiClient';
-import { TemplateSignInError } from './TemplateSignInError';
 
 const manifest = {
   title: 'Template',
@@ -111,9 +110,44 @@ describe('ScaffolderApiClient.scaffold', () => {
   });
 
   it('starts nothing when a sign-in did not complete', async () => {
-    getCredentials.mockRejectedValue(
-      Object.assign(new Error('Login failed, rejected by user'), {
-        name: 'RejectedError',
+    getCredentials.mockRejectedValue(rejectedLogin());
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'declined',
+      installations: ['golem'],
+    });
+    expect(superScaffold).not.toHaveBeenCalled();
+  });
+
+  it('reports the expired portal session when its sign-in for the template read is declined', async () => {
+    jest
+      .spyOn(ScaffolderClient.prototype, 'getTemplateParameterSchema')
+      .mockRejectedValue(rejectedLogin());
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'session-expired',
+    });
+    expect(getCredentials).not.toHaveBeenCalled();
+    expect(superScaffold).not.toHaveBeenCalled();
+  });
+
+  it('reports the expired portal session when its sign-in popup for the task creation is closed', async () => {
+    getCredentials.mockResolvedValue({ token: 'fresh' });
+    superScaffold.mockRejectedValue(
+      Object.assign(new Error('Login failed, popup was closed'), {
+        name: 'PopupRejectedError',
       }),
     );
 
@@ -122,7 +156,31 @@ describe('ScaffolderApiClient.scaffold', () => {
         templateRef: 'template:default/app',
         values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
       }),
-    ).rejects.toBeInstanceOf(TemplateSignInError);
+    ).rejects.toMatchObject({
+      name: 'TemplateSignInError',
+      reason: 'session-expired',
+    });
+  });
+
+  it('passes any other failure of the template read through', async () => {
+    const failure = new Error('Request failed with 500 Internal Server Error');
+    jest
+      .spyOn(ScaffolderClient.prototype, 'getTemplateParameterSchema')
+      .mockRejectedValue(failure);
+
+    await expect(
+      client.scaffold({
+        templateRef: 'template:default/app',
+        values: { mode: 'apply', token: { oidcTokenInstallation: 'golem' } },
+      }),
+    ).rejects.toBe(failure);
     expect(superScaffold).not.toHaveBeenCalled();
   });
 });
+
+/** Backstage's rejection of a declined Login Required prompt. */
+function rejectedLogin(): Error {
+  return Object.assign(new Error('Login failed, rejected by user'), {
+    name: 'RejectedError',
+  });
+}
