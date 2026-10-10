@@ -99,7 +99,7 @@ export function descriptorFor(
  *    nothing more, so it is not read here.)
  *
  * A model-manager that answers with **no backend** is a serving layer all the
- * same: it ships that way (bumblebee-plans#46, D5), and the Serving view is
+ * same: it ships that way, and the Serving view is
  * where a backend gets registered. The installation is listed with an empty
  * inventory, no backend label and no capabilities — never as "no serving
  * layer", which is reserved for an installation whose muster lists no

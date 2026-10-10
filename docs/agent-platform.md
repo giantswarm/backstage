@@ -2456,8 +2456,7 @@ no favourites concept.
 ## The agents list
 
 The Agents tab reads kagent **API v2** objects, single version
-(`api.kagent.dev/v1alpha3`), and nothing older: this portal is a hard cut
-(bumblebee-plans#51 D12) — an installation still on the `kagent.dev` group has no
+(`api.kagent.dev/v1alpha3`), and nothing older: this portal is a hard cut — an installation still on the `kagent.dev` group has no
 `agents` resource and is shown as having no API v2 agents (see below), never read
 through a second code path.
 

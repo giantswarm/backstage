@@ -3,7 +3,7 @@ export interface Config {
   plans?: {
     /**
      * GitHub repositories containing plan documents, as `owner/repo` slugs
-     * (e.g. `giantswarm/bumblebee-plans`). Routes select the active
+     * (e.g. `<owner>/<plans-repo>`). Routes select the active
      * repository via the `?repo=<owner/repo>` query parameter; when exactly
      * one repository is configured it is used by default. When unset, the
      * plans endpoints return 503 (the plugin is effectively disabled).

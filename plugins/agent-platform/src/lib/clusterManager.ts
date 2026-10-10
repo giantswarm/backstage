@@ -10,7 +10,7 @@
  * the signed-in person through the installation's muster, where its tools
  * appear as `x_cluster-manager_<tool>`. The shapes here mirror `internal/tools`
  * and `internal/api/mcp.go` of giantswarm/cluster-manager — the portal composes
- * nothing of its own (bumblebee-plans#46, D2 and D7).
+ * nothing of its own.
  */
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';

@@ -2,8 +2,8 @@
  * model-manager's tools, as the portal calls them through muster as the
  * signed-in person.
  *
- * model-manager ships with every installation and starts with no backend
- * (bumblebee-plans#46, D5). A backend — Ollama, LM Studio, Lemonade or a
+ * model-manager ships with every installation and starts with no backend.
+ * A backend — Ollama, LM Studio, Lemonade or a
  * KServe cluster — is registered at runtime as a **backend document**: a
  * ConfigMap in model-manager's namespace found by label, validated when it is
  * read (`docs/backends.md` of giantswarm/model-manager). The portal writes
