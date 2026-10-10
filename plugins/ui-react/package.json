@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-ui-react",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "license": "Apache-2.0",
   "description": "Web library for the ui plugin",
   "main": "src/index.ts",
