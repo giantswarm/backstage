@@ -523,6 +523,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/sessions/gazelle/abc123',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
+      '/agents',
+      '/agents/new',
       '/agent-platform/usage/cost',
       '/agent-platform/usage/conversations',
       '/agent-platform/usage/mcp',

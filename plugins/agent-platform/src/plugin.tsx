@@ -108,6 +108,31 @@ const agentsSubPage = SubPageBlueprint.make({
   },
 });
 
+// `/agents` (and `/agents/*`): the short path people, briefs and old links use
+// for the Agents tab, redirected to the same place under it (AgentsRedirect).
+// A plain route on the app's router rather than a PageBlueprint, which would
+// wrap the redirect in a page header. Enabled by default, unlike the section:
+// where the section is disabled the redirect has no target and `/agents`
+// stays the not-found page.
+const agentsRedirectPage = createExtension({
+  kind: 'page',
+  name: 'agents-redirect',
+  attachTo: { id: 'app/routes', input: 'routes' },
+  output: [coreExtensionData.routePath, coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.routePath('/agents'),
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { AgentsRedirect } =
+            await import('./components/AgentsRedirect');
+          return <AgentsRedirect />;
+        }),
+      ),
+    ];
+  },
+});
+
 // The "Sessions" tab. Read-only list of the signed-in user's kagent chat
 // sessions across the fleet, via the agent-platform-backend kagent proxy.
 //
@@ -302,6 +327,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentPlatformPage,
     sessionsSubPage,
     agentsSubPage,
+    agentsRedirectPage,
     modelsSubPage,
     usageSubPage,
     installationScopeHeaderAction,
