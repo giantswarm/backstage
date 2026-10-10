@@ -60,7 +60,7 @@ test.describe('second-level tabs', () => {
       'Overview',
       'Cost',
       'Your sessions',
-      'MCP tools',
+      'Technical details',
     ] as const,
   };
 
