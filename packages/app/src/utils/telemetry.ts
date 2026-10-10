@@ -321,6 +321,13 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // `/agents` and below only redirect to the same place under
+    // '/agent-platform/agents' (agent-platform's `AgentsRedirect`); the page the
+    // visit lands on reports itself right after.
+    case pathname === '/agents' || pathname.startsWith('/agents/'):
+      payload = { page: 'Agents redirect' };
+      break;
+
     case pathname === '/plans':
       payload = { page: 'Plans index' };
       break;

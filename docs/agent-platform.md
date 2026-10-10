@@ -5,9 +5,11 @@ provides the UI for creating and (later) managing kagent agents from Backstage.
 It is a re-implementation of the APUI (Agent Platform User Interface) prototype
 as native, real-data Backstage pages.
 
-This page documents the **agent-creation flow** (`/agents/new` →
-`/agents/new/skills` → `/agents/new/review`) as it stands, and the open work
-still ahead.
+This page documents the **agent-creation flow**
+(`/agent-platform/agents/new` → `/agent-platform/agents/new/skills` →
+`/agent-platform/agents/new/review`) as it stands, and the open work still
+ahead. The Agents list itself is `/agent-platform/agents`; the short `/agents`
+(and anything below it) redirects there.
 
 ## Overview of the create flow
 
@@ -16,14 +18,14 @@ composes nothing: the review is agent-manager's dry run and the deploy is
 agent-manager's `create_agent`, both called through the installation's muster
 as the signed-in person.
 
-1. **`/agents/new`** — the form (`NewAgentPage`). Installation, identity (name,
+1. **`/agent-platform/agents/new`** — the form (`NewAgentPage`). Installation, identity (name,
    auto-derived slug, description) and configuration (model, system prompt).
-2. **`/agents/new/skills`** — skill selection (`NewAgentSkillsPage`). Optional;
+2. **`/agent-platform/agents/new/skills`** — skill selection (`NewAgentSkillsPage`). Optional;
    see "Skill discovery" below. Every skill is pinned to the commit its card
    shows.
-3. **`/agents/new/tools`** — the toolset (`NewAgentToolsPage`): the selectors
+3. **`/agent-platform/agents/new/tools`** — the toolset (`NewAgentToolsPage`): the selectors
    that bound which of the gateway's tools the agent can use.
-4. **`/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows
+4. **`/agent-platform/agents/new/review`** — review and deploy (`NewAgentReviewPage`). Shows
    the manifests agent-manager renders for the form (`validate_agent`), its
    violations inline, deploys through `create_agent`, and offers a manual-install
    fallback built from the same values.
@@ -36,7 +38,7 @@ so a deep link into the middle of the flow can't strand the user.
 configured there is nothing to pick and nothing the agent's creator can do about
 it (the fix is admin-side config), so the step is skipped: step 1's Continue
 goes straight to the Tools step, the labels read "of 3", and a deep link to
-`/agents/new/skills` redirects onward. `hasRepositories` comes from config
+`/agent-platform/agents/new/skills` redirects onward. `hasRepositories` comes from config
 alone, so this decision costs no request.
 
 Cross-page form state lives in `NewAgentFormProvider`. The set of installations

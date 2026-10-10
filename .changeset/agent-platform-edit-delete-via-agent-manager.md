@@ -16,7 +16,7 @@ the dialog; a viewer's confirm shows the apiserver's Forbidden. The portal never
 passes `force`. `useDeleteAgent` (owner resolution, the Kustomization and
 suspended guards, the sibling list, the `SelfSubjectAccessReview` gate) is gone.
 
-**Edit** (`Edit agent…` → `/agents/<installation>/<namespace>/<name>/edit`) is
+**Edit** (`Edit agent…` → `/agent-platform/agents/<installation>/<namespace>/<name>/edit`) is
 a form pre-filled from `x_agent-manager_get_agent` — display name, description,
 system prompt, model (from `list_model_configs`), toolset, skills with their
 pins; no runtime. The review is `validate_agent` with `update: true` for exactly
