@@ -76,7 +76,7 @@ export function useCreateAgent(
       if (!installation) {
         return Promise.resolve();
       }
-      markAgentDeployed(queryClient, installation, spec);
+      markAgentDeployed(installation, spec);
       // Every api.kagent.dev list on this installation, keyed the way the
       // kubernetes-react read hooks key them; the roster re-reads on its next
       // render and the detail page reads fresh anyway.

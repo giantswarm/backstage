@@ -1,13 +1,12 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { useQueryClient, type Query } from '@tanstack/react-query';
+import type { Query } from '@tanstack/react-query';
 import {
   Agent,
   Harness,
@@ -82,6 +81,17 @@ const AgentsContext = createContext<AgentsContextValue | undefined>(undefined);
  * {@link ModelConfigsProvider}, so this must be mounted inside one. Each row's
  * toolset is read off the agent's carrier `RemoteMCPServer`, listed alongside.
  */
+/**
+ * The Agents list's interval: {@link getAgentsRefetchInterval}, tightened to
+ * the transitional tier while the installation's list does not show an agent
+ * deployed from this tab yet.
+ */
+function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
+  return awaitsDeployedAgent(query)
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : getAgentsRefetchInterval(query);
+}
+
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
   const allInstallations = installations.map(installation => installation.name);
@@ -158,14 +168,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   // the whole fleet fast: only installations with an agent that is still
   // converging, or one just deployed from this portal that the list does not
   // show yet (`awaitsDeployedAgent`), get the short interval.
-  const queryClient = useQueryClient();
-  const agentsRefetchInterval = useCallback(
-    (query: Query<KubeObjectInterface[]>) =>
-      awaitsDeployedAgent(queryClient, query)
-        ? TRANSITIONAL_REFETCH_INTERVAL_MS
-        : getAgentsRefetchInterval(query),
-    [queryClient],
-  );
   const { resources, clustersData, isLoading, errors } = useResources(
     queriedInstallations,
     Agent,

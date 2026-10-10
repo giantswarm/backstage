@@ -7,10 +7,11 @@ import { expect, open, rosterLinkOf, test } from './fixtures';
  * (`labAgent`); the whole journey of one is `agent-lifecycle.spec.ts`.
  *
  * Deploy writes the agent's HelmRelease; the roster lists the Agent once Flux
- * has rendered it and the roster's 60 s poll has read it, up to two minutes
- * after Deploy. Until then a lab without other agents shows the "No agents
- * yet" empty state, without search or table, so the fixture agent's row comes
- * first, and the test's budget outlasts the config's 90 s.
+ * has rendered it, polling every 5 s until then (the tab remembers the
+ * deploy). Until then a lab without other agents shows the "No agents yet"
+ * empty state, without search or table, so the fixture agent's row comes
+ * first; the wait covers a slow Flux render, and the test's budget outlasts
+ * the config's 90 s.
  */
 const rosterWait = 2 * 60_000;
 

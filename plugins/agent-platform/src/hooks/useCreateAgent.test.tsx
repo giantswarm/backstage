@@ -59,7 +59,6 @@ function renderWith(
   );
   return {
     ...renderHook(() => useCreateAgent(installation), { wrapper }),
-    queryClient,
     invalidateQueries,
   };
 }
@@ -75,6 +74,7 @@ function expectAgentCreated(mode: 'deploy' | 'commit') {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   jest.mocked(analyticsApi.captureEvent).mockClear();
   callTool.mockReset();
 });
@@ -120,7 +120,7 @@ describe('useCreateAgent', () => {
       created: { ociRepository: true, helmRelease: true },
       requestedBy: 'admin@lab.local',
     });
-    const { result, queryClient } = renderWith();
+    const { result } = renderWith();
     const agentsList = (installation: string, items: unknown[]) =>
       ({
         queryKey: ['cluster', installation, 'list', 'api.kagent.dev'],
@@ -128,9 +128,7 @@ describe('useCreateAgent', () => {
       }) as unknown as Query<any, any, any, any>;
 
     // Before the deploy nothing is awaited.
-    expect(awaitsDeployedAgent(queryClient, agentsList('gazelle', []))).toBe(
-      false,
-    );
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(false);
 
     await act(async () => {
       await result.current.deploy(spec);
@@ -138,32 +136,26 @@ describe('useCreateAgent', () => {
 
     // The list refetched before Flux rendered the Agent: still awaited, on
     // this installation only.
-    expect(awaitsDeployedAgent(queryClient, agentsList('gazelle', []))).toBe(
-      true,
-    );
-    expect(awaitsDeployedAgent(queryClient, agentsList('glean', []))).toBe(
-      false,
-    );
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(true);
+    expect(awaitsDeployedAgent(agentsList('glean', []))).toBe(false);
     // Listed: settled, and the list falls back to its own tiers.
     const listed = agentsList('gazelle', [
       { metadata: { namespace: 'kagent', name: 'pr-reviewer' } },
     ]);
-    expect(awaitsDeployedAgent(queryClient, listed)).toBe(false);
-    expect(awaitsDeployedAgent(queryClient, agentsList('gazelle', []))).toBe(
-      false,
-    );
+    expect(awaitsDeployedAgent(listed)).toBe(false);
+    expect(awaitsDeployedAgent(agentsList('gazelle', []))).toBe(false);
   });
 
   it('awaits nothing after a failed deploy', async () => {
     callTool.mockRejectedValue(new Error('conflict: already exists'));
-    const { result, queryClient } = renderWith();
+    const { result } = renderWith();
 
     await act(async () => {
       await result.current.deploy(spec).catch(() => undefined);
     });
 
     expect(
-      awaitsDeployedAgent(queryClient, {
+      awaitsDeployedAgent({
         queryKey: ['cluster', 'gazelle', 'list', 'api.kagent.dev'],
         state: { data: [] },
       } as unknown as Query<any, any, any, any>),

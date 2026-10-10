@@ -1,10 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import {
-  QueryClient,
-  QueryClientProvider,
-  type Query,
-} from '@tanstack/react-query';
+import type { Query } from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { markAgentDeployed } from '../../lib/pendingAgentCreations';
 import { buildResourceErrors } from '../resourceErrorFixtures';
@@ -155,19 +151,15 @@ function result({
   return { resources, clustersData, isLoading, errors };
 }
 
-let queryClient = new QueryClient();
-
 const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={queryClient}>
-    <AgentsDataProvider>{children}</AgentsDataProvider>
-  </QueryClientProvider>
+  <AgentsDataProvider>{children}</AgentsDataProvider>
 );
 
 const renderUseAgents = () => renderHook(() => useAgents(), { wrapper });
 
 describe('AgentsDataProvider', () => {
   beforeEach(() => {
-    queryClient = new QueryClient();
+    window.sessionStorage.clear();
     mockUseResources.mockReset();
     mockConfigInstallations = ['alpha', 'beta', 'gaggle'];
     mockKagent = {
@@ -539,7 +531,7 @@ describe('AgentsDataProvider installation scope', () => {
 
   it('polls the Agents list of an installation every 5 s while it awaits an agent deployed here', () => {
     mockUseResources.mockReturnValue(result({ succeeded: { alpha: [] } }));
-    markAgentDeployed(queryClient, 'alpha', {
+    markAgentDeployed('alpha', {
       namespace: 'kagent',
       name: 'pr-reviewer',
     });

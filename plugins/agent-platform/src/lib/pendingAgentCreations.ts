@@ -1,4 +1,4 @@
-import type { Query, QueryClient } from '@tanstack/react-query';
+import type { Query } from '@tanstack/react-query';
 
 /**
  * How long after a deploy the Agents list keeps watching for the new agent.
@@ -8,26 +8,45 @@ import type { Query, QueryClient } from '@tanstack/react-query';
  */
 export const PENDING_CREATION_WINDOW_MS = 3 * 60_000;
 
-type PendingCreation = { namespace: string; name: string; deployedAt: number };
-
 /**
- * The agents deployed from this portal that the roster has not listed yet, per
- * installation. Held beside the query client rather than in its cache: the
- * cache is persisted to localStorage, and this is one page's short-lived
- * expectation, not installation state.
+ * Where the deploys still awaited live: the tab's `sessionStorage`, so the
+ * expectation survives a reload of the page that deployed, never reaches
+ * another tab or person, and goes with the tab. Not the query cache: that is
+ * persisted to localStorage for an hour and shared by every tab.
  */
-const pendingByClient = new WeakMap<
-  QueryClient,
-  Map<string, PendingCreation[]>
->();
+export const PENDING_CREATIONS_STORAGE_KEY =
+  'agent-platform-pending-agent-creations';
 
-function pendingOn(queryClient: QueryClient): Map<string, PendingCreation[]> {
-  let pending = pendingByClient.get(queryClient);
-  if (!pending) {
-    pending = new Map();
-    pendingByClient.set(queryClient, pending);
+type PendingCreation = {
+  installation: string;
+  namespace: string;
+  name: string;
+  deployedAt: number;
+};
+
+function read(): PendingCreation[] {
+  try {
+    const stored = window.sessionStorage.getItem(PENDING_CREATIONS_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
-  return pending;
+}
+
+function write(pending: PendingCreation[]): void {
+  try {
+    if (pending.length === 0) {
+      window.sessionStorage.removeItem(PENDING_CREATIONS_STORAGE_KEY);
+    } else {
+      window.sessionStorage.setItem(
+        PENDING_CREATIONS_STORAGE_KEY,
+        JSON.stringify(pending),
+      );
+    }
+  } catch {
+    // Storage blocked or full: the roster falls back to its own tiers.
+  }
 }
 
 /**
@@ -39,53 +58,59 @@ function pendingOn(queryClient: QueryClient): Map<string, PendingCreation[]> {
  * fresh for a minute, would otherwise wait for the baseline poll.
  */
 export function markAgentDeployed(
-  queryClient: QueryClient,
   installation: string,
   agent: { namespace: string; name: string },
   now: number = Date.now(),
 ): void {
-  const pending = pendingOn(queryClient);
-  const others = (pending.get(installation) ?? []).filter(
-    entry => entry.namespace !== agent.namespace || entry.name !== agent.name,
-  );
-  pending.set(installation, [...others, { ...agent, deployedAt: now }]);
+  write([
+    ...read().filter(
+      entry =>
+        entry.installation !== installation ||
+        entry.namespace !== agent.namespace ||
+        entry.name !== agent.name,
+    ),
+    {
+      installation,
+      namespace: agent.namespace,
+      name: agent.name,
+      deployedAt: now,
+    },
+  ]);
 }
 
 type ListedObject = { metadata?: { namespace?: string; name?: string } };
 
 /**
  * Whether an installation's Agents list query still awaits an agent deployed
- * from this portal: one marked by {@link markAgentDeployed}, inside the window
+ * from this tab: one marked by {@link markAgentDeployed}, inside the window
  * and not yet among the list's items. Settled and expired entries are dropped
  * on the way. The installation is the list query's second key segment
  * (`['cluster', <installation>, 'list', …]`).
  */
 export function awaitsDeployedAgent(
-  queryClient: QueryClient,
   query: Query<any, any, any, any>,
   now: number = Date.now(),
 ): boolean {
   const installation = query.queryKey[1];
-  const pending = pendingOn(queryClient);
-  if (typeof installation !== 'string' || !pending.has(installation)) {
+  const pending = read();
+  if (
+    typeof installation !== 'string' ||
+    !pending.some(entry => entry.installation === installation)
+  ) {
     return false;
   }
   const items = (query.state.data ?? []) as ListedObject[];
-  const awaited = pending
-    .get(installation)!
-    .filter(
-      entry =>
-        now - entry.deployedAt < PENDING_CREATION_WINDOW_MS &&
-        !items.some(
-          item =>
-            item.metadata?.namespace === entry.namespace &&
-            item.metadata?.name === entry.name,
-        ),
-    );
-  if (awaited.length === 0) {
-    pending.delete(installation);
-    return false;
+  const settled = (entry: PendingCreation) =>
+    entry.installation === installation &&
+    (now - entry.deployedAt >= PENDING_CREATION_WINDOW_MS ||
+      items.some(
+        item =>
+          item.metadata?.namespace === entry.namespace &&
+          item.metadata?.name === entry.name,
+      ));
+  const remaining = pending.filter(entry => !settled(entry));
+  if (remaining.length !== pending.length) {
+    write(remaining);
   }
-  pending.set(installation, awaited);
-  return true;
+  return remaining.some(entry => entry.installation === installation);
 }
