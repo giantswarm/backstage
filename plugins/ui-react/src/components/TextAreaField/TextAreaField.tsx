@@ -1,6 +1,7 @@
 import { useId, type ChangeEvent } from 'react';
 import { FieldLabel } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { FieldErrorText } from '../FieldValidation';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -43,11 +44,6 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.75rem',
     color: theme.palette.text.secondary,
     alignSelf: 'flex-end',
-  },
-  error: {
-    fontSize: '0.75rem',
-    color: theme.palette.error.main,
-    margin: 0,
   },
 }));
 
@@ -127,9 +123,9 @@ export function TextAreaField(props: TextAreaFieldProps) {
         }
       />
       {error && (
-        <p id={errorId} className={classes.error} role="alert">
+        <FieldErrorText id={errorId} role="alert">
           {error}
-        </p>
+        </FieldErrorText>
       )}
       {maxLength !== undefined && (
         <span id={counterId} className={classes.counter}>

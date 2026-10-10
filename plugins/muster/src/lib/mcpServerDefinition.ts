@@ -405,48 +405,100 @@ export function composeMcpServerDefinition(
   return definition;
 }
 
+/** The form fields a validation problem can belong to. */
+export type McpServerField =
+  | 'name'
+  | 'slug'
+  | 'description'
+  | 'installation'
+  | 'url'
+  | 'meta'
+  | 'issuer'
+  | 'scopes'
+  | 'authorizationEndpoint'
+  | 'tokenEndpoint'
+  | 'clientSecretName'
+  | 'transport'
+  | 'sigv4Region';
+
+/** One validation problem and the field that shows it. */
+export type McpServerProblem = { field: McpServerField; message: string };
+
+export type McpServerFieldErrors = Partial<Record<McpServerField, string>>;
+
+/** Each field's first problem: what the field shows under itself. */
+export function mcpServerFieldErrors(
+  problems: readonly McpServerProblem[],
+): McpServerFieldErrors {
+  const errors: McpServerFieldErrors = {};
+  for (const { field, message } of problems) {
+    errors[field] ??= message;
+  }
+  return errors;
+}
+
 /**
  * Validation problems of the Details step's fields only, in form order. Split
- * from {@link validateMcpServerAuth} so the auth step can guard "may I be
+ * from {@link mcpServerAuthProblems} so the auth step can guard "may I be
  * shown?" on the details alone — a bad issuer typed on the auth step must not
  * bounce the user back to step 1.
+ */
+export function mcpServerDetailsProblems(
+  state: NewMcpServerFormState,
+): McpServerProblem[] {
+  const problems: McpServerProblem[] = [];
+
+  if (!state.name.trim()) {
+    problems.push({ field: 'name', message: 'Name is required' });
+  }
+  if (state.slug.trim()) {
+    if (!isValidSlug(state.slug)) {
+      problems.push({
+        field: 'slug',
+        message:
+          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-server',
+      });
+    }
+  } else if (state.name.trim()) {
+    // Only flag a missing slug once there's a name (it derives from the name).
+    problems.push({ field: 'slug', message: 'Technical name is required' });
+  }
+  if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
+    problems.push({
+      field: 'description',
+      message: `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
+    });
+  }
+  if (!state.installation) {
+    problems.push({ field: 'installation', message: 'Select an installation' });
+  }
+  if (!state.url.trim()) {
+    problems.push({ field: 'url', message: 'URL is required' });
+  } else if (!URL_PATTERN.test(state.url.trim())) {
+    problems.push({
+      field: 'url',
+      message:
+        'URL must be an http(s) URL without spaces, e.g. https://mcp.example.com/mcp',
+    });
+  }
+  problems.push(
+    ...validateMeta(state.meta).map(message => ({
+      field: 'meta' as const,
+      message,
+    })),
+  );
+
+  return problems;
+}
+
+/**
+ * Validation problems of the Details step's fields only, in form order: the
+ * messages of {@link mcpServerDetailsProblems}.
  */
 export function validateMcpServerDetails(
   state: NewMcpServerFormState,
 ): string[] {
-  const errors: string[] = [];
-
-  if (!state.name.trim()) {
-    errors.push('Name is required');
-  }
-  if (state.slug.trim()) {
-    if (!isValidSlug(state.slug)) {
-      errors.push(
-        'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-server',
-      );
-    }
-  } else if (state.name.trim()) {
-    // Only flag a missing slug once there's a name (it derives from the name).
-    errors.push('Technical name is required');
-  }
-  if (state.description.trim().length > DESCRIPTION_MAX_LENGTH) {
-    errors.push(
-      `Description must be at most ${DESCRIPTION_MAX_LENGTH} characters`,
-    );
-  }
-  if (!state.installation) {
-    errors.push('Select an installation');
-  }
-  if (!state.url.trim()) {
-    errors.push('URL is required');
-  } else if (!URL_PATTERN.test(state.url.trim())) {
-    errors.push(
-      'URL must be an http(s) URL without spaces, e.g. https://mcp.example.com/mcp',
-    );
-  }
-  errors.push(...validateMeta(state.meta));
-
-  return errors;
+  return mcpServerDetailsProblems(state).map(problem => problem.message);
 }
 
 /**
@@ -494,39 +546,60 @@ export function hasAdvancedAuthorizationServer(
   );
 }
 
-/** Validation problems of the Authentication step's fields only. */
-export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
-  const errors: string[] = [];
+/**
+ * Validation problems of the Authentication step's fields only. A rule about
+ * two fields belongs to the one whose change fixes it: the issuer the scopes
+ * and advanced settings need, the empty one of the paired endpoints.
+ */
+export function mcpServerAuthProblems(
+  state: NewMcpServerFormState,
+): McpServerProblem[] {
+  const problems: McpServerProblem[] = [];
 
   if (state.authMode === 'own-account') {
     const issuer = state.issuer.trim();
     if (issuer && !ISSUER_PATTERN.test(issuer)) {
-      errors.push(
-        'Issuer must be an https URL without query or fragment, e.g. https://auth.example.com',
-      );
+      problems.push({
+        field: 'issuer',
+        message:
+          'Issuer must be an https URL without query or fragment, e.g. https://auth.example.com',
+      });
     }
     if (!issuer && state.scopes.trim()) {
-      errors.push('Scopes apply to the issuer override — set an issuer too');
+      problems.push({
+        field: 'issuer',
+        message: 'Scopes apply to the issuer override — set an issuer too',
+      });
     }
     if (!issuer && hasAdvancedAuthorizationServer(state)) {
-      errors.push(
-        'The advanced authorization-server settings apply to the issuer override — set an issuer too',
-      );
+      problems.push({
+        field: 'issuer',
+        message:
+          'The advanced authorization-server settings apply to the issuer override — set an issuer too',
+      });
     }
     const authorizationEndpoint = state.authorizationEndpoint.trim();
     const tokenEndpoint = state.tokenEndpoint.trim();
     // The CRD's CEL rule: the pinned endpoints are set together.
     if (Boolean(authorizationEndpoint) !== Boolean(tokenEndpoint)) {
-      errors.push(
-        'The authorization and token endpoints are pinned together — set both or neither',
-      );
+      problems.push({
+        field: authorizationEndpoint
+          ? 'tokenEndpoint'
+          : 'authorizationEndpoint',
+        message:
+          'The authorization and token endpoints are pinned together — set both or neither',
+      });
     }
-    for (const [label, endpoint] of [
-      ['Authorization endpoint', authorizationEndpoint],
-      ['Token endpoint', tokenEndpoint],
+    for (const [field, label, endpoint] of [
+      [
+        'authorizationEndpoint',
+        'Authorization endpoint',
+        authorizationEndpoint,
+      ],
+      ['tokenEndpoint', 'Token endpoint', tokenEndpoint],
     ] as const) {
       if (endpoint && !ENDPOINT_PATTERN.test(endpoint)) {
-        errors.push(`${label} must be an https URL`);
+        problems.push({ field, message: `${label} must be an https URL` });
       }
     }
     if (
@@ -535,9 +608,11 @@ export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
         state.clientIdKey.trim() ||
         state.clientSecretKey.trim())
     ) {
-      errors.push(
-        'The client-credentials Secret needs a name for its namespace and keys to point into',
-      );
+      problems.push({
+        field: 'clientSecretName',
+        message:
+          'The client-credentials Secret needs a name for its namespace and keys to point into',
+      });
     }
   }
 
@@ -546,18 +621,31 @@ export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
     // `streamable-http`. Reported here rather than on the Details step so the
     // user reads it next to the choice that caused it; the fix is a step back.
     if (state.transport !== 'streamable-http') {
-      errors.push(
-        'AWS SigV4 signing needs the Streamable HTTP transport — change the transport on the Details step',
-      );
+      problems.push({
+        field: 'transport',
+        message:
+          'AWS SigV4 signing needs the Streamable HTTP transport — change the transport on the Details step',
+      });
     }
     // Not defaultable: the endpoint checks the signature's credential scope, so
     // a guessed region surfaces as a signature error rather than a config one.
     if (!state.sigv4Region.trim()) {
-      errors.push('Signing region is required for AWS SigV4');
+      problems.push({
+        field: 'sigv4Region',
+        message: 'Signing region is required for AWS SigV4',
+      });
     }
   }
 
-  return errors;
+  return problems;
+}
+
+/**
+ * Validation problems of the Authentication step's fields only: the messages
+ * of {@link mcpServerAuthProblems}.
+ */
+export function validateMcpServerAuth(state: NewMcpServerFormState): string[] {
+  return mcpServerAuthProblems(state).map(problem => problem.message);
 }
 
 /**

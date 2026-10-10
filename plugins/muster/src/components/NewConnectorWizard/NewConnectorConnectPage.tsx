@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
+  fieldErrorProps,
+  useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -126,6 +128,7 @@ export function NewConnectorConnectPage() {
     setUrl,
     setTransport,
     detailsErrors,
+    fieldErrors,
     registeredName,
   } = useNewMcpServerForm();
 
@@ -150,19 +153,26 @@ export function NewConnectorConnectPage() {
     setTransport(detected);
   }, [registeredName, detected, state.transport, setTransport]);
 
-  // Validation feedback only once the user tries to proceed, so the form
-  // doesn't shout about empty fields before they've done anything.
-  const [showValidation, setShowValidation] = useState(false);
+  // Each field shows its own problem once the person tries to proceed — not
+  // before, so the form doesn't shout about empty fields up front — and a
+  // blocked Continue moves the focus to the first one.
+  const validation = useFieldValidation();
+  const { reveal } = validation;
   const errorCount = detailsErrors.length;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
-      setShowValidation(true);
+      reveal();
       return;
     }
     if (signInLink) {
       navigate(withEditParam(signInLink(), registeredName));
     }
-  }, [errorCount, signInLink, navigate, registeredName]);
+  }, [errorCount, reveal, signInLink, navigate, registeredName]);
+  // Problems no field on this step can show: the installation comes from the
+  // section, request metadata is the classic wizard's. Named in a summary.
+  const unanchoredErrors = [fieldErrors.installation, fieldErrors.meta].filter(
+    (error): error is string => Boolean(error),
+  );
 
   // Memoized so the frame's footer slot only updates when the handler does,
   // not on every keystroke (see useProvidePageHeaderActions).
@@ -195,10 +205,12 @@ export function NewConnectorConnectPage() {
           value={state.url}
           onChange={setUrl}
           placeholder="https://mcp.example.com/mcp"
+          {...fieldErrorProps(validation.errorFor(fieldErrors.url))}
         />
         <DetectionStatus url={state.url} installation={state.installation} />
       </Flex>
 
+      {/* The technical name derives from this one, so its problems show here. */}
       <TextField
         label="Name"
         isRequired
@@ -211,6 +223,9 @@ export function NewConnectorConnectPage() {
             ? 'The connector is registered under this name; changes are saved as an update to it.'
             : 'People see this name when they give an agent access.'
         }
+        {...fieldErrorProps(
+          validation.errorFor(fieldErrors.name ?? fieldErrors.slug),
+        )}
       />
       {!registeredName && state.slug && (
         <Text variant="body-small" color="secondary">
@@ -227,13 +242,14 @@ export function NewConnectorConnectPage() {
         rows={2}
         placeholder="e.g. Search, read and update tickets"
         description="Shown wherever the connector is offered, so people know what it's for."
+        error={validation.errorFor(fieldErrors.description)}
       />
 
-      {showValidation && detailsErrors.length > 0 && (
+      {validation.shown && unanchoredErrors.length > 0 && (
         <Alert
           status="danger"
           title="Please fix the following before continuing"
-          description={detailsErrors.join('. ')}
+          description={unanchoredErrors.join('. ')}
         />
       )}
     </ConnectorWizardFrame>

@@ -1056,7 +1056,7 @@ function AgentDetailPageContent() {
  *
  * Inside the agent-platform shell, the prototype's plain-language page: three
  * routed tabs — Overview (what it is for, its instructions, skills and
- * connectors, with the Kubernetes detail behind "Show technical details"),
+ * connectors, with the Kubernetes detail in a "Technical details" fold-out),
  * Sessions and Usage — under the platform-standard `ShellPage` header, with
  * the model and environment as facts beside the Overview. In classic chrome,
  * four routed tabs under the agent's own header — Overview, Tools, Skills,

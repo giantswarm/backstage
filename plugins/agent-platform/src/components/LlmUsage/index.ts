@@ -1,5 +1,5 @@
+export { CostKpiTiles } from './CostKpiTiles';
 export { CostPerDayCard } from './CostPerDayCard';
-export { CostTotalsStrip } from './CostTotalsStrip';
 export { KpiTile, KpiTileGrid, KpiDelta } from './KpiTile';
 export { SessionKpiTiles } from './SessionKpiTiles';
 export { LlmByAgentTable } from './LlmByAgentTable';
@@ -11,8 +11,8 @@ export {
 } from './PricingCoverageNote';
 export { ReliabilityStrip } from './ReliabilityStrip';
 export { TokensByTypeCard } from './TokensByTypeCard';
-export { TopSpendCard } from './TopSpendCard';
-export type { TopSpendRow } from './TopSpendCard';
+export { TopAgentsCard } from './TopAgentsCard';
+export type { TopAgentsRow } from './TopAgentsCard';
 export { UsageCard } from './UsageCard';
 export { UsageKpiTiles } from './UsageKpiTiles';
 export type { UsageKpiSessions } from './UsageKpiTiles';

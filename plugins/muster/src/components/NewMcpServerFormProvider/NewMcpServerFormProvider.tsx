@@ -19,13 +19,15 @@ import {
   emptyFormState,
   formStateFromServer,
   hasUserInput,
+  mcpServerAuthProblems,
+  mcpServerDetailsProblems,
+  mcpServerFieldErrors,
   mergeOntoExisting,
   sigv4Advisories,
-  validateMcpServerAuth,
-  validateMcpServerDetails,
   type FieldAvailability,
   type McpServerAuthMode,
   type McpServerDefinition,
+  type McpServerFieldErrors,
   type McpServerMetaEntry,
   type McpServerTransport,
   type NewMcpServerFormState,
@@ -110,6 +112,11 @@ export type NewMcpServerFormContextValue = {
    * back to step 1 for an issuer they are typing on the auth step itself.
    */
   detailsErrors: string[];
+  /**
+   * Every problem by the field that shows it (each field's first), for the
+   * per-field feedback of the shell's connector wizard.
+   */
+  fieldErrors: McpServerFieldErrors;
   /**
    * Which auth fields this state may set, with an explanation for the ones it
    * may not — the CRD's auth mutual exclusions as disabled states.
@@ -242,15 +249,14 @@ export function NewMcpServerFormProvider({
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     // The display name only derives the technical name, which an edit locks —
     // so the Details step hides it then, and it must not block the edit.
-    const detailsErrors = validateMcpServerDetails(
+    const detailsProblems = mcpServerDetailsProblems(
       registeredName && !state.name.trim()
         ? { ...state, name: registeredName }
         : state,
     );
-    const validationErrors = [
-      ...detailsErrors,
-      ...validateMcpServerAuth(state),
-    ];
+    const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
+    const detailsErrors = detailsProblems.map(problem => problem.message);
+    const validationErrors = problems.map(problem => problem.message);
 
     return {
       state,
@@ -322,6 +328,7 @@ export function NewMcpServerFormProvider({
       isComplete: validationErrors.length === 0,
       validationErrors,
       detailsErrors,
+      fieldErrors: mcpServerFieldErrors(problems),
       authFields: authFieldAvailability(state),
       authAdvisories: sigv4Advisories(state),
       definition: base

@@ -26,7 +26,9 @@ const STATUS_MEANING: Record<string, string> = {
 };
 
 /**
- * The compact warning, for a view that shows cost figures but not the detail.
+ * The compact warning, beside the Cost tab's headline spend — the detail
+ * table ({@link PricingCoverageNote}) sits further down the same tab, so
+ * `costHref` is only for a view that shows cost figures without the detail.
  *
  * Renders nothing when every lookup resolved — the healthy state is silence,
  * not a green tick nobody needs. When it does render, it is the *only* thing

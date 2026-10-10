@@ -105,7 +105,18 @@ export type NewAgentFormContextValue = {
    * valid. Drives the submit-time feedback.
    */
   validationErrors: string[];
+  /**
+   * The same problems by the field each belongs to, for the per-field
+   * feedback: the field shows its own message once a Continue is blocked.
+   */
+  fieldErrors: NewAgentFieldErrors;
 };
+
+/** The step-1 fields a validation problem can belong to. */
+export type NewAgentField =
+  'name' | 'systemMessage' | 'installation' | 'model' | 'slug' | 'egress';
+
+export type NewAgentFieldErrors = Partial<Record<NewAgentField, string>>;
 
 const initialState: NewAgentFormState = {
   name: '',
@@ -147,36 +158,42 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
     // (agentSpecOf omits it). Only its length is checked.
-    const validationErrors: string[] = [];
-    const promptProblem = systemMessageProblem(state.systemMessage);
-    if (promptProblem) {
-      validationErrors.push(promptProblem);
-    }
-    const egressIssue = egressProblem(parseEgressText(state.egressText));
-    if (egressIssue) {
-      validationErrors.push(egressIssue);
-    }
+    const fieldErrors: NewAgentFieldErrors = {};
+    fieldErrors.systemMessage = systemMessageProblem(state.systemMessage);
+    fieldErrors.egress = egressProblem(parseEgressText(state.egressText));
     if (!state.name.trim()) {
-      validationErrors.push('Name is required');
+      fieldErrors.name = 'Name is required';
     }
     if (state.slug.trim()) {
       // The slug is emitted verbatim as a k8s object name — reject anything that
       // isn't a valid DNS-1123 label so the deploy can't fail late at apply time.
       if (!isValidSlug(state.slug)) {
-        validationErrors.push(
-          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent',
-        );
+        fieldErrors.slug =
+          'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. my-agent';
       }
     } else if (state.name.trim()) {
       // Only flag a missing slug once there's a name (it derives from the name).
-      validationErrors.push('Technical name is required');
+      fieldErrors.slug = 'Technical name is required';
     }
     if (!state.installation) {
-      validationErrors.push('Select an installation');
+      fieldErrors.installation = 'Select an installation';
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
-      validationErrors.push('Select a model');
+      fieldErrors.model = 'Select a model';
     }
+    // The list keeps its historical order (the summary's, and the tests').
+    const validationErrors = (
+      [
+        'systemMessage',
+        'egress',
+        'name',
+        'slug',
+        'installation',
+        'model',
+      ] as const
+    )
+      .map(field => fieldErrors[field])
+      .filter((error): error is string => Boolean(error));
     const isComplete = validationErrors.length === 0;
 
     // Kept apart from `isComplete`: the step-1 fields decide whether the later
@@ -260,6 +277,7 @@ export function NewAgentFormProvider({ children }: { children: ReactNode }) {
       },
       isComplete,
       validationErrors,
+      fieldErrors,
     };
   }, [state, slugEdited]);
 

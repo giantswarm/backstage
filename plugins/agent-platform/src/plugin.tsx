@@ -162,11 +162,11 @@ const sessionsSubPage = SubPageBlueprint.make({
   },
 });
 
-// The "Usage" tab: the gateway's cost and usage views (every caller), your own
-// agent usage (personal, derived from kagent's stored conversations), and a
-// Technical details view that carries the raw gateway figures plus the MCP
-// tool calls on the installation (every caller, from muster's Prometheus
-// metrics) contributed by the muster plugin through the `sections` input below.
+// The "Usage" tab: an Overview of the platform's health and headline trends
+// (every caller — which also carries the MCP tool calls on the installation,
+// from muster's Prometheus metrics, contributed by the muster plugin through
+// the `sections` input below), the Cost view (every caller's money), and your
+// own agent usage (personal, derived from kagent's stored conversations).
 //
 // The last tab of the row, after muster's MCP Servers and Workflows (see
 // `agentPlatformPage`).
@@ -176,7 +176,7 @@ const sessionsSubPage = SubPageBlueprint.make({
 // (`sub-page:agent-platform/usage`, input `sections`) without either plugin
 // depending on the other, exactly as it already attaches its "MCP Servers" tab
 // to `page:agent-platform`. An empty `sections` (muster not registered) leaves
-// the Technical details view to its own gateway content.
+// the Overview to its own gateway content.
 const usageSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'usage',
   inputs: {
@@ -190,8 +190,8 @@ const usageSubPage = SubPageBlueprint.makeWithOverrides({
       loader: async () => {
         const { UsageRouter } = await import('./components/UsageRouter');
         // Passed as the array rather than wrapped in a fragment: the
-        // Technical details view has to know whether anything was contributed
-        // at all, so it can render its gateway content alone when nothing was.
+        // Overview has to know whether anything was contributed at all, so it
+        // can render its gateway content alone when nothing was.
         const sections = inputs.sections.map(section =>
           section.get(coreExtensionData.reactElement),
         );

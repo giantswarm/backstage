@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import { agentsRouteRef } from '../../routes';
@@ -114,6 +115,50 @@ describe('CustomizeAgentsPanel', () => {
     await renderPanel('triage');
     expect(screen.getByText('Support triage')).toBeInTheDocument();
     expect(screen.queryByText('Release notes')).not.toBeInTheDocument();
+  });
+
+  it('renders 300 agents a page of 25 at a time', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: Array.from({ length: 300 }, (_, i) =>
+        row({
+          name: `Agent ${String(i + 1).padStart(3, '0')}`,
+          technicalName: `agent-${i + 1}`,
+        }),
+      ),
+    };
+    await renderPanel();
+
+    const items = () =>
+      within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
+        'listitem',
+      );
+    expect(items()).toHaveLength(25);
+    expect(screen.getByText('25 agents shown, 275 more')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 25 more agents' }),
+    );
+    expect(items()).toHaveLength(50);
+    expect(within(items()[49]).getByText('Agent 050')).toBeInTheDocument();
+  });
+
+  it('pages within the search, not the whole list', async () => {
+    mockAgents = {
+      ...mockAgents,
+      rows: Array.from({ length: 300 }, (_, i) =>
+        row({ name: `Agent ${i + 1}`, technicalName: `agent-${i + 1}` }),
+      ),
+    };
+    await renderPanel('Agent 29');
+
+    // Agent 29 and Agent 290–299: one page, nothing to show more of.
+    expect(
+      within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(11);
+    expect(screen.queryByRole('button', { name: /more/ })).toBeNull();
   });
 
   it('says when the search matches nothing', async () => {

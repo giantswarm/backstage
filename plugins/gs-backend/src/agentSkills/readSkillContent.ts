@@ -49,6 +49,32 @@ function toSkillContent(
 }
 
 /**
+ * The repository's basename (`skills` for `https://host/x/skills.git`), the
+ * last name fallback for a root skill without a frontmatter name.
+ */
+function repoBasename(repoUrl: string): string {
+  return (
+    repoUrl
+      .split('/')
+      .filter(Boolean)
+      .pop()
+      ?.replace(/\.git$/i, '') || 'skill'
+  );
+}
+
+/**
+ * A skill's content from a `SKILL.md` discovery already read (the discovery
+ * cache keeps them): the same split the providers below answer, with no
+ * request upstream.
+ */
+export function skillContentFromRaw(
+  raw: string,
+  location: { repoUrl: string; path: string; commit: string },
+): SkillContent {
+  return toSkillContent(raw, location, repoBasename(location.repoUrl));
+}
+
+/**
  * A skill's SKILL.md from a github.com repository, at a commit, through the
  * contents API — with the GitHub integration's token when one is configured,
  * like discovery. Refusals throw `GitHubApiError` with the upstream status.
@@ -94,11 +120,5 @@ export async function readSkillContentFromGit(options: {
     filePath: skillFilePath(path),
     gitClient,
   });
-  const basename =
-    repoUrl
-      .split('/')
-      .filter(Boolean)
-      .pop()
-      ?.replace(/\.git$/i, '') || 'skill';
-  return toSkillContent(raw, { repoUrl, path, commit }, basename);
+  return toSkillContent(raw, { repoUrl, path, commit }, repoBasename(repoUrl));
 }

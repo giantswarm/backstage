@@ -2,12 +2,7 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { Link } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
 import { UsageCard } from '../UsageCard';
-import {
-  formatMoney,
-  formatPercent,
-  USD,
-  type Currency,
-} from '../../../lib/formatNumbers';
+import { formatCount, formatPercent } from '../../../lib/formatNumbers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   rows: {
@@ -17,7 +12,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   row: {
     display: 'grid',
-    // Name, share bar, amount. The bar gives way first on a narrow card, and
+    // Name, share bar, count. The bar gives way first on a narrow card, and
     // the name truncates rather than pushing the figures out of line.
     gridTemplateColumns: 'minmax(96px, 2fr) minmax(40px, 3fr) auto',
     gap: theme.spacing(1.5),
@@ -53,50 +48,48 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-export type TopSpendRow = {
+export type TopAgentsRow = {
   id: string;
   label: string;
   href?: string;
-  /** USD, converted for display by the card. `undefined` renders as `—`. */
-  costUsd: number | undefined;
-  /** Share of the window's priced spend, as a percentage. */
+  /** Model calls the gateway attributed to the agent in the window. */
+  calls: number;
+  /** Share of the window's model calls, as a percentage. */
   sharePct: number | undefined;
 };
 
-export type TopSpendCardProps = {
+export type TopAgentsCardProps = {
   title: string;
-  rows: TopSpendRow[];
+  /** Busiest first; the card does not sort. */
+  rows: TopAgentsRow[];
   /** How many rows to show; the rest are a one-line remainder. */
   limit?: number;
-  currency?: Currency;
   emptyMessage: string;
   note?: string;
 };
 
 /**
- * A compact where-the-money-went list: a name, a share bar and the amount —
- * the Overview's at-a-glance form of the breakdowns the Cost tab carries in
- * full. The bar is each row's share of the window's priced spend, so the bars
- * are comparable with each other and with the same row on the Cost tab.
+ * A compact which-agents-are-busy list: a name, a share bar and the model-call
+ * count — the Overview's activity ranking.
+ *
+ * Deliberately **not** a spend ranking: money has one home, the Cost tab,
+ * whose by-agent table ranks by spend (see
+ * `design-context/implementation/usage-metrics-ia.md`). The bar is each row's
+ * share of the window's model calls, so the bars are comparable with each
+ * other.
  */
-export function TopSpendCard({
+export function TopAgentsCard({
   title,
   rows,
   limit = 5,
-  currency = USD,
   emptyMessage,
   note,
-}: TopSpendCardProps) {
+}: TopAgentsCardProps) {
   const classes = useStyles();
 
   const shown = rows.slice(0, limit);
   const rest = rows.slice(limit);
-  const restCost = rest.reduce<number | undefined>((acc, row) => {
-    if (row.costUsd === undefined) {
-      return acc;
-    }
-    return (acc ?? 0) + row.costUsd;
-  }, undefined);
+  const restCalls = rest.reduce((acc, row) => acc + row.calls, 0);
 
   return (
     <UsageCard title={title} note={note}>
@@ -114,7 +107,7 @@ export function TopSpendCard({
               <div
                 className={classes.track}
                 role="img"
-                aria-label={`${row.label}: ${formatPercent(row.sharePct)} of spend`}
+                aria-label={`${row.label}: ${formatPercent(row.sharePct)} of model calls`}
               >
                 <div
                   className={classes.fill}
@@ -124,7 +117,7 @@ export function TopSpendCard({
                 />
               </div>
               <span className={classes.amount}>
-                {formatMoney(row.costUsd, currency)}
+                {formatCount(row.calls)}
                 <span className={classes.share}>
                   {formatPercent(row.sharePct)}
                 </span>
@@ -133,8 +126,8 @@ export function TopSpendCard({
           ))}
           {rest.length > 0 && (
             <Text variant="body-small" color="secondary">
-              and {rest.length} more, {formatMoney(restCost, currency)} between
-              them — the Cost tab has every row.
+              and {rest.length} more, {formatCount(restCalls)} calls between
+              them.
             </Text>
           )}
         </div>

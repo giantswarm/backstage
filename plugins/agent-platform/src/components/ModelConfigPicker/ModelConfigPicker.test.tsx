@@ -33,20 +33,20 @@ jest.mock('../ModelConfigsProvider', () => ({
   }),
 }));
 
-function WithInstallation() {
+function WithInstallation({ error }: { error?: string }) {
   const { state, setInstallation } = useNewAgentForm();
   useEffect(() => {
     if (!state.installation) {
       setInstallation('gazelle');
     }
   }, [state.installation, setInstallation]);
-  return state.installation ? <ModelConfigPicker /> : null;
+  return state.installation ? <ModelConfigPicker error={error} /> : null;
 }
 
-async function renderPicker() {
+async function renderPicker(error?: string) {
   await renderInTestApp(
     <NewAgentFormProvider>
-      <WithInstallation />
+      <WithInstallation error={error} />
     </NewAgentFormProvider>,
   );
 }
@@ -70,6 +70,17 @@ describe('ModelConfigPicker', () => {
         name: 'Select model Claude Sonnet, installation default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('shows the form’s validation problem under its label and ties it to the choices', async () => {
+    mockModelConfigs = [modelConfig('haiku', 'Claude Haiku')];
+
+    await renderPicker('Select a model');
+
+    const message = await screen.findByText('Select a model');
+    const group = screen.getByRole('radiogroup', { name: 'Model' });
+    expect(group).toHaveAttribute('aria-describedby', message.id);
+    expect(group.closest('[data-invalid]')).not.toBeNull();
   });
 
   it('preselects the only model and says so', async () => {

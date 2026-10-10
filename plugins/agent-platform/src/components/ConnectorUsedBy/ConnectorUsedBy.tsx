@@ -14,6 +14,7 @@ import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
 import { AgentRow, AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
+import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 
 const AVATAR_SIZE = 96;
 
@@ -72,38 +73,42 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
           No agent on {target.installation} uses this connector.
         </Text>
       ) : (
-        <List aria-label="Agents using this connector">
-          {using.map(({ row, access }) => (
-            <ListRow
-              key={row.id}
-              id={row.id}
-              href={agentDetailRoute?.({
-                installation: row.installation,
-                namespace: row.namespace,
-                name: row.technicalName,
-              })}
-              icon={
-                <AgentAvatar
-                  size="small"
-                  purpose="decoration"
-                  name={row.name}
-                  src={
-                    buildAvatarUrl(row.installation, row.technicalName, {
-                      size: AVATAR_SIZE,
-                    }) ?? ''
+        <ShowMore items={using} initial={USED_BY_ROWS} noun="agent" revealAll>
+          {shown => (
+            <List aria-label="Agents using this connector">
+              {shown.map(({ row, access }) => (
+                <ListRow
+                  key={row.id}
+                  id={row.id}
+                  href={agentDetailRoute?.({
+                    installation: row.installation,
+                    namespace: row.namespace,
+                    name: row.technicalName,
+                  })}
+                  icon={
+                    <AgentAvatar
+                      size="small"
+                      purpose="decoration"
+                      name={row.name}
+                      src={
+                        buildAvatarUrl(row.installation, row.technicalName, {
+                          size: AVATAR_SIZE,
+                        }) ?? ''
+                      }
+                    />
                   }
-                />
-              }
-              customActions={
-                <Text variant="body-small" color="secondary">
-                  {access}
-                </Text>
-              }
-            >
-              {row.name}
-            </ListRow>
-          ))}
-        </List>
+                  customActions={
+                    <Text variant="body-small" color="secondary">
+                      {access}
+                    </Text>
+                  }
+                >
+                  {row.name}
+                </ListRow>
+              ))}
+            </List>
+          )}
+        </ShowMore>
       )}
       {unresolved > 0 && (
         <Text as="p" variant="body-small" color="secondary">

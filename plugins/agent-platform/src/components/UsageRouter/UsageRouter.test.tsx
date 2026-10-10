@@ -12,18 +12,18 @@ import { UsageRouter } from './UsageRouter';
 // second-level tabs it offers and the scope controls above them — and stubbing
 // them keeps the tree free of the Mimir and kagent reads they do.
 jest.mock('../UsageOverviewPage', () => ({
-  UsageOverviewPage: () => <div>overview-view</div>,
+  UsageOverviewPage: ({ sections }: { sections?: ReactNode[] }) => (
+    <div>
+      overview-view
+      <span>overview-sections:{sections?.length ?? 0}</span>
+    </div>
+  ),
 }));
 jest.mock('../UsageCostPage', () => ({
   UsageCostPage: () => <div>cost-view</div>,
 }));
 jest.mock('../UsageConversationsPage', () => ({
   UsageConversationsPage: () => <div>conversations-view</div>,
-}));
-jest.mock('../UsageTechnicalPage', () => ({
-  UsageTechnicalPage: ({ sections }: { sections?: ReactNode[] }) => (
-    <div>technical-view:{sections?.length ?? 0}</div>
-  ),
 }));
 
 // The scope bar's two inputs: the Environment control collapses on a
@@ -150,48 +150,50 @@ describe('UsageRouter', () => {
       'href',
       '/agent-platform/usage/conversations?window=7d',
     );
-    expect(
-      screen.getByRole('tab', { name: 'Technical details' }),
-    ).toHaveAttribute('href', '/agent-platform/usage/technical?window=7d');
   });
 
   it.each([
     ['overview', 'overview-view'],
     ['cost', 'cost-view'],
     ['conversations', 'conversations-view'],
-    ['technical', 'technical-view:0'],
   ])('routes the %s view', async (path, marker) => {
     renderTab(`/agent-platform/usage/${path}`);
 
     expect(await screen.findByText(marker)).toBeInTheDocument();
   });
 
-  it('offers all four views whether or not muster contributed a section', async () => {
-    // Technical details carries gateway figures of its own, so the tab stays
-    // offered without a contributed MCP section.
+  it('offers exactly three views — Technical details is gone', async () => {
+    // T35: every Technical details figure moved to the tab whose question it
+    // answers (design-context/implementation/usage-metrics-ia.md), so the view
+    // was dropped rather than left empty.
     renderTab('/agent-platform/usage/overview');
 
     expect(await screen.findByText('overview-view')).toBeInTheDocument();
-    for (const name of [
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
       'Overview',
       'Cost',
       'Your sessions',
-      'Technical details',
-    ]) {
-      expect(screen.getByRole('tab', { name })).toBeInTheDocument();
-    }
+    ]);
   });
 
-  it('redirects the retired MCP path to Technical details, keeping the query string', async () => {
-    renderTab('/agent-platform/usage/mcp?installation=alpha', MCP_SECTION);
-
-    expect(await screen.findByText('technical-view:1')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/usage/technical?installation=alpha',
+  it.each(['mcp', 'technical'])(
+    'redirects the retired %s path to Overview, where its content lives, keeping the query string',
+    async retired => {
+      renderTab(
+        `/agent-platform/usage/${retired}?installation=alpha`,
+        MCP_SECTION,
       );
-    });
-  });
+
+      expect(
+        await screen.findByText('overview-sections:1'),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('path')).toHaveTextContent(
+          '/agent-platform/usage/overview?installation=alpha',
+        );
+      });
+    },
+  );
 
   it.each([
     '/agent-platform/usage/sessions',
@@ -221,10 +223,10 @@ describe('UsageRouter', () => {
     });
   });
 
-  it('hands the contributed sections to the Technical details view', async () => {
-    renderTab('/agent-platform/usage/technical', MCP_SECTION);
+  it('hands the contributed sections to the Overview', async () => {
+    renderTab('/agent-platform/usage/overview', MCP_SECTION);
 
-    expect(await screen.findByText('technical-view:1')).toBeInTheDocument();
+    expect(await screen.findByText('overview-sections:1')).toBeInTheDocument();
   });
 
   describe('scope controls', () => {
@@ -379,7 +381,6 @@ describe('UsageRouter', () => {
         'Overview',
         'Cost',
         'Your sessions',
-        'Technical details',
       ]);
       expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
         'href',

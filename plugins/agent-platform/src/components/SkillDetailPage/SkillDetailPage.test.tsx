@@ -192,6 +192,38 @@ describe('SkillDetailPage', () => {
     );
   });
 
+  it('offers no Edit for a skill the portal could not read, and says so; Evaluate stays', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, contentReadable: false }] };
+    mockEvaluator = agent('skill-evaluator', []);
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { name: 'Ticket triage' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("The portal cannot read this skill's source"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Evaluate' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /View source/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about the source of a readable skill', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, contentReadable: true }] };
+    await renderPage();
+
+    expect(screen.getByRole('link', { name: 'Edit' })).toBeInTheDocument();
+    expect(
+      screen.queryByText("The portal cannot read this skill's source"),
+    ).not.toBeInTheDocument();
+  });
+
   it('starts an evaluation session with the evaluator and opens it', async () => {
     mockEvaluator = agent('skill-evaluator', []);
     createSession.mockResolvedValue('session-1');

@@ -85,6 +85,24 @@ describe('WizardFrame', () => {
     expect(position === 'static' || position === 'relative').toBe(true);
   });
 
+  it('keeps the action bar at the bottom of the view, above the shell’s mobile bar', () => {
+    const { container } = renderFrame();
+
+    const frame = container.querySelector('div')!;
+    // At least a viewport tall, so a short step still has its footer at the
+    // bottom of the view rather than right under the last field.
+    expect(getComputedStyle(frame).minHeight).toBe(
+      'calc(100dvh - var(--agent-shell-mobile-bar-height, 0px))',
+    );
+    // Docked there while a long step scrolls behind it: after the content in
+    // the flow (so it never covers the last field), sticky to the bottom.
+    const footer = screen.getByRole('contentinfo');
+    expect(frame.lastElementChild).toBe(footer);
+    const style = getComputedStyle(footer);
+    expect(style.position).toBe('sticky');
+    expect(style.bottom).toBe('var(--agent-shell-mobile-bar-height, 0px)');
+  });
+
   it('marks the current step and links the steps already done', () => {
     renderFrame();
 

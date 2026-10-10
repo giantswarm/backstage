@@ -341,8 +341,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
 
     // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // `mcp`, and the agent-platform shell's `technical`), with the view as its
-    // one segment. The bare path above keeps its existing name rather than
+    // and the retired `mcp` and `technical` addresses, which now only
+    // redirect to `overview`), with the view as its one segment. The bare path above keeps its existing name rather than
     // becoming 'Usage index': it now only ever redirects here, and renaming it
     // would break continuity in TelemetryDeck for nothing.
     //

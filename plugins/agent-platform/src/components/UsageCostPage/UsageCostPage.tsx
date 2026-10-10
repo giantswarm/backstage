@@ -9,11 +9,13 @@ import {
   useCurrency,
 } from '../../lib/formatNumbers';
 import {
+  CostKpiTiles,
   CostPerDayCard,
   KpiTile,
   LlmByAgentTable,
   LlmByModelTable,
   LlmUsageState,
+  PricingCoverageAlert,
   PricingCoverageNote,
 } from '../LlmUsage';
 import { ShellAwareContent } from '../ShellAwareContent';
@@ -28,8 +30,15 @@ const useStyles = makeStyles((theme: Theme) => ({
 }));
 
 /**
- * Where the money went: spend over time, and the full breakdowns by agent and
- * by model.
+ * Where the money went: the window's spend against the previous one, the
+ * blended rate and the cache-read share behind it, spend over time, and the
+ * full breakdowns by agent and by model.
+ *
+ * **The one home for money** (`design-context/implementation/usage-metrics-ia.md`):
+ * every $ breakdown on the Usage screen is here. The Overview carries the spend
+ * total only as a teaser tile pointing here; the reader's own session cost is
+ * Your sessions', a different scope (kagent, the caller only) the gateway
+ * cannot answer per session.
  *
  * The two breakdowns and the Overview's tiles are reductions of the same two
  * Mimir answers, so they cannot disagree — and because both views run the same
@@ -49,7 +58,9 @@ const useStyles = makeStyles((theme: Theme) => ({
 export function UsageCostPage() {
   const classes = useStyles();
   const { days } = useUsageWindow();
-  const view = useLlmUsageView({ days });
+  // `comparePrevious` is the one extra query the delta on the spend tile
+  // needs; only this view pays for it.
+  const view = useLlmUsageView({ days, comparePrevious: true });
   const { usage, installation } = view;
   const currency = useCurrency(installation);
   const converted = isConvertedCurrency(currency);
@@ -108,6 +119,15 @@ export function UsageCostPage() {
 
           {view.state === 'ready' && usage && (
             <>
+              <CostKpiTiles
+                usage={usage}
+                currency={currency}
+                windowDays={days}
+              />
+              {/* Beside the headline it qualifies: every figure on this page
+                  understates the bill by what an unpriced model spent, and
+                  the detail table below says which models and why. */}
+              <PricingCoverageAlert rows={usage.unpricedModels} />
               <div className={classes.row}>
                 <CostPerDayCard
                   daily={usage.costPerDay}

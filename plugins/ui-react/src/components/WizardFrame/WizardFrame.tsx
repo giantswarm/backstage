@@ -17,11 +17,33 @@ const COLUMN_WIDTHS = {
   wide: 960,
 } as const;
 
+/**
+ * How far the footer's top edge can reach into the viewport: its own height
+ * (64) plus room for the label above a field, so a field scrolled into view —
+ * by the focus moving to it, or by tabbing — never lands under the docked
+ * footer (or the shell's mobile bottom bar below it).
+ */
+const FOOTER_CLEARANCE =
+  'calc(96px + var(--agent-shell-mobile-bar-height, 0px))';
+
 const useStyles = makeStyles({
+  /**
+   * At least the viewport's height (less the shell's mobile bottom bar:
+   * `--agent-shell-mobile-bar-height` is 0px on desktop and the bar's height
+   * at phone width — agent-shell.css owns it; classic chrome never defines
+   * it), so a short form still has its footer at the bottom of the view
+   * rather than right under the last field: the action bar sits at one
+   * constant position in every flow. `min-height`, not `height`: a long form
+   * grows the page, and the sticky footer stays docked while it scrolls.
+   */
   root: {
     display: 'flex',
     flexDirection: 'column',
-    minHeight: '100%',
+    minHeight: 'calc(100dvh - var(--agent-shell-mobile-bar-height, 0px))',
+    // JSS puts the fallback first, so browsers without dvh keep vh.
+    fallbacks: {
+      minHeight: 'calc(100vh - var(--agent-shell-mobile-bar-height, 0px))',
+    },
     background: 'var(--bui-bg-app, var(--bui-bg-neutral-1))',
     color: 'var(--bui-fg-primary)',
   },
@@ -144,11 +166,17 @@ const useStyles = makeStyles({
     [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
       padding: '24px 16px',
     },
+    '& :is(input, textarea, select, button, [tabindex])': {
+      scrollMarginTop: 96,
+      scrollMarginBottom: FOOTER_CLEARANCE,
+    },
   },
   footer: {
     flex: 'none',
     position: 'sticky',
-    bottom: 0,
+    // Docked to the viewport's bottom edge — above the shell's fixed bottom
+    // bar at phone width, which would otherwise cover it (0px elsewhere).
+    bottom: 'var(--agent-shell-mobile-bar-height, 0px)',
     // Above the content that scrolls under it; far below dialogs and popovers.
     zIndex: 2,
     minHeight: 64,
@@ -210,8 +238,9 @@ export interface WizardFrameProps {
 /**
  * A create flow in the page's content area — the shell's rail (or the classic
  * chrome) stays around it: a header row with Close, the title and a step
- * strip, the step's content in a centered column, and a sticky footer with
- * Cancel, Back and the step's own buttons.
+ * strip, the step's content in a centered column, and a footer with Cancel,
+ * Back and the step's own buttons — pinned to the bottom of the view however
+ * short the step, and docked there while a long step scrolls behind it.
  *
  * The primary and secondary buttons come from the routed step through
  * `useProvidePageHeaderActions`, so a route above the frame must mount a
@@ -234,7 +263,9 @@ export function WizardFrame({
   const currentIndex = steps?.findIndex(step => step.id === currentStep) ?? -1;
 
   return (
-    <div className={classes.root}>
+    // `data-field-validation-scope`: where useFieldValidation looks for the
+    // first invalid field (FIELD_VALIDATION_SCOPE_ATTRIBUTE).
+    <div className={classes.root} data-field-validation-scope="">
       <header className={classes.header}>
         <div className={classes.heading}>
           <Link href={closeHref} aria-label="Close" className={classes.close}>

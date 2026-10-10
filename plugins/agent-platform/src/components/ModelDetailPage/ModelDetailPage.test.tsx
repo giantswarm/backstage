@@ -278,6 +278,27 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Copywriter')).toBeNull();
   });
 
+  it('shows the first 10 agents on the model, then all of them on request', async () => {
+    mockAgents = Array.from({ length: 14 }, (_, i) =>
+      agent(
+        `Agent ${String(i + 1).padStart(2, '0')}`,
+        `agent-${i + 1}`,
+        'inst-1/kagent/sonnet',
+      ),
+    );
+    await renderPage();
+
+    const items = () =>
+      within(
+        screen.getByRole('list', { name: 'Agents using this model' }),
+      ).getAllByRole('listitem');
+    expect(items()).toHaveLength(10);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show all 14 agents' }),
+    );
+    expect(items()).toHaveLength(14);
+  });
+
   it('says so when no agent runs on the model', async () => {
     mockAgents = [];
     await renderPage();

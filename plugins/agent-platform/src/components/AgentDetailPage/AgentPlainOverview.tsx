@@ -1,7 +1,14 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Switch, Text } from '@backstage/ui';
+import {
+  Accordion,
+  AccordionPanel,
+  AccordionTrigger,
+  Button,
+  Flex,
+  Text,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   Agent,
@@ -13,6 +20,7 @@ import {
   DateComponent,
   type Fact,
   SectionHeader,
+  useSimpleAccordionStyles,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -89,7 +97,41 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
   },
+  // Outlined like the create flow's review step "Technical details".
+  foldOut: {
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
+  },
 }));
+
+/**
+ * "Technical details", folded in place — the shell's one way to offer
+ * technical detail, never a page-wide switch. Controlled, so the cards inside
+ * (which read the HelmRelease, GitOps source and conditions) mount only while
+ * open: bui's panel otherwise stays mounted, merely hidden.
+ */
+function TechnicalDetailsFoldOut({
+  defaultExpanded,
+  children,
+}: {
+  defaultExpanded: boolean;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  const spacing = useSimpleAccordionStyles();
+  const [isExpanded, setExpanded] = useState(defaultExpanded);
+  return (
+    <Accordion
+      className={`${classes.foldOut} ${spacing.group}`}
+      isExpanded={isExpanded}
+      onExpandedChange={setExpanded}
+    >
+      {/* h2: a section of the overview beside Skills and Connectors. */}
+      <AccordionTrigger level={2}>Technical details</AccordionTrigger>
+      <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
+    </Accordion>
+  );
+}
 
 /** A section of the plain overview: a small heading, then what it says. */
 function Section({
@@ -392,12 +434,13 @@ export type AgentPlainOverviewProps = {
 /**
  * The agent in plain words, per the prototype's Overview: what it is for, the
  * instructions it follows, the skills it draws on and what it can reach —
- * and, behind a switch, the technical details (where it runs, the
+ * and, folded in place below them, the technical details (where it runs, the
  * controllers' verdict, the HelmRelease behind it), which is where this page
- * used to start.
+ * used to start. A fold-out, never a page-wide switch: technical detail opens
+ * where it sits, like the create flow's review step.
  *
- * The technical details start shown for an agent that is not ready: the
- * conditions are what explains it then.
+ * The fold-out starts open for an agent that is not ready: the conditions are
+ * what explains it then.
  */
 export function AgentPlainOverview({
   agent,
@@ -412,9 +455,6 @@ export function AgentPlainOverview({
   const classes = useStyles();
   const failure = agent.getFailure();
   const description = agent.getDescription();
-  const [showTechnical, setShowTechnical] = useState(
-    agent.getReadiness() !== 'ready',
-  );
 
   return (
     <div className={classes.sections}>
@@ -448,23 +488,18 @@ export function AgentPlainOverview({
         isFailing={failure?.field === 'tools'}
       />
 
-      <Flex direction="column" gap="3">
-        <Switch
-          label="Show technical details"
-          isSelected={showTechnical}
-          onChange={setShowTechnical}
+      <TechnicalDetailsFoldOut
+        defaultExpanded={agent.getReadiness() !== 'ready'}
+      >
+        <AgentTechnicalDetails
+          agent={agent}
+          installation={installation}
+          modelConfig={modelConfig}
+          modelServing={modelServing}
+          failure={failure}
+          toolsHref={toolsHref}
         />
-        {showTechnical && (
-          <AgentTechnicalDetails
-            agent={agent}
-            installation={installation}
-            modelConfig={modelConfig}
-            modelServing={modelServing}
-            failure={failure}
-            toolsHref={toolsHref}
-          />
-        )}
-      </Flex>
+      </TechnicalDetailsFoldOut>
     </div>
   );
 }

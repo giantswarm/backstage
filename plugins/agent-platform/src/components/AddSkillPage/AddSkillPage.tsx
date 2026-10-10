@@ -11,8 +11,11 @@ import {
 } from '@backstage/ui';
 import {
   EmptyStateCard,
+  fieldErrorProps,
   TextAreaField,
+  useFieldValidation,
   useProvidePageHeaderActions,
+  useSelectFieldError,
   WizardFrame,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -126,20 +129,44 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     }
   }, [repoUrl, repositories]);
 
+  // Each field's problem, shown on the field itself once a submit was
+  // blocked; a name that breaks the folder rule says so while it is typed.
   const nameInvalid = skillName.length > 0 && !SKILL_NAME_RE.test(skillName);
+  const fieldErrors = {
+    repository: repoUrl ? undefined : 'Choose a repository',
+    name: (() => {
+      if (edit) {
+        return undefined;
+      }
+      if (!skillName) {
+        return 'Name is required';
+      }
+      return nameInvalid
+        ? 'Use lowercase letters, digits and dashes, e.g. ticket-triage'
+        : undefined;
+    })(),
+    description: description.trim() ? undefined : 'Description is required',
+    instructions: instructions.trim() ? undefined : 'Instructions are required',
+  };
+  const isValid = Object.values(fieldErrors).every(problem => !problem);
+  // An edit with nothing changed has nothing to propose — not a field's
+  // fault, so the button waits instead of pointing at one.
   const isChanged =
     !edit ||
     description.trim() !== edit.content.description.trim() ||
     instructions.trim() !== edit.content.instructions.trim();
-  const isComplete =
-    Boolean(repoUrl) &&
-    SKILL_NAME_RE.test(skillName) &&
-    description.trim().length > 0 &&
-    instructions.trim().length > 0 &&
-    isChanged;
+  const validation = useFieldValidation();
+  const { reveal } = validation;
+  const repositoryError = useSelectFieldError(
+    validation.errorFor(fieldErrors.repository),
+  );
 
   const onSubmit = useCallback(async () => {
-    if (!repoUrl || !isComplete) {
+    if (!repoUrl || !isValid) {
+      reveal();
+      return;
+    }
+    if (!isChanged) {
       return;
     }
     try {
@@ -161,7 +188,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     }
   }, [
     repoUrl,
-    isComplete,
+    isValid,
+    isChanged,
+    reveal,
     proposeSkill,
     skillName,
     description,
@@ -190,13 +219,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     return (
       <Button
         variant="primary"
-        isDisabled={!isComplete || isProposing}
+        isDisabled={!isChanged || isProposing}
         onPress={onSubmit}
       >
         {isProposing ? 'Opening…' : 'Open pull request'}
       </Button>
     );
-  }, [repositories.length, result, onDone, isComplete, isProposing, onSubmit]);
+  }, [repositories.length, result, onDone, isChanged, isProposing, onSubmit]);
   useProvidePageHeaderActions(actions);
 
   return (
@@ -249,8 +278,10 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
                   setRepoUrl(String(key));
                 }
               }}
+              {...repositoryError.selectProps}
             />
           )}
+          {!edit && repositories.length > 1 && repositoryError.message}
           {!edit && repositories.length === 1 && repoUrl && (
             <Text variant="body-small" color="secondary">
               Repository: {repoSlug(repoUrl)}
@@ -270,7 +301,11 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               description="Becomes the skill's folder: lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
-              isInvalid={nameInvalid}
+              {...fieldErrorProps(
+                nameInvalid
+                  ? fieldErrors.name
+                  : validation.errorFor(fieldErrors.name),
+              )}
             />
           )}
           <TextField
@@ -279,6 +314,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="One sentence on when an agent should reach for it."
             value={description}
             onChange={setDescription}
+            {...fieldErrorProps(validation.errorFor(fieldErrors.description))}
           />
           <TextAreaField
             label="Instructions"
@@ -286,6 +322,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             rows={10}
             value={instructions}
             onChange={setInstructions}
+            error={validation.errorFor(fieldErrors.instructions)}
           />
         </Flex>
       )}

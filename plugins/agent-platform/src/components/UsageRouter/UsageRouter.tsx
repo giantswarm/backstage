@@ -12,15 +12,18 @@ import { AgentsDataProvider } from '../AgentsDataProvider';
 import { UsageOverviewPage } from '../UsageOverviewPage';
 import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
-import { UsageTechnicalPage } from '../UsageTechnicalPage';
 import { UsageColumn } from '../UsageColumn';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { UsageScopeBar } from './UsageScopeBar';
 
-// The Usage screen's views, per the prototype: Overview · Cost · Your
-// sessions · Technical details. The first three are for anyone who spends;
-// the last is the raw-numbers view for admins and platform engineers, and it
-// is also where the muster plugin's tool-call section lands.
+// The Usage screen's views: Overview · Cost · Your sessions. Each answers one
+// question and every metric has one home among them (see
+// `design-context/implementation/usage-metrics-ia.md`): Overview is the
+// platform's health and headline trends (and where the muster plugin's
+// tool-call section lands), Cost is the only place with money breakdowns, and
+// Your sessions is the reader's own slice. The prototype's fourth view,
+// Technical details, was dropped: once each of its figures moved to the tab
+// whose question it answers, it held nothing of its own.
 //
 // The time-range control applies to every view. The gateway views scope
 // their queries by it directly; Your sessions narrows the kagent fan-out's
@@ -31,7 +34,6 @@ const VIEWS = [
   { path: 'overview', title: 'Overview' },
   { path: 'cost', title: 'Cost' },
   { path: 'conversations', title: 'Your sessions' },
-  { path: 'technical', title: 'Technical details' },
 ] as const;
 
 /** The screen's one line under its title, in the shell's header. */
@@ -47,9 +49,9 @@ const IndexRedirect = () => {
 /**
  * The old single-page Usage tab lived at `/agent-platform/usage` with no
  * sub-routes, so nothing needs redirecting — the index handles the one URL
- * that ever existed; `/usage/mcp` (the Connectors tab this screen's Technical
- * details view absorbed) redirects below, and the catch-all handles a guess
- * or a typo.
+ * that ever existed; `/usage/mcp` (the Connectors tab) and `/usage/technical`
+ * (the Technical details view), whose content now lives on Overview, redirect
+ * below, and the catch-all handles a guess or a typo.
  *
  * The routed views alone, shared by both frames below.
  */
@@ -59,25 +61,27 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
 
   return (
     <Routes>
-      <Route path="overview" element={<UsageOverviewPage />} />
+      <Route
+        path="overview"
+        element={<UsageOverviewPage sections={sections} />}
+      />
       <Route path="cost" element={<UsageCostPage />} />
       <Route path="conversations" element={<UsageConversationsPage />} />
-      <Route
-        path="technical"
-        element={<UsageTechnicalPage sections={sections} />}
-      />
-      {/* The Connectors tab's old address: its content lives inside
-          Technical details now, so a bookmark lands there rather than on a
-          404 or on Overview. */}
-      <Route
-        path="mcp"
-        element={
-          <Navigate
-            to={{ pathname: `${basePath}/technical`, search }}
-            replace
-          />
-        }
-      />
+      {/* Retired addresses whose content lives on Overview now — the
+          Connectors tab (`mcp`) and the Technical details view (`technical`)
+          — so a bookmark lands on that content, not on a 404. */}
+      {['mcp', 'technical'].map(retired => (
+        <Route
+          key={retired}
+          path={retired}
+          element={
+            <Navigate
+              to={{ pathname: `${basePath}/overview`, search }}
+              replace
+            />
+          }
+        />
+      ))}
       {/* Anything else lands on Overview rather than on the tab strip over
           an empty page with no tab active — which is what
           `/agent-platform/usage/sessions` did, a likely guess given the tab

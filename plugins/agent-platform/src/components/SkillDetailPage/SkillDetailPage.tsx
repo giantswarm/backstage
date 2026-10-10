@@ -31,6 +31,7 @@ import { skillSource, usedByLabel } from '../../lib/customize';
 import {
   canonicalRepoUrl,
   canonicalSkillId,
+  isSkillContentReadable,
   parseSkillDetailPath,
   shortCommit,
   skillCommitUrl,
@@ -46,6 +47,7 @@ import {
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 import { evaluationPrompt } from './evaluationPrompt';
 
 const AVATAR_SIZE = 96;
@@ -86,38 +88,42 @@ function UsedBySection({ skill }: { skill: DiscoveredSkill }) {
   } else {
     body = (
       <Flex direction="column" gap="2">
-        <List aria-label="Agents using this skill">
-          {using.map(row => (
-            <ListRow
-              key={row.id}
-              id={row.id}
-              href={agentDetailRoute?.({
-                installation: row.installation,
-                namespace: row.namespace,
-                name: row.technicalName,
-              })}
-              icon={
-                <AgentAvatar
-                  size="small"
-                  purpose="decoration"
-                  name={row.name}
-                  src={
-                    buildAvatarUrl(row.installation, row.technicalName, {
-                      size: AVATAR_SIZE,
-                    }) ?? ''
+        <ShowMore items={using} initial={USED_BY_ROWS} noun="agent" revealAll>
+          {shown => (
+            <List aria-label="Agents using this skill">
+              {shown.map(row => (
+                <ListRow
+                  key={row.id}
+                  id={row.id}
+                  href={agentDetailRoute?.({
+                    installation: row.installation,
+                    namespace: row.namespace,
+                    name: row.technicalName,
+                  })}
+                  icon={
+                    <AgentAvatar
+                      size="small"
+                      purpose="decoration"
+                      name={row.name}
+                      src={
+                        buildAvatarUrl(row.installation, row.technicalName, {
+                          size: AVATAR_SIZE,
+                        }) ?? ''
+                      }
+                    />
                   }
-                />
-              }
-              customActions={
-                <Text variant="body-small" color="secondary">
-                  {row.installation} · {row.namespace}
-                </Text>
-              }
-            >
-              {row.name}
-            </ListRow>
-          ))}
-        </List>
+                  customActions={
+                    <Text variant="body-small" color="secondary">
+                      {row.installation} · {row.namespace}
+                    </Text>
+                  }
+                >
+                  {row.name}
+                </ListRow>
+              ))}
+            </List>
+          )}
+        </ShowMore>
         <Text as="p" variant="body-small" color="secondary">
           Each agent pins the skill to a commit. To move an agent to the latest
           version, update its skills on the agent's page.
@@ -190,10 +196,14 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
     });
   }, [createSession, evaluator, navigate, sessionDetailRoute, skill]);
 
-  // Editing is the add-skill flow, prefilled; it opens a pull request.
+  // Editing is the add-skill flow, prefilled from the SKILL.md; it opens a
+  // pull request. Only for a skill whose file the portal could read — an edit
+  // of one it cannot read would end in an error. Evaluate stays: the
+  // evaluator reads the repository with its own access.
+  const readable = isSkillContentReadable(skill);
   const detailPath = skillDetailPath(skill);
   const editHref =
-    skillsRoute && detailPath
+    readable && skillsRoute && detailPath
       ? `${skillsRoute()}/edit/${detailPath}`
       : undefined;
 
@@ -281,6 +291,13 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
         }
         aside={<FactsColumn facts={facts} />}
       >
+        {!readable && (
+          <Alert
+            status="info"
+            title="The portal cannot read this skill's source"
+            description="Its SKILL.md could not be read with the portal's access to the repository, so this page shows only what the listing knows, and the skill cannot be edited here."
+          />
+        )}
         {evaluateError && (
           <Alert
             status="danger"
@@ -300,7 +317,9 @@ function SkillPage({ skill }: { skill: DiscoveredSkill }) {
  * from the frontmatter, where it lives and the commit it was read at, the
  * agents using it, and a "View source" link into the repository at that
  * commit. "Edit" opens the add-skill flow prefilled (`EditSkillPage`), which
- * proposes the change as a pull request. "Evaluate" appears only where
+ * proposes the change as a pull request — only for a skill whose SKILL.md the
+ * portal could read (`contentReadable`); otherwise a note says the portal
+ * cannot read its source. "Evaluate" appears only where
  * `metaAgents.skillEvaluation` resolves, and starts a session with that agent
  * straight away — the prompt names the skill and asks for a report and an
  * improvement pull request — then opens it.

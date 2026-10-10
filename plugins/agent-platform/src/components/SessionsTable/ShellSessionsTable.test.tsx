@@ -8,7 +8,11 @@ import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import { sessionsRouteRef } from '../../routes';
 import { SessionsTable } from './SessionsTable';
-import { SESSIONS_PAGE_SIZE } from './ShellSessionsTable';
+import {
+  MAX_RENDERED_SESSIONS,
+  SESSIONS_PAGE_SIZE,
+} from './ShellSessionsTable';
+import { SEARCH_MIN } from '../../lib/toolset';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
@@ -85,6 +89,27 @@ const rows: SessionRow[] = [
   session('c', 'Pricing research', 'Support Triage', daysAgo(5, 9)),
   session('d', 'Untimed', 'Release Writer', undefined),
 ];
+
+/**
+ * Enough sessions for the search and filters to show (more than SEARCH_MIN):
+ * the four above plus older ones whose state was not evaluated, which count
+ * only towards "All".
+ */
+const filterable: SessionRow[] = [
+  ...rows,
+  ...Array.from({ length: SEARCH_MIN + 1 - rows.length }, (_, index) =>
+    session(
+      `old${index}`,
+      `Archived ${index + 1}`,
+      'Support Triage',
+      daysAgo(10, index),
+    ),
+  ),
+];
+const archivedNewestFirst = Array.from(
+  { length: filterable.length - rows.length },
+  (_, index) => `Archived ${filterable.length - rows.length - index}`,
+);
 
 const states: FleetSessionStatesView = {
   states: new Map<string, SessionStateEntry>([
@@ -208,10 +233,10 @@ describe('SessionsTable in the shell layout', () => {
   });
 
   it('counts the sessions on each state chip, in the shell words', async () => {
-    await renderShell();
+    await renderShell(filterable);
 
     expect(chipLabels()).toEqual([
-      'All 4',
+      `All ${filterable.length}`,
       'Waiting for you 1',
       'Working 1',
       'Finished 1',
@@ -221,7 +246,10 @@ describe('SessionsTable in the shell layout', () => {
 
   it('shows a chip for sessions with no activity only while there are some', async () => {
     await renderShell(
-      [...rows, session('e', 'Never ran', 'Support Triage', daysAgo(3, 9))],
+      [
+        ...filterable,
+        session('e', 'Never ran', 'Support Triage', daysAgo(3, 9)),
+      ],
       {
         ...states,
         states: new Map([
@@ -236,7 +264,7 @@ describe('SessionsTable in the shell layout', () => {
 
   it('filters every day by state and agent at once', async () => {
     const user = userEvent.setup();
-    await renderShell();
+    await renderShell(filterable);
 
     await user.click(screen.getByRole('radio', { name: 'Working 1' }));
     expect(screen.getAllByRole('grid')).toHaveLength(1);
@@ -244,19 +272,21 @@ describe('SessionsTable in the shell layout', () => {
       'Release notes',
     ]);
 
-    await user.click(screen.getByRole('radio', { name: 'All 4' }));
+    await user.click(
+      screen.getByRole('radio', { name: `All ${filterable.length}` }),
+    );
     await user.click(agentSelect());
     await user.click(
       await screen.findByRole('option', { name: 'Support Triage' }),
     );
     expect(
       screen.getAllByRole('rowheader').map(cell => cell.textContent),
-    ).toEqual(['Triage this week', 'Pricing research']);
+    ).toEqual(['Triage this week', 'Pricing research', ...archivedNewestFirst]);
   });
 
   it('searches by title or agent', async () => {
     const user = userEvent.setup();
-    await renderShell();
+    await renderShell(filterable);
 
     const search = screen.getByRole('searchbox', { name: 'Search sessions' });
     expect(search).toHaveAttribute('placeholder', 'Search by title or agent');
@@ -269,7 +299,7 @@ describe('SessionsTable in the shell layout', () => {
 
   it('says what the search did not match, and clears it', async () => {
     const user = userEvent.setup();
-    await renderShell();
+    await renderShell(filterable);
 
     await user.type(
       screen.getByRole('searchbox', { name: 'Search sessions' }),
@@ -338,7 +368,7 @@ describe('SessionsTable in the shell layout', () => {
   });
 
   it('labels the agent filter visibly', async () => {
-    await renderShell();
+    await renderShell(filterable);
 
     expect(agentSelect()).toHaveAccessibleName('All agents Agent');
     const label = (agentSelect().getAttribute('aria-labelledby') ?? '')
@@ -368,7 +398,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('offers the Pinned chip once something is pinned, and filters by it', async () => {
       const user = userEvent.setup();
-      await renderShell(rows, states, await storageWithPins(['b', 'c']));
+      await renderShell(filterable, states, await storageWithPins(['b', 'c']));
 
       await user.click(screen.getByRole('radio', { name: 'Pinned 2' }));
 
@@ -383,7 +413,7 @@ describe('SessionsTable in the shell layout', () => {
     it('pins and unpins a session from its row, without opening it', async () => {
       const user = userEvent.setup();
       const storage = mockApis.storage();
-      await renderShell(rows, states, storage);
+      await renderShell(filterable, states, storage);
 
       expect(
         screen.queryByRole('radio', { name: /^Pinned/ }),
@@ -473,6 +503,105 @@ describe('SessionsTable in the shell layout', () => {
       ]);
       expect(
         screen.queryByRole('button', { name: 'Load more' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('at 3 sessions and at 300 (T39)', () => {
+    const fleetOf = (count: number, agents = 3) =>
+      Array.from({ length: count }, (_, index) =>
+        session(
+          `s${index}`,
+          `Session ${index + 1}`,
+          `Agent ${index % agents}`,
+          new Date(startOfToday.getTime() - index * 60_000).toISOString(),
+        ),
+      );
+
+    it('lists three sessions bare: no search, no filters, no paging', async () => {
+      await renderShell(rows.slice(0, 3));
+
+      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(
+        screen.queryByRole('searchbox', { name: 'Search sessions' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Agent$/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('radiogroup', { name: 'Filter by state' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Waiting for you \d/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Load more' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
+    });
+
+    it('offers no agent picker over one agent’s sessions', async () => {
+      await renderShell(fleetOf(SEARCH_MIN + 1, 1));
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search sessions' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Agent$/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps 300 sessions to a bounded window, with search and a way back', async () => {
+      const user = userEvent.setup();
+      const fleet = fleetOf(300);
+      await renderShell(fleet);
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search sessions' }),
+      ).toBeInTheDocument();
+      expect(agentSelect()).toBeInTheDocument();
+      expect(screen.getAllByRole('rowheader')).toHaveLength(SESSIONS_PAGE_SIZE);
+
+      // Load more grows the list up to the cap…
+      const presses = MAX_RENDERED_SESSIONS / SESSIONS_PAGE_SIZE - 1;
+      for (let press = 0; press < presses; press++) {
+        await user.click(screen.getByRole('button', { name: 'Load more' }));
+      }
+      expect(screen.getAllByRole('rowheader')).toHaveLength(
+        MAX_RENDERED_SESSIONS,
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Show previous' }),
+      ).not.toBeInTheDocument();
+
+      // …and slides past it, rather than mounting all 300.
+      await user.click(screen.getByRole('button', { name: 'Load more' }));
+      const titles = screen
+        .getAllByRole('rowheader')
+        .map(cell => cell.textContent);
+      expect(titles).toHaveLength(MAX_RENDERED_SESSIONS);
+      expect(titles[0]).toBe(`Session ${SESSIONS_PAGE_SIZE + 1}`);
+      expect(titles[titles.length - 1]).toBe(
+        `Session ${MAX_RENDERED_SESSIONS + SESSIONS_PAGE_SIZE}`,
+      );
+      expect(
+        screen.getByText(`${SESSIONS_PAGE_SIZE} sessions before these`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          `Showing ${SESSIONS_PAGE_SIZE + 1}–${
+            MAX_RENDERED_SESSIONS + SESSIONS_PAGE_SIZE
+          } of 300 sessions`,
+        ),
+      ).toBeInTheDocument();
+
+      // Show previous slides back to the top, still within the cap.
+      await user.click(screen.getByRole('button', { name: 'Show previous' }));
+      const back = screen
+        .getAllByRole('rowheader')
+        .map(cell => cell.textContent);
+      expect(back).toHaveLength(MAX_RENDERED_SESSIONS);
+      expect(back[0]).toBe('Session 1');
+      expect(
+        screen.queryByRole('button', { name: 'Show previous' }),
       ).not.toBeInTheDocument();
     });
   });

@@ -58,9 +58,24 @@ describe('scanSkillsTree', () => {
     const scanned = await scanSkillsTree(root);
 
     expect(scanned.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
-      { path: '', name: 'root', description: 'At root.' },
-      { path: 'group/deep', name: undefined, description: undefined },
-      { path: 'notes', name: 'notes', description: undefined },
+      {
+        path: '',
+        name: 'root',
+        description: 'At root.',
+        content: '---\nname: root\ndescription: At root.\n---\n',
+      },
+      {
+        path: 'group/deep',
+        name: undefined,
+        description: undefined,
+        content: 'No frontmatter at all.',
+      },
+      {
+        path: 'notes',
+        name: 'notes',
+        description: undefined,
+        content: '---\nname: notes\n---\nBody.',
+      },
     ]);
   });
 
@@ -76,7 +91,7 @@ describe('scanSkillsTree', () => {
 });
 
 describe('discoverAgentSkillsFromGit', () => {
-  it('discovers skills from a checkout and pins each to the head commit', async () => {
+  it('discovers skills from a checkout, pins each to the head commit and keeps every SKILL.md', async () => {
     const result = await discoverAgentSkillsFromGit({
       repoUrl: 'http://gitserver.lab.local/skills.git/',
       gitClient: fakeClone({
@@ -98,6 +113,7 @@ describe('discoverAgentSkillsFromGit', () => {
           path: 'a-skill',
           ref: 'main',
           commit: HEAD,
+          contentReadable: true,
         },
         {
           name: 'beta',
@@ -106,8 +122,13 @@ describe('discoverAgentSkillsFromGit', () => {
           path: 'b-skill',
           ref: 'main',
           commit: HEAD,
+          contentReadable: true,
         },
       ],
+      contents: new Map([
+        ['a-skill', 'no frontmatter'],
+        ['b-skill', '---\nname: beta\ndescription: Second.\n---\n'],
+      ]),
     });
   });
 

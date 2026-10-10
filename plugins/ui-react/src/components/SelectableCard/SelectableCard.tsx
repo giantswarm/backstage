@@ -135,6 +135,8 @@ export type SelectableCardGridProps = {
   ariaLabel: string;
   /** Minimum card width for the auto-fill grid. */
   minWidth?: number;
+  /** The id of an element describing the group, e.g. its validation message. */
+  describedBy?: string;
   children: ReactNode;
 };
 
@@ -143,6 +145,7 @@ export function SelectableCardGrid({
   role,
   ariaLabel,
   minWidth = 220,
+  describedBy,
   children,
 }: SelectableCardGridProps) {
   const classes = useStyles();
@@ -154,6 +157,7 @@ export function SelectableCardGrid({
       }}
       role={role}
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
     >
       {children}
     </div>

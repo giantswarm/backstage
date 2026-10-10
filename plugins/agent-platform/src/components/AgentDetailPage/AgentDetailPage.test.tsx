@@ -2331,17 +2331,23 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
     });
 
-    it('keeps the Kubernetes detail behind "Show technical details"', async () => {
+    it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
       await renderShell();
 
-      const toggle = screen.getByRole('switch', {
-        name: 'Show technical details',
+      // In place, like the create flow's review step — never a page-wide
+      // toggle.
+      expect(screen.queryByRole('switch')).toBeNull();
+      const foldOut = screen.getByRole('button', {
+        name: 'Technical details',
       });
-      expect(toggle).not.toBeChecked();
+      expect(foldOut).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('heading', { name: 'Status' })).toBeNull();
 
-      await userEvent.click(toggle);
+      await userEvent.click(foldOut);
+
+      expect(foldOut).toHaveAttribute('aria-expanded', 'true');
 
       expect(sectionTitle('Configuration')).toBeInTheDocument();
       expect(sectionTitle('Status')).toBeInTheDocument();
@@ -2351,7 +2357,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(screen.getByTitle(COMMIT)).toHaveTextContent('0123456789ab');
     });
 
-    it('starts with the technical details shown for an agent that is not ready', async () => {
+    it('starts with the technical details open for an agent that is not ready', async () => {
       stubResources({
         resource: makeAgent({
           status: reported(
@@ -2373,8 +2379,8 @@ describe('AgentDetailPage inside the agent shell', () => {
       await renderShell();
 
       expect(
-        screen.getByRole('switch', { name: 'Show technical details' }),
-      ).toBeChecked();
+        screen.getByRole('button', { name: 'Technical details' }),
+      ).toHaveAttribute('aria-expanded', 'true');
       expect(sectionTitle('Status')).toBeInTheDocument();
       // Nothing to start a session with yet.
       expect(

@@ -385,7 +385,7 @@ export function PendingConfirmationPanel({
   };
 
   // What the card says the agent wants. The tool's name as words — the exact
-  // identifier stays in the timeline's technical view — plus the connector it
+  // identifier stays in the timeline row's fold-out — plus the connector it
   // would go through, which is part of what is being consented to.
   const proposedArgs = isQuestion ? undefined : formatPayload(pending.args);
   const asker = agentName || 'The agent';

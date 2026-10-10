@@ -3,6 +3,12 @@ import { Button, Flex, Text } from '@backstage/ui';
 
 import { countNoun, INITIAL_ROWS } from '../../lib/toolset';
 
+/**
+ * How many agents a "Used by" excerpt shows before *Show all N agents* — the
+ * agents using one model, connector or skill, on that thing's own page.
+ */
+export const USED_BY_ROWS = 10;
+
 export type ShowMoreProps<T> = {
   items: T[];
   /** How many to render before asking for a click, and how many each click adds. */
@@ -10,6 +16,12 @@ export type ShowMoreProps<T> = {
   /** What the items are called in the button: `Show 20 more tools`. */
   noun: string;
   plural?: string;
+  /**
+   * Reveal everything in one click — `Show all 40 agents` — instead of a page
+   * at a time. For a short excerpt of a bounded set (the agents using one
+   * model), where paging through would be more clicks than reading.
+   */
+  revealAll?: boolean;
   children: (visible: T[]) => ReactNode;
 };
 
@@ -20,12 +32,14 @@ export type ShowMoreProps<T> = {
  * stays visible, so the button says what it costs, and *Show fewer* takes the
  * list back to its first page. Searching, not scrolling, is how a specific
  * tool is found; the lists that need it carry a search field above them.
+ * With `revealAll`, one click shows the whole list (`Show all 40 agents`).
  */
 export function ShowMore<T>({
   items,
   initial = INITIAL_ROWS,
   noun,
   plural,
+  revealAll = false,
   children,
 }: ShowMoreProps<T>) {
   const [shown, setShown] = useState(initial);
@@ -46,14 +60,19 @@ export function ShowMore<T>({
             <Button
               variant="tertiary"
               size="small"
-              onPress={() => setShown(count => count + initial)}
+              onPress={() =>
+                setShown(count =>
+                  revealAll ? Number.POSITIVE_INFINITY : count + initial,
+                )
+              }
             >
-              Show{' '}
-              {countNoun(
-                nextPage,
-                `more ${noun}`,
-                `more ${plural ?? `${noun}s`}`,
-              )}
+              {revealAll
+                ? `Show all ${countNoun(items.length, noun, plural)}`
+                : `Show ${countNoun(
+                    nextPage,
+                    `more ${noun}`,
+                    `more ${plural ?? `${noun}s`}`,
+                  )}`}
             </Button>
           )}
           {isExpanded && (
@@ -65,10 +84,13 @@ export function ShowMore<T>({
               Show fewer
             </Button>
           )}
-          <Text variant="body-x-small" color="secondary">
-            {countNoun(visible.length, noun, plural)} shown
-            {hidden > 0 ? `, ${hidden} more` : ''}
-          </Text>
+          {/* `Show all N` already says the total; the tally is for paging. */}
+          {!revealAll && (
+            <Text variant="body-x-small" color="secondary">
+              {countNoun(visible.length, noun, plural)} shown
+              {hidden > 0 ? `, ${hidden} more` : ''}
+            </Text>
+          )}
         </Flex>
       )}
     </Flex>

@@ -1,9 +1,5 @@
 import type { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
-import {
-  formatCount,
-  formatTokens,
-  formatUsd,
-} from '../../../lib/formatNumbers';
+import { formatCount, formatTokens } from '../../../lib/formatNumbers';
 import { KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type SessionKpiTilesProps = {
@@ -16,16 +12,19 @@ export type SessionKpiTilesProps = {
 /**
  * The Overview's KPI row for an installation **without gateway metrics**:
  * what kagent alone can answer — the reader's own sessions, their token
- * totals, the runtime-reported cost where any turn reported one, and the
- * agents those sessions used.
+ * totals, and the agents those sessions used. A headline teaser of the Your
+ * sessions tab, which carries the full breakdown.
  *
  * Every figure here is the reader's own (kagent lists only the caller's
  * sessions), which each tile says — where the gateway tiles these stand in
- * for are everyone's. No estimated cost: the estimate's $/token rate comes
- * from the very gateway metrics that are absent here, and inventing a rate
- * would put a made-up number on the page's biggest tile. The reported cost is
- * real, but partial — only some runtimes report one — and its tile shows only
- * when at least one turn did, because "not reported" is not "$0.00".
+ * for are everyone's.
+ *
+ * **No cost.** Money has one home per scope (see
+ * `design-context/implementation/usage-metrics-ia.md`): everyone's spend on the
+ * Cost tab, the reader's own on Your sessions. There is no gateway spend to
+ * tease here, and the runtime-reported cost is the reader's own, so it stays
+ * on Your sessions (and on the Cost tab's gateway-less state) rather than
+ * adding a second cost figure to the Overview.
  */
 export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
   const { totals } = usage;
@@ -46,14 +45,6 @@ export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
         value={formatTokens(totals.totalTokens)}
         sub={`across ${formatCount(totals.turns)} turns`}
       />
-      {totals.reportedCostUsd !== undefined && (
-        <KpiTile
-          label="Reported cost"
-          hint="What the agents' runtimes themselves reported for your turns, summed. Only some runtimes report a cost, so this usually covers a subset of the turns — it is real, not estimated, and never a fleet total."
-          value={formatUsd(totals.reportedCostUsd)}
-          sub="reported by the runtimes, for your sessions"
-        />
-      )}
       <KpiTile
         label="Your agents"
         hint={`Distinct agents kagent recorded for your sessions over ${windowNote}. Agents other users ran do not appear — counting them needs the gateway metrics.`}

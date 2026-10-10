@@ -13,6 +13,7 @@ export * from './ContentRow';
 export * from './CopyButton';
 export * from './FactList';
 export * from './FactsColumn';
+export * from './FieldValidation';
 export * from './DataBar';
 export * from './DateComponent';
 export * from './DetailsPane';

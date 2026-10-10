@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
+import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  fieldErrorProps,
+  useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -78,11 +80,13 @@ function NewAgentPageContent() {
     setSystemMessage,
     setEgressText,
     validationErrors,
+    fieldErrors,
   } = useNewAgentForm();
 
-  // Show validation feedback only once the user has tried to proceed, so the
-  // form doesn't shout about empty fields before they've done anything.
-  const [showValidation, setShowValidation] = useState(false);
+  // Each field shows its own problem once the person has tried to proceed —
+  // not before, so the form doesn't shout about empty fields up front — and a
+  // blocked Continue moves the focus to the first one.
+  const validation = useFieldValidation();
   // "More options" holds the technical knobs (model, runtime, technical name,
   // extra egress), collapsed: their defaults fit most agents. A native
   // <details>, so the pickers inside stay mounted while it is closed — the
@@ -91,18 +95,16 @@ function NewAgentPageContent() {
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
   const egressIssue = egressProblem(parseEgressText(state.egressText));
-  // A problem with a field behind the disclosure opens it, so the error the
-  // alert names is never out of sight.
-  const hasHiddenProblem = validationErrors.some(
-    error =>
-      error.startsWith('Technical name') ||
-      error === 'Select a model' ||
-      error === egressIssue,
+  // A problem with a field behind the disclosure opens it, so the field that
+  // says what is wrong is never out of sight (nor out of the focus's reach).
+  const hasHiddenProblem = Boolean(
+    fieldErrors.slug || fieldErrors.model || fieldErrors.egress,
   );
 
   // The submit button stays enabled: clicking it with an invalid form surfaces
   // what's wrong (below) rather than silently doing nothing.
   const errorCount = validationErrors.length;
+  const { reveal } = validation;
   // Skip the skills step when no repositories are configured — it would be an
   // empty page whose only advice is admin-side app-config the person creating
   // an agent usually can't change. The Tools step always exists: every agent
@@ -110,16 +112,16 @@ function NewAgentPageContent() {
   const nextLink = hasRepositories ? skillsLink : toolsLink;
   const onContinue = useCallback(() => {
     if (errorCount > 0) {
-      setShowValidation(true);
       if (hasHiddenProblem) {
         setMoreOptionsOpen(true);
       }
+      reveal();
       return;
     }
     if (nextLink) {
       navigate(nextLink());
     }
-  }, [errorCount, hasHiddenProblem, nextLink, navigate]);
+  }, [errorCount, hasHiddenProblem, nextLink, navigate, reveal]);
 
   // Memoized so the frame's footer slot only updates when the handlers actually
   // change, not on every keystroke in the form (see useProvidePageHeaderActions).
@@ -178,6 +180,7 @@ function NewAgentPageContent() {
               onChange={setName}
               placeholder="e.g. Support triage"
               description="What people call the agent."
+              {...fieldErrorProps(validation.errorFor(fieldErrors.name))}
             />
           </div>
         </Flex>
@@ -203,7 +206,9 @@ function NewAgentPageContent() {
 
         {/* Where the agent runs: renders nothing on a single-installation
             portal, where the sole one is picked automatically. */}
-        <InstallationSelect />
+        <InstallationSelect
+          error={validation.errorFor(fieldErrors.installation)}
+        />
         {modelSummary && (
           <Text as="p" variant="body-small" color="secondary">
             {modelSummary}
@@ -227,7 +232,7 @@ function NewAgentPageContent() {
             <Text variant="body-small" color="secondary">
               The defaults work for most agents.
             </Text>
-            <ModelConfigPicker />
+            <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
             <HarnessPicker />
             <TextField
               label="Technical name"
@@ -237,6 +242,7 @@ function NewAgentPageContent() {
               onChange={setSlug}
               placeholder="support-triage"
               description="Used in links and in the agent's resource names. It can't be changed later."
+              {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
             />
             <TextAreaField
               label="Extra egress origins"
@@ -255,20 +261,11 @@ function NewAgentPageContent() {
         </details>
       </Flex>
 
-      <Flex direction="column" gap="3">
-        <Text as="p" color="secondary">
-          {hasRepositories
-            ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
-            : 'Next you choose what the agent may do, then check everything and create it.'}
-        </Text>
-        {showValidation && validationErrors.length > 0 && (
-          <Alert
-            status="danger"
-            title="Please fix the following before continuing"
-            description={validationErrors.join('. ')}
-          />
-        )}
-      </Flex>
+      <Text as="p" color="secondary">
+        {hasRepositories
+          ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
+          : 'Next you choose what the agent may do, then check everything and create it.'}
+      </Text>
     </AgentWizardFrame>
   );
 }

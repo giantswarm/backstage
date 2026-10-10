@@ -802,6 +802,15 @@ export function serverSelector(name: string): string {
 export const INITIAL_ROWS = 20;
 
 /**
+ * A list shows a search field or a filter bar only when it holds more than
+ * this many entries (T39, list-scale-inventory §0): three entries are read,
+ * not searched, and a filter over them is volume framing. Mirrors the
+ * new-session agent picker's threshold. Lists that sit behind disclosures use
+ * the higher `AUTO_EXPAND_MAX` (20) instead.
+ */
+export const SEARCH_MIN = 8;
+
+/**
  * Below this many workflows there is nothing to group — one short list reads
  * better than a handful of one-entry groups.
  */

@@ -1,5 +1,6 @@
 import {
   HttpAuthService,
+  LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
@@ -26,7 +27,9 @@ import {
 import {
   readSkillContentFromGit,
   readSkillContentFromGitHub,
+  skillContentFromRaw,
 } from './agentSkills/readSkillContent';
+import { SkillDiscoveryCache } from './agentSkills/skillDiscoveryCache';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { readSignedInConfig } from './signedInConfig';
@@ -40,6 +43,7 @@ export async function createRouter({
   githubCredentialsProvider,
   httpAuth,
   managementClusterVersions,
+  logger,
 }: {
   config: RootConfigService;
   containerRegistry: typeof containerRegistryServiceRef.T;
@@ -47,9 +51,14 @@ export async function createRouter({
   githubCredentialsProvider: GithubCredentialsProvider;
   httpAuth: HttpAuthService;
   managementClusterVersions: ManagementClusterVersionsService;
+  logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
   router.use(express.json());
+
+  // The skill listings this instance read, per repository and ref (see
+  // SkillDiscoveryCache): page views answer from memory, not from GitHub.
+  const skillDiscoveryCache = new SkillDiscoveryCache({ logger });
 
   /**
    * Whether a repository URL is one of `agentPlatform.skills.repositories`,
@@ -302,6 +311,13 @@ export async function createRouter({
    * of the ref. Each skill maps to a chart `skills[]` entry pinned to that
    * commit (`{ name, path, git: { url, commit } }`).
    *
+   * Answered from an in-memory cache per repository and ref
+   * (`SkillDiscoveryCache`): fresh for 10 minutes, revalidated cheaply when
+   * the ref has not moved, and served stale (`stale: true`) when GitHub
+   * refuses with a rate limit or upstream is down — a listing never surfaces
+   * a rate limit while there is one to show. Discovery reads with the
+   * portal's own credentials, never a person's, so the cache is shared.
+   *
    * Two providers, chosen by the repository's host:
    * - github.com URLs go through the GitHub REST API (no clone; subject to
    *   GitHub's API rate limit — 60/h unauthenticated — with precise wording
@@ -319,10 +335,14 @@ export async function createRouter({
    *   the default branch
    *
    * Returns:
-   * - skills: Array of { name, description, repoUrl, path, ref, commit }
+   * - skills: Array of { name, description, repoUrl, path, ref, commit,
+   *   contentReadable } — `contentReadable` is false for a skill whose
+   *   SKILL.md the portal could not read (listed from the tree, with the
+   *   metadata at hand; the portal cannot show or edit it)
    * - ref, commit: the ref read and the commit it resolved to
-   * - truncated: true when some skills may be missing (repo too large / a read
-   *   failed)
+   * - truncated: true when some skills may be missing (repo too large)
+   * - readAt: when the listing was read upstream (ISO time)
+   * - stale: true when an older listing is served because upstream failed
    */
   router.get('/agent-skills', async (req, res) => {
     const schema = z.object({
@@ -353,14 +373,20 @@ export async function createRouter({
     }
 
     try {
-      const result = isGitHub
-        ? await discoverAgentSkills({
-            repoUrl,
-            ref,
-            githubCredentialsProvider,
-          })
-        : await discoverAgentSkillsFromGit({ repoUrl, ref });
-      res.json(result);
+      const { result, readAt, stale } = await skillDiscoveryCache.discover(
+        repoUrl,
+        ref,
+        previous =>
+          isGitHub
+            ? discoverAgentSkills({
+                repoUrl,
+                ref,
+                githubCredentialsProvider,
+                previous,
+              })
+            : discoverAgentSkillsFromGit({ repoUrl, ref }),
+      );
+      res.json({ ...result, readAt: new Date(readAt).toISOString(), stale });
     } catch (error) {
       // Forward the upstream status (repo not found → 404, rate limit →
       // 403/429, unreachable git host → 502) rather than letting it surface
@@ -386,6 +412,10 @@ export async function createRouter({
    * other http(s) repository from the same depth-1 clone discovery makes,
    * whose head must still be the commit asked for (409 otherwise — re-reading
    * the catalog picks up the new head).
+   *
+   * A SKILL.md the listing already read at that commit is answered from the
+   * discovery cache, with no request upstream (no rate limit, no 409 for a
+   * branch that moved on since the listing).
    *
    * Only the configured `agentPlatform.skills.repositories`, for both
    * providers: the route reads what the catalog lists and nothing else.
@@ -423,6 +453,18 @@ export async function createRouter({
       throw new InputError(
         `${repoUrl} is not one of the configured skill repositories`,
       );
+    }
+
+    const known = skillDiscoveryCache.readContent(repoUrl, path, commit);
+    if (known) {
+      res.json(
+        skillContentFromRaw(known.raw, {
+          repoUrl: known.repoUrl,
+          path,
+          commit,
+        }),
+      );
+      return;
     }
 
     try {

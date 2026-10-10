@@ -159,16 +159,27 @@ describe('shell connector wizard', () => {
       expect(screen.queryByText(/Who can use it/)).not.toBeInTheDocument();
     });
 
-    it('surfaces the validation problems on Continue instead of moving on', async () => {
+    it('marks the invalid fields themselves on Continue instead of moving on', async () => {
       await renderWizard('/agent-platform/connectors/new');
 
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
+      const address = screen.getByLabelText(/^Server address/);
+      expect(address).toHaveAttribute('aria-invalid', 'true');
+      expect(address).toHaveAccessibleDescription(
+        expect.stringContaining('URL is required'),
+      );
+      // The first invalid field takes the focus.
+      expect(address).toHaveFocus();
+      const name = screen.getByRole('textbox', { name: /^Name/ });
+      expect(name).toHaveAttribute('aria-invalid', 'true');
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Name is required'),
+      );
+      // Every problem has a field to show it, so no summary box.
       expect(
-        await screen.findByText(/Please fix the following/),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/Name is required/)).toBeInTheDocument();
-      expect(screen.getByText(/URL is required/)).toBeInTheDocument();
+        screen.queryByText(/Please fix the following/),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByText('How do people sign in?'),
       ).not.toBeInTheDocument();
@@ -389,6 +400,43 @@ describe('shell connector wizard', () => {
       });
     });
 
+    it('reopens the advanced settings around a field that blocks registration', async () => {
+      await renderSignInStep();
+      await userEvent.click(
+        screen.getByRole('radio', {
+          name: 'Each person signs in with their own account',
+        }),
+      );
+      const advanced = () =>
+        screen.getByText(
+          "Advanced: sign-in settings for apps muster can't look up",
+        );
+      await userEvent.click(advanced());
+      await userEvent.type(
+        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
+        'http://not-https.example.com',
+      );
+      // Collapsed again: the issuer field is gone from the page.
+      await userEvent.click(advanced());
+      expect(
+        screen.queryByLabelText(/^Where people sign in \(issuer URL\)/),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+
+      const issuer = await screen.findByLabelText(
+        /^Where people sign in \(issuer URL\)/,
+      );
+      expect(issuer).toHaveAttribute('aria-invalid', 'true');
+      expect(issuer).toHaveAccessibleDescription(
+        expect.stringContaining('Issuer must be an https URL'),
+      );
+      expect(issuer).toHaveFocus();
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+    });
+
     it('registers plain "own account" as oauth with discovery', async () => {
       await renderSignInStep();
       await userEvent.click(
@@ -447,13 +495,16 @@ describe('shell connector wizard', () => {
         screen.getByText('Every user shares one AWS identity'),
       ).toBeInTheDocument();
 
-      // The region is required: without it the submit surfaces the problem.
+      // The region is required: without it the submit marks the field.
       await userEvent.click(
         screen.getByRole('button', { name: 'Add connector' }),
       );
-      expect(
-        await screen.findByText(/Signing region is required/),
-      ).toBeInTheDocument();
+      const region = screen.getByLabelText(/^Signing region/);
+      expect(region).toHaveAttribute('aria-invalid', 'true');
+      expect(region).toHaveAccessibleDescription(
+        expect.stringContaining('Signing region is required'),
+      );
+      expect(region).toHaveFocus();
       expect(toolCalls('core_mcpserver_create')).toEqual([]);
 
       await userEvent.type(

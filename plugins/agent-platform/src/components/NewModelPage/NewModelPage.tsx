@@ -17,7 +17,9 @@ import {
 } from '@backstage/ui';
 import {
   SectionHeader,
+  useFieldValidation,
   useProvidePageHeaderActions,
+  useSelectFieldError,
   WizardFrame,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -35,7 +37,7 @@ import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
   INITIAL_MODEL_CONFIG_FORM,
   ModelConfigFormValues,
-  validateModelConfigForm,
+  modelConfigFieldErrors,
 } from '../../lib/modelConfigs';
 import { slugify } from '../../lib/slugify';
 import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
@@ -79,9 +81,11 @@ export function NewModelPage() {
   const [values, setValues] = useState<ModelConfigFormValues>(
     INITIAL_MODEL_CONFIG_FORM,
   );
-  // Show validation feedback only once the user has tried to submit, so the
-  // form doesn't shout about empty fields before they've done anything.
-  const [showValidation, setShowValidation] = useState(false);
+  // Each field shows its own problem once the person has tried to submit —
+  // not before, so the form doesn't shout about empty fields up front — and a
+  // blocked submit moves the focus to the first one.
+  const validation = useFieldValidation();
+  const { reveal } = validation;
 
   const { save, isSaving, error, reset } = useSaveModelConfig();
 
@@ -120,10 +124,13 @@ export function NewModelPage() {
     [nameEdited],
   );
 
-  const validationErrors = [
-    ...(installation ? [] : ['Select an installation']),
-    ...validateModelConfigForm(values),
-  ];
+  const installationError = installation ? undefined : 'Select an installation';
+  const fieldErrors = modelConfigFieldErrors(values);
+  const errorCount =
+    (installationError ? 1 : 0) + Object.keys(fieldErrors).length;
+  const installationSelectError = useSelectFieldError(
+    validation.errorFor(installationError),
+  );
 
   // Where Close and Cancel leave to: the shell's Customize screen's Models
   // tab, or the classic chrome's models list.
@@ -133,8 +140,8 @@ export function NewModelPage() {
     : (modelsLink?.() ?? '/');
 
   const onSubmit = useCallback(async () => {
-    if (validationErrors.length > 0) {
-      setShowValidation(true);
+    if (errorCount > 0) {
+      reveal();
       return;
     }
     reset();
@@ -156,9 +163,6 @@ export function NewModelPage() {
     if (modelsLink) {
       navigate(modelsLink());
     }
-    // validationErrors is derived from `values`/`installation`, both already
-    // dependencies; listing it too would re-memoize on every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     installation,
     values,
@@ -167,7 +171,8 @@ export function NewModelPage() {
     toastApi,
     modelsLink,
     navigate,
-    validationErrors.length,
+    errorCount,
+    reveal,
   ]);
 
   // Memoized so the frame's footer slot only updates when the handlers change,
@@ -228,7 +233,9 @@ export function NewModelPage() {
                 onSelectionChange={key =>
                   setInstallation(key ? String(key) : undefined)
                 }
+                {...installationSelectError.selectProps}
               />
+              {installationSelectError.message}
               {isProbing && (
                 <Text variant="body-small" color="secondary">
                   Still checking the remaining installations…
@@ -243,15 +250,9 @@ export function NewModelPage() {
         values={values}
         onChange={onChange}
         mode="create"
+        errors={validation.shown ? fieldErrors : undefined}
       />
 
-      {showValidation && validationErrors.length > 0 && (
-        <Alert
-          status="danger"
-          title="Please fix the following before continuing"
-          description={validationErrors.join('. ')}
-        />
-      )}
       {error && (
         <Alert
           status="danger"

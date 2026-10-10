@@ -56,12 +56,7 @@ test.describe('second-level tabs', () => {
       'Serving',
       'GPU capacity',
     ] as const,
-    '/agent-platform/usage': [
-      'Overview',
-      'Cost',
-      'Your sessions',
-      'Technical details',
-    ] as const,
+    '/agent-platform/usage': ['Overview', 'Cost', 'Your sessions'] as const,
   };
 
   for (const [path, names] of Object.entries(subTabs)) {

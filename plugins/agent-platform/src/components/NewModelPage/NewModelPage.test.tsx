@@ -79,6 +79,39 @@ describe('NewModelPage', () => {
     expect(technicalName).toHaveValue('my-model');
   });
 
+  it('marks each missing field itself on a blocked submit and focuses the first', async () => {
+    await renderPage();
+
+    const technicalName = screen.getByLabelText(/^Technical name/);
+    const model = screen.getByRole('textbox', { name: /^Model/ });
+    expect(technicalName).not.toHaveAttribute('aria-invalid');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add model' }));
+
+    expect(technicalName).toHaveAttribute('aria-invalid', 'true');
+    expect(technicalName).toHaveAccessibleDescription(
+      expect.stringContaining('Technical name is required'),
+    );
+    expect(technicalName).toHaveFocus();
+    expect(model).toHaveAttribute('aria-invalid', 'true');
+    expect(model).toHaveAccessibleDescription(
+      expect.stringContaining('Model is required'),
+    );
+    const apiKey = screen.getByLabelText(/^API key/);
+    expect(apiKey).toHaveAttribute('aria-invalid', 'true');
+    expect(apiKey).toHaveAccessibleDescription(
+      expect.stringContaining('API key is required'),
+    );
+    expect(
+      screen.queryByText(/Please fix the following/),
+    ).not.toBeInTheDocument();
+
+    // A fixed field drops its error while the others keep theirs.
+    await userEvent.type(technicalName, 'sonnet');
+    expect(technicalName).not.toHaveAttribute('aria-invalid');
+    expect(model).toHaveAttribute('aria-invalid', 'true');
+  });
+
   it('introduces itself plainly, pointing at model hosting only where it exists', async () => {
     const { unmount } = await renderPage();
     expect(

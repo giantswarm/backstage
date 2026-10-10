@@ -14,10 +14,18 @@ import { agentParts, agentStatus, searchAgents } from '../../lib/customize';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import { ShowMore } from '../ShowMore';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 /** Twice the rendered 32px (bui's medium avatar), for sharp 2x displays. */
 const ROW_AVATAR_SIZE: AvatarSize = 96;
+
+/**
+ * Rows rendered before *Show 25 more agents*, and how many each press adds:
+ * an installation with 300 agents is a list nobody scrolls — the search above
+ * the tab is how a specific agent is found.
+ */
+export const AGENTS_PAGE_SIZE = 25;
 
 /** Below this width the facts wrap under the name instead of in columns. */
 const NARROW = '@media (max-width: 599px)';
@@ -247,23 +255,27 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     );
   } else {
     body = (
-      <ul className={classes.list} aria-label="Agents">
-        {visible.map(row => (
-          <AgentListItem
-            key={row.id}
-            row={row}
-            href={agentDetailRoute?.({
-              installation: row.installation,
-              namespace: row.namespace,
-              name: row.technicalName,
-            })}
-            avatarUrl={buildAvatarUrl(row.installation, row.technicalName, {
-              size: ROW_AVATAR_SIZE,
-            })}
-            showInstallation={showInstallation}
-          />
-        ))}
-      </ul>
+      <ShowMore items={visible} initial={AGENTS_PAGE_SIZE} noun="agent">
+        {page => (
+          <ul className={classes.list} aria-label="Agents">
+            {page.map(row => (
+              <AgentListItem
+                key={row.id}
+                row={row}
+                href={agentDetailRoute?.({
+                  installation: row.installation,
+                  namespace: row.namespace,
+                  name: row.technicalName,
+                })}
+                avatarUrl={buildAvatarUrl(row.installation, row.technicalName, {
+                  size: ROW_AVATAR_SIZE,
+                })}
+                showInstallation={showInstallation}
+              />
+            ))}
+          </ul>
+        )}
+      </ShowMore>
     );
   }
 

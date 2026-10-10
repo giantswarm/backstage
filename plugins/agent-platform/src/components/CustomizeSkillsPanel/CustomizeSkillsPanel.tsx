@@ -27,10 +27,19 @@ import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { newSkillRouteRef, skillsRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
+import { ShowMore } from '../ShowMore';
 
 export type CustomizeSkillsPanelProps = {
   search: string;
 };
+
+/**
+ * How many skill cards the grid shows before *Show more*, and how many each
+ * press adds (T39): eight full rows of the three-across grid. A catalog runs
+ * to hundreds of skills, and a grid of all of them is a page nobody scrolls —
+ * searching is how a specific skill is found.
+ */
+export const SKILL_CARDS_SHOWN = 24;
 
 const useStyles = makeStyles({
   // The prototype's tinted note above the catalog.
@@ -204,8 +213,14 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     () => rankSkills(searchSkills(skillCatalog.skills, search), usage),
     [skillCatalog.skills, search, usage],
   );
+  // "The skills your agents use most come first" is advice for a catalog too
+  // long to take in at once; over three cards it is volume framing (T39). So
+  // the note appears only when the catalog outgrows the grid's first page.
   const totalLine = useMemo(
-    () => skillsTotalLine(skillCatalog.skills),
+    () =>
+      uniqueSkills(skillCatalog.skills).length > SKILL_CARDS_SHOWN
+        ? skillsTotalLine(skillCatalog.skills)
+        : undefined,
     [skillCatalog.skills],
   );
   const cards = useMemo<Row[]>(
@@ -288,13 +303,24 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
             </Text>
           </div>
         )}
-        <ul className={classes.grid} aria-label="Skills">
-          {cards.map(card => (
-            <li key={card.id}>
-              <SkillCard card={card} />
-            </li>
-          ))}
-        </ul>
+        {/* Keyed on the search so a new query starts again from the first
+            page rather than inheriting how far the last one was paged. */}
+        <ShowMore
+          key={search}
+          items={cards}
+          initial={SKILL_CARDS_SHOWN}
+          noun="skill"
+        >
+          {visible => (
+            <ul className={classes.grid} aria-label="Skills">
+              {visible.map(card => (
+                <li key={card.id}>
+                  <SkillCard card={card} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </ShowMore>
       </Flex>
     );
   }

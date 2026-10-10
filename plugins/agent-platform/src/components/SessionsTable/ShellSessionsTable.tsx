@@ -81,11 +81,21 @@ import {
   sessionStateDotVar,
   STABLE_CLASS_NAMES,
 } from '../../lib/stableClassNames';
+import { SEARCH_MIN } from '../../lib/toolset';
 
 const ALL_AGENTS = '';
 
 /** Sessions shown at first and added by each Load more, as the classic list pages by. */
 export const SESSIONS_PAGE_SIZE = 25;
+
+/**
+ * The most session rows mounted at once (T39). The data layer fetches every
+ * session (search and the palette need them all), but each rendered row
+ * carries a pin toggle and a rename/delete menu with its own hooks and dialog,
+ * so *Load more* past this slides the window down instead of growing it — the
+ * rows it leaves behind are a *Show previous* away at the top.
+ */
+export const MAX_RENDERED_SESSIONS = 4 * SESSIONS_PAGE_SIZE;
 
 /** The attribute naming the session a row's menu belongs to. */
 const ROW_ATTRIBUTE = 'data-session-row';
@@ -500,25 +510,36 @@ function ShellFilterBar({
       !whenPresent || counts[id] > 0 || filter.state === id,
   );
 
+  // "All agents" plus the one agent there is filters nothing (T39). Kept
+  // while an agent is picked, so the pick can always be undone.
+  const showAgentSelect = agentOptions.length > 1 || filter.agent !== undefined;
+
   return (
     <Flex direction="column" gap="3">
       <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
         {searchField}
-        <Select
-          label="Agent"
-          size="small"
-          options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
-          selectedKey={filter.agent ?? ALL_AGENTS}
-          onSelectionChange={key => {
-            const agent = key === null ? ALL_AGENTS : String(key);
-            onChange({
-              ...filter,
-              agent: agent === ALL_AGENTS ? undefined : agent,
-            });
-          }}
-          style={{ minWidth: 200, maxWidth: 280 }}
-        />
+        {showAgentSelect && (
+          <Select
+            label="Agent"
+            size="small"
+            options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
+            selectedKey={filter.agent ?? ALL_AGENTS}
+            onSelectionChange={key => {
+              const agent = key === null ? ALL_AGENTS : String(key);
+              onChange({
+                ...filter,
+                agent: agent === ALL_AGENTS ? undefined : agent,
+              });
+            }}
+            style={{ minWidth: 200, maxWidth: 280 }}
+          />
+        )}
       </Flex>
+      {/* Known undercount (platform follow-up, list-scale-inventory #7): the
+          backend evaluates states only for the newest sessions per
+          installation (`agentPlatform.kagent.sessionStates.maxSessions`,
+          default 20, last 7 days), so these counts, a "Waiting 0" included,
+          cover those sessions and not the whole list. */}
       {showStates && (
         <ToggleButtonGroup
           className={STABLE_CLASS_NAMES.stateFilter}
@@ -662,17 +683,31 @@ export function ShellSessionsTable({
   const activeFilter = filter.value ?? NO_SESSIONS_FILTER;
   const filtered = isSessionsFilterActive(activeFilter);
 
-  // A new search or filter starts over at the first page.
-  const [shownCount, setShownCount] = useState(SESSIONS_PAGE_SIZE);
+  // The rendered window over the matching rows, `[start, end)`: it grows a
+  // page per Load more up to MAX_RENDERED_SESSIONS, then slides. A new search
+  // or filter starts over at the first page.
+  const [range, setRange] = useState({ start: 0, end: SESSIONS_PAGE_SIZE });
   useEffect(() => {
-    setShownCount(SESSIONS_PAGE_SIZE);
+    setRange({ start: 0, end: SESSIONS_PAGE_SIZE });
   }, [searchTerm, activeFilter]);
 
   const matching = tableProps.data;
-  const shown = useMemo(
-    () => matching?.slice(0, shownCount),
-    [matching, shownCount],
+  const total = matching?.length ?? 0;
+  // Rows deleted under a window scrolled far down could leave it past the end.
+  const start = Math.min(
+    range.start,
+    Math.max(0, total - MAX_RENDERED_SESSIONS),
   );
+  const shown = useMemo(
+    () => matching?.slice(start, range.end),
+    [matching, start, range.end],
+  );
+
+  // Search and filters only once there is something to narrow down (T39):
+  // three sessions are read, not searched. Kept while a search or filter is
+  // in force, so whatever narrowed the list can still be undone.
+  const showFilterBar =
+    stateRows.length > SEARCH_MIN || search.value !== '' || filtered;
 
   const groups = useMemo((): Array<{
     id: SessionListGroup;
@@ -771,37 +806,66 @@ export function ShellSessionsTable({
   };
 
   const loadMore = () => {
-    const firstNew = matching?.[shownCount];
-    setShownCount(count => count + SESSIONS_PAGE_SIZE);
+    const firstNew = matching?.[range.end];
+    const end = range.end + SESSIONS_PAGE_SIZE;
+    setRange({ start: Math.max(start, end - MAX_RENDERED_SESSIONS), end });
+    if (firstNew) {
+      setFocusRequest({ rowId: firstNew.id });
+    }
+  };
+
+  const showPrevious = () => {
+    const previousStart = Math.max(0, start - SESSIONS_PAGE_SIZE);
+    setRange({
+      start: previousStart,
+      end: Math.min(range.end, previousStart + MAX_RENDERED_SESSIONS),
+    });
+    const firstNew = matching?.[previousStart];
     if (firstNew) {
       setFocusRequest({ rowId: firstNew.id });
     }
   };
 
   const isSettled = !isLoading && tableProps.data !== undefined;
-  const total = matching?.length ?? 0;
   const shownTotal = shown?.length ?? 0;
+  const shownRange =
+    start > 0
+      ? `Showing ${start + 1}–${start + shownTotal} of ${total} sessions`
+      : `Showing ${shownTotal} of ${total} sessions`;
 
   return (
     <div ref={containerRef}>
       <Flex direction="column" gap="4">
-        <ShellFilterBar
-          searchField={
-            <SearchField
-              aria-label="Search sessions"
-              placeholder="Search by title or agent"
-              value={search.value}
-              onChange={search.onChange}
-              style={{ flex: '1 1 320px', maxWidth: 420 }}
-            />
-          }
-          rows={stateRows}
-          searchedRows={searchedRows}
-          isLoading={Boolean(isLoading)}
-          filter={activeFilter}
-          onChange={filter.onChange}
-          showStates={hasStates}
-        />
+        {showFilterBar && (
+          <ShellFilterBar
+            searchField={
+              <SearchField
+                aria-label="Search sessions"
+                placeholder="Search by title or agent"
+                value={search.value}
+                onChange={search.onChange}
+                style={{ flex: '1 1 320px', maxWidth: 420 }}
+              />
+            }
+            rows={stateRows}
+            searchedRows={searchedRows}
+            isLoading={Boolean(isLoading)}
+            filter={activeFilter}
+            onChange={filter.onChange}
+            showStates={hasStates}
+          />
+        )}
+
+        {isSettled && start > 0 && (
+          <Flex justify="center" align="center" gap="3">
+            <Text variant="body-medium" color="secondary">
+              {`${start} ${start === 1 ? 'session' : 'sessions'} before these`}
+            </Text>
+            <Button variant="secondary" size="small" onPress={showPrevious}>
+              Show previous
+            </Button>
+          </Flex>
+        )}
 
         {isSettled && groups.length === 0 && (
           <Flex direction="column" gap="1" py="6" align="center">
@@ -846,10 +910,10 @@ export function ShellSessionsTable({
           );
         })}
 
-        {isSettled && total > shownTotal && (
+        {isSettled && total > start + shownTotal && (
           <Flex justify="center" align="center" gap="3">
             <Text variant="body-medium" color="secondary">
-              {`Showing ${shownTotal} of ${total} sessions`}
+              {shownRange}
             </Text>
             <Button variant="secondary" size="small" onPress={loadMore}>
               Load more

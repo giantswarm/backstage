@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  useSelectFieldError,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 
@@ -132,8 +135,18 @@ function InaccessibleInstallationsNote({
   );
 }
 
-export function InstallationSelect() {
+export type InstallationSelectProps = {
+  /**
+   * The field's validation problem, shown on the dropdown once the form wants
+   * it seen. Where no dropdown renders (one installation, or none usable) the
+   * notes on the card already say why nothing is picked.
+   */
+  error?: string;
+};
+
+export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   const { state, setInstallation } = useNewAgentForm();
+  const selectError = useSelectFieldError(error);
   const { installations, isLoading: isLoadingInstallations } =
     useInstallations();
   const {
@@ -290,7 +303,9 @@ export function InstallationSelect() {
               icon={<CircularProgress size={16} color="inherit" />}
               options={[]}
               placeholder="Finding installations with models and agent-manager…"
+              {...selectError.selectProps}
             />
+            {selectError.message}
             <NoAgentManagerNote installations={withoutAgentManager} />
           </Flex>
         </InstallationCard>
@@ -349,7 +364,9 @@ export function InstallationSelect() {
           onSelectionChange={key =>
             setInstallation(key ? String(key) : undefined)
           }
+          {...selectError.selectProps}
         />
+        {selectError.message}
         {/* The list grows as slower installations respond, so say so rather than
             letting a short list look complete. */}
         {isSettling && (

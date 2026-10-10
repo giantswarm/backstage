@@ -13,10 +13,7 @@ import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { InputError } from '@backstage/errors';
 import { parseFrontmatter } from './frontmatter';
-import {
-  DiscoverAgentSkillsResult,
-  DiscoveredSkill,
-} from './discoverAgentSkills';
+import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
 
 /**
  * Discovery over the plain git protocol (smart HTTP), for skill repositories
@@ -141,6 +138,8 @@ export interface ScannedSkill {
   name?: string;
   /** Frontmatter `description`, when present. */
   description?: string;
+  /** The raw `SKILL.md`. */
+  content: string;
 }
 
 /**
@@ -163,7 +162,7 @@ export async function scanSkillsTree(rootDir: string): Promise<ScannedSkill[]> {
       } else if (entry.isFile() && entry.name === SKILL_FILE) {
         const content = await readFile(path.join(dir, entry.name), 'utf8');
         const { name, description } = parseFrontmatter(content);
-        found.push({ path: rel, name, description });
+        found.push({ path: rel, name, description, content });
       }
     }
   }
@@ -199,7 +198,7 @@ export async function discoverAgentSkillsFromGit(options: {
   ref?: string;
   /** Test seam; the real isomorphic-git client when absent. */
   gitClient?: GitClient;
-}): Promise<DiscoverAgentSkillsResult> {
+}): Promise<SkillDiscoverySnapshot> {
   const { ref, gitClient = isomorphicGitClient } = options;
   const repoUrl = canonicalGitUrl(options.repoUrl);
   if (!/^https?:\/\//.test(repoUrl)) {
@@ -230,6 +229,8 @@ export async function discoverAgentSkillsFromGit(options: {
         path: s.path,
         ref: cloned.ref,
         commit: cloned.commit,
+        // Read from the checkout just now.
+        contentReadable: true,
       }))
       // Same stable order as the GitHub provider.
       .sort(
@@ -242,6 +243,7 @@ export async function discoverAgentSkillsFromGit(options: {
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.
       truncated: false,
+      contents: new Map(scanned.map(s => [s.path, s.content])),
     };
   } finally {
     await rm(dir, { recursive: true, force: true });

@@ -137,54 +137,79 @@ export function providerHasEndpoint(provider: ModelProvider): boolean {
 // Secret's name suffix), so it must be a valid k8s object name.
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
+/** The model form's fields a validation problem can belong to. */
+export type ModelConfigField = 'name' | 'model' | 'endpoint' | 'apiKey';
+
+export type ModelConfigFieldErrors = Partial<Record<ModelConfigField, string>>;
+
+/** The fields in form order: the order {@link validateModelConfigForm} lists. */
+const MODEL_CONFIG_FIELDS: readonly ModelConfigField[] = [
+  'name',
+  'model',
+  'endpoint',
+  'apiKey',
+];
+
 /**
- * Validation problems, in form order; empty when the form can be saved.
+ * Validation problems by the field each belongs to; empty when the form can
+ * be saved. The form shows each on its own field.
  *
  * `originalProvider` (edit only) is what decides whether an empty key field is
  * acceptable: the existing Secret holds the old provider's canonical key, and
  * the portal never reads key values back — so switching provider makes the old
  * Secret unusable and a new key (or the keyless toggle) mandatory.
  */
-export function validateModelConfigForm(
+export function modelConfigFieldErrors(
   values: ModelConfigFormValues,
   options: { isEdit: boolean; originalProvider?: string } = { isEdit: false },
-): string[] {
-  const errors: string[] = [];
+): ModelConfigFieldErrors {
+  const errors: ModelConfigFieldErrors = {};
 
   if (!values.name.trim()) {
-    errors.push('Technical name is required');
+    errors.name = 'Technical name is required';
   } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
-    errors.push(
-      'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm',
-    );
+    errors.name =
+      'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm';
   }
 
   if (!values.model.trim()) {
-    errors.push('Model is required');
+    errors.model = 'Model is required';
   }
 
   if (values.provider === 'Ollama' && !values.endpoint.trim()) {
-    errors.push('Host is required for Ollama');
-  }
-
-  if (values.endpoint.trim() && !/^https?:\/\//.test(values.endpoint.trim())) {
-    errors.push('The endpoint must be an http:// or https:// URL');
+    errors.endpoint = 'Host is required for Ollama';
+  } else if (
+    values.endpoint.trim() &&
+    !/^https?:\/\//.test(values.endpoint.trim())
+  ) {
+    errors.endpoint = 'The endpoint must be an http:// or https:// URL';
   }
 
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   if (needsKey && !values.keyless && !values.apiKey) {
     if (!options.isEdit) {
-      errors.push(
-        'API key is required (or mark the endpoint as requiring none)',
-      );
+      errors.apiKey =
+        'API key is required (or mark the endpoint as requiring none)';
     } else if (options.originalProvider !== values.provider) {
-      errors.push(
-        `Changing the provider needs a new API key (or mark the endpoint as requiring none): the existing key was stored for ${options.originalProvider}`,
-      );
+      errors.apiKey = `Changing the provider needs a new API key (or mark the endpoint as requiring none): the existing key was stored for ${options.originalProvider}`;
     }
   }
 
   return errors;
+}
+
+/**
+ * Validation problems, in form order; empty when the form can be saved. The
+ * list form of {@link modelConfigFieldErrors}, for a summary of them all.
+ */
+export function validateModelConfigForm(
+  values: ModelConfigFormValues,
+  options: { isEdit: boolean; originalProvider?: string } = { isEdit: false },
+): string[] {
+  const errors = modelConfigFieldErrors(values, options);
+  return MODEL_CONFIG_FIELDS.map(field => errors[field]).filter(
+    (error): error is string => Boolean(error),
+  );
 }
 
 /**

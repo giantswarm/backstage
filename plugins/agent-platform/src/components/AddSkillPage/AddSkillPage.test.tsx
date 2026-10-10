@@ -112,16 +112,39 @@ describe('AddSkillPage', () => {
     });
   }, 30_000);
 
-  it('disables the submit while the form is incomplete', async () => {
+  it('marks the missing fields themselves when the submit is blocked', async () => {
     const user = userEvent.setup();
     await renderPage();
 
     await user.type(screen.getByLabelText(/Name/), 'notes');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
 
-    expect(
-      screen.getByRole('button', { name: 'Open pull request' }),
-    ).toBeDisabled();
     expect(proposeSkill).not.toHaveBeenCalled();
+    const description = screen.getByLabelText(/Description/);
+    expect(description).toHaveAttribute('aria-invalid', 'true');
+    expect(description).toHaveAccessibleDescription(
+      expect.stringContaining('Description is required'),
+    );
+    expect(description).toHaveFocus();
+    const instructions = screen.getByLabelText(/Instructions/);
+    expect(instructions).toHaveAttribute('aria-invalid', 'true');
+    expect(instructions).toHaveAccessibleDescription(
+      expect.stringContaining('Instructions are required'),
+    );
+    expect(screen.getByLabelText(/Name/)).not.toHaveAttribute('aria-invalid');
+  }, 30_000);
+
+  it('says what is wrong with a name while it is typed', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    const name = screen.getByLabelText(/Name/);
+    await user.type(name, 'Notes');
+
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('lowercase letters, digits and dashes'),
+    );
   }, 30_000);
 
   it('shows the opened pull request and what happens next, with Done to leave', async () => {

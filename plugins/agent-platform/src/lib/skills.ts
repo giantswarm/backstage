@@ -18,6 +18,23 @@ export interface DiscoveredSkill {
    * shows is the one that is written.
    */
   commit: string;
+  /**
+   * Whether the portal read this skill's SKILL.md at `commit` (gs-backend
+   * reads it with its own credentials while discovering). False for a skill
+   * listed from the repository tree whose file it could not read: the portal
+   * can neither show nor edit it. Absent (older backends) reads as readable.
+   */
+  contentReadable?: boolean;
+}
+
+/**
+ * Whether the portal can read the skill's SKILL.md — the condition for
+ * editing it from the portal (the edit is prefilled from the file).
+ */
+export function isSkillContentReadable(
+  skill: Pick<DiscoveredSkill, 'contentReadable'>,
+): boolean {
+  return skill.contentReadable !== false;
 }
 
 /** Stable identity for a discovered/selected skill (repo + path). */

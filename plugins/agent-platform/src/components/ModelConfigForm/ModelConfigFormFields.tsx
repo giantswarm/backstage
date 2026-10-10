@@ -7,10 +7,14 @@ import {
   Switch,
   TextField,
 } from '@backstage/ui';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  fieldErrorProps,
+  SectionHeader,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   MODEL_PROVIDER_OPTIONS,
+  ModelConfigFieldErrors,
   ModelConfigFormValues,
   PROVIDER_SECRET_KEYS,
   providerHasEndpoint,
@@ -23,18 +27,24 @@ export type ModelConfigFormFieldsProps = {
   mode: 'create' | 'edit';
   /** Render every field disabled (tool-owned CR, or no write permission). */
   isReadOnly?: boolean;
+  /**
+   * The problems to show on the fields themselves — the page passes them once
+   * a submit was blocked (`modelConfigFieldErrors`, `useFieldValidation`).
+   */
+  errors?: ModelConfigFieldErrors;
 };
 
 /**
  * The fields shared by the create and edit forms. Pure presentation: values
- * and validation live with the page (validation errors surface as one alert
- * on submit, the same pattern as the agent create form).
+ * and validation live with the page, which hands the problems back as
+ * `errors` for each field to show under itself.
  */
 export function ModelConfigFormFields({
   values,
   onChange,
   mode,
   isReadOnly = false,
+  errors = {},
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -75,6 +85,7 @@ export function ModelConfigFormFields({
                     ? 'The resource name cannot be changed after creation.'
                     : 'Filled in from the display name. Lowercase letters, numbers and hyphens; it names the resource and its key Secret.'
                 }
+                {...fieldErrorProps(errors.name)}
               />
             </Grid.Item>
           </Grid.Root>
@@ -122,6 +133,7 @@ export function ModelConfigFormFields({
                     isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
                   }
                   description="The model id, as the provider names it."
+                  {...fieldErrorProps(errors.model)}
                 />
               </Grid.Item>
             </Grid.Root>
@@ -144,6 +156,7 @@ export function ModelConfigFormFields({
                     ? 'The Ollama server to talk to.'
                     : 'Leave empty for the provider’s own endpoint. Set it for a compatible endpoint like vLLM, llama.cpp or OpenRouter.'
                 }
+                {...fieldErrorProps(errors.endpoint)}
               />
             )}
 
@@ -183,6 +196,7 @@ export function ModelConfigFormFields({
                       ? 'Enter a value only to replace the stored key.'
                       : 'The provider API key agents on this model authenticate with.'
                   }
+                  error={errors.apiKey}
                 />
               )}
               <Switch

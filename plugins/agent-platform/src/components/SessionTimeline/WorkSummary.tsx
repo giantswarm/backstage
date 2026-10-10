@@ -146,7 +146,9 @@ export function WorkSummary({
         type="button"
         className={classes.trigger}
         aria-expanded={isOpen}
-        aria-controls={panelId}
+        // The panel exists only while open (see the Collapse below), so the
+        // reference does too — it never points at an element that isn't there.
+        aria-controls={isOpen ? panelId : undefined}
         onClick={() => setOverride(!isOpen)}
       >
         {status}
@@ -157,7 +159,16 @@ export function WorkSummary({
           aria-hidden
         />
       </button>
-      <Collapse in={isOpen} timeout={ANIMATION_DURATION}>
+      {/* Mounted only while open: a long agentic session folds hundreds of
+          tool calls, each with its own payload fold-outs, and keeping every
+          folded trace in the DOM was most of the page's weight (T39). A live
+          run starts open, so its progress mounts as it arrives. */}
+      <Collapse
+        in={isOpen}
+        timeout={ANIMATION_DURATION}
+        mountOnEnter
+        unmountOnExit
+      >
         <div
           id={panelId}
           role="group"

@@ -25,6 +25,13 @@ export interface DiscoveredSkill {
    * the skill shown is the skill pinned.
    */
   commit: string;
+  /**
+   * Whether the portal read this skill's `SKILL.md` at `commit` with its own
+   * credentials (the GitHub integration's token, or an anonymous clone). Only
+   * a readable skill can be shown or edited from the portal; an unreadable one
+   * is still listed (it exists in the tree) with the metadata at hand.
+   */
+  contentReadable: boolean;
 }
 
 /**
@@ -40,17 +47,33 @@ export interface DiscoverAgentSkillsResult {
 }
 
 /**
+ * A discovery result plus what it read on the way: the raw `SKILL.md` of each
+ * readable skill, by skill path. Kept server-side (the discovery cache answers
+ * `GET /agent-skills/content` from it), never sent to the browser.
+ */
+export interface SkillDiscoverySnapshot extends DiscoverAgentSkillsResult {
+  contents: Map<string, string>;
+}
+
+/**
  * A non-2xx response from the GitHub API, carrying the upstream status so the
  * route can forward it (a 404 repo or 403/429 rate limit is an expected
- * outcome, not an internal error).
+ * outcome, not an internal error). `rateLimited` marks a refusal by GitHub's
+ * primary or secondary rate limit; `retryAt` (epoch ms) is when GitHub said
+ * asking again makes sense, when it said so.
  */
 export class GitHubApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly rateLimit?: { retryAt?: number },
   ) {
     super(message);
     this.name = 'GitHubApiError';
+  }
+
+  get rateLimited(): boolean {
+    return this.status === 429 || this.rateLimit !== undefined;
   }
 }
 
@@ -117,10 +140,12 @@ async function githubApiFetch(
 
   const response = await fetch(url, { headers });
   if (!response.ok) {
+    const limited = rateLimitMessage(response, Boolean(token));
     throw new GitHubApiError(
       response.status,
-      rateLimitMessage(response, Boolean(token)) ??
+      limited?.message ??
         `GitHub API ${url} returned ${response.status}: ${response.statusText}`,
+      limited ? { retryAt: limited.retryAt } : undefined,
     );
   }
   return response;
@@ -135,25 +160,31 @@ async function githubApiFetch(
 function rateLimitMessage(
   response: Response,
   authenticated: boolean,
-): string | undefined {
+): { message: string; retryAt?: number } | undefined {
   if (response.status !== 403 && response.status !== 429) {
     return undefined;
   }
   const retryAfter = Number(response.headers?.get('retry-after'));
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return `GitHub's secondary rate limit refused the read: too many requests in a short time. Try again in ${retryAfter} seconds.`;
+    return {
+      message: `GitHub's secondary rate limit refused the read: too many requests in a short time. Try again in ${retryAfter} seconds.`,
+      retryAt: Date.now() + retryAfter * 1000,
+    };
   }
   if (response.headers?.get('x-ratelimit-remaining') !== '0') {
     return undefined;
   }
   const reset = Number(response.headers.get('x-ratelimit-reset'));
-  const until =
-    Number.isFinite(reset) && reset > 0
-      ? ` until ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
-      : '';
-  return authenticated
-    ? `GitHub's API rate limit for the portal's token is used up${until}.`
-    : `GitHub's API rate limit for this portal's IP address is used up${until}: the portal reads GitHub without a token, which GitHub allows 60 requests an hour per IP.`;
+  const hasReset = Number.isFinite(reset) && reset > 0;
+  const until = hasReset
+    ? ` until ${new Date(reset * 1000).toISOString().slice(11, 16)} UTC`
+    : '';
+  return {
+    message: authenticated
+      ? `GitHub's API rate limit for the portal's token is used up${until}.`
+      : `GitHub's API rate limit for this portal's IP address is used up${until}: the portal reads GitHub without a token, which GitHub allows 60 requests an hour per IP.`,
+    retryAt: hasReset ? reset * 1000 : undefined,
+  };
 }
 
 async function resolveDefaultBranch(
@@ -244,14 +275,27 @@ export async function integrationToken(
  * agent pins it to. Authentication is added when a GitHub integration provides
  * credentials for the repo; public repos work unauthenticated (subject to
  * GitHub's lower anonymous rate limit).
+ *
+ * A `SKILL.md` that cannot be read (a refusal, a rate limit mid-run) does not
+ * drop its skill: the tree says it exists, so it is listed with
+ * `contentReadable: false` and the metadata at hand — the previous snapshot's
+ * name and description for the same directory, else the directory name.
+ *
+ * `previous` is the last snapshot of the same repository and ref (the
+ * discovery cache passes it): when the ref still points at its commit, the
+ * tree and the files already read are not fetched again — a revalidation then
+ * costs two requests (default branch, head commit) instead of 3 + one per
+ * skill — and only the skills that were unreadable are retried.
  */
 export async function discoverAgentSkills(options: {
   repoUrl: string;
   githubCredentialsProvider: GithubCredentialsProvider;
   /** Git ref to read; defaults to the repo's default branch. */
   ref?: string;
-}): Promise<DiscoverAgentSkillsResult> {
-  const { repoUrl, githubCredentialsProvider, ref } = options;
+  /** The last snapshot of this repository and ref, to reuse what it read. */
+  previous?: SkillDiscoverySnapshot;
+}): Promise<SkillDiscoverySnapshot> {
+  const { repoUrl, githubCredentialsProvider, ref, previous } = options;
   const { owner, repo } = parseRepoUrl(repoUrl);
   const canonicalRepoUrl = `https://github.com/${owner}/${repo}`;
 
@@ -263,52 +307,101 @@ export async function discoverAgentSkills(options: {
   const branch = ref ?? (await resolveDefaultBranch(owner, repo, token));
   const commit = await resolveHeadCommit(owner, repo, branch, token);
 
-  const treeResponse = await githubApiFetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
-    token,
-  );
-  const tree = (await treeResponse.json()) as {
-    tree?: TreeEntry[];
-    truncated?: boolean;
-  };
+  const unchanged =
+    previous !== undefined &&
+    previous.commit === commit &&
+    previous.ref === branch &&
+    !previous.truncated;
 
-  const skillFiles = (tree.tree ?? []).filter(
-    entry => entry.type === 'blob' && isSkillFile(entry.path),
+  let skillDirs: string[];
+  let treeTruncated = false;
+  if (unchanged) {
+    skillDirs = previous.skills.map(s => s.path);
+  } else {
+    const treeResponse = await githubApiFetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
+      token,
+    );
+    const tree = (await treeResponse.json()) as {
+      tree?: TreeEntry[];
+      truncated?: boolean;
+    };
+    skillDirs = (tree.tree ?? [])
+      .filter(entry => entry.type === 'blob' && isSkillFile(entry.path))
+      .map(entry => skillDir(entry.path));
+    // GitHub caps the recursive tree (~100k entries / 7MB); past that some
+    // SKILL.md files are missing.
+    treeTruncated = Boolean(tree.truncated);
+  }
+
+  const previousByDir = new Map(
+    (previous?.skills ?? []).map(s => [s.path, s] as const),
   );
+  const contents = new Map<string, string>();
+  // Already read at this very commit: reuse, don't fetch again.
+  const toRead = skillDirs.filter(dir => {
+    const known = unchanged ? previousByDir.get(dir) : undefined;
+    if (known?.contentReadable) {
+      const raw = previous?.contents.get(dir);
+      if (raw !== undefined) {
+        contents.set(dir, raw);
+      }
+      return false;
+    }
+    return true;
+  });
 
   // Fetch each SKILL.md with bounded concurrency; a single failed read (e.g. a
-  // transient rate limit) drops that one skill rather than failing the whole
-  // discovery.
+  // transient rate limit) marks that one skill unreadable rather than failing
+  // the whole discovery.
   const settled = await mapWithConcurrency(
-    skillFiles,
+    toRead,
     CONTENT_FETCH_CONCURRENCY,
-    async (file): Promise<DiscoveredSkill> => {
-      const dir = skillDir(file.path);
-      const content = await fetchRawContent(
+    async (dir): Promise<string> =>
+      fetchRawContent(
         owner,
         repo,
-        file.path,
+        dir ? `${dir}/${SKILL_FILE}` : SKILL_FILE,
         commit,
         token,
-      );
-      const { name, description } = parseFrontmatter(content);
-      return {
-        name: name?.trim() || dir.split('/').pop() || repo,
-        description: description?.trim() ?? '',
+      ),
+  );
+  const fresh = new Map<string, PromiseSettledResult<string>>(
+    toRead.map((dir, i) => [dir, settled[i]]),
+  );
+
+  const skills = skillDirs
+    .map((dir): DiscoveredSkill => {
+      const base = {
         repoUrl: canonicalRepoUrl,
         path: dir,
         ref: branch,
         commit,
       };
-    },
-  );
-
-  const skills = settled
-    .filter(
-      (r): r is PromiseFulfilledResult<DiscoveredSkill> =>
-        r.status === 'fulfilled',
-    )
-    .map(r => r.value)
+      const fallbackName = dir.split('/').pop() || repo;
+      const read = fresh.get(dir);
+      const known = previousByDir.get(dir);
+      if (read === undefined && known) {
+        // Reused from the snapshot at this commit.
+        return { ...known, ...base };
+      }
+      if (read?.status === 'fulfilled') {
+        contents.set(dir, read.value);
+        const { name, description } = parseFrontmatter(read.value);
+        return {
+          ...base,
+          name: name?.trim() || fallbackName,
+          description: description?.trim() ?? '',
+          contentReadable: true,
+        };
+      }
+      return {
+        ...base,
+        name: known?.name ?? fallbackName,
+        description: known?.description ?? '',
+        contentReadable: false,
+      };
+    })
     // Stable order for the picker; also groups nested skills by directory.
     .sort(
       (a, b) => a.path.localeCompare(b.path) || a.name.localeCompare(b.name),
@@ -318,9 +411,7 @@ export async function discoverAgentSkills(options: {
     skills,
     ref: branch,
     commit,
-    // GitHub caps the recursive tree (~100k entries / 7MB); past that some
-    // SKILL.md files are missing, or a content read failed above.
-    truncated:
-      Boolean(tree.truncated) || settled.some(r => r.status === 'rejected'),
+    truncated: treeTruncated,
+    contents,
   };
 }

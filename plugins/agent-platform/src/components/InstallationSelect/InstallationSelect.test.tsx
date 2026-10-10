@@ -183,6 +183,17 @@ describe('InstallationSelect', () => {
       expect(mockSetInstallation).not.toHaveBeenCalled();
     });
 
+    it('marks the dropdown with the form’s validation problem', () => {
+      const { getByRole, getByText } = render(
+        <InstallationSelect error="Select an installation" />,
+      );
+
+      const trigger = getByRole('button', { name: /Installation/ });
+      const message = getByText('Select an installation');
+      expect(trigger.getAttribute('aria-describedby')).toContain(message.id);
+      expect(trigger.closest('[data-invalid]')).not.toBeNull();
+    });
+
     it('names the field for assistive tech without repeating the card heading', () => {
       const { getAllByText, getByLabelText } = render(<InstallationSelect />);
 

@@ -137,6 +137,20 @@ describe('EditSkillPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('does not read a skill the portal could not read, and says so instead of a form', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, contentReadable: false }],
+    };
+    await renderPage();
+
+    expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
+    expect(
+      screen.getByText("The portal cannot read this skill's source"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
+  });
+
   it('says when no skill exists at the address', async () => {
     await renderPage('giantswarm/skills/gone');
 

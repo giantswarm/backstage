@@ -2669,9 +2669,9 @@ skill's page, and the Connectors section says in words what the agent can reach,
 with **See which tools** opening `…/<name>/tools` (the toolset card, one level
 below the agent in the breadcrumbs). A bookmarked `…/skills` lands on the
 Overview. The cards the classic Overview leads with — GitOps, configuration,
-status — plus the resource's name, Harness, revision and skill pins sit behind
-the Overview's **Show technical details** switch, which starts on for an agent
-that is not ready. The Usage tab reads the Usage screen's own sources for the
+status — plus the resource's name, Harness, revision and skill pins sit in the
+Overview's **Technical details** fold-out at the bottom, which starts open for an
+agent that is not ready. The Usage tab reads the Usage screen's own sources for the
 agent's environment over 30 days: the gateway's by-agent reduction (everyone's
 calls) and kagent's session summary (yours, with any runtime-reported cost).
 

@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { Alert, FieldLabel, Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { FieldErrorText } from '@giantswarm/backstage-plugin-ui-react';
 
 import { newModelRouteRef } from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -34,8 +35,18 @@ function preselectionNote(
   }
 }
 
-export function ModelConfigPicker() {
+export type ModelConfigPickerProps = {
+  /**
+   * The field's validation problem, shown under its label once the form wants
+   * it seen. The block is then marked `data-invalid`, so a blocked Continue
+   * focuses its first model card.
+   */
+  error?: string;
+};
+
+export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const classes = useSelectableCardStyles();
+  const errorId = `${useId()}-error`;
   const { state, selectModelConfig } = useNewAgentForm();
   const { isLoading, modelConfigsFor, unreachableInstallations } =
     useModelConfigs();
@@ -43,11 +54,15 @@ export function ModelConfigPicker() {
   const installation = state.installation;
 
   const label = (
-    <FieldLabel
-      label="Model"
-      description="What the agent thinks with. Admins add models under Customize → Models."
-    />
+    <>
+      <FieldLabel
+        label="Model"
+        description="What the agent thinks with. Admins add models under Customize → Models."
+      />
+      {error && <FieldErrorText id={errorId}>{error}</FieldErrorText>}
+    </>
   );
+  const invalidProps = error ? { 'data-invalid': '' } : {};
 
   const modelConfigs = installation ? modelConfigsFor(installation) : [];
   // The form starts with a model picked for the person -- the installation's
@@ -74,7 +89,7 @@ export function ModelConfigPicker() {
 
   if (!installation) {
     return (
-      <Flex direction="column" gap="2">
+      <Flex direction="column" gap="2" {...invalidProps}>
         {label}
         <Alert
           status="info"
@@ -88,7 +103,7 @@ export function ModelConfigPicker() {
   const hasError = unreachableInstallations.includes(installation);
 
   return (
-    <Flex direction="column" gap="2">
+    <Flex direction="column" gap="2" {...invalidProps}>
       {label}
 
       {/* isLoading is fleet-wide, so only treat it as "loading" here while this
@@ -135,7 +150,12 @@ export function ModelConfigPicker() {
       )}
 
       {modelConfigs.length > 0 && (
-        <SelectableCardGrid role="radiogroup" ariaLabel="Model" minWidth={220}>
+        <SelectableCardGrid
+          role="radiogroup"
+          ariaLabel="Model"
+          minWidth={220}
+          describedBy={error ? errorId : undefined}
+        >
           {modelConfigs.map(mc => {
             const name = mc.getName();
             const namespace = mc.getNamespace() ?? '';

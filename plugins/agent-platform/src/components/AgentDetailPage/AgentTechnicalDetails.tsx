@@ -113,8 +113,8 @@ function ResourceFacts({ agent }: { agent: Agent }) {
 }
 
 /**
- * The agent as a Kubernetes resource, behind the overview's "Show technical
- * details": where it came from (GitOps, the HelmRelease), how its template is
+ * The agent as a Kubernetes resource, inside the overview's "Technical
+ * details" fold-out: where it came from (GitOps, the HelmRelease), how its template is
  * configured, and what the controllers make of it — the cards this page used
  * to lead with.
  */

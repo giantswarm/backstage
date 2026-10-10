@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -10,11 +10,13 @@ import { useCurrency } from '../../lib/formatNumbers';
 import type { LlmUsage } from '../../lib/llmUsage';
 import {
   LlmUsageState,
-  PricingCoverageAlert,
+  ReliabilityStrip,
   SessionKpiTiles,
-  TopSpendCard,
+  TokensByTypeCard,
+  TopAgentsCard,
+  UsageCard,
   UsageKpiTiles,
-  type TopSpendRow,
+  type TopAgentsRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
 import { ShellAwareContent } from '../ShellAwareContent';
@@ -34,37 +36,37 @@ const useStyles = makeStyles((theme: Theme) => ({
  */
 const FALLBACK_SESSION_WINDOW_DAYS = 30;
 
-/** The by-agent breakdown as the compact card's rows, biggest spender first. */
-function topAgentRows(usage: LlmUsage): TopSpendRow[] {
+/**
+ * The by-agent breakdown as the compact card's rows, busiest first — ranked by
+ * model calls, because the Overview answers "how much is the platform used";
+ * the spend ranking is the Cost tab's.
+ */
+function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
+  const totalCalls = usage.totals.calls;
   return [...usage.byAgent]
-    .sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0))
+    .sort((a, b) => b.calls - a.calls)
     .map(row => ({
       id: row.id,
       label: row.label,
       href: row.href,
-      costUsd: row.costUsd,
-      sharePct: row.sharePct,
-    }));
-}
-
-/** The by-model breakdown as the compact card's rows, biggest spender first. */
-function topModelRows(usage: LlmUsage): TopSpendRow[] {
-  return [...usage.byModel]
-    .sort((a, b) => (b.costUsd ?? 0) - (a.costUsd ?? 0))
-    .map(row => ({
-      id: row.id,
-      label: row.model,
-      costUsd: row.costUsd,
-      sharePct: row.sharePct,
+      calls: row.calls,
+      sharePct: totalCalls > 0 ? (row.calls / totalCalls) * 100 : undefined,
     }));
 }
 
 /**
- * The Usage screen's at-a-glance view, per the prototype: the KPI tiles —
- * spend this window against the previous one, tokens, the reader's own
- * sessions, active agents — and the compact per-agent and per-model spend
- * breakdowns. The full tables and the cost-over-time chart live one tab away
- * on Cost; the raw token counts and gateway health on Technical details.
+ * The Usage screen's at-a-glance view: is the platform healthy, and what are
+ * the headline trends. The KPI tiles — the spend teaser, tokens and model
+ * calls, the reader's own sessions, active agents — then tokens per day by
+ * type, the busiest agents, the gateway's health and, when the muster plugin
+ * contributed one, the connector tool-call section.
+ *
+ * **One home per metric** (`design-context/implementation/usage-metrics-ia.md`):
+ * money lives on the Cost tab, so this view carries exactly one spend number —
+ * the teaser tile, which points there — and ranks agents by model calls, not
+ * by spend. The reader's own slice lives on Your sessions; the session-count
+ * tile is its teaser. The figures that used to sit on a separate Technical
+ * details tab answer this view's question (health, trends) and live here now.
  *
  * **Everyone's traffic, not the reader's — except the one tile that says
  * otherwise.** The gateway figures come from the agentgateway LLM listener,
@@ -75,12 +77,16 @@ function topModelRows(usage: LlmUsage): TopSpendRow[] {
  * **Without the gateway metrics** (`mimirEnabled: false` — a standalone
  * installation with no observability stack this portal can query) the page
  * shows what kagent alone can answer: the reader's own session-derived tiles
- * (`SessionKpiTiles`), under a note saying the fleet-wide token and cost
- * figures need those metrics. kagent's answer is real data about the reader's
- * own work, and an Overview that renders one paragraph while the Your
- * sessions tab is full of numbers read as broken. Nothing is invented: no
- * estimated cost (its $/token rate would come from the absent metrics), and
- * the reported cost shows only when a runtime reported one.
+ * (`SessionKpiTiles`), under a note saying the fleet-wide figures need those
+ * metrics. kagent's answer is real data about the reader's own work, and an
+ * Overview that renders one paragraph while the Your sessions tab is full of
+ * numbers read as broken. Nothing is invented, and no cost: the reader's own
+ * cost is Your sessions' to show.
+ *
+ * The muster section arrives through the `sections` extension input, so muster
+ * needs no knowledge of this layout: the contract is still the node id
+ * `sub-page:agent-platform/usage` and the input name `sections`, exactly as
+ * `mcpUsageSection` in the muster plugin declares it.
  *
  * The corollary — that an agent calling a provider directly bypasses the
  * listener and so appears nowhere here — is deliberately **not** in the
@@ -90,15 +96,16 @@ function topModelRows(usage: LlmUsage): TopSpendRow[] {
  * that are in fact complete. The empty state still says it, which is the one
  * place a reader needs it.
  */
-export function UsageOverviewPage() {
+export function UsageOverviewPage({ sections }: { sections?: ReactNode[] }) {
   const classes = useStyles();
   const { days } = useUsageWindow();
-  // `comparePrevious` is the one extra query the delta on the spend tile
-  // needs; only this view pays for it.
-  const view = useLlmUsageView({ days, comparePrevious: true });
+  // No `comparePrevious`: the change against the previous window is a money
+  // trend, and it lives on the Cost tab with the extra query it costs.
+  const view = useLlmUsageView({ days });
   const costRoute = useRouteRef(usageCostRouteRef);
   const { usage, installation, isResolvedFromAll } = view;
   const currency = useCurrency(installation);
+  const hasSections = (sections?.length ?? 0) > 0;
 
   // The reader's own session count, shared (same query key) with the Your
   // sessions tab — so after either view loads, the other costs nothing. Its
@@ -118,7 +125,10 @@ export function UsageOverviewPage() {
         };
 
   const agentRows = useMemo(() => (usage ? topAgentRows(usage) : []), [usage]);
-  const modelRows = useMemo(() => (usage ? topModelRows(usage) : []), [usage]);
+
+  // Today's bar is real use so far — queried over elapsed-time-since-midnight
+  // rather than extrapolated to a whole day.
+  const windowNote = `The last ${days} days.`;
 
   return (
     <ShellAwareContent>
@@ -161,7 +171,7 @@ export function UsageOverviewPage() {
               />
               <Text variant="body-small" color="secondary">
                 These figures come from kagent and cover your own sessions only.
-                Fleet-wide spend, token and per-model figures need the gateway's
+                Fleet-wide tokens, spend and gateway health need the gateway's
                 gen_ai metrics, which this installation does not publish to a
                 metrics store this portal can query.
               </Text>
@@ -175,39 +185,43 @@ export function UsageOverviewPage() {
                 currency={currency}
                 windowDays={days}
                 sessions={sessions}
-              />
-
-              {/* Compact here, with the detail table one tab away: the reader
-                  of this page needs to know the cost figures are incomplete,
-                  not which models to add to the catalogue. */}
-              <PricingCoverageAlert
-                rows={usage.unpricedModels}
                 costHref={costRoute?.()}
               />
 
               <div className={classes.row}>
-                <TopSpendCard
-                  title="Top agents"
-                  rows={agentRows}
-                  currency={currency}
-                  emptyMessage="The gateway attributed no calls to an agent in this window."
-                  note="Each bar is the agent's share of the window's priced spend, across every user. The Cost tab has the full table."
-                />
-                <TopSpendCard
-                  title="By model"
-                  rows={modelRows}
-                  currency={currency}
-                  emptyMessage="No model answered a call in this window."
-                  note="The model that answered each call, as the gateway recorded it. The Cost tab has tokens, calls and rates per model."
+                <TokensByTypeCard
+                  daily={usage.tokensPerDay}
+                  note={windowNote}
                 />
               </div>
 
-              <Text variant="body-small" color="secondary">
-                Tokens, model calls and gateway health are under Technical
-                details.
-              </Text>
+              <div className={classes.row}>
+                <TopAgentsCard
+                  title="Top agents"
+                  rows={agentRows}
+                  emptyMessage="The gateway attributed no calls to an agent in this window."
+                  note="Each bar is the agent's share of the window's model calls, across every user. The Cost tab ranks them by spend."
+                />
+              </div>
+
+              <UsageCard
+                title="Gateway health"
+                wide
+                // Each figure explains its own arithmetic in its hint, so the
+                // note carries only what none of them says: these are the model
+                // calls, not the turns that made them.
+                note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
+              >
+                <ReliabilityStrip reliability={usage.reliability} />
+              </UsageCard>
             </>
           )}
+
+          {/* The muster-contributed connector tool-call section renders below
+              the gateway figures whatever state those are in: its data source
+              (muster's own Prometheus metrics) is independent of Mimir's
+              gen_ai series, so one being absent says nothing about the other. */}
+          {hasSections && <>{sections}</>}
         </Flex>
       </UsageColumn>
     </ShellAwareContent>

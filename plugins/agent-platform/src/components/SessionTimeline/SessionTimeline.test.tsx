@@ -2,9 +2,13 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { buildTimeline } from '../../lib/kagentTimeline';
+import {
+  buildTimeline,
+  SessionTimeline as Timeline,
+  TimelineItem,
+} from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { SessionTimeline } from './SessionTimeline';
+import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
 
 import {
   attachmentPngV2,
@@ -86,7 +90,12 @@ describe('SessionTimeline', () => {
     await render(tasksV099);
 
     expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
-    expect(panelFor(workSummary())).not.toBeVisible();
+    // Folded means not mounted (T39): a long session's folded traces were most
+    // of the page's DOM. The trigger points at no panel while there is none.
+    expect(workSummary()).not.toHaveAttribute('aria-controls');
+    expect(
+      screen.queryByRole('button', { name: /github_search_issues/ }),
+    ).not.toBeInTheDocument();
     // The conversation around the work stays where it was said.
     expect(screen.getByText(/You have two open issues/)).toBeVisible();
   });
@@ -128,6 +137,12 @@ describe('SessionTimeline', () => {
     await userEvent.click(workSummary());
 
     expect(workSummary()).toHaveAttribute('aria-expanded', 'false');
+    // And unmounts the trace once the fold-away animation has run.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /github_search_issues/ }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it('has no view-wide technical switch', async () => {
@@ -174,6 +189,8 @@ describe('SessionTimeline', () => {
     expect(
       screen.getByRole('button', { name: /Used 2 tools/ }),
     ).toHaveAttribute('aria-expanded', 'true');
+    // Open means mounted: the live run's calls are on the page as they land.
+    expect(toolTrigger()).toBeVisible();
   });
 
   it('renders an approval readably, with its proposed call one fold-out away', async () => {
@@ -1050,5 +1067,140 @@ describe('SessionTimeline — an attached file', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
     );
     expect(enlarge).toHaveFocus();
+  });
+});
+
+describe('SessionTimeline — at 3 turns and at 300 (T39)', () => {
+  /**
+   * A session of `turnCount` turns, each a question, a run of two tool calls
+   * folded under a summary, and a reply — the shape of a long agentic session.
+   */
+  function sessionOf(turnCount: number): Timeline {
+    const items: TimelineItem[] = [];
+    for (let turn = 0; turn < turnCount; turn++) {
+      const at = new Date(
+        Date.UTC(2026, 6, 23, 16, 0) + turn * 60_000,
+      ).toISOString();
+      const base = { at, taskIndex: turn };
+      items.push(
+        { ...base, kind: 'user-message', id: `${turn}:u`, text: `Q${turn}?` },
+        {
+          ...base,
+          kind: 'tool-call',
+          id: `${turn}:c1`,
+          toolName: 'kubectl_get_pods',
+          args: { namespace: 'default' },
+          result: 'ok',
+          isPending: false,
+        },
+        {
+          ...base,
+          kind: 'tool-call',
+          id: `${turn}:c2`,
+          toolName: 'kubectl_describe_pod',
+          args: { name: 'web' },
+          result: 'ok',
+          isPending: false,
+        },
+        { ...base, kind: 'agent-message', id: `${turn}:a`, text: `A${turn}.` },
+      );
+    }
+    return {
+      items,
+      tokens: { total: 0, prompt: 0, completion: 0 },
+      skippedMessages: 0,
+    };
+  }
+
+  const renderedTurns = () =>
+    document.querySelectorAll('[data-turn-index]').length;
+
+  it('renders a short session whole, with no paging chrome', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={sessionOf(3)} agentName="sre-agent" />,
+    );
+
+    expect(renderedTurns()).toBe(3);
+    expect(screen.getByText('Q0?')).toBeInTheDocument();
+    expect(screen.getByText('A2.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Show earlier activity/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('timeline-earlier-activity'),
+    ).not.toBeInTheDocument();
+    // Each turn's work is one folded line, its calls not mounted.
+    expect(
+      screen.getAllByRole('button', { name: /Used 2 tools/ }),
+    ).toHaveLength(3);
+    expect(
+      screen.queryByRole('button', { name: /kubectl_get_pods/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders only the newest turns of a long session, and pages back on request', async () => {
+    await renderInTestApp(
+      <SessionTimeline timeline={sessionOf(300)} agentName="sre-agent" />,
+    );
+
+    // The newest RECENT_TURNS, ending at the latest reply.
+    expect(renderedTurns()).toBe(RECENT_TURNS);
+    expect(screen.getByText('A299.')).toBeInTheDocument();
+    expect(screen.getByText(`Q${300 - RECENT_TURNS}?`)).toBeInTheDocument();
+    expect(
+      screen.queryByText(`Q${299 - RECENT_TURNS}?`),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Q0?')).not.toBeInTheDocument();
+    // No folded trace is mounted: 600 tool calls, zero call rows.
+    expect(
+      screen.queryByRole('button', { name: /kubectl_get_pods/ }),
+    ).not.toBeInTheDocument();
+
+    // The control sits above the turns and says what it hides.
+    const control = screen.getByTestId('timeline-earlier-activity');
+    expect(control).toHaveTextContent(
+      `${300 - RECENT_TURNS} earlier turns not shown`,
+    );
+    expect(
+      control.compareDocumentPosition(
+        document.querySelector('[data-turn-index]') as Node,
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show earlier activity' }),
+    );
+
+    // One page more, not the whole history.
+    expect(renderedTurns()).toBe(2 * RECENT_TURNS);
+    expect(screen.getByText(`Q${300 - 2 * RECENT_TURNS}?`)).toBeInTheDocument();
+    expect(screen.getByTestId('timeline-earlier-activity')).toHaveTextContent(
+      `${300 - 2 * RECENT_TURNS} earlier turns not shown`,
+    );
+  });
+
+  it('keeps the newest turn live when the window hides older ones', async () => {
+    // The newest run is found by its place in the whole session, not in the
+    // window, so a working agent's progress still starts open.
+    const timeline = sessionOf(300);
+    const working = {
+      ...timeline,
+      items: timeline.items.filter(item => item.id !== '299:a'),
+    };
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={working}
+        agentName="sre-agent"
+        isAgentWorking
+      />,
+    );
+
+    const summaries = screen.getAllByRole('button', { name: /Used 2 tools/ });
+    expect(summaries).toHaveLength(RECENT_TURNS);
+    expect(summaries[summaries.length - 1]).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(summaries[0]).toHaveAttribute('aria-expanded', 'false');
   });
 });

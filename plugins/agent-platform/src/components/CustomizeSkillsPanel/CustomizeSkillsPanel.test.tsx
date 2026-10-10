@@ -1,9 +1,13 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
-import { CustomizeSkillsPanel } from './CustomizeSkillsPanel';
+import {
+  CustomizeSkillsPanel,
+  SKILL_CARDS_SHOWN,
+} from './CustomizeSkillsPanel';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
@@ -140,13 +144,6 @@ describe('CustomizeSkillsPanel', () => {
     expect(within(rows[0]).getByText('triage')).toBeInTheDocument();
     expect(within(rows[1]).getByText('notes')).toBeInTheDocument();
     expect(within(rows[2]).getByText('summarise')).toBeInTheDocument();
-    expect(
-      screen.getByText('The skills your agents use most come first.', {
-        exact: false,
-      }),
-    ).toHaveTextContent(
-      'The skills your agents use most come first. 3 skills from 2 sources in total.',
-    );
   });
 
   it('matches an agent that writes the repository another way', async () => {
@@ -177,6 +174,68 @@ describe('CustomizeSkillsPanel', () => {
     await renderPanel('zzz');
 
     expect(screen.getByText('No skills match “zzz”.')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeSkillsPanel at 3 skills and at 300 (T39)', () => {
+  const catalogOf = (count: number): SkillCatalog => ({
+    ...loaded,
+    skills: Array.from({ length: count }, (_, index) =>
+      skill(`skill-${String(index).padStart(3, '0')}`),
+    ),
+  });
+
+  beforeEach(() => {
+    mockAgentSkillIds = [];
+    mockRepositories = [REPO];
+  });
+
+  it('shows a short catalog whole, with no paging and no ranking note', async () => {
+    mockCatalog = catalogOf(3);
+    await renderPanel();
+
+    expect(listedRows()).toHaveLength(3);
+    expect(
+      screen.queryByRole('button', { name: /Show .* more/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/use most come first/)).not.toBeInTheDocument();
+  });
+
+  it('pages a long catalog, with the ranking note over it', async () => {
+    mockCatalog = catalogOf(300);
+    await renderPanel();
+
+    expect(listedRows()).toHaveLength(SKILL_CARDS_SHOWN);
+    expect(
+      screen.getByText(`${SKILL_CARDS_SHOWN} skills shown, 276 more`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('The skills your agents use most come first.', {
+        exact: false,
+      }),
+    ).toHaveTextContent(
+      'The skills your agents use most come first. 300 skills from 1 source in total.',
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: `Show ${SKILL_CARDS_SHOWN} more skills`,
+      }),
+    );
+
+    expect(listedRows()).toHaveLength(2 * SKILL_CARDS_SHOWN);
+  });
+
+  it('pages the matches of a search from the first page', async () => {
+    mockCatalog = catalogOf(300);
+    // "skill-1" matches skill-100 to skill-199: 100 cards.
+    await renderPanel('skill-1');
+
+    expect(listedRows()).toHaveLength(SKILL_CARDS_SHOWN);
+    expect(
+      screen.getByText(`${SKILL_CARDS_SHOWN} skills shown, 76 more`),
+    ).toBeInTheDocument();
   });
 });
 

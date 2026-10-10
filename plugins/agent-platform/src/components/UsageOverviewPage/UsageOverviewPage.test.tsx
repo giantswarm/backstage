@@ -5,7 +5,10 @@ import type { LlmUsage } from '../../lib/llmUsage';
 import type { LlmUsageViewModel } from '../../hooks/useLlmUsageView';
 import { UsageOverviewPage } from './UsageOverviewPage';
 
-/** Enough of an `LlmUsage` for the tiles and the two breakdown cards. */
+/**
+ * Enough of an `LlmUsage` for the tiles, the token trend, the top-agents card
+ * and the health card.
+ */
 function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
   return {
     windowDays: 30,
@@ -57,6 +60,16 @@ function usage(overrides: Partial<LlmUsage['totals']> = {}): LlmUsage {
         sharePct: 100,
       },
     ],
+    tokensPerDay: { rows: [], series: [] },
+    reliability: {
+      totalRequests: 1_234,
+      errorRequests: 5,
+      errorRatePct: 0.4,
+      rateLimited: 12,
+      p50Seconds: 1.8,
+      p95Seconds: 7.2,
+      outputTokensPerSecond: 86,
+    },
     unpricedModels: [],
   } as unknown as LlmUsage;
 }
@@ -125,8 +138,11 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-function renderPage(path = '/agent-platform/usage/overview') {
-  return renderInTestApp(<UsageOverviewPage />, {
+function renderPage(
+  path = '/agent-platform/usage/overview',
+  sections?: React.ReactNode[],
+) {
+  return renderInTestApp(<UsageOverviewPage sections={sections} />, {
     initialRouteEntries: [path],
     mountedRoutes: { '/agent-platform/usage': usageRouteRef },
   });
@@ -146,13 +162,49 @@ describe('UsageOverviewPage', () => {
     renderPage();
 
     expect(await screen.findByText('Spend')).toBeInTheDocument();
-    // The tile, and the by-model row that carries the same total.
-    expect(screen.getAllByText('$10.00').length).toBeGreaterThan(0);
-    // spendChangePct(10, 8) = +25% against the previous window.
-    expect(screen.getByText('▲ 25% vs previous 30 days')).toBeInTheDocument();
+    expect(screen.getByText('$10.00')).toBeInTheDocument();
     expect(screen.getByText('5.0M')).toBeInTheDocument();
     expect(screen.getByText('Active agents')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
+  });
+
+  it('carries exactly one spend number, a teaser pointing to Cost', async () => {
+    // T35: money has one home, the Cost tab. The Overview keeps the total as
+    // a teaser — no change against the previous window, no breakdown.
+    view.usage = usage();
+
+    renderPage();
+
+    expect(await screen.findByText('$10.00')).toBeInTheDocument();
+    expect(screen.queryByText(/vs previous/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'see Cost' })).toHaveAttribute(
+      'href',
+      '/agent-platform/usage/cost',
+    );
+    // No other money on the page: not the per-agent or per-model spend.
+    expect(screen.queryByText('$8.00')).toBeNull();
+    expect(screen.queryByText('$2.00')).toBeNull();
+    expect(screen.queryByText('By model')).toBeNull();
+  });
+
+  it('leaves the unpriced-models warning to the Cost tab', async () => {
+    view.usage = {
+      ...usage(),
+      unpricedModels: [
+        {
+          id: 'mystery',
+          requestModel: 'mystery',
+          responseModel: 'mystery',
+          status: 'Missing',
+          lookups: 3,
+        },
+      ],
+    } as unknown as LlmUsage;
+
+    renderPage();
+
+    expect(await screen.findByText('Spend')).toBeInTheDocument();
+    expect(screen.queryByText(/no usable price/)).toBeNull();
   });
 
   it('shows the reader their own session count beside the platform figures', async () => {
@@ -171,15 +223,6 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText('Your sessions')).toBeNull();
   });
 
-  it('shows no delta without a previous window to compare against', async () => {
-    view.usage = usage({ previousCostUsd: undefined });
-
-    renderPage();
-
-    expect((await screen.findAllByText('$10.00')).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/vs previous/)).toBeNull();
-  });
-
   it('converts the spend to the installation currency and labels it estimated', async () => {
     // O3/G19: convert via the per-installation currency config where set.
     currencyFor = { gazelle: { currency: { code: 'EUR', usdRate: 0.5 } } };
@@ -187,19 +230,46 @@ describe('UsageOverviewPage', () => {
     renderPage();
 
     expect(await screen.findByText('Spend (estimated)')).toBeInTheDocument();
-    // The tile, and conceivably a breakdown row that converts to the same
-    // figure — both must be euros.
-    expect(screen.getAllByText('€5.00').length).toBeGreaterThan(0);
+    expect(screen.getByText('€5.00')).toBeInTheDocument();
     expect(screen.queryByText('$10.00')).toBeNull();
   });
 
-  it('renders the per-agent and per-model breakdowns', async () => {
+  it('ranks the top agents by model calls, not by spend', async () => {
     renderPage();
 
     expect(await screen.findByText('Top agents')).toBeInTheDocument();
     expect(screen.getByText('Release Notes Writer')).toBeInTheDocument();
-    expect(screen.getByText('By model')).toBeInTheDocument();
-    expect(screen.getByText('sonnet-4-5')).toBeInTheDocument();
+    expect(screen.getByText('1,000')).toBeInTheDocument();
+    // 1,000 of 1,234 calls.
+    expect(
+      screen.getByRole('img', {
+        name: 'Release Notes Writer: 81% of model calls',
+      }),
+    ).toBeInTheDocument();
+    // The per-model breakdown is the Cost tab's.
+    expect(screen.queryByText('sonnet-4-5')).toBeNull();
+  });
+
+  it('shows the token trend and the gateway health that used to be Technical details', async () => {
+    renderPage();
+
+    expect(
+      await screen.findByText('Tokens per day, by type'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Gateway health')).toBeInTheDocument();
+    expect(screen.getByText('Call duration p95')).toBeInTheDocument();
+    expect(screen.queryByText(/Technical details/)).toBeNull();
+  });
+
+  it('renders the muster-contributed section below the gateway figures', async () => {
+    renderPage('/agent-platform/usage/overview', [
+      <div key="mcp">contributed tool-call section</div>,
+    ]);
+
+    expect(
+      await screen.findByText('contributed tool-call section'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Gateway health')).toBeInTheDocument();
   });
 
   it('reads the window from the URL', async () => {
@@ -246,7 +316,9 @@ describe('UsageOverviewPage', () => {
       expect(screen.queryByText('Top agents')).toBeNull();
     });
 
-    it('shows the reported cost only when a runtime reported one', async () => {
+    it('shows no cost even when a runtime reported one', async () => {
+      // T35: the reported cost is the reader's own — its home is Your
+      // sessions (and the Cost tab's gateway-less state), not the Overview.
       sessionUsageState.usage = sessionUsage({
         totals: {
           ...sessionUsage().totals,
@@ -256,16 +328,20 @@ describe('UsageOverviewPage', () => {
 
       renderPage();
 
-      expect(await screen.findByText('Reported cost')).toBeInTheDocument();
-      expect(screen.getByText('$12.50')).toBeInTheDocument();
+      expect(await screen.findByText('Your sessions')).toBeInTheDocument();
+      expect(screen.queryByText('Reported cost')).toBeNull();
+      expect(screen.queryByText('$12.50')).toBeNull();
     });
 
-    it('omits the reported-cost tile when no runtime reported one', async () => {
-      renderPage();
+    it('still renders the muster-contributed section', async () => {
+      // Its data source (muster's own metrics) is independent of the gateway's.
+      renderPage('/agent-platform/usage/overview', [
+        <div key="mcp">contributed tool-call section</div>,
+      ]);
 
-      expect(await screen.findByText('Your sessions')).toBeInTheDocument();
-      // "Not reported" is not "$0.00".
-      expect(screen.queryByText('Reported cost')).toBeNull();
+      expect(
+        await screen.findByText('contributed tool-call section'),
+      ).toBeInTheDocument();
     });
 
     it('keeps the plain unavailable state when kagent is absent too', async () => {

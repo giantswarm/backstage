@@ -4,6 +4,8 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  fieldErrorProps,
+  useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -142,6 +144,7 @@ export function NewConnectorSignInPage() {
     authAdvisories,
     detailsErrors,
     validationErrors,
+    fieldErrors,
     definition,
     registeredName,
     markSaved,
@@ -173,6 +176,13 @@ export function NewConnectorSignInPage() {
   const authErrors = validationErrors.filter(
     error => !detailsErrors.includes(error),
   );
+  // The own-account fields all sit in the Advanced disclosure.
+  const hasAdvancedProblem = Boolean(
+    fieldErrors.issuer ||
+    fieldErrors.authorizationEndpoint ||
+    fieldErrors.tokenEndpoint ||
+    fieldErrors.clientSecretName,
+  );
 
   const isEdit = Boolean(registeredName);
   const registration = useRegisterMcpServer();
@@ -182,13 +192,16 @@ export function NewConnectorSignInPage() {
     ? mutationErrorMessage(registration.error)
     : undefined;
 
-  const [showValidation, setShowValidation] = useState(false);
+  // Each field shows its own problem once a registration was blocked, and the
+  // focus moves to the first one.
+  const validation = useFieldValidation();
+  const { reveal, errorFor } = validation;
   const authErrorCount = authErrors.length;
   const installation = state.installation;
   const authMode = state.authMode;
   const onRegister = useCallback(() => {
     if (authErrorCount > 0) {
-      setShowValidation(true);
+      reveal();
       return;
     }
     register(
@@ -205,6 +218,7 @@ export function NewConnectorSignInPage() {
     );
   }, [
     authErrorCount,
+    reveal,
     register,
     definition,
     installation,
@@ -304,13 +318,20 @@ export function NewConnectorSignInPage() {
               {callbackUrl}
             </Text>
           )}
+          {/* Remounted on each blocked attempt, open when a field inside
+              has a problem: a collapsed panel unmounts its fields, and the
+              one that says what is wrong must be on screen. */}
           <DisclosureAccordion
+            key={validation.attempt}
             summary={
               <span className={classes.disclosureSummary}>
                 Advanced: sign-in settings for apps muster can&apos;t look up
               </span>
             }
-            defaultExpanded={hasAdvancedAuthorizationServer(state)}
+            defaultExpanded={
+              hasAdvancedAuthorizationServer(state) ||
+              (validation.shown && hasAdvancedProblem)
+            }
           >
             <div className={classes.disclosureBody}>
               <Text variant="body-small" color="secondary">
@@ -326,6 +347,7 @@ export function NewConnectorSignInPage() {
                 onChange={setIssuer}
                 placeholder="https://auth.example.com"
                 description="The address of the app's sign-in service. Every setting below needs this one filled in."
+                {...fieldErrorProps(errorFor(fieldErrors.issuer))}
               />
               <TextField
                 label="Permissions to ask for (scopes)"
@@ -347,6 +369,9 @@ export function NewConnectorSignInPage() {
                 onChange={setAuthorizationEndpoint}
                 placeholder="https://github.com/login/oauth/authorize"
                 description="Where people are sent to sign in. Fill it in together with the token address below, or leave both empty."
+                {...fieldErrorProps(
+                  errorFor(fieldErrors.authorizationEndpoint),
+                )}
               />
               <TextField
                 label="Token address (token endpoint)"
@@ -355,6 +380,7 @@ export function NewConnectorSignInPage() {
                 onChange={setTokenEndpoint}
                 placeholder="https://github.com/login/oauth/access_token"
                 description="Where muster picks up the result of a sign-in. Fill it in together with the sign-in page address."
+                {...fieldErrorProps(errorFor(fieldErrors.tokenEndpoint))}
               />
               <div
                 className={classes.fieldGroup}
@@ -384,6 +410,7 @@ export function NewConnectorSignInPage() {
                   onChange={setClientSecretName}
                   placeholder="github-oauth-client"
                   description="The name of the Kubernetes Secret, not its contents."
+                  {...fieldErrorProps(errorFor(fieldErrors.clientSecretName))}
                 />
                 <TextField
                   label="Secret namespace"
@@ -464,6 +491,7 @@ export function NewConnectorSignInPage() {
                 ? "The region in the server's URL — the endpoint checks the signature against it."
                 : authFields.sigv4.reason
             }
+            {...fieldErrorProps(errorFor(fieldErrors.sigv4Region))}
           />
           <TextField
             label="Signing service"
@@ -500,11 +528,11 @@ export function NewConnectorSignInPage() {
           context="Adding the connector runs live through muster, which needs a live session."
         />
       )}
-      {showValidation && authErrors.length > 0 && (
+      {validation.shown && fieldErrors.transport && (
         <Alert
           status="danger"
           title="Please fix the following before continuing"
-          description={authErrors.join('. ')}
+          description={fieldErrors.transport}
         />
       )}
       {registrationError && (

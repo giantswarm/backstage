@@ -28,18 +28,26 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({ isLoading: false }),
 }));
 jest.mock('../InstallationSelect', () => ({
-  InstallationSelect: function MockInstallationSelect() {
+  InstallationSelect: function MockInstallationSelect({
+    error,
+  }: {
+    error?: string;
+  }) {
     const { state, setInstallation } = useNewAgentForm();
     useEffect(() => {
       if (!state.installation) {
         setInstallation('gazelle');
       }
     }, [state.installation, setInstallation]);
-    return <p>installation select</p>;
+    return <p>installation select{error && `: ${error}`}</p>;
   },
 }));
 jest.mock('../ModelConfigPicker', () => ({
-  ModelConfigPicker: function MockModelConfigPicker() {
+  ModelConfigPicker: function MockModelConfigPicker({
+    error,
+  }: {
+    error?: string;
+  }) {
     const { state, selectModelConfig } = useNewAgentForm();
     useEffect(() => {
       if (
@@ -54,7 +62,7 @@ jest.mock('../ModelConfigPicker', () => ({
         );
       }
     }, [state.installation, state.modelConfigName, selectModelConfig]);
-    return <p>model picker</p>;
+    return <p>model picker{error && `: ${error}`}</p>;
   },
 }));
 jest.mock('../HarnessPicker', () => ({
@@ -135,7 +143,10 @@ describe('NewAgentPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(moreOptions().open).toBe(true);
-    expect(screen.getByText(/Select a model/)).toBeInTheDocument();
+    // The picker itself carries the problem, inside the opened disclosure.
+    expect(
+      screen.getByText('model picker: Select a model'),
+    ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -161,9 +172,12 @@ describe('NewAgentPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(moreOptions().open).toBe(true);
-    expect(
-      screen.getByText(/Technical name must be lowercase letters/),
-    ).toBeInTheDocument();
+    // The field says what is wrong, right under it, and takes the focus.
+    expect(technicalName).toHaveAttribute('aria-invalid', 'true');
+    expect(technicalName).toHaveAccessibleDescription(
+      expect.stringContaining('Technical name must be lowercase letters'),
+    );
+    expect(technicalName).toHaveFocus();
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
@@ -174,5 +188,27 @@ describe('NewAgentPage', () => {
 
     expect(screen.getByText(/Name is required/)).toBeInTheDocument();
     expect(moreOptions().open).toBe(false);
+  });
+
+  it('marks the empty Name itself, focuses it, and shows no summary box', async () => {
+    await renderPage();
+
+    const name = screen.getByLabelText(/^Name/);
+    expect(name).not.toHaveAttribute('aria-invalid');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Name is required'),
+    );
+    expect(name).toHaveFocus();
+    expect(
+      screen.queryByText(/Please fix the following/),
+    ).not.toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+
+    // Fixing it clears the field's error at once.
+    await userEvent.type(name, 'Support triage');
+    expect(name).not.toHaveAttribute('aria-invalid');
   });
 });

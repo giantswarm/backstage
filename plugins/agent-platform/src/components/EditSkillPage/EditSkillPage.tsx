@@ -12,6 +12,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
 import {
   canonicalSkillId,
+  isSkillContentReadable,
   parseSkillDetailPath,
   skillDetailPath,
 } from '../../lib/skills';
@@ -25,7 +26,9 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
  * (like its detail page), its SKILL.md read at the commit the catalog pinned
  * (`GET /agent-skills/content`), and then `AddSkillPage` takes over in edit
  * mode — submitting opens a pull request that rewrites the skill's SKILL.md,
- * as the signed-in person.
+ * as the signed-in person. A skill whose SKILL.md the portal could not read
+ * (`contentReadable: false` in the catalog) is not read again here: the page
+ * says the portal cannot read its source, and there is no form.
  */
 export function EditSkillPage() {
   const splat = useParams()['*'] ?? '';
@@ -42,7 +45,10 @@ export function EditSkillPage() {
       candidate => canonicalSkillId(candidate) === wanted,
     );
   }, [catalog.skills, target]);
-  const { content, isLoading, error } = useSkillContent(skill);
+  const readable = skill ? isSkillContentReadable(skill) : false;
+  const { content, isLoading, error } = useSkillContent(
+    readable ? skill : undefined,
+  );
 
   if (!target) {
     return <Navigate to={`${SHELL_CUSTOMIZE_PATH}/skills`} replace />;
@@ -59,7 +65,15 @@ export function EditSkillPage() {
   }
 
   let body;
-  if (catalog.isLoading || isLoading) {
+  if (skill && !readable) {
+    body = (
+      <Alert
+        status="info"
+        title="The portal cannot read this skill's source"
+        description="Its SKILL.md could not be read with the portal's access to the repository, so it cannot be edited here. Change it in the repository instead."
+      />
+    );
+  } else if (catalog.isLoading || isLoading) {
     body = <LoadingIndicator label="Reading the skill…" />;
   } else if (error) {
     body = (

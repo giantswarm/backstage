@@ -24,10 +24,14 @@ jest.mock('./agentSkills/discoverAgentSkillsFromGit', () => ({
   discoverAgentSkillsFromGit: jest.fn(),
 }));
 jest.mock('./agentSkills/readSkillContent', () => ({
+  ...jest.requireActual('./agentSkills/readSkillContent'),
   readSkillContentFromGitHub: jest.fn(),
   readSkillContentFromGit: jest.fn(),
 }));
-import { discoverAgentSkills } from './agentSkills/discoverAgentSkills';
+import {
+  discoverAgentSkills,
+  GitHubApiError,
+} from './agentSkills/discoverAgentSkills';
 import {
   readSkillContentFromGit,
   readSkillContentFromGitHub,
@@ -318,11 +322,32 @@ describe('GET /installations/versions', () => {
 });
 
 describe('GET /agent-skills', () => {
-  const discovered = {
-    skills: [],
+  const COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
+  const listing = {
+    skills: [
+      {
+        name: 'notes',
+        description: 'How to take notes.',
+        repoUrl: 'https://github.com/giantswarm/other-skills',
+        path: 'notes',
+        ref: 'main',
+        commit: COMMIT,
+        contentReadable: true,
+      },
+    ],
     ref: 'main',
-    commit: 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1',
+    commit: COMMIT,
     truncated: false,
+  };
+  const discovered = {
+    ...listing,
+    contents: new Map([['notes', '---\nname: notes\n---\nWrite it down.']]),
+  };
+  /** What the route answers: the listing, when it was read, not the files. */
+  const answered = {
+    ...listing,
+    readAt: expect.any(String),
+    stale: false,
   };
 
   /** An app with a GitHub and a lab-local git skill source configured. */
@@ -377,7 +402,7 @@ describe('GET /agent-skills', () => {
       .query({ repoUrl: 'https://github.com/giantswarm/other-skills' });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(discovered);
+    expect(response.body).toEqual(answered);
     expect(discoverAgentSkills).toHaveBeenCalledWith(
       expect.objectContaining({
         repoUrl: 'https://github.com/giantswarm/other-skills',
@@ -395,7 +420,7 @@ describe('GET /agent-skills', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(discovered);
+    expect(response.body).toEqual(answered);
     expect(discoverAgentSkillsFromGit).toHaveBeenCalledWith({
       repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills.git',
       ref: 'main',
@@ -438,6 +463,51 @@ describe('GET /agent-skills', () => {
     expect(response.status).toBe(400);
     expect(discoverAgentSkills).not.toHaveBeenCalled();
     expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+  });
+
+  it('answers a repeated listing from memory, not from GitHub', async () => {
+    const app = await buildDiscoveryApp();
+    const query = { repoUrl: 'https://github.com/giantswarm/skills' };
+
+    await request(app).get('/agent-skills').query(query);
+    const again = await request(app).get('/agent-skills').query(query);
+
+    expect(again.status).toBe(200);
+    expect(again.body).toEqual(answered);
+    expect(discoverAgentSkills).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves the last listing, marked stale, when GitHub refuses with a rate limit', async () => {
+    const start = Date.UTC(2026, 9, 10, 12, 0);
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const app = await buildDiscoveryApp();
+      const query = { repoUrl: 'https://github.com/giantswarm/skills' };
+      await request(app).get('/agent-skills').query(query);
+
+      clock.mockReturnValue(start + 60 * 60 * 1000);
+      jest
+        .mocked(discoverAgentSkills)
+        .mockRejectedValue(
+          new GitHubApiError(403, 'rate limit used up', { retryAt: undefined }),
+        );
+      const response = await request(app).get('/agent-skills').query(query);
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        ...listing,
+        readAt: new Date(start).toISOString(),
+        stale: true,
+      });
+      // The revalidation was handed what it can reuse.
+      expect(jest.mocked(discoverAgentSkills).mock.calls[1][0]).toEqual(
+        expect.objectContaining({
+          previous: expect.objectContaining({ commit: COMMIT }),
+        }),
+      );
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("forwards the git provider's refusal with its upstream status", async () => {
@@ -579,6 +649,48 @@ describe('GET /agent-skills/content', () => {
     expect(response.status).toBe(400);
     expect(readSkillContentFromGitHub).not.toHaveBeenCalled();
     expect(readSkillContentFromGit).not.toHaveBeenCalled();
+  });
+
+  it('answers a SKILL.md the listing already read from memory, without reading it again', async () => {
+    jest
+      .mocked(discoverAgentSkills)
+      .mockReset()
+      .mockResolvedValue({
+        skills: [
+          {
+            name: 'notes',
+            description: 'How to take notes.',
+            repoUrl: 'https://github.com/giantswarm/skills',
+            path: 'notes',
+            ref: 'main',
+            commit: COMMIT,
+            contentReadable: true,
+          },
+        ],
+        ref: 'main',
+        commit: COMMIT,
+        truncated: false,
+        contents: new Map([
+          [
+            'notes',
+            '---\nname: notes\ndescription: How to take notes.\n---\n\nWrite things down.\n',
+          ],
+        ]),
+      });
+    const app = await buildContentApp();
+    await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'https://github.com/giantswarm/skills' });
+
+    const response = await request(app).get('/agent-skills/content').query({
+      repoUrl: 'https://github.com/GiantSwarm/skills.git',
+      path: 'notes',
+      commit: COMMIT,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(content);
+    expect(readSkillContentFromGitHub).not.toHaveBeenCalled();
   });
 
   it("forwards a provider's refusal with its upstream status", async () => {
@@ -759,9 +871,6 @@ describe('POST /agent-skills/pull-request', () => {
   });
 
   it("forwards GitHub's refusal with its upstream status", async () => {
-    const { GitHubApiError } = jest.requireActual(
-      './agentSkills/discoverAgentSkills',
-    );
     jest
       .mocked(createSkillPullRequest)
       .mockRejectedValue(

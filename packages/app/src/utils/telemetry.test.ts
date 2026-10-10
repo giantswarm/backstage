@@ -583,7 +583,6 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/usage/cost',
       '/agent-platform/usage/conversations',
       '/agent-platform/usage/mcp',
-      '/agent-platform/usage/technical',
       // Pre-existing gaps in this list, closed while adding the one above.
       '/agent-platform/models',
       '/agent-platform/models/serving',
@@ -631,7 +630,6 @@ describe('Usage sub-tabs', () => {
     ['cost', '/agent-platform/usage/cost'],
     ['conversations', '/agent-platform/usage/conversations'],
     ['mcp', '/agent-platform/usage/mcp'],
-    ['technical', '/agent-platform/usage/technical'],
   ])('reports the %s view under page Usage', (view, path) => {
     expect(getTelemetryPageViewPayload(path)).toEqual({
       page: 'Usage',

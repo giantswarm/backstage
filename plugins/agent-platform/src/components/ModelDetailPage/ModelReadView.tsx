@@ -19,6 +19,7 @@ import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { CostPerDayCard, KpiTile, KpiTileGrid } from '../LlmUsage';
+import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 import {
   agentsUsingModel,
   modelConfigIdOf,
@@ -176,60 +177,67 @@ function UsedBySection({
     );
   } else {
     body = (
-      <ul className={classes.agentList} aria-label="Agents using this model">
-        {agents.map(agent => {
-          const href = agentDetailRoute?.({
-            installation: agent.installation,
-            namespace: agent.namespace,
-            name: agent.technicalName,
-          });
-          const spent = slice?.byAgent.get(
-            `${agent.namespace}/${agent.technicalName}`,
-          );
-          return (
-            <li key={agent.id} className={classes.agentRow}>
-              <AgentAvatar
-                size="small"
-                purpose="decoration"
-                name={agent.name}
-                src=""
-              />
-              <span className={classes.agentName}>
-                {href ? (
-                  <Link to={href}>
+      <ShowMore items={agents} initial={USED_BY_ROWS} noun="agent" revealAll>
+        {shown => (
+          <ul
+            className={classes.agentList}
+            aria-label="Agents using this model"
+          >
+            {shown.map(agent => {
+              const href = agentDetailRoute?.({
+                installation: agent.installation,
+                namespace: agent.namespace,
+                name: agent.technicalName,
+              });
+              const spent = slice?.byAgent.get(
+                `${agent.namespace}/${agent.technicalName}`,
+              );
+              return (
+                <li key={agent.id} className={classes.agentRow}>
+                  <AgentAvatar
+                    size="small"
+                    purpose="decoration"
+                    name={agent.name}
+                    src=""
+                  />
+                  <span className={classes.agentName}>
+                    {href ? (
+                      <Link to={href}>
+                        <Text
+                          as="span"
+                          variant="body-medium"
+                          style={{ color: 'inherit' }}
+                        >
+                          {agent.name}
+                        </Text>
+                      </Link>
+                    ) : (
+                      <Text variant="body-medium">{agent.name}</Text>
+                    )}
+                    {agent.description && (
+                      <Text variant="body-small" color="secondary">
+                        {agent.description}
+                      </Text>
+                    )}
+                  </span>
+                  {slice && (
                     <Text
-                      as="span"
-                      variant="body-medium"
-                      style={{ color: 'inherit' }}
+                      variant="body-small"
+                      color="secondary"
+                      className={classes.agentCost}
                     >
-                      {agent.name}
+                      {formatMoney(
+                        !spent || spent.calls === 0 ? 0 : spent.costUsd,
+                        currency,
+                      )}
                     </Text>
-                  </Link>
-                ) : (
-                  <Text variant="body-medium">{agent.name}</Text>
-                )}
-                {agent.description && (
-                  <Text variant="body-small" color="secondary">
-                    {agent.description}
-                  </Text>
-                )}
-              </span>
-              {slice && (
-                <Text
-                  variant="body-small"
-                  color="secondary"
-                  className={classes.agentCost}
-                >
-                  {formatMoney(
-                    !spent || spent.calls === 0 ? 0 : spent.costUsd,
-                    currency,
                   )}
-                </Text>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </ShowMore>
     );
   }
 

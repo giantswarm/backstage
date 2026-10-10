@@ -1,4 +1,11 @@
-import { ReactNode, useMemo } from 'react';
+import {
+  ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
@@ -7,6 +14,7 @@ import {
   SessionTimeline as Timeline,
   TimelineItem,
 } from '../../lib/kagentTimeline';
+import { countNoun, INITIAL_ROWS } from '../../lib/toolset';
 import { TimelineEntry } from './TimelineEntry';
 import { WorkSummary } from './WorkSummary';
 import {
@@ -107,6 +115,26 @@ const STREAM_LOST_LABELS: Record<StreamLossPhase, string> = {
     'The live stream was lost. Still working; the reply appears when the turn finishes.',
 };
 
+/**
+ * How many of the newest turns the timeline renders, and how many each *Show
+ * earlier activity* press adds above them (T39). The backend reads up to 1000
+ * tasks, and a long agentic session reaches hundreds of turns; the reader is
+ * almost always here for the end of it. Paged rather than revealed all at
+ * once, so going back a little never mounts the whole history.
+ */
+export const RECENT_TURNS = INITIAL_ROWS;
+
+/** A rendered turn, by its position in the session's turns. */
+function findTurn(
+  container: HTMLElement | null,
+  index: number,
+): HTMLElement | null {
+  return (
+    container?.querySelector<HTMLElement>(`[data-turn-index="${index}"]`) ??
+    null
+  );
+}
+
 /** `HH:MM` in the reader's locale — the resolution a stall is worth stating at. */
 function formatClockTime(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString(undefined, {
@@ -203,6 +231,37 @@ export function SessionTimeline({
 
   const turns = useMemo(() => groupIntoTurns(timeline.items), [timeline.items]);
 
+  // The window counts from the newest turn, so a turn arriving while the agent
+  // works joins it at the bottom and the oldest shown one leaves at the top —
+  // the DOM stays bounded however long the session runs.
+  const [windowSize, setWindowSize] = useState(RECENT_TURNS);
+  const firstShown = Math.max(0, turns.length - windowSize);
+  const listRef = useRef<HTMLDivElement>(null);
+  // The turn that was first on screen when earlier ones were asked for, and
+  // where it sat in the viewport: the reveal inserts above it, and the reader
+  // keeps their place instead of being thrown to the oldest revealed turn.
+  const scrollAnchor = useRef<{ index: number; top: number } | null>(null);
+
+  const showEarlier = useCallback(() => {
+    const anchor = findTurn(listRef.current, firstShown);
+    scrollAnchor.current = anchor
+      ? { index: firstShown, top: anchor.getBoundingClientRect().top }
+      : null;
+    setWindowSize(size => size + RECENT_TURNS);
+  }, [firstShown]);
+
+  useLayoutEffect(() => {
+    const anchor = scrollAnchor.current;
+    scrollAnchor.current = null;
+    if (!anchor) return;
+    const element = findTurn(listRef.current, anchor.index);
+    if (!element) return;
+    // The page scrolls the document (SessionDetailPage), and measuring after
+    // layout folds in whatever the browser's own scroll anchoring already did.
+    const shift = element.getBoundingClientRect().top - anchor.top;
+    if (shift !== 0) window.scrollBy(0, shift);
+  }, [windowSize]);
+
   // Rendered in both branches below. An unreadable session produces *no* items
   // and a non-zero `skippedMessages`, so keeping this inside the populated branch
   // meant the one case the warning exists for — every history entry failing to
@@ -291,10 +350,27 @@ export function SessionTimeline({
   );
 
   return (
-    <Flex direction="column" gap="3">
+    <Flex ref={listRef} direction="column" gap="3">
       {skippedAlert}
 
-      {turns.map((turn, turnIndex) => {
+      {/* Nothing at all for a session within the window: a short session is
+          read whole, with no paging chrome over it. */}
+      {firstShown > 0 && (
+        <Flex align="center" gap="2" data-testid="timeline-earlier-activity">
+          <Button variant="tertiary" size="small" onPress={showEarlier}>
+            Show earlier activity
+          </Button>
+          <Text variant="body-x-small" color="secondary">
+            {countNoun(firstShown, 'earlier turn')} not shown
+          </Text>
+        </Flex>
+      )}
+
+      {turns.slice(firstShown).map((turn, offset) => {
+        // The position in the whole session, not in the window: keys, the
+        // newest-turn test and the scroll anchor all have to survive the
+        // window moving.
+        const turnIndex = firstShown + offset;
         const isLastTurn = turnIndex === turns.length - 1;
         const segments = segmentTurn(turn.items);
         // The agent's side of the turn opens with its name and face, once —
@@ -348,7 +424,12 @@ export function SessionTimeline({
           // deliberately emits two turns with the same index if a task index ever
           // repeats non-contiguously, and a duplicate key would let React
           // reconcile one turn's entries under the other's timestamp.
-          <Flex key={turnIndex} direction="column" gap="3">
+          <Flex
+            key={turnIndex}
+            direction="column"
+            gap="3"
+            data-turn-index={turnIndex}
+          >
             {/* Absolute, not relative: every turn of a session usually falls on
                 the same day, so the relative form printed "1 day ago" three times
                 and hid the progression entirely. An exact time shows how the

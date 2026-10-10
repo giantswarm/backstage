@@ -1,16 +1,14 @@
-import { Skeleton } from '@backstage/ui';
+import { Link, Skeleton } from '@backstage/ui';
 import type { LlmUsage } from '../../../lib/llmUsage';
-import { spendChangePct } from '../../../lib/usageKpis';
 import {
   formatCount,
   formatMoney,
-  formatPercent,
   formatTokens,
   isConvertedCurrency,
   USD,
   type Currency,
 } from '../../../lib/formatNumbers';
-import { KpiDelta, KpiTile, KpiTileGrid } from '../KpiTile';
+import { KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type UsageKpiSessions = {
   /** The signed-in user's session count, from the kagent fan-out. */
@@ -31,12 +29,19 @@ export type UsageKpiTilesProps = {
    * page has one to offer. Absent on a portal without kagent.
    */
   sessions?: UsageKpiSessions;
+  /** The Cost tab, which the spend teaser points to. */
+  costHref?: string;
 };
 
 /**
  * The Usage overview's headline tiles: spend, tokens, the reader's own
  * sessions, and the active agents — the shape of the prototype's KPI row, on
  * the figures the platform actually has.
+ *
+ * **Spend is a teaser here, nothing more.** Money has one home, the Cost tab
+ * (see `design-context/implementation/usage-metrics-ia.md`): this tile is the
+ * Overview's one spend number, without the change against the previous window
+ * or any breakdown, and it points there.
  *
  * Scopes are deliberately explicit per tile rather than uniform: spend,
  * tokens and agents are **everyone's**, from the gateway; the session count
@@ -51,15 +56,10 @@ export function UsageKpiTiles({
   currency = USD,
   windowDays,
   sessions,
+  costHref,
 }: UsageKpiTilesProps) {
   const { totals } = usage;
   const converted = isConvertedCurrency(currency);
-
-  const delta = spendChangePct(totals.costUsd, totals.previousCostUsd);
-  const deltaLabel =
-    delta === undefined
-      ? undefined
-      : `${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} vs previous ${windowDays} days`;
 
   const windowNote = `the last ${windowDays} days`;
 
@@ -73,8 +73,18 @@ export function UsageKpiTiles({
             : `What the gateway priced every model call at as it happened, summed over ${windowNote}. A model missing from its price catalogue contributes nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}
-        beside={deltaLabel && <KpiDelta>{deltaLabel}</KpiDelta>}
-        sub="Every user's model calls, as the gateway priced them."
+        sub={
+          costHref ? (
+            <>
+              every user's —{' '}
+              <Link href={costHref} variant="body-small">
+                see Cost
+              </Link>
+            </>
+          ) : (
+            "every user's model calls"
+          )
+        }
       />
       <KpiTile
         label="Tokens"
