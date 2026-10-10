@@ -351,6 +351,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
+    // The shell's minimal "Profile and settings" page: who is signed in, with
+    // sign out — the rail's profile menu links here instead of the classic
+    // `/settings`. Must stay above the generic '/agent-platform' cases below,
+    // or it would report as `page: 'Agents', view: 'profile'`.
+    case pathname === '/agent-platform/profile':
+      payload = { page: 'Profile' };
+      break;
+
     // The section root renders its first tab, which is Sessions — so this is the
     // same page as '/agent-platform/sessions' above and carries the same name.
     // It moves with the tab order in `agent-platform`'s `plugin.tsx`.

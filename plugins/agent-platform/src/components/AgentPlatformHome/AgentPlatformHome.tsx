@@ -9,6 +9,8 @@ import {
 import { Box, Container, Flex, Text } from '@backstage/ui';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 
+import { makeStyles } from '@material-ui/core/styles';
+
 import { recentAgents } from '../../lib/recentAgents';
 import { sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
@@ -20,7 +22,6 @@ import {
   type AgentRow,
 } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
-import { ModelChip } from '../ModelChip';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import type {
   NewSessionComposerFooterContext,
@@ -33,6 +34,28 @@ import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { greeting } from './helpers';
+
+const useStyles = makeStyles({
+  /**
+   * Centers the whole new-session block in the content area, vertically and
+   * horizontally, as the prototype's Main artboard does. The height is the
+   * viewport less the mobile bottom bar (`--agent-shell-mobile-bar-height` is
+   * 0px on desktop and 56px + the home-indicator inset at phone width —
+   * agent-shell.css owns it), so the centered block never hides behind the
+   * bar. `min-height`, not `height`: content taller than the viewport pushes
+   * the page into normal scrolling instead of clipping at the top.
+   */
+  centered: {
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    minHeight: 'calc(100dvh - var(--agent-shell-mobile-bar-height, 0px))',
+    // JSS puts the fallback first, so browsers without dvh keep vh.
+    fallbacks: {
+      minHeight: 'calc(100vh - var(--agent-shell-mobile-bar-height, 0px))',
+    },
+  },
+});
 
 function useDisplayName(): string | undefined {
   const identityApi = useApi(identityApiRef);
@@ -55,19 +78,24 @@ function useDisplayName(): string | undefined {
 }
 
 /**
- * The field's placeholder: once an agent is chosen it names it, before that it
- * says the agent comes first.
+ * The field's placeholder: once an agent is chosen it names it; before that
+ * the artboard's "Then …" says the field is step two of the sequence the
+ * picker starts.
  */
 function promptPlaceholder(agent: AgentRow | undefined): string {
   return agent
     ? `What can ${agent.name} help you with?`
-    : 'Choose an agent first, then type your message here.';
+    : 'Then type your message here.';
 }
 
+/**
+ * Beside the picker: only the reminder that the agent is required. The model
+ * chip that used to stand here is deliberately gone from this surface — the
+ * model is the agent detail page's information, not a decision made while
+ * starting a session.
+ */
 function pickerAccessory(agent: AgentRow | undefined) {
-  return agent ? (
-    <ModelChip model={agent.model} />
-  ) : (
+  return agent ? null : (
     <Text variant="body-small" color="secondary">
       Required to start
     </Text>
@@ -85,6 +113,7 @@ export type AgentPlatformHomeProps = {
 function AgentPlatformHomeContent({
   manageAgentsHref,
 }: AgentPlatformHomeProps) {
+  const classes = useStyles();
   const displayName = useDisplayName();
   const { rows: agents, isLoading, unreachableInstallations } = useAgents();
   const { rows: sessions } = useSessions();
@@ -122,8 +151,8 @@ function AgentPlatformHomeContent({
   );
 
   return (
-    <Container py="6">
-      <Box maxWidth="720px" mx="auto">
+    <Container py="6" className={classes.centered}>
+      <Box maxWidth="720px" mx="auto" width="100%">
         <Flex direction="column" gap="6">
           <Flex direction="column" align="center" gap="2">
             <Text as="h1" variant="title-medium">
@@ -145,6 +174,9 @@ function AgentPlatformHomeContent({
               // ends in.
               titleMaxLength={SESSION_NAME_MAX_LENGTH - 1}
               composerProps={{
+                // The agent is unmistakably the first step: the picker carries
+                // the accent ring and the prompt field waits, per the artboard.
+                agentFirst: true,
                 showUnavailable: true,
                 groupByNamespace: true,
                 recentAgentIds,

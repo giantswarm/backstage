@@ -925,3 +925,77 @@ describe('NewSessionComposer installation labels', () => {
     expect(agentOptionLabel(sre, false)).toBe('SRE Agent');
   });
 });
+
+describe('NewSessionComposer agent-first', () => {
+  it('disables the prompt and Start until an agent is chosen, then releases both', async () => {
+    renderComposer({ agents: [sre, issues], agentFirst: true });
+
+    expect(field()).toBeDisabled();
+    expect(startButton()).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Choosing an agent is the first step; the message follows.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('marks the picker as the step to take while nothing is chosen', async () => {
+    const { container } = renderComposer({
+      agents: [sre, issues],
+      agentFirst: true,
+    });
+
+    const attention = container.querySelector(
+      '[class*="agentSelectAttention"]',
+    );
+    expect(attention).not.toBeNull();
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
+
+    expect(
+      container.querySelector('[class*="agentSelectAttention"]'),
+    ).toBeNull();
+  });
+
+  it('never gates a preselected agent: a defaultAgent keeps the composer open', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      agentFirst: true,
+    });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    expect(startButton()).toBeEnabled();
+  });
+
+  it('never gates a sole agent, which is preselected', async () => {
+    renderComposer({ agents: [sre], agentFirst: true });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    await userEvent.click(startButton());
+    expect(onStart).toHaveBeenCalledWith(sre, 'Check the cluster');
+  });
+
+  it('without the flag, an unchosen agent leaves the field open and is refused on submit', async () => {
+    renderComposer({ agents: [sre, issues] });
+
+    expect(field()).toBeEnabled();
+    await userEvent.type(field(), 'Check the cluster');
+    await userEvent.click(startButton());
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Choose an agent to start.',
+    );
+  });
+});

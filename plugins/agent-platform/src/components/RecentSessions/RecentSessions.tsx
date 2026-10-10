@@ -1,15 +1,7 @@
 import { ReactNode, useId, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Badge,
-  Box,
-  ButtonIcon,
-  Flex,
-  Link,
-  Skeleton,
-  Text,
-} from '@backstage/ui';
+import { Box, ButtonIcon, Flex, Link, Skeleton, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { StatusDot } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -32,6 +24,10 @@ import {
   sessionStateDotVar,
   STABLE_CLASS_NAMES,
 } from '../../lib/stableClassNames';
+
+/** The dots' tooltips and accessible names, shared with the tests. */
+export const NEEDS_INPUT_LABEL = 'Needs your input';
+export const WORKING_LABEL = 'Working';
 
 const useStyles = makeStyles({
   list: {
@@ -121,12 +117,26 @@ function SessionItem({
         aria-current={isActive ? 'page' : undefined}
       >
         <Flex align="center" gap="2">
-          {working && (
+          {/* One dot slot, Claude-style: orange when the session waits on the
+              person (the louder claim wins), blue while its agent works. The
+              states are exclusive by definition — `needsAttention` is the
+              awaiting-input states, `isWorking` everything active that isn't.
+              A dot with no visible label carries its meaning as a tooltip and
+              an accessible name. */}
+          {waiting ? (
             <StatusDot
-              tone="info"
-              aria-label="Working"
-              colorVar={sessionStateDotVar('info')}
+              tone="warning"
+              aria-label={NEEDS_INPUT_LABEL}
+              colorVar={sessionStateDotVar('warning')}
             />
+          ) : (
+            working && (
+              <StatusDot
+                tone="info"
+                aria-label={WORKING_LABEL}
+                colorVar={sessionStateDotVar('info')}
+              />
+            )
           )}
           <Box grow minWidth="0">
             <Text
@@ -144,11 +154,6 @@ function SessionItem({
               </Text>
             )}
           </Box>
-          {waiting && (
-            <Badge size="small" title="Waiting for your input">
-              Needs you
-            </Badge>
-          )}
         </Flex>
       </Link>
       {pin && (

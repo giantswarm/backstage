@@ -203,6 +203,21 @@ describe('AgentPlatformHome', () => {
     expect(mockUseCreateSession).toHaveBeenCalledWith('home');
   });
 
+  it('centers the whole block in the content area, clear of the mobile bar', async () => {
+    await render();
+
+    const wrapper = document.querySelector('[class*="centered"]');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).toContainElement(
+      screen.getByRole('heading', { level: 1, name: /Good afternoon/ }),
+    );
+    expect(wrapper).toHaveStyle({
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+    });
+  });
+
   it('says which installation scope the composer reads', async () => {
     await render();
 
@@ -269,7 +284,7 @@ describe('AgentPlatformHome', () => {
       expect(screen.getByText('Required to start')).toBeInTheDocument();
     });
 
-    it('names the chosen agent, its model and what it can use', async () => {
+    it('names the chosen agent and what it can use, without its model', async () => {
       await render();
 
       await userEvent.click(
@@ -283,7 +298,9 @@ describe('AgentPlatformHome', () => {
       expect(
         screen.getByText("You're starting a session with Research Agent."),
       ).toBeInTheDocument();
-      expect(screen.getByText('Sonnet 4.5')).toBeInTheDocument();
+      // The model chip left this surface by design: the model is the agent
+      // detail page's information, not part of starting a session.
+      expect(screen.queryByText('Sonnet 4.5')).not.toBeInTheDocument();
       expect(
         screen.getByText('Can use confluence and slack'),
       ).toBeInTheDocument();
@@ -292,6 +309,24 @@ describe('AgentPlatformHome', () => {
           name: 'Or pick one of your recent agents',
         }),
       ).not.toBeInTheDocument();
+    });
+
+    it('keeps the prompt and Start disabled until an agent is chosen', async () => {
+      await render();
+
+      const prompt = screen.getByRole('textbox', { name: 'Prompt' });
+      expect(prompt).toBeDisabled();
+      expect(prompt).toHaveAttribute(
+        'placeholder',
+        'Then type your message here.',
+      );
+      expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+
+      expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeEnabled();
     });
 
     it('groups the picker by namespace behind the recent agents', async () => {

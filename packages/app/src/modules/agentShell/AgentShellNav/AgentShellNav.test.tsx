@@ -215,32 +215,36 @@ describe('AgentShellNav', () => {
     expect(screen.getByTestId('cluster-access-connector')).toBeInTheDocument();
   });
 
-  it('puts the notification bell in the rail footer, after the bottom items', async () => {
+  it('puts exactly one notification bell in the rail footer, after the bottom items', async () => {
     await renderNav();
 
     const nav = screen.getByRole('navigation', { name: 'Main' });
-    const bell = within(nav).getByTestId('session-notifications-bell');
+    // Exactly one: the bell must never appear both as a nav item and in the
+    // footer, nor once per list.
+    const bells = within(nav).getAllByTestId('session-notifications-bell');
+    expect(bells).toHaveLength(1);
+    const bell = bells[0];
     expect(bell).toHaveAttribute('data-compact', 'false');
     const portal = within(nav).getByRole('link', { name: 'Platform Portal' });
     expect(
       portal.compareDocumentPosition(bell) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // And no second "Notifications" entry anywhere in the rail besides it.
+    expect(within(nav).getAllByText('Notifications')).toHaveLength(1);
   });
 
-  it('keeps the bell, compacted, in the collapsed rail and the mobile bar', async () => {
+  it('keeps the bell, compacted and alone, in the collapsed rail', async () => {
     await renderNav({ isPinned: false });
-    expect(screen.getByTestId('session-notifications-bell')).toHaveAttribute(
-      'data-compact',
-      'true',
-    );
+    const bells = screen.getAllByTestId('session-notifications-bell');
+    expect(bells).toHaveLength(1);
+    expect(bells[0]).toHaveAttribute('data-compact', 'true');
   });
 
-  it('shows the bell in the mobile bar', async () => {
+  it('shows exactly one bell in the mobile bar', async () => {
     await renderNav({ isMobile: true });
-    expect(screen.getByTestId('session-notifications-bell')).toHaveAttribute(
-      'data-compact',
-      'true',
-    );
+    const bells = screen.getAllByTestId('session-notifications-bell');
+    expect(bells).toHaveLength(1);
+    expect(bells[0]).toHaveAttribute('data-compact', 'true');
   });
 
   it('hides the items whose route is not bound', async () => {
@@ -344,7 +348,7 @@ describe('AgentShellNav', () => {
     expect(group.querySelector('header')?.children).toHaveLength(1);
   });
 
-  it('opens the profile menu with the user name and email, settings links and sign out', async () => {
+  it('opens the profile menu with the user name and email, settings link and sign out', async () => {
     await renderNav();
 
     const trigger = screen.getByRole('button', {
@@ -364,18 +368,11 @@ describe('AgentShellNav', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map(menuItem => menuItem.textContent),
-    ).toEqual([
-      'Profile and settings',
-      'Feature flags',
-      'Help and feedback',
-      'Sign out',
-    ]);
+    ).toEqual(['Profile and settings', 'Help and feedback', 'Sign out']);
+    // The shell's own profile page, same tab — not the classic /settings.
     expect(
       within(menu).getByRole('menuitem', { name: 'Profile and settings' }),
-    ).toHaveAttribute('href', '/settings');
-    expect(
-      within(menu).getByRole('menuitem', { name: 'Feature flags' }),
-    ).toHaveAttribute('href', '/settings/feature-flags');
+    ).toHaveAttribute('href', '/agent-platform/profile');
     const help = within(menu).getByRole('menuitem', {
       name: 'Help and feedback',
     });

@@ -7,7 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-analytics-react';
 import { kagentApiRef } from '../apis';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { sessionsQueryKey } from '../lib/queryKeys';
+import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
@@ -74,16 +74,23 @@ export function useCreateSession(
         requestId,
       );
 
-      // Not awaited with a refetch, unlike the rename: the caller navigates away
-      // from the list immediately, so forcing it to re-read now would spend a
-      // fleet-wide query on a screen nobody is looking at. Marking it stale is
-      // enough — coming back to the list refetches it.
+      return { sessionId };
+    },
+    onSuccess: (_result, { agent }) => {
+      // With the default `refetchType: 'active'`, so observers that stay
+      // mounted through the navigation — the shell rail's session history is
+      // the one that matters — re-read at once instead of waiting out their
+      // poll interval: a session started anywhere appears in the rail
+      // immediately. Deliberately not awaited (and not returned), so landing
+      // on the new conversation never waits on a fleet-wide list refetch.
       queryClient.invalidateQueries({
         queryKey: sessionsQueryKey(agent.installation),
-        refetchType: 'none',
       });
-
-      return { sessionId };
+      // The rail joins the list with the derived states; without this the new
+      // row would sit ungrouped/unmarked until the states' next poll.
+      queryClient.invalidateQueries({
+        queryKey: sessionStatesQueryKey(agent.installation),
+      });
     },
   });
 

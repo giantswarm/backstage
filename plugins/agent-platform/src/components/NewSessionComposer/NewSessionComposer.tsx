@@ -63,6 +63,18 @@ const useStyles = makeStyles(theme => ({
     maxWidth: 260,
     minWidth: 0,
   },
+  // The agent-first invitation, per the prototype's Main artboard: while no
+  // agent is chosen the picker carries an accent ring and a soft glow, so the
+  // first step is the thing that visibly asks to be pressed. The literal glow
+  // colour mirrors the artboard (#009fff at 12%); the ring itself follows the
+  // theme's accent.
+  agentSelectAttention: {
+    '& .bui-SelectTrigger': {
+      boxShadow:
+        '0 0 0 1.5px var(--bui-accent-bg, #009fff), 0 0 0 5px rgba(0, 159, 255, 0.12)',
+      borderRadius: 'var(--bui-radius-2)',
+    },
+  },
   '@global': {
     [`[role="listbox"] [data-key="${FOOTER_ACTION_ID}"]`]: {
       borderTopWidth: 1,
@@ -160,6 +172,16 @@ export type NewSessionComposerProps = {
   onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
+  /**
+   * Makes choosing the agent unmistakably the first step, per the prototype's
+   * new-session artboard: until one is chosen the picker carries an accent
+   * ring, and the prompt field and Start are disabled rather than merely
+   * refusing on submit. For surfaces without a preselected agent — the home
+   * screen. The preselected paths (a `defaultAgent`, a sole agent) are
+   * unaffected: with an agent in hand the composer behaves exactly as without
+   * this flag.
+   */
+  agentFirst?: boolean;
   /**
    * Preselected agent. The sessions list passes the last one used; the agent
    * detail page passes the agent whose page it is.
@@ -280,6 +302,7 @@ export function NewSessionComposer({
   renderFooter,
   onSelectedAgentChange,
   isLoadingAgents = false,
+  agentFirst = false,
   defaultAgent,
   collapsible = false,
   autoFocus = false,
@@ -478,6 +501,10 @@ export function NewSessionComposer({
     setSelectedId(agent.id);
   }, []);
 
+  // Agent-first and nothing chosen yet: the prompt field and Start wait,
+  // visibly, for the picker.
+  const awaitingAgent = agentFirst && !selectedAgent;
+
   const text = prompt.trim();
   const isTooLong = text.length > MESSAGE_TEXT_MAX_LENGTH;
   const canSubmit = Boolean(text) && !isTooLong && !isStarting;
@@ -513,7 +540,9 @@ export function NewSessionComposer({
   };
 
   let caption: string;
-  if (isTooLong) {
+  if (awaitingAgent) {
+    caption = 'Choosing an agent is the first step; the message follows.';
+  } else if (isTooLong) {
     caption = `That prompt is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining installations for agents…';
@@ -565,6 +594,10 @@ export function NewSessionComposer({
               onChange={setPrompt}
               onFocus={() => setExpanded(true)}
               onKeyDown={handleKeyDown}
+              // Disabled, not just refused on submit: agent-first surfaces say
+              // "this is step two" by the field itself. react-aria announces
+              // the disabled state, and the caption under the box says why.
+              isDisabled={awaitingAgent}
               // The rule guards against stealing focus on page load, which is why the
               // inline placement leaves this off. It is opt-in for the dialog, where
               // the user has just deliberately opened a box in order to type — and
@@ -582,7 +615,11 @@ export function NewSessionComposer({
               <Select
                 ref={agentSelectRef}
                 aria-label="Agent"
-                className={classes.agentSelect}
+                className={
+                  awaitingAgent
+                    ? `${classes.agentSelect} ${classes.agentSelectAttention}`
+                    : classes.agentSelect
+                }
                 isInvalid={showAgentMissing}
                 // `leadingIcon` only reaches the options; the trigger has its own
                 // slot, and without this the chosen agent loses the avatar it had
@@ -642,7 +679,8 @@ export function NewSessionComposer({
               icon={<ArrowForwardIcon />}
               // Not disabled while starting: pending keeps the button focused,
               // so the wait is announced and a failure leaves focus in place.
-              isDisabled={!canSubmit && !isStarting}
+              // Agent-first, it waits with the field until an agent is chosen.
+              isDisabled={awaitingAgent || (!canSubmit && !isStarting)}
               isPending={isStarting}
             />
           }

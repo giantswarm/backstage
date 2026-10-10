@@ -44,6 +44,7 @@ export type StartNewSessionComposerProps = Pick<
   | 'renderPickerAccessory'
   | 'renderFooter'
   | 'onSelectedAgentChange'
+  | 'agentFirst'
 >;
 
 export type StartNewSessionProps = {

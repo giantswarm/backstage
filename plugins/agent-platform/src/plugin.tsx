@@ -44,6 +44,7 @@ import {
   newAgentToolsRouteRef,
   newModelRouteRef,
   newSkillRouteRef,
+  profileRouteRef,
   rootRouteRef,
   servingRouteRef,
   sessionDetailRouteRef,
@@ -238,6 +239,28 @@ const skillsPage = PageBlueprint.make({
   },
 });
 
+// The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
+// who is signed in, the installations the portal talks to, and Sign out — the
+// rail's profile menu links here, so it no longer jumps into the classic
+// Settings chrome. The classic `/settings` remains reachable through the
+// page's explicit "All portal settings" link.
+//
+// Enabled by default for the same reason as `skillsPage` above: deployments
+// replace `app.extensions` wholesale, and an opt-in entry would silently drop
+// the page the shell's profile menu links to.
+const profilePage = PageBlueprint.make({
+  name: 'profile',
+  params: {
+    path: '/agent-platform/profile',
+    routeRef: profileRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const { ProfilePage } = await import('./components/ProfilePage');
+      return <ProfilePage />;
+    },
+  },
+});
+
 // The section's installation scope selector, in the page header next to the
 // tabs' own actions: "All installations" (home first) or
 // one pinned installation, for the three tabs above and the muster plugin's
@@ -378,6 +401,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     agentsSubPage,
     modelsSubPage,
     skillsPage,
+    profilePage,
     usageSubPage,
     installationScopeHeaderAction,
     createClusterAction,
@@ -398,6 +422,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     sessionDetail: sessionDetailRouteRef,
     skills: skillsRouteRef,
     newSkill: newSkillRouteRef,
+    profile: profileRouteRef,
     usage: usageRouteRef,
     models: modelsRouteRef,
     modelDetail: modelDetailRouteRef,

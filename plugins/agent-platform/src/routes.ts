@@ -76,6 +76,12 @@ export const newSkillRouteRef = createSubRouteRef({
   parent: skillsRouteRef,
 });
 
+// The shell's minimal "Profile and settings" page (`/agent-platform/profile`):
+// who is signed in, the installations the portal talks to, and Sign out. A
+// page of its own beside `page:agent-platform`, like the skill pages: it is
+// linked from the shell rail's profile menu, not a tab of the section.
+export const profileRouteRef = createRouteRef();
+
 // The "Sessions" tab (`/agent-platform/sessions`).
 export const sessionsRouteRef = createRouteRef();
 

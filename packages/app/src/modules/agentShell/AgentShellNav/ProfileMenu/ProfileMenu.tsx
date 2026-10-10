@@ -13,7 +13,6 @@ import {
 import { Header, MenuSection as AriaMenuSection } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import ExitToAppIcon from '@material-ui/icons/ExitToApp';
-import FlagIcon from '@material-ui/icons/Flag';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
 import type { AgentShellNavItem } from '../../navItems';
 import { useProfile } from './useProfile';
@@ -72,19 +71,15 @@ export function ProfileMenu({
   );
 
   const settingsItems = [
+    // The shell's own minimal profile page, same tab — not the classic
+    // `/settings`, whose chrome the shell exists to stay out of. That page
+    // keeps an explicit "All portal settings" escape hatch to the classic one.
     <MenuItem
       key="settings"
-      href="/settings"
+      href="/agent-platform/profile"
       iconStart={<Icon fontSize="small" />}
     >
       {item.title}
-    </MenuItem>,
-    <MenuItem
-      key="feature-flags"
-      href="/settings/feature-flags"
-      iconStart={<FlagIcon fontSize="small" />}
-    >
-      Feature flags
     </MenuItem>,
   ];
 

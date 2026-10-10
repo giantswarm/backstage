@@ -169,16 +169,23 @@ describe('RecentSessions', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('marks the sessions waiting for input', async () => {
+  it('marks the sessions waiting for input with a dot that says so on hover', async () => {
     await renderRecent();
 
     const middle = (await screen.findByText('Middle')).closest('a');
     expect(middle).not.toBeNull();
-    expect(
-      await within(middle as HTMLElement).findByText('Needs you'),
-    ).toBeInTheDocument();
+    const dot = await within(middle as HTMLElement).findByRole('img', {
+      name: 'Needs your input',
+    });
+    // The dot carries no visible text, so the tooltip is how a pointer learns
+    // what it means; the accessible name above is how a screen reader does.
+    expect(dot).toHaveAttribute('title', 'Needs your input');
+    // The pill it replaces is gone.
+    expect(screen.queryByText('Needs you')).not.toBeInTheDocument();
     const newest = screen.getByText('Newest').closest('a') as HTMLElement;
-    expect(within(newest).queryByText('Needs you')).not.toBeInTheDocument();
+    expect(
+      within(newest).queryByRole('img', { name: 'Needs your input' }),
+    ).not.toBeInTheDocument();
   });
 
   it('marks the session open at the current location', async () => {
@@ -225,14 +232,17 @@ describe('RecentSessions', () => {
       const newest = (await screen.findByText('Newest')).closest(
         'a',
       ) as HTMLElement;
-      expect(
-        await within(newest).findByRole('img', { name: 'Working' }),
-      ).toBeInTheDocument();
+      const workingDot = await within(newest).findByRole('img', {
+        name: 'Working',
+      });
+      expect(workingDot).toHaveAttribute('title', 'Working');
       const middle = screen.getByText('Middle').closest('a') as HTMLElement;
       expect(
         within(middle).queryByRole('img', { name: 'Working' }),
       ).not.toBeInTheDocument();
-      expect(within(middle).getByText('Needs you')).toBeInTheDocument();
+      expect(
+        within(middle).getByRole('img', { name: 'Needs your input' }),
+      ).toBeInTheDocument();
     });
 
     it('groups the sessions under the prototype’s time headings', async () => {
@@ -286,7 +296,9 @@ describe('RecentSessions', () => {
       const row = (await within(pinned).findByText('Oldest')).closest(
         'a',
       ) as HTMLElement;
-      expect(await within(row).findByText('Needs you')).toBeInTheDocument();
+      expect(
+        await within(row).findByRole('img', { name: 'Needs your input' }),
+      ).toBeInTheDocument();
     });
 
     it('pins and unpins a session from its row', async () => {

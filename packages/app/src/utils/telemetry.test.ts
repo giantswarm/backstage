@@ -574,6 +574,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/skills',
       '/agent-platform/skills/new',
       '/agent-platform/skills/giantswarm/agent-skills/ticket-triage',
+      '/agent-platform/profile',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
       '/agent-platform/usage/cost',
@@ -642,6 +643,15 @@ describe('Usage sub-tabs', () => {
     expect(
       getTelemetryPageViewPayload('/agent-platform/usage/cost'),
     ).not.toMatchObject({ page: 'Agents' });
+  });
+});
+
+describe('Profile', () => {
+  it('reports the shell profile page as its own page, not an Agents view', () => {
+    expect(getTelemetryPageViewPayload('/agent-platform/profile')).toEqual({
+      page: 'Profile',
+      path: '/agent-platform/profile',
+    });
   });
 });
 

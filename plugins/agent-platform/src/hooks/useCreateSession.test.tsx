@@ -211,18 +211,50 @@ describe('useCreateSession', () => {
     );
   });
 
-  it('marks the installation’s sessions list stale without refetching it', async () => {
-    // The caller navigates away from the list at once, so a refetch here would
-    // spend a fleet-wide query on a screen nobody is looking at.
+  it('invalidates the installation’s sessions list so mounted lists refetch at once', async () => {
+    // The shell rail's session history stays mounted through the navigation,
+    // so the default (active) refetch is what makes the new session appear in
+    // the sidebar immediately. `refetchType: 'none'` here is the bug this
+    // guards against.
     const { result, invalidateQueries } = renderWith();
 
     await act(async () => {
       await result.current.createSession({ agent, prompt: 'Check' });
     });
 
-    expect(invalidationFor(invalidateQueries, SESSIONS_KEY)).toMatchObject({
-      refetchType: 'none',
+    const invalidation = invalidationFor(invalidateQueries, SESSIONS_KEY);
+    expect(invalidation).toBeDefined();
+    expect(invalidation).not.toMatchObject({ refetchType: 'none' });
+  });
+
+  it('invalidates the installation’s session states, which group and mark the rail', async () => {
+    const { result, invalidateQueries } = renderWith();
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
     });
+
+    const invalidation = invalidationFor(invalidateQueries, [
+      'agent-platform',
+      'kagent',
+      'session-states',
+      'gazelle',
+    ]);
+    expect(invalidation).toBeDefined();
+    expect(invalidation).not.toMatchObject({ refetchType: 'none' });
+  });
+
+  it('does not invalidate anything when the create fails', async () => {
+    createSession.mockRejectedValue(new Error('kagent is down'));
+    const { result, invalidateQueries } = renderWith();
+
+    await act(async () => {
+      await result.current
+        .createSession({ agent, prompt: 'Check' })
+        .catch(() => {});
+    });
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('surfaces a failure without inventing a session id', async () => {
