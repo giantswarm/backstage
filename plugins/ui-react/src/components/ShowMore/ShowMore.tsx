@@ -24,6 +24,16 @@ export const SEARCH_MIN = 8;
  */
 export const USED_BY_ROWS = 10;
 
+/**
+ * The most a page leaves hidden before it simply shows it: paging to hide one
+ * card — "Show 1 more skill" for 21 skills — costs a click and a line of
+ * chrome to save a row (live round 2, R9). A fifth of a page, never fewer
+ * than two: 4 at the default 20, 2 at the "Used by" excerpt's 10.
+ */
+export function showMoreSlack(pageSize: number): number {
+  return Math.max(2, Math.floor(pageSize / 5));
+}
+
 export type ShowMoreProps<T> = {
   items: T[];
   /** How many to render before asking for a click, and how many each click adds. */
@@ -48,6 +58,8 @@ export type ShowMoreProps<T> = {
  * list back to its first page. Searching, not scrolling, is how a specific
  * tool is found; the lists that need it carry a search field above them.
  * With `revealAll`, one click shows the whole list (`Show all 40 agents`).
+ * In both modes a remainder too small to be worth a click
+ * ({@link showMoreSlack}) is shown with the page before it instead.
  */
 export function ShowMore<T>({
   items,
@@ -58,13 +70,21 @@ export function ShowMore<T>({
   children,
 }: ShowMoreProps<T>) {
   const [shown, setShown] = useState(initial);
-  const visible = items.slice(0, shown);
+  const slack = showMoreSlack(initial);
+  // How many a page of `count` actually renders: all of them once no more
+  // than the slack would stay hidden.
+  const pageOf = (count: number) =>
+    items.length - count <= slack
+      ? items.length
+      : Math.min(count, items.length);
+  const visible = items.slice(0, pageOf(shown));
   const hidden = items.length - visible.length;
-  const nextPage = Math.min(initial, hidden);
+  const nextPage = pageOf(shown + initial) - visible.length;
   // `shown` is sticky, so a list that shrinks under it (a search narrowing the
   // bucket) would otherwise keep offering *Show fewer* with nothing to fold
-  // away. What is actually rendered decides.
-  const isExpanded = visible.length > initial;
+  // away. What is actually rendered decides — against the first page as it
+  // renders, so a list shown whole for its slack offers nothing to fold.
+  const isExpanded = visible.length > pageOf(initial);
 
   return (
     <Flex direction="column" gap="2">

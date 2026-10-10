@@ -321,8 +321,13 @@ html[data-agent-shell] body {
  * label and its count — "Agents (6)" — stay on one line (live round L8: at
  * 375px each label broke after its title). At phone width the tabs pad by
  * half bui's space-2, with the active underline inset to match, so the usual
- * four tabs fit; when they still don't (three-digit counts), whole tabs move
- * to a second row instead of breaking a label or widening the page.
+ * four tabs fit. A strip of five or more (Customize: Agents, Skills,
+ * Connectors, Models, Workflows — live round 2, R4) goes a step tighter:
+ * labels at bui's font-size-2, tabs padded by space-0_5, and the strip
+ * reaching space-1 into the page gutter on each side — 340px of tabs in
+ * 351px, measured at 375px with the lab's counts. When even that doesn't fit
+ * (longer counts), whole tabs move to a second row instead of breaking a
+ * label or widening the page — the last resort.
  * Inside bui's components layer, so a component's unlayered overrides win.
  */
 @layer components {
@@ -342,6 +347,23 @@ html[data-agent-shell] body {
     html[data-agent-shell] .bui-TabActive {
       left: calc(var(--active-tab-left) + var(--bui-space-1));
       width: calc(var(--active-tab-width) - var(--bui-space-2));
+    }
+
+    /* The Tabs root, not the wrapper: bui measures the active tab against
+       the root and draws the underline in the wrapper, so the two must move
+       together. */
+    html[data-agent-shell] .bui-Tabs:has(.bui-Tab:nth-child(5)) {
+      margin-inline: calc(-1 * var(--bui-space-1));
+    }
+
+    html[data-agent-shell] .bui-TabList:has(.bui-Tab:nth-child(5)) .bui-Tab {
+      font-size: var(--bui-font-size-2);
+      padding-inline: var(--bui-space-0_5);
+    }
+
+    html[data-agent-shell] .bui-Tabs:has(.bui-Tab:nth-child(5)) .bui-TabActive {
+      left: calc(var(--active-tab-left) + var(--bui-space-0_5));
+      width: calc(var(--active-tab-width) - var(--bui-space-1));
     }
   }
 }

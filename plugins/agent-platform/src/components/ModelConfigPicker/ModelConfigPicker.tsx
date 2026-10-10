@@ -190,7 +190,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                 role="radio"
                 selected={isSelected}
                 ariaLabel={`Select model ${mc.getDisplayName()}${
-                  isDefaultModelConfig(mc) ? ', installation default' : ''
+                  isDefaultModelConfig(mc) ? ', environment default' : ''
                 }`}
                 onSelect={() =>
                   selectModelConfig(name, namespace, mc.getDisplayName())
@@ -199,7 +199,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                 <Text weight="bold">{mc.getDisplayName()}</Text>
                 {isDefaultModelConfig(mc) && (
                   <Text variant="body-small" color="secondary">
-                    Installation default
+                    Environment default
                   </Text>
                 )}
                 <Text variant="body-x-small" color="secondary">

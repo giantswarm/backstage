@@ -31,7 +31,8 @@ import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 
 /**
- * The wizard, seeded once from agent-manager's reading of the agent: its own
+ * The wizard, seeded once from agent-manager's reading of the agent — one read
+ * after the page mounted, never a cached one (`freshOnMount`) — into its own
  * form state (the create flow's draft, held by the router's provider, stays
  * untouched) and the agent as the baseline the review compares against. A
  * later re-read of the agent does not reseed what the person is changing.
@@ -95,7 +96,9 @@ export function EditAgentPage() {
     installation,
     namespace,
     name,
-    { enabled: presence === 'available' },
+    // Never seeded from a cached reading: straight after a save it may still
+    // be the pre-save agent, and the next save would diff against it.
+    { enabled: presence === 'available', freshOnMount: true },
   );
   const { info, isLoading: isInfoLoading } = useAgentManagerInfo(
     presence === 'available' ? installation : undefined,

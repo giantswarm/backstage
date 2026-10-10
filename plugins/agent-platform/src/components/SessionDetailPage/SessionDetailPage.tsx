@@ -2,6 +2,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -23,6 +24,7 @@ import {
 } from '@material-ui/core';
 import {
   DateComponent,
+  SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -149,7 +151,15 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
     paddingTop: theme.spacing(1),
     paddingBottom: theme.spacing(2),
-    marginBottom: theme.spacing(-2),
+    // Into the page's bottom padding, all of it: the bar's own padding is the
+    // room under the box. At the end of the scroll the sticky bar rests at its
+    // place in the flow, and a fixed -16px left ShellPage's 40px less that
+    // under it — the bar lifted 24px as the scroll reached the end (live round
+    // 2, R7). ShellPage publishes its padding; 16px where no ShellPage wraps
+    // the page, as before.
+    marginBottom: `calc(-1 * var(${SHELL_PAGE_PADDING_BOTTOM_VAR}, ${theme.spacing(
+      2,
+    )}px))`,
   },
   // A real <button>, stripped of its chrome, rather than a click handler on the
   // heading: the title is an editing affordance, and only a button is reachable
@@ -892,6 +902,27 @@ export function SessionDetailPage() {
   );
   const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
   useDockedComposerLayout(columnElement, dockElement);
+
+  // A session opens at its newest turn, the way a desktop chat app does (live
+  // round 2, R8: a long session opened at its top). Once per session, when its
+  // conversation first renders — the column exists only then. Later scrolling
+  // is the reader's: "Show earlier activity" adds turns above without coming
+  // back here, and the follow above only moves a reader already at the end.
+  // Before paint, so the top never flashes; and once more a frame later, for
+  // layout that lands after the first (the dock's measured min-height).
+  const openedAtEndFor = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!columnElement || openedAtEndFor.current === sessionId) {
+      return undefined;
+    }
+    openedAtEndFor.current = sessionId;
+    const el = document.scrollingElement ?? document.documentElement;
+    el.scrollTop = el.scrollHeight;
+    const frame = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [columnElement, sessionId]);
 
   if (isLoading) {
     return (

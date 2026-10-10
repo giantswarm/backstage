@@ -309,6 +309,16 @@ describe('WorkflowPage', () => {
     expect(screen.getByText('workflow_deploy')).toBeInTheDocument();
   });
 
+  it('names the workflow in the document title', async () => {
+    // Live round 2 (R5): the page set none, so a client-side visit kept the
+    // previous page's title.
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    await waitFor(() =>
+      expect(document.title).toBe('deploy · Workflows · Agent Platform'),
+    );
+  });
+
   it('lists the inputs with type, required and default', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 

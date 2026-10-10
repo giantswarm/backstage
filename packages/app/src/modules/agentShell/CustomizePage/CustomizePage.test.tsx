@@ -245,11 +245,21 @@ describe('CustomizePage', () => {
     expect(tabs().map(([title]) => title)).not.toContain('Skills (71)');
   });
 
-  it('names itself in the document title', async () => {
+  it('names itself and its tab in the document title, and follows the tab', async () => {
+    // Live round 2 (R5): every tab carried the bare "Customize", so the title
+    // never said which one was open.
     await renderCustomize('/customize/agents', {
       config: { app: { title: 'Dev Portal' } },
     });
 
-    await waitFor(() => expect(document.title).toBe('Customize | Dev Portal'));
+    await waitFor(() =>
+      expect(document.title).toBe('Agents · Customize | Dev Portal'),
+    );
+
+    await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
+
+    await waitFor(() =>
+      expect(document.title).toBe('Workflows · Customize | Dev Portal'),
+    );
   });
 });

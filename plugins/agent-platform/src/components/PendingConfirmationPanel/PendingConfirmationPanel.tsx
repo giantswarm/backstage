@@ -209,6 +209,12 @@ export type PendingConfirmationPanelProps = {
  * - **An approval** — "may I run this tool", which takes a yes or a no and an
  *   optional reason.
  *
+ * **Only an approval can be declined.** kagent's question response has no "no":
+ * the backend refuses a rejected `ask_user` ("A question cannot be rejected;
+ * answer it, or leave the session waiting"), so offering Decline on a question
+ * offered a button that always failed. A question is answered — a choice, or
+ * the user's own words, which can say "none of these" — or left waiting.
+ *
  * There is deliberately **no free-text box alongside a choice list**, even though a
  * choice like "Something else (I'll explain)" invites one. The only place extra
  * words could go is the message's text part, and both kagent executors discard the
@@ -266,6 +272,10 @@ export function PendingConfirmationPanel({
   );
   const [reason, setReason] = useState('');
   const [showReason, setShowReason] = useState(false);
+  // Whether Send was pressed (or Enter hit) with an answer missing. The hint
+  // naming the missing question waits for that — the T31 rule: no complaint
+  // before the first blocked attempt, so arriving at a page is not scolded.
+  const [attemptedSend, setAttemptedSend] = useState(false);
   // Which question the pager shows. Clamped on read, so a follow-up with fewer
   // questions can never leave it pointing past the end.
   const [page, setPage] = useState(0);
@@ -321,6 +331,7 @@ export function PendingConfirmationPanel({
     setReason('');
     setShowReason(false);
     setPage(0);
+    setAttemptedSend(false);
   } else if (restore && restoredId.current !== restore.messageId) {
     // Applied here rather than from a `useState` initializer, which only ever runs
     // at mount — and `restore` is null then, because it is the *previous attempt's*
@@ -377,7 +388,7 @@ export function PendingConfirmationPanel({
   // Every question must have something. kagent treats a short or empty entry as
   // "not answered" rather than an error, so submitting a partial set would resume
   // the task with a question silently dropped — the agent then continues on a
-  // premise nobody supplied. Declining is the way to answer nothing.
+  // premise nobody supplied.
   const isComplete = answers.every(entry => entry.length > 0);
   const isReasonTooLong = reason.trim().length > MESSAGE_TEXT_MAX_LENGTH;
   const canSubmit = isComplete && !isAnswerTooLong && !isAnswering;
@@ -387,6 +398,13 @@ export function PendingConfirmationPanel({
   const canAdvance =
     !isLastPage && (answers[pageIndex]?.length ?? 0) > 0 && !isAnswering;
   const firstUnanswered = answers.findIndex(entry => entry.length === 0);
+  const isPageAnswered = (answers[pageIndex]?.length ?? 0) > 0;
+  // Send is pressable on the last page once the question in view is answered,
+  // even if an earlier page is not: pressing it then says which one is missing
+  // (the reason is out of sight, so a merely disabled button would not). With
+  // the question in view unanswered, a disabled Send explains itself.
+  const isSendDisabled =
+    isAnswering || isAnswerTooLong || (!isComplete && !isPageAnswered);
   const advance = () => {
     if (canAdvance) {
       setPage(pageIndex + 1);
@@ -412,8 +430,8 @@ export function PendingConfirmationPanel({
     caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isReasonTooLong) {
     caption = `That reason is ${reason.trim().length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
-  } else if (isPaged && isLastPage && !isComplete) {
-    // Send is disabled, and on the last page the reason is out of sight.
+  } else if (isPaged && isLastPage && !isComplete && attemptedSend) {
+    // Send was refused, and on the last page the reason is out of sight.
     caption = `Question ${firstUnanswered + 1} still needs an answer.`;
   } else if (isQuestion && !isLastPage) {
     caption = 'Enter goes to the next question, Shift+Enter for a new line.';
@@ -424,6 +442,9 @@ export function PendingConfirmationPanel({
 
   const send = () => {
     if (!canSubmit) {
+      if (!isAnswering && !isAnswerTooLong) {
+        setAttemptedSend(true);
+      }
       return;
     }
     onAnswer({
@@ -676,20 +697,24 @@ export function PendingConfirmationPanel({
           </Text>
         )}
         <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-          <Button
-            variant="secondary"
-            // Disabled rather than left to `decline()`'s silent early return: a
-            // control that does nothing when pressed is worse than one that is
-            // visibly unavailable, and the caption cannot be relied on to explain
-            // — an over-long *answer* outranks the reason in it, so the decline
-            // path's only explanation can be hidden exactly when it is needed.
-            isDisabled={isAnswering || (showReason && isReasonTooLong)}
-            onPress={() => (showReason ? decline() : setShowReason(true))}
-          >
-            {showReason ? 'Confirm decline' : 'Decline'}
-          </Button>
+          {/* An approval only: a question cannot be rejected (see the
+              component doc). */}
+          {!isQuestion && (
+            <Button
+              variant="secondary"
+              // Disabled rather than left to `decline()`'s silent early return: a
+              // control that does nothing when pressed is worse than one that is
+              // visibly unavailable, and the caption cannot be relied on to explain
+              // — an over-long *answer* outranks the reason in it, so the decline
+              // path's only explanation can be hidden exactly when it is needed.
+              isDisabled={isAnswering || (showReason && isReasonTooLong)}
+              onPress={() => (showReason ? decline() : setShowReason(true))}
+            >
+              {showReason ? 'Confirm decline' : 'Decline'}
+            </Button>
+          )}
           {isLastPage ? (
-            <Button variant="primary" type="submit" isDisabled={!canSubmit}>
+            <Button variant="primary" type="submit" isDisabled={isSendDisabled}>
               {submitLabel}
             </Button>
           ) : (

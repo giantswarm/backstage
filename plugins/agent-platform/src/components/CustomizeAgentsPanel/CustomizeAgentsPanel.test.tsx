@@ -326,10 +326,12 @@ describe('CustomizeAgentsPanel', () => {
       expect(screen.queryByText('Support triage')).not.toBeInTheDocument();
     });
 
-    it('windows both groups at 300 agents with 30 favorites', async () => {
+    it('windows both groups at 300 agents with 40 favorites', async () => {
+      // 40, not 30: five over a page of 25 is within ShowMore's slack and
+      // shows whole (live round 2, R9), so 30 would not window the group.
       const rows = manyAgents(300);
       mockAgents = { ...mockAgents, rows };
-      await renderPanel('', await storageWithFavorites(rows.slice(0, 30)));
+      await renderPanel('', await storageWithFavorites(rows.slice(0, 40)));
 
       const favorites = await screen.findByRole('list', {
         name: 'Favorite agents',
@@ -338,15 +340,15 @@ describe('CustomizeAgentsPanel', () => {
       expect(
         screen.getByRole('heading', { level: 2, name: 'Favorites' }),
       ).toBeInTheDocument();
-      expect(screen.getByText('30 agents')).toBeInTheDocument();
-      expect(screen.getByText('270 agents')).toBeInTheDocument();
+      expect(screen.getByText('40 agents')).toBeInTheDocument();
+      expect(screen.getByText('260 agents')).toBeInTheDocument();
       expect(
         within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
           'listitem',
         ),
       ).toHaveLength(25);
-      expect(screen.getByText('25 agents shown, 5 more')).toBeInTheDocument();
-      expect(screen.getByText('25 agents shown, 245 more')).toBeInTheDocument();
+      expect(screen.getByText('25 agents shown, 15 more')).toBeInTheDocument();
+      expect(screen.getByText('25 agents shown, 235 more')).toBeInTheDocument();
       // Never the whole fleet in the DOM.
       expect(screen.getAllByRole('listitem')).toHaveLength(50);
     });

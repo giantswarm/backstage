@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -226,10 +226,13 @@ function DetailProbe() {
     AGENT_CREATED_STATE_KEY
   ];
   return (
-    <p>
-      agent detail
-      {handoff ? ` after ${(handoff as { action: string }).action}` : ''}
-    </p>
+    <>
+      <p>
+        agent detail
+        {handoff ? ` after ${(handoff as { action: string }).action}` : ''}
+      </p>
+      <Link to={BASE}>Edit again</Link>
+    </>
   );
 }
 
@@ -392,6 +395,57 @@ describe('EditAgentPage', () => {
       name: 'pr-reviewer',
       description: 'Reviews every pull request.',
     } satisfies AgentUpdate);
+  });
+
+  it('reopens on the saved values, not a cached pre-save reading', async () => {
+    // Live round 2 (R2): opening the wizard straight after a save prefilled the
+    // pre-save description, and a second save would have diffed against it.
+    // agent-manager's read can lag its own write for a moment, so the reading
+    // taken as the save lands may still be the old one; the reopened wizard
+    // must read the agent again rather than seed from that.
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE);
+    let current = AGENT;
+    let lagging = false;
+    const scripted = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args) => {
+      if (name === 'x_agent-manager_update_agent') {
+        lagging = true;
+        current = { ...AGENT, description: args.description as string };
+      }
+      if (name === 'x_agent-manager_get_agent') {
+        if (lagging) {
+          lagging = false;
+          return AGENT;
+        }
+        return current;
+      }
+      return scripted(name, args);
+    });
+
+    await changeDescriptionAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await screen.findByText('agent detail after updated');
+
+    await user.click(screen.getByRole('link', { name: 'Edit again' }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^What is it for\?/)).toHaveValue(
+        'Reviews every pull request.',
+      ),
+    );
+    // And the next save diffs against the saved values: nothing changed yet.
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'To review' }));
+    expect(
+      await screen.findByText(
+        'Nothing changed yet. Go back to a step to change something.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows agent-manager’s refusal and keeps Save changes locked', async () => {

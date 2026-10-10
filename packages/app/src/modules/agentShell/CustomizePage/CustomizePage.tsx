@@ -149,6 +149,10 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
       actions={<EnvironmentSelect component={tab.component} />}
       tabs={tabs}
     >
+      {/* Each tab names itself, as the section's tabs do ("Sessions · Agent
+          Platform"): "Agents · Customize | <app>", under the page's template.
+          Without it every tab carried the bare "Customize" (live round 2, R5). */}
+      <Helmet title={`${tab.title} · Customize`} />
       <Flex direction="column" gap="5">
         <Flex
           align="center"

@@ -102,6 +102,8 @@ describe('useUpdateAgent', () => {
         'kagent',
         'pr-reviewer',
       ],
+      // Read again even with nobody watching it: the edit wizard seeds from it.
+      refetchType: 'all',
     });
   });
 

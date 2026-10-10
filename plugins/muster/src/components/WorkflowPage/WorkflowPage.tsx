@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Helmet } from 'react-helmet';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EmptyState } from '@backstage/core-components';
@@ -500,6 +501,18 @@ function WorkflowPageContent({
  */
 export function WorkflowPage() {
   const { name = '' } = useParams<{ name: string }>();
+  // Set here, above every state the page can be in, so a client-side visit
+  // never keeps the previous page's title (live round 2, R5) — the same form
+  // as an agent's page: "<name> · Agents · Agent Platform".
+  return (
+    <>
+      <Helmet title={`${name} · Workflows · Agent Platform`} />
+      <WorkflowPageBody name={name} />
+    </>
+  );
+}
+
+function WorkflowPageBody({ name }: { name: string }) {
   const [searchParams] = useSearchParams();
   const installationParam = searchParams.get('installation') ?? undefined;
   const paths = useCustomizePaths();

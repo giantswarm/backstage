@@ -1,4 +1,5 @@
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
+import { Helmet } from 'react-helmet';
 import {
   Navigate,
   Route,
@@ -566,6 +567,19 @@ export interface ConnectorPageProps {
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   const { server: key = '' } = useParams();
+  // Above every state the page can be in; the form an agent's page uses.
+  return (
+    <>
+      <Helmet title={`${key} · Connectors · Agent Platform`} />
+      <ConnectorPageBody serverKey={key} usedBy={usedBy} />
+    </>
+  );
+}
+
+function ConnectorPageBody({
+  serverKey: key,
+  usedBy,
+}: ConnectorPageProps & { serverKey: string }) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const paths = useCustomizePaths();

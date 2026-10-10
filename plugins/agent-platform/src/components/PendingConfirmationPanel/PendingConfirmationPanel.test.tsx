@@ -210,7 +210,12 @@ describe('PendingConfirmationPanel', () => {
       );
       await userEvent.click(screen.getByLabelText('d'));
 
-      expect(sendButton()).toBeDisabled();
+      // Pressable: the missing answer is on another page, so pressing Send is
+      // how the user finds out which.
+      expect(screen.queryByText(/still needs an answer/)).toBeNull();
+      await userEvent.click(sendButton());
+
+      expect(onAnswer).not.toHaveBeenCalled();
       expect(
         screen.getByText('Question 1 still needs an answer.'),
       ).toBeInTheDocument();
@@ -222,6 +227,29 @@ describe('PendingConfirmationPanel', () => {
       await userEvent.click(nextButton());
 
       expect(sendButton()).toBeEnabled();
+    });
+
+    it('does not complain about a question on arriving at it, only after a blocked send', async () => {
+      // Live round 2 (R6): "Question 2 still needs an answer." showed as soon as
+      // question 2 opened. The T31 rule: no error before the first blocked attempt.
+      renderPanel(two);
+
+      await userEvent.click(screen.getByLabelText('a'));
+      await userEvent.click(nextButton());
+
+      expect(screen.getByText('Question 2 of 2')).toBeInTheDocument();
+      expect(screen.queryByText(/still needs an answer/)).toBeNull();
+      // The question in view is the unanswered one: a disabled Send says enough.
+      expect(sendButton()).toBeDisabled();
+
+      // Enter from the unanswered page is a blocked attempt.
+      await userEvent.click(screen.getByRole('textbox', { name: 'Answer' }));
+      await userEvent.keyboard('{Enter}');
+
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(
+        screen.getByText('Question 2 still needs an answer.'),
+      ).toBeInTheDocument();
     });
 
     it('keeps each page’s answer while paging, and sends them positionally', async () => {
@@ -352,10 +380,27 @@ describe('PendingConfirmationPanel', () => {
   });
 
   describe('declining', () => {
+    it.each([
+      ['a single-choice question', singleChoice],
+      ['a multi-select question', multiChoice],
+      ['a free-text question', freeText],
+    ])('is not offered on %s, which cannot be rejected', (_, pending) => {
+      // Live round 2 (R1): the backend refuses a rejected ask_user ("A question
+      // cannot be rejected; answer it, or leave the session waiting"), so Decline
+      // on a question always failed. Answering is the only way through.
+      renderPanel(pending);
+
+      expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Confirm decline' }),
+      ).toBeNull();
+      expect(sendButton()).toBeInTheDocument();
+    });
+
     it('asks for a reason before it takes the refusal', async () => {
       // Two steps on purpose: a refusal resumes the agent as surely as an answer
       // does, and the reason is the only thing that reaches it.
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
 
@@ -366,7 +411,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('sends a refusal carrying the reason', async () => {
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
       await userEvent.type(
@@ -386,7 +431,7 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('allows a refusal with no reason at all', async () => {
-      renderPanel(singleChoice);
+      renderPanel(approval);
 
       await userEvent.click(declineButton());
       await userEvent.click(
@@ -662,7 +707,7 @@ describe('PendingConfirmationPanel', () => {
     // made pressing it do nothing, with only the caption to explain — and an
     // over-long *answer* outranks the reason there, so that explanation can be
     // hidden exactly when it is needed.
-    renderPanel(freeText);
+    renderPanel(approval);
 
     await userEvent.click(declineButton());
     await userEvent.click(screen.getByRole('textbox', { name: /Reason/ }));
@@ -763,12 +808,10 @@ describe('PendingConfirmationPanel', () => {
     });
 
     it('confirms the decline on Enter in the reason box, never an approval', async () => {
-      // The box only exists because Decline was pressed; with an option already
-      // picked, a form submit from here would send the opposite of what the user
-      // is in the middle of.
-      renderPanel(singleChoice);
+      // The box only exists because Decline was pressed; a form submit from here
+      // would Allow the call — the opposite of what the user is in the middle of.
+      renderPanel(approval);
 
-      await userEvent.click(screen.getByRole('radio', { name: 'A sculpture' }));
       await userEvent.click(declineButton());
       await userEvent.type(
         screen.getByRole('textbox', { name: /Reason/ }),

@@ -67,7 +67,7 @@ describe('ModelConfigPicker', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('radio', {
-        name: 'Select model Claude Sonnet, installation default',
+        name: 'Select model Claude Sonnet, environment default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
   });

@@ -620,6 +620,54 @@ describe('SessionDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  describe('opening', () => {
+    // Live round 2 (R8): a long session opened at its top (scrollTop 0 of
+    // 6148). The PO's model is a desktop chat app, which opens at the newest
+    // message.
+    let scrollTop = 0;
+    let spies: jest.SpyInstance[] = [];
+    beforeEach(() => {
+      scrollTop = 0;
+      const root = document.documentElement;
+      spies = [
+        jest.spyOn(root, 'scrollHeight', 'get').mockReturnValue(6148),
+        jest
+          .spyOn(root, 'scrollTop', 'get')
+          .mockImplementation(() => scrollTop),
+        jest.spyOn(root, 'scrollTop', 'set').mockImplementation(value => {
+          scrollTop = value;
+        }),
+      ];
+    });
+    afterEach(() => spies.forEach(spy => spy.mockRestore()));
+
+    it('opens at the newest turn', async () => {
+      await render();
+
+      await screen.findByTestId('session-dock');
+      expect(scrollTop).toBe(6148);
+    });
+
+    it('leaves the reader where they scrolled once it has opened', async () => {
+      await render();
+      await screen.findByTestId('session-dock');
+      // The open settles: its second scroll lands a frame later.
+      await act(
+        () =>
+          new Promise<void>(resolve => requestAnimationFrame(() => resolve())),
+      );
+
+      // Scrolled up to read; the page renders again (here: typing a reply).
+      scrollTop = 120;
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /message/i }),
+        'x',
+      );
+
+      expect(scrollTop).toBe(120);
+    });
+  });
+
   describe('renaming', () => {
     it('makes the title a way in, not just a label', async () => {
       // The kebab is the discoverable route; the title is the obvious one. It is a
@@ -935,6 +983,17 @@ describe('SessionDetailPage', () => {
       expect(column.style.getPropertyValue('--session-dock-height')).toMatch(
         /^\d+px$/,
       );
+    });
+
+    it('rests the docked bar where it sticks, pulled into all of the page’s bottom padding', async () => {
+      // Live round 2 (R7): a fixed -16px left 24px of ShellPage's 40px under
+      // the bar, so it lifted 24px as the scroll reached the end. ShellPage
+      // publishes its padding; 16px where no ShellPage wraps the page.
+      await render();
+
+      expect(
+        getComputedStyle(screen.getByTestId('session-dock')).marginBottom,
+      ).toBe('calc(-1 * var(--shell-page-padding-bottom, 16px))');
     });
 
     it('says a permission request waits for a decision', async () => {

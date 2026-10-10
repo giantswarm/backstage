@@ -229,6 +229,14 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('names the connector in the document title', async () => {
+    await renderAt(`${BASE}/jira`);
+
+    await waitFor(() =>
+      expect(document.title).toBe('jira · Connectors · Agent Platform'),
+    );
+  });
+
   it('names its place under Customize without links where Customize is not bound', async () => {
     await renderAt(`${BASE}/jira`, { customizeBound: false });
 

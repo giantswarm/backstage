@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { storageApiRef } from '@backstage/core-plugin-api';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
@@ -202,6 +202,16 @@ describe('AgentPlatformHome', () => {
         name: 'Good afternoon, Jane',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('names itself in the document title, as the rail does', async () => {
+    // Live round 2 (R5): Home set no title, so arriving from another page
+    // kept that page's.
+    await render();
+
+    await waitFor(() =>
+      expect(document.title).toBe('New session · Agent Platform'),
+    );
   });
 
   it('greets without a name when the profile has none', async () => {

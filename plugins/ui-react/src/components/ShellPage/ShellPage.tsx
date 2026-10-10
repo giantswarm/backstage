@@ -10,14 +10,25 @@ import { RouteTabs, RouteTabSpec } from '../RouteTabs';
 
 const NARROW_BREAKPOINT = 600;
 
+/**
+ * CSS variable, set on the page's root: the room the page leaves under its
+ * content (40px, 32px at phone width). Content docked to the view's bottom
+ * edge with `position: sticky` — the session's chat bar — reads it to pull
+ * itself into that room, so it rests at the same place at the end of the
+ * scroll as it sticks at while scrolling, instead of lifting by the padding.
+ */
+export const SHELL_PAGE_PADDING_BOTTOM_VAR = '--shell-page-padding-bottom';
+
 const useStyles = makeStyles({
   root: {
     boxSizing: 'border-box',
     maxWidth: 1080,
     margin: '0 auto',
-    padding: '28px 48px 40px',
+    [SHELL_PAGE_PADDING_BOTTOM_VAR]: '40px',
+    padding: `28px 48px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
-      padding: '20px 16px 32px',
+      [SHELL_PAGE_PADDING_BOTTOM_VAR]: '32px',
+      padding: `20px 16px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     },
   },
   header: {

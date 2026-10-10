@@ -62,9 +62,9 @@ function changeOf(update: AgentUpdate): 'edited' | 'skillsRefreshed' {
  * The write behind Save changes and Update skills, through agent-manager over
  * muster as the signed-in person, reported as `AgentPlatform.agentUpdated`
  * (live or as a pull request, an edit or a skills refresh). On success the
- * installation's cached kagent reads and agent-manager's reading of the agent
- * are dropped, so the detail page shows the new revision converging rather
- * than the old values.
+ * installation's cached kagent reads are dropped and agent-manager's reading
+ * of the agent is read again, so the detail page shows the new revision
+ * converging rather than the old values, and the next edit starts from them.
  */
 export function useUpdateAgent(
   installation: string | undefined,
@@ -95,12 +95,17 @@ export function useUpdateAgent(
         queryClient.invalidateQueries({
           queryKey: ['cluster', installation, 'get', 'api.kagent.dev'],
         }),
+        // agent-manager's reading of the agent is read again now, inactive or
+        // not: it is what the edit wizard seeds from, and an invalidated but
+        // unwatched reading would otherwise be served — the pre-save values —
+        // to the next reader until its own refetch landed (live round 2, R2).
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerAgentQueryKey(
             installation,
             update.namespace,
             update.name,
           ),
+          refetchType: 'all',
         }),
       ]).then(() => undefined);
     },
