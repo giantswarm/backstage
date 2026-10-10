@@ -11,16 +11,39 @@ import type {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import {
+  isSessionExpiredError,
+  isSignInDeclinedError,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { getOIDCTokenInstallation } from '../../components/scaffolder/OIDCToken/utils';
 import {
   mintTemplateTokens,
   templateTokenFields,
 } from '../../components/scaffolder/utils/templateTokens';
+import { TemplateSignInError } from './TemplateSignInError';
 import ObservableImpl from 'zen-observable';
 
 const SESSION_TASK_INSTALLATION = 'gs-task-installation';
 const DEFAULT_INSTALLATION_TOKEN = 'default';
+
+/**
+ * Runs one call of the portal's own backend during a submit. The call carries
+ * the portal's token, so the portal refreshes its session on the way and,
+ * when the session is gone, asks the person to sign in again. A declined or
+ * failed sign-in rejects with a `TemplateSignInError` for the expired session
+ * instead of the raw rejection; any other failure passes through.
+ */
+async function withPortalSession<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (isSessionExpiredError(error) || isSignInDeclinedError(error)) {
+      throw new TemplateSignInError('session-expired', [], error);
+    }
+    throw error;
+  }
+}
 
 type ScaffolderApiClientOptions = ConstructorParameters<
   typeof ScaffolderClient
@@ -44,14 +67,17 @@ export class ScaffolderApiClient extends ScaffolderClient {
    * Starts the task on the installation of the template's first `GSOIDCToken`
    * field, with every field's cluster token minted now: one minted while the
    * form was filled may have expired by the time it is submitted. Rejects with
-   * a `TemplateSignInError`, and starts nothing, when a sign-in a token needs
-   * did not complete.
+   * a `TemplateSignInError`, and starts nothing, when a sign-in the submit
+   * asked for did not complete: the portal's own, which the template read and
+   * the task creation refresh on the way, or one a cluster token needs.
    */
   async scaffold(
     options: ScaffolderScaffoldOptions,
   ): Promise<ScaffolderScaffoldResponse> {
     const { templateRef, values, secrets } = options;
-    const manifest = await this.getTemplateParameterSchema(templateRef);
+    const manifest = await withPortalSession(() =>
+      this.getTemplateParameterSchema(templateRef),
+    );
     const tokenFields = templateTokenFields(manifest, values);
     const tokens = await mintTemplateTokens(
       tokenFields,
@@ -60,8 +86,10 @@ export class ScaffolderApiClient extends ScaffolderClient {
     );
     const installationName = tokenFields[0]?.installation ?? null;
 
-    const result = await this.withInstallation(installationName, () =>
-      super.scaffold({ ...options, secrets: { ...secrets, ...tokens } }),
+    const result = await withPortalSession(() =>
+      this.withInstallation(installationName, () =>
+        super.scaffold({ ...options, secrets: { ...secrets, ...tokens } }),
+      ),
     );
 
     this.setInstallationToSessionStorage(result.taskId, installationName);
