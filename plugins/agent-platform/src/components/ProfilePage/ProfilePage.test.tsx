@@ -76,6 +76,44 @@ describe('ProfilePage', () => {
     ).toEqual(['gazelle', 'gorilla']);
   });
 
+  it('shows a short fleet whole, with no reveal control', async () => {
+    mockInstallations = [
+      { name: 'gazelle' },
+      { name: 'gorilla' },
+      { name: 'golem' },
+    ];
+    await renderPage();
+
+    const section = screen.getByRole('region', { name: 'Environments' });
+    expect(within(section).getAllByTestId('installation-chip')).toHaveLength(3);
+    expect(within(section).queryByRole('button')).toBeNull();
+    expect(within(section).queryByRole('searchbox')).toBeNull();
+  });
+
+  it('shows the first 20 badges of a large fleet and reveals the rest in one click', async () => {
+    mockInstallations = Array.from({ length: 300 }, (_, index) => ({
+      name: `inst-${index + 1}`,
+    }));
+    await renderPage();
+
+    const section = screen.getByRole('region', { name: 'Environments' });
+    expect(within(section).getAllByTestId('installation-chip')).toHaveLength(
+      20,
+    );
+
+    await userEvent.click(
+      within(section).getByRole('button', {
+        name: 'Show all 300 environments',
+      }),
+    );
+    expect(within(section).getAllByTestId('installation-chip')).toHaveLength(
+      300,
+    );
+    expect(
+      within(section).getByRole('button', { name: 'Show fewer' }),
+    ).toBeInTheDocument();
+  });
+
   it('leaves the installations section out when none are configured', async () => {
     mockInstallations = [];
     await renderPage();

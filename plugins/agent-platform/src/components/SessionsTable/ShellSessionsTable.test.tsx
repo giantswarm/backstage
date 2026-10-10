@@ -129,6 +129,7 @@ async function renderShell(
   sessionRows: SessionRow[] = rows,
   sessionStates: FleetSessionStatesView = states,
   storage: StorageApi = mockApis.storage(),
+  path = '/agent-platform/sessions',
 ) {
   await renderInTestApp(
     <SessionsTable
@@ -140,6 +141,7 @@ async function renderShell(
     />,
     {
       apis: [[storageApiRef, storage]],
+      initialRouteEntries: [path],
       mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
     },
   );
@@ -315,6 +317,50 @@ describe('SessionsTable in the shell layout', () => {
       screen.getByRole('button', { name: 'Clear search and filters' }),
     );
     expect(screen.getAllByRole('grid')).toHaveLength(3);
+  });
+
+  it('opens on the chip a link asks for, even under SEARCH_MIN', async () => {
+    // The needs-input toast's "Show waiting sessions" (T39).
+    await renderShell(
+      rows,
+      states,
+      mockApis.storage(),
+      '/agent-platform/sessions?state=waiting',
+    );
+
+    expect(screen.getByRole('radio', { name: /^Waiting/ })).toBeChecked();
+    expect(
+      screen.getAllByRole('rowheader').map(cell => cell.textContent),
+    ).toEqual(['Triage this week']);
+  });
+
+  it('opens searching for what a link asks for', async () => {
+    // The palette's "+N more" on its sessions (T39).
+    await renderShell(
+      filterable,
+      states,
+      mockApis.storage(),
+      '/agent-platform/sessions?q=release',
+    );
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
+    ).toHaveValue('release');
+    // Titles and agents, as typed: both of Release Writer's sessions.
+    expect(
+      screen.getAllByRole('rowheader').map(cell => cell.textContent),
+    ).toEqual(['Release notes', 'Untimed']);
+  });
+
+  it('ignores a state it does not know', async () => {
+    await renderShell(
+      filterable,
+      states,
+      mockApis.storage(),
+      '/agent-platform/sessions?state=bogus',
+    );
+
+    expect(screen.getByRole('radio', { name: /^All/ })).toBeChecked();
   });
 
   it('offers no pagination and no sorting', async () => {

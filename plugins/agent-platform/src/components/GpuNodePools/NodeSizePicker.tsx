@@ -8,6 +8,7 @@ import {
   Skeleton,
   Text,
 } from '@backstage/ui';
+import { searchableIf } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   cheapestPriced,
@@ -104,6 +105,12 @@ export function NodeSizePicker({
   const cheapest = cheapestPriced(shapes, sizes);
   const priceSources = describePriceSources(shapes);
   const chosenPreset = presetFitOf(presetFit, preset);
+  const presetOptions = [
+    { id: ANY_PRESET, label: 'Any preset — no preference' },
+    ...presets.map(fit =>
+      presetOption(fit, presetFitOf(review?.presetFit, fit.preset), shapes),
+    ),
+  ];
 
   return (
     <Flex
@@ -177,16 +184,8 @@ export function NodeSizePicker({
         <Select
           label="I want to serve"
           description="Preselects the smallest size that hosts the preset and marks the others. Each preset says how it fits the sizes as chosen; the one chosen here blocks Deploy while no size hosts it."
-          options={[
-            { id: ANY_PRESET, label: 'Any preset — no preference' },
-            ...presets.map(fit =>
-              presetOption(
-                fit,
-                presetFitOf(review?.presetFit, fit.preset),
-                shapes,
-              ),
-            ),
-          ]}
+          searchable={searchableIf(presetOptions)}
+          options={presetOptions}
           selectedKey={preset ?? ANY_PRESET}
           onSelectionChange={key =>
             onPresetChange(key && key !== ANY_PRESET ? String(key) : undefined)

@@ -195,6 +195,8 @@ type Scenario = {
   evaluatesToolsets: boolean;
   /** More catalogue entries, for the long-list and grouping cases. */
   extraTools?: ToolSummary[];
+  /** Replaces the default five catalogue entries. */
+  baseTools?: ToolSummary[];
 };
 
 /**
@@ -204,7 +206,10 @@ type Scenario = {
  * visible only after the sign-in.
  */
 function makeMusterApi(scenario: Scenario) {
-  const base = [...TOOLS, ...(scenario.extraTools ?? [])];
+  const base = [
+    ...(scenario.baseTools ?? TOOLS),
+    ...(scenario.extraTools ?? []),
+  ];
   const visible = () => (scenario.signedIn ? [...base, PRO_TOOL] : base);
 
   const resolve = (selectors: string[]): FilterToolsResponse => {
@@ -427,7 +432,10 @@ const catalogueCard = () =>
   screen.getByRole('heading', { name: 'Catalogue' }).parentElement!
     .parentElement as HTMLElement;
 
-/** The catalogue is behind a toggle; every group inside it is collapsed. */
+/**
+ * A long catalogue (more than AUTO_EXPAND_MAX entries) is behind a toggle;
+ * every group inside it is collapsed. A short one is open from the start.
+ */
 async function browseCatalogue(user: UserEvent) {
   await user.click(
     await screen.findByRole('button', { name: 'Browse the catalogue' }),
@@ -536,18 +544,22 @@ describe('NewAgentToolsPage', () => {
     expect(continueButton()).toBeEnabled();
   });
 
-  it('lands compact: presets and the summary, the catalogue behind its toggle with an inventory, no group open', async () => {
-    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+  it('lands compact over a long catalogue: presets and the summary, the catalogue behind its toggle with an inventory, no group open', async () => {
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: GITHUB_TOOLS,
+    });
     await renderStep({ api });
     const user = userEvent.setup();
 
     expect(
       await screen.findByRole('button', { name: 'Browse the catalogue' }),
     ).toHaveAttribute('aria-expanded', 'false');
-    // 3 CRs (kubernetes family, agent-manager, pro), 3 server tools + 1 core
-    // tool, 1 workflow.
+    // 3 CRs (kubernetes family, agent-manager, pro) and github, 28 server
+    // tools + 1 core tool, 1 workflow.
     expect(
-      screen.getByText('3 servers · 4 tools · 1 workflow'),
+      screen.getByText('4 servers · 29 tools · 1 workflow'),
     ).toBeInTheDocument();
     // Nothing of the catalogue is rendered yet — not a group, not a row.
     expect(
@@ -574,7 +586,7 @@ describe('NewAgentToolsPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Registered servers — 1 server · 1 awaiting sign-in',
+        name: 'Registered servers — 2 servers · 25 tools · 1 awaiting sign-in',
       }),
     ).toBeInTheDocument();
     expect(
@@ -590,6 +602,85 @@ describe('NewAgentToolsPage', () => {
     expect(
       screen.queryByRole('button', { name: /^Infrastructure/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it('opens a three-entry catalogue from the start, with no search, toggle or paging', async () => {
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      // One server tool each for kubernetes and agent-manager, one workflow.
+      baseTools: [TOOLS[0], TOOLS[2], TOOLS[4]],
+    });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    // The groups are there without a click, collapsed as ever.
+    expect(
+      await within(catalogueCard()).findByRole('button', {
+        name: 'Infrastructure — 1 server · 1 tool',
+      }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      within(catalogueCard()).getByRole('button', {
+        name: 'Workflows — 1 workflow',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('3 servers · 2 tools · 1 workflow'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Search tools')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /the catalogue$/ }),
+    ).not.toBeInTheDocument();
+
+    await open(user, /^Infrastructure — /);
+    await open(user, /^kubernetes \(family\) — 1 tool/);
+
+    const catalogue = within(catalogueCard());
+    expect(
+      catalogue.getByRole('checkbox', { name: 'Tool x_kubernetes_get_pods' }),
+    ).toBeInTheDocument();
+    expect(
+      catalogue.queryByRole('button', { name: /^Show \d+ more/ }),
+    ).not.toBeInTheDocument();
+    expect(catalogue.queryByText(/shown/)).not.toBeInTheDocument();
+  });
+
+  it('keeps a 300-tool catalogue behind its toggle and search, and pages its rows', async () => {
+    const manyTools: ToolSummary[] = Array.from({ length: 300 }, (_, i) => ({
+      name: `x_github_tool_${String(i).padStart(3, '0')}`,
+      summary: `GitHub tool ${i}`,
+      server: 'github',
+      kind: 'tool' as const,
+    }));
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: manyTools,
+    });
+    await renderStep({ api });
+    const user = userEvent.setup();
+
+    expect(
+      await screen.findByRole('button', { name: 'Browse the catalogue' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Search tools')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: /^Tool x_github_/ }),
+    ).not.toBeInTheDocument();
+
+    await browseCatalogue(user);
+    await open(user, /^Registered servers — /);
+    await open(user, /^github — 300 tools/);
+
+    const catalogue = within(catalogueCard());
+    expect(
+      catalogue.getAllByRole('checkbox', { name: /^Tool x_github_/ }),
+    ).toHaveLength(20);
+    expect(
+      catalogue.getByRole('button', { name: 'Show 20 more tools' }),
+    ).toBeInTheDocument();
+    expect(catalogue.getByText('20 tools shown, 280 more')).toBeInTheDocument();
   });
 
   it("offers muster's presets safe-first with Full gateway last and warned", async () => {
@@ -713,7 +804,6 @@ describe('NewAgentToolsPage', () => {
 
     // Open the catalogue, the Infrastructure group, the kubernetes family, and
     // pick the destructive tool from its rows.
-    await browseCatalogue(user);
     await open(user, /^Infrastructure — /);
     await open(user, /^kubernetes \(family\) — 2 tools/);
     await user.click(
@@ -754,7 +844,6 @@ describe('NewAgentToolsPage', () => {
     const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
     await renderStep({ api });
     const user = userEvent.setup();
-    await browseCatalogue(user);
 
     // Infrastructure: the family, one row across its members.
     await open(user, /^Infrastructure — /);
@@ -791,7 +880,12 @@ describe('NewAgentToolsPage', () => {
   });
 
   it('a search opens only the groups with matches, and clearing it puts the catalogue away again', async () => {
-    const { api } = makeMusterApi({ signedIn: false, evaluatesToolsets: true });
+    // Long enough for a search (more than AUTO_EXPAND_MAX entries).
+    const { api } = makeMusterApi({
+      signedIn: false,
+      evaluatesToolsets: true,
+      extraTools: GITHUB_TOOLS,
+    });
     await renderStep({ api });
     const user = userEvent.setup();
 
@@ -942,7 +1036,6 @@ describe('NewAgentToolsPage', () => {
     await renderStep({ api });
     const user = userEvent.setup();
 
-    await browseCatalogue(user);
     await open(user, /^Registered servers — /);
     await open(user, /^pro — sign in to see its tools/);
     expect(
@@ -973,7 +1066,6 @@ describe('NewAgentToolsPage', () => {
     await renderStep({ api });
     const user = userEvent.setup();
 
-    await browseCatalogue(user);
     await open(user, /^Registered servers — /);
     await open(user, /^pro — sign in to see its tools/);
     await user.click(
@@ -1030,9 +1122,8 @@ describe('NewAgentToolsPage', () => {
     expect(
       screen.getByRole('checkbox', { name: 'Preset Read-only tools' }),
     ).toBeChecked();
-    await browseCatalogue(user);
     expect(
-      screen.getByRole('button', {
+      await within(catalogueCard()).findByRole('button', {
         name: 'Workflows — 1 workflow · 1 selected',
       }),
     ).toBeInTheDocument();
@@ -1169,7 +1260,6 @@ describe('NewAgentToolsPage', () => {
     );
     expect(toolsetOutput()).toBe('preset:full');
 
-    await browseCatalogue(user);
     await open(user, /^Workflows — /);
     await user.click(
       screen.getByRole('checkbox', { name: 'Workflow incident-triage' }),

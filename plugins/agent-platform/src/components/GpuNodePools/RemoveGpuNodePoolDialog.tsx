@@ -308,7 +308,10 @@ export function RemoveGpuNodePoolDialog({
               </Button>
             </div>
             {committed?.commit && (
-              <ClusterManagerCommitOutcome commit={committed.commit} />
+              <ClusterManagerCommitOutcome
+                commit={committed.commit}
+                placeNoun="environment"
+              />
             )}
           </Flex>
         )}

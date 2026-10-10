@@ -126,6 +126,68 @@ describe('GpuCapacityPanel', () => {
     ).toBeInTheDocument();
   });
 
+  it('groups three unavailable installations by reason, with no disclosure', async () => {
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['inst-1', 'inst-2', 'inst-3']}
+        unavailable={{
+          'inst-1': 'forbidden',
+          'inst-2': 'error',
+          'inst-3': 'forbidden',
+        }}
+        isLoading={false}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'inst-1, inst-3: you do not have permission to list nodes there; inst-2: the nodes could not be read',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/more/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /environments/ })).toBeNull();
+  });
+
+  it('caps 300 unavailable installations per reason, the full list behind a disclosure', async () => {
+    const installations = Array.from(
+      { length: 300 },
+      (_, index) => `inst-${index + 1}`,
+    );
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={['ok-1', 'ok-2', 'ok-3', 'ok-4', 'ok-5', 'ok-6']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'No GPU nodes found on ok-1, ok-2, ok-3, ok-4, ok-5 and 1 more.',
+      ),
+    ).toBeInTheDocument();
+
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[]}
+        installations={installations}
+        unavailable={Object.fromEntries(
+          installations.map(installation => [installation, 'error' as const]),
+        )}
+        isLoading={false}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'inst-1, inst-2, inst-3, inst-4, inst-5 and 295 more: the nodes could not be read',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'All 300 environments' }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the empty state when no reachable installation has GPU nodes', async () => {
     await renderInTestApp(
       <GpuCapacityPanel

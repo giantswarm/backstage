@@ -46,7 +46,7 @@ import {
 } from './serverActions';
 import { GitOpsEditDialog } from './GitOpsEditDialog';
 import {
-  DEACTIVATED_SIGN_IN_GATE,
+  deactivatedSignInGate,
   SessionGate,
   FamilyHealthBadge,
   ServerAuthActions,
@@ -133,6 +133,7 @@ function ServerPageContent({
   const signInState = useServerSignIn(
     singular?.getName() ?? '',
     canSignIn ? installation : undefined,
+    { noun: 'connector' },
   );
   // The header renders outside this page's providers, so its buttons call the
   // latest sign-in state through a ref rather than holding a stale closure.
@@ -276,11 +277,14 @@ function ServerPageContent({
           resources and prompts are hidden.
         </Text>
         <ServerAuthActions
+          noun="connector"
           serverName={singular.getName()}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}
           signInGate={
-            singular.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
+            singular.getSuspended()
+              ? deactivatedSignInGate('connector')
+              : undefined
           }
         />
       </Flex>

@@ -8,6 +8,7 @@ import {
   SessionUsageResponse,
   UsageAgentEntry,
   UsageDayEntry,
+  UsageRemainder,
   UsageServerEntry,
   UsageTally,
   UsageToolEntry,
@@ -119,16 +120,29 @@ function addInto(target: UsageTally, source: UsageTally): void {
   }
 }
 
-/** Descending by count, then by name, so the answer is not Map order. */
+/**
+ * The top entries by count, and what the cap left out.
+ *
+ * Descending by count, then by name, so the answer is not Map order. The
+ * remainder travels with the list so the UI can say "and 14 more, 230 calls"
+ * rather than dropping the long tail silently.
+ */
 function topBy<T>(
   counts: Map<string | null, number>,
   make: (key: string | null, calls: number) => T,
   limit = USAGE_TOP_N,
-): T[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''))
-    .slice(0, limit)
-    .map(([key, calls]) => make(key, calls));
+): { top: T[]; other: UsageRemainder } {
+  const ranked = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''),
+  );
+  const rest = ranked.slice(limit);
+  return {
+    top: ranked.slice(0, limit).map(([key, calls]) => make(key, calls)),
+    other: {
+      count: rest.length,
+      calls: rest.reduce((sum, [, calls]) => sum + calls, 0),
+    },
+  };
 }
 
 /**
@@ -290,6 +304,15 @@ export class SessionUsageReader {
       );
     }
 
+    const rankedTools = topBy<UsageToolEntry>(tools, (tool, calls) => ({
+      tool: tool ?? 'unknown tool',
+      calls,
+    }));
+    const rankedServers = topBy<UsageServerEntry>(servers, (server, calls) => ({
+      server,
+      calls,
+    }));
+
     return {
       evaluatedAt: endMs,
       windowStart: startMs,
@@ -297,14 +320,10 @@ export class SessionUsageReader {
       totals: { ...totals, sessions: sessionsWithActivity },
       daily: this.denseDaily(days, startMs, endMs),
       byAgent: this.rankAgents(agents),
-      topTools: topBy<UsageToolEntry>(tools, (tool, calls) => ({
-        tool: tool ?? 'unknown tool',
-        calls,
-      })),
-      topMcpServers: topBy<UsageServerEntry>(servers, (server, calls) => ({
-        server,
-        calls,
-      })),
+      topTools: rankedTools.top,
+      otherTools: rankedTools.other,
+      topMcpServers: rankedServers.top,
+      otherMcpServers: rankedServers.other,
       undatedTurns,
       unreadable,
       // The cap and the budget cutoff. Deliberately not the activity-window

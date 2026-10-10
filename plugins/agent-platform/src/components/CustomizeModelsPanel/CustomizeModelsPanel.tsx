@@ -13,7 +13,9 @@ import {
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import {
   EmptyStateCard,
+  INITIAL_ROWS,
   LoadingIndicator,
+  ShowMore,
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -27,6 +29,7 @@ import { modelDetailRouteRef, servingRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import { ModelHostingHint } from '../ModelHostingHint';
 import type { ModelRow } from '../ModelsTable';
 import { hasServingLayer, useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -154,20 +157,32 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       </Text>
     );
   } else {
+    // A page of rows at a time: tens of models are realistic, hundreds are
+    // not ruled out. Never bui's page mode, which draws its footer even at
+    // three rows. Keyed on the search, so a new query starts at its first page.
     body = (
-      <Table<Row>
-        columnConfig={columns}
-        data={rows}
-        pagination={{ type: 'none' }}
-        rowConfig={{
-          getHref: row =>
-            modelDetailRoute?.({
-              installation: row.installation,
-              namespace: row.namespace,
-              name: row.name,
-            }),
-        }}
-      />
+      <ShowMore
+        key={search.trim()}
+        items={rows}
+        initial={INITIAL_ROWS}
+        noun="model"
+      >
+        {page => (
+          <Table<Row>
+            columnConfig={columns}
+            data={page}
+            pagination={{ type: 'none' }}
+            rowConfig={{
+              getHref: row =>
+                modelDetailRoute?.({
+                  installation: row.installation,
+                  namespace: row.namespace,
+                  name: row.name,
+                }),
+            }}
+          />
+        )}
+      </ShowMore>
     );
   }
 
@@ -179,6 +194,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       />
       {body}
       <ModelHostingBanner />
+      <ModelHostingHint />
     </Flex>
   );
 }

@@ -3,6 +3,7 @@ import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
   CommandPalette,
+  NeedsInputToasts,
   RecentSessions,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import { ClusterAccessConnector } from '@giantswarm/backstage-plugin-gs';
@@ -162,10 +163,16 @@ function PaletteSearchItem({
 
 // The connector probes each installation and records it healthy; the
 // installation inventory, and so every Agent Platform page, waits on that.
+//
+// The needs-input watcher mounts here, once per shell, rather than inside the
+// rail's session list: the expanded rail is the only place that list renders,
+// and a collapsed rail or the phone's bottom bar must still raise the toast.
+// Guarded like the palette, for tests that mock the plugin module partially.
 export function AgentShellNav() {
   return (
     <>
       <ClusterAccessConnector />
+      {NeedsInputToasts && <NeedsInputToasts />}
       <AgentShellRail />
     </>
   );

@@ -15,11 +15,7 @@ import {
 } from '../../McpServersPage/serverDetail';
 import { MusterSummary } from '../../McpServersPage/MusterSummary';
 import { serverLiveActions } from '../serverActions';
-import {
-  DEACTIVATED_SIGN_IN_GATE,
-  Gate,
-  ServerAuthActions,
-} from '../../shared';
+import { deactivatedSignInGate, Gate, ServerAuthActions } from '../../shared';
 
 /** One titled block of the Details tab. */
 export function DetailsCard({
@@ -113,11 +109,14 @@ function SingularDetails({
         {authenticated && server.canAuthenticateInteractively() && (
           <Flex direction="column" align="start">
             <ServerAuthActions
+              noun="connector"
               serverName={server.getName()}
               installation={server.cluster}
               oauthConfigured={server.getAuth()?.type === 'oauth'}
               signInGate={
-                server.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
+                server.getSuspended()
+                  ? deactivatedSignInGate('connector')
+                  : undefined
               }
             />
           </Flex>

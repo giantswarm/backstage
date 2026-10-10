@@ -696,3 +696,66 @@ describe('LoadModelDialog', () => {
     expect(serveButton()).toBeDisabled();
   });
 });
+
+describe('LoadModelDialog · the selects at scale', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    musterConnected = true;
+    checkFit.mockResolvedValue(fits);
+    loadModel.mockResolvedValue(loaded);
+  });
+
+  const presetSelect = () => screen.findByRole('button', { name: /Preset/ });
+
+  it('offers three targets and two presets without a search', async () => {
+    listPresets.mockResolvedValue(presets);
+    await render({
+      targets: [pool, host, { ...pool, name: 'golem' }],
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Environment and backend/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: /golem/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await waitFor(() => expect(listPresets).toHaveBeenCalled());
+    await userEvent.click(await presetSelect());
+    expect(
+      await screen.findByRole('option', { name: /Qwen3 8B FP8/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 targets and 300 presets', async () => {
+    listPresets.mockResolvedValue([
+      presets[0],
+      ...Array.from({ length: 299 }, (_, i) => ({
+        name: `preset-${i + 1}`,
+        displayName: `Preset ${i + 1}`,
+        model: `org/model-${i + 1}`,
+        gpus: 1,
+      })),
+    ]);
+    await render({
+      targets: Array.from({ length: 300 }, (_, i) => ({
+        ...pool,
+        name: `inst-${i + 1}`,
+      })),
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Environment and backend/ }),
+    );
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+
+    await waitFor(() => expect(listPresets).toHaveBeenCalled());
+    await userEvent.click(await presetSelect());
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});

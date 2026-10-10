@@ -25,6 +25,7 @@ import {
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import type { ClientServingSummary } from '../../lib/serving';
 import {
   canonicalSkillId,
@@ -526,13 +527,16 @@ function ModelFact({
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
   }
-  // The friendly name where the ModelConfig carries one, else the model it
-  // runs; the resource name only when the ModelConfig cannot be read — which
-  // is normal for a non-admin.
-  const label =
-    modelConfig?.getDisplayNameAnnotation() ??
-    modelConfig?.getModel() ??
-    modelConfigName;
+  // The ModelConfig's name — its friendly one where it carries one — as in the
+  // create flow's "Runs on …": an admin may abstract the model on purpose
+  // ("The Cheap One"), so the name stays (PO decision L6). The model it runs
+  // is the secondary line below, unless the name already says it; neither
+  // when the ModelConfig cannot be read, which is normal for a non-admin.
+  const label = modelConfig?.getDisplayName() ?? modelConfigName;
+  const underlyingModel =
+    modelConfig && modelConfig.getModel() !== label
+      ? underlyingModelLine(modelConfig)
+      : undefined;
   const href = modelDetailRoute?.({
     installation,
     namespace: agent.getNamespace() ?? '',
@@ -549,6 +553,15 @@ function ModelFact({
         </Link>
       ) : (
         <Text variant="body-small">{label}</Text>
+      )}
+      {underlyingModel && (
+        <Text
+          variant="body-x-small"
+          color="secondary"
+          style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
+        >
+          {underlyingModel}
+        </Text>
       )}
       {modelServing && <ModelServingStatus serving={modelServing} />}
       {isFailing && <FailureMarker />}

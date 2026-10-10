@@ -12,7 +12,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  searchableIf,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerInfo,
@@ -165,7 +168,7 @@ export function AddGpuNodePoolDialog({
     clusterApiNote: noClusterApi,
     isLoading: clustersLoading,
     error: clustersError,
-  } = useManagedClusters(installation);
+  } = useManagedClusters(installation, 'environment');
   const { info } = useClusterManagerInfo(installation);
   const { schema, isLoading: schemaLoading } =
     useCreateNodePoolSchema(installation);
@@ -442,6 +445,7 @@ export function AddGpuNodePoolDialog({
                   <Select
                     label="Environment"
                     isRequired
+                    searchable={searchableIf(installations)}
                     options={installations.map(id => ({ id, label: id }))}
                     selectedKey={installation ?? null}
                     onSelectionChange={key => {
@@ -462,6 +466,7 @@ export function AddGpuNodePoolDialog({
                       clustersLoading,
                       clusters.length,
                     )}
+                    searchable={searchableIf(clusters)}
                     options={clusters.map(candidate => ({
                       id: candidate.name,
                       label: `${candidate.name} (${candidate.organization}${
@@ -654,7 +659,10 @@ export function AddGpuNodePoolDialog({
               />
             )}
             {committed?.commit && (
-              <ClusterManagerCommitOutcome commit={committed.commit} />
+              <ClusterManagerCommitOutcome
+                commit={committed.commit}
+                placeNoun="environment"
+              />
             )}
           </Flex>
         </DialogBody>

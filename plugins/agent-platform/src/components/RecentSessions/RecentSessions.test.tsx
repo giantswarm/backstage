@@ -9,7 +9,7 @@ import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
 import { RecentSessions } from './RecentSessions';
-import { pickRecentSessions, railSessionGroup } from './helpers';
+import { MAX_RAIL_PINS, pickRecentSessions, railSessionGroup } from './helpers';
 import type { SessionRow } from '../SessionsDataProvider';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -277,6 +277,43 @@ describe('RecentSessions', () => {
       // Only once: the pinned session does not repeat in the time groups.
       expect(screen.getAllByText('Oldest')).toHaveLength(1);
       expect(screen.getByText('Newest')).toBeInTheDocument();
+    });
+
+    it('lists the latest pins up to the cap and links the rest (T39)', async () => {
+      const many = Array.from({ length: MAX_RAIL_PINS + 3 }, (_, index) =>
+        session(`p${index}`, '2026-07-21T10:00:00Z', `Pinned ${index}`),
+      );
+      listSessions.mockResolvedValue(many);
+
+      await renderRecent({
+        shellRail: true,
+        storage: await storageWithPins(many.map(row => row.sessionId)),
+      });
+
+      const pinned = await screen.findByRole('list', { name: 'Pinned' });
+      expect(within(pinned).getAllByRole('listitem')).toHaveLength(
+        MAX_RAIL_PINS,
+      );
+      // The newest pins stay; the three pinned first are a click away.
+      expect(within(pinned).queryByText('Pinned 0')).not.toBeInTheDocument();
+      expect(
+        within(pinned).getByText(`Pinned ${MAX_RAIL_PINS + 2}`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: '3 more pinned' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions?state=pinned');
+    });
+
+    it('has no overflow link while the pins fit', async () => {
+      await renderRecent({
+        shellRail: true,
+        storage: await storageWithPins(['old']),
+      });
+
+      await screen.findByRole('list', { name: 'Pinned' });
+      expect(
+        screen.queryByRole('link', { name: /more pinned$/ }),
+      ).not.toBeInTheDocument();
     });
 
     it('shows the pinned sessions’ status like any other row', async () => {

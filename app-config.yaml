@@ -26,6 +26,10 @@ app:
     - nav-item:flux
     - page:agent-platform
     - nav-item:agent-platform
+    - page:ai-chat
+    - api:ai-chat/service
+    - api:ai-chat/drawer
+    - app-root-element:ai-chat/drawer
 
     # PagerDuty plugin is disabled — only the api:pagerduty extension is left
     # registered (via pagerDutyPlugin in App.tsx) so our custom WhoIsOnCallEntityCard
@@ -60,7 +64,7 @@ app:
 
     - page:scaffolder:
         config:
-          title: Templates
+          title: Create things
     - sub-page:scaffolder/actions: false
     - sub-page:scaffolder/editor: false
     - sub-page:scaffolder/templating-extensions: false
@@ -467,9 +471,11 @@ agentPlatform:
   # Integrations living outside the portal that it points people at. `slack`
   # shows the dismissible "Use your agents right in Slack" banner on the
   # new-session home; leave it off until the installation's Slack integration
-  # is set up. Off by default.
+  # is set up. Off by default. `slackDocsUrl` is where the banner's "How it
+  # works" button points (a new tab); Giant Swarm's docs when unset.
   # integrations:
   #   slack: true
+  #   slackDocsUrl: https://docs.example.com/agents-in-slack
   # kagent API v2 access (gRPC), used by the Sessions list, the session chat
   # and the Usage tab. The backend speaks gRPC to each installation's
   # controller route and forwards the user's Dex ID token.

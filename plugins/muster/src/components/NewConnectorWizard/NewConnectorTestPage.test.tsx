@@ -180,21 +180,74 @@ describe('NewConnectorTestPage', () => {
         /Jira offers 8 tools — 5 that read and 3 that change things\./,
       ),
     ).toBeInTheDocument();
-    // Six tools preview, prefix-stripped, each with its effect badge.
+    // Eight is the preview of six plus a remainder too small to hide:
+    // every tool shows, prefix-stripped, each with its effect badge.
     expect(screen.getByText('search_issues')).toBeInTheDocument();
     expect(screen.getByText('Find tickets with a query')).toBeInTheDocument();
-    expect(screen.getAllByText('Reads')).toHaveLength(3);
-    expect(screen.getAllByText('Changes things')).toHaveLength(3);
-    expect(screen.queryByText('list_boards')).not.toBeInTheDocument();
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Show all 8 tools' }),
-    );
     expect(screen.getByText('list_boards')).toBeInTheDocument();
     expect(screen.getAllByText('Reads')).toHaveLength(5);
+    expect(screen.getAllByText('Changes things')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+  });
+
+  it('lists three tools with no reveal control and no partial-list note', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [{ name: 'jira', state: 'Connected', toolsCount: 3 }],
+    });
+    filterTools.mockResolvedValue({
+      total: 3,
+      filtered_count: 3,
+      truncated: false,
+      tools: TOOLS.slice(0, 3),
+    });
+
+    await renderTestStep();
+
     expect(
-      screen.queryByRole('button', { name: /Show all/ }),
-    ).not.toBeInTheDocument();
+      await screen.findByText(
+        /Jira offers 3 tools — 3 that read and 0 that change things\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('Reads')).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByText(/are listed here/)).toBeNull();
+  });
+
+  it('pages a 300-tool connector six at a time and says how many there are', async () => {
+    listServers.mockResolvedValue({
+      mcpServers: [{ name: 'jira', state: 'Connected', toolsCount: 300 }],
+    });
+    // muster answers the 200 asked for; its total counts every match.
+    const many = Array.from({ length: 200 }, (_, index) =>
+      tool(`tool_${index + 1}`, index % 2 === 0),
+    );
+    filterTools.mockResolvedValue({
+      total: 300,
+      filtered_count: 200,
+      truncated: true,
+      tools: many,
+    });
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText(/Jira offers 300 tools\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Only the first 200 of its 300 tools are listed here.'),
+    ).toBeInTheDocument();
+    const badges = () => screen.getAllByText(/^(Reads|Changes things)$/).length;
+    expect(badges()).toBe(6);
+    expect(screen.getByText('tool_6')).toBeInTheDocument();
+    expect(screen.queryByText('tool_7')).not.toBeInTheDocument();
+
+    // Staged: the next six, not all 200 at once.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 6 more tools' }),
+    );
+    expect(badges()).toBe(12);
+    expect(screen.getByText('12 tools shown, 188 more')).toBeInTheDocument();
   });
 
   it('offers the one-time sign-in when the connector reports Auth Required', async () => {

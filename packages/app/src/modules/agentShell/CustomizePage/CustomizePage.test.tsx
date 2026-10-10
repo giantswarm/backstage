@@ -4,7 +4,7 @@ import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { customizeRouteRef } from '../routes';
 import { CUSTOMIZE_TAB_IDS } from '../customizeTabIds';
 import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
@@ -202,15 +202,147 @@ describe('CustomizePage', () => {
   );
 
   it('hands the search to the panel', async () => {
-    await renderCustomize('/customize/workflows');
+    await renderCustomize('/customize/skills');
 
     await userEvent.type(
-      screen.getByRole('searchbox', { name: 'Search workflows' }),
+      screen.getByRole('searchbox', { name: 'Search skills' }),
       'report',
     );
     expect(
-      screen.getByText('Workflows panel, search “report”'),
+      screen.getByText('Skills panel, search “report”'),
     ).toBeInTheDocument();
+  });
+
+  describe('at list scale', () => {
+    it('offers no search over a short tab, and keeps the create action', async () => {
+      // Three models: read, not searched.
+      await renderCustomize('/customize/models');
+
+      expect(screen.getByText('Models panel, search “”')).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Add model' })).toHaveAttribute(
+        'href',
+        '/agent-platform/models/new',
+      );
+    });
+
+    it('offers no search over a short tab without a create action either', async () => {
+      await renderCustomize('/customize/workflows');
+
+      expect(
+        screen.getByText('Workflows panel, search “”'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('offers no search while the tab is still counting', async () => {
+      mockCustomizeData = { ...mockCustomizeData, counts: {} };
+      await renderCustomize('/customize/agents');
+
+      expect(screen.getByText('Agents panel, search “”')).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('offers the search once the tab lists more than eight', async () => {
+      mockCustomizeData = {
+        ...mockCustomizeData,
+        counts: { agents: 300, skills: 71, models: 3 },
+      };
+      await renderCustomize('/customize/agents');
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search agents' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'New agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('draws no search at exactly eight, and one at nine', async () => {
+      mockMusterCounts = { connectors: 8, workflows: 9 };
+      await renderCustomize('/customize/connectors');
+
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
+
+      expect(
+        await screen.findByRole('searchbox', { name: 'Search workflows' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('a search in the address', () => {
+    it('opens the tab searched for ?q=', async () => {
+      await renderCustomize('/customize/skills?q=terraform');
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search skills' }),
+      ).toHaveValue('terraform');
+      expect(
+        screen.getByText('Skills panel, search “terraform”'),
+      ).toBeInTheDocument();
+    });
+
+    it('reseeds the search when a link brings a new one to the tab already open', async () => {
+      // The palette's "+N more" followed while Customize → Skills is open.
+      function PaletteLink() {
+        const navigate = useNavigate();
+        return (
+          <button
+            type="button"
+            onClick={() => navigate('/customize/skills?q=helm')}
+          >
+            More skills
+          </button>
+        );
+      }
+      await renderInTestApp(
+        <>
+          <Routes>
+            <Route path="/customize/*" element={<CustomizePage />} />
+          </Routes>
+          <PaletteLink />
+        </>,
+        {
+          mountedRoutes: allRoutes,
+          initialRouteEntries: ['/customize/skills?q=terraform'],
+        },
+      );
+      const field = screen.getByRole('searchbox', { name: 'Search skills' });
+      await userEvent.clear(field);
+      await userEvent.type(field, 'own words');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More skills' }),
+      );
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search skills' }),
+      ).toHaveValue('helm');
+      expect(
+        screen.getByText('Skills panel, search “helm”'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the field over a short tab while the search is set, so it can be cleared', async () => {
+      // Three models are no reason for a search, but one arrived with the link.
+      await renderCustomize('/customize/models?q=opus');
+
+      const field = screen.getByRole('searchbox', { name: 'Search models' });
+      expect(field).toHaveValue('opus');
+      expect(
+        screen.getByText('Models panel, search “opus”'),
+      ).toBeInTheDocument();
+
+      await userEvent.clear(field);
+
+      expect(screen.getByText('Models panel, search “”')).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Add model' }),
+      ).toBeInTheDocument();
+    });
   });
 
   it('opens the Agents tab at /customize, keeping the query string', async () => {

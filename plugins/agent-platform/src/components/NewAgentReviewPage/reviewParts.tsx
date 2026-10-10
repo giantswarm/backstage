@@ -3,6 +3,7 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
+import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { selectorLabel } from '../../lib/toolset';
 
@@ -126,6 +127,32 @@ export function SummaryItem({
   );
 }
 
+/**
+ * The model the picked ModelConfig runs, beside the ModelConfig's own name in
+ * the technical fold-out (PO decision L6: the name stays, the model is one
+ * disclosure away). Renders nothing while the ModelConfig cannot be read.
+ */
+export function UnderlyingModelItem({
+  installation,
+  modelConfigName,
+  namespace,
+}: {
+  installation: string | undefined;
+  modelConfigName: string | undefined;
+  namespace: string | undefined;
+}) {
+  const classes = useReviewStyles();
+  const model = useUnderlyingModel(installation, modelConfigName, namespace);
+  if (!model) {
+    return null;
+  }
+  return (
+    <SummaryItem label="Underlying model">
+      <span className={classes.code}>{model}</span>
+    </SummaryItem>
+  );
+}
+
 /** One row of the plain summary: what the person answered, in their words. */
 export function PlainRow({
   label,
@@ -230,6 +257,7 @@ export function ConnectAgentManager({
             yet: {message}
           </Text>
           <ServerSignIn
+            noun="connector"
             serverName={AGENT_MANAGER_SERVER}
             installation={installation}
           />

@@ -80,6 +80,14 @@ export type ClusterApiStatus = {
 };
 
 /**
+ * What the place a cluster-manager runs on is called: "installation" on the
+ * classic portal's pages (the Clusters page's Create / Delete cluster), as on
+ * main; "environment" in the agent platform's own sections (the GPU node-pool
+ * and agent writes).
+ */
+export type PlaceNoun = 'installation' | 'environment';
+
+/**
  * The line to show where the Cluster API is not served — the tool's own note,
  * or one naming the group when the tool reports the state without it.
  * `undefined` where it is served, or for a cluster-manager that predates the
@@ -87,13 +95,14 @@ export type ClusterApiStatus = {
  */
 export function clusterApiNote(
   status: ClusterApiStatus | undefined,
+  placeNoun: PlaceNoun = 'installation',
 ): string | undefined {
   if (!status || status.state === 'served' || status.state === '') {
     return undefined;
   }
   return (
     status.note ||
-    `the Cluster API (${status.group}) is not served on this environment`
+    `the Cluster API (${status.group}) is not served on this ${placeNoun}`
   );
 }
 

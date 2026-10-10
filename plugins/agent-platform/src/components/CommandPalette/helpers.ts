@@ -57,6 +57,42 @@ export type PaletteGroup = {
 /** Most rows one group lists; the rest becomes the group's "+N more". */
 export const PALETTE_GROUP_CAP = 5;
 
+/**
+ * Most rows a group lists while its own chip is on: narrowing to one kind is
+ * asking to see more of it, but still a bounded list — past this, "+N more"
+ * opens the kind's own list with the query.
+ */
+export const PALETTE_SINGLE_GROUP_CAP = 50;
+
+/** The row cap for a chip: a few per group under All, more for one group. */
+export function paletteGroupCap(filter: PaletteFilter): number {
+  return filter === 'all' ? PALETTE_GROUP_CAP : PALETTE_SINGLE_GROUP_CAP;
+}
+
+/**
+ * The chips worth offering: one per group that has anything in it at all
+ * (whatever the query), led by All — and none when at most one group does,
+ * since a chip row over a single kind narrows nothing. The active chip stays
+ * even if its group emptied, so it can be switched off.
+ */
+export function visiblePaletteFilters(
+  candidates: Partial<Record<PaletteGroupId, unknown[]>>,
+  active: PaletteFilter,
+): typeof PALETTE_FILTERS {
+  const filled = PALETTE_GROUPS.filter(
+    group => (candidates[group.id]?.length ?? 0) > 0,
+  ).map(group => group.id);
+  if (filled.length < 2 && active === 'all') {
+    return [];
+  }
+  return PALETTE_FILTERS.filter(
+    chip =>
+      chip.id === 'all' ||
+      chip.id === active ||
+      filled.includes(chip.id as PaletteGroupId),
+  );
+}
+
 /** Case-insensitive substring match over the candidate's text fields. */
 export function matchesQuery(
   query: string,
@@ -77,7 +113,7 @@ export function buildPaletteGroups(
   candidates: Partial<Record<PaletteGroupId, PaletteCandidate[]>>,
   query: string,
   filter: PaletteFilter,
-  cap: number = PALETTE_GROUP_CAP,
+  cap: number = paletteGroupCap(filter),
 ): PaletteGroup[] {
   return PALETTE_GROUPS.filter(
     group => filter === 'all' || group.id === filter,

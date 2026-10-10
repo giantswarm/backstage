@@ -31,7 +31,6 @@ import {
   storageApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
-import { UserSettingsStorage } from '@backstage/plugin-user-settings';
 import {
   ScmAuth,
   ScmIntegrationsApi,
@@ -61,6 +60,7 @@ import { BrandingFavicon } from '../branding';
 import { DarkThemeProvider, LightThemeProvider } from './customThemes';
 import { GSPageLayout } from './GSPageLayout';
 import { signInProviders } from './signInProviders';
+import { ScopedStorageApi } from './scopedStorageApi';
 
 // The Grafana plugin is a legacy plugin whose API factory is not
 // auto-registered in the NFS. Extract it and provide via ApiBlueprint.
@@ -141,16 +141,12 @@ export const appOverrides = createFrontendModule({
         }),
     }),
     /**
-     * Persist StorageApi data (pinned sessions, favorite agents, starred
-     * entities, …) per user in the backend database via
-     * `@backstage/plugin-user-settings-backend`, so it roams across browsers
-     * and devices instead of living in localStorage.
-     *
-     * Degrades on its own: while the person is not signed in it reads and
-     * writes WebStorage (localStorage), and when the `user-settings` backend
-     * route is unreachable reads resolve as "absent" (reported once through
-     * the errorApi) — writes to an unreachable backend reject, which callers
-     * surface like any other failed write.
+     * StorageApi scoped by bucket: the agent platform's own bucket (pinned
+     * sessions, favorite agents, dismissed hints) is kept per user in the
+     * backend database via `@backstage/plugin-user-settings-backend`, so it
+     * roams across browsers and devices; every other bucket (the classic
+     * portal's starred entities, home visits, …) stays in WebStorage
+     * (localStorage) exactly as the upstream default. See `ScopedStorageApi`.
      */
     ApiBlueprint.make({
       name: 'storage',
@@ -164,7 +160,7 @@ export const appOverrides = createFrontendModule({
             identityApi: identityApiRef,
           },
           factory: ({ discoveryApi, errorApi, fetchApi, identityApi }) =>
-            UserSettingsStorage.create({
+            ScopedStorageApi.create({
               discoveryApi,
               errorApi,
               fetchApi,

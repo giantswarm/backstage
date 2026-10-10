@@ -1,4 +1,4 @@
-import { ButtonIcon, Text } from '@backstage/ui';
+import { ButtonIcon, ButtonLink, Text } from '@backstage/ui';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { makeStyles } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
@@ -7,6 +7,36 @@ import { useDismissedHint } from '../../hooks/useDismissedHint';
 
 /** The app-config switch a platform admin sets once Slack is wired up. */
 export const SLACK_INTEGRATION_CONFIG_KEY = 'agentPlatform.integrations.slack';
+
+/** Where "How it works" points, when a platform admin sets it. */
+export const SLACK_DOCS_URL_CONFIG_KEY =
+  'agentPlatform.integrations.slackDocsUrl';
+
+/**
+ * Where "How it works" points by default. Giant Swarm's docs have no public
+ * page on using agents from Slack yet (the Agent Platform's "Connect Slack"
+ * tutorial is about Slack as a connector, a different thing), so the docs'
+ * front page until there is one.
+ */
+export const DEFAULT_SLACK_DOCS_URL = 'https://docs.giantswarm.io';
+
+/**
+ * The configured docs address when it is an absolute http(s) URL, else the
+ * default: config is not a place a `javascript:` link should come from.
+ */
+export function slackDocsUrl(configured: string | undefined): string {
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (url.protocol === 'https:' || url.protocol === 'http:') {
+        return configured;
+      }
+    } catch {
+      // Not a URL: the default instead.
+    }
+  }
+  return DEFAULT_SLACK_DOCS_URL;
+}
 
 /** The id the dismissal is stored under (see `useDismissedHint`). */
 const HINT_ID = 'slackPromo';
@@ -182,6 +212,12 @@ const useStyles = makeStyles({
     // Clear of the dismiss button in the corner.
     paddingRight: 28,
   },
+  actions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
 });
 
 function ThreadPreview() {
@@ -233,7 +269,7 @@ function ThreadPreview() {
  * The banner itself, mounted only once the integration is switched on so an
  * unconfigured portal never even reads the dismissal from user settings.
  */
-function SlackPromoBannerContent() {
+function SlackPromoBannerContent({ docsUrl }: { docsUrl: string }) {
   const classes = useStyles();
   const { dismissed, isKnown, dismiss } = useDismissedHint(HINT_ID);
 
@@ -265,6 +301,20 @@ function SlackPromoBannerContent() {
           answers in the thread, with the same skills and connectors it has
           here.
         </Text>
+        {/* One button, where the artboard has two ("Try it now", "How it
+            works"): the portal knows no workspace to send people to, only the
+            docs, and two buttons to the same page would be one too many. */}
+        <div className={classes.actions}>
+          <ButtonLink
+            href={docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="secondary"
+            size="small"
+          >
+            How it works ↗
+          </ButtonLink>
+        </div>
       </div>
     </section>
   );
@@ -276,11 +326,16 @@ function SlackPromoBannerContent() {
  * it. Shown only where a platform admin switched it on with
  * `agentPlatform.integrations.slack: true` (signed-in config) — renders
  * nothing at all otherwise — and gone for good, per person, once dismissed.
+ * Its "How it works" opens `agentPlatform.integrations.slackDocsUrl` in a new
+ * tab, Giant Swarm's docs when that is not set.
  */
 export function SlackPromoBanner() {
   const { config } = useSignedInConfig();
   const enabled =
     config?.getOptionalBoolean(SLACK_INTEGRATION_CONFIG_KEY) === true;
+  const docsUrl = slackDocsUrl(
+    config?.getOptionalString(SLACK_DOCS_URL_CONFIG_KEY),
+  );
 
-  return enabled ? <SlackPromoBannerContent /> : null;
+  return enabled ? <SlackPromoBannerContent docsUrl={docsUrl} /> : null;
 }

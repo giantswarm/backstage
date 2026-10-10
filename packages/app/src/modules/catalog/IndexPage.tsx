@@ -6,8 +6,7 @@ import FolderIcon from '@material-ui/icons/Folder';
 export const IndexPage = PageBlueprint.makeWithOverrides({
   factory(originalFactory) {
     return originalFactory({
-      // "Software" to people; the route and the code keep the catalog name.
-      title: 'Software',
+      title: 'Catalog',
       icon: <FolderIcon fontSize="inherit" />,
       routeRef: catalogPlugin.routes.catalogIndex,
       path: '/catalog',

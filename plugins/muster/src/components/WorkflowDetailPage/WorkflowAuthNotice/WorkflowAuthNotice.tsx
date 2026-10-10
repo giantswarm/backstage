@@ -70,6 +70,7 @@ export function WorkflowAuthNotice({
           {canSignIn ? (
             waiting.map(server => (
               <ServerSignIn
+                noun="connector"
                 key={server}
                 serverName={server}
                 installation={installation}

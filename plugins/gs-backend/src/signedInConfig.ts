@@ -64,6 +64,8 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   'agentPlatform.metaAgents',
   // Whether the home shows the Slack integration banner: a plain boolean.
   'agentPlatform.integrations.slack',
+  // Where the Slack banner's "How it works" points: a public docs URL.
+  'agentPlatform.integrations.slackDocsUrl',
   // Context-window sizes per model pattern, for the chat's memory indicator.
   'agentPlatform.models.contextWindows',
   // Link templates for the Flux sources' Git hosts.

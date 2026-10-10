@@ -23,7 +23,7 @@ import {
   ServerConfig,
 } from '../../McpServersPage/serverDetail';
 import {
-  DEACTIVATED_SIGN_IN_GATE,
+  deactivatedSignInGate,
   ServerAuthActions,
   ServerStateBadge,
   serverStateLabel,
@@ -217,12 +217,13 @@ export function ServerInstancesTab({
               {authenticated && server.canAuthenticateInteractively() && (
                 <Flex direction="column" align="start">
                   <ServerAuthActions
+                    noun="connector"
                     serverName={server.getName()}
                     installation={server.cluster}
                     oauthConfigured={server.getAuth()?.type === 'oauth'}
                     signInGate={
                       server.getSuspended()
-                        ? DEACTIVATED_SIGN_IN_GATE
+                        ? deactivatedSignInGate('connector')
                         : undefined
                     }
                   />

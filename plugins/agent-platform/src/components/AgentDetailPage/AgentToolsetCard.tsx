@@ -264,6 +264,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
               const name = parseSelector(selector)?.name ?? selector;
               return (
                 <ServerSignIn
+                  noun="connector"
                   key={selector}
                   serverName={name}
                   installation={installation}

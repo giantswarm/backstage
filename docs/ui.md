@@ -144,8 +144,8 @@ Guidelines when building pages:
   `SubPageBlueprint` per tab, each with a **relative** `path` (`list`, `tree`).
   Keep the paths relative; `GSPageLayout` resolves them. See
   `plugins/flux/src/plugin.tsx` and `plugins/muster/src/plugin.tsx`.
-- **Pages that render their own bui `PluginHeader`** (e.g. the Clusters and
-  Apps (deployments) sections, which use the `useLayoutTabs` hook in `plugins/gs`)
+- **Pages that render their own bui `PluginHeader`** (e.g. the clusters and
+  deployments sections, which use the `useLayoutTabs` hook in `plugins/gs`)
   must pass `noHeader: true` to `PageBlueprint` so `GSPageLayout` skips its
   header and just renders the content — otherwise you get a double header.
 - Do **not** reintroduce a classic `<Page>`/`<Header>` scaffold on an NFS page;

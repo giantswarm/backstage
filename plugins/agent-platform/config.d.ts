@@ -88,6 +88,12 @@ export interface Config {
        * nothing.
        */
       slack?: boolean;
+      /**
+       * Where the Slack banner's "How it works" button points (opened in a
+       * new tab): the installation's own guide to using agents from Slack.
+       * An absolute http(s) URL; Giant Swarm's docs when unset or invalid.
+       */
+      slackDocsUrl?: string;
     };
   };
 }

@@ -68,7 +68,11 @@ function HeaderControl() {
 
   return (
     <div style={{ minWidth: 220 }}>
-      <InstallationScopeSelect component={component} describe={describe} />
+      <InstallationScopeSelect
+        component={component}
+        describe={describe}
+        searchable
+      />
     </div>
   );
 }

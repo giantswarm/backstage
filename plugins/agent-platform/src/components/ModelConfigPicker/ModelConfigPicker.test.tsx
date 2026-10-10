@@ -128,4 +128,58 @@ describe('ModelConfigPicker', () => {
     ).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByText(/^Preselected:/)).not.toBeInTheDocument();
   });
+
+  describe('at list scale', () => {
+    const manyModels = (count: number) =>
+      Array.from({ length: count }, (_, i) => {
+        const n = String(i).padStart(3, '0');
+        return modelConfig(`model-${n}`, `Model ${n}`);
+      });
+
+    it('draws three models with no paging chrome', async () => {
+      mockModelConfigs = manyModels(3);
+
+      await renderPicker();
+
+      expect(await screen.findAllByRole('radio')).toHaveLength(3);
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
+    it('draws the first 12 of 300 models and pages in the rest', async () => {
+      mockModelConfigs = manyModels(300);
+
+      await renderPicker();
+
+      expect(await screen.findAllByRole('radio')).toHaveLength(12);
+      expect(screen.getByText('12 models shown, 288 more')).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 12 more models' }),
+      );
+
+      expect(screen.getAllByRole('radio')).toHaveLength(24);
+    });
+
+    it('keeps the picked model on screen when it is listed past the first page', async () => {
+      mockModelConfigs = manyModels(300);
+      mockModelConfigs[200] = modelConfig(
+        'default-model-config',
+        'Claude Sonnet',
+      );
+
+      await renderPicker();
+
+      expect(
+        await screen.findByRole('radio', {
+          name: 'Select model Claude Sonnet, environment default',
+        }),
+      ).toHaveAttribute('aria-checked', 'true');
+      // The first page, and the picked one after it.
+      expect(screen.getAllByRole('radio')).toHaveLength(13);
+    });
+  });
 });

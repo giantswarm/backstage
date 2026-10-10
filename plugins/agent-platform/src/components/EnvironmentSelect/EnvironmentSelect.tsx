@@ -37,6 +37,7 @@ export function EnvironmentSelect({ component }: EnvironmentSelectProps) {
         label="Environment"
         component={component}
         describe={describe}
+        searchable
       />
     </div>
   );

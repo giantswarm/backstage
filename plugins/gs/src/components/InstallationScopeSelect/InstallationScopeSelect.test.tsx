@@ -233,4 +233,49 @@ describe('InstallationScopeSelect', () => {
     expect(trigger()).toHaveTextContent('All installations');
     expect(getInstallationScopeSnapshot().scope).toBe('all');
   });
+
+  it('offers three installations without a search, even when searchable', async () => {
+    renderSelect({ searchable: true });
+
+    await userEvent.click(trigger());
+
+    expect(
+      await screen.findByRole('option', { name: /wombat/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  describe('at 300 installations', () => {
+    beforeEach(() => {
+      const names = Array.from(
+        { length: 300 },
+        (_, i) => `inst-${String(i).padStart(3, '0')}`,
+      );
+      configure(names);
+      mockInventory = {
+        entries: names.map(name => entry(name, { home: name === 'inst-000' })),
+        home: 'inst-000',
+        isLoading: false,
+      };
+    });
+
+    it('offers type-ahead where the caller opts in', async () => {
+      renderSelect({ searchable: true });
+
+      await userEvent.click(trigger());
+
+      expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    });
+
+    it('stays a plain select without the opt-in, as on main', async () => {
+      renderSelect();
+
+      await userEvent.click(trigger());
+
+      expect(
+        await screen.findByRole('option', { name: /inst-299/ }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+    });
+  });
 });

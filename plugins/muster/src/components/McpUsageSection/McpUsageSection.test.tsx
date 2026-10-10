@@ -203,3 +203,97 @@ describe('McpUsageSection chart', () => {
     expect(chart).toHaveAttribute('data-legend', 'true');
   });
 });
+
+describe('McpUsageSection connectors table', () => {
+  /** A usage body with these connectors, busiest first as the route sends. */
+  function usageWith(serverCount: number): McpUsage {
+    return {
+      available: true,
+      range_hours: 720,
+      step_hours: 24,
+      buckets: [],
+      totals: {
+        calls: 1_000,
+        errors: 0,
+        error_ratio: 0,
+        p95_seconds: 0.4,
+        distinct_tools: 3,
+      },
+      top_tools: [],
+      servers: Array.from({ length: serverCount }, (_, i) => ({
+        server: `connector-${String(i).padStart(3, '0')}`,
+        calls: 1_000 - i,
+        errors: 0,
+      })),
+    };
+  }
+
+  async function renderWith(usage: McpUsage) {
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usage),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const reachable = {
+      ...instance(),
+      activeInstallation: 'gazelle',
+      scope: 'gazelle',
+      activeInstallationInfo: instance().installationInfos[0],
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+        <QueryClientProvider client={queryClient}>
+          <MusterInstanceContext.Provider value={reachable}>
+            {children}
+          </MusterInstanceContext.Provider>
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    render(<McpUsageSection />, { wrapper });
+    await screen.findByText('connector-000');
+  }
+
+  function renderedConnectors(): string[] {
+    return screen
+      .getAllByText(/^connector-\d{3}$/)
+      .map(cell => cell.textContent ?? '');
+  }
+
+  it('shows three connectors with no reveal control and no pagination', async () => {
+    await renderWith(usageWith(3));
+
+    expect(renderedConnectors()).toEqual([
+      'connector-000',
+      'connector-001',
+      'connector-002',
+    ]);
+    expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+    expect(screen.queryByText(/rows per page/i)).toBeNull();
+  });
+
+  it('renders the busiest 15 of 300 and offers the rest', async () => {
+    await renderWith(usageWith(300));
+
+    const shown = renderedConnectors();
+    expect(shown).toHaveLength(15);
+    expect(shown[0]).toBe('connector-000');
+    expect(shown[14]).toBe('connector-014');
+    expect(
+      screen.getByRole('button', { name: 'Show all 300 connectors' }),
+    ).toBeVisible();
+  });
+
+  it('reveals every connector in one click', async () => {
+    // 30 rather than 300: the same click, without mounting 300 rows of data
+    // bars in jsdom.
+    await renderWith(usageWith(30));
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Show all 30 connectors' }).click();
+    });
+    expect(renderedConnectors()).toHaveLength(30);
+  });
+});

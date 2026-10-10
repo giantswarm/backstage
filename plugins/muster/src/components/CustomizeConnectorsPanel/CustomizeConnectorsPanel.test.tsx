@@ -240,6 +240,64 @@ describe('CustomizeConnectorsPanel', () => {
     expect(screen.getByText('No connectors here')).toBeInTheDocument();
   });
 
+  describe('at list scale', () => {
+    const manyServers = (count: number) =>
+      Array.from({ length: count }, (_, i) =>
+        makeServer(`connector-${String(i).padStart(3, '0')}`),
+      );
+    const bodyRows = () => screen.getAllByRole('row').slice(1);
+
+    it('draws three connectors with no paging chrome', async () => {
+      await renderPanel();
+
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      expect(bodyRows()).toHaveLength(3);
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
+      // bui's page-mode footer.
+      expect(screen.queryByText(/of 3/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /next/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('draws the first 20 of 300 connectors, by name, and pages in the rest', async () => {
+      const user = userEvent.setup();
+      mockServers = manyServers(300).reverse();
+      await renderPanel();
+
+      expect(bodyRows()).toHaveLength(20);
+      expect(
+        within(bodyRows()[0]).getByText('connector-000'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('20 connectors shown, 280 more'),
+      ).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: 'Show 20 more connectors' }),
+      );
+
+      expect(bodyRows()).toHaveLength(40);
+      expect(
+        screen.getByRole('button', { name: 'Show fewer' }),
+      ).toBeInTheDocument();
+    });
+
+    it('pages a search of 300 connectors too', async () => {
+      mockServers = manyServers(300);
+      await renderPanel('connector-1');
+
+      // connector-100 .. connector-199
+      expect(bodyRows()).toHaveLength(20);
+      expect(
+        screen.getByText('20 connectors shown, 80 more'),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('says when muster has no connector', async () => {
     mockServers = [];
     await renderPanel();

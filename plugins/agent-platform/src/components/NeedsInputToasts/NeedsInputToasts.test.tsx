@@ -10,6 +10,7 @@ import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
 import { RecentSessions } from '../RecentSessions';
 import { findNewlyWaiting } from './helpers';
+import { NEEDS_INPUT_TOAST_BURST, NeedsInputToasts } from './NeedsInputToasts';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   applyInstallationScope: (installations: string[]) => installations,
@@ -87,21 +88,39 @@ function statesWith(states: Array<{ sessionId: string; state: string }>) {
   return { evaluatedAt: 0, states, unreadable: [], skipped: 0 };
 }
 
-async function renderRail(path = '/') {
-  await renderInTestApp(<RecentSessions shellRail limit={8} />, {
-    apis: [
-      [kagentApiRef, kagentApi],
-      [storageApiRef, mockApis.storage()],
-      [toastApiRef, { post }],
-    ],
-    initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
-  });
-  await screen.findByText('Release notes');
-  // The first summary is in (the rail's dot shows it): what was already
-  // waiting then is not news.
-  await screen.findByRole('img', { name: 'Needs your input' });
+/**
+ * How the shell mounts things. `watcher` alone is a collapsed rail or the
+ * phone's bar: the rail's session list is not there, the watcher is. `rail`
+ * adds the expanded rail's list beside it; `railOnly` is the list without
+ * the watcher.
+ */
+type Mount = 'watcher' | 'rail' | 'railOnly';
+
+async function renderShell(path = '/', mount: Mount = 'watcher') {
+  await renderInTestApp(
+    <>
+      {mount !== 'watcher' && <RecentSessions shellRail limit={8} />}
+      {mount !== 'railOnly' && <NeedsInputToasts />}
+    </>,
+    {
+      apis: [
+        [kagentApiRef, kagentApi],
+        [storageApiRef, mockApis.storage()],
+        [toastApiRef, { post }],
+      ],
+      initialRouteEntries: [path],
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    },
+  );
+  // The first summary is in: what was already waiting then is not news.
+  await waitFor(() => expect(listSessionStates).toHaveBeenCalled());
+  await waitFor(() => expect(mockQueryClient.isFetching()).toBe(0));
+  if (mount !== 'watcher') {
+    await screen.findByRole('img', { name: 'Needs your input' });
+  }
 }
+
+const renderRail = (path = '/') => renderShell(path);
 
 /** The next poll, answering with `states`. */
 async function poll(states: Array<{ sessionId: string; state: string }>) {
@@ -131,7 +150,7 @@ beforeEach(() => {
   );
 });
 
-describe('NeedsInputToasts, mounted with the shell rail', () => {
+describe('NeedsInputToasts, mounted without the rail’s list (collapsed rail, phone)', () => {
   it('says nothing about a session that was already waiting', async () => {
     await renderRail();
 
@@ -191,6 +210,88 @@ describe('NeedsInputToasts, mounted with the shell rail', () => {
     // Give the effect a beat to have run, then check it chose silence.
     await act(() => new Promise(resolve => setTimeout(resolve, 50)));
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('NeedsInputToasts, one mount per shell', () => {
+  it('raises one toast, not two, beside the expanded rail', async () => {
+    await renderShell('/', 'rail');
+
+    await poll([{ sessionId: 'notes', state: 'input-required' }]);
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await act(() => new Promise(resolve => setTimeout(resolve, 50)));
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the toast to the watcher: the rail’s list raises none', async () => {
+    await renderShell('/', 'railOnly');
+
+    await poll([{ sessionId: 'notes', state: 'input-required' }]);
+
+    await act(() => new Promise(resolve => setTimeout(resolve, 50)));
+    expect(post).not.toHaveBeenCalled();
+  });
+});
+
+describe('NeedsInputToasts, many sessions at once (T39)', () => {
+  const titles = ['One', 'Two', 'Three', 'Four', 'Five'];
+
+  async function renderWith(count: number) {
+    listSessions.mockResolvedValue(
+      titles.slice(0, count).map(title => session(title.toLowerCase(), title)),
+    );
+    listSessionStates.mockResolvedValue(
+      statesWith(
+        titles
+          .slice(0, count)
+          .map(title => ({ sessionId: title.toLowerCase(), state: 'working' })),
+      ),
+    );
+    await renderShell();
+    await poll(
+      titles.slice(0, count).map(title => ({
+        sessionId: title.toLowerCase(),
+        state: 'input-required',
+      })),
+    );
+  }
+
+  it(`still names each session up to ${NEEDS_INPUT_TOAST_BURST} at once`, async () => {
+    await renderWith(NEEDS_INPUT_TOAST_BURST);
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledTimes(NEEDS_INPUT_TOAST_BURST),
+    );
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({ description: 'Two' }),
+    );
+  });
+
+  it('counts a larger burst in one toast that opens the Waiting chip', async () => {
+    await renderWith(NEEDS_INPUT_TOAST_BURST + 1);
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: `${NEEDS_INPUT_TOAST_BURST + 1} sessions need your input`,
+        links: [
+          {
+            label: 'Show waiting sessions',
+            href: '/agent-platform/sessions?state=waiting',
+          },
+        ],
+      }),
+    );
+
+    // Gone once none of them waits any more.
+    await poll(
+      titles.map(title => ({
+        sessionId: title.toLowerCase(),
+        state: 'working',
+      })),
+    );
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   });
 });
 

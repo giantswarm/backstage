@@ -27,7 +27,7 @@ export type { GateProps } from '@giantswarm/backstage-plugin-ui-react';
 export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
 export {
-  DEACTIVATED_SIGN_IN_GATE,
+  deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
 } from './ServerSignIn';
@@ -37,7 +37,7 @@ export {
   needsSignIn,
   useServerSignIn,
 } from './useServerSignIn';
-export type { ServerSignInState } from './useServerSignIn';
+export type { ServerSignInState, SignInNoun } from './useServerSignIn';
 export { toneColors, severityTone, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';

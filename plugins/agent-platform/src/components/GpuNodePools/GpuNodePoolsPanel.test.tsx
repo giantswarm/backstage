@@ -135,4 +135,69 @@ describe('GpuNodePoolsPanel', () => {
       expect(await screen.findByText('Reading…')).toBeInTheDocument();
     });
   });
+
+  describe('notes and errors per environment', () => {
+    const renderNotes = (
+      notes: { installation: string; note: string }[],
+      errors: { installation: string; error: Error }[] = [],
+    ) =>
+      renderInTestApp(
+        <GpuNodePoolsPanel
+          rows={[]}
+          isLoading={false}
+          notes={notes}
+          errors={errors}
+          onRemove={jest.fn()}
+          opened={undefined}
+          onToggleLifecycle={jest.fn()}
+          onCloseLifecycle={jest.fn()}
+        />,
+      );
+    const names = (count: number) =>
+      Array.from({ length: count }, (_, index) => `inst-${index + 1}`);
+
+    it('names three environments in full, sharing a note, with no disclosure', async () => {
+      await renderNotes(
+        names(3).map(installation => ({
+          installation,
+          note: 'no Cluster API',
+        })),
+        [{ installation: 'inst-9', error: new Error('boom') }],
+      );
+
+      expect(
+        screen.getByText('inst-1, inst-2, inst-3: no Cluster API'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('inst-9: boom')).toBeInTheDocument();
+      expect(screen.queryByText(/more/)).toBeNull();
+      expect(screen.queryByRole('button', { name: /environments/ })).toBeNull();
+    });
+
+    it('caps 300 environments per note and error, the full lists behind disclosures', async () => {
+      await renderNotes(
+        names(300).map(installation => ({
+          installation,
+          note: 'no Cluster API',
+        })),
+        names(300).map(installation => ({
+          installation,
+          error: new Error('boom'),
+        })),
+      );
+
+      expect(
+        screen.getByText(
+          'inst-1, inst-2, inst-3, inst-4, inst-5 and 295 more: no Cluster API',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'inst-1, inst-2, inst-3, inst-4, inst-5 and 295 more: boom',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: 'All 300 environments' }),
+      ).toHaveLength(2);
+    });
+  });
 });

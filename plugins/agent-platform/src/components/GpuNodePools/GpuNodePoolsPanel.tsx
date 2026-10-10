@@ -14,8 +14,12 @@ import {
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import {
+  groupNames,
   InfoCard,
+  joinNames,
   LoadingIndicator,
+  NAMED_IN_SENTENCE,
+  SimpleAccordion,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
@@ -307,9 +311,14 @@ export function GpuNodePoolsPanel({
             <Alert
               status="info"
               title="No clusters to list on some environments"
-              description={notes
-                .map(({ installation, note }) => `${installation}: ${note}`)
-                .join('; ')}
+              description={
+                <GroupedByInstallation
+                  lines={notes.map(({ installation, note }) => ({
+                    installation,
+                    rest: `: ${note}`,
+                  }))}
+                />
+              }
               data-testid="cluster-api-note"
             />
           )}
@@ -317,15 +326,70 @@ export function GpuNodePoolsPanel({
             <Alert
               status="info"
               title="Node pools could not be read for some environments"
-              description={errors
-                .map(({ installation, error }) =>
-                  installationErrorLine(installation, error),
-                )
-                .join('; ')}
+              description={
+                <GroupedByInstallation
+                  lines={errors.map(({ installation, error }) =>
+                    splitErrorLine(installation, error),
+                  )}
+                />
+              }
             />
           )}
         </Flex>
       </InfoCard>
     </div>
+  );
+}
+
+/** A per-installation line, cut after the installation's name. */
+type InstallationLine = { installation: string; rest: string };
+
+/**
+ * `<installation>: <message>` or `<installation> did not answer…`, as
+ * {@link installationErrorLine} words it, split after the name so installations
+ * failing the same way share one sentence.
+ */
+function splitErrorLine(installation: string, error: Error): InstallationLine {
+  const line = installationErrorLine(installation, error);
+  return line.startsWith(installation)
+    ? { installation, rest: line.slice(installation.length) }
+    : { installation, rest: `: ${line}` };
+}
+
+/**
+ * Per-installation lines grouped by what follows the name — fifty clusters
+ * without Cluster API read as one sentence, the names capped
+ * (`a, b, c, d, e and 45 more: <note>`) — with every line behind a disclosure
+ * once there are more than a sentence names.
+ */
+function GroupedByInstallation({ lines }: { lines: InstallationLine[] }) {
+  const sentence = joinNames(
+    groupNames(
+      lines,
+      line => line.installation,
+      line => line.rest,
+    ).map(({ group, names }) => `${joinNames(names)}${group}`),
+    { separator: '; ' },
+  );
+  if (lines.length <= NAMED_IN_SENTENCE) {
+    return <>{sentence}</>;
+  }
+  return (
+    <Flex direction="column" gap="2">
+      <span>{sentence}</span>
+      <SimpleAccordion
+        title={`All ${lines.length} environments`}
+        headingLevel={4}
+      >
+        <Flex direction="column" gap="1">
+          {lines.map(({ installation, rest }) => (
+            <Text key={installation} variant="body-small">
+              {installation}
+              {rest}
+            </Text>
+          ))}
+        </Flex>
+      </SimpleAccordion>
+    </Flex>
   );
 }

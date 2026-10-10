@@ -9,7 +9,7 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Dialog, DialogHeader, Text } from '@backstage/ui';
+import { Dialog, DialogHeader, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
 
@@ -22,22 +22,25 @@ import {
   agentDetailRouteRef,
   musterServersExternalRouteRef,
   sessionDetailRouteRef,
+  sessionsRouteRef,
   skillsRouteRef,
 } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useAgents, type AgentRow } from '../AgentsDataProvider';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { useSessions } from '../SessionsDataProvider';
+import { sessionsListSearch } from '../SessionsTable/filters';
+import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import {
   buildPaletteGroups,
   isEditableTarget,
   isPaletteHotkey,
-  PALETTE_FILTERS,
   portalSearchHref,
   type PaletteCandidate,
   type PaletteEntry,
   type PaletteFilter,
   type PaletteGroupId,
+  visiblePaletteFilters,
 } from './helpers';
 import { usePaletteConnectors } from './usePaletteConnectors';
 
@@ -377,6 +380,7 @@ function PaletteDialog({
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillsRoute = useRouteRef(skillsRouteRef);
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const sessionsRoute = useRouteRef(sessionsRouteRef);
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<PaletteFilter>('all');
@@ -472,6 +476,19 @@ function PaletteDialog({
     () => buildPaletteGroups(candidates, trimmedQuery, filter),
     [candidates, trimmedQuery, filter],
   );
+  const chips = visiblePaletteFilters(candidates, filter);
+
+  // Where a group's "+N more" goes: that kind's own list, searching for the
+  // same thing. The shell lists agents, skills and connectors on Customize.
+  const moreHref = (group: PaletteGroupId): string | undefined => {
+    if (group === 'sessions') {
+      return sessionsRoute
+        ? `${sessionsRoute()}${sessionsListSearch({ query: trimmedQuery })}`
+        : undefined;
+    }
+    const search = trimmedQuery ? `?q=${encodeURIComponent(trimmedQuery)}` : '';
+    return `${SHELL_CUSTOMIZE_PATH}/${group}${search}`;
+  };
 
   // What the arrow keys walk: the groups' rows, then the portal-search row.
   const flatEntries = useMemo<PaletteEntry[]>(() => {
@@ -599,19 +616,27 @@ function PaletteDialog({
             autoFocus
           />
         </div>
-        <div className={classes.chips} role="group" aria-label="Filter results">
-          {PALETTE_FILTERS.map(chip => (
-            <button
-              key={chip.id}
-              type="button"
-              className={classes.chip}
-              aria-pressed={filter === chip.id}
-              onClick={() => setFilter(chip.id)}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
+        {/* Only the kinds there is something of, and none for a single kind
+            (T39): a chip that filters down to nothing is noise. */}
+        {chips.length > 0 && (
+          <div
+            className={classes.chips}
+            role="group"
+            aria-label="Filter results"
+          >
+            {chips.map(chip => (
+              <button
+                key={chip.id}
+                type="button"
+                className={classes.chip}
+                aria-pressed={filter === chip.id}
+                onClick={() => setFilter(chip.id)}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
         {emptyText && (
           <div className={classes.empty}>
             <Text as="p" variant="body-medium" color="secondary">
@@ -633,9 +658,12 @@ function PaletteDialog({
                     {group.label}
                   </Text>
                   {group.moreCount > 0 && (
-                    <Text variant="body-x-small" color="secondary">
-                      +{group.moreCount} more
-                    </Text>
+                    <MoreLink
+                      href={moreHref(group.id)}
+                      count={group.moreCount}
+                      label={group.label.toLocaleLowerCase()}
+                      onOpen={onClose}
+                    />
                   )}
                 </div>
                 <ul role="presentation" className={classes.groupList}>
@@ -706,6 +734,40 @@ function PaletteDialog({
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/**
+ * A group's "+N more": the kind's own list with the query, or plain text
+ * when there is no such list to open.
+ */
+function MoreLink({
+  href,
+  count,
+  label,
+  onOpen,
+}: {
+  href: string | undefined;
+  count: number;
+  label: string;
+  onOpen: () => void;
+}) {
+  if (!href) {
+    return (
+      <Text variant="body-x-small" color="secondary">
+        +{count} more
+      </Text>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      variant="body-x-small"
+      aria-label={`Show ${count} more ${label}`}
+      onPress={onOpen}
+    >
+      +{count} more
+    </Link>
   );
 }
 

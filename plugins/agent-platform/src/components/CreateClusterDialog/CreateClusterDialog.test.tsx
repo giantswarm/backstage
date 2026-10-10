@@ -351,31 +351,9 @@ describe('CreateClusterDialog', () => {
 });
 
 describe('CreateClusterDialog · the selects at scale', () => {
-  const openOrganizations = async (user: ReturnType<typeof userEvent.setup>) =>
-    user.click(
-      await screen.findByRole('button', { name: /Pick an organization/ }),
-    );
-
-  it('offers three organizations and installations without a search', async () => {
-    mockOrganizationNames = ['acme', 'globex', 'initech'];
-    const user = userEvent.setup();
-    await renderDialog({}, ['inst-1', 'inst-2', 'inst-3']);
-
-    await openOrganizations(user);
-    expect(
-      await screen.findByRole('option', { name: 'initech' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
-    await user.keyboard('{Escape}');
-
-    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
-    expect(
-      await screen.findByRole('option', { name: 'inst-3' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
-  });
-
-  it('offers type-ahead over 300 organizations and 50 installations', async () => {
+  // The dialog renders on the classic Clusters page, so its selects stay as on
+  // main: no type-ahead, however long the list.
+  it('keeps plain selects without a search over 300 organizations and 50 installations', async () => {
     mockOrganizationNames = Array.from(
       { length: 300 },
       (_, i) => `org-${String(i).padStart(3, '0')}`,
@@ -386,12 +364,20 @@ describe('CreateClusterDialog · the selects at scale', () => {
       Array.from({ length: 50 }, (_, i) => `inst-${i + 1}`),
     );
 
-    await openOrganizations(user);
-    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole('button', { name: /Pick an organization/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: 'org-299' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
-    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('option', { name: 'inst-50' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
   });
 });
 
@@ -404,7 +390,7 @@ describe('the form’s checks', () => {
       /at most 20/,
     );
     expect(clusterNameProblem('taken1', ['taken1'])).toBe(
-      'A cluster named taken1 already exists on this environment.',
+      'A cluster named taken1 already exists on this installation.',
     );
   });
 

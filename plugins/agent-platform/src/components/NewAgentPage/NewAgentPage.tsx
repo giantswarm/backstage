@@ -1,15 +1,17 @@
-import { useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   fieldErrorProps,
+  InfoHint,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
@@ -41,6 +43,11 @@ const useStyles = makeStyles(theme => ({
     fontSize: '0.875rem',
     // A long technical name must wrap rather than widen the page at 375px.
     overflowWrap: 'anywhere',
+  },
+  // The info button sits in the line of text, on its baseline.
+  modelHint: {
+    verticalAlign: 'text-bottom',
+    marginLeft: 2,
   },
   moreOptionsBody: {
     marginTop: theme.spacing(2),
@@ -166,9 +173,30 @@ function NewAgentPageContent() {
     state.modelDisplayName ??
     listedModel?.getDisplayName() ??
     state.modelConfigName;
-  let modelSummary: string | undefined;
+  // The line keeps the ModelConfig's name -- an admin may abstract the model
+  // on purpose ("The Cheap One") -- and offers the model it runs one hover or
+  // focus away (PO decision L6). Not when the name already is the model.
+  const underlyingModel =
+    listedModel && listedModel.getModel() !== modelName
+      ? underlyingModelLine(listedModel)
+      : undefined;
+  let modelSummary: ReactNode;
   if (modelName) {
-    modelSummary = `Runs on ${modelName} · change under More options`;
+    modelSummary = (
+      <>
+        Runs on {modelName}
+        {underlyingModel && (
+          <InfoHint
+            label={`Which model ${modelName} runs`}
+            size="medium"
+            className={classes.modelHint}
+          >
+            {`Underlying model: ${underlyingModel}`}
+          </InfoHint>
+        )}{' '}
+        · change under More options
+      </>
+    );
   } else if (state.installation) {
     modelSummary = isLoadingModels
       ? 'Loading models…'

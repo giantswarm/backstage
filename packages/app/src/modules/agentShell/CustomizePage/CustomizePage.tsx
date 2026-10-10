@@ -19,6 +19,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  SEARCH_MIN,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -128,11 +129,22 @@ function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
 /**
  * One tab: its search and action, and its panel. Global-only (D4): no
  * organization filter; the Environment select shows only with more than one.
+ *
+ * The search shows only once the tab lists more than `SEARCH_MIN` entries:
+ * three agents are read, not searched. It stays hidden while the count is
+ * still loading, and stays shown while a search is typed (or arrived as
+ * `?q=`), so a list that shrinks under the bar never keeps a filter nobody can
+ * clear.
  */
 function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const { counts, hasSkillRepositories } = useCustomizeData();
   const musterCounts = useMusterCustomizeCounts();
-  const [search, setSearch] = useState('');
+  const location = useLocation();
+  // Seeded once from `?q=`, so a link (the command palette's "+N more") can
+  // open the tab already searched. Not written back.
+  const [search, setSearch] = useState(
+    () => new URLSearchParams(location.search).get('q') ?? '',
+  );
 
   const tabCounts: Partial<Record<CustomizeTabId, number>> = {
     ...counts,
@@ -141,6 +153,9 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const tabs = CUSTOMIZE_TABS.filter(
     candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
+  const count = tabCounts[tab.id];
+  const showSearch =
+    (count !== undefined && count > SEARCH_MIN) || search !== '';
 
   return (
     <ShellPage
@@ -154,22 +169,27 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
           Without it every tab carried the bare "Customize" (live round 2, R5). */}
       <Helmet title={`${tab.title} · Customize`} />
       <Flex direction="column" gap="5">
-        <Flex
-          align="center"
-          justify="between"
-          gap="4"
-          style={{ flexWrap: 'wrap' }}
-        >
-          <div style={{ flex: '0 1 360px', minWidth: 0 }}>
-            <SearchField
-              aria-label={tab.searchLabel}
-              placeholder={tab.searchLabel}
-              value={search}
-              onChange={setSearch}
-            />
-          </div>
-          {tab.create && <CreateAction create={tab.create} />}
-        </Flex>
+        {(showSearch || tab.create) && (
+          <Flex
+            align="center"
+            // Without the search, the create action keeps its place on the right.
+            justify={showSearch ? 'between' : 'end'}
+            gap="4"
+            style={{ flexWrap: 'wrap' }}
+          >
+            {showSearch && (
+              <div style={{ flex: '0 1 360px', minWidth: 0 }}>
+                <SearchField
+                  aria-label={tab.searchLabel}
+                  placeholder={tab.searchLabel}
+                  value={search}
+                  onChange={setSearch}
+                />
+              </div>
+            )}
+            {tab.create && <CreateAction create={tab.create} />}
+          </Flex>
+        )}
         <TabPanel tab={tab.id} search={search} />
       </Flex>
     </ShellPage>
@@ -193,13 +213,18 @@ function DefaultTabRedirect() {
 
 function CustomizeTabPage() {
   const tabId = (useParams()['*'] ?? '').split('/')[0];
+  const { search } = useLocation();
   const { hasSkillRepositories } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
   if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
     return <DefaultTabRedirect />;
   }
-  // Keyed by tab, so the search starts over on each tab.
-  return <CustomizeTabContent key={tab.id} tab={tab} />;
+  // Keyed by tab, so the search starts over on each tab — and by the
+  // address's `q`, so a link that brings a search (the palette's "+N more")
+  // reseeds it even when it lands on the tab already open. Typing never
+  // writes `q` back, so a keystroke does not remount anything.
+  const query = new URLSearchParams(search).get('q') ?? '';
+  return <CustomizeTabContent key={`${tab.id}?${query}`} tab={tab} />;
 }
 
 /**

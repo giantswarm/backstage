@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 
-import type { ClusterManagerCommit } from '../../lib/clusterManager';
+import type { ClusterManagerCommit, PlaceNoun } from '../../lib/clusterManager';
 
 /**
  * What cluster-manager's `mode: commit` answered (`commit`): the pull request
@@ -13,10 +13,17 @@ import type { ClusterManagerCommit } from '../../lib/clusterManager';
 export function ClusterManagerCommitOutcome({
   commit,
   liveStep,
+  placeNoun = 'installation',
 }: {
   commit: ClusterManagerCommit;
   /** The button that runs `liveSteps` after the merge, where the dialog offers one. */
   liveStep?: ReactNode;
+  /**
+   * What the place is called: main's "installation" for the classic Clusters
+   * page's dialogs (the default), "environment" in the agent platform's own
+   * sections.
+   */
+  placeNoun?: PlaceNoun;
 }) {
   const liveSteps = commit.liveSteps ?? [];
   return (
@@ -55,7 +62,7 @@ export function ClusterManagerCommitOutcome({
           {liveSteps.length > 0 && (
             <Flex direction="column" gap="1" data-testid="live-steps">
               <Text variant="body-small">
-                After the merge, the environment still needs:
+                After the merge, the {placeNoun} still needs:
               </Text>
               {liveSteps.map(step => (
                 <Text key={step} variant="body-small" color="secondary">

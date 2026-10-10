@@ -282,3 +282,59 @@ describe('ImportModelDialog', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('ImportModelDialog · the selects at scale', () => {
+  const nodesOf = (count: number): GpuNode[] =>
+    Array.from({ length: count }, (_, i) => ({
+      ...node,
+      id: `gpu/gpu-node-${i + 1}`,
+      name: `gpu-node-${i + 1}`,
+    }));
+
+  const openTargetNodes = async () => {
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
+  };
+
+  it('offers three environments and two nodes without a search', async () => {
+    await render([
+      { name: 'gpu', nodes: nodesOf(2) },
+      { name: 'lab', nodes: [] },
+      { name: 'edge', nodes: [] },
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+    expect(
+      await screen.findByRole('option', { name: 'edge' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await openTargetNodes();
+    expect(
+      await screen.findByRole('option', { name: /gpu-node-2/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 environments and 300 nodes', async () => {
+    await render([
+      { name: 'gpu', nodes: nodesOf(300) },
+      ...Array.from({ length: 299 }, (_, i) => ({
+        name: `inst-${i + 1}`,
+        nodes: [],
+      })),
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+
+    await openTargetNodes();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});

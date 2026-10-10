@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InstallationSelect } from './InstallationSelect';
 
@@ -529,6 +529,47 @@ describe('InstallationSelect', () => {
 
       expect(getByText("Couldn't check solo")).toBeInTheDocument();
       expect(queryByText('No environments with models')).toBeNull();
+    });
+  });
+
+  describe('the environment select at scale', () => {
+    const offer = (names: string[]) => {
+      mockInstallations = names.map(name => ({ name }));
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: names,
+      };
+      mockPresence = Object.fromEntries(
+        names.map(name => [name, 'available' as const]),
+      );
+    };
+
+    it('offers three environments without a search', async () => {
+      offer(['alpha', 'beta', 'gamma']);
+      render(<InstallationSelect />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /Environment/ }),
+      );
+      expect(
+        await screen.findByRole('option', { name: 'gamma' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+    });
+
+    it('offers type-ahead over 300 environments', async () => {
+      offer(
+        Array.from(
+          { length: 300 },
+          (_, i) => `inst-${String(i).padStart(3, '0')}`,
+        ),
+      );
+      render(<InstallationSelect />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /Environment/ }),
+      );
+      expect(await screen.findByRole('searchbox')).toBeInTheDocument();
     });
   });
 

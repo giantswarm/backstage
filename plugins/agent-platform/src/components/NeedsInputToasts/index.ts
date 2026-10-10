@@ -1,2 +1,1 @@
-export { NeedsInputToasts } from './NeedsInputToasts';
-export type { NeedsInputToastsProps } from './NeedsInputToasts';
+export { NeedsInputToasts, NEEDS_INPUT_TOAST_BURST } from './NeedsInputToasts';

@@ -3,7 +3,7 @@ import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   musterApiRef,
@@ -109,6 +109,15 @@ jest.mock('../../hooks/useToolsetResolution', () => ({
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
+}));
+// The review fold-out's targeted ModelConfig read: what the agent's model runs.
+jest.mock('../../hooks/useUnderlyingModel', () => ({
+  ...jest.requireActual('../../hooks/useUnderlyingModel'),
+  useUnderlyingModel: (
+    _installation: string,
+    name: string | undefined,
+    namespace: string | undefined,
+  ) => (name && namespace ? `${name}-model · Anthropic` : undefined),
 }));
 jest.mock('../CodeBlock', () => ({
   CodeBlock: ({
@@ -308,9 +317,23 @@ describe('EditAgentPage', () => {
     // More options: the agent's model preselected, only its namespace's
     // models offered; its technical name and runtime fixed.
     expect(screen.getByText(/Runs on Claude Opus/)).toBeInTheDocument();
+    // The line keeps the ModelConfig's name; the model it runs is behind an
+    // info button beside it (PO decision L6), and on the picked card.
+    const modelHint = screen.getByRole('button', {
+      name: 'Which model Claude Opus runs',
+    });
+    // A bui tooltip opens on keyboard focus: a key press sets the modality.
+    await userEvent.keyboard('{Shift}');
+    act(() => modelHint.focus());
+    expect(
+      await screen.findByText('Underlying model: opus-4-7-model · Anthropic'),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('radio', { name: 'Select model Claude Opus' }),
     ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByRole('radio', { name: 'Select model Claude Opus' }),
+    ).toHaveTextContent('opus-4-7-model · Anthropic');
     expect(
       screen.queryByRole('radio', { name: 'Select model Elsewhere' }),
     ).not.toBeInTheDocument();
@@ -355,6 +378,10 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     expect(callsOf(callTool, 'x_agent-manager_validate_agent')).toHaveLength(0);
+    // Reached without step 1: the fold-out still names the model the agent's
+    // ModelConfig runs, beside the ModelConfig itself (PO decision L6).
+    const underlying = screen.getByText('Underlying model').parentElement;
+    expect(underlying).toHaveTextContent('opus-4-7-model · Anthropic');
   });
 
   it('saves only what changed through update_agent and hands over to the agent’s page', async () => {

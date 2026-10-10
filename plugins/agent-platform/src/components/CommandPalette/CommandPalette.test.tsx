@@ -377,6 +377,88 @@ describe('CommandPalette', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/search?query=sso%20login');
   });
 
+  describe('at list scale (T39)', () => {
+    const chipGroup = () =>
+      screen.queryByRole('group', { name: 'Filter results' });
+
+    it('offers a chip only for the kinds that have entries', async () => {
+      mockCatalog = { skills: [], isLoading: false };
+      await openPalette();
+
+      const chips = within(chipGroup()!).getAllByRole('button');
+      expect(chips.map(chip => chip.textContent)).toEqual([
+        'All',
+        'Sessions',
+        'Agents',
+        'Connectors',
+      ]);
+    });
+
+    it('offers no chips at all over a single kind', async () => {
+      mockAgents = { ...mockAgents, rows: [] };
+      mockCatalog = { skills: [], isLoading: false };
+      mockConnectors = { rows: [], isLoading: false };
+      await openPalette();
+
+      expect(chipGroup()).not.toBeInTheDocument();
+      // Three sessions are listed whole: no "+N more".
+      const listbox = screen.getByRole('listbox', { name: 'Results' });
+      expect(within(listbox).getAllByRole('option')).toHaveLength(2);
+      expect(screen.queryByText(/more$/)).not.toBeInTheDocument();
+    });
+
+    it('caps 300 sessions and links the rest to the Sessions list with the query', async () => {
+      mockSessions = {
+        ...mockSessions,
+        rows: Array.from({ length: 300 }, (_, i) =>
+          session(`s-${i}`, `Release ${i}`),
+        ),
+      };
+      const input = await openPalette();
+      await userEvent.type(input, 'release');
+
+      const listbox = screen.getByRole('listbox', { name: 'Results' });
+      // Five sessions plus the portal-search row.
+      expect(within(listbox).getAllByRole('option')).toHaveLength(6);
+      const more = screen.getByRole('link', {
+        name: 'Show 295 more sessions',
+      });
+      expect(more).toHaveAttribute(
+        'href',
+        '/agent-platform/sessions?q=release',
+      );
+
+      // The Sessions chip lists more of them, still bounded.
+      await userEvent.click(screen.getByRole('button', { name: 'Sessions' }));
+      expect(within(listbox).getAllByRole('option')).toHaveLength(51);
+      expect(
+        screen.getByRole('link', { name: 'Show 250 more sessions' }),
+      ).toBeInTheDocument();
+    });
+
+    it('links an agent overflow to Customize → Agents with the query', async () => {
+      mockAgents = {
+        ...mockAgents,
+        rows: Array.from(
+          { length: 300 },
+          (_, i) =>
+            ({
+              ...agent,
+              id: `gazelle/kagent/agent-${i}`,
+              technicalName: `agent-${i}`,
+              name: `Ops agent ${i}`,
+            }) as AgentRow,
+        ),
+      };
+      const input = await openPalette();
+      await userEvent.type(input, 'ops');
+
+      expect(
+        screen.getByRole('link', { name: 'Show 295 more agents' }),
+      ).toHaveAttribute('href', '/customize/agents?q=ops');
+    });
+  });
+
   it('says honestly when nothing matches, keeping the portal search', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'zzz-no-such-thing');

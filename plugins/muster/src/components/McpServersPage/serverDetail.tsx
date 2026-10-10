@@ -1,13 +1,24 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
-import { Box, Flex, Link, Tag, TagGroup, Text } from '@backstage/ui';
+import {
+  Box,
+  Flex,
+  Link,
+  SearchField,
+  Tag,
+  TagGroup,
+  Text,
+} from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
   FactList,
   type Fact,
+  INITIAL_ROWS,
   isAwaitingData,
+  matchesQuery,
+  ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
@@ -666,6 +677,57 @@ export function useServerCapabilityCounts(
 }
 
 /**
+ * A server's resources or prompts: a page of {@link INITIAL_ROWS} at a time,
+ * and a search over them once there are more than a page — a server's handful
+ * is read, not searched. The search starts the paging over.
+ */
+function CapabilityList<T>({
+  items,
+  noun,
+  searchText,
+  render,
+}: {
+  items: T[];
+  noun: string;
+  searchText: (item: T) => string;
+  render: (item: T) => ReactNode;
+}) {
+  const classes = useStyles();
+  const [query, setQuery] = useState('');
+  const searchable = items.length > INITIAL_ROWS;
+  const shown = searchable
+    ? items.filter(item => matchesQuery(query, searchText(item)))
+    : items;
+
+  return (
+    <>
+      {searchable && (
+        <Box mt="2" style={{ maxWidth: 360 }}>
+          <SearchField
+            aria-label={`Search ${noun}s`}
+            placeholder={`Search ${items.length} ${noun}s`}
+            size="small"
+            value={query}
+            onChange={setQuery}
+          />
+        </Box>
+      )}
+      {shown.length === 0 ? (
+        <Box mt="1">
+          <Note>No {noun}s match.</Note>
+        </Box>
+      ) : (
+        <ShowMore key={query} items={shown} noun={noun}>
+          {visible => (
+            <Box className={classes.capabilityList}>{visible.map(render)}</Box>
+          )}
+        </ShowMore>
+      )}
+    </>
+  );
+}
+
+/**
  * Resources this server contributes to the aggregated catalogue.
  *
  * Unlike tools, resources cannot be discovered by name prefix: a resource URI
@@ -682,7 +744,6 @@ export function ServerResources({
   /** What an empty list says, where the caller knows more than this block. */
   emptyText?: string;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
   const name = server.getName();
@@ -717,8 +778,13 @@ export function ServerResources({
         {data?.total ?? resources.length} resource(s)
         {data?.truncated ? ' (first page)' : ''}
       </Note>
-      <Box className={classes.capabilityList}>
-        {resources.map(resource => (
+      <CapabilityList
+        items={resources}
+        noun="resource"
+        searchText={resource =>
+          [resource.uri, resource.name, resource.description].join(' ')
+        }
+        render={resource => (
           <Box key={`${resource.server}:${resource.uri}`}>
             <Mono>{resource.uri}</Mono>
             {resource.name ? ` — ${resource.name}` : ''}
@@ -728,8 +794,8 @@ export function ServerResources({
               </Text>
             )}
           </Box>
-        ))}
-      </Box>
+        )}
+      />
     </Box>
   );
 }
@@ -748,7 +814,6 @@ export function ServerPrompts({
   /** What an empty list says, where the caller knows more than this block. */
   emptyText?: string;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
   const name = server.getName();
@@ -779,6 +844,10 @@ export function ServerPrompts({
 
   // Prompts are never family-grouped, so this is not getToolNamePrefix().
   const prefix = server.getPromptNamePrefix();
+  const shortName = (promptName: string) =>
+    promptName.startsWith(`${prefix}_`)
+      ? promptName.slice(prefix.length + 1)
+      : promptName;
 
   return (
     <Box>
@@ -786,22 +855,23 @@ export function ServerPrompts({
         {data?.total ?? prompts.length} prompt(s)
         {data?.truncated ? ' (first page)' : ''}
       </Note>
-      <Box className={classes.capabilityList}>
-        {prompts.map(prompt => (
+      <CapabilityList
+        items={prompts}
+        noun="prompt"
+        searchText={prompt =>
+          [shortName(prompt.name), prompt.description].join(' ')
+        }
+        render={prompt => (
           <Box key={prompt.name}>
-            <Mono>
-              {prompt.name.startsWith(`${prefix}_`)
-                ? prompt.name.slice(prefix.length + 1)
-                : prompt.name}
-            </Mono>
+            <Mono>{shortName(prompt.name)}</Mono>
             {prompt.description && (
               <Text as="p" variant="body-small" color="secondary">
                 {prompt.description}
               </Text>
             )}
           </Box>
-        ))}
-      </Box>
+        )}
+      />
     </Box>
   );
 }

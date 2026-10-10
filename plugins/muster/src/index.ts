@@ -86,6 +86,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  SignInNoun,
   Tone,
   ToneColors,
 } from './components/shared';

@@ -374,6 +374,7 @@ export function AgentUsageSection() {
               name: entry.tool,
               calls: entry.calls,
             }))}
+            other={usage.otherTools}
             emptyMessage="No tool calls in this window."
           />
           <TopCallsTable
@@ -389,6 +390,7 @@ export function AgentUsageSection() {
               name: entry.server ?? 'No downstream server',
               calls: entry.calls,
             }))}
+            other={usage.otherMcpServers}
             emptyMessage="No tool calls in this window."
           />
         </div>

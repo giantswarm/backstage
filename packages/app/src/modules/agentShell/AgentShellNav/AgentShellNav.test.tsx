@@ -33,6 +33,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     RecentSessions: ({ shellRail }: { shellRail?: boolean }) => (
       <div data-testid="recent-sessions" data-shell-rail={String(shellRail)} />
     ),
+    NeedsInputToasts: () => <div data-testid="needs-input-toasts" />,
   };
 });
 
@@ -201,6 +202,24 @@ describe('AgentShellNav', () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }
+  });
+
+  describe('the needs-input toast watcher', () => {
+    it.each([
+      ['an expanded rail', { isPinned: true }],
+      ['a collapsed rail', { isPinned: false }],
+      ['the mobile bar', { isMobile: true }],
+    ])('is mounted exactly once with %s', async (_, options) => {
+      await renderNav(options);
+
+      // Once, and outside the rail's session list, which only the expanded
+      // rail renders: every layout gets the toast, none gets it twice.
+      expect(screen.getAllByTestId('needs-input-toasts')).toHaveLength(1);
+      const recent = screen.queryByTestId('recent-sessions');
+      expect(
+        recent?.contains(screen.getByTestId('needs-input-toasts')) ?? false,
+      ).toBe(false);
+    });
   });
 
   it('mounts the cluster-access connector that the installation inventory waits on', async () => {

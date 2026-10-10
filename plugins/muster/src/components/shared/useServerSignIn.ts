@@ -54,8 +54,17 @@ export function authStatusQueryKey(installation?: string) {
  * surfaced verbatim, this note only confirms what the flipped affordance
  * already shows, so it is UI-authored.
  */
-const SIGNED_OUT_NOTE =
-  "Signed out — the connector's tools are hidden until you sign in again.";
+export function signedOutNote(noun: SignInNoun = 'server'): string {
+  return `Signed out — the ${noun}'s tools are hidden until you sign in again.`;
+}
+
+/**
+ * What the sign-in copy calls the thing signed in to: main's "server" (the
+ * default, for the classic portal's surfaces such as Bot PRs' marge sign-in),
+ * "connector" in the agent platform's own sections (muster's Connectors tab,
+ * the agent wizard and detail pages).
+ */
+export type SignInNoun = 'server' | 'connector';
 
 /**
  * A sign-in this browser tab started and is still waiting on. Held in the
@@ -168,6 +177,8 @@ export interface UseServerSignInOptions {
   timeoutMs?: number;
   /** Overridable for the same reason: how long the issued URL is offered. */
   authUrlLifetimeMs?: number;
+  /** What the hook's own notes call the server; main's "server" by default. */
+  noun?: SignInNoun;
 }
 
 /**
@@ -456,7 +467,9 @@ export function useServerSignIn(
       (signInResult?.status === 'connected'
         ? signInResult.message
         : undefined) ??
-      (signOutResult?.status === 'signed_out' ? SIGNED_OUT_NOTE : undefined),
+      (signOutResult?.status === 'signed_out'
+        ? signedOutNote(options.noun)
+        : undefined),
     isSsoManaged: Boolean(
       status?.token_forwarding_enabled || status?.token_exchange_enabled,
     ),

@@ -1,4 +1,10 @@
-import { Alert } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
+import {
+  groupNames,
+  joinNames,
+  NAMED_IN_SENTENCE,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { ReadFailure } from '../../lib/readFailure';
 
 export type UnreachableInstallationsAlertProps = {
@@ -22,6 +28,12 @@ export type UnreachableInstallationsAlertProps = {
  * Shared by the create flow (installation select) and the agents list so the two
  * surfaces report partial-fleet failures identically. Renders nothing when the
  * list is empty.
+ *
+ * Up to {@link NAMED_IN_SENTENCE} installations are named one by one, with
+ * their reason and request id. Past that the sentence groups them by reason
+ * and names the first few of each (`a, b, c, d, e and 40 more (timed out)`),
+ * and every installation — with its request id — sits behind a disclosure: a
+ * private fleet of 50 is otherwise a wall of text.
  */
 export function UnreachableInstallationsAlert({
   installations,
@@ -33,21 +45,61 @@ export function UnreachableInstallationsAlert({
   }
 
   const count = installations.length;
+  const title = `Couldn't read ${count} environment${count === 1 ? '' : 's'}`;
+
+  if (count <= NAMED_IN_SENTENCE) {
+    return (
+      <Alert
+        status="warning"
+        title={title}
+        description={
+          failures
+            ? `Skipped because their ${resourceName} couldn't be read: ${installations
+                .map(installation =>
+                  describe(installation, failures[installation]),
+                )
+                .join('; ')}.`
+            : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
+                ', ',
+              )}.`
+        }
+      />
+    );
+  }
+
+  const sentence = failures
+    ? `Skipped because their ${resourceName} couldn't be read: ${groupNames(
+        installations,
+        installation => installation,
+        installation => failures[installation]?.reason ?? '',
+      )
+        .map(({ group, names }) =>
+          group ? `${joinNames(names)} (${group})` : joinNames(names),
+        )
+        .join('; ')}.`
+    : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${joinNames(
+        installations,
+      )}.`;
 
   return (
     <Alert
       status="warning"
-      title={`Couldn't read ${count} environment${count === 1 ? '' : 's'}`}
+      title={title}
       description={
-        failures
-          ? `Skipped because their ${resourceName} couldn't be read: ${installations
-              .map(installation =>
-                describe(installation, failures[installation]),
-              )
-              .join('; ')}.`
-          : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
-              ', ',
-            )}.`
+        <Flex direction="column" gap="2">
+          <span>{sentence}</span>
+          <SimpleAccordion title={`All ${count} environments`} headingLevel={4}>
+            <Flex direction="column" gap="1">
+              {installations.map(installation => (
+                <Text key={installation} variant="body-small">
+                  {failures
+                    ? describe(installation, failures[installation])
+                    : installation}
+                </Text>
+              ))}
+            </Flex>
+          </SimpleAccordion>
+        </Flex>
       }
     />
   );

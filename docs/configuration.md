@@ -417,8 +417,8 @@ gs:
 The following optional features are available:
 
 - `clustersPage`: Enable the Clusters page, which lists all clusters -- both management and workload clusters -- in the installations the user has access to via the Backstage instance.
-- `deploymentsPage`: Enable the Apps (deployments) page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
-- `installationsPage`: Enable the Environments (installations) page, which lists all Resource entities of type _instalation_ in the catalog.
+- `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
+- `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
 - `scaffolder`: Enables the scaffolder that lists available templates.
 
 ## Egress through an HTTP proxy

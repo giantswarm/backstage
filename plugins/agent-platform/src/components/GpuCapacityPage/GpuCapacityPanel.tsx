@@ -11,8 +11,12 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
+  groupNames,
   InfoCard,
+  joinNames,
   LoadingIndicator,
+  NAMED_IN_SENTENCE,
+  SimpleAccordion,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatTime } from '../../lib/modelManagerServing';
@@ -601,7 +605,7 @@ export function GpuCapacityPanel({
     body = (
       <Text variant="body-medium" color="secondary">
         {readableInstallations.length > 0
-          ? `No GPU nodes found on ${readableInstallations.join(', ')}.`
+          ? `No GPU nodes found on ${joinNames(readableInstallations)}.`
           : 'No GPU nodes found.'}
       </Text>
     );
@@ -629,15 +633,52 @@ export function GpuCapacityPanel({
           <Alert
             status="info"
             title="GPU capacity is unavailable for some environments"
-            description={unavailableEntries
-              .map(
-                ([installation, reason]) =>
-                  `${installation}: ${UNAVAILABLE_REASON[reason]}`,
-              )
-              .join('; ')}
+            description={
+              <UnavailableDescription entries={unavailableEntries} />
+            }
           />
         )}
       </Flex>
     </InfoCard>
+  );
+}
+
+/**
+ * Why some installations have no capacity, grouped by reason and the names
+ * capped (`a, b, c, d, e and 40 more: the nodes could not be read`), with
+ * every installation behind a disclosure once there are more than a sentence
+ * names.
+ */
+function UnavailableDescription({
+  entries,
+}: {
+  entries: [string, GpuCapacityUnavailableReason][];
+}) {
+  const sentence = groupNames(
+    entries,
+    ([installation]) => installation,
+    ([, reason]) => UNAVAILABLE_REASON[reason],
+  )
+    .map(({ group, names }) => `${joinNames(names)}: ${group}`)
+    .join('; ');
+  if (entries.length <= NAMED_IN_SENTENCE) {
+    return <>{sentence}</>;
+  }
+  return (
+    <Flex direction="column" gap="2">
+      <span>{sentence}</span>
+      <SimpleAccordion
+        title={`All ${entries.length} environments`}
+        headingLevel={4}
+      >
+        <Flex direction="column" gap="1">
+          {entries.map(([installation, reason]) => (
+            <Text key={installation} variant="body-small">
+              {installation}: {UNAVAILABLE_REASON[reason]}
+            </Text>
+          ))}
+        </Flex>
+      </SimpleAccordion>
+    </Flex>
   );
 }

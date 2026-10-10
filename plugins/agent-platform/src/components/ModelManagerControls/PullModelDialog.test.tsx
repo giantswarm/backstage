@@ -265,3 +265,30 @@ describe('PullModelDialog · an installation running several backends', () => {
     );
   });
 });
+
+describe('PullModelDialog · the environment select at scale', () => {
+  const openEnvironments = async () =>
+    userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+
+  it('offers three environments without a search', async () => {
+    await render(['lab', 'gpu', 'edge'].map(name => ({ name, canWire: true })));
+
+    await openEnvironments();
+    expect(
+      await screen.findByRole('option', { name: 'edge' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 environments', async () => {
+    await render(
+      Array.from({ length: 300 }, (_, i) => ({
+        name: `inst-${i + 1}`,
+        canWire: true,
+      })),
+    );
+
+    await openEnvironments();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});

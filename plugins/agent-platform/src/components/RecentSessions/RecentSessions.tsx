@@ -10,10 +10,10 @@ import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
-import { NeedsInputToasts } from '../NeedsInputToasts';
 import { PinIcon } from '../PinIcon';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
+import { sessionsListSearch } from '../SessionsTable/filters';
 import {
   DEFAULT_RECENT_SESSIONS_LIMIT,
   groupRailSessions,
@@ -222,7 +222,7 @@ function RecentSessionsList({
     () =>
       shellRail
         ? groupRailSessions(rows, pinnedIds, limit, now)
-        : { pinned: [], groups: [] },
+        : { pinned: [], pinnedOverflow: 0, groups: [] },
     // `now` changes every render; the groups only change with its day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, pinnedKey, limit, shellRail, today],
@@ -306,6 +306,20 @@ function RecentSessionsList({
             <ul className={classes.list} aria-labelledby={`${baseId}-pinned`}>
               {grouped.pinned.map(renderRow)}
             </ul>
+            {/* Past the rail's pin cap, the rest are on All sessions' Pinned
+                chip rather than pushing the recent sessions out of view. */}
+            {grouped.pinnedOverflow > 0 && allSessionsHref && (
+              <Box px="2">
+                <Link
+                  href={`${allSessionsHref}${sessionsListSearch({
+                    state: 'pinned',
+                  })}`}
+                  variant="body-x-small"
+                >
+                  {grouped.pinnedOverflow} more pinned
+                </Link>
+              </Box>
+            )}
           </>
         )}
         {grouped.groups.map((group, index) => (
@@ -390,12 +404,6 @@ export function RecentSessions({
         sessionDetailRoute={sessionDetailRoute}
         shellRail={shellRail}
       />
-      {/* The shell rail is mounted once, wherever the person is in the
-          shell — which makes it the place to watch for a session starting to
-          wait on them. Classic chrome keeps its quieter list. */}
-      {shellRail && (
-        <NeedsInputToasts sessionDetailRoute={sessionDetailRoute} />
-      )}
     </AgentPlatformProviders>
   );
 }

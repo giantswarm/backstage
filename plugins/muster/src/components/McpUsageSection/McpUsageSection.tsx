@@ -19,6 +19,7 @@ import {
   columnMax,
   DataBar,
   SectionHeader,
+  ShowMore,
   StackedBarChart,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -52,6 +53,15 @@ import { SessionGate, Stat } from '../shared';
  * accepts a window.
  */
 const WINDOW_HOURS = 30 * 24;
+
+/**
+ * How many connectors the table shows before *Show all N connectors*.
+ *
+ * The backend sends every connector with a call in the window — no top-N, as
+ * it does for tools — so a large gateway's list is unbounded. Realistically
+ * tens, so one click reveals the rest rather than paging through them.
+ */
+export const CONNECTOR_ROWS = 15;
 
 const useStyles = makeStyles((theme: Theme) => ({
   column: {
@@ -352,46 +362,56 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
               </Table>
             </Paper>
 
-            <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Connector</TableCell>
-                    <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.servers.map(row => (
-                    <TableRow key={row.server}>
-                      <TableCell className={classes.toolName}>
-                        {row.server}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.serverCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.serverErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Paper>
+            {/* Sorted by calls on the server; the slice keeps the busiest. */}
+            <ShowMore
+              items={data.servers}
+              initial={CONNECTOR_ROWS}
+              noun="connector"
+              revealAll
+            >
+              {visible => (
+                <Paper variant="outlined" className={classes.tableCard}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Connector</TableCell>
+                        <TableCell>Calls</TableCell>
+                        <TableCell>Errors</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {visible.map(row => (
+                        <TableRow key={row.server}>
+                          <TableCell className={classes.toolName}>
+                            {row.server}
+                          </TableCell>
+                          <TableCell className={classes.numeric}>
+                            <DataBar
+                              label={formatCount(row.calls)}
+                              value={row.calls}
+                              max={max.serverCalls}
+                              color={barColors.calls}
+                            />
+                          </TableCell>
+                          <TableCell
+                            className={`${classes.numeric} ${
+                              row.errors > 0 ? classes.errorValue : ''
+                            }`}
+                          >
+                            <DataBar
+                              label={formatCount(row.errors)}
+                              value={row.errors}
+                              max={max.serverErrors}
+                              color={barColors.errors}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Paper>
+              )}
+            </ShowMore>
           </Box>
         </>
       )}

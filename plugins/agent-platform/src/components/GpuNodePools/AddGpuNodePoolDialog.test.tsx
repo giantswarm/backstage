@@ -132,6 +132,12 @@ type Scenario = {
    */
   pricedCache?: boolean;
   keptCache?: boolean;
+  /** `list_clusters` answers this many clusters, wc1 to wcN (the selects at scale). */
+  clusterCount?: number;
+  /** The installations the dialog offers (default: inst-1 alone). */
+  installations?: string[];
+  /** The dry run judges this many presets: the two fixtures, then copies of the big one. */
+  presetCount?: number;
 };
 
 /** The kept claim wc1's slice mounts, as `list_clusters` reads it (cluster-manager 0.17+). */
@@ -330,7 +336,19 @@ function withFit(
   const small = hosts2xlarge
     ? { ...bare(SMALL_PRESET), size: '2xlarge' }
     : { ...bare(SMALL_PRESET), reason: TOO_SMALL };
-  const presets = [small, { ...bare(BIG_PRESET), reason: GPU_MEMORY }];
+  const presets = [
+    small,
+    { ...bare(BIG_PRESET), reason: GPU_MEMORY },
+    ...Array.from(
+      { length: Math.max(0, (scenario.presetCount ?? 2) - 2) },
+      (_, i) => ({
+        ...bare(BIG_PRESET),
+        preset: `extra-${i + 1}`,
+        displayName: `Extra ${i + 1}`,
+        reason: GPU_MEMORY,
+      }),
+    ),
+  ];
   let presetFit: PresetFit;
   if (scenario.noPresets) {
     presetFit = { note: 'no serving preset is published on wc1 yet' };
@@ -405,6 +423,14 @@ function makeMusterApi(scenario: Scenario = {}) {
         case 'x_cluster-manager_list_clusters':
           if (scenario.noClusterApi) {
             return { clusters: [], clusterApi: NO_CLUSTER_API };
+          }
+          if (scenario.clusterCount) {
+            return {
+              clusters: Array.from(
+                { length: scenario.clusterCount },
+                (_, i) => ({ ...WC1, name: `wc${i + 1}` }),
+              ),
+            };
           }
           return {
             clusters: scenario.placement
@@ -507,7 +533,7 @@ async function renderDialog(
     >
       <QueryClientProvider client={queryClient}>
         <AddGpuNodePoolDialog
-          installations={['inst-1']}
+          installations={scenario.installations ?? ['inst-1']}
           isOpen
           onOpenChange={() => {}}
           onDeployed={onDeployed}
@@ -1374,5 +1400,71 @@ describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2
     for (const call of dryRunsOf(callTool)) {
       expect(call[1]).not.toHaveProperty('teleport');
     }
+  });
+});
+
+describe('AddGpuNodePoolDialog: the selects at scale', () => {
+  it('offers three environments and three clusters without a search', async () => {
+    const user = setupUser();
+    await renderDialog({
+      clusterCount: 3,
+      installations: ['inst-1', 'inst-2', 'inst-3'],
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /^Pick a cluster/ }),
+    );
+    expect(
+      await screen.findByRole('option', { name: /^wc3/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(
+      await screen.findByRole('option', { name: 'inst-3' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 clusters and 300 environments', async () => {
+    const user = setupUser();
+    await renderDialog({
+      clusterCount: 300,
+      installations: Array.from({ length: 300 }, (_, i) => `inst-${i + 1}`),
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /^Pick a cluster/ }),
+    );
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+
+    await user.click(screen.getByRole('button', { name: /^inst-1/ }));
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+
+  it('offers the two presets of I want to serve without a search', async () => {
+    const user = setupUser();
+    await renderDialog();
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker');
+
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    expect(
+      await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 presets in I want to serve', async () => {
+    const user = setupUser();
+    await renderDialog({ presetCount: 300 });
+    await fillForm(user);
+    await screen.findByTestId('node-size-picker');
+
+    await user.click(screen.getByRole('button', { name: /I want to serve/ }));
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 });

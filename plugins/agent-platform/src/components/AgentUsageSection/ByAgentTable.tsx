@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  ShowMore,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import {
   formatCount,
@@ -35,6 +39,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
   },
 }));
+
+/**
+ * How many agents the table shows before *Show all N agents*. Below the
+ * shared page size: this is one person's agents, realistically tens, so the
+ * one click reveals the rest rather than paging through them.
+ */
+export const BY_AGENT_ROWS = 15;
 
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
@@ -261,24 +272,34 @@ export function ByAgentTable({
   return (
     <Paper variant="outlined" className={classes.card}>
       <div className={classes.title}>By agent</div>
-      {/* No `data` prop here: `tableProps` already carries the *sorted* rows,
-          and passing `data` after the spread overrides them with the unsorted
-          input — which silently breaks every column header while leaving the
-          sort indicator working. The section above renders a spinner while
-          loading, so this table only ever mounts with data. */}
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. The section above renders a spinner
+          while loading, so this table only ever mounts with data. */}
       {/* The table scrolls inside the card at phone width rather than pushing
           the page wide — the 375px requirement. */}
-      <div style={{ overflowX: 'auto' }}>
-        <Table<ByAgentRow>
-          {...tableProps}
-          columnConfig={columnConfig}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {emptyMessage}
-            </Text>
-          }
-        />
-      </div>
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={BY_AGENT_ROWS}
+        noun="agent"
+        revealAll
+      >
+        {visible => (
+          <div style={{ overflowX: 'auto' }}>
+            <Table<ByAgentRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          </div>
+        )}
+      </ShowMore>
       {/* The note has to match what the column actually shows. It described a
           rate as applied even when every cell was an em dash — on an
           installation with no Mimir, or after a failed query, that is a claim

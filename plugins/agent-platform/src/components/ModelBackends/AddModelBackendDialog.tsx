@@ -12,7 +12,10 @@ import {
   TextAreaField,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  searchableIf,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
 import { useOpenGeneration } from '../../hooks/useOpenGeneration';
@@ -281,6 +284,7 @@ export function AddModelBackendDialog({
                   <Select
                     label="Environment"
                     isRequired
+                    searchable={searchableIf(installations)}
                     options={installations.map(id => ({ id, label: id }))}
                     selectedKey={installation ?? null}
                     onSelectionChange={key => {

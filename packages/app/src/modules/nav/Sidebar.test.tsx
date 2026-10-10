@@ -10,6 +10,7 @@ import {
   NavContentNavItems,
 } from '@backstage/plugin-app-react';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { aiChatDrawerApiRef } from '@giantswarm/backstage-plugin-ai-chat-react';
 import { fireEvent, screen } from '@testing-library/react';
 import { SidebarContent } from './Sidebar';
 
@@ -97,6 +98,63 @@ async function renderSidebar({
 }
 
 describe('SidebarContent', () => {
+  it('keeps main’s classic labels: Catalog, AI Assistant and Create...', async () => {
+    // The catalog and the scaffolder pages are installed; the ai-chat drawer
+    // is mounted (app-config's `api:ai-chat/drawer`).
+    const withPages = {
+      ...navItems,
+      take: (id: string) =>
+        id === 'page:catalog' || id === 'page:scaffolder' ? {} : undefined,
+    } as unknown as NavContentNavItems;
+    const toggleDrawer = jest.fn();
+    const Content = createExtensionTester(SidebarContent).get(
+      NavContentBlueprint.dataRefs.component,
+    );
+    await renderInTestApp(
+      <SidebarPinStateProvider
+        value={{
+          isPinned: true,
+          toggleSidebarPinState: () => {},
+          isMobile: false,
+        }}
+      >
+        <Content navItems={withPages} items={[]} />
+      </SidebarPinStateProvider>,
+      {
+        initialRouteEntries: ['/clusters'],
+        config: {
+          app: { baseUrl: 'http://localhost:3000' },
+          backend: { baseUrl: 'http://localhost:7007' },
+        },
+        apis: [
+          mockApis.featureFlags({
+            initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.None },
+          }),
+          [
+            aiChatDrawerApiRef,
+            {
+              toggleDrawer,
+              openDrawer: jest.fn(),
+              closeDrawer: jest.fn(),
+              registerHandler: () => () => {},
+            },
+          ],
+        ],
+      },
+    );
+
+    expect(screen.getByRole('link', { name: /^Catalog$/ })).toHaveAttribute(
+      'href',
+      '/catalog',
+    );
+    expect(screen.getByRole('link', { name: /^Create\.\.\.$/ })).toBeVisible();
+    expect(screen.queryByText('Software')).not.toBeInTheDocument();
+    expect(screen.queryByText('Templates')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /AI Assistant/ }));
+    expect(toggleDrawer).toHaveBeenCalledTimes(1);
+  });
+
   it('shows Cluster access in the desktop sidebar', async () => {
     await renderSidebar({ isMobile: false });
 

@@ -6,14 +6,15 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import { modelsRouteRef } from '../../routes';
 import { NewModelPage } from './NewModelPage';
 
+let mockInstallationNames = ['golem'];
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ALL_INSTALLATIONS: 'all',
   useInstallations: () => ({
-    installations: [{ name: 'golem' }],
+    installations: mockInstallationNames.map(name => ({ name })),
     isLoading: false,
   }),
   useInstallationInventory: () => ({
-    installationsWith: () => ['golem'],
+    installationsWith: () => mockInstallationNames,
     isLoading: false,
     isProbing: false,
   }),
@@ -53,6 +54,7 @@ function renderPage() {
 
 beforeEach(() => {
   mockServingInstallations = undefined;
+  mockInstallationNames = ['golem'];
 });
 
 describe('NewModelPage', () => {
@@ -129,5 +131,32 @@ describe('NewModelPage', () => {
       'href',
       '/agent-platform/models/serving',
     );
+  });
+});
+
+describe('NewModelPage · the environment select at scale', () => {
+  const openEnvironments = async () =>
+    userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+
+  it('offers three environments without a search', async () => {
+    mockInstallationNames = ['golem', 'snail', 'wombat'];
+    await renderPage();
+
+    await openEnvironments();
+    expect(
+      await screen.findByRole('option', { name: 'wombat' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 environments', async () => {
+    mockInstallationNames = Array.from(
+      { length: 300 },
+      (_, i) => `inst-${String(i).padStart(3, '0')}`,
+    );
+    await renderPage();
+
+    await openEnvironments();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 });

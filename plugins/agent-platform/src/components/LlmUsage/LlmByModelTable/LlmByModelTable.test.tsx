@@ -74,4 +74,74 @@ describe('LlmByModelTable', () => {
 
     expect(screen.getByText('No model answered.')).toBeInTheDocument();
   });
+
+  describe('at scale', () => {
+    const THREE: LlmModelRow[] = [
+      ...ROWS,
+      { ...ROWS[1], id: 'opus', model: 'claude-opus-5', costUsd: 5 },
+    ];
+
+    /** 300 models, spend falling with the index so the ranking is known. */
+    const MANY: LlmModelRow[] = Array.from({ length: 300 }, (_, i) => ({
+      id: `model-${i}`,
+      model: `model-${String(i).padStart(3, '0')}`,
+      tokens: 1_000 * (300 - i),
+      calls: 300 - i,
+      costUsd: 300 - i,
+      usdPerMillion: 1,
+      avgTokensPerCall: 1_000,
+      sharePct: (300 - i) / 450,
+    }));
+
+    it('shows three models with no reveal control and no pagination', () => {
+      render(<LlmByModelTable rows={THREE} emptyMessage="none" />);
+
+      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+      // bui's pagination footer carries a page-size select and a range label.
+      expect(screen.queryByRole('combobox')).toBeNull();
+      expect(screen.queryByText(/of 3/)).toBeNull();
+    });
+
+    it('renders the top 15 spenders of 300 and offers the rest', async () => {
+      // Shuffled input: the slice must come after the sort.
+      render(
+        <LlmByModelTable rows={[...MANY].reverse()} emptyMessage="none" />,
+      );
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(15);
+      expect(order[0]).toBe('model-000');
+      expect(order[14]).toBe('model-014');
+      expect(screen.queryByRole('combobox')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: 'Show all 300 models' }),
+      ).toBeVisible();
+    });
+
+    it('reveals every model in one click', async () => {
+      // 30 rather than 300: the same click, without mounting 300 rows of
+      // data bars in jsdom.
+      render(<LlmByModelTable rows={MANY.slice(0, 30)} emptyMessage="none" />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show all 30 models' }),
+      );
+      expect(renderedOrder()).toHaveLength(30);
+      expect(screen.getByRole('button', { name: 'Show fewer' })).toBeVisible();
+    });
+
+    it('slices after a column sort, not before it', async () => {
+      render(<LlmByModelTable rows={MANY} emptyMessage="none" />);
+
+      // Ascending by tokens: the smallest of all 300 come first.
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: /Tokens/ }),
+      );
+
+      const order = renderedOrder();
+      expect(order).toHaveLength(15);
+      expect(order[0]).toBe('model-299');
+    });
+  });
 });

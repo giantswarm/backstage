@@ -57,6 +57,15 @@ export type UsageAgentEntry = {
 
 export type UsageToolEntry = { tool: string; calls: number };
 
+/**
+ * What a capped top list left out: how many entries, and the calls between
+ * them. Zero and zero when the list is exhaustive.
+ *
+ * On the wire rather than left implied, so the UI can say "and 14 more, 230
+ * calls" instead of dropping the remainder silently.
+ */
+export type UsageRemainder = { count: number; calls: number };
+
 export type UsageServerEntry = {
   /**
    * The muster server segment, or `null` for a tool that is not proxied.
@@ -91,7 +100,11 @@ export type SessionUsageResponse = {
   byAgent: UsageAgentEntry[];
   /** Descending by `calls`, then name ascending. At most {@link USAGE_TOP_N}. */
   topTools: UsageToolEntry[];
+  /** The tools past {@link USAGE_TOP_N}: their number and their calls. */
+  otherTools: UsageRemainder;
   topMcpServers: UsageServerEntry[];
+  /** The servers past {@link USAGE_TOP_N}: their number and their calls. */
+  otherMcpServers: UsageRemainder;
   /**
    * Turns counted in `totals` that are in no `daily` bucket, because kagent
    * wrote no usable timestamp for them. Non-zero means the charts legitimately
@@ -167,6 +180,26 @@ const serverEntrySchema = z.looseObject({
   calls: z.unknown().optional(),
 });
 
+const remainderSchema = z.looseObject({
+  count: z.unknown().optional(),
+  calls: z.unknown().optional(),
+});
+
+/**
+ * A remainder, or none.
+ *
+ * A body from a backend that predates the field, or a malformed one, reads as
+ * "nothing left out" — the list then renders as it always did, with no line
+ * under it, rather than claiming a remainder nobody counted.
+ */
+function remainder(raw: unknown): UsageRemainder {
+  const parsed = remainderSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { count: 0, calls: 0 };
+  }
+  return { count: finite(parsed.data.count), calls: finite(parsed.data.calls) };
+}
+
 const sessionUsageSchema = z.looseObject({
   evaluatedAt: z.unknown().optional(),
   windowStart: z.unknown().optional(),
@@ -175,7 +208,9 @@ const sessionUsageSchema = z.looseObject({
   daily: z.array(z.unknown()).optional(),
   byAgent: z.array(z.unknown()).optional(),
   topTools: z.array(z.unknown()).optional(),
+  otherTools: z.unknown().optional(),
   topMcpServers: z.array(z.unknown()).optional(),
+  otherMcpServers: z.unknown().optional(),
   undatedTurns: z.unknown().optional(),
   unreadable: z.array(z.unknown()).optional(),
   skipped: z.unknown().optional(),
@@ -197,7 +232,9 @@ function emptyUsage(): SessionUsageResponse {
     daily: [],
     byAgent: [],
     topTools: [],
+    otherTools: { count: 0, calls: 0 },
     topMcpServers: [],
+    otherMcpServers: { count: 0, calls: 0 },
     undatedTurns: 0,
     unreadable: [],
     skipped: 0,
@@ -298,7 +335,9 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
     daily,
     byAgent,
     topTools,
+    otherTools: remainder(parsed.data.otherTools),
     topMcpServers,
+    otherMcpServers: remainder(parsed.data.otherMcpServers),
     undatedTurns: finite(parsed.data.undatedTurns),
     unreadable: (parsed.data.unreadable ?? []).filter(
       (id): id is string => typeof id === 'string',

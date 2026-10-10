@@ -205,6 +205,35 @@ describe('AddSkillPage', () => {
   });
 });
 
+describe('AddSkillPage · the repository select at scale', () => {
+  const repos = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `https://github.com/acme/skills-${i + 1}`,
+    );
+  const openRepositories = async () =>
+    userEvent.click(screen.getByRole('button', { name: /Repository/ }));
+
+  it('offers three repositories without a search', async () => {
+    mockRepositories = repos(3);
+    await renderPage();
+
+    await openRepositories();
+    expect(
+      await screen.findByRole('option', { name: 'acme/skills-3' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 repositories', async () => {
+    mockRepositories = repos(300);
+    await renderPage();
+
+    await openRepositories();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
 describe('AddSkillPage editing an existing skill', () => {
   it('opens prefilled from the SKILL.md, with the name fixed and Cancel back to the skill', async () => {
     await renderPage(edit);

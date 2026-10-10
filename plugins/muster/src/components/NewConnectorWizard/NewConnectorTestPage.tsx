@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
@@ -7,6 +7,8 @@ import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
+  countNoun,
+  ShowMore,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -30,7 +32,10 @@ const TEST_POLL_INTERVAL_MS = 5_000;
 /** Once connected the panel only confirms; the slow poll covers drift. */
 const SETTLED_POLL_INTERVAL_MS = 30_000;
 
-/** How many tools the list shows before "Show all". */
+/**
+ * How many tools the list shows first, and how many each *Show more* adds: a
+ * preview of what the connector offers, not a catalogue to read through.
+ */
 const TOOL_PREVIEW_COUNT = 6;
 
 const useStyles = makeStyles({
@@ -67,17 +72,6 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
     minWidth: 0,
-  },
-  showAll: {
-    alignSelf: 'flex-start',
-    border: 0,
-    background: 'transparent',
-    padding: 0,
-    marginTop: 12,
-    fontSize: 13,
-    color: 'var(--bui-fg-link, var(--bui-fg-primary))',
-    cursor: 'pointer',
-    '&:hover': { textDecoration: 'underline' },
   },
   code: {
     fontFamily: 'monospace',
@@ -206,8 +200,10 @@ export function NewConnectorTestPage() {
     ),
   });
   const tools = toolsQuery.data?.tools ?? [];
-  const [showAll, setShowAll] = useState(false);
-  const visibleTools = showAll ? tools : tools.slice(0, TOOL_PREVIEW_COUNT);
+  // muster answers one page (the 200 asked for); its total counts every match,
+  // so a larger connector is said to be larger rather than cut silently.
+  const toolsTotal = Math.max(toolsQuery.data?.total ?? 0, tools.length);
+  const partial = toolsTotal > tools.length;
 
   const displayName = state.name.trim() || serverName || 'The connector';
 
@@ -247,7 +243,8 @@ export function NewConnectorTestPage() {
         <CheckIcon aria-hidden />
         <span>
           <strong style={{ fontWeight: 500 }}>Connected.</strong> {displayName}{' '}
-          offers {toolCountsLine(tools)}.
+          offers{' '}
+          {partial ? countNoun(toolsTotal, 'tool') : toolCountsLine(tools)}.
         </span>
       </div>
     );
@@ -302,7 +299,11 @@ export function NewConnectorTestPage() {
             title="This connector needs your sign-in — that's normal"
             description="People sign in with their own account, so each person completes a one-time sign-in before its tools appear. Sign in now to test it as you, or later from the connector's page."
           />
-          <ServerSignIn serverName={serverName} installation={installation} />
+          <ServerSignIn
+            noun="connector"
+            serverName={serverName}
+            installation={installation}
+          />
         </Flex>
       )}
 
@@ -342,31 +343,34 @@ export function NewConnectorTestPage() {
             <span>Tool</span>
             <span>Effect</span>
           </div>
-          {visibleTools.map(tool => (
-            <div key={tool.name} className={classes.tool}>
-              <span className={classes.toolText}>
-                <Text weight="bold">
-                  {tool.name.startsWith(`${prefix}_`)
-                    ? tool.name.slice(prefix.length + 1)
-                    : tool.name}
-                </Text>
-                {(tool.summary ?? tool.description) && (
-                  <Text variant="body-small" color="secondary">
-                    {tool.summary ?? tool.description}
-                  </Text>
-                )}
-              </span>
-              <EffectBadge effect={toolEffect(tool)} />
-            </div>
-          ))}
-          {!showAll && tools.length > TOOL_PREVIEW_COUNT && (
-            <button
-              type="button"
-              className={classes.showAll}
-              onClick={() => setShowAll(true)}
-            >
-              Show all {tools.length} tools
-            </button>
+          <ShowMore items={tools} initial={TOOL_PREVIEW_COUNT} noun="tool">
+            {visible => (
+              <div>
+                {visible.map(tool => (
+                  <div key={tool.name} className={classes.tool}>
+                    <span className={classes.toolText}>
+                      <Text weight="bold">
+                        {tool.name.startsWith(`${prefix}_`)
+                          ? tool.name.slice(prefix.length + 1)
+                          : tool.name}
+                      </Text>
+                      {(tool.summary ?? tool.description) && (
+                        <Text variant="body-small" color="secondary">
+                          {tool.summary ?? tool.description}
+                        </Text>
+                      )}
+                    </span>
+                    <EffectBadge effect={toolEffect(tool)} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </ShowMore>
+          {partial && (
+            <Text as="p" variant="body-small" color="secondary">
+              Only the first {tools.length} of its {toolsTotal} tools are listed
+              here.
+            </Text>
           )}
           <Text as="p" variant="body-small" color="secondary">
             Agents limited to read-only tools never get the ones that change

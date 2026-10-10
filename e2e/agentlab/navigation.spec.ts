@@ -11,16 +11,19 @@ test('the sidebar links to every enabled page', async ({ admin }) => {
   await open(admin, '/');
   const nav = admin.getByRole('navigation', { name: 'sidebar nav' });
   for (const [name, href] of [
-    ['Software', '/catalog'],
+    ['Catalog', '/catalog'],
     ['Docs', '/docs'],
-    ['Apps', '/deployments'],
+    ['Deployments', '/deployments'],
     ['Clusters', '/clusters'],
     ['Agent Platform', '/agent-platform'],
-    ['Templates', '/create'],
+    ['Create...', '/create'],
     ['Settings', '/settings'],
   ] as const) {
     await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
   }
+  // The ai-chat drawer is enabled (app-config `api:ai-chat/drawer`), so the
+  // classic sidebar's AI Assistant toggles it: a button, not a link.
+  await expect(nav.getByRole('button', { name: 'AI Assistant' })).toBeVisible();
   // The lab configures a main auth provider, so cluster access is offered.
   await expect(
     nav.getByRole('button', { name: 'Cluster access' }),
@@ -85,9 +88,9 @@ test('the Giant Swarm pages the lab enables render their headers', async ({
   admin,
 }) => {
   for (const [path, heading] of [
-    ['/catalog', 'Software'],
+    ['/catalog', 'Catalog'],
     ['/clusters', 'Clusters'],
-    ['/deployments', 'Apps'],
+    ['/deployments', 'Deployments'],
   ] as const) {
     await open(admin, path);
     await expect(

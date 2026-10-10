@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Alert, Card, CardBody, Flex, Link, Select, Text } from '@backstage/ui';
 import { CircularProgress } from '@material-ui/core';
 import {
+  joinNames,
+  NAMED_IN_SENTENCE,
+  searchableIf,
   SectionHeader,
   ShowMore,
   useSelectFieldError,
@@ -19,20 +22,7 @@ const DESCRIPTION =
   'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
 
 /** How many installations a note names, and links to, before the rest are a count. */
-const NAMED_INSTALLATIONS = 5;
-
-/**
- * The installations a note names: all of them up to {@link NAMED_INSTALLATIONS},
- * then the first few and a count — on a fleet of 50, a sentence that names
- * every one is a paragraph nobody reads.
- */
-function joinInstallations(installations: string[]): string {
-  if (installations.length <= NAMED_INSTALLATIONS) {
-    return installations.join(', ');
-  }
-  const named = installations.slice(0, NAMED_INSTALLATIONS).join(', ');
-  return `${named} and ${installations.length - NAMED_INSTALLATIONS} more`;
-}
+const NAMED_INSTALLATIONS = NAMED_IN_SENTENCE;
 
 /**
  * Card shell, so every branch below gets the same heading and description. The
@@ -58,7 +48,7 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
   if (installations.length === 0) {
     return null;
   }
-  const list = joinInstallations(installations);
+  const list = joinNames(installations);
   return (
     <Alert
       status="info"
@@ -92,7 +82,7 @@ function AgentManagerUnknownNote({
   if (installations.length === 0) {
     return null;
   }
-  const list = joinInstallations(installations);
+  const list = joinNames(installations);
   // `info`, not `warning`: not being signed in to some installations' muster
   // is an expected state, not something broken.
   return (
@@ -150,7 +140,7 @@ function InaccessibleInstallationsNote({
   if (installations.length === 0) {
     return null;
   }
-  const list = joinInstallations(installations);
+  const list = joinNames(installations);
   return (
     <Alert
       status="warning"
@@ -385,6 +375,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         <Select
           aria-label="Environment"
           isRequired
+          searchable={searchableIf(usableInstallations)}
           options={usableInstallations.map(name => ({
             id: name,
             label: name,

@@ -13,8 +13,12 @@ import {
   PageHeaderActionsProvider,
   SectionHeader,
   ShellPage,
+  ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { InstallationChip } from '../InstallationChip';
+
+/** How many environment badges show before *Show all N environments*. */
+const INITIAL_BADGES = 20;
 
 const useStyles = makeStyles(theme => ({
   section: {
@@ -107,14 +111,25 @@ export function ProfilePage() {
                 Loading…
               </Text>
             ) : (
-              <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-                {installations.map(installation => (
-                  <InstallationChip
-                    key={installation.name}
-                    installation={installation.name}
-                  />
-                ))}
-              </Flex>
+              // A fleet of 50 is a wall of badges: the first 20, then one
+              // click for the rest.
+              <ShowMore
+                items={installations}
+                initial={INITIAL_BADGES}
+                noun="environment"
+                revealAll
+              >
+                {visible => (
+                  <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+                    {visible.map(installation => (
+                      <InstallationChip
+                        key={installation.name}
+                        installation={installation.name}
+                      />
+                    ))}
+                  </Flex>
+                )}
+              </ShowMore>
             )}
           </section>
         )}

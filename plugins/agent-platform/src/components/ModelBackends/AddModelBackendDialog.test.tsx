@@ -98,12 +98,15 @@ const review: AddBackendResult = {
 
 const onDeployed = jest.fn();
 
-function renderDialog(registered: Array<'ollama' | 'kserve'> = []) {
+function renderDialog(
+  registered: Array<'ollama' | 'kserve'> = [],
+  installations: string[] = ['inst-1'],
+) {
   // The review's copy button reports a failed copy through the errorApi.
   return render(
     <TestApiProvider apis={[[errorApiRef, { post: jest.fn() }]]}>
       <AddModelBackendDialog
-        installations={['inst-1']}
+        installations={installations}
         registeredKinds={() => registered}
         isOpen
         onOpenChange={jest.fn()}
@@ -329,5 +332,30 @@ describe('AddModelBackendDialog', () => {
     expect(
       await screen.findByText(/connect model-manager: tool not found/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('AddModelBackendDialog · the environment select at scale', () => {
+  const openEnvironments = async () =>
+    userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+
+  it('offers three environments without a search', async () => {
+    renderDialog([], ['inst-1', 'inst-2', 'inst-3']);
+
+    await openEnvironments();
+    expect(
+      await screen.findByRole('option', { name: 'inst-3' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 environments', async () => {
+    renderDialog(
+      [],
+      Array.from({ length: 300 }, (_, i) => `inst-${i + 1}`),
+    );
+
+    await openEnvironments();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 });

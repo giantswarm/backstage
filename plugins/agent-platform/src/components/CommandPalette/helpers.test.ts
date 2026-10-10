@@ -3,7 +3,10 @@ import {
   isEditableTarget,
   isPaletteHotkey,
   matchesQuery,
+  PALETTE_GROUP_CAP,
+  PALETTE_SINGLE_GROUP_CAP,
   portalSearchHref,
+  visiblePaletteFilters,
   type PaletteCandidate,
 } from './helpers';
 
@@ -64,6 +67,21 @@ describe('buildPaletteGroups', () => {
     expect(group.moreCount).toBe(2);
   });
 
+  it('lists more rows while one group’s chip is on', () => {
+    const many = {
+      sessions: Array.from({ length: 300 }, (_, i) =>
+        candidate(`s${i}`, `Session ${i}`),
+      ),
+    };
+    const [underAll] = buildPaletteGroups(many, '', 'all');
+    expect(underAll.entries).toHaveLength(PALETTE_GROUP_CAP);
+    expect(underAll.moreCount).toBe(300 - PALETTE_GROUP_CAP);
+
+    const [alone] = buildPaletteGroups(many, '', 'sessions');
+    expect(alone.entries).toHaveLength(PALETTE_SINGLE_GROUP_CAP);
+    expect(alone.moreCount).toBe(300 - PALETTE_SINGLE_GROUP_CAP);
+  });
+
   it('strips the haystack off the entries it returns', () => {
     const [group] = buildPaletteGroups(candidates, 'release', 'all');
     expect(group.entries[0]).not.toHaveProperty('haystack');
@@ -114,5 +132,32 @@ describe('isEditableTarget', () => {
     expect(isEditableTarget(document.createElement('button'))).toBe(false);
     expect(isEditableTarget(document.body)).toBe(false);
     expect(isEditableTarget(null)).toBe(false);
+  });
+});
+
+describe('visiblePaletteFilters', () => {
+  const one = [candidate('x', 'x')];
+  const ids = (chips: { id: string }[]) => chips.map(chip => chip.id);
+
+  it('offers All plus a chip per kind that has entries', () => {
+    expect(
+      ids(
+        visiblePaletteFilters(
+          { sessions: one, agents: one, skills: [] },
+          'all',
+        ),
+      ),
+    ).toEqual(['all', 'sessions', 'agents']);
+  });
+
+  it('offers no chips while at most one kind has entries', () => {
+    expect(visiblePaletteFilters({ sessions: one }, 'all')).toEqual([]);
+    expect(visiblePaletteFilters({}, 'all')).toEqual([]);
+  });
+
+  it('keeps the active chip even when its kind emptied', () => {
+    expect(
+      ids(visiblePaletteFilters({ sessions: one, skills: [] }, 'skills')),
+    ).toEqual(['all', 'sessions', 'skills']);
   });
 });

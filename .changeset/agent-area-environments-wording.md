@@ -11,6 +11,5 @@ Sessions, Agents, Models, Usage, connectors and tools, the connector Connect
 step, the create- and edit-agent wizard (the Environment field and its notes,
 the model, Tools-step preset and copy-from-agent messages, the review
 summary), the agent page's sessions and not-found messages, the home and
-new-session composer, and Create cluster's Environment field. Config keys, URL
-parameters and code names are unchanged, and the classic portal keeps its
-wording.
+new-session composer. Config keys, URL parameters and code names are
+unchanged, and the classic portal keeps its wording.

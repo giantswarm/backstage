@@ -7,6 +7,7 @@ import {
   useSidebarPinState,
 } from '@backstage/core-components';
 import { compatWrapper } from '@backstage/core-compat-api';
+import { useApiHolder } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   NavContentBlueprint,
@@ -30,9 +31,42 @@ import {
   Settings as SidebarSettings,
 } from '@backstage/plugin-user-settings';
 import {
+  AIChatIcon,
+  aiChatDrawerApiRef,
+  rootRouteRef as aiChatRouteRef,
+} from '@giantswarm/backstage-plugin-ai-chat-react';
+import {
   ClusterAccessConnector,
   ClusterAccessStatusSidebarItem,
 } from '@giantswarm/backstage-plugin-gs';
+
+function AiChatSidebarItem() {
+  const apiHolder = useApiHolder();
+  const drawerApi = apiHolder.get(aiChatDrawerApiRef);
+  const aiChatLink = useRouteRef(aiChatRouteRef);
+
+  const icon = () => (
+    <NavItemIcon>
+      <AIChatIcon />
+    </NavItemIcon>
+  );
+
+  if (drawerApi) {
+    return (
+      <SidebarItem
+        icon={icon}
+        text="AI Assistant"
+        onClick={() => drawerApi.toggleDrawer()}
+      />
+    );
+  }
+
+  if (aiChatLink) {
+    return <SidebarItem icon={icon} to={aiChatLink()} text="AI Assistant" />;
+  }
+
+  return null;
+}
 
 /**
  * The mobile sidebar is a bottom bar that renders only `SidebarGroup`s, so an
@@ -55,7 +89,7 @@ function CreateSidebarItem({ fallback }: { fallback?: string }) {
   if (!to) {
     return null;
   }
-  return <SidebarItem icon={CreateComponentIcon} to={to} text="Templates" />;
+  return <SidebarItem icon={CreateComponentIcon} to={to} text="Create..." />;
 }
 
 function ClassicSidebar({
@@ -101,7 +135,7 @@ function ClassicSidebar({
         key="catalog"
         icon={FolderIcon}
         to="catalog"
-        text="Software"
+        text="Catalog"
       />
     ),
     nav.take('page:techdocs'),
@@ -123,6 +157,7 @@ function ClassicSidebar({
   const productGroup = [nav.take('page:plans')].filter(Boolean);
 
   const group3 = [
+    <AiChatSidebarItem key="ai-chat" />,
     <CreateSidebarItem
       key="create"
       fallback={scaffolderItem ? 'create' : undefined}

@@ -40,6 +40,7 @@ import {
   SectionTitle,
   SummaryItem,
   toolsetSummaryLabel,
+  UnderlyingModelItem,
   useReviewStyles,
   Violations,
   YAML_OPTS,
@@ -340,6 +341,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               <SummaryItem label="Model">
                 <span className={classes.code}>{state.modelConfigName}</span>
               </SummaryItem>
+              {/* An edit cannot move the agent: its model is a ModelConfig of
+                  the agent's own namespace. */}
+              <UnderlyingModelItem
+                installation={installation}
+                modelConfigName={state.modelConfigName}
+                namespace={agent.namespace}
+              />
               <SummaryItem label="Harness">
                 {agent.harness ? (
                   <span className={classes.code}>{agent.harness}</span>

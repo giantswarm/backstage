@@ -119,7 +119,11 @@ function ServerTools({
             to offer its sign-in — a muster running from configuration rather
             than CRs has no MCPServer resource to go with it. */}
         {signInAvailable && bucket.canSignIn && (
-          <ServerSignIn serverName={bucket.name} installation={installation} />
+          <ServerSignIn
+            noun="connector"
+            serverName={bucket.name}
+            installation={installation}
+          />
         )}
       </Flex>
     );

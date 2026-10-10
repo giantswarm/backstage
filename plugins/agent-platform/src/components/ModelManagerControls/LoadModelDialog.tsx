@@ -17,7 +17,10 @@ import {
 } from '@backstage/ui';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  searchableIf,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
 import { useInvalidateModelManagerReads } from '../../hooks/useServedModelAction';
@@ -505,6 +508,7 @@ export function LoadModelDialog({
               }
               isRequired
               isDisabled={isBusy}
+              searchable={searchableIf(targets)}
               options={targets.map(candidate => ({
                 id: loadTargetKey(candidate),
                 label: describeLoadTarget(candidate),
@@ -553,6 +557,7 @@ export function LoadModelDialog({
                 presets.isPending,
                 choices.length === 0,
               )}
+              searchable={searchableIf(choices)}
               options={choices}
               selectedKey={model}
               onSelectionChange={key => {

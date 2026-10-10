@@ -2328,7 +2328,32 @@ describe('AgentDetailPage inside the agent shell', () => {
         'href',
         '/agent-platform/models/gazelle/agent-platform/opus-4-7',
       );
+      // The model it runs, as the secondary line under the name (PO L6).
+      expect(
+        within(facts).getByText('claude-opus-4-7 · Anthropic'),
+      ).toBeInTheDocument();
       expect(within(facts).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    it('keeps the ModelConfig name without a display name, the model below it', async () => {
+      stubResources(
+        { resource: makeAgent() },
+        { resource: makeModelConfig({ displayName: null }) },
+      );
+
+      await renderShell();
+
+      const facts = screen.getByRole('complementary', {
+        name: 'About this agent',
+      });
+      // An admin may abstract the model behind the name: the name leads, the
+      // model never replaces it.
+      expect(
+        within(facts).getByRole('link', { name: 'opus-4-7' }),
+      ).toBeInTheDocument();
+      expect(
+        within(facts).getByText('claude-opus-4-7 · Anthropic'),
+      ).toBeInTheDocument();
     });
 
     it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {

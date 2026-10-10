@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ModelRow } from '../ModelsTable';
@@ -99,6 +100,10 @@ describe('CustomizeModelsPanel', () => {
     expect(
       screen.queryByRole('link', { name: 'Model hosting' }),
     ).not.toBeInTheDocument();
+    // Without one: the hint at what turns it on.
+    expect(
+      screen.getByRole('link', { name: 'How to turn it on' }),
+    ).toBeInTheDocument();
     unmount();
 
     mockServingInstallations = ['golem'];
@@ -107,6 +112,66 @@ describe('CustomizeModelsPanel', () => {
       'href',
       '/agent-platform/models/serving',
     );
+    expect(
+      screen.queryByRole('link', { name: 'How to turn it on' }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('at list scale', () => {
+    function manyModels(count: number): ModelRow[] {
+      return Array.from({ length: count }, (_, i) => {
+        const name = `model-${String(i).padStart(3, '0')}`;
+        return {
+          ...sonnet,
+          id: `golem/support/${name}`,
+          name,
+          displayName: `Model ${String(i).padStart(3, '0')}`,
+        };
+      });
+    }
+    const bodyRows = () => screen.getAllByRole('row').slice(1);
+
+    it('draws three models with no paging chrome', async () => {
+      mockModelRows = manyModels(3);
+      await renderPanel();
+
+      expect(bodyRows()).toHaveLength(3);
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
+      // bui's page-mode footer.
+      expect(screen.queryByText(/of 3/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /next/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('draws the first 20 of 300 models and pages in the rest', async () => {
+      mockModelRows = manyModels(300);
+      await renderPanel();
+
+      expect(bodyRows()).toHaveLength(20);
+      expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 20 more models' }),
+      );
+
+      expect(bodyRows()).toHaveLength(40);
+      expect(
+        screen.getByRole('button', { name: 'Show fewer' }),
+      ).toBeInTheDocument();
+    });
+
+    it('pages a search of 300 models too', async () => {
+      mockModelRows = manyModels(300);
+      await renderPanel('model-1');
+
+      // model-100 .. model-199
+      expect(bodyRows()).toHaveLength(20);
+      expect(screen.getByText('20 models shown, 80 more')).toBeInTheDocument();
+    });
   });
 
   it('shows the empty state once nothing is found', async () => {

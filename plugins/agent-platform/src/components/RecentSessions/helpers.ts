@@ -10,6 +10,13 @@ import {
 
 export const DEFAULT_RECENT_SESSIONS_LIMIT = 8;
 
+/**
+ * The most pinned sessions the rail lists. Pins are the person's own, so a
+ * handful is the norm; past this the rail would push its recent sessions out
+ * of view, and the rest are a click away on All sessions' Pinned chip.
+ */
+export const MAX_RAIL_PINS = 8;
+
 /** The `limit` most recently started sessions, newest first. */
 export function pickRecentSessions(
   rows: SessionRow[],
@@ -71,8 +78,13 @@ export function railSessionGroup(
 }
 
 export type GroupedRailSessions = {
-  /** The pinned sessions, in the order they were pinned. */
+  /**
+   * The pinned sessions, in the order they were pinned: the latest
+   * {@link MAX_RAIL_PINS} of them, so a new pin always shows.
+   */
   pinned: SessionRow[];
+  /** Pinned sessions past {@link MAX_RAIL_PINS}, not listed. */
+  pinnedOverflow: number;
   /** The recent, unpinned sessions, newest first, in the rail's buckets. */
   groups: Array<{ id: RailSessionGroup; label: string; rows: SessionRow[] }>;
 };
@@ -82,20 +94,23 @@ export type GroupedRailSessions = {
  * list (a pin whose session was deleted simply stops matching), and the
  * `limit` most recently started of the others under the prototype's time
  * headings. Pinned sessions do not repeat in the time groups and do not eat
- * into the limit.
+ * into the limit; past `maxPins` only the latest pins are listed.
  */
 export function groupRailSessions(
   rows: SessionRow[],
   pinnedIds: string[],
   limit: number,
   now: Date,
+  maxPins: number = MAX_RAIL_PINS,
 ): GroupedRailSessions {
   const byId = new Map(rows.map(row => [row.id, row]));
   const pinnedSet = new Set(pinnedIds);
-  const pinned = pinnedIds.flatMap(id => {
+  const allPinned = pinnedIds.flatMap(id => {
     const row = byId.get(id);
     return row ? [row] : [];
   });
+  const pinnedOverflow = Math.max(0, allPinned.length - maxPins);
+  const pinned = allPinned.slice(pinnedOverflow);
 
   const recent = pickRecentSessions(
     rows.filter(row => !pinnedSet.has(row.id)),
@@ -111,5 +126,5 @@ export function groupRailSessions(
     return groupRows ? [{ id, label, rows: groupRows }] : [];
   });
 
-  return { pinned, groups };
+  return { pinned, pinnedOverflow, groups };
 }

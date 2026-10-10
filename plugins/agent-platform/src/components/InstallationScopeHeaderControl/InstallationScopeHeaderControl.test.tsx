@@ -15,6 +15,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   InstallationScopeSelect: (props: {
     component?: string;
     describe?: (entry: InstallationInventoryEntry) => string | undefined;
+    searchable?: boolean;
   }) => {
     mockSelect(props);
     return <div data-testid="select">{props.component ?? 'none'}</div>;
@@ -97,6 +98,8 @@ describe('InstallationScopeHeaderControl', () => {
     await renderAt('/agent-platform/connectors');
 
     expect(screen.getByTestId('select')).toHaveTextContent('muster');
+    // The agent platform opts into type-ahead at scale; gs's default is off.
+    expect(mockSelect.mock.calls.at(-1)![0].searchable).toBe(true);
   });
 
   it('marks installations whose kagent the portal cannot reach, on kagent tabs only', async () => {

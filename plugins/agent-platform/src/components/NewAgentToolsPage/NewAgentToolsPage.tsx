@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -37,7 +37,10 @@ import {
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { ToolsetResolutionList } from '../ToolsetResolutionList';
+import {
+  AUTO_EXPAND_MAX,
+  ToolsetResolutionList,
+} from '../ToolsetResolutionList';
 import { CopyFromAgent } from './CopyFromAgent';
 import { PresetCards } from './PresetCards';
 import { ToolCatalogue } from './ToolCatalogue';
@@ -142,18 +145,43 @@ export function NewAgentToolsPage() {
   // The catalogue is the second path, behind the presets: opened on request,
   // or by a search — typing is asking to see what matches.
   const [browsing, setBrowsing] = useState(false);
-  const showCatalogue = browsing || trimmed !== '';
 
+  const isCatalogueLoading =
+    Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
     () =>
       buildCatalogue(catalogue.tools, servers, catalogue.serversRequiringAuth),
     [catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
-  const visibleGroups = useMemo(
-    () => filterCatalogue(groups, trimmed),
-    [groups, trimmed],
-  );
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
+  // A catalogue short enough to read whole ({@link AUTO_EXPAND_MAX} servers,
+  // tools and workflows together) is simply shown: no search over a handful
+  // of entries, and no toggle hiding three tools behind *Browse*. Decided
+  // once the read settles, so the servers' CRs arriving before their tools do
+  // not open a catalogue that is about to turn out long.
+  const isShortCatalogue =
+    !isCatalogueLoading &&
+    inventory.servers +
+      inventory.tools +
+      inventory.platformAdministration +
+      inventory.workflows <=
+      AUTO_EXPAND_MAX;
+  // The catalogue can shrink under the bar while a query is typed (a re-read
+  // after a sign-out) and the field goes with it: the query stops filtering
+  // on that render, and is dropped so it is not reapplied if the catalogue
+  // grows back (as ToolsetResolutionList does).
+  const activeQuery = isShortCatalogue ? '' : trimmed;
+  useEffect(() => {
+    if (isShortCatalogue) {
+      setQuery('');
+    }
+  }, [isShortCatalogue]);
+  const showCatalogue = isShortCatalogue || browsing || activeQuery !== '';
+
+  const visibleGroups = useMemo(
+    () => filterCatalogue(groups, activeQuery),
+    [groups, activeQuery],
+  );
   const matches = useMemo(
     () => catalogueInventory(visibleGroups),
     [visibleGroups],
@@ -221,11 +249,8 @@ export function NewAgentToolsPage() {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
 
-  const isCatalogueLoading =
-    Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
-
   const inventoryLine =
-    trimmed === ''
+    activeQuery === ''
       ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
           inventory.tools + inventory.platformAdministration,
           'tool',
@@ -346,15 +371,17 @@ export function NewAgentToolsPage() {
               {groups.length > 0 && (
                 <>
                   <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-                    <Flex grow basis="240px" direction="column">
-                      <SearchField
-                        aria-label="Search tools"
-                        placeholder="Search servers, tools and workflows…"
-                        value={query}
-                        onChange={setQuery}
-                      />
-                    </Flex>
-                    {trimmed === '' ? (
+                    {!isShortCatalogue && (
+                      <Flex grow basis="240px" direction="column">
+                        <SearchField
+                          aria-label="Search tools"
+                          placeholder="Search servers, tools and workflows…"
+                          value={query}
+                          onChange={setQuery}
+                        />
+                      </Flex>
+                    )}
+                    {!isShortCatalogue && activeQuery === '' && (
                       <Button
                         variant="secondary"
                         size="small"
@@ -365,7 +392,8 @@ export function NewAgentToolsPage() {
                           ? 'Hide the catalogue'
                           : 'Browse the catalogue'}
                       </Button>
-                    ) : (
+                    )}
+                    {activeQuery !== '' && (
                       <Button
                         variant="tertiary"
                         size="small"
@@ -382,7 +410,7 @@ export function NewAgentToolsPage() {
                     (visibleGroups.length > 0 ? (
                       <ToolCatalogue
                         groups={visibleGroups}
-                        query={trimmed}
+                        query={activeQuery}
                         installation={installation}
                         signInAvailable={Boolean(musterApi)}
                         selected={selected}
@@ -390,7 +418,7 @@ export function NewAgentToolsPage() {
                       />
                     ) : (
                       <Text color="secondary">
-                        Nothing matches &quot;{trimmed}&quot;.
+                        Nothing matches &quot;{activeQuery}&quot;.
                       </Text>
                     ))}
                 </>

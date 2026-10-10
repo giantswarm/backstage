@@ -13,6 +13,7 @@ import {
 import {
   EmptyStateCard,
   fieldErrorProps,
+  searchableIf,
   TextAreaField,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -272,6 +273,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             <Select
               label="Repository"
               isRequired
+              searchable={searchableIf(repositories)}
               options={repositories.map(url => ({
                 id: url,
                 label: repoSlug(url),

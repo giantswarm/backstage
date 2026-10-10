@@ -7,6 +7,7 @@ type ScopeSelectProps = {
   label?: string;
   component?: string;
   describe?: (entry: Entry) => string | undefined;
+  searchable?: boolean;
 };
 
 let mockScopeSelectProps: ScopeSelectProps | undefined;
@@ -41,6 +42,8 @@ describe('EnvironmentSelect', () => {
 
     expect(getByTestId('scope-select')).toHaveTextContent('Environment');
     expect(mockScopeSelectProps?.component).toBe('kagent');
+    // The agent platform opts into type-ahead at scale; gs's default is off.
+    expect(mockScopeSelectProps?.searchable).toBe(true);
   });
 
   it('marks the installations whose kagent the portal cannot reach on a kagent view', () => {

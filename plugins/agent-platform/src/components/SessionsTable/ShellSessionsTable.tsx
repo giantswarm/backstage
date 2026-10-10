@@ -31,7 +31,7 @@ import {
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { StatusDot, stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -64,6 +64,7 @@ import {
   filterSessions,
   isSessionsFilterActive,
   NO_SESSIONS_FILTER,
+  parseSessionsListSearch,
   SessionsFilter,
   SessionStateFilter,
   sessionAgentOptions,
@@ -656,6 +657,11 @@ export function ShellSessionsTable({
     [],
   );
 
+  // A link can open the list already narrowed (`?q=`, `?state=`): the
+  // palette's "+N more sessions", the toast for several sessions waiting.
+  const { search: locationSearch } = useLocation();
+  const [opening] = useState(() => parseSessionsListSearch(locationSearch));
+
   const { tableProps, search, filter } = useTable<
     SessionTableRow,
     SessionsFilter
@@ -664,14 +670,30 @@ export function ShellSessionsTable({
     data: isLoading ? undefined : stateRows,
     searchFn: sessionSearchFn,
     searchDebounceMs,
-    initialFilter: NO_SESSIONS_FILTER,
+    initialSearch: opening.query,
+    initialFilter: opening.filter,
     filterFn: filterSessions,
     sortFn: sortPinnedFirst,
     initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: { type: 'none' },
   });
 
-  const [searchTerm, setSearchTerm] = useState('');
+  // Such a link followed while the list is already open changes only the
+  // query string; the list follows it. Its own edits never touch the URL.
+  const seenSearch = useRef(locationSearch);
+  useEffect(() => {
+    if (seenSearch.current === locationSearch) {
+      return;
+    }
+    seenSearch.current = locationSearch;
+    const next = parseSessionsListSearch(locationSearch);
+    search.onChange(next.query);
+    filter.onChange(next.filter);
+    // The handlers are fresh every render; the URL alone drives this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locationSearch]);
+
+  const [searchTerm, setSearchTerm] = useState(opening.query);
   useDebounce(() => setSearchTerm(search.value.trim()), searchDebounceMs, [
     search.value,
   ]);

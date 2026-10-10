@@ -13,7 +13,10 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  searchableIf,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { validateModelRef } from '../../lib/modelManagerServing';
@@ -180,6 +183,7 @@ export function PullModelDialog({
               }
               isRequired
               isDisabled={isBusy}
+              searchable={searchableIf(targets)}
               options={targets.map(candidate => ({
                 id: pullTargetKey(candidate),
                 label: describePullTarget(candidate),

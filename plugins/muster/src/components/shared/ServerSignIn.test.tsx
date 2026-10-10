@@ -10,7 +10,12 @@ import {
   ServerSignInResult,
   ServerSignOutResult,
 } from '../../apis';
-import { ServerAuthActions, ServerSignIn } from './ServerSignIn';
+import {
+  deactivatedSignInGate,
+  ServerAuthActions,
+  ServerSignIn,
+} from './ServerSignIn';
+import type { SignInNoun } from './useServerSignIn';
 
 const AUTH_URL =
   'https://muster.gazelle.example.io/oauth/proxy/start?state=abc';
@@ -121,11 +126,20 @@ function newQueryClient() {
   });
 }
 
-async function renderSignIn(api: Api, queryClient = newQueryClient()) {
+async function renderSignIn(
+  api: Api,
+  queryClient = newQueryClient(),
+  noun?: SignInNoun,
+) {
   const rendered = await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <ServerSignIn serverName="pro" installation="gazelle" showName />
+        <ServerSignIn
+          serverName="pro"
+          installation="gazelle"
+          showName
+          noun={noun}
+        />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -134,7 +148,7 @@ async function renderSignIn(api: Api, queryClient = newQueryClient()) {
 
 async function renderAuthActions(
   api: Api,
-  props: { oauthConfigured?: boolean } = {},
+  props: { oauthConfigured?: boolean; noun?: SignInNoun } = {},
   queryClient = newQueryClient(),
 ) {
   const rendered = await renderInTestApp(
@@ -339,7 +353,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(/may be rejected as an unregistered client/),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/^This server's authorization server advertises/);
     // The sign-in link still works — the fallback often succeeds.
     expect(
       screen.getByRole('link', { name: /Open sign-in page/ }),
@@ -395,6 +409,27 @@ describe('ServerSignIn', () => {
     expect(
       screen.queryByText(/may be rejected as an unregistered client/),
     ).not.toBeInTheDocument();
+  });
+
+  it('names the connector in its notes in the agent platform’s sections', async () => {
+    const api = makeApi({
+      status: { name: 'pro', status: 'auth_required' },
+      signIn: {
+        status: 'auth_required',
+        authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=x',
+        message: CHALLENGE,
+        clientIdMethod: 'dcr-failed',
+      },
+    });
+    await renderSignIn(api, undefined, 'connector');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(
+      await screen.findByText(
+        /rejected muster's automatic client registration/,
+      ),
+    ).toHaveTextContent(/^This connector's authorization server rejected/);
   });
 
   it('shows neither note when the AS advertises CIMD support', async () => {
@@ -477,7 +512,10 @@ describe('ServerSignIn', () => {
     expect(
       await screen.findByText(/authenticates through SSO/),
     ).toBeInTheDocument();
-    expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
+    // main's wording by default (the classic portal, e.g. Bot PRs).
+    expect(
+      await screen.findByText(/check the server's trusted audiences/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
@@ -701,7 +739,7 @@ describe('ServerAuthActions', () => {
     // core_auth_login, CLI advice that contradicts the Sign in button.
     expect(
       screen.getByText(
-        "Signed out — the connector's tools are hidden until you sign in again.",
+        "Signed out — the server's tools are hidden until you sign in again.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/core_auth_login/)).not.toBeInTheDocument();
@@ -746,7 +784,25 @@ describe('ServerAuthActions', () => {
     });
     await renderAuthActions(api);
 
-    expect(await screen.findByText(/trusted audiences/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/check the server's trusted audiences/),
+    ).toBeInTheDocument();
+  });
+
+  it('names the connector in the SSO diagnosis in the agent platform’s sections', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'failed',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+    });
+    await renderAuthActions(api, { noun: 'connector' });
+
+    expect(
+      await screen.findByText(/check the connector's trusted audiences/),
+    ).toBeInTheDocument();
   });
 
   it('stays hidden for a healthy SSO server', async () => {
@@ -766,5 +822,19 @@ describe('ServerAuthActions', () => {
       screen.queryByText(/authenticates through SSO/),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+});
+
+describe('deactivatedSignInGate', () => {
+  it('keeps main’s wording by default', () => {
+    expect(deactivatedSignInGate()).toBe(
+      'Deactivated servers cannot be signed in to; activate the server first.',
+    );
+  });
+
+  it('names connectors in the agent platform’s sections', () => {
+    expect(deactivatedSignInGate('connector')).toBe(
+      'Deactivated connectors cannot be signed in to; activate the connector first.',
+    );
   });
 });

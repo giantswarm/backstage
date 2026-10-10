@@ -46,6 +46,14 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: () => ({ resources: [], isLoading: false, errors: [] }),
 }));
 
+// The targeted ModelConfig read behind the fold-out's "Underlying model";
+// unread (undefined) unless a test says what the ModelConfig runs.
+const mockUseUnderlyingModel = jest.fn();
+jest.mock('../../hooks/useUnderlyingModel', () => ({
+  ...jest.requireActual('../../hooks/useUnderlyingModel'),
+  useUnderlyingModel: (...args: unknown[]) => mockUseUnderlyingModel(...args),
+}));
+
 jest.mock('../../hooks/useAgentIconUrl', () => ({
   useAgentIconUrl: () => (installation: string, name: string) =>
     `https://avatars.${installation}.example/v1/${name}.png`,
@@ -316,6 +324,7 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockUseUnderlyingModel.mockReset();
 });
 
 describe('NewAgentReviewPage', () => {
@@ -346,6 +355,28 @@ describe('NewAgentReviewPage', () => {
       within(technical).getByText('Technical details'),
     ).toBeInTheDocument();
     await waitFor(() => expect(deployButton()).toBeEnabled());
+    // Nothing read about the ModelConfig: no underlying-model line.
+    expect(within(technical).queryByText('Underlying model')).toBeNull();
+  });
+
+  it('keeps the ModelConfig name and names the model it runs under Technical details', async () => {
+    mockUseUnderlyingModel.mockReturnValue('claude-sonnet-4-6 · Anthropic');
+
+    await renderReview();
+
+    // The plain summary keeps the ModelConfig's name (PO decision L6).
+    expect(plainRow('Model')).toHaveTextContent('opus-4-7');
+    expect(plainRow('Model')).not.toHaveTextContent('claude-sonnet-4-6');
+    // The model is one disclosure away, beside the ModelConfig it belongs to.
+    const release = await screen.findByTestId('code-go-service-reviewer.yaml');
+    const technical = release.closest('details') as HTMLDetailsElement;
+    const item = within(technical).getByText('Underlying model').parentElement;
+    expect(item).toHaveTextContent('claude-sonnet-4-6 · Anthropic');
+    expect(mockUseUnderlyingModel).toHaveBeenCalledWith(
+      'gazelle',
+      'opus-4-7',
+      'kagent',
+    );
   });
 
   it('sends the extra egress origins and names them in the summary', async () => {

@@ -25,7 +25,7 @@ export function BaseDeploymentsPage(props: BaseDeploymentsPageProps) {
     <>
       <PluginHeader
         icon={<CloudUploadIcon fontSize="inherit" />}
-        title="Apps"
+        title="Deployments"
       />
       <Content>
         <ErrorsProvider>

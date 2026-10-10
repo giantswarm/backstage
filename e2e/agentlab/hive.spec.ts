@@ -338,13 +338,8 @@ test.describe('Hive', () => {
   test('one sidebar entry, the tabs in order', async ({ admin }) => {
     await open(admin, '/');
     const nav = admin.getByRole('navigation').first();
-    // The section is labelled "Plans" and lives at /hive; the retired pages
-    // keep no sidebar entry of their own.
-    await expect(nav.getByRole('link', { name: 'Plans' })).toHaveAttribute(
-      'href',
-      '/hive',
-    );
-    for (const gone of ['Hive', 'Roadmap', 'Magazine']) {
+    await expect(nav.getByRole('link', { name: 'Hive' })).toBeVisible();
+    for (const gone of ['Plans', 'Roadmap', 'Magazine']) {
       await expect(
         nav.getByRole('link', { name: gone, exact: true }),
       ).toHaveCount(0);

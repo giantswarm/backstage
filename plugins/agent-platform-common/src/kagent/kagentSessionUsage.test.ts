@@ -233,4 +233,30 @@ describe('normalizeSessionUsage', () => {
     // The rest of the body still survives.
     expect(usage.daily).toHaveLength(2);
   });
+
+  it('reads what the capped top lists left out', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        otherTools: { count: 14, calls: 230 },
+        otherMcpServers: { count: 2, calls: 9 },
+      }),
+    );
+
+    expect(usage.otherTools).toEqual({ count: 14, calls: 230 });
+    expect(usage.otherMcpServers).toEqual({ count: 2, calls: 9 });
+  });
+
+  it('reads an absent or malformed remainder as nothing left out', () => {
+    // A backend that predates the field must not make the UI claim a
+    // remainder nobody counted.
+    expect(normalizeSessionUsage(body()).otherTools).toEqual({
+      count: 0,
+      calls: 0,
+    });
+    const usage = normalizeSessionUsage(
+      body({ otherTools: 'nope', otherMcpServers: { count: Number.NaN } }),
+    );
+    expect(usage.otherTools).toEqual({ count: 0, calls: 0 });
+    expect(usage.otherMcpServers).toEqual({ count: 0, calls: 0 });
+  });
 });

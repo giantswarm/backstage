@@ -61,7 +61,7 @@ import {
 } from '../ServerPage/useServerPageData';
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
-  DEACTIVATED_SIGN_IN_GATE,
+  deactivatedSignInGate,
   FamilyHealthBadge,
   ServerAuthActions,
   ServerStateBadge,
@@ -217,6 +217,7 @@ function ConnectorPageContent({
   const signIn = useServerSignIn(
     singular?.getName() ?? '',
     canSignIn ? installation : undefined,
+    { noun: 'connector' },
   );
   const needsSignIn =
     canSignIn &&
@@ -316,11 +317,14 @@ function ConnectorPageContent({
           You are not signed in to this connector, so its tools are hidden.
         </Text>
         <ServerAuthActions
+          noun="connector"
           serverName={singular.getName()}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}
           signInGate={
-            singular.getSuspended() ? DEACTIVATED_SIGN_IN_GATE : undefined
+            singular.getSuspended()
+              ? deactivatedSignInGate('connector')
+              : undefined
           }
         />
       </Flex>

@@ -14,7 +14,9 @@ import {
 import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
+  INITIAL_ROWS,
   LoadingIndicator,
+  ShowMore,
   StatusDot,
   isAwaitingData,
   stopRowPress,
@@ -114,6 +116,7 @@ function ConnectorStatusCell({
             role="presentation"
           >
             <ServerAuthActions
+              noun="connector"
               serverName={row.signInServer}
               installation={installation}
             />
@@ -225,20 +228,32 @@ function ConnectorsTable({
       </Text>
     );
   } else {
+    // `serverListEntries` sorts by name, and ShowMore hands the table a page of
+    // that at a time. Never bui's page mode, which draws its footer even at
+    // three rows. Keyed on the search, so a new query starts at its first page.
     list = (
-      <Table<Row>
-        columnConfig={columns}
-        data={rows}
-        pagination={{ type: 'none' }}
-        rowConfig={{
-          getHref: row =>
-            row.entry.shadowed
-              ? undefined
-              : links.server(row.entry.id, installation, {
-                  q: row.entry.toolMatches ? search.trim() : undefined,
-                }),
-        }}
-      />
+      <ShowMore
+        key={search.trim()}
+        items={rows}
+        initial={INITIAL_ROWS}
+        noun="connector"
+      >
+        {page => (
+          <Table<Row>
+            columnConfig={columns}
+            data={page}
+            pagination={{ type: 'none' }}
+            rowConfig={{
+              getHref: row =>
+                row.entry.shadowed
+                  ? undefined
+                  : links.server(row.entry.id, installation, {
+                      q: row.entry.toolMatches ? search.trim() : undefined,
+                    }),
+            }}
+          />
+        )}
+      </ShowMore>
     );
   }
 

@@ -17,6 +17,13 @@ import {
   SelectableCardGrid,
   useSelectableCardStyles,
 } from '../SelectableCard';
+import { ShowMore } from '../ShowMore';
+
+/**
+ * How many model cards the picker shows before *Show more*: four rows of the
+ * three-column grid. Tens of models are realistic on one environment.
+ */
+const MODEL_CARDS = 12;
 
 /** Says which model the form picked for the person, and why. */
 function preselectionNote(
@@ -114,6 +121,9 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   }
 
   const hasError = unreachableInstallations.includes(installation);
+  const isPicked = (mc: (typeof modelConfigs)[number]) =>
+    state.modelConfigName === mc.getName() &&
+    state.modelConfigNamespace === (mc.getNamespace() ?? '');
 
   return (
     <Flex direction="column" gap="2" {...invalidProps}>
@@ -170,46 +180,55 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
       )}
 
       {modelConfigs.length > 0 && (
-        <SelectableCardGrid
-          role="radiogroup"
-          ariaLabel="Model"
-          minWidth={220}
-          describedBy={error ? errorId : undefined}
-        >
-          {modelConfigs.map(mc => {
-            const name = mc.getName();
-            const namespace = mc.getNamespace() ?? '';
-            const isSelected =
-              state.modelConfigName === name &&
-              state.modelConfigNamespace === namespace;
-            const provider = mc.getProvider();
-
-            return (
-              <SelectableCard
-                key={`${namespace}/${name}`}
-                role="radio"
-                selected={isSelected}
-                ariaLabel={`Select model ${mc.getDisplayName()}${
-                  isDefaultModelConfig(mc) ? ', environment default' : ''
-                }`}
-                onSelect={() =>
-                  selectModelConfig(name, namespace, mc.getDisplayName())
-                }
-              >
-                <Text weight="bold">{mc.getDisplayName()}</Text>
-                {isDefaultModelConfig(mc) && (
-                  <Text variant="body-small" color="secondary">
-                    Environment default
-                  </Text>
-                )}
-                <Text variant="body-x-small" color="secondary">
-                  <span className={classes.code}>{mc.getModel()}</span>
-                  {provider ? ` · ${provider}` : ''}
-                </Text>
-              </SelectableCard>
+        <ShowMore items={modelConfigs} initial={MODEL_CARDS} noun="model">
+          {page => {
+            // The picked model is always on screen, even past the first page
+            // (the default, preselected, can be listed anywhere): it follows
+            // the page as one more card rather than hiding behind *Show more*.
+            const pinned = modelConfigs.find(
+              mc => isPicked(mc) && !page.includes(mc),
             );
-          })}
-        </SelectableCardGrid>
+            return (
+              <SelectableCardGrid
+                role="radiogroup"
+                ariaLabel="Model"
+                minWidth={220}
+                describedBy={error ? errorId : undefined}
+              >
+                {(pinned ? [...page, pinned] : page).map(mc => {
+                  const name = mc.getName();
+                  const namespace = mc.getNamespace() ?? '';
+                  const provider = mc.getProvider();
+
+                  return (
+                    <SelectableCard
+                      key={`${namespace}/${name}`}
+                      role="radio"
+                      selected={isPicked(mc)}
+                      ariaLabel={`Select model ${mc.getDisplayName()}${
+                        isDefaultModelConfig(mc) ? ', environment default' : ''
+                      }`}
+                      onSelect={() =>
+                        selectModelConfig(name, namespace, mc.getDisplayName())
+                      }
+                    >
+                      <Text weight="bold">{mc.getDisplayName()}</Text>
+                      {isDefaultModelConfig(mc) && (
+                        <Text variant="body-small" color="secondary">
+                          Environment default
+                        </Text>
+                      )}
+                      <Text variant="body-x-small" color="secondary">
+                        <span className={classes.code}>{mc.getModel()}</span>
+                        {provider ? ` · ${provider}` : ''}
+                      </Text>
+                    </SelectableCard>
+                  );
+                })}
+              </SelectableCardGrid>
+            );
+          }}
+        </ShowMore>
       )}
     </Flex>
   );

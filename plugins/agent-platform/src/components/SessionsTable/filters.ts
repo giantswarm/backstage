@@ -89,6 +89,51 @@ export type SessionsFilter = {
 
 export const NO_SESSIONS_FILTER: SessionsFilter = { state: 'all' };
 
+/**
+ * The query parameters the shell's sessions list opens with: `q` seeds its
+ * search, `state` one of its chips. Links that hand the person a narrowed
+ * list — the palette's "+N more sessions", the toast for several sessions
+ * waiting at once — say what to narrow to this way.
+ */
+export const SESSIONS_QUERY_PARAM = 'q';
+export const SESSIONS_STATE_PARAM = 'state';
+
+/** The query string (with its `?`, or empty) for a narrowed sessions list. */
+export function sessionsListSearch({
+  query,
+  state,
+}: {
+  query?: string;
+  state?: SessionStateFilter;
+}): string {
+  const params = new URLSearchParams();
+  if (query?.trim()) {
+    params.set(SESSIONS_QUERY_PARAM, query.trim());
+  }
+  if (state && state !== 'all') {
+    params.set(SESSIONS_STATE_PARAM, state);
+  }
+  const search = params.toString();
+  return search ? `?${search}` : '';
+}
+
+/**
+ * What a sessions-list URL asks to open with; an unknown `state` is ignored
+ * rather than filtering down to nothing.
+ */
+export function parseSessionsListSearch(search: string): {
+  query: string;
+  filter: SessionsFilter;
+} {
+  const params = new URLSearchParams(search);
+  const state = params.get(SESSIONS_STATE_PARAM);
+  const known = ALL_FILTER_IDS.find(id => id === state);
+  return {
+    query: params.get(SESSIONS_QUERY_PARAM)?.trim() ?? '',
+    filter: known ? { state: known } : NO_SESSIONS_FILTER,
+  };
+}
+
 export function isSessionsFilterActive(filter: SessionsFilter): boolean {
   return filter.state !== 'all' || filter.agent !== undefined;
 }

@@ -48,6 +48,7 @@ import {
   SectionTitle,
   SummaryItem,
   toolsetSummaryLabel,
+  UnderlyingModelItem,
   useReviewStyles,
   Violations,
   YAML_OPTS,
@@ -406,6 +407,11 @@ function CreateAgentReview() {
               <SummaryItem label="Model">
                 <span className={classes.code}>{spec.modelConfig}</span>
               </SummaryItem>
+              <UnderlyingModelItem
+                installation={state.installation}
+                modelConfigName={state.modelConfigName}
+                namespace={state.modelConfigNamespace}
+              />
               <SummaryItem label="Chart">
                 {chart ? (
                   <Text variant="body-small">

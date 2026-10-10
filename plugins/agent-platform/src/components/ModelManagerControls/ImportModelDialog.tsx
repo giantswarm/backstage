@@ -22,6 +22,7 @@ import {
   dialogDismissLock,
   StatusLabel,
   isAwaitingData,
+  searchableIf,
 } from '@giantswarm/backstage-plugin-ui-react';
 import LockIcon from '@material-ui/icons/Lock';
 
@@ -196,12 +197,34 @@ export function ImportModelDialog({
   const preset =
     presetChoice ?? (presetOptions.length === 1 ? presetOptions[0] : undefined);
   const presetKey = preset ?? NO_PRESET;
+  const presetSelectOptions = [
+    ...presetOptions.map(name => ({ id: name, label: name })),
+    {
+      id: NO_PRESET,
+      label:
+        presetOptions.length > 0
+          ? 'None (cache directory named after the model)'
+          : 'No preset serves this model',
+    },
+  ];
 
   // A single node is the obvious target; with several, or none known,
   // model-manager picks the best budget unless the user chooses.
   const nodes = target?.nodes ?? [];
   const node = nodeChoice ?? (nodes.length === 1 ? nodes[0].name : undefined);
   const nodeKey = node ?? BEST_NODE;
+  const nodeSelectOptions = [
+    { id: BEST_NODE, label: 'Best node (model-manager decides)' },
+    ...nodes.map(candidate => ({
+      id: candidate.name,
+      label:
+        candidate.memoryBudgetBytes !== undefined
+          ? `${candidate.name} · ${formatBytes(
+              candidate.memoryFreeBytes ?? candidate.memoryBudgetBytes,
+            )} free`
+          : candidate.name,
+    })),
+  ];
 
   const fit = useQuery({
     queryKey: [
@@ -307,6 +330,7 @@ export function ImportModelDialog({
               label="Environment"
               isRequired
               isDisabled={isBusy}
+              searchable={searchableIf(targets)}
               options={targets.map(candidate => ({
                 id: importTargetKey(candidate),
                 label: candidate.backend
@@ -405,16 +429,8 @@ export function ImportModelDialog({
                   <Select
                     label="Serving preset"
                     isDisabled={isBusy}
-                    options={[
-                      ...presetOptions.map(name => ({ id: name, label: name })),
-                      {
-                        id: NO_PRESET,
-                        label:
-                          presetOptions.length > 0
-                            ? 'None (cache directory named after the model)'
-                            : 'No preset serves this model',
-                      },
-                    ]}
+                    searchable={searchableIf(presetSelectOptions)}
+                    options={presetSelectOptions}
                     selectedKey={presetKey}
                     onSelectionChange={key =>
                       setPresetChoice(
@@ -430,22 +446,8 @@ export function ImportModelDialog({
                   <Select
                     label="Target node"
                     isDisabled={isBusy}
-                    options={[
-                      {
-                        id: BEST_NODE,
-                        label: 'Best node (model-manager decides)',
-                      },
-                      ...nodes.map(candidate => ({
-                        id: candidate.name,
-                        label:
-                          candidate.memoryBudgetBytes !== undefined
-                            ? `${candidate.name} · ${formatBytes(
-                                candidate.memoryFreeBytes ??
-                                  candidate.memoryBudgetBytes,
-                              )} free`
-                            : candidate.name,
-                      })),
-                    ]}
+                    searchable={searchableIf(nodeSelectOptions)}
+                    options={nodeSelectOptions}
                     selectedKey={nodeKey}
                     onSelectionChange={key =>
                       setNodeChoice(

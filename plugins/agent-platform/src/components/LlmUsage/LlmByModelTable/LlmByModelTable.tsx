@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
-import { columnMax, DataBar } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  columnMax,
+  DataBar,
+  ShowMore,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
   formatCount,
@@ -14,6 +18,13 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { useMeasureColor } from '../../../lib/measures';
+
+/**
+ * How many models the table shows before *Show all N models*. The models in
+ * use are realistically tens, so one click reveals the rest rather than
+ * paging through them.
+ */
+export const BY_MODEL_ROWS = 15;
 
 export type LlmByModelTableProps = {
   rows: LlmModelRow[];
@@ -41,6 +52,10 @@ export type LlmByModelTableProps = {
  * maximum, each on its own hue, keyed by measure so "Tokens" is the same
  * colour here as in the By agent table. The bars compare rows **down** a
  * column and mean nothing across columns.
+ *
+ * The table sorts first and `ShowMore` slices the sorted rows, so the first
+ * {@link BY_MODEL_ROWS} are always the top of whatever column is sorted, and
+ * three models render with no reveal control at all.
  */
 export function LlmByModelTable({
   rows,
@@ -156,24 +171,40 @@ export function LlmByModelTable({
     data: rows,
     sortFn: (data, sort) => sortUsageRows(data, sort, 'model'),
     initialSort: { column: 'costUsd', direction: 'descending' },
+    // Off for the reason AgentsTable documents: `useCompletePagination` does
+    // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
 
   return (
     <UsageCard title="By model" note={note} wide>
+      {/* Sort-then-slice: `tableProps.data` is the *sorted* rows, and
+          `ShowMore` hands the table its first page of them. Passing the raw
+          `rows` instead would silently undo every column sort while the
+          header's indicator still moved. */}
       {/* The table scrolls inside the card at phone width rather than pushing
           the page wide — the 375px requirement. */}
-      <div style={{ overflowX: 'auto' }}>
-        <Table<LlmModelRow>
-          {...tableProps}
-          columnConfig={columnConfig}
-          emptyState={
-            <Text variant="body-medium" color="secondary">
-              {emptyMessage}
-            </Text>
-          }
-        />
-      </div>
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={BY_MODEL_ROWS}
+        noun="model"
+        revealAll
+      >
+        {visible => (
+          <div style={{ overflowX: 'auto' }}>
+            <Table<LlmModelRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          </div>
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

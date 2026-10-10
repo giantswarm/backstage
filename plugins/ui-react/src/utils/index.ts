@@ -3,6 +3,8 @@ export * from './tableHelpers';
 export { countNoun } from './countNoun';
 export { formatVersion } from './formatVersion';
 export { isTableColumnHidden } from './isTableColumnHidden';
+export { joinNames, groupNames, NAMED_IN_SENTENCE } from './joinNames';
+export type { JoinNamesOptions, NameGroup } from './joinNames';
 export { passwordManagerIgnoreProps } from './passwordManagerProps';
 export { searchableIf } from './searchableIf';
 export { tokenize, matchesQuery } from './tokenSearch';

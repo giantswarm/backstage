@@ -16,6 +16,7 @@ import {
   Text,
 } from '@backstage/ui';
 import {
+  searchableIf,
   SectionHeader,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -225,6 +226,7 @@ export function NewModelPage() {
               <Select
                 aria-label="Environment"
                 isRequired
+                searchable={searchableIf(reachableInstallations)}
                 options={reachableInstallations.map(name => ({
                   id: name,
                   label: name,

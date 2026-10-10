@@ -1,6 +1,10 @@
 import { Tooltip, makeStyles, Theme } from '@material-ui/core';
 import { Button, ButtonLink, Text } from '@backstage/ui';
-import { ServerSignInState, useServerSignIn } from './useServerSignIn';
+import {
+  ServerSignInState,
+  SignInNoun,
+  useServerSignIn,
+} from './useServerSignIn';
 
 /**
  * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
@@ -8,8 +12,9 @@ import { ServerSignInState, useServerSignIn } from './useServerSignIn';
  * connected on a server that is not. The portal withholds the button on its own
  * knowledge of the CR rather than relying on muster's refusal text.
  */
-export const DEACTIVATED_SIGN_IN_GATE =
-  'Deactivated connectors cannot be signed in to; activate the connector first.';
+export function deactivatedSignInGate(noun: SignInNoun = 'server'): string {
+  return `Deactivated ${noun}s cannot be signed in to; activate the ${noun} first.`;
+}
 
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
@@ -80,9 +85,11 @@ function Messages({ state }: { state: ServerSignInState }) {
 function SsoExplanation({
   serverName,
   state,
+  noun,
 }: {
   serverName: string;
   state: ServerSignInState;
+  noun: SignInNoun;
 }) {
   const classes = useStyles();
   return (
@@ -95,7 +102,7 @@ function SsoExplanation({
       {serverName} authenticates through SSO from muster's own session, so there
       is nothing to sign in to here.
       {state.status?.sso_attempt_failed
-        ? " muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator."
+        ? ` muster tried and failed to establish it for your session — check the ${noun}'s trusted audiences with an administrator.`
         : ''}
     </Text>
   );
@@ -121,8 +128,10 @@ function SsoExplanation({
 function SignInFlow({
   state,
   prominent,
+  noun,
 }: {
   state: ServerSignInState;
+  noun: SignInNoun;
   /**
    * Primary styling. On the MCP servers page the sign-in is the single action
    * an auth-gated server needs, so it outranks the secondary lifecycle
@@ -216,7 +225,7 @@ function SignInFlow({
           pre-provisioned one, which can otherwise look suspicious. */}
       {clientIdMethod === 'cimd-fallback' ? (
         <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This connector's authorization server advertises neither support for
+          This {noun}'s authorization server advertises neither support for
           muster's client identity (CIMD) nor automatic client registration —
           the sign-in may be rejected as an unregistered client.
         </Text>
@@ -226,9 +235,8 @@ function SignInFlow({
           rejection is in muster's challenge message and logs). */}
       {clientIdMethod === 'dcr-failed' ? (
         <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This connector's authorization server rejected muster's automatic
-          client registration — the sign-in may be rejected as an unregistered
-          client.
+          This {noun}'s authorization server rejected muster's automatic client
+          registration — the sign-in may be rejected as an unregistered client.
         </Text>
       ) : null}
       {clientIdMethod === 'dcr' ? (
@@ -237,7 +245,7 @@ function SignInFlow({
           color="secondary"
           className={classes.fullRow}
         >
-          muster registered itself with this connector's authorization server
+          muster registered itself with this {noun}'s authorization server
           automatically (Dynamic Client Registration).
         </Text>
       ) : null}
@@ -270,6 +278,11 @@ export interface ServerSignInProps {
   installation?: string;
   /** Show the server name next to the action (a list of several servers). */
   showName?: boolean;
+  /**
+   * What the copy calls the server: main's "server" by default (the classic
+   * portal, e.g. Bot PRs), "connector" in the agent platform's own sections.
+   */
+  noun?: SignInNoun;
 }
 
 /**
@@ -287,14 +300,15 @@ export function ServerSignIn({
   serverName,
   installation,
   showName,
+  noun = 'server',
 }: ServerSignInProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation);
+  const state = useServerSignIn(serverName, installation, { noun });
 
   if (state.isSsoManaged) {
     return (
       <div className={classes.root}>
-        <SsoExplanation serverName={serverName} state={state} />
+        <SsoExplanation serverName={serverName} state={state} noun={noun} />
         {/* Rendered under the paragraph, not instead of it: a specific refusal
             (rate limit, issuer discovery) must not be swapped for the generic
             SSO explanation. */}
@@ -306,7 +320,7 @@ export function ServerSignIn({
   return (
     <div className={classes.root}>
       {showName ? <code className={classes.name}>{serverName}</code> : null}
-      <SignInFlow state={state} />
+      <SignInFlow state={state} noun={noun} />
       <Messages state={state} />
     </div>
   );
@@ -332,6 +346,8 @@ export interface ServerAuthActionsProps {
    * revoking a stale grant is exactly what a gated server may still need.
    */
   signInGate?: string;
+  /** What the copy calls the server: main's "server" by default. */
+  noun?: SignInNoun;
 }
 
 /**
@@ -350,9 +366,10 @@ export function ServerAuthActions({
   showName,
   oauthConfigured,
   signInGate,
+  noun = 'server',
 }: ServerAuthActionsProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation);
+  const state = useServerSignIn(serverName, installation, { noun });
   const {
     status,
     isWaiting,
@@ -372,7 +389,7 @@ export function ServerAuthActions({
     }
     return (
       <div className={classes.inActionRow}>
-        <SsoExplanation serverName={serverName} state={state} />
+        <SsoExplanation serverName={serverName} state={state} noun={noun} />
         <Messages state={state} />
       </div>
     );
@@ -388,7 +405,7 @@ export function ServerAuthActions({
         {signInGate ? (
           <GatedSignIn reason={signInGate} />
         ) : (
-          <SignInFlow state={state} prominent />
+          <SignInFlow state={state} prominent noun={noun} />
         )}
         <Messages state={state} />
       </div>

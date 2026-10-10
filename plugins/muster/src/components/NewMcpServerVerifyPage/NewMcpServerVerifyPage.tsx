@@ -309,6 +309,7 @@ export function NewMcpServerVerifyPage() {
                     description="It authenticates users with their own account, so each user completes a one-time sign-in before its tools appear. Sign in now, or later from the connector's page."
                   />
                   <ServerSignIn
+                    noun="connector"
                     serverName={serverName}
                     installation={installation}
                   />

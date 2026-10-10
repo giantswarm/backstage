@@ -14,8 +14,6 @@ More lists stay plain at a few entries and usable at hundreds:
   environments and count the rest.
 - The Tools step's "Start from an existing agent" shows 12 agents at a time,
   with a search by name or namespace once there are more than 20.
-- Create cluster's Environment, Release and Organization selects offer
-  type-ahead once they hold more than eight options.
 - The agent wizard's Skills step (create and edit) shows a single repository's
   skills as a plain grid, opens every repository only while the catalogue
   holds at most 20 skills (a longer one opens as its repositories and counts,
