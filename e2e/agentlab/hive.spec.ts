@@ -480,10 +480,7 @@ test.describe('Hive', () => {
   test('Plans: the header team picks its plans repository', async ({
     admin,
   }) => {
-    await open(
-      admin,
-      `/hive/plans?team=${encodeURIComponent('Orchard 🍎')}`,
-    );
+    await open(admin, `/hive/plans?team=${encodeURIComponent('Orchard 🍎')}`);
     await expect(
       admin.getByText('A plan in giantswarm/orchard-plans'),
     ).toBeVisible();

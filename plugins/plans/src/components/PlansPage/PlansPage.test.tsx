@@ -24,10 +24,7 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 /** The repository picker the page put into the header last, if any. */
 const headerPicker = () => mockHeaderActions.mock.calls.at(-1)?.[0] ?? null;
 
-const REPOSITORIES = [
-  'giantswarm/meadow-plans',
-  'giantswarm/orchard-plans',
-];
+const REPOSITORIES = ['giantswarm/meadow-plans', 'giantswarm/orchard-plans'];
 
 async function renderAt(search: string) {
   const plansApi = {
