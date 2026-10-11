@@ -32,7 +32,7 @@ import {
  */
 
 // The fixture magazine's team's plans repository (`<team>-plans`).
-const PLANS_REPO = 'example/bumblebee-plans';
+const PLANS_REPO = 'example/meadow-plans';
 const MAGAZINE_REPO = 'example/team-magazine';
 const DAY = 86_400_000;
 

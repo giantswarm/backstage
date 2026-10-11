@@ -201,8 +201,8 @@ const meta = {
 };
 
 const PLANS_REPOSITORIES = [
-  'giantswarm/bumblebee-plans',
-  'giantswarm/honeybadger-plans',
+  'giantswarm/meadow-plans',
+  'giantswarm/orchard-plans',
 ];
 
 const documents: Record<string, string> = {
@@ -482,10 +482,10 @@ test.describe('Hive', () => {
   }) => {
     await open(
       admin,
-      `/hive/plans?team=${encodeURIComponent('Honey Badger 🦡')}`,
+      `/hive/plans?team=${encodeURIComponent('Orchard 🍎')}`,
     );
     await expect(
-      admin.getByText('A plan in giantswarm/honeybadger-plans'),
+      admin.getByText('A plan in giantswarm/orchard-plans'),
     ).toBeVisible();
     await expect(admin.getByRole('button', { name: /Repository/ })).toHaveCount(
       0,
