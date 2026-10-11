@@ -298,70 +298,85 @@ describe('CustomizeConnectorsPanel', () => {
     });
   });
 
-  describe('filters (T49)', () => {
+  describe('filters (T49, T64)', () => {
     const bodyRows = () => screen.getAllByRole('row').slice(1);
-    const chips = (name: string) =>
-      within(screen.getByRole('radiogroup', { name }))
-        .getAllByRole('radio')
-        .map(chip => chip.textContent);
+    /** A filter's dropdown; `hidden` keeps it readable while it is open. */
+    const filterDropdown = (field: string) =>
+      screen.getByRole('button', {
+        name: new RegExp(`Filter by ${field}`),
+        hidden: true,
+      });
+    /** A filter dropdown's options, as "label count", read and closed. */
+    const filterOptions = async (field: string) => {
+      await userEvent.click(filterDropdown(field));
+      const options = within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map(option => option.textContent);
+      await userEvent.keyboard('{Escape}');
+      return options;
+    };
+    /** Toggles one option of a filter dropdown. */
+    const pickFilter = async (field: string, option: string) => {
+      await userEvent.click(filterDropdown(field));
+      await userEvent.click(
+        await screen.findByRole('option', { name: option }),
+      );
+      await userEvent.keyboard('{Escape}');
+    };
 
-    it('draws no filter over three connectors that sign in alike and all answer', async () => {
+    it('offers one-option dropdowns over three connectors that sign in alike and all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
       expect(bodyRows()).toHaveLength(3);
-      expect(
-        screen.queryByRole('group', { name: 'Filters' }),
-      ).not.toBeInTheDocument();
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      expect(await filterOptions('sign-in')).toEqual(['No sign-in 3']);
+      expect(await filterOptions('connection')).toEqual(['Connected 3']);
     });
 
     it('filters three connectors by sign-in and by connection', async () => {
       await renderPanel();
 
-      expect(
-        await screen.findByRole('radiogroup', { name: 'Filter by connection' }),
-      ).toBeInTheDocument();
-      expect(chips('Filter by sign-in')).toEqual([
-        'All 3',
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      expect(await filterOptions('sign-in')).toEqual([
         'Company login 1',
         'No sign-in 1',
         'Your own account 1',
       ]);
-      expect(chips('Filter by connection')).toEqual([
-        'All 3',
+      expect(await filterOptions('connection')).toEqual([
         'Connected 2',
         'Sign-in needed 1',
       ]);
 
-      await userEvent.click(
-        screen.getByRole('radio', { name: 'Sign-in needed 1' }),
-      );
+      await pickFilter('connection', 'Sign-in needed 1');
       expect(bodyRows()).toHaveLength(1);
       expect(rowOf('github')).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('radio', { name: 'All 3' }));
-      await userEvent.click(
-        screen.getByRole('radio', { name: 'No sign-in 1' }),
-      );
+      await pickFilter('connection', 'Sign-in needed 1');
+      await pickFilter('sign-in', 'No sign-in 1');
       expect(bodyRows()).toHaveLength(1);
       expect(rowOf('web-search')).toBeInTheDocument();
+      // A second sign-in kind widens the list.
+      await pickFilter('sign-in', 'Your own account 1');
+      expect(bodyRows()).toHaveLength(2);
     });
 
     it('says when a search and a filter leave nothing, and clears the filter', async () => {
       await renderPanel('github');
 
-      await userEvent.click(
-        await screen.findByRole('radio', { name: 'No sign-in 0' }),
-      );
+      await screen.findByRole('button', { name: /Filter by sign-in/ });
+      await pickFilter('sign-in', 'No sign-in 0');
       expect(
         screen.getByText(
           'No connectors or tools match “github” with these filters.',
         ),
       ).toBeInTheDocument();
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Clear filters' }),
-      );
+      // The empty state's way back (the bar offers the same).
+      const [, emptyStateClear] = screen.getAllByRole('button', {
+        name: 'Clear filters',
+      });
+      await userEvent.click(emptyStateClear);
       expect(rowOf('github')).toBeInTheDocument();
     });
 
@@ -374,13 +389,12 @@ describe('CustomizeConnectorsPanel', () => {
       );
       await renderPanel();
 
-      expect(chips('Filter by connection')).toEqual([
-        'All 300',
+      await screen.findByRole('button', { name: /Filter by connection/ });
+      expect(await filterOptions('connection')).toEqual([
         'Connected 240',
         'Not connected 60',
       ]);
-      expect(chips('Filter by sign-in')).toEqual([
-        'All 300',
+      expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 200',
         'Your own account 100',
       ]);
@@ -389,19 +403,36 @@ describe('CustomizeConnectorsPanel', () => {
       );
       expect(bodyRows()).toHaveLength(40);
 
-      await userEvent.click(
-        screen.getByRole('radio', { name: 'Not connected 60' }),
-      );
+      await pickFilter('connection', 'Not connected 60');
       expect(bodyRows()).toHaveLength(20);
       expect(
         screen.getByText('20 connectors shown, 40 more'),
       ).toBeInTheDocument();
       // The sign-in counts follow the connection pick.
-      expect(chips('Filter by sign-in')).toEqual([
-        'All 60',
+      expect(await filterOptions('sign-in')).toEqual([
         'No sign-in 40',
         'Your own account 20',
       ]);
+
+      // Both connection states: everything again; then one sign-in kind.
+      await pickFilter('connection', 'Connected 240');
+      expect(
+        screen.getByText('20 connectors shown, 280 more'),
+      ).toBeInTheDocument();
+      await pickFilter('sign-in', 'Your own account 100');
+      expect(
+        screen.getByText('20 connectors shown, 80 more'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(
+        within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+          'button',
+          { name: 'Clear filters' },
+        ),
+      );
+      expect(
+        screen.getByText('20 connectors shown, 280 more'),
+      ).toBeInTheDocument();
     });
   });
 

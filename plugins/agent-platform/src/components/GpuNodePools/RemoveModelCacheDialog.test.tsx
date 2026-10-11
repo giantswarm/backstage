@@ -172,9 +172,21 @@ describe('RemoveModelCacheDialog', () => {
       'Models served on this cluster (1):qwen3-8b',
     );
     const confirm = screen.getByRole('button', { name: 'Remove cache' });
-    expect(confirm).toBeDisabled();
-    await user.click(screen.getByLabelText(ACKNOWLEDGE_LOSS));
+    // Pressable; pressed before the loss is acknowledged, the checkbox says so.
     expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    expect(onRemoved).not.toHaveBeenCalled();
+    const acknowledge = screen.getByRole('checkbox', {
+      name: ACKNOWLEDGE_LOSS,
+    });
+    expect(acknowledge).toHaveAttribute('aria-invalid', 'true');
+    expect(acknowledge).toHaveFocus();
+    expect(acknowledge).toHaveAccessibleDescription(
+      'Acknowledge that the cached weights go with the cache.',
+    );
+
+    await user.click(acknowledge);
+    expect(acknowledge).not.toHaveAttribute('aria-invalid');
     await user.click(confirm);
     await waitFor(() => expect(onRemoved).toHaveBeenCalled());
     expect(callTool).toHaveBeenCalledWith(

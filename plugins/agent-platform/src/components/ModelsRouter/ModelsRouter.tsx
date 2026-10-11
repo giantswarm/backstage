@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   Navigate,
   Route,
@@ -26,7 +27,10 @@ import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
 import { ModelCachePage } from '../ModelCachePage';
-import { ModelHostingKpis } from '../ModelHostingKpis';
+import {
+  ModelHostingKpis,
+  type ModelHostingKpisScope,
+} from '../ModelHostingKpis';
 import {
   SHELL_CUSTOMIZE_PATH,
   ShellCustomizeRedirect,
@@ -105,13 +109,33 @@ function shellHostingTabs(clusterManager: boolean) {
 }
 
 /**
+ * One Model hosting tab: its headline figures — only those about what the
+ * tab lists (`ModelHostingKpis`'s scope), so the row does not repeat on every
+ * tab — above the view.
+ */
+const HostingView = ({
+  kpis,
+  children,
+}: {
+  kpis: ModelHostingKpisScope | undefined;
+  children: ReactNode;
+}) => (
+  <Flex direction="column" gap="5">
+    {kpis && <ModelHostingKpis scope={kpis} />}
+    {children}
+  </Flex>
+);
+
+/**
  * Model hosting inside the agent-platform shell: the serving layer's views
  * under the platform-standard page frame (`ShellPage`) — breadcrumbs
  * "Customize / Models / Model hosting", the screen's title at the standard
- * scale, the views as its routed tabs and, above every view, the headline
- * figures (`ModelHostingKpis`). The actions a view registers (Serve model,
- * Add GPU pool…) land in this header's slot, and the shell's generic sub-page
- * header stands aside because `ShellPage` claims it.
+ * scale, the views as its routed tabs and, above each view, the headline
+ * figures about what it lists (`ModelHostingKpis`: the whole row on Running
+ * models, the GPU tiles on GPU pools, the cache tile on Model cache). The
+ * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
+ * pool…) land in this header's slot, top right, and the shell's generic
+ * sub-page header stands aside because `ShellPage` claims it.
  *
  * The tabs and figures show where a serving layer exists; a deep link on a
  * portal without one keeps the frame and lets the view's own empty state
@@ -139,29 +163,44 @@ const ShellModelHosting = () => {
       description="Run models on your own GPUs, so data stays in your clusters."
       tabs={servingLayer ? shellHostingTabs(offersCache) : undefined}
     >
-      <Flex direction="column" gap="5">
-        {servingLayer && <ModelHostingKpis />}
-        <Routes>
-          <Route path="serving" element={<ServingPage />} />
-          <Route
-            path="capacity"
-            element={<GpuCapacityPage showModelCache={false} />}
-          />
-          <Route path="cache" element={<ModelCachePage />} />
-          {/* A guess or a retired view lands on the first view rather than
-              on the frame over an empty page. Absolute, from the splat base
-              path: a relative target inside a splat route would append. */}
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to={{ pathname: `${basePath}/serving`, search }}
-                replace
-              />
-            }
-          />
-        </Routes>
-      </Flex>
+      <Routes>
+        <Route
+          path="serving"
+          element={
+            <HostingView kpis={servingLayer ? 'all' : undefined}>
+              <ServingPage />
+            </HostingView>
+          }
+        />
+        <Route
+          path="capacity"
+          element={
+            <HostingView kpis={servingLayer ? 'gpu' : undefined}>
+              <GpuCapacityPage showModelCache={false} />
+            </HostingView>
+          }
+        />
+        <Route
+          path="cache"
+          element={
+            <HostingView kpis={servingLayer ? 'cache' : undefined}>
+              <ModelCachePage />
+            </HostingView>
+          }
+        />
+        {/* A guess or a retired view lands on the first view rather than
+            on the frame over an empty page. Absolute, from the splat base
+            path: a relative target inside a splat route would append. */}
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to={{ pathname: `${basePath}/serving`, search }}
+              replace
+            />
+          }
+        />
+      </Routes>
     </ShellPage>
   );
 };

@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import { EmptyState } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
+import AddIcon from '@material-ui/icons/Add';
 import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
 
+import { ModelHostingActions } from '../ModelHostingActions';
 import { ShellAwareContent } from '../ShellAwareContent';
 import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
 import {
@@ -60,7 +62,25 @@ export function GpuCapacityPage({
     serving.servedModels,
     serving.scope,
   );
-  useProvidePageHeaderActions(pools.addButton);
+  // The view's one action, Add GPU node pool, as the header's primary at the
+  // top right (ModelHostingActions), like every Model hosting view's.
+  const { addAction } = pools;
+  const headerActions = useMemo(
+    () =>
+      addAction ? (
+        <ModelHostingActions
+          primary={{
+            id: 'add-pool',
+            label: 'Add GPU node pool',
+            icon: <AddIcon />,
+            onAction: addAction.open,
+            isDisabled: addAction.isDisabled,
+          }}
+        />
+      ) : null,
+    [addAction],
+  );
+  useProvidePageHeaderActions(headerActions);
   const cachePanel = showModelCache ? pools.cachePanel : undefined;
 
   const nodeInventoryInstallations = useMemo(

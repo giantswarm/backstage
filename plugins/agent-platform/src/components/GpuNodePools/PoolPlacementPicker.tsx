@@ -48,6 +48,12 @@ export type PoolPlacementPickerProps = {
    * the slice would mount (giantswarm/backstage#2493).
    */
   review?: NodePoolWriteResult;
+  /**
+   * One section only: the form keeps the zones — whose default, every zone,
+   * fits most pools — under More options, and the cache, a monthly bill,
+   * in sight. Both when absent.
+   */
+  part?: 'zones' | 'cache';
 };
 
 /** The id of the zones picker. */
@@ -215,9 +221,12 @@ export function PoolPlacementPicker({
   onCacheChange,
   isBusy,
   review,
+  part,
 }: PoolPlacementPickerProps) {
   const capacityRoute = useRouteRef(gpuCapacityRouteRef);
-  if (!offers.zones && !offers.cache) {
+  const showsZones = offers.zones && part !== 'cache';
+  const showsCache = offers.cache && part !== 'zones';
+  if (!showsZones && !showsCache) {
     return null;
   }
   const clusterZones = cluster?.zones;
@@ -229,8 +238,12 @@ export function PoolPlacementPicker({
   // the cache off prices nothing and is not this switch's.
   const priced = review?.cache?.enabled ? review.cache : undefined;
   return (
-    <Flex direction="column" gap="3" data-testid="pool-placement-picker">
-      {offers.zones && (
+    <Flex
+      direction="column"
+      gap="3"
+      data-testid={part ? `pool-placement-${part}` : 'pool-placement-picker'}
+    >
+      {showsZones && (
         <Flex
           direction="column"
           gap="1"
@@ -288,7 +301,7 @@ export function PoolPlacementPicker({
           )}
         </Flex>
       )}
-      {offers.cache && (
+      {showsCache && (
         <Flex direction="column" gap="1" data-testid="cache-picker">
           <Switch
             label="Keep a model cache"

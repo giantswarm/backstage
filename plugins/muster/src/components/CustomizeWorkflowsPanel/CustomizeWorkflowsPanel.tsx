@@ -302,6 +302,7 @@ function WorkflowsTable({
       <CatalogFilterBar
         dimensions={filters.dimensions}
         onSelect={filters.select}
+        onClear={filters.clear}
       />
       {!hasSession && (
         <SessionGate

@@ -8,7 +8,8 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { EmptyState } from '@backstage/core-components';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
+import AddIcon from '@material-ui/icons/Add';
 import CloudDownloadIcon from '@material-ui/icons/CloudDownload';
 import PlayArrowIcon from '@material-ui/icons/PlayArrow';
 import SearchIcon from '@material-ui/icons/Search';
@@ -58,6 +59,10 @@ import {
 } from '../ModelManagerControls';
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { useModelBackendControls } from '../ModelBackends';
+import {
+  ModelHostingActions,
+  type HostingAction,
+} from '../ModelHostingActions';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
@@ -506,59 +511,67 @@ export function ServingPage() {
   const canPull = pullTargets.length > 0;
   const canImport = importTargets.length > 0;
 
-  // The view's primary actions go to the shared page header (agent-flow
-  // convention). Memoized so the header slot only updates when what is
-  // offered changes; `null` clears the slot when nothing is.
-  const headerActions = useMemo(
-    () =>
-      canLoad ||
-      canPull ||
-      canImport ||
-      backends.available ||
-      pools.available ? (
-        <Flex gap="2">
-          {backends.addButton}
-          {pools.addButton}
-          {canPull && (
-            <Button
-              variant="secondary"
-              iconStart={<CloudDownloadIcon />}
-              onPress={() => setPullOpen(true)}
-            >
-              Pull model
-            </Button>
-          )}
-          {canImport && (
-            <Button
-              variant="secondary"
-              iconStart={<SearchIcon />}
-              onPress={() => setImportOpen(true)}
-            >
-              Import from Hugging Face
-            </Button>
-          )}
-          {canLoad && (
-            <Button
-              variant="primary"
-              iconStart={<PlayArrowIcon />}
-              onPress={openServe}
-            >
-              Serve model
-            </Button>
-          )}
-        </Flex>
-      ) : null,
-    [
-      canLoad,
-      canPull,
-      canImport,
-      openServe,
-      backends.addButton,
-      backends.available,
-      pools.addButton,
-      pools.available,
-    ],
-  );
+  // The view's actions go to the shared page header, top right, in the
+  // standard places (ModelHostingActions): Serve model the primary, getting a
+  // model onto a backend beside it, adding a backend or capacity in the ⋯
+  // menu. Memoized so the header slot only updates when what is offered
+  // changes; `null` clears the slot when nothing is.
+  const { openAdd: openAddBackend } = backends;
+  const { addAction: poolAddAction } = pools;
+  const headerActions = useMemo(() => {
+    const serve: HostingAction | undefined = canLoad
+      ? {
+          id: 'serve',
+          label: 'Serve model',
+          icon: <PlayArrowIcon />,
+          onAction: openServe,
+        }
+      : undefined;
+    const importModel: HostingAction | undefined = canImport
+      ? {
+          id: 'import',
+          label: 'Import from Hugging Face',
+          icon: <SearchIcon />,
+          onAction: () => setImportOpen(true),
+        }
+      : undefined;
+    const pullModel: HostingAction | undefined = canPull
+      ? {
+          id: 'pull',
+          label: 'Pull model',
+          icon: <CloudDownloadIcon />,
+          onAction: () => setPullOpen(true),
+        }
+      : undefined;
+    const addBackend: HostingAction | undefined = openAddBackend
+      ? {
+          id: 'add-backend',
+          label: 'Add model backend',
+          icon: <AddIcon />,
+          onAction: openAddBackend,
+        }
+      : undefined;
+    const addPool: HostingAction | undefined = poolAddAction
+      ? {
+          id: 'add-pool',
+          label: 'Add GPU node pool',
+          icon: <AddIcon />,
+          onAction: poolAddAction.open,
+          isDisabled: poolAddAction.isDisabled,
+        }
+      : undefined;
+    // The import is the richer way to get a model; a plain pull is the
+    // secondary where nothing imports.
+    const secondary = importModel ?? pullModel;
+    const more = [
+      importModel ? pullModel : undefined,
+      addBackend,
+      addPool,
+    ].filter((action): action is HostingAction => Boolean(action));
+    return serve || secondary || more.length > 0 ? (
+      <ModelHostingActions primary={serve} secondary={secondary} more={more} />
+    ) : null;
+  }, [canLoad, canPull, canImport, openServe, openAddBackend, poolAddAction]);
   useProvidePageHeaderActions(headerActions);
 
   // A backend registered with a model-manager but serving nothing yet has no

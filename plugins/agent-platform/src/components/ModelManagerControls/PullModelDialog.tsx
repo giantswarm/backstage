@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import {
   Alert,
@@ -15,7 +15,10 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
+  fieldErrorProps,
   searchableIf,
+  useFieldValidation,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { usePullModel } from '../../hooks/usePullJobs';
@@ -77,7 +80,9 @@ export type PullModelDialogProps = {
  * duplicated — the panel shows one job either way.
  *
  * Controlled like `ConfirmDialog`: confirming does not close it, so a failed
- * request has somewhere to say so.
+ * request has somewhere to say so. The app's standard form: Pull stays
+ * pressable, and a blocked Pull marks the field that is wrong, under it, and
+ * moves the focus there (`useFieldValidation`).
  */
 export function PullModelDialog({
   isOpen,
@@ -90,7 +95,9 @@ export function PullModelDialog({
   );
   const [model, setModel] = useState('');
   const [wire, setWire] = useState(true);
-  const [validationError, setValidationError] = useState<string>();
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
+  const { reset: resetValidation } = validation;
 
   // A target list that changes under an open dialog (an installation became
   // unreachable) must not leave the select pointing at nothing.
@@ -105,9 +112,9 @@ export function PullModelDialog({
     if (isOpen) {
       setModel('');
       setWire(true);
-      setValidationError(undefined);
+      resetValidation();
     }
-  }, [isOpen]);
+  }, [isOpen, resetValidation]);
 
   const target = useMemo(
     () => targets.find(candidate => pullTargetKey(candidate) === targetKey),
@@ -122,13 +129,17 @@ export function PullModelDialog({
     }
   }, [isOpen, reset]);
 
+  const errors = {
+    target: target ? undefined : 'Pick where the model is pulled.',
+    model: validateModelRef(model),
+  };
+  const targetError = useSelectFieldError(validation.errorFor(errors.target));
+
   const submit = async () => {
-    const problem = validateModelRef(model);
-    if (problem) {
-      setValidationError(problem);
+    if (errors.target || errors.model) {
+      validation.reveal();
       return;
     }
-    setValidationError(undefined);
 
     const reference = model.trim();
     let result: Awaited<ReturnType<typeof pull.mutateAsync>>;
@@ -157,7 +168,6 @@ export function PullModelDialog({
   };
 
   const isBusy = pull.isPending;
-  const error = validationError ?? pull.error?.message;
 
   return (
     <Dialog
@@ -167,7 +177,7 @@ export function PullModelDialog({
     >
       <DialogHeader>Pull a model</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="4">
+        <Flex direction="column" gap="4" ref={scope}>
           <Text variant="body-medium" color="secondary">
             Downloads the model onto the environment's serving backend. Give a
             registry tag such as <code>qwen2.5:0.5b</code>, or a Hugging Face
@@ -194,8 +204,10 @@ export function PullModelDialog({
                   setTargetKey(String(key));
                 }
               }}
+              {...targetError.selectProps}
             />
           )}
+          {targets.length > 1 && targetError.message}
 
           <TextField
             label="Model reference"
@@ -205,6 +217,7 @@ export function PullModelDialog({
             onChange={setModel}
             placeholder="e.g. qwen2.5:0.5b"
             description="Agents need a model with tool calling; the inventory shows each model's features once it is downloaded."
+            {...fieldErrorProps(validation.errorFor(errors.model))}
           />
 
           {target?.canWire && (
@@ -216,7 +229,9 @@ export function PullModelDialog({
             />
           )}
 
-          {error ? <Alert status="danger" description={error} /> : null}
+          {pull.error ? (
+            <Alert status="danger" description={pull.error.message} />
+          ) : null}
         </Flex>
       </DialogBody>
       <DialogFooter>
@@ -227,12 +242,7 @@ export function PullModelDialog({
         >
           Cancel
         </Button>
-        <Button
-          variant="primary"
-          isPending={isBusy}
-          isDisabled={!target}
-          onClick={submit}
-        >
+        <Button variant="primary" isPending={isBusy} onClick={submit}>
           {isBusy ? 'Starting…' : 'Pull'}
         </Button>
       </DialogFooter>

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import {
   toastApiRef,
@@ -19,10 +19,13 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
-  FormFieldGrid,
+  fieldErrorProps,
+  MoreOptions,
   StatusLabel,
   isAwaitingData,
   searchableIf,
+  useFieldValidation,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 import LockIcon from '@material-ui/icons/Lock';
 
@@ -111,6 +114,12 @@ export function describeSearchResult(result: ModelManagerSearchResult): string {
  *
  * Controlled like the other dialogs here: confirming does not close it, so a
  * refused request has somewhere to say so.
+ *
+ * The app's standard form: one column; the preset and the target node —
+ * whose defaults (the hit's one preset, the node model-manager picks) fit
+ * most imports — under More options. Download stays pressable until a model
+ * is picked: pressed before, the search field says what is missing and takes
+ * the focus (`useFieldValidation`); once one is, the fit verdict decides.
  */
 export function ImportModelDialog({
   isOpen,
@@ -127,6 +136,10 @@ export function ImportModelDialog({
   const [selectedId, setSelectedId] = useState<string>();
   const [presetChoice, setPresetChoice] = useState<string>();
   const [nodeChoice, setNodeChoice] = useState<string>();
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const fieldScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(fieldScope);
+  const { reset: resetValidation } = validation;
 
   // A target list that changes under an open dialog (an installation became
   // unreachable) must not leave the select pointing at nothing.
@@ -156,9 +169,11 @@ export function ImportModelDialog({
       setSelectedId(undefined);
       setPresetChoice(undefined);
       setNodeChoice(undefined);
+      setMoreOptionsOpen(false);
+      resetValidation();
       resetPull();
     }
-  }, [isOpen, resetPull]);
+  }, [isOpen, resetPull, resetValidation]);
 
   const search = useQuery({
     queryKey: [
@@ -192,10 +207,15 @@ export function ImportModelDialog({
   );
 
   // The presets to offer: the hit's own (exactly this model). One preset is
-  // the obvious choice; none leaves the directory named after the model.
+  // the obvious choice; none leaves the directory named after the model. A
+  // choice of "None" is kept as NO_PRESET, so it is not taken for no choice —
+  // and never sent.
   const presetOptions = selected?.presets ?? [];
   const preset =
-    presetChoice ?? (presetOptions.length === 1 ? presetOptions[0] : undefined);
+    presetChoice === NO_PRESET
+      ? undefined
+      : (presetChoice ??
+        (presetOptions.length === 1 ? presetOptions[0] : undefined));
   const presetKey = preset ?? NO_PRESET;
   const presetSelectOptions = [
     ...presetOptions.map(name => ({ id: name, label: name })),
@@ -209,9 +229,13 @@ export function ImportModelDialog({
   ];
 
   // A single node is the obvious target; with several, or none known,
-  // model-manager picks the best budget unless the user chooses.
+  // model-manager picks the best budget unless the user chooses — "Best
+  // node" kept as BEST_NODE, like "None" above, and never sent.
   const nodes = target?.nodes ?? [];
-  const node = nodeChoice ?? (nodes.length === 1 ? nodes[0].name : undefined);
+  const node =
+    nodeChoice === BEST_NODE
+      ? undefined
+      : (nodeChoice ?? (nodes.length === 1 ? nodes[0].name : undefined));
   const nodeKey = node ?? BEST_NODE;
   const nodeSelectOptions = [
     { id: BEST_NODE, label: 'Best node (model-manager decides)' },
@@ -278,7 +302,23 @@ export function ImportModelDialog({
     !blockedByGate &&
     !pull.isPending;
 
+  const errors = {
+    target: target ? undefined : 'Pick where the model is imported.',
+    model: selected
+      ? undefined
+      : `${
+          search.data && search.data.length > 0
+            ? 'Pick a model from the results.'
+            : 'Search the hub, then pick a model from the results.'
+        }`,
+  };
+  const targetError = useSelectFieldError(validation.errorFor(errors.target));
+
   const submit = async () => {
+    if (errors.target || errors.model) {
+      validation.reveal();
+      return;
+    }
     if (!selected || !canDownload) {
       return;
     }
@@ -317,7 +357,7 @@ export function ImportModelDialog({
     >
       <DialogHeader>Import a model from Hugging Face</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="4">
+        <Flex direction="column" gap="4" ref={fieldScope}>
           <Text variant="body-medium" color="secondary">
             Search the Hugging Face Hub and pre-warm a model into the node's
             model cache, so serving it later skips the download. model-manager
@@ -345,8 +385,10 @@ export function ImportModelDialog({
                   setSubmittedQuery('');
                 }
               }}
+              {...targetError.selectProps}
             />
           )}
+          {targets.length > 1 && targetError.message}
 
           <form onSubmit={runSearch}>
             <Flex align="end" gap="2">
@@ -358,6 +400,7 @@ export function ImportModelDialog({
                   onChange={setQuery}
                   placeholder="e.g. Qwen3-14B, devstral, org/repository"
                   description="Repository ids or words from the name; the hub ranks by downloads."
+                  {...fieldErrorProps(validation.errorFor(errors.model))}
                 />
               </div>
               <Button
@@ -424,9 +467,16 @@ export function ImportModelDialog({
 
           {selected && (
             <>
-              {/* The two descriptions differ in length: the grid keeps both
-                  selects on one line regardless. */}
-              <FormFieldGrid>
+              <MoreOptions
+                open={moreOptionsOpen}
+                onOpenChange={setMoreOptionsOpen}
+                summary={`preset ${preset ?? 'none'} · ${
+                  node ?? 'the best node'
+                }`}
+              >
+                <Text variant="body-small" color="secondary">
+                  The defaults work for most models.
+                </Text>
                 <Select
                   label="Serving preset"
                   isDisabled={isBusy}
@@ -457,7 +507,7 @@ export function ImportModelDialog({
                   }
                   description="Whose cache receives the download; the fit is checked against this node's memory budget."
                 />
-              </FormFieldGrid>
+              </MoreOptions>
 
               {isAwaitingData(fit) && (
                 <Text variant="body-medium" color="secondary">
@@ -525,7 +575,9 @@ export function ImportModelDialog({
         <Button
           variant="primary"
           isPending={isBusy}
-          isDisabled={!canDownload}
+          // Until a model is picked Download says what is missing; once one
+          // is, the fit verdict and the gate above decide.
+          isDisabled={Boolean(selected) && !canDownload}
           onClick={submit}
         >
           {isBusy ? 'Starting…' : 'Download'}

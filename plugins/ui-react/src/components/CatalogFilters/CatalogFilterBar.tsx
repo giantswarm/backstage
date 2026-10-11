@@ -1,138 +1,153 @@
-import {
-  Button,
-  Flex,
-  Select,
-  Text,
-  ToggleButton,
-  ToggleButtonGroup,
-} from '@backstage/ui';
+import type { CSSProperties } from 'react';
+import { Button, Flex, Select, SelectItem, Text } from '@backstage/ui';
 import { searchableIf } from '../../utils/searchableIf';
-import {
-  ALL_FILTER_VALUES,
-  type CatalogFilterDimension,
-  FILTER_CHIPS_CLASS_NAME,
-  FILTER_CHIPS_MAX,
+import type {
+  CatalogFilterDimension,
+  CatalogFilterOption,
 } from './catalogFilters';
 
-const CHIP_ROW_STYLE = {
-  flexWrap: 'wrap',
-  gap: 'var(--bui-space-2)',
-  overflow: 'visible',
-} as const;
+/**
+ * A dropdown takes its share of the row and wraps to the next one before it
+ * gets narrower than 10rem: side by side on a desktop, two to a row on a
+ * phone, never wider than a field name and two picks need. bui's Select
+ * otherwise stretches to the whole row.
+ */
+const DROPDOWN_STYLE: CSSProperties = {
+  flex: '1 1 10rem',
+  width: 'auto',
+  minWidth: 0,
+  maxWidth: '16rem',
+};
+
+/** The field name inside the trigger, before what is picked. */
+const FIELD_NAME_STYLE: CSSProperties = {
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+  color: 'var(--bui-fg-secondary)',
+  fontSize: 'var(--bui-font-size-3)',
+};
+
+const OPTION_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: 'var(--bui-space-3)',
+  minWidth: 0,
+};
+
+const OPTION_LABEL_STYLE: CSSProperties = {
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+};
+
+const OPTION_COUNT_STYLE: CSSProperties = {
+  flexShrink: 0,
+  color: 'var(--bui-fg-secondary)',
+  fontVariantNumeric: 'tabular-nums',
+};
 
 export type CatalogFilterBarProps = {
   dimensions: CatalogFilterDimension[];
-  /** A pick; `undefined` picks every value of the facet again. */
-  onSelect: (facetId: string, value: string | undefined) => void;
+  /** A facet's new picks; an empty list picks every value of it again. */
+  onSelect: (facetId: string, values: string[]) => void;
+  /**
+   * Clears every facet's picks. Given, the bar offers "Clear filters" while
+   * anything is picked.
+   */
+  onClear?: () => void;
 };
 
-function FilterDimension({
+function FilterDropdown({
   dimension,
   onSelect,
 }: {
   dimension: CatalogFilterDimension;
   onSelect: CatalogFilterBarProps['onSelect'];
 }) {
-  const pick = (key: unknown) => {
-    const next = String(key);
-    if (next === ALL_FILTER_VALUES) {
-      onSelect(dimension.id, undefined);
-    } else if (dimension.options.some(option => option.id === next)) {
-      onSelect(dimension.id, next);
-    }
-  };
-  const selected = dimension.value ?? ALL_FILTER_VALUES;
-  const name = `Filter by ${dimension.label.toLowerCase()}`;
-
+  const field = dimension.label.toLowerCase();
+  const picked = dimension.selected.length;
   return (
-    <Flex align="center" gap="2" style={{ flexWrap: 'wrap', minWidth: 0 }}>
-      {/* Named for assistive technology by the control's own label. */}
-      <Text as="span" variant="body-small" color="secondary" aria-hidden>
-        {dimension.label}
-      </Text>
-      {dimension.options.length <= FILTER_CHIPS_MAX ? (
-        // The sessions list's chip idiom: single choice, never empty, each
-        // chip with what it would leave.
-        <ToggleButtonGroup
-          className={FILTER_CHIPS_CLASS_NAME}
-          // bui's group is one nowrap, overflow-hidden row: six chips with
-          // counts are wider than a phone, and the last ones were cut off.
-          // The chips' pill look stays with the shell's stylesheet.
-          style={CHIP_ROW_STYLE}
-          aria-label={name}
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[selected]}
-          onSelectionChange={keys => {
-            const [next] = [...keys];
-            if (next !== undefined) {
-              pick(next);
-            }
-          }}
+    <Select<'multiple', CatalogFilterOption>
+      aria-label={`Filter by ${field}`}
+      size="small"
+      selectionMode="multiple"
+      placeholder="All"
+      // The trigger reads "Source  All", "Source  acme/skills", or with more
+      // picks "Source 3  acme/skills, gs/skills, and …" (react-aria's list
+      // format, cut off with an ellipsis). Named for assistive technology by
+      // aria-label and the picks themselves.
+      icon={
+        <span aria-hidden style={FIELD_NAME_STYLE}>
+          {picked > 1 ? `${dimension.label} ${picked}` : dimension.label}
+        </span>
+      }
+      items={dimension.options}
+      dependencies={[dimension.options]}
+      value={dimension.selected}
+      onChange={keys => onSelect(dimension.id, [...keys].map(String))}
+      search={
+        searchableIf(dimension.options)
+          ? { placeholder: `Search ${field}` }
+          : undefined
+      }
+      style={DROPDOWN_STYLE}
+    >
+      {option => (
+        <SelectItem
+          id={option.id}
+          textValue={option.label}
+          showSelectionIndicator
         >
-          <ToggleButton id={ALL_FILTER_VALUES} size="small">
-            {`All ${dimension.total}`}
-          </ToggleButton>
-          {dimension.options.map(option => (
-            <ToggleButton key={option.id} id={option.id} size="small">
-              {`${option.label} ${option.count}`}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      ) : (
-        <Select
-          aria-label={name}
-          size="small"
-          searchable={searchableIf(dimension.options)}
-          options={[
-            { id: ALL_FILTER_VALUES, label: `All (${dimension.total})` },
-            ...dimension.options.map(option => ({
-              id: option.id,
-              label: `${option.label} (${option.count})`,
-            })),
-          ]}
-          selectedKey={selected}
-          onSelectionChange={key => {
-            if (key !== null) {
-              pick(key);
-            }
-          }}
-          style={{ minWidth: 200, maxWidth: 280 }}
-        />
+          {/* Read as "acme/skills 31": the space is collapsed in the row. */}
+          <span style={OPTION_STYLE}>
+            <span style={OPTION_LABEL_STYLE}>{option.label}</span>{' '}
+            <span style={OPTION_COUNT_STYLE}>{option.count}</span>
+          </span>
+        </SelectItem>
       )}
-    </Flex>
+    </Select>
   );
 }
 
 /**
- * A catalog's filters under its search, in the sessions list's chip idiom: a
- * row of chips per facet ("All 40", "acme/skills 31", "gs/skills 9"), or a
- * select once a facet has more than {@link FILTER_CHIPS_MAX} values. Draws
- * nothing when no facet would change the list — three entries get no filter
- * bar. State lives in {@link useCatalogFilters}.
+ * A catalog's filters under its search: one multi-select dropdown per facet,
+ * named by its field and listing the facet's values with what each keeps
+ * ("acme/skills 31"). Picks within a dropdown widen (any of them), dropdowns
+ * narrow each other. Every facet the catalog has values on is drawn — a
+ * single-value one is a dropdown of one option — and the row wraps at phone
+ * width. State lives in {@link useCatalogFilters}.
  */
 export function CatalogFilterBar({
   dimensions,
   onSelect,
+  onClear,
 }: CatalogFilterBarProps) {
   if (dimensions.length === 0) {
     return null;
   }
+  const isFiltered = dimensions.some(
+    dimension => dimension.selected.length > 0,
+  );
   return (
     <Flex
       role="group"
       aria-label="Filters"
       align="center"
-      gap="4"
-      style={{ flexWrap: 'wrap', rowGap: 'var(--bui-space-2)' }}
+      gap="2"
+      style={{ flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0 }}
     >
       {dimensions.map(dimension => (
-        <FilterDimension
+        <FilterDropdown
           key={dimension.id}
           dimension={dimension}
           onSelect={onSelect}
         />
       ))}
+      {onClear && isFiltered && (
+        <Button variant="tertiary" size="small" onPress={onClear}>
+          Clear filters
+        </Button>
+      )}
     </Flex>
   );
 }

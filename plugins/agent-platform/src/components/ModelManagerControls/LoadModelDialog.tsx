@@ -19,7 +19,10 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   dialogDismissLock,
+  MoreOptions,
   searchableIf,
+  useFieldValidation,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
@@ -156,6 +159,14 @@ function choicePlaceholder(
     : 'No cached model waits to be served';
 }
 
+/** The placement as More options' summary says it. */
+function placementSummary(split: boolean, copies: number): string {
+  if (split) {
+    return 'split across fast-linked nodes';
+  }
+  return copies > 1 ? `${copies} copies` : 'one copy';
+}
+
 function targetForSeed(
   targets: LoadTarget[],
   seed: LoadModelSeed | undefined,
@@ -197,6 +208,13 @@ function targetForSeed(
  *
  * Controlled like the other dialogs here: confirming does not close it, so a
  * refused load has somewhere to say so.
+ *
+ * The app's standard form: one column; the placement and the nodes — whose
+ * defaults (model-manager's recommendation, a node that fits) serve most
+ * models — under More options, its summary saying what they are set to.
+ * Serve pressed with no preset or model chosen says so on that field and
+ * moves the focus there (`useFieldValidation`); the fit verdict, an
+ * already-serving preset or a missing connection hold it, each saying why.
  */
 export function LoadModelDialog({
   isOpen,
@@ -209,6 +227,10 @@ export function LoadModelDialog({
   const modelManagerApi = useApi(modelManagerApiRef);
   const [targetKey, setTargetKey] = useState('');
   const [model, setModel] = useState('');
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const fieldScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(fieldScope);
+  const { reset: resetValidation } = validation;
 
   // Opening seeds the target and the model, and so does a new seed or a
   // change in which targets exist; a refetch that returns the same targets
@@ -444,11 +466,29 @@ export function LoadModelDialog({
   useEffect(() => {
     if (isOpen) {
       reset();
+      resetValidation();
+      setMoreOptionsOpen(false);
     }
-  }, [isOpen, reset]);
+  }, [isOpen, reset, resetValidation]);
+
+  const noun = usesPresets ? 'preset' : 'model';
+  const errors = {
+    target: target ? undefined : 'Pick where the model is served.',
+    choice: choice
+      ? undefined
+      : (choicePlaceholder(usesPresets, false, choices.length === 0) ??
+        `Pick the ${noun} to serve.`),
+  };
+  const targetError = useSelectFieldError(
+    validation.errorFor(targets.length > 1 ? errors.target : undefined),
+  );
+  const choiceError = useSelectFieldError(
+    validation.errorFor(target ? errors.choice : undefined),
+  );
 
   const submit = async () => {
-    if (!target) {
+    if (!target || !choice) {
+      validation.reveal();
       return;
     }
     let answer: ModelManagerLoadAnswer;
@@ -464,12 +504,29 @@ export function LoadModelDialog({
   const isBusy = load.isPending;
   const fitBlocks =
     needsFit &&
+    Boolean(choice) &&
     (activeFit.isPending || activeFit.isError || verdict?.fits === false);
+  // What holds Serve, each with its own explanation on the dialog: no
+  // backend that can load, no connection, a preset that serves already, the
+  // fit verdict. A missing choice does not: Serve says so on the field.
   const canServe =
-    Boolean(client && target && choice) &&
-    !servedWhere &&
-    !isBusy &&
-    !fitBlocks;
+    Boolean(client && target) && !servedWhere && !isBusy && !fitBlocks;
+
+  // More options' one line of what the placement and the nodes are set to.
+  const chosenPlacement = placements?.find(option => option.id === placement);
+  const showsNodes = Boolean(nodeOptions) && !split && !servedWhere;
+  const moreOptionsSummary = [
+    chosenPlacement &&
+      `${placementSummary(split, copyNodes.length)}${
+        chosenPlacement.recommended ? ' (recommended)' : ''
+      }`,
+    showsNodes &&
+      (copyNodes.length === 0
+        ? 'on a node that fits'
+        : `on ${copyNodes.join(', ')}`),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Dialog
@@ -479,7 +536,7 @@ export function LoadModelDialog({
     >
       <DialogHeader>Serve model</DialogHeader>
       <DialogBody>
-        <Flex direction="column" gap="4">
+        <Flex direction="column" gap="4" ref={fieldScope}>
           <Text variant="body-medium" color="secondary">
             Starts serving through model-manager as you. On a GPU pool the model
             is one of the presets published for the cluster; the node it needs
@@ -519,8 +576,10 @@ export function LoadModelDialog({
                   setTargetKey(String(key));
                 }
               }}
+              {...targetError.selectProps}
             />
           )}
+          {targetError.message}
 
           {!target && (
             <Alert
@@ -559,14 +618,16 @@ export function LoadModelDialog({
               )}
               searchable={searchableIf(choices)}
               options={choices}
-              selectedKey={model}
+              selectedKey={model || null}
               onSelectionChange={key => {
                 if (key) {
                   setModel(String(key));
                 }
               }}
+              {...choiceError.selectProps}
             />
           )}
+          {choiceError.message}
 
           {choice?.description && (
             <Text variant="body-small" color="secondary">
@@ -574,77 +635,85 @@ export function LoadModelDialog({
             </Text>
           )}
 
-          {placements && (
-            <RadioGroup
-              label="Placement"
-              data-testid="serve-placement"
-              value={placement ?? null}
-              onChange={value => setPicked(value as ModelManagerPlacement)}
-              isDisabled={isBusy}
+          {(placements || showsNodes) && (
+            <MoreOptions
+              open={moreOptionsOpen}
+              onOpenChange={setMoreOptionsOpen}
+              summary={moreOptionsSummary || undefined}
             >
-              {placements.map(option => (
-                <Radio
-                  key={option.id}
-                  value={option.id}
-                  isDisabled={option.disabled}
+              {placements && (
+                <RadioGroup
+                  label="Placement"
+                  data-testid="serve-placement"
+                  value={placement ?? null}
+                  onChange={value => setPicked(value as ModelManagerPlacement)}
+                  isDisabled={isBusy}
                 >
-                  <Flex direction="column" gap="0">
-                    <Text variant="body-medium">
-                      {option.label}
-                      {option.recommended ? ' (recommended)' : ''}
-                    </Text>
-                    {option.description && (
-                      <Text variant="body-small" color="secondary">
-                        {option.description}
-                      </Text>
-                    )}
-                  </Flex>
-                </Radio>
-              ))}
-            </RadioGroup>
-          )}
-
-          {nodeOptions && !split && !servedWhere && (
-            <Flex direction="column" gap="1" data-testid="serve-nodes">
-              <CheckboxGroup
-                label="Nodes"
-                description="Tick a node for one copy there, several for one copy on each behind the same endpoint. None ticked: one copy on a node that fits."
-                value={copyNodes}
-                onChange={setTickedNodes}
-                isDisabled={isBusy}
-              >
-                {nodeOptions.map(option => (
-                  <Checkbox
-                    key={option.id}
-                    value={option.id}
-                    isDisabled={option.disabled}
-                  >
-                    <Flex direction="column" gap="0">
-                      <Text variant="body-medium">{option.label}</Text>
-                      {option.description && (
-                        <Text variant="body-small" color="secondary">
-                          {option.description}
+                  {placements.map(option => (
+                    <Radio
+                      key={option.id}
+                      value={option.id}
+                      isDisabled={option.disabled}
+                    >
+                      <Flex direction="column" gap="0">
+                        <Text variant="body-medium">
+                          {option.label}
+                          {option.recommended ? ' (recommended)' : ''}
                         </Text>
-                      )}
-                    </Flex>
-                  </Checkbox>
-                ))}
-              </CheckboxGroup>
-              {fittingNodes.length > 1 && (
-                <div>
-                  <Button
-                    variant="tertiary"
-                    size="small"
-                    isDisabled={
-                      isBusy || copyNodes.length === fittingNodes.length
-                    }
-                    onPress={() => setTickedNodes(fittingNodes)}
-                  >
-                    All {fittingNodes.length} nodes that fit
-                  </Button>
-                </div>
+                        {option.description && (
+                          <Text variant="body-small" color="secondary">
+                            {option.description}
+                          </Text>
+                        )}
+                      </Flex>
+                    </Radio>
+                  ))}
+                </RadioGroup>
               )}
-            </Flex>
+
+              {showsNodes && nodeOptions && (
+                <Flex direction="column" gap="1" data-testid="serve-nodes">
+                  <CheckboxGroup
+                    label="Nodes"
+                    description="Tick a node for one copy there, several for one copy on each behind the same endpoint. None ticked: one copy on a node that fits."
+                    value={copyNodes}
+                    onChange={setTickedNodes}
+                    isDisabled={isBusy}
+                  >
+                    {nodeOptions.map(option => (
+                      <Checkbox
+                        key={option.id}
+                        value={option.id}
+                        isDisabled={option.disabled}
+                      >
+                        <Flex direction="column" gap="0">
+                          <Text variant="body-medium">{option.label}</Text>
+                          {option.description && (
+                            <Text variant="body-small" color="secondary">
+                              {option.description}
+                            </Text>
+                          )}
+                        </Flex>
+                      </Checkbox>
+                    ))}
+                  </CheckboxGroup>
+                  {fittingNodes.length > 1 && (
+                    <div>
+                      <Button
+                        variant="tertiary"
+                        size="small"
+                        isDisabled={
+                          isBusy || copyNodes.length === fittingNodes.length
+                        }
+                        onPress={() => setTickedNodes(fittingNodes)}
+                      >
+                        All {fittingNodes.length} nodes that fit
+                      </Button>
+                    </div>
+                  )}
+                </Flex>
+              )}
+            </MoreOptions>
           )}
 
           {servedWhere && choice && (

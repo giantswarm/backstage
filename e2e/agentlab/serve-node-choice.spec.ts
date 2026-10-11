@@ -187,6 +187,8 @@ test.describe.serial('Serve on the ticked nodes', () => {
     );
     await expect(verdict).not.toContainText('will be placed');
 
+    // The nodes are under More options, their default a node that fits (T67).
+    await dialog.getByText('More options').click();
     const nodes = dialog.getByTestId('serve-nodes');
     const nodeBox = nodes.getByRole('checkbox', {
       name: new RegExp(KIND_NODE),

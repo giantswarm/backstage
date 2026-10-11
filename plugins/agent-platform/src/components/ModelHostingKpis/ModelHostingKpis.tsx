@@ -16,6 +16,16 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
+export type ModelHostingKpisScope = 'all' | 'gpu' | 'cache';
+
+export type ModelHostingKpisProps = {
+  /**
+   * Which tiles: `all` (Running models), `gpu` (GPUs in use, GPU pools, GPU
+   * cost now — the GPU pools tab) or `cache` (Model cache — its tab).
+   */
+  scope?: ModelHostingKpisScope;
+};
+
 /**
  * The Model hosting page's headline row, per the prototype — every tile from
  * data the page already reads, and absent where nothing reports it:
@@ -31,10 +41,15 @@ function plural(count: number, noun: string): string {
  * - **Model cache**: the claims cluster-manager lists (size and monthly
  *   price), else what the backends' node caches hold.
  *
+ * Each Model hosting tab shows the tiles about what it lists (`scope`), so
+ * the same row does not repeat on all three: Running models the whole row,
+ * GPU pools the GPU tiles, Model cache the cache tile. A scope with no tile
+ * to show renders nothing.
+ *
  * Must be mounted inside a ServingProvider, a ServedModelRowsProvider and the
  * plugin's QueryClientProvider.
  */
-export function ModelHostingKpis() {
+export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
   const serving = useServing();
   const { rows: servedRows } = useServedModelRows();
   const availability = useClusterManagerAvailability(
@@ -105,16 +120,25 @@ export function ModelHostingKpis() {
     );
   }
 
+  const showsGpu = scope !== 'cache';
+  const showsCache = scope !== 'gpu';
+  const hasGpuTile = Boolean(gpus) || hasPools || costTile !== null;
+  if ((scope === 'gpu' && !hasGpuTile) || (scope === 'cache' && !cache)) {
+    return null;
+  }
+
   return (
     <section aria-label="Model hosting at a glance">
       <KpiTileGrid>
-        <KpiTile
-          label="Models running"
-          hint="Served models that are loaded and answering now, on every environment in view."
-          value={formatCount(running.running)}
-          sub={runningSub || undefined}
-        />
-        {gpus && (
+        {scope === 'all' && (
+          <KpiTile
+            label="Models running"
+            hint="Served models that are loaded and answering now, on every environment in view."
+            value={formatCount(running.running)}
+            sub={runningSub || undefined}
+          />
+        )}
+        {showsGpu && gpus && (
           <KpiTile
             label="GPUs in use"
             hint="Accelerators that scheduled pods hold, of those the nodes make schedulable."
@@ -122,7 +146,7 @@ export function ModelHostingKpis() {
             sub={`on ${plural(gpus.nodes, 'node')}`}
           />
         )}
-        {hasPools && (
+        {showsGpu && hasPools && (
           <KpiTile
             label="GPU pools"
             hint="The GPU node pools cluster-manager runs. A pool runs nodes only while something is scheduled on them."
@@ -130,8 +154,8 @@ export function ModelHostingKpis() {
             sub={`${plural(nodesRunning, 'node')} running`}
           />
         )}
-        {costTile}
-        {cache && (
+        {showsGpu && costTile}
+        {showsCache && cache && (
           <KpiTile
             label="Model cache"
             hint={

@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Flex, Text, TextField } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ConfirmDialog,
+  fieldErrorProps,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   GpuNodePoolRow,
@@ -123,6 +127,10 @@ function RefusalDetails({
  * anyway — the models model-manager serves go too: cluster-manager removes
  * them with the controller's finalizer taken off, so none is left stopping
  * for good once the controller is gone.
+ *
+ * Remove, Check again and Commit stay pressable: pressed before the pool's
+ * name is typed, the field says so and takes the focus (`useFieldValidation`),
+ * like the app's other forms.
  */
 export function RemoveGpuNodePoolDialog({
   row,
@@ -138,6 +146,8 @@ export function RemoveGpuNodePoolDialog({
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
   const [partial, setPartial] = useState<NodePoolWriteResult>();
   const servingRoute = useRouteRef(servingRouteRef);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
 
   useEffect(() => {
     if (!isOpen) {
@@ -145,6 +155,7 @@ export function RemoveGpuNodePoolDialog({
       setForce(false);
       setCommitted(undefined);
       setPartial(undefined);
+      validation.reset();
       write.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,6 +170,9 @@ export function RemoveGpuNodePoolDialog({
   const refusal = failure && !notConnected ? failure : undefined;
   const refused = refusal?.refused;
   const confirmed = typed === row.pool.name;
+  const typedError = confirmed
+    ? undefined
+    : `Type ${row.pool.name} to confirm the removal.`;
   const served = servedModelsOnCluster(
     servedModels,
     row.installation,
@@ -172,6 +186,10 @@ export function RemoveGpuNodePoolDialog({
 
   /** Remove, Check again (never force) and Continue after a partial answer: the same call. */
   const remove = async (options: { force: boolean }) => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
     try {
       const result = await write.remove(input, { mode: 'apply', ...options });
       if (result.partial) {
@@ -187,6 +205,10 @@ export function RemoveGpuNodePoolDialog({
   };
 
   const onCommit = async () => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
     try {
       setCommitted(await write.remove(input, { mode: 'commit', force }));
     } catch {
@@ -203,10 +225,10 @@ export function RemoveGpuNodePoolDialog({
       confirmLabel={force ? 'Remove pool and its nodes' : 'Remove pool'}
       busyLabel="Removing…"
       isBusy={isBusy}
-      isConfirmDisabled={!confirmed || Boolean(partial)}
+      isConfirmDisabled={Boolean(partial)}
       onConfirm={() => remove({ force })}
     >
-      <Flex direction="column" gap="3">
+      <Flex direction="column" gap="3" ref={scope}>
         <Text variant="body-medium">
           Removes the pool's release from {row.cluster.name} on{' '}
           {row.installation}; helm-controller uninstalls the MachinePool and its
@@ -250,7 +272,7 @@ export function RemoveGpuNodePoolDialog({
                     variant="secondary"
                     size="small"
                     onPress={() => remove({ force: false })}
-                    isDisabled={isBusy || !confirmed}
+                    isDisabled={isBusy}
                   >
                     {isBusy ? 'Checking…' : 'Check again'}
                   </Button>
@@ -288,6 +310,7 @@ export function RemoveGpuNodePoolDialog({
           value={typed}
           onChange={setTyped}
           isRequired
+          {...fieldErrorProps(validation.errorFor(typedError))}
         />
         {canCommit && (
           <Flex direction="column" gap="2">
@@ -301,7 +324,7 @@ export function RemoveGpuNodePoolDialog({
               <Button
                 variant="secondary"
                 size="small"
-                isDisabled={isBusy || !confirmed}
+                isDisabled={isBusy}
                 onPress={onCommit}
               >
                 {isBusy ? 'Committing…' : 'Commit'}

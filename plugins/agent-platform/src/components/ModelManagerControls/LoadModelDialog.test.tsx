@@ -265,6 +265,14 @@ describe('LoadModelDialog', () => {
       name: /Split across spark-a and spark-b.*\(recommended\)/,
     });
     await waitFor(() => expect(split).toBeChecked());
+    // The placement is a knob whose default fits: under More options, which
+    // says what it is set to.
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).not.toHaveAttribute('open');
+    expect(more).toContainElement(screen.getByTestId('serve-placement'));
+    expect(more).toHaveTextContent(
+      'split across fast-linked nodes (recommended)',
+    );
     const verdict = screen.getByTestId('serve-fit-verdict');
     await waitFor(() =>
       expect(verdict).toHaveTextContent(
@@ -493,6 +501,24 @@ describe('LoadModelDialog', () => {
     expect(
       screen.getByRole('radio', { name: /One copy.*\(recommended\)/ }),
     ).toBeChecked();
+  });
+
+  it('says on the preset field that there is nothing to serve when Serve is pressed', async () => {
+    listPresets.mockResolvedValue([]);
+    await render();
+    await waitFor(() => expect(listPresets).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+        'No preset is published for this cluster',
+      ),
+    );
+
+    await userEvent.click(serveButton());
+
+    expect(loadModel).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('button', { name: /Preset/ }),
+    ).toHaveAccessibleDescription(/No preset is published for this cluster/);
   });
 
   it('offers no placement where model-manager recommends none', async () => {

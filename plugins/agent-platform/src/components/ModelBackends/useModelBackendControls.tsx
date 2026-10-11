@@ -33,8 +33,13 @@ const TOAST_TIMEOUT_MS = 6000;
 export type ModelBackendControls = {
   /** Some reachable installation has a model-manager the person can write to. */
   available: boolean;
-  /** The header / empty-state button, or `undefined` when nothing offers it. */
+  /** The empty-state button, or `undefined` when nothing offers it. */
   addButton: JSX.Element | undefined;
+  /**
+   * Opens Add model backend — for a page header's action — or `undefined`
+   * when nothing offers it.
+   */
+  openAdd: (() => void) | undefined;
   /** The dialogs; render once on the page. */
   dialogs: ReactNode;
   /**
@@ -100,18 +105,20 @@ export function useModelBackendControls(): ModelBackendControls {
     [registered.backends],
   );
 
+  const openAddDialog = useCallback(() => setAddOpen(true), []);
+  const openAdd = available ? openAddDialog : undefined;
   const addButton = useMemo(
     () =>
       available ? (
         <Button
           variant="secondary"
           iconStart={<AddIcon />}
-          onPress={() => setAddOpen(true)}
+          onPress={openAddDialog}
         >
           Add model backend
         </Button>
       ) : undefined,
-    [available],
+    [available, openAddDialog],
   );
 
   const dialogs = available ? (
@@ -217,6 +224,7 @@ export function useModelBackendControls(): ModelBackendControls {
   return {
     available,
     addButton,
+    openAdd,
     dialogs,
     renderGroupActions,
     groupsWithoutModels,

@@ -1,34 +1,19 @@
 /**
  * Faceted filters over a catalog list (the shell's Customize tabs, and the
- * skill step of the agent wizard): each facet reads one value off an item, the
- * person picks at most one value per facet, and every facet's counts are taken
- * over the search and the OTHER facets' picks — so a chip says what picking it
- * would leave.
+ * skill step of the agent wizard): each facet reads one value off an item,
+ * the person picks any number of values per facet — an item stays when it has
+ * one of them — and the facets combine, an item staying only when every facet
+ * with picks keeps it. Each option's count is taken over the search and the
+ * OTHER facets' picks, so it says what picking it would add.
  */
-
-/** The option that picks every value of a facet. */
-export const ALL_FILTER_VALUES = '__all__';
-
-/**
- * A facet with more options than this is a select rather than a row of chips:
- * six chips read at a glance, thirty models do not.
- */
-export const FILTER_CHIPS_MAX = 6;
-
-/**
- * The class the agent-platform shell's stylesheet restyles a chip row by (the
- * sessions list's state chips use it too), so every chip row in the shell
- * looks the same. Renaming it silently drops that styling.
- */
-export const FILTER_CHIPS_CLASS_NAME = 'agent-platform-state-filter';
 
 export type CatalogFacet<T> = {
   id: string;
-  /** What the facet is about, shown before its chips: "Source". */
+  /** What the facet is about, named on its dropdown: "Source". */
   label: string;
   /** The one value an item has on this facet; undefined when it has none. */
   value: (item: T) => string | undefined;
-  /** How a value reads on its chip; the value itself by default. */
+  /** How a value reads in the dropdown; the value itself by default. */
   optionLabel?: (value: string) => string;
   /**
    * The order the options are offered in. Values it does not name follow, by
@@ -37,15 +22,18 @@ export type CatalogFacet<T> = {
   order?: readonly string[];
 };
 
-/** The picked value per facet id; a missing or undefined entry picks all. */
+/**
+ * The picked values per facet id. A missing, undefined or empty entry picks
+ * every value of the facet.
+ */
 export type CatalogFilterSelection = Readonly<
-  Record<string, string | undefined>
+  Record<string, readonly string[] | undefined>
 >;
 
 export type CatalogFilterOption = {
   id: string;
   label: string;
-  /** How many items picking this option would leave. */
+  /** How many items this option keeps, under the search and other picks. */
   count: number;
 };
 
@@ -54,11 +42,16 @@ export type CatalogFilterDimension = {
   id: string;
   label: string;
   options: CatalogFilterOption[];
-  /** What the "All" option leaves: the search and the other facets' picks. */
-  total: number;
-  /** The picked option, if any. */
-  value?: string;
+  /** The picked option ids; empty when the facet keeps everything. */
+  selected: string[];
 };
+
+function picksOf(
+  selection: CatalogFilterSelection,
+  facetId: string,
+): readonly string[] {
+  return selection[facetId] ?? [];
+}
 
 function matchesFacets<T>(
   item: T,
@@ -67,16 +60,19 @@ function matchesFacets<T>(
   except?: string,
 ): boolean {
   return facets.every(facet => {
-    const picked = selection[facet.id];
-    return (
-      facet.id === except ||
-      picked === undefined ||
-      facet.value(item) === picked
-    );
+    if (facet.id === except) {
+      return true;
+    }
+    const picked = picksOf(selection, facet.id);
+    if (picked.length === 0) {
+      return true;
+    }
+    const value = facet.value(item);
+    return value !== undefined && picked.includes(value);
   });
 }
 
-/** The items every picked value keeps. */
+/** The items every facet's picks keep. */
 export function applyCatalogFilters<T>(
   items: readonly T[],
   facets: readonly CatalogFacet<T>[],
@@ -87,7 +83,9 @@ export function applyCatalogFilters<T>(
 
 /** Whether any facet has a value picked. */
 export function isCatalogFiltered(selection: CatalogFilterSelection): boolean {
-  return Object.values(selection).some(value => value !== undefined);
+  return Object.values(selection).some(
+    values => values !== undefined && values.length > 0,
+  );
 }
 
 function countValues<T>(
@@ -131,14 +129,16 @@ function sortOptions<T>(
 }
 
 /**
- * The facets worth drawing, with their options and counts.
+ * The facets to draw, with their options and counts.
  *
- * A facet shows only when picking one of its values would change the whole
- * catalog's list — one source repository, or no favorite yet, is no filter
- * (three skills from one repository get no Source chips) — and stays while a
- * value is picked, so a pick can always be undone. Its options are the
- * catalog's values (not the search's, so chips do not come and go while
- * typing); each count is over the search and the other facets' picks.
+ * Every facet some item has a value on is drawn, even when that is one value
+ * for the whole catalog — a dropdown of one option still says where the
+ * skills come from, and a facet that came and went with the catalog's shape
+ * was missed (T64). A facet no item has a value on (no favorites yet) has
+ * nothing to offer and is left out, unless a pick on it is still standing.
+ * Its options are the catalog's values (not the search's, so options do not
+ * come and go while typing); each count is over the search and the other
+ * facets' picks.
  *
  * @param items the whole catalog, unsearched
  * @param searched the catalog narrowed by the search
@@ -151,24 +151,18 @@ export function catalogFilterDimensions<T>(
 ): CatalogFilterDimension[] {
   const dimensions: CatalogFilterDimension[] = [];
   for (const facet of facets) {
-    const picked = selection[facet.id];
+    const picked = picksOf(selection, facet.id);
     const catalogCounts = countValues(items, facet);
-    const discriminates = [...catalogCounts.values()].some(
-      count => count > 0 && count < items.length,
-    );
-    if (!discriminates && picked === undefined) {
+    // A picked value the catalog no longer holds stays offered, at zero, so
+    // the pick that empties the list can be undone.
+    const ids = new Set([...catalogCounts.keys(), ...picked]);
+    if (ids.size === 0) {
       continue;
     }
     const narrowed = searched.filter(item =>
       matchesFacets(item, facets, selection, facet.id),
     );
     const counts = countValues(narrowed, facet);
-    const ids = new Set(catalogCounts.keys());
-    if (picked !== undefined) {
-      // A picked value the catalog no longer holds stays offered, at zero,
-      // so the pick that empties the list can be undone.
-      ids.add(picked);
-    }
     const options = [...ids].map(id => ({
       id,
       label: facet.optionLabel?.(id) ?? id,
@@ -178,8 +172,7 @@ export function catalogFilterDimensions<T>(
       id: facet.id,
       label: facet.label,
       options: sortOptions(facet, catalogCounts, options),
-      total: narrowed.length,
-      ...(picked !== undefined ? { value: picked } : {}),
+      selected: [...picked],
     });
   }
   return dimensions;
@@ -191,8 +184,8 @@ export function catalogFilterDimensions<T>(
  */
 export function catalogFilterKey(selection: CatalogFilterSelection): string {
   return Object.keys(selection)
-    .filter(id => selection[id] !== undefined)
+    .filter(id => picksOf(selection, id).length > 0)
     .sort()
-    .map(id => `${id}=${selection[id]}`)
+    .map(id => `${id}=${[...picksOf(selection, id)].sort().join(',')}`)
     .join('&');
 }

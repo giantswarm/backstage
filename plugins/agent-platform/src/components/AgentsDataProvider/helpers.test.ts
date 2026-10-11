@@ -269,6 +269,7 @@ describe('toAgentRow', () => {
         { length: 3 },
         () => 'https://github.com/giantswarm/skills#',
       ),
+      skillPins: { 'https://github.com/giantswarm/skills#': 'a'.repeat(40) },
       modelConfigId: 'installation-1/sre-team/sonnet-4-6',
       // No status written by the fixture, so no Harness has reported yet.
       readiness: 'pending',
@@ -296,6 +297,10 @@ describe('toAgentRow', () => {
     expect(row.skillIds).toEqual([
       'https://github.com/giantswarm/skills#skills/triage',
     ]);
+    // The pin under the same id, so a skill's page can tell who is behind.
+    expect(row.skillPins).toEqual({
+      'https://github.com/giantswarm/skills#skills/triage': 'abc',
+    });
     expect(row.modelConfigId).toBeUndefined();
   });
 

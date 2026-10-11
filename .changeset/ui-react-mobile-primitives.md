@@ -22,7 +22,7 @@ Mobile primitives for the agent shell at 375px (T22 wave 1A):
   show the tooltip on a desktop. Its hit area is 24px, 44px on a phone.
 - **`ShellPage`** switches to phone gutters at 599.95px instead of 600px, and
   at phone width puts its aside first, folded under "Details" (`asideLabel`).
-- **`SelectableCard`** shows its own control (a skill's *Show more*) where
+- **`SelectableCard`** shows its own control (a skill's _Show more_) where
   nothing hovers, under the card's content; long names wrap inside the card.
 - **`GSMarkdownContent`** (and `CollapsibleMarkdown`) breaks long URLs and
   tokens and scrolls a wide GFM table inside itself instead of widening the

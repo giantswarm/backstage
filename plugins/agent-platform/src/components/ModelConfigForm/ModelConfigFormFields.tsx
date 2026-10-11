@@ -9,7 +9,6 @@ import {
 } from '@backstage/ui';
 import {
   fieldErrorProps,
-  FormFieldGrid,
   MoreOptions,
   SectionHeader,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -159,39 +158,38 @@ export function ModelConfigFormFields({
             title="Provider & model"
             description="Where the model runs and which model to request there."
           />
+          {/* One column, full width: Provider above Model. Side by side, the
+              provider's description (one line or three) set where the Model
+              input started, and the pair never lined up reliably. */}
           <Flex direction="column" gap="4">
-            <FormFieldGrid>
-              <Select
-                label="Provider"
-                isRequired
-                options={MODEL_PROVIDER_OPTIONS.map(option => ({
-                  id: option.id,
-                  label: option.label,
-                }))}
-                selectedKey={values.provider}
-                onSelectionChange={key => {
-                  if (key) {
-                    onChange({
-                      provider: String(
-                        key,
-                      ) as ModelConfigFormValues['provider'],
-                    });
-                  }
-                }}
-                description={providerOption?.description}
-              />
-              <TextField
-                label="Model"
-                isRequired
-                value={values.model}
-                onChange={model => onChange({ model })}
-                placeholder={
-                  isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
+            <Select
+              label="Provider"
+              isRequired
+              options={MODEL_PROVIDER_OPTIONS.map(option => ({
+                id: option.id,
+                label: option.label,
+              }))}
+              selectedKey={values.provider}
+              onSelectionChange={key => {
+                if (key) {
+                  onChange({
+                    provider: String(key) as ModelConfigFormValues['provider'],
+                  });
                 }
-                description="The model id, as the provider names it."
-                {...fieldErrorProps(errors.model)}
-              />
-            </FormFieldGrid>
+              }}
+              description={providerOption?.description}
+            />
+            <TextField
+              label="Model"
+              isRequired
+              value={values.model}
+              onChange={model => onChange({ model })}
+              placeholder={
+                isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
+              }
+              description="The model id, as the provider names it."
+              {...fieldErrorProps(errors.model)}
+            />
 
             {hasEndpoint && (
               <TextField

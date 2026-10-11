@@ -89,12 +89,22 @@ describe('RemoveModelBackendDialog', () => {
     );
 
     const confirm = screen.getByRole('button', { name: 'Remove backend' });
-    expect(confirm).toBeDisabled();
-    await userEvent.type(
-      screen.getByLabelText(/Type ollama to confirm/),
-      'ollama',
-    );
+    // Pressable once the plan is in; pressed before the kind is typed, the
+    // field says so and takes the focus.
     expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    expect(write.remove).not.toHaveBeenCalled();
+    const typed = screen.getByRole('textbox', {
+      name: /Type ollama to confirm/,
+    });
+    expect(typed).toHaveAttribute('aria-invalid', 'true');
+    expect(typed).toHaveFocus();
+    expect(
+      screen.getByText('Type ollama to confirm the removal.'),
+    ).toBeInTheDocument();
+
+    await userEvent.type(typed, 'ollama');
+    expect(typed).not.toHaveAttribute('aria-invalid');
     await userEvent.click(confirm);
 
     expect(write.remove).toHaveBeenCalledWith('ollama', 'apply');

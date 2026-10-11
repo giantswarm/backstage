@@ -466,6 +466,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         <CatalogFilterBar
           dimensions={filters.dimensions}
           onSelect={filters.select}
+          onClear={filters.clear}
         />
       )}
       <UnreachableInstallationsAlert

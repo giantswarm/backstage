@@ -183,6 +183,12 @@ export type AgentRow = {
    */
   skillIds?: string[];
   /**
+   * The commit each git skill in {@link skillIds} is pinned to, keyed by the
+   * same canonical id — what a skill's page compares with the catalog's head
+   * to tell which agents run an older version of it. Absent with `skillIds`.
+   */
+  skillPins?: Record<string, string>;
+  /**
    * The referenced ModelConfig as `<installation>/<namespace>/<name>`, the id
    * a model row carries. `undefined` when the agent references no model.
    */
@@ -301,12 +307,17 @@ export function toAgentRow(
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
   const modelConfigName = agent.getModelConfigName();
-  const skillIds = agent
+  const gitSkills = agent
     .getSkills()
     .filter(skill => skill.source === 'git')
-    .map(skill =>
-      canonicalSkillId({ repoUrl: skill.url, path: skill.path ?? '' }),
-    );
+    .map(skill => ({
+      id: canonicalSkillId({ repoUrl: skill.url, path: skill.path ?? '' }),
+      pin: skill.pin,
+    }));
+  const skillIds = gitSkills.map(skill => skill.id);
+  const skillPins = Object.fromEntries(
+    gitSkills.map(skill => [skill.id, skill.pin]),
+  );
 
   return {
     id: `${installation}/${namespace}/${name}`,
@@ -318,7 +329,7 @@ export function toAgentRow(
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     skillCount: agent.getSkillCount(),
-    ...(skillIds.length > 0 ? { skillIds } : {}),
+    ...(skillIds.length > 0 ? { skillIds, skillPins } : {}),
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),

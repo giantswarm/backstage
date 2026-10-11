@@ -70,7 +70,7 @@ type MenuDestination = {
  */
 function useMenuDestinations(items: AgentShellNavItem[]): MenuDestination[] {
   const routeResolution = useApi(routeResolutionApiRef);
-  return items.flatMap(item => {
+  return items.flatMap((item): MenuDestination[] => {
     if ('path' in item) {
       return [{ item, href: item.path }];
     }

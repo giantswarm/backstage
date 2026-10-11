@@ -14,7 +14,11 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
+  fieldErrorProps,
+  MoreOptions,
   searchableIf,
+  useFieldValidation,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -44,7 +48,7 @@ import {
 import type { ServeChoice } from '../../lib/serveIntent';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { DIALOG_FORM_STYLE } from '../dialogForm';
+import { DIALOG_FOOTER_WRAP_STYLE, DIALOG_FORM_STYLE } from '../dialogForm';
 import { ManifestList } from '../ManifestList';
 import { NodeSizePicker } from './NodeSizePicker';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
@@ -54,6 +58,7 @@ import {
   PoolPlacementPicker,
   PoolPlacementReview,
   cacheRefusalDetails,
+  everyZone,
 } from './PoolPlacementPicker';
 
 export type AddGpuNodePoolDialogProps = {
@@ -129,6 +134,13 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
  * (giantswarm/backstage#2501). The review shows the same choices and the
  * manifests; Deploy sends them as chosen. The portal composes nothing: what
  * the review shows is exactly what cluster-manager would write.
+ *
+ * The app's standard form: one column; the knobs whose defaults fit most
+ * pools — the maximum GPUs and the zones — under More options, its summary
+ * saying what they are set to (the cache, a monthly bill, stays in sight).
+ * Review stays pressable while no dry run is under way: a blocked Review
+ * marks each field that is wrong, under it, opens More options where one is
+ * in there, and moves the focus to the first (`useFieldValidation`).
  */
 export function AddGpuNodePoolDialog({
   installations,
@@ -162,6 +174,9 @@ export function AddGpuNodePoolDialog({
   const [judging, setJudging] = useState(false);
   const [applied, setApplied] = useState<NodePoolWriteResult>();
   const [committed, setCommitted] = useState<NodePoolWriteResult>();
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const fieldScope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(fieldScope);
 
   const {
     clusters,
@@ -226,6 +241,8 @@ export function AddGpuNodePoolDialog({
       setJudging(false);
       setApplied(undefined);
       setCommitted(undefined);
+      setMoreOptionsOpen(false);
+      validation.reset();
       write.reset();
     }
     // `write` changes identity every render; reset once per close.
@@ -347,6 +364,37 @@ export function AddGpuNodePoolDialog({
   const done = Boolean(applied || committed?.commit?.pullRequest);
   const blocker = deployBlocker(review, preset);
   const canReview = Boolean(formInput) && !isBusy && !judging && !zonesMissing;
+
+  // What each field says is wrong with it, once a Review was blocked. The
+  // zones and the sizes say it themselves, as soon as none is picked.
+  const errors = {
+    installation:
+      installations.length > 1 && !installation
+        ? 'Pick the environment the pool is added on.'
+        : undefined,
+    cluster: cluster
+      ? undefined
+      : `${
+          !clustersLoading && clusters.length === 0
+            ? 'This environment lists no cluster a pool can join.'
+            : 'Pick the cluster the pool joins.'
+        }`,
+    name: poolNameError(name),
+  };
+  const installationError = useSelectFieldError(
+    validation.errorFor(errors.installation),
+  );
+  const clusterError = useSelectFieldError(validation.errorFor(errors.cluster));
+
+  // More options' one line of what it holds now.
+  const moreOptionsSummary = [
+    `up to ${maxGpus} GPU${maxGpus === 1 ? '' : 's'}`,
+    offers.zones && clusterZones.length > 0
+      ? describeZonesSummary(zones, clusterZones)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const canWrite =
     Boolean(input) &&
     Boolean(review) &&
@@ -359,7 +407,14 @@ export function AddGpuNodePoolDialog({
   /** Review: the current dry run's manifests, or one more try where the last was refused. */
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
+    if (isBusy || judging) {
+      return;
+    }
     if (!canReview) {
+      if (zonesMissing) {
+        setMoreOptionsOpen(true);
+      }
+      validation.reveal();
       return;
     }
     if (review) {
@@ -428,10 +483,13 @@ export function AddGpuNodePoolDialog({
       {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
-      <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
+      {/* `noValidate`: the fields are checked by this form (`useFieldValidation`),
+          not by the browser, whose own check would block the submit and try
+          to focus a field folded under More options. */}
+      <form onSubmit={onReview} style={DIALOG_FORM_STYLE} noValidate>
         <DialogHeader>Add GPU node pool</DialogHeader>
         <DialogBody>
-          <Flex direction="column" gap="4">
+          <Flex direction="column" gap="4" ref={fieldScope}>
             <Text variant="body-small" color="secondary">
               GPU capacity for the models served on this environment. The pool,
               the GPU operator where the cluster has none and model serving
@@ -456,8 +514,10 @@ export function AddGpuNodePoolDialog({
                         setZones([]);
                       }
                     }}
+                    {...installationError.selectProps}
                   />
                 )}
+                {installationError.message}
                 <Flex direction="column" gap="1">
                   <Select
                     label="Cluster"
@@ -477,7 +537,9 @@ export function AddGpuNodePoolDialog({
                     onSelectionChange={key =>
                       pickCluster(key ? String(key) : undefined)
                     }
+                    {...clusterError.selectProps}
                   />
+                  {clusterError.message}
                   <Text
                     variant="body-small"
                     color="secondary"
@@ -509,7 +571,7 @@ export function AddGpuNodePoolDialog({
                   description="Five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
                   value={name}
                   onChange={setName}
-                  isInvalid={name.length > 0 && !isValidPoolName(name)}
+                  {...fieldErrorProps(validation.errorFor(errors.name))}
                 />
                 <Select
                   label="Accelerator"
@@ -537,6 +599,7 @@ export function AddGpuNodePoolDialog({
                   pending={!sizingInput}
                 />
                 <PoolPlacementPicker
+                  part="cache"
                   cluster={cluster}
                   offers={offers}
                   zones={zones}
@@ -546,15 +609,35 @@ export function AddGpuNodePoolDialog({
                   isBusy={isBusy}
                   review={review}
                 />
-                <NumberField
-                  label="Maximum GPUs"
-                  description="Across all nodes of the pool; the pool scales to zero."
-                  minValue={1}
-                  value={maxGpus}
-                  onChange={value =>
-                    setMaxGpus(Number.isFinite(value) ? value : 1)
-                  }
-                />
+                <MoreOptions
+                  open={moreOptionsOpen}
+                  onOpenChange={setMoreOptionsOpen}
+                  summary={moreOptionsSummary}
+                >
+                  <Text variant="body-small" color="secondary">
+                    The defaults work for most pools.
+                  </Text>
+                  <NumberField
+                    label="Maximum GPUs"
+                    description="Across all nodes of the pool; the pool scales to zero."
+                    minValue={1}
+                    value={maxGpus}
+                    onChange={value =>
+                      setMaxGpus(Number.isFinite(value) ? value : 1)
+                    }
+                  />
+                  <PoolPlacementPicker
+                    part="zones"
+                    cluster={cluster}
+                    offers={offers}
+                    zones={zones}
+                    onZonesChange={setZones}
+                    cache={cacheChoice}
+                    onCacheChange={setCache}
+                    isBusy={isBusy}
+                    review={review}
+                  />
+                </MoreOptions>
               </Flex>
             )}
 
@@ -666,58 +749,76 @@ export function AddGpuNodePoolDialog({
             )}
           </Flex>
         </DialogBody>
-        <DialogFooter>
-          <Flex gap="2" justify="end">
+        <DialogFooter style={DIALOG_FOOTER_WRAP_STYLE}>
+          <Button
+            variant="secondary"
+            onPress={() => onOpenChange(false)}
+            isDisabled={write.isWriting}
+          >
+            {done ? 'Close' : 'Cancel'}
+          </Button>
+          {onForm && (
             <Button
-              variant="secondary"
-              onPress={() => onOpenChange(false)}
-              isDisabled={write.isWriting}
+              type="submit"
+              variant="primary"
+              isDisabled={isBusy || judging}
             >
-              {done ? 'Close' : 'Cancel'}
+              {judging ? 'Judging…' : 'Review'}
             </Button>
-            {onForm && (
-              <Button type="submit" variant="primary" isDisabled={!canReview}>
-                {judging ? 'Judging…' : 'Review'}
+          )}
+          {!onForm && !done && (
+            <>
+              <Button
+                variant="secondary"
+                onPress={() => setStep('form')}
+                isDisabled={isBusy}
+              >
+                Back
               </Button>
-            )}
-            {!onForm && !done && (
-              <>
-                <Button
-                  variant="secondary"
-                  onPress={() => setStep('form')}
-                  isDisabled={isBusy}
-                >
-                  Back
-                </Button>
-                <Button
-                  variant="secondary"
-                  onPress={onCommit}
-                  isDisabled={!canCommit || !canWrite}
-                  aria-label={
-                    canCommit ? 'Commit' : 'Commit (not available yet)'
-                  }
-                >
-                  {canCommit ? 'Commit' : 'Commit (not available yet)'}
-                </Button>
-                <Button
-                  variant="primary"
-                  onPress={onDeploy}
-                  isDisabled={!canWrite}
-                  aria-label={
-                    blocker
-                      ? `Deploy (blocked: ${presetLabel(blocker)} fits no size of this pool)`
-                      : 'Deploy'
-                  }
-                >
-                  {isBusy ? 'Deploying…' : 'Deploy'}
-                </Button>
-              </>
-            )}
-          </Flex>
+              <Button
+                variant="secondary"
+                onPress={onCommit}
+                isDisabled={!canCommit || !canWrite}
+                aria-label={canCommit ? 'Commit' : 'Commit (not available yet)'}
+              >
+                {canCommit ? 'Commit' : 'Commit (not available yet)'}
+              </Button>
+              <Button
+                variant="primary"
+                onPress={onDeploy}
+                isDisabled={!canWrite}
+                aria-label={
+                  blocker
+                    ? `Deploy (blocked: ${presetLabel(blocker)} fits no size of this pool)`
+                    : 'Deploy'
+                }
+              >
+                {isBusy ? 'Deploying…' : 'Deploy'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </form>
     </Dialog>
   );
+}
+
+/** What the pool name field says is wrong with it, if anything. */
+function poolNameError(name: string): string | undefined {
+  if (!name.trim()) {
+    return 'Name the pool.';
+  }
+  return isValidPoolName(name)
+    ? undefined
+    : 'Use five to twenty lowercase letters, digits and dashes.';
+}
+
+/** The zones as More options' summary says them. */
+function describeZonesSummary(zones: string[], clusterZones: string[]): string {
+  if (zones.length === 0) {
+    return 'no zone picked';
+  }
+  return everyZone(zones, clusterZones) ? 'every zone' : zones.join(', ');
 }
 
 /** The cluster picker's placeholder: reading, nothing to pick, or pick one. */

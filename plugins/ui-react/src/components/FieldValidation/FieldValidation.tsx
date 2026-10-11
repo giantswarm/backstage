@@ -82,6 +82,12 @@ export type FieldValidation = {
   errorFor: (message: string | undefined) => string | undefined;
   /** Counts the blocked attempts; a key for content that must reopen on each. */
   attempt: number;
+  /**
+   * Back to quiet, as before the first attempt: for a form that stays
+   * mounted while closed — a dialog — so it does not reopen with the last
+   * attempt's errors showing.
+   */
+  reset: () => void;
 };
 
 /**
@@ -91,6 +97,10 @@ export type FieldValidation = {
  * {@link FIELD_VALIDATION_SCOPE_ATTRIBUTE}), else the whole document. A field
  * the reveal itself uncovers (a disclosure the page opens in the same handler)
  * is focusable by then, since the focus moves after that render commits.
+ *
+ * In a dialog, pass a ref to an element inside the dialog's body as `scope`:
+ * the dialog renders in a portal, outside any `WizardFrame`, and the page
+ * behind it is not where the person is looking.
  */
 export function useFieldValidation(
   scope?: RefObject<HTMLElement>,
@@ -117,8 +127,12 @@ export function useFieldValidation(
     (message: string | undefined) => (shown ? message : undefined),
     [shown],
   );
+  const reset = useCallback(() => {
+    setShown(false);
+    setAttempt(0);
+  }, []);
 
-  return { shown, reveal, errorFor, attempt };
+  return { shown, reveal, errorFor, attempt, reset };
 }
 
 /**

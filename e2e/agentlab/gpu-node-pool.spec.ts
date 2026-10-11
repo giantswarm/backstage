@@ -123,7 +123,11 @@ test.describe('models: GPU node pools', () => {
       CLUSTER_API_NOTE,
     );
     await expect(dialog.getByText('Clusters could not be read')).toHaveCount(0);
-    await expect(dialog.getByRole('button', { name: 'Review' })).toBeDisabled();
+    // Review says why it cannot go on, on the cluster field (T67).
+    await dialog.getByRole('button', { name: 'Review' }).click();
+    await expect(
+      dialog.getByText('This environment lists no cluster a pool can join.'),
+    ).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
@@ -231,7 +235,11 @@ async function reachForm(page: Page, options: StubOptions = {}) {
   await expect(dialog.getByTestId('node-size-picker')).toBeVisible({
     timeout: 60_000,
   });
-  await expect(dialog.getByRole('button', { name: 'Review' })).toBeDisabled();
+  // Unnamed, Review says so on the name field (T67).
+  await dialog.getByRole('button', { name: 'Review' }).click({
+    timeout: 60_000,
+  });
+  await expect(dialog.getByText('Name the pool.')).toBeVisible();
   await dialog.getByLabel(/Pool name/).fill('gpu-e2e');
   await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled({
     timeout: 60_000,
@@ -599,6 +607,8 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
     page,
   }) => {
     const { dialog, calls } = await reachForm(page);
+    // The zones are under More options, their default every zone (T67).
+    await dialog.getByText('More options').click();
     const zones = dialog.getByTestId('zones-picker');
     await expect(zones).toBeVisible();
     for (const zone of ZONES) {
@@ -742,7 +752,13 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     );
     await expect(confirm).toContainText('Nothing mounts this claim');
     const remove = confirm.getByRole('button', { name: 'Remove cache' });
-    await expect(remove).toBeDisabled();
+    // Pressed before the loss is acknowledged, the checkbox says so (T67).
+    await remove.click();
+    await expect(
+      confirm.getByText(
+        'Acknowledge that the cached weights go with the cache.',
+      ),
+    ).toBeVisible();
     await toggleByLabel(confirm.getByRole('checkbox'));
     await snapshot(page, 'gpu-pool-cache-remove-confirm');
     await remove.click();

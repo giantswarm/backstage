@@ -66,10 +66,10 @@ export function filterCatalogueByEffect(
 }
 
 /**
- * The effect filter as a filter-bar facet ("All 40 · Reads 31 · Changes
- * things 9"), in the chip idiom of the catalog filters (T49): drawn only when
- * the whole catalogue holds both kinds, or while a kind is picked so the pick
- * can be undone. Counts are over the searched catalogue.
+ * The effect filter as a filter-bar facet — a "What it does" dropdown of
+ * "Reads 31" and "Changes things 9" (T49, T64): drawn only when the whole
+ * catalogue holds both kinds, or while a kind is picked so the pick can be
+ * undone. Counts are over the searched catalogue.
  */
 export function effectDimension(
   catalogue: CatalogueGroup[],
@@ -89,9 +89,19 @@ export function effectDimension(
       label: EFFECT_LABELS[id],
       count: counts[id],
     })),
-    total: counts.reads + counts.changes,
-    ...(effect === 'all' ? {} : { value: effect }),
+    selected: effect === 'all' ? [] : [effect],
   };
+}
+
+/**
+ * The effect a dropdown's picks leave: one kind when exactly one is picked;
+ * none or both of them is everything.
+ */
+export function effectFromPicks(values: readonly string[]): EffectFilter {
+  const kinds = (['reads', 'changes'] as const).filter(kind =>
+    values.includes(kind),
+  );
+  return kinds.length === 1 ? kinds[0] : 'all';
 }
 
 /** How many of a resolved toolset's tools change things. */

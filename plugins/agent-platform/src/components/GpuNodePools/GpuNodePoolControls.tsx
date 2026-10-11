@@ -40,8 +40,14 @@ export type GpuNodePoolControls = {
   /** Some reachable installation's muster lists cluster-manager. */
   available: boolean;
   isLoading: boolean;
-  /** The **Add GPU node pool** button, for the page header or an empty state. */
+  /** The **Add GPU node pool** button, for an empty state. */
   addButton: JSX.Element | undefined;
+  /**
+   * **Add GPU node pool** as a page header's action (`ModelHostingActions`):
+   * offered while the installations are read too, disabled until one lists
+   * cluster-manager; `undefined` where none does.
+   */
+  addAction: { open: () => void; isDisabled: boolean } | undefined;
   /** The Add and Remove dialogs; render once, anywhere in the page. */
   dialogs: JSX.Element | undefined;
   /** The pools list with **Remove pool**; null where cluster-manager is absent. */
@@ -174,6 +180,7 @@ export function useGpuNodePoolControls(
     [],
   );
   const onCloseLifecycle = useCallback(() => setOpened(undefined), []);
+  const openAdd = useCallback(() => setAddOpen(true), []);
   const available = availability.available.length > 0;
   // While the installations' server lists are read the cards and the button
   // are in place already, their contents reading: nothing appears later
@@ -193,6 +200,11 @@ export function useGpuNodePoolControls(
   })
     ? HIDE_INSTALLATION
     : undefined;
+
+  const addAction = useMemo(
+    () => (shown ? { open: openAdd, isDisabled: !available } : undefined),
+    [shown, openAdd, available],
+  );
 
   // The opened pool's intent, as the panel shows it.
   const serve = useMemo<PoolServeState | undefined>(() => {
@@ -215,12 +227,13 @@ export function useGpuNodePoolControls(
       <Button
         variant="secondary"
         iconStart={<AddIcon />}
-        onPress={() => setAddOpen(true)}
+        onPress={openAdd}
         isDisabled={!available}
       >
         Add GPU node pool
       </Button>
     ) : undefined,
+    addAction,
     dialogs: available ? (
       <>
         <AddGpuNodePoolDialog

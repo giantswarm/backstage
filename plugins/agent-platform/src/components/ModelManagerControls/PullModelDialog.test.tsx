@@ -139,14 +139,24 @@ describe('PullModelDialog', () => {
     );
   });
 
-  it('refuses a malformed reference before sending anything', async () => {
+  it('refuses a malformed reference before sending anything, on the field', async () => {
     await render();
     const dialog = screen.getByRole('dialog');
+    const field = within(dialog).getByRole('textbox', {
+      name: /Model reference/,
+    });
+
+    // Quiet until the first attempt; Pull stays pressable.
+    expect(field).not.toHaveAttribute('aria-invalid');
+    expect(within(dialog).getByRole('button', { name: 'Pull' })).toBeEnabled();
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
     expect(
       await within(dialog).findByText(/Enter a model reference/),
     ).toBeInTheDocument();
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveFocus();
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
 
     await userEvent.type(
       within(dialog).getByLabelText(/Model reference/),

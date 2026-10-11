@@ -619,17 +619,21 @@ describe('NewAgentToolsPage', () => {
 
     // Reads: get_pods and the workflow (annotated). Everything else changes
     // things — github's tools carry no annotation, which counts as changing.
-    const chips = await screen.findByRole('radiogroup', {
-      name: 'Filter by what it does',
+    const effect = await screen.findByRole('button', {
+      name: /Filter by what it does/,
     });
+    expect(effect).toHaveTextContent('What it doesAll');
+    await user.click(effect);
     expect(
-      within(chips)
-        .getAllByRole('radio')
-        .map(chip => chip.textContent),
-    ).toEqual(['All 30', 'Reads 2', 'Changes things 28']);
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(['Reads 2', 'Changes things 28']);
 
     // A pick is asking to see what is left: the catalogue opens to it.
-    await user.click(within(chips).getByRole('radio', { name: 'Reads 2' }));
+    await user.click(screen.getByRole('option', { name: 'Reads 2' }));
+    await user.keyboard('{Escape}');
+    expect(effect).toHaveTextContent('What it doesReads');
     expect(
       screen.queryByRole('button', { name: 'Choose individual tools' }),
     ).not.toBeInTheDocument();
@@ -657,11 +661,13 @@ describe('NewAgentToolsPage', () => {
     expect(
       screen.getByText('Nothing matches "github" with this filter.'),
     ).toBeInTheDocument();
+    await user.click(effect);
     expect(
-      within(screen.getByRole('radiogroup', { name: 'Filter by what it does' }))
-        .getAllByRole('radio')
-        .map(chip => chip.textContent),
-    ).toEqual(['All 25', 'Reads 0', 'Changes things 25']);
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(['Reads 0', 'Changes things 25']);
+    await user.keyboard('{Escape}');
 
     // One way back from both.
     await user.click(

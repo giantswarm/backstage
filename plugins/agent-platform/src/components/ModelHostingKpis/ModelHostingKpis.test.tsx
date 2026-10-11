@@ -150,6 +150,84 @@ describe('ModelHostingKpis', () => {
     expect(screen.queryByText('Model cache')).toBeNull();
   });
 
+  describe('scoped to a tab', () => {
+    const claims = [
+      {
+        claim: {
+          name: 'model-cache',
+          capacityGiB: 200,
+          price: { monthlyUSD: 16 },
+        },
+      },
+    ];
+
+    it('shows only the GPU tiles on GPU pools', async () => {
+      mockPools = { rows: [pool('l4', 2)], caches: claims };
+      await renderInTestApp(<ModelHostingKpis scope="gpu" />);
+
+      expect(
+        within(tile('GPUs in use')).getByText('1 of 2'),
+      ).toBeInTheDocument();
+      expect(within(tile('GPU pools')).getByText('1')).toBeInTheDocument();
+      expect(
+        within(tile('GPU cost now')).getByText('$2.01/h'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Models running')).toBeNull();
+      expect(screen.queryByText('Model cache')).toBeNull();
+    });
+
+    it('shows only the cache tile on Model cache', async () => {
+      mockPools = { rows: [pool('l4', 2)], caches: claims };
+      await renderInTestApp(<ModelHostingKpis scope="cache" />);
+
+      expect(
+        within(tile('Model cache')).getByText('200 GiB'),
+      ).toBeInTheDocument();
+      expect(
+        within(tile('Model cache')).getByText('1 volume · $16.00/month'),
+      ).toBeInTheDocument();
+      for (const label of [
+        'Models running',
+        'GPUs in use',
+        'GPU pools',
+        'GPU cost now',
+      ]) {
+        expect(screen.queryByText(label)).toBeNull();
+      }
+    });
+
+    it('keeps every tile on Running models', async () => {
+      mockPools = { rows: [pool('l4', 2)], caches: claims };
+      await renderInTestApp(<ModelHostingKpis scope="all" />);
+
+      for (const label of [
+        'Models running',
+        'GPUs in use',
+        'GPU pools',
+        'GPU cost now',
+        'Model cache',
+      ]) {
+        expect(screen.getByText(label)).toBeInTheDocument();
+      }
+    });
+
+    it('renders nothing where its scope has no tile', async () => {
+      mockAvailable = [];
+      mockPools = { rows: [], caches: [] };
+      mockServing = { ...mockServing, gpuNodes: [] };
+      await renderInTestApp(
+        <>
+          <ModelHostingKpis scope="gpu" />
+          <ModelHostingKpis scope="cache" />
+        </>,
+      );
+
+      expect(
+        screen.queryByRole('region', { name: 'Model hosting at a glance' }),
+      ).toBeNull();
+    });
+  });
+
   it('says how many running pools a total leaves out for want of a price', async () => {
     mockPools = { rows: [pool('l4', 2), pool('h100', 1)], caches: [] };
     mockPrices = {

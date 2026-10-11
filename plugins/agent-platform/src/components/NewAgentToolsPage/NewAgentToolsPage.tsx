@@ -45,6 +45,7 @@ import {
 import {
   EFFECT_FILTER_ID,
   effectDimension,
+  effectFromPicks,
   type EffectFilter,
   filterCatalogueByEffect,
 } from './catalogueEffect';
@@ -436,13 +437,9 @@ export function NewAgentToolsPage() {
                   {effectFilter && (
                     <CatalogFilterBar
                       dimensions={[effectFilter]}
-                      onSelect={(facetId, value) => {
+                      onSelect={(facetId, values) => {
                         if (facetId === EFFECT_FILTER_ID) {
-                          setEffect(
-                            value === 'reads' || value === 'changes'
-                              ? value
-                              : 'all',
-                          );
+                          setEffect(effectFromPicks(values));
                         }
                       }}
                     />

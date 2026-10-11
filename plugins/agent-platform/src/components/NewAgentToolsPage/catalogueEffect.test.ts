@@ -5,6 +5,7 @@ import {
   changingToolCount,
   effectCounts,
   effectDimension,
+  effectFromPicks,
   filterCatalogueByEffect,
 } from './catalogueEffect';
 
@@ -77,16 +78,26 @@ describe('catalogueEffect', () => {
         { id: 'reads', label: 'Reads', count: 2 },
         { id: 'changes', label: 'Changes things', count: 3 },
       ],
-      total: 5,
+      selected: [],
     });
 
     const onlyReads = filterCatalogueByEffect(CATALOGUE, 'reads');
     expect(effectDimension(onlyReads, onlyReads, 'all')).toBeUndefined();
     // A pick stays undoable, counted over the searched catalogue.
     expect(effectDimension(onlyReads, onlyReads, 'reads')).toMatchObject({
-      value: 'reads',
-      total: 2,
+      selected: ['reads'],
+      options: [
+        { id: 'reads', label: 'Reads', count: 2 },
+        { id: 'changes', label: 'Changes things', count: 0 },
+      ],
     });
+  });
+
+  it('reads one picked kind as that kind, none or both as everything', () => {
+    expect(effectFromPicks(['reads'])).toBe('reads');
+    expect(effectFromPicks(['changes'])).toBe('changes');
+    expect(effectFromPicks([])).toBe('all');
+    expect(effectFromPicks(['reads', 'changes'])).toBe('all');
   });
 
   it('counts the tools of a resolved toolset that change things', () => {

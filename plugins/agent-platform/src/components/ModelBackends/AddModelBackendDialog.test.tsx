@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { errorApiRef } from '@backstage/core-plugin-api';
 import { TestApiProvider } from '@backstage/test-utils';
@@ -218,7 +218,15 @@ describe('AddModelBackendDialog', () => {
 
     await pickKind('Ollama');
     const reviewButton = screen.getByRole('button', { name: 'Review' });
-    expect(reviewButton).toBeDisabled();
+    // Review stays pressable; a blocked one says what is missing on the field.
+    await userEvent.click(reviewButton);
+    expect(write.dryRunAdd).not.toHaveBeenCalled();
+    const endpoint = screen.getByRole('textbox', { name: /^Endpoint/ });
+    expect(endpoint).toHaveAttribute('aria-invalid', 'true');
+    expect(endpoint).toHaveFocus();
+    expect(
+      screen.getByText('Enter the URL model-manager reaches the backend at.'),
+    ).toBeInTheDocument();
     await userEvent.type(
       screen.getByLabelText(/^Endpoint/),
       'http://ollama.lab:11434',
@@ -260,6 +268,91 @@ describe('AddModelBackendDialog', () => {
     expect(
       screen.queryByRole('button', { name: 'Deploy' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('says on the Kind field that one is needed when Review is pressed without', async () => {
+    renderDialog();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(write.dryRunAdd).not.toHaveBeenCalled();
+    const kindTrigger = screen.getByRole('button', { name: /Kind/ });
+    expect(kindTrigger).toHaveFocus();
+    expect(kindTrigger).toHaveAccessibleDescription(
+      /Pick the kind of backend\./,
+    );
+  });
+
+  it('keeps the knobs whose defaults fit under More options, and opens it on a field inside that blocks Review', async () => {
+    renderDialog();
+    await pickKind('Ollama');
+
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).not.toHaveAttribute('open');
+    expect(more).toHaveTextContent('no credentials Secret');
+    for (const label of [/^Agent endpoint/, /^Credentials Secret/]) {
+      expect(more).toContainElement(screen.getByLabelText(label));
+    }
+
+    await userEvent.type(
+      screen.getByLabelText(/^Endpoint/),
+      'http://ollama.lab:11434',
+    );
+    await userEvent.type(screen.getByLabelText(/^Agent endpoint/), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+
+    expect(write.dryRunAdd).not.toHaveBeenCalled();
+    expect(more).toHaveAttribute('open');
+    const agentEndpoint = screen.getByRole('textbox', {
+      name: /^Agent endpoint/,
+    });
+    expect(agentEndpoint).toHaveAttribute('aria-invalid', 'true');
+    expect(agentEndpoint).toHaveFocus();
+  });
+
+  it('keeps the discovery ConfigMap of a KServe backend under More options', async () => {
+    renderDialog();
+    await pickKind('KServe');
+
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).toHaveTextContent(
+      'discovery ConfigMap in the serving namespace, agent-platform-model-serving',
+    );
+    expect(more).toContainElement(
+      screen.getByLabelText(/^Discovery ConfigMap name\b/),
+    );
+    expect(more).not.toContainElement(
+      screen.getByLabelText(/^Serving namespace/),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    expect(
+      screen.getByRole('textbox', { name: /^Serving namespace/ }),
+    ).toHaveFocus();
+    expect(
+      screen.getByText('Enter the namespace the models are served in.'),
+    ).toBeInTheDocument();
+  });
+
+  it('orders the review footer Cancel, Back, Commit, then Deploy last', async () => {
+    write.dryRunAdd.mockResolvedValue(review);
+    renderDialog();
+    await pickKind('Lemonade');
+    await userEvent.type(
+      screen.getByLabelText(/^Endpoint/),
+      'http://lemonade.lab:8000',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }));
+    await screen.findByTestId('backend-review');
+
+    const footer = screen
+      .getByRole('button', { name: 'Deploy' })
+      .closest('.bui-DialogFooter') as HTMLElement;
+    expect(
+      within(footer)
+        .getAllByRole('button')
+        .map(button => button.textContent),
+    ).toEqual(['Cancel', 'Back', 'Commit', 'Deploy']);
   });
 
   it('commits with mode commit and links the pull request', async () => {

@@ -763,7 +763,12 @@ describe('AddGpuNodePoolDialog', () => {
     expect(
       screen.getByRole('button', { name: /^No clusters/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
+    // Review says why it cannot go on, on the cluster field.
+    await setupUser().click(screen.getByRole('button', { name: 'Review' }));
+    expect(
+      screen.getByText('This environment lists no cluster a pool can join.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^No clusters/ })).toHaveFocus();
     expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
       /pick a cluster/i,
     );
@@ -882,7 +887,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
     });
   });
 
-  it('every zone chosen, the review says so; none chosen holds Review until one is', async () => {
+  it('every zone chosen, the review says so; with none chosen Review opens More options on the zones', async () => {
     const user = setupUser();
     await renderDialog({ placement: true });
     await fillForm(user);
@@ -897,9 +902,16 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
       await user.click(zoneBox(zone));
     }
     expect(screen.getByTestId('zones-choice')).toHaveTextContent(PICK_A_ZONE);
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).toHaveTextContent('no zone picked');
+    expect(more).not.toHaveAttribute('open');
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled(),
+      expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled(),
     );
+    await user.click(screen.getByRole('button', { name: 'Review' }));
+    expect(more).toHaveAttribute('open');
+    expect(zoneBox(ZONES[0])).toHaveFocus();
+    expect(screen.queryByTestId('node-pool-review')).not.toBeInTheDocument();
     await user.click(zoneBox('eu-central-1c'));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Review' })).toBeEnabled(),
@@ -1001,7 +1013,13 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
       accelerator: 'nvidia-l4',
     });
     expect(sizeBox('g6.xlarge')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Review' })).toBeDisabled();
+    // Unnamed, Review says so on the name field and moves the focus there.
+    const reviewButton = screen.getByRole('button', { name: 'Review' });
+    await waitFor(() => expect(reviewButton).toBeEnabled());
+    await user.click(reviewButton);
+    expect(screen.getByText('Name the pool.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/pool name/i)).toHaveFocus();
+    expect(screen.queryByTestId('node-pool-review')).not.toBeInTheDocument();
 
     await user.click(sizeBox('g6.xlarge'));
     await user.type(screen.getByLabelText(/pool name/i), 'gpu-l4');

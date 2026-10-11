@@ -77,7 +77,10 @@ test.describe.serial('model backends', () => {
 const UNSERVED_ENDPOINT = `http://${new URL(lab.ollamaEndpoint).hostname}:9`;
 
 async function openAddDialog(page: Page): Promise<Locator> {
-  await page.getByRole('button', { name: 'Add model backend' }).first().click();
+  // The Serving view's header keeps Serve model and the import as buttons;
+  // adding a backend is in its ⋯ menu (T66).
+  await page.getByRole('button', { name: 'Model hosting actions' }).click();
+  await page.getByRole('menuitem', { name: 'Add model backend' }).click();
   const dialog = page.getByRole('dialog', { name: 'Add model backend' });
   await expect(dialog).toBeVisible();
   return dialog;

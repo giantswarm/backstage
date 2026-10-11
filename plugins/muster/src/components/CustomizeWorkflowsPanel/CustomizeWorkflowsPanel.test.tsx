@@ -329,12 +329,26 @@ describe('CustomizeWorkflowsPanel', () => {
   });
 });
 
-describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
+describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
   const rows = () => screen.getAllByRole('row').slice(1);
-  const chips = () =>
-    within(screen.getByRole('radiogroup', { name: 'Filter by last run' }))
-      .getAllByRole('radio')
-      .map(chip => chip.textContent);
+  /** The last-run dropdown, once the runs are read; readable while open. */
+  const lastRunDropdown = () =>
+    screen.findByRole('button', { name: /Filter by last run/, hidden: true });
+  /** The last-run dropdown's options, as "label count", read and closed. */
+  const lastRunOptions = async () => {
+    await userEvent.click(await lastRunDropdown());
+    const options = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    await userEvent.keyboard('{Escape}');
+    return options;
+  };
+  /** Toggles one last-run state. */
+  const pickLastRun = async (option: string) => {
+    await userEvent.click(await lastRunDropdown());
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+    await userEvent.keyboard('{Escape}');
+  };
 
   beforeEach(() => {
     mockAuthenticated = true;
@@ -342,7 +356,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
     api.filterTools.mockClear();
   });
 
-  it('draws no filter over three workflows whose last runs all went the same way', async () => {
+  it('offers a one-option dropdown over three workflows whose last runs all went the same way', async () => {
     mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
       makeWorkflow(name, 2),
     );
@@ -361,9 +375,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
       }),
     );
     expect(rows()).toHaveLength(3);
-    expect(
-      screen.queryByRole('group', { name: 'Filters' }),
-    ).not.toBeInTheDocument();
+    expect(await lastRunOptions()).toEqual(['Succeeded 3']);
   });
 
   it('filters three workflows by their last run, the newest run deciding', async () => {
@@ -381,19 +393,20 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
     };
     await renderPanel();
 
-    expect(
-      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
-    ).toBeInTheDocument();
-    expect(chips()).toEqual([
-      'All 3',
+    expect(await lastRunOptions()).toEqual([
       'Failed 1',
       'Running 1',
       'Not run yet 1',
     ]);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Failed 1' }));
+    await pickLastRun('Failed 1');
     expect(rows()).toHaveLength(1);
     expect(screen.getByRole('row', { name: /alpha/ })).toBeInTheDocument();
+    await pickLastRun('Running 1');
+    expect(rows()).toHaveLength(2);
+    expect(await lastRunDropdown()).toHaveTextContent(
+      'Last run 2Failed and Running',
+    );
   });
 
   it('says "No recent run", not "Not run yet", when the window does not hold every run', async () => {
@@ -401,10 +414,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
     mockLastRuns = { executions: [run('alpha', 'completed')], has_more: true };
     await renderPanel();
 
-    expect(
-      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
-    ).toBeInTheDocument();
-    expect(chips()).toEqual(['All 2', 'Succeeded 1', 'No recent run 1']);
+    expect(await lastRunOptions()).toEqual(['Succeeded 1', 'No recent run 1']);
   });
 
   it('offers no last-run filter without a muster session', async () => {
@@ -435,21 +445,30 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
     };
     await renderPanel();
 
-    expect(
-      await screen.findByRole('radiogroup', { name: 'Filter by last run' }),
-    ).toBeInTheDocument();
-    expect(chips()).toEqual(['All 300', 'Failed 100', 'Succeeded 200']);
+    expect(await lastRunOptions()).toEqual(['Failed 100', 'Succeeded 200']);
     await userEvent.click(
       screen.getByRole('button', { name: 'Show 20 more workflows' }),
     );
     expect(rows()).toHaveLength(40);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Failed 100' }));
+    await pickLastRun('Failed 100');
 
     expect(rows()).toHaveLength(20);
     expect(screen.getByRole('row', { name: /wf-000/ })).toBeInTheDocument();
     expect(screen.queryByRole('row', { name: /wf-001/ })).toBeNull();
     expect(screen.getByText('20 workflows shown, 80 more')).toBeInTheDocument();
+
+    await pickLastRun('Succeeded 200');
+    expect(
+      screen.getByText('20 workflows shown, 280 more'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
+    );
+    expect(await lastRunDropdown()).toHaveTextContent('Last runAll');
     // One bulk read for the filter, whatever the count.
     expect(
       api.listExecutions.mock.calls.filter(
@@ -463,15 +482,15 @@ describe('CustomizeWorkflowsPanel last-run filter (T49)', () => {
     mockLastRuns = { executions: [run('alpha', 'failed')], has_more: false };
     await renderPanel('bravo');
 
-    await userEvent.click(
-      await screen.findByRole('radio', { name: 'Failed 0' }),
-    );
+    await pickLastRun('Failed 0');
     expect(
       screen.getByText('No workflows match “bravo” with these filters.'),
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Clear filters' }),
-    );
+    // The empty state's way back (the bar offers the same).
+    const [, emptyStateClear] = screen.getAllByRole('button', {
+      name: 'Clear filters',
+    });
+    await userEvent.click(emptyStateClear);
     expect(screen.getByRole('row', { name: /bravo/ })).toBeInTheDocument();
   });
 });

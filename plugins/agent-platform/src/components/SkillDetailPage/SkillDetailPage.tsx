@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet';
 import {
   Navigate,
@@ -60,6 +60,10 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 import { SkillInstructions } from '../SkillInstructions';
 import { evaluationPrompt } from './evaluationPrompt';
+import {
+  SkillUpdateAgentsDialog,
+  type BehindAgent,
+} from './SkillUpdateAgentsDialog';
 
 const AVATAR_SIZE = 96;
 
@@ -72,6 +76,33 @@ export function agentsUsingSkill(
   return rows
     .filter(row => (row.skillIds ?? []).includes(id))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Whether two commit ids name the same commit, either possibly abbreviated. */
+function sameCommit(a: string, b: string): boolean {
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x.length >= 7 && y.length >= 7 && (x.startsWith(y) || y.startsWith(x));
+}
+
+/**
+ * The agents among `using` that pin the skill at a commit other than the
+ * catalog's head (`skill.commit`, the head of its branch when the catalog was
+ * read), with the commit each pins. An agent whose pin is unknown is left out:
+ * there is nothing to compare.
+ */
+export function agentsBehindSkill(
+  using: AgentRow[],
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
+): BehindAgent[] {
+  if (!skill.commit) {
+    return [];
+  }
+  const id = canonicalSkillId(skill);
+  return using.flatMap(row => {
+    const pinned = row.skillPins?.[id];
+    return pinned && !sameCommit(pinned, skill.commit) ? [{ row, pinned }] : [];
+  });
 }
 
 const useStyles = makeStyles({
@@ -191,23 +222,31 @@ function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
 }
 
 /**
- * The agents using the skill, each linking to its own page — which is also
- * where a pinned commit is updated (`Update skills` there re-reads the head),
- * so this list is the page's honest "update" affordance: there is no global
- * update, a pin lives on each agent. Windowed (`ShowMore`), since a popular
- * skill can be mounted by hundreds of agents.
+ * The agents using the skill, each linking to its own page. Each pins the
+ * skill to a commit; a row pinned at an older one than the catalog's head says
+ * so, and the line under the list says whether any are behind — the header's
+ * "Update agents" moves them, so no update control repeats here. Windowed
+ * (`ShowMore`), since a popular skill can be mounted by hundreds of agents.
  */
 function UsedByTab({
   using,
+  behind,
+  head,
   isLoading,
   unreachableInstallations,
 }: {
   using: AgentRow[];
+  behind: BehindAgent[];
+  head: string;
   isLoading: boolean;
   unreachableInstallations: string[];
 }) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+  const pinnedBehind = useMemo(
+    () => new Map(behind.map(({ row, pinned }) => [row.id, pinned])),
+    [behind],
+  );
 
   let body;
   if (isLoading) {
@@ -249,6 +288,10 @@ function UsedByTab({
                   customActions={
                     <Text variant="body-small" color="secondary">
                       {row.installation} · {row.namespace}
+                      {pinnedBehind.has(row.id) &&
+                        ` · older version (${shortCommit(
+                          pinnedBehind.get(row.id)!,
+                        )})`}
                     </Text>
                   }
                 >
@@ -259,8 +302,16 @@ function UsedByTab({
           )}
         </ShowMore>
         <Text as="p" variant="body-small" color="secondary">
-          Each agent pins the skill to a commit. To move an agent to the latest
-          version, update its skills on the agent's page.
+          {behind.length === 0 &&
+            `All agents use the newest version (${shortCommit(head)}).`}
+          {behind.length === 1 &&
+            `One agent pins an older commit than the newest (${shortCommit(
+              head,
+            )}). Update agents moves it there.`}
+          {behind.length > 1 &&
+            `${behind.length} agents pin an older commit than the newest (${shortCommit(
+              head,
+            )}). Update agents moves them there.`}
         </Text>
       </Flex>
     );
@@ -300,6 +351,15 @@ function SkillPage({
     unreachableInstallations,
   } = useAgents();
   const using = useMemo(() => agentsUsingSkill(rows, skill), [rows, skill]);
+  const behind = useMemo(() => agentsBehindSkill(using, skill), [using, skill]);
+
+  // The agents behind as they stood when "Update agents" was pressed: the
+  // list re-reads as updates land, and the dialog must keep showing each
+  // agent's outcome rather than lose the row the moment it is no longer behind.
+  const [updateTargets, setUpdateTargets] = useState<BehindAgent[]>();
+  const openUpdateAgents = useCallback(() => {
+    setUpdateTargets(behind);
+  }, [behind]);
 
   // Edit and Evaluate both end in a pull request (the portal's own, or the
   // evaluator's), and pull requests are github.com only — the skill-PR
@@ -434,10 +494,18 @@ function SkillPage({
 
   // The Agent detail header's actions, in its order and formatting: the
   // secondary actions first, the primary last, all at the header's right.
+  // "Update agents" only while some agent pins an older commit; with none
+  // behind, the Used by tab says so in a line instead.
   const canEvaluate = Boolean(evaluator) && proposable;
+  const canUpdateAgents = !agentsLoading && behind.length > 0;
   const actions =
-    editHref || sourceUrl || canEvaluate ? (
+    canUpdateAgents || editHref || sourceUrl || canEvaluate ? (
       <>
+        {canUpdateAgents && (
+          <Button variant="secondary" onPress={openUpdateAgents}>
+            Update agents
+          </Button>
+        )}
         {editHref && (
           <Button variant="secondary" onPress={openEdit}>
             Edit
@@ -472,6 +540,8 @@ function SkillPage({
     content = (
       <UsedByTab
         using={using}
+        behind={behind}
+        head={skill.commit}
         isLoading={agentsLoading}
         unreachableInstallations={unreachableInstallations}
       />
@@ -510,6 +580,19 @@ function SkillPage({
           )}
           {content}
         </Flex>
+        {updateTargets && (
+          <SkillUpdateAgentsDialog
+            skillName={skill.name}
+            head={skill.commit}
+            behind={updateTargets}
+            isOpen
+            onOpenChange={isOpen => {
+              if (!isOpen) {
+                setUpdateTargets(undefined);
+              }
+            }}
+          />
+        )}
       </ShellPage>
     </>
   );
@@ -528,7 +611,12 @@ function SkillPage({
  *   the Overview says the portal cannot read its source;
  * - **Used by** (`…/used-by`): the agents mounting it, windowed.
  *
- * Actions: "Edit" opens the add-skill flow prefilled (`EditSkillPage`), which
+ * Actions: "Update agents" appears only while some agent using the skill pins
+ * an older commit than the catalog's head, and opens `SkillUpdateAgentsDialog`
+ * — Agent detail's "Update skills" (`refreshSkills`) run per selected agent,
+ * as a pull request for one applied from git; with none behind, the Used by
+ * tab says "All agents use the newest version" instead. "Edit" opens the
+ * add-skill flow prefilled (`EditSkillPage`), which
  * proposes the change as a pull request — only for a readable skill in a
  * github.com repository; "View source" opens the folder at the pinned commit
  * (github.com only); "Evaluate" appears only where `metaAgents.skillEvaluation`

@@ -121,8 +121,8 @@ where agent-manager allows writes.
 ### Skills
 
 The skill catalog discovered from the configured skill repositories, most-used
-skills first. A skill's page has the Agent page's shape: its actions (Edit,
-View source, Evaluate) at the header's right and three tabs — **Overview**
+skills first. A skill's page has the Agent page's shape: its actions (Update
+agents, Edit, View source, Evaluate) at the header's right and three tabs — **Overview**
 (what it is for, with its source, path, branch and pinned commit beside it),
 **Instructions** (the SKILL.md body rendered as Markdown, without raw HTML or
 remote images; only when the portal can read the file) and **Used by** (the
@@ -137,6 +137,13 @@ agents mounting it).
 - **Evaluate** (where a `skillEvaluation` meta-agent is configured) starts a
   session with that agent about the skill — repository, path, commit — and
   opens it; the evaluator reports on the skill and may propose improvements.
+- **Update agents** appears when some agents using the skill pin an older
+  commit than the catalog's newest one. It lists them with old → new commits
+  and runs the agent page's Update skills for each selected agent. That
+  re-pins every git skill of the agent, not only this one. An agent that
+  comes from git gets a pull request instead, and an agent the person cannot
+  update is listed with the reason. With none behind, Used by says that every
+  agent uses the newest version.
 
 ### Connectors
 
@@ -379,6 +386,17 @@ a bare KServe CR view shows its GPU panel and nothing operational. The table's
 optional columns follow the data the same way (Size, Memory and Features
 appear when a row carries them; Node and GPUs are dropped when no installation
 schedules onto nodes).
+
+The view-level actions sit in the page header, top right, in the standard
+places (`ModelHostingActions`): on Running models _Serve model_ is the primary
+button, _Import from Hugging Face_ (or _Pull model_ where nothing imports) the
+secondary, and _Add model backend_ / _Add GPU node pool_ the ⋯ menu; on GPU
+pools _Add GPU node pool_ is the primary. At phone width one button stays and
+the rest move into the menu. Each tab's headline figures (`ModelHostingKpis`)
+are scoped to what it lists: the whole row on Running models, the GPU tiles on
+GPU pools, the cache tile on Model cache. The hosting dialogs use the standard
+form (`useFieldValidation`, one column, More options for knobs whose defaults
+fit).
 
 **One actions menu per row** (`ServedModelActions`), whatever mix of sources
 listed the row. Its items follow the capabilities and the row's state; on

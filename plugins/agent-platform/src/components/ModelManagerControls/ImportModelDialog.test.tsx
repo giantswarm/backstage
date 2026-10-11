@@ -109,7 +109,17 @@ describe('describeSearchResult / describeFit', () => {
 describe('ImportModelDialog', () => {
   it('searches the hub, checks the fit of the chosen hit on the node, and starts the download', async () => {
     await render();
-    expect(downloadButton()).toBeDisabled();
+    // Pressable before a model is picked: pressed, the search field says what
+    // is missing and takes the focus.
+    expect(downloadButton()).toBeEnabled();
+    await userEvent.click(downloadButton());
+    const searchField = screen.getByRole('textbox', { name: 'Search' });
+    expect(searchField).toHaveAttribute('aria-invalid', 'true');
+    expect(searchField).toHaveFocus();
+    expect(
+      screen.getByText('Search the hub, then pick a model from the results.'),
+    ).toBeInTheDocument();
+    expect(pullModel).not.toHaveBeenCalled();
 
     await search('qwen3 14b');
     expect(searchModels).toHaveBeenCalledWith('gpu', 'qwen3 14b', SEARCH_LIMIT);
@@ -217,6 +227,49 @@ describe('ImportModelDialog', () => {
     expect(
       screen.getByRole('button', { name: /Target node/ }),
     ).toHaveTextContent('Best node');
+  });
+
+  it('keeps the preset and the node under More options, one column, and sends neither when None and Best node are chosen', async () => {
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await waitFor(() => expect(fitCheck).toHaveBeenCalled());
+
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).not.toHaveAttribute('open');
+    expect(more).toHaveTextContent('preset qwen3-14b · gpu-node-1');
+    expect(more).toContainElement(
+      screen.getByRole('button', { name: /Serving preset/ }),
+    );
+    expect(more).toContainElement(
+      screen.getByRole('button', { name: /Target node/ }),
+    );
+
+    await userEvent.click(screen.getByText('More options'));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Serving preset/ }),
+    );
+    await userEvent.click(await screen.findByRole('option', { name: /^None/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: /^Best node/ }),
+    );
+
+    await waitFor(() =>
+      expect(fitCheck).toHaveBeenLastCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+      }),
+    );
+    expect(more).toHaveTextContent('preset none · the best node');
+    await screen.findByText('Fits on gpu-node-1');
+    await userEvent.click(downloadButton());
+    await waitFor(() =>
+      expect(pullModel).toHaveBeenCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+      }),
+    );
   });
 
   it('cannot be dismissed while the download is starting, and closes once it started', async () => {

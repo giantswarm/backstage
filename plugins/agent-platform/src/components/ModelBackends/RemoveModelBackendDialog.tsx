@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -10,7 +10,11 @@ import {
   Text,
   TextField,
 } from '@backstage/ui';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  fieldErrorProps,
+  useFieldValidation,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
 import { useOpenGeneration } from '../../hooks/useOpenGeneration';
@@ -41,7 +45,9 @@ export type RemoveModelBackendDialogProps = {
  * to the served models of the group; the person types the kind to confirm;
  * then the remove as the person. A refusal — a static backend from the
  * chart's values, no document — is model-manager's, shown verbatim, and the
- * confirm stays disabled.
+ * confirm stays disabled. A Remove pressed before the kind is typed says so
+ * on the field and moves the focus there (`useFieldValidation`), like the
+ * app's other forms.
  */
 export function RemoveModelBackendDialog({
   installation,
@@ -57,12 +63,15 @@ export function RemoveModelBackendDialog({
   const write = useBackendWrite(installation);
   const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
 
   useEffect(() => {
     if (!isOpen) {
       setTyped('');
       setPlan(undefined);
       setRemoved(undefined);
+      validation.reset();
       write.reset();
       return;
     }
@@ -83,9 +92,16 @@ export function RemoveModelBackendDialog({
 
   const isBusy = write.isBusy;
   const notConnected = write.failure?.kind === 'not-connected';
-  const canConfirm = Boolean(plan) && !removed && typed === kind && !isBusy;
+  // Nothing to confirm until model-manager has said what would go.
+  const canConfirm = Boolean(plan) && !removed && !isBusy;
+  const typedError =
+    typed === kind ? undefined : `Type ${kind} to confirm the removal.`;
 
   const onConfirm = async () => {
+    if (typedError) {
+      validation.reveal();
+      return;
+    }
     try {
       const result = await write.remove(kind, 'apply');
       setRemoved(result);
@@ -103,6 +119,7 @@ export function RemoveModelBackendDialog({
       {...dialogDismissLock(write.isWriting, onOpenChange)}
     >
       <form
+        noValidate
         onSubmit={event => {
           event.preventDefault();
           if (canConfirm) {
@@ -115,7 +132,7 @@ export function RemoveModelBackendDialog({
           Remove {label} backend from {installation}?
         </DialogHeader>
         <DialogBody>
-          <Flex direction="column" gap="3">
+          <Flex direction="column" gap="3" ref={scope}>
             <Text variant="body-small" color="secondary">
               model-manager drops the model configs it wired for this backend,
               deletes its backend document and stops listing it. The backend
@@ -175,25 +192,24 @@ export function RemoveModelBackendDialog({
                 value={typed}
                 onChange={setTyped}
                 isDisabled={isBusy}
+                {...fieldErrorProps(validation.errorFor(typedError))}
               />
             )}
           </Flex>
         </DialogBody>
         <DialogFooter>
-          <Flex gap="2" justify="end">
-            <Button
-              variant="secondary"
-              onPress={() => onOpenChange(false)}
-              isDisabled={write.isWriting}
-            >
-              {removed ? 'Close' : 'Cancel'}
+          <Button
+            variant="secondary"
+            onPress={() => onOpenChange(false)}
+            isDisabled={write.isWriting}
+          >
+            {removed ? 'Close' : 'Cancel'}
+          </Button>
+          {!removed && (
+            <Button type="submit" variant="primary" isDisabled={!canConfirm}>
+              {isBusy && plan ? 'Removing…' : 'Remove backend'}
             </Button>
-            {!removed && (
-              <Button type="submit" variant="primary" isDisabled={!canConfirm}>
-                {isBusy && plan ? 'Removing…' : 'Remove backend'}
-              </Button>
-            )}
-          </Flex>
+          )}
         </DialogFooter>
       </form>
     </Dialog>

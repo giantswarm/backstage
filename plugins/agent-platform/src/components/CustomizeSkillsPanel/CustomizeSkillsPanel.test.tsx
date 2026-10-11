@@ -85,7 +85,11 @@ describe('CustomizeSkillsPanel', () => {
     expect(within(rows[0]).getByText('Used by 1 agent')).toBeInTheDocument();
     expect(within(rows[1]).getByText('summarise')).toBeInTheDocument();
     expect(within(rows[1]).getByText('Not used yet')).toBeInTheDocument();
-    expect(screen.getAllByText('giantswarm/skills')).toHaveLength(2);
+    expect(
+      within(screen.getByRole('list', { name: 'Skills' })).getAllByText(
+        'giantswarm/skills',
+      ),
+    ).toHaveLength(2);
   });
 
   it('names a repository it could not read', async () => {
@@ -161,8 +165,9 @@ describe('CustomizeSkillsPanel', () => {
     };
     await renderPanel();
 
-    expect(screen.getByText('Used by 1 agent')).toBeInTheDocument();
-    expect(screen.getByText('GiantSwarm/skills')).toBeInTheDocument();
+    const card = within(screen.getByRole('list', { name: 'Skills' }));
+    expect(card.getByText('Used by 1 agent')).toBeInTheDocument();
+    expect(card.getByText('GiantSwarm/skills')).toBeInTheDocument();
   });
 
   it('says when no repository is configured', async () => {
@@ -328,21 +333,40 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
 const OTHER = 'https://github.com/acme/agent-skills';
 
-const chips = (name: string) =>
-  within(screen.getByRole('radiogroup', { name }))
-    .getAllByRole('radio')
-    .map(chip => chip.textContent);
+/** A filter's dropdown; `hidden` keeps it readable while its list is open. */
+const filterDropdown = (field: string) =>
+  screen.getByRole('button', {
+    name: new RegExp(`Filter by ${field}`),
+    hidden: true,
+  });
+
+/** A filter dropdown's options, as "label count", read and closed again. */
+async function filterOptions(field: string) {
+  await userEvent.click(filterDropdown(field));
+  const options = within(await screen.findByRole('listbox'))
+    .getAllByRole('option')
+    .map(option => option.textContent);
+  await userEvent.keyboard('{Escape}');
+  return options;
+}
+
+/** Toggles one option of a filter dropdown. */
+async function pickFilter(field: string, option: string) {
+  await userEvent.click(filterDropdown(field));
+  await userEvent.click(await screen.findByRole('option', { name: option }));
+  await userEvent.keyboard('{Escape}');
+}
 
 const cardNames = () =>
   listedRows().map(row => within(row).getByRole('heading').textContent);
 
-describe('CustomizeSkillsPanel filters (T49)', () => {
+describe('CustomizeSkillsPanel filters (T49, T64)', () => {
   beforeEach(() => {
     mockAgentsLoading = false;
     mockRepositories = [REPO];
   });
 
-  it('draws no filter over three skills of one repository nobody uses', async () => {
+  it('offers Source and Usage over three skills of one repository nobody uses', async () => {
     mockCatalog = {
       ...loaded,
       skills: [skill('a'), skill('b'), skill('c')],
@@ -351,14 +375,15 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     await renderPanel();
 
     expect(listedRows()).toHaveLength(3);
-    expect(
-      screen.queryByRole('group', { name: 'Filters' }),
-    ).not.toBeInTheDocument();
+    // Always there, if only with one option each (T64).
+    expect(filterDropdown('source')).toHaveTextContent('SourceAll');
+    expect(await filterOptions('source')).toEqual(['giantswarm/skills 3']);
+    expect(await filterOptions('usage')).toEqual(['Not used 3']);
     // Add skill keeps its place.
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
   });
 
-  it('filters three skills by source and by usage', async () => {
+  it('filters three skills by source and by usage, several sources at once', async () => {
     mockCatalog = {
       ...loaded,
       skills: [
@@ -370,30 +395,33 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     mockAgentSkillIds = [`${REPO}#triage`];
     await renderPanel();
 
-    expect(chips('Filter by source')).toEqual([
-      'All 3',
+    expect(await filterOptions('source')).toEqual([
       'giantswarm/skills 2',
       'acme/agent-skills 1',
     ]);
-    expect(chips('Filter by usage')).toEqual([
-      'All 3',
+    expect(await filterOptions('usage')).toEqual([
       'Used by agents 1',
       'Not used 2',
     ]);
 
-    await userEvent.click(
-      screen.getByRole('radio', { name: 'giantswarm/skills 2' }),
-    );
+    await pickFilter('source', 'giantswarm/skills 2');
     expect(cardNames()).toEqual(['triage', 'summarise']);
+    expect(filterDropdown('source')).toHaveTextContent(
+      'Sourcegiantswarm/skills',
+    );
     // Usage counts follow the source pick.
-    expect(chips('Filter by usage')).toEqual([
-      'All 2',
+    expect(await filterOptions('usage')).toEqual([
       'Used by agents 1',
       'Not used 1',
     ]);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Not used 1' }));
+    await pickFilter('usage', 'Not used 1');
     expect(cardNames()).toEqual(['summarise']);
+
+    // A second source widens the list again.
+    await pickFilter('source', 'acme/agent-skills 1');
+    expect(cardNames().sort()).toEqual(['notes', 'summarise']);
+    expect(filterDropdown('source')).toHaveTextContent('Source 2');
   });
 
   it('offers no usage filter while the agents are still read', async () => {
@@ -404,11 +432,9 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     };
     await renderPanel();
 
+    expect(filterDropdown('source')).toBeInTheDocument();
     expect(
-      screen.getByRole('radiogroup', { name: 'Filter by source' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('radiogroup', { name: 'Filter by usage' }),
+      screen.queryByRole('button', { name: /Filter by usage/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -421,17 +447,20 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     // "summarise" is searched; the other source has no match.
     await renderPanel('summarise');
 
-    await userEvent.click(
-      screen.getByRole('radio', { name: 'acme/agent-skills 0' }),
-    );
+    await pickFilter('source', 'acme/agent-skills 0');
     expect(
       screen.getByText('No skills match “summarise” with these filters.'),
     ).toBeInTheDocument();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Clear filters' }),
-    );
+    // The empty state's way back (the bar offers the same).
+    const [, emptyStateClear] = screen.getAllByRole('button', {
+      name: 'Clear filters',
+    });
+    await userEvent.click(emptyStateClear);
     expect(cardNames()).toEqual(['summarise']);
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters 300 skills from three repositories, paging the result from its first page', async () => {
@@ -451,14 +480,12 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     );
     await renderPanel();
 
-    expect(chips('Filter by source')).toEqual([
-      'All 300',
+    expect(await filterOptions('source')).toEqual([
       'org/repo-0 100',
       'org/repo-1 100',
       'org/repo-2 100',
     ]);
-    expect(chips('Filter by usage')).toEqual([
-      'All 300',
+    expect(await filterOptions('usage')).toEqual([
       'Used by agents 30',
       'Not used 270',
     ]);
@@ -469,19 +496,41 @@ describe('CustomizeSkillsPanel filters (T49)', () => {
     );
     expect(listedRows()).toHaveLength(2 * SKILL_CARDS_SHOWN);
 
-    await userEvent.click(
-      screen.getByRole('radio', { name: 'org/repo-1 100' }),
-    );
+    await pickFilter('source', 'org/repo-1 100');
 
     // A new filter starts from the first page.
     expect(listedRows()).toHaveLength(SKILL_CARDS_SHOWN);
     expect(
       screen.getByText(`${SKILL_CARDS_SHOWN} skills shown, 76 more`),
     ).toBeInTheDocument();
-    expect(chips('Filter by usage')).toEqual([
-      'All 100',
+    expect(await filterOptions('usage')).toEqual([
       'Used by agents 10',
       'Not used 90',
     ]);
+
+    // Two sources: any of them.
+    await pickFilter('source', 'org/repo-2 100');
+    expect(
+      screen.getByText(
+        `${SKILL_CARDS_SHOWN} skills shown, ${200 - SKILL_CARDS_SHOWN} more`,
+      ),
+    ).toBeInTheDocument();
+    expect(await filterOptions('usage')).toEqual([
+      'Used by agents 20',
+      'Not used 180',
+    ]);
+
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
+    );
+    expect(filterDropdown('source')).toHaveTextContent('SourceAll');
+    expect(
+      screen.getByText(
+        `${SKILL_CARDS_SHOWN} skills shown, ${300 - SKILL_CARDS_SHOWN} more`,
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -63,6 +63,22 @@ jest.mock('../../hooks/useSkillContent', () => ({
   },
 }));
 
+const mockUpdateDialog = jest.fn();
+jest.mock('./SkillUpdateAgentsDialog', () => ({
+  // The dialog has its own suite; here only what the page hands it.
+  SkillUpdateAgentsDialog: (props: {
+    head: string;
+    behind: { row: { name: string }; pinned: string }[];
+  }) => {
+    mockUpdateDialog(props);
+    return require('react').createElement(
+      'div',
+      { 'data-testid': 'update-agents-dialog' },
+      props.behind.map(item => `${item.row.name}@${item.pinned}`).join(','),
+    );
+  },
+}));
+
 const createSession = jest.fn();
 let mockCreationError: Error | null = null;
 const mockUseCreateSession = jest.fn();
@@ -78,7 +94,14 @@ jest.mock('../../hooks/useCreateSession', () => ({
   },
 }));
 
-function agent(technicalName: string, skillIds: string[]): AgentRow {
+const OLD_COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
+
+/** An agent mounting `skillIds`, each pinned at `pin` (the catalog's head unless said). */
+function agent(
+  technicalName: string,
+  skillIds: string[],
+  pin: string = skill.commit,
+): AgentRow {
   return {
     id: `gazelle/kagent/${technicalName}`,
     installation: 'gazelle',
@@ -88,6 +111,7 @@ function agent(technicalName: string, skillIds: string[]): AgentRow {
     description: '',
     skillCount: skillIds.length,
     skillIds,
+    skillPins: Object.fromEntries(skillIds.map(id => [id, pin])),
     readiness: 'ready',
   } as AgentRow;
 }
@@ -118,6 +142,7 @@ function renderPage(path = 'giantswarm/skills/ticket-triage') {
 }
 
 beforeEach(() => {
+  mockUpdateDialog.mockReset();
   mockCatalog = loaded;
   mockRows = [];
   mockUnreachable = [];
@@ -217,15 +242,66 @@ describe('SkillDetailPage', () => {
       undefined,
     );
     expect(screen.queryByText('other-bot')).not.toBeInTheDocument();
-    // The honest update affordance: pins live on agents, not here.
+    // Nobody behind: a quiet line, and no Update agents action.
     expect(
-      screen.getByText(/Each agent pins the skill to a commit/),
+      screen.getByText('All agents use the newest version (a1b2c3d).'),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Update agents' }),
+    ).not.toBeInTheDocument();
     // The facts belong to the Overview.
     expect(
       screen.queryByText('ticket-triage/SKILL.md'),
     ).not.toBeInTheDocument();
   }, 30_000);
+
+  it('offers Update agents when some agents pin an older commit, and hands the dialog exactly those', async () => {
+    mockRows = [
+      agent('current-bot', [`${REPO}#ticket-triage`]),
+      agent('stale-bot', [`${REPO}#ticket-triage`], OLD_COMMIT),
+      // Behind on another skill only: not this page's business.
+      agent('elsewhere-bot', [`${REPO}#other`], OLD_COMMIT),
+    ];
+    await renderPage('giantswarm/skills/ticket-triage/used-by');
+
+    // The behind row says so; the line under the list counts them.
+    expect(screen.getByText(/older version \(cb1fb76\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'One agent pins an older commit than the newest (a1b2c3d). Update agents moves it there.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('update-agents-dialog'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Update agents' }),
+    );
+
+    expect(screen.getByTestId('update-agents-dialog')).toHaveTextContent(
+      `stale-bot@${OLD_COMMIT}`,
+    );
+    expect(mockUpdateDialog).toHaveBeenLastCalledWith(
+      expect.objectContaining({ head: skill.commit }),
+    );
+    expect(
+      mockUpdateDialog.mock.calls
+        .at(-1)![0]
+        .behind.map((item: { row: { name: string } }) => item.row.name),
+    ).toEqual(['stale-bot']);
+  }, 30_000);
+
+  it('treats an abbreviated pin of the head as current', async () => {
+    mockRows = [
+      agent('short-bot', [`${REPO}#ticket-triage`], skill.commit.slice(0, 12)),
+    ];
+    await renderPage();
+
+    expect(
+      screen.queryByRole('button', { name: 'Update agents' }),
+    ).not.toBeInTheDocument();
+  });
 
   it('windows a long Used by list', async () => {
     mockRows = Array.from({ length: 300 }, (_, index) =>

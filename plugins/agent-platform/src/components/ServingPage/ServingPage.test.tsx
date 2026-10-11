@@ -15,8 +15,11 @@ import {
   type ServedModelGroup,
 } from './ServedModelsTable';
 import {
+  mockDesktopLayout,
+  mockPhoneLayout,
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
+  type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
@@ -27,12 +30,15 @@ import { ServingPage } from './ServingPage';
 const mockUseServing = jest.fn<ServingContextValue, []>();
 const mockUseModelConfigs = jest.fn<ModelConfigsContextValue, []>();
 
+// cluster-manager is absent on most of these fleets: the controls render
+// nothing. The header cases offer Add GPU node pool through `addAction`.
+let mockPoolAddAction: { open: () => void; isDisabled: boolean } | undefined;
 jest.mock('../GpuNodePools', () => ({
-  // cluster-manager is absent on these fleets: the controls render nothing.
   useGpuNodePoolControls: () => ({
     available: false,
     isLoading: false,
     addButton: undefined,
+    addAction: mockPoolAddAction,
     dialogs: undefined,
     panel: undefined,
     cachePanel: undefined,
@@ -40,12 +46,14 @@ jest.mock('../GpuNodePools', () => ({
 }));
 
 const mockGroupsWithoutModels = jest.fn<ServedModelGroup[], []>(() => []);
+// No model-manager the person can write to on most of these fleets: the
+// controls render nothing. The header cases offer Add model backend.
+let mockOpenAddBackend: (() => void) | undefined;
 jest.mock('../ModelBackends', () => ({
-  // No model-manager the person can write to on these fleets: the controls
-  // render nothing.
   useModelBackendControls: () => ({
     available: false,
     addButton: undefined,
+    openAdd: mockOpenAddBackend,
     dialogs: null,
     renderGroupActions: () => null,
     groupsWithoutModels: () => mockGroupsWithoutModels(),
@@ -285,7 +293,9 @@ const failedJob: PullJob = {
 // carries the header slot the app's GSPageLayout would provide — and the real
 // rows provider (its inputs are the mocked contexts above), since what the view
 // shows per row is the point of most cases here.
-const HeaderActions = () => <>{usePageHeaderActionsSlot()}</>;
+const HeaderActions = () => (
+  <div data-testid="page-header-actions">{usePageHeaderActionsSlot()}</div>
+);
 
 // Re-render the tree from inside it (renderInTestApp's own rerender would
 // drop the test app around it), so a test can change what the mocked contexts
@@ -322,6 +332,8 @@ describe('ServingPage', () => {
     mockUseMusterPluginApi.mockReturnValue(undefined);
     mockGroupsWithoutModels.mockReset();
     mockGroupsWithoutModels.mockReturnValue([]);
+    mockPoolAddAction = undefined;
+    mockOpenAddBackend = undefined;
     window.sessionStorage.clear();
     mockUsePullJobs.mockReturnValue(noJobs);
     mockUseServing.mockReturnValue(baseServing);
@@ -384,6 +396,122 @@ describe('ServingPage', () => {
     expect(
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
+  });
+
+  describe('header actions, in the standard places', () => {
+    const everything: ServingContextValue = {
+      ...baseServing,
+      capabilities: {
+        'inst-1': {
+          ...KSERVE_CR_CAPABILITIES,
+          load: true,
+          presets: true,
+          fitCheck: true,
+          pull: true,
+          search: true,
+        },
+      },
+    };
+    let layout: MockedLayout | undefined;
+
+    beforeEach(() => {
+      mockUseMusterPluginApi.mockReturnValue({});
+      mockUseServing.mockReturnValue(everything);
+      mockOpenAddBackend = jest.fn();
+      mockPoolAddAction = { open: jest.fn(), isDisabled: false };
+    });
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+    });
+
+    const header = () => screen.getByTestId('page-header-actions');
+    const openMenu = async () => {
+      await userEvent.click(
+        within(header()).getByRole('button', { name: 'Model hosting actions' }),
+      );
+      return screen.findByRole('menu');
+    };
+
+    it('puts Serve model last, the import beside it, and adding a backend or a pool in the menu', async () => {
+      layout = mockDesktopLayout();
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(
+            button => button.textContent || button.getAttribute('aria-label'),
+          ),
+      ).toEqual([
+        'Import from Hugging Face',
+        'Serve model',
+        'Model hosting actions',
+      ]);
+
+      const menu = await openMenu();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(item => item.textContent),
+      ).toEqual(['Add model backend', 'Add GPU node pool']);
+      await userEvent.click(
+        within(menu).getByRole('menuitem', { name: 'Add GPU node pool' }),
+      );
+      expect(mockPoolAddAction!.open).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps one button at phone width, everything else in the menu', async () => {
+      layout = mockPhoneLayout();
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(
+            button => button.textContent || button.getAttribute('aria-label'),
+          ),
+      ).toEqual(['Serve model', 'Model hosting actions']);
+
+      const menu = await openMenu();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(item => item.textContent),
+      ).toEqual([
+        'Import from Hugging Face',
+        'Add model backend',
+        'Add GPU node pool',
+      ]);
+      await userEvent.click(
+        within(menu).getByRole('menuitem', {
+          name: 'Import from Hugging Face',
+        }),
+      );
+      expect(screen.getByTestId('import-dialog')).toBeInTheDocument();
+    });
+
+    it('offers the plain pull beside Serve where nothing imports', async () => {
+      layout = mockDesktopLayout();
+      mockOpenAddBackend = undefined;
+      mockPoolAddAction = undefined;
+      mockUseServing.mockReturnValue({
+        ...everything,
+        capabilities: {
+          'inst-1': {
+            ...everything.capabilities!['inst-1'],
+            search: false,
+          },
+        },
+      });
+      await renderSection();
+
+      expect(
+        within(header())
+          .getAllByRole('button')
+          .map(button => button.textContent),
+      ).toEqual(['Pull model', 'Serve model']);
+    });
   });
 
   it('offers "Stop serving…" on KServe rows and asks before deleting the CR', async () => {

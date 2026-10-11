@@ -1,7 +1,4 @@
 export {
-  ALL_FILTER_VALUES,
-  FILTER_CHIPS_CLASS_NAME,
-  FILTER_CHIPS_MAX,
   applyCatalogFilters,
   catalogFilterDimensions,
   catalogFilterKey,

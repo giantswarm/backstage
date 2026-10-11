@@ -181,12 +181,26 @@ describe('CustomizeModelsPanel', () => {
   });
 });
 
-describe('CustomizeModelsPanel provider filter (T49)', () => {
+describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
   const bodyRows = () => screen.getAllByRole('row').slice(1);
-  const chips = () =>
-    within(screen.getByRole('radiogroup', { name: 'Filter by provider' }))
-      .getAllByRole('radio')
-      .map(chip => chip.textContent);
+  /** The provider dropdown; `hidden` keeps it readable while it is open. */
+  const providerDropdown = () =>
+    screen.getByRole('button', { name: /Filter by provider/, hidden: true });
+  /** The provider dropdown's options, as "label count", read and closed. */
+  const providerOptions = async () => {
+    await userEvent.click(providerDropdown());
+    const options = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    await userEvent.keyboard('{Escape}');
+    return options;
+  };
+  /** Toggles one provider. */
+  const pickProvider = async (option: string) => {
+    await userEvent.click(providerDropdown());
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+    await userEvent.keyboard('{Escape}');
+  };
   const model = (index: number, provider: string): ModelRow => ({
     ...sonnet,
     id: `golem/support/m-${index}`,
@@ -200,38 +214,41 @@ describe('CustomizeModelsPanel provider filter (T49)', () => {
     mockServingInstallations = [];
   });
 
-  it('draws no filter over three models of one provider', async () => {
+  it('offers a one-option provider dropdown over three models of one provider', async () => {
     mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
     await renderPanel();
 
     expect(bodyRows()).toHaveLength(3);
-    expect(
-      screen.queryByRole('group', { name: 'Filters' }),
-    ).not.toBeInTheDocument();
+    expect(providerDropdown()).toHaveTextContent('ProviderAll');
+    expect(await providerOptions()).toEqual(['Anthropic 3']);
   });
 
   it('filters three models by provider, together with the search', async () => {
     mockModelRows = [sonnet, qwen, model(3, 'Anthropic')];
     await renderPanel();
 
-    expect(chips()).toEqual(['All 3', 'Anthropic 2', 'Ollama 1']);
-    await userEvent.click(screen.getByRole('radio', { name: 'Ollama 1' }));
+    expect(await providerOptions()).toEqual(['Anthropic 2', 'Ollama 1']);
+    await pickProvider('Ollama 1');
     expect(bodyRows()).toHaveLength(1);
     expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
+    await pickProvider('Anthropic 2');
+    expect(bodyRows()).toHaveLength(3);
   });
 
   it('says when a provider and the search leave nothing, and clears the filter', async () => {
     mockModelRows = [sonnet, qwen];
     await renderPanel('sonnet');
 
-    expect(chips()).toEqual(['All 1', 'Anthropic 1', 'Ollama 0']);
-    await userEvent.click(screen.getByRole('radio', { name: 'Ollama 0' }));
+    expect(await providerOptions()).toEqual(['Anthropic 1', 'Ollama 0']);
+    await pickProvider('Ollama 0');
     expect(
       screen.getByText('No models match “sonnet” with these filters.'),
     ).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Clear filters' }),
-    );
+    // The empty state's way back (the bar offers the same).
+    const [, emptyStateClear] = screen.getAllByRole('button', {
+      name: 'Clear filters',
+    });
+    await userEvent.click(emptyStateClear);
     expect(bodyRows()).toHaveLength(1);
   });
 
@@ -242,8 +259,7 @@ describe('CustomizeModelsPanel provider filter (T49)', () => {
     );
     await renderPanel();
 
-    expect(chips()).toEqual([
-      'All 300',
+    expect(await providerOptions()).toEqual([
       'Anthropic 75',
       'Ollama 75',
       'OpenAI 75',
@@ -254,8 +270,19 @@ describe('CustomizeModelsPanel provider filter (T49)', () => {
     );
     expect(bodyRows()).toHaveLength(40);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'vLLM 75' }));
+    await pickProvider('vLLM 75');
     expect(bodyRows()).toHaveLength(20);
     expect(screen.getByText('20 models shown, 55 more')).toBeInTheDocument();
+
+    await pickProvider('Ollama 75');
+    expect(screen.getByText('20 models shown, 130 more')).toBeInTheDocument();
+
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
+    );
+    expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
   });
 });

@@ -382,9 +382,10 @@ function NewAgentSkillsPageContent() {
     );
   }, [skills, trimmed]);
 
-  // Source and Usage, as on Customize → Skills (T49): each facet only once it
-  // would change the list, so three skills from one repository get no bar.
-  // Usage waits for the agents rather than calling every skill unused.
+  // Source and Usage, as on Customize → Skills (T49, T64): a multi-select
+  // dropdown each, always there — three skills from one repository get a
+  // Source dropdown of one option. Usage waits for the agents rather than
+  // calling every skill unused.
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const filters = useSkillFilters({

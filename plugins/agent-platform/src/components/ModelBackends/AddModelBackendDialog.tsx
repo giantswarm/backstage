@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -14,7 +14,11 @@ import {
 } from '@backstage/ui';
 import {
   dialogDismissLock,
+  fieldErrorProps,
+  MoreOptions,
   searchableIf,
+  useFieldValidation,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useBackendWrite } from '../../hooks/useModelManagerBackends';
@@ -32,7 +36,7 @@ import {
 import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { DIALOG_FORM_STYLE } from '../dialogForm';
+import { DIALOG_FOOTER_WRAP_STYLE, DIALOG_FORM_STYLE } from '../dialogForm';
 
 export type AddModelBackendDialogProps = {
   /** The installations that have a model-manager. */
@@ -139,6 +143,74 @@ export function toAddBackendInput(
   };
 }
 
+/** The default name of the discovery ConfigMap, as model-manager falls back to it. */
+const DEFAULT_DISCOVERY_NAME = 'agent-platform-model-serving';
+
+/** What each field says is wrong with it; empty when the form is complete. */
+export type AddBackendFieldErrors = Partial<
+  Record<
+    | 'installation'
+    | 'kind'
+    | 'endpoint'
+    | 'agentEndpoint'
+    | 'cluster'
+    | 'apiServer'
+    | 'caBundle'
+    | 'servingNamespace',
+    string
+  >
+>;
+
+/**
+ * The problems `toAddBackendInput` refuses the form for, per field — the
+ * same rules, so a form with no error here is one it accepts.
+ */
+export function addBackendFieldErrors(
+  installation: string | undefined,
+  kind: BackendKind | undefined,
+  form: FormState,
+): AddBackendFieldErrors {
+  const errors: AddBackendFieldErrors = {};
+  if (!installation) {
+    errors.installation = 'Pick the environment the backend registers on.';
+  }
+  if (!kind) {
+    errors.kind = 'Pick the kind of backend.';
+    return errors;
+  }
+  if (isHostBackendKind(kind)) {
+    if (!isValidEndpoint(form.endpoint)) {
+      errors.endpoint = form.endpoint.trim()
+        ? 'Enter the URL as http(s)://host:port.'
+        : 'Enter the URL model-manager reaches the backend at.';
+    }
+    if (form.agentEndpoint.trim() && !isValidEndpoint(form.agentEndpoint)) {
+      errors.agentEndpoint = 'Enter the URL as http(s)://host:port.';
+    }
+    return errors;
+  }
+  if (!form.servingNamespace.trim()) {
+    errors.servingNamespace = 'Enter the namespace the models are served in.';
+  }
+  if (form.target === 'remote') {
+    if (!form.cluster.trim()) {
+      errors.cluster = 'Enter the workload cluster’s name.';
+    }
+    if (!isValidEndpoint(form.apiServer)) {
+      errors.apiServer = form.apiServer.trim()
+        ? 'Enter the URL as https://host:port.'
+        : 'Enter the target apiserver’s URL.';
+    }
+    if (!form.caBundle.trim()) {
+      errors.caBundle = 'Paste the target apiserver’s CA, PEM.';
+    }
+  }
+  return errors;
+}
+
+/** The fields under More options, which a blocked Review opens on. */
+const ADVANCED_FIELDS: (keyof AddBackendFieldErrors)[] = ['agentEndpoint'];
+
 /**
  * Add model backend — from the Serving page, the agent-creation pattern: a
  * form, then `add_backend` with `dryRun` through muster as the signed-in
@@ -148,6 +220,12 @@ export function toAddBackendInput(
  * it answers that it is not available yet, shown verbatim). The portal
  * composes nothing: what the review shows is exactly what model-manager
  * would write. Credentials are a Secret *reference*, never a token.
+ *
+ * The app's standard form: one column; the knobs whose defaults fit most
+ * backends — the agent endpoint, the discovery ConfigMap, the credentials
+ * Secret — under More options; Review stays pressable, and a blocked Review
+ * marks each field that is wrong, under it, opens More options where one is
+ * in there, and moves the focus to the first (`useFieldValidation`).
  */
 export function AddModelBackendDialog({
   installations,
@@ -161,11 +239,14 @@ export function AddModelBackendDialog({
   );
   const [kind, setKind] = useState<BackendKind | undefined>();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [review, setReview] = useState<AddBackendResult>();
   const [applied, setApplied] = useState<AddBackendResult>();
   const [committed, setCommitted] = useState<AddBackendResult>();
   const write = useBackendWrite(installation);
   const startAnswer = useOpenGeneration(isOpen);
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
 
   useEffect(() => {
     if (!installation && installations.length > 0) {
@@ -178,6 +259,8 @@ export function AddModelBackendDialog({
       setReview(undefined);
       setApplied(undefined);
       setCommitted(undefined);
+      setMoreOptionsOpen(false);
+      validation.reset();
       write.reset();
     }
     // `write` changes identity every render; reset once per close.
@@ -208,6 +291,17 @@ export function AddModelBackendDialog({
     () => (kind ? toAddBackendInput(kind, form) : undefined),
     [kind, form],
   );
+  const errors = addBackendFieldErrors(installation, kind, form);
+  const errorFor = (field: keyof AddBackendFieldErrors) =>
+    validation.errorFor(errors[field]);
+  const installationError = useSelectFieldError(errorFor('installation'));
+  const kindError = useSelectFieldError(
+    validation.errorFor(
+      kinds.length === 0 && !kind
+        ? 'Every kind is registered on this environment already.'
+        : errors.kind,
+    ),
+  );
 
   const notConnected = write.failure?.kind === 'not-connected';
   const isBusy = write.isBusy;
@@ -215,7 +309,14 @@ export function AddModelBackendDialog({
 
   const onReview = async (event: FormEvent) => {
     event.preventDefault();
+    if (isBusy) {
+      return;
+    }
     if (!input) {
+      if (ADVANCED_FIELDS.some(field => errors[field])) {
+        setMoreOptionsOpen(true);
+      }
+      validation.reveal();
       return;
     }
     const isCurrent = startAnswer();
@@ -254,12 +355,25 @@ export function AddModelBackendDialog({
   };
 
   const isHost = kind ? isHostBackendKind(kind) : false;
-  const endpointInvalid =
-    form.endpoint.length > 0 && !isValidEndpoint(form.endpoint);
-  const agentEndpointInvalid =
-    form.agentEndpoint.length > 0 && !isValidEndpoint(form.agentEndpoint);
-  const apiServerInvalid =
-    form.apiServer.length > 0 && !isValidEndpoint(form.apiServer);
+
+  // More options' one line of what it holds now.
+  const moreOptionsSummary = [
+    isHost && form.agentEndpoint.trim()
+      ? `agent endpoint ${form.agentEndpoint.trim()}`
+      : undefined,
+    kind === 'kserve'
+      ? `discovery ConfigMap ${
+          form.discoveryNamespace.trim() || 'in the serving namespace'
+        }${form.discoveryNamespace.trim() ? '/' : ', '}${
+          form.discoveryName.trim() || DEFAULT_DISCOVERY_NAME
+        }`
+      : undefined,
+    form.credentialsSecret.trim()
+      ? `credentials Secret ${form.credentialsSecret.trim()}`
+      : 'no credentials Secret',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Dialog
@@ -267,10 +381,13 @@ export function AddModelBackendDialog({
       {...dialogDismissLock(write.isWriting, onOpenChange)}
       width="min(90vw, 860px)"
     >
-      <form onSubmit={onReview} style={DIALOG_FORM_STYLE}>
+      {/* `noValidate`: the fields are checked by this form (`useFieldValidation`),
+          not by the browser, whose own check would block the submit and try
+          to focus a field folded under More options. */}
+      <form onSubmit={onReview} style={DIALOG_FORM_STYLE} noValidate>
         <DialogHeader>Add model backend</DialogHeader>
         <DialogBody>
-          <Flex direction="column" gap="4">
+          <Flex direction="column" gap="4" ref={scope}>
             <Text variant="body-small" color="secondary">
               A backend you already run — an Ollama, LM Studio or Lemonade host,
               or a KServe cluster — registered with the environment's
@@ -281,54 +398,53 @@ export function AddModelBackendDialog({
             {!review && (
               <Flex direction="column" gap="3">
                 {installations.length > 1 && (
-                  <Select
-                    label="Environment"
-                    isRequired
-                    searchable={searchableIf(installations)}
-                    options={installations.map(id => ({ id, label: id }))}
-                    selectedKey={installation ?? null}
-                    onSelectionChange={key => {
-                      if (key) {
-                        setInstallation(String(key));
-                      }
-                    }}
-                  />
-                )}
-                <Select
-                  label="Kind"
-                  isRequired
-                  placeholder={
-                    kinds.length === 0
-                      ? 'Every kind is registered already'
-                      : 'Pick a backend kind'
-                  }
-                  options={kinds.map(id => ({
-                    id,
-                    label: BACKEND_KIND_LABEL[id],
-                  }))}
-                  selectedKey={kind ?? null}
-                  onSelectionChange={key =>
-                    setKind(key ? (String(key) as BackendKind) : undefined)
-                  }
-                />
-                {isHost && (
-                  <>
-                    <TextField
-                      label="Endpoint"
+                  <div>
+                    <Select
+                      label="Environment"
                       isRequired
-                      description="The base URL as model-manager reaches it, http(s)://host:port."
-                      value={form.endpoint}
-                      onChange={set('endpoint')}
-                      isInvalid={endpointInvalid}
+                      searchable={searchableIf(installations)}
+                      options={installations.map(id => ({ id, label: id }))}
+                      selectedKey={installation ?? null}
+                      onSelectionChange={key => {
+                        if (key) {
+                          setInstallation(String(key));
+                        }
+                      }}
+                      {...installationError.selectProps}
                     />
-                    <TextField
-                      label="Agent endpoint"
-                      description="The base URL as agent pods reach it, when it differs from the endpoint."
-                      value={form.agentEndpoint}
-                      onChange={set('agentEndpoint')}
-                      isInvalid={agentEndpointInvalid}
-                    />
-                  </>
+                    {installationError.message}
+                  </div>
+                )}
+                <div>
+                  <Select
+                    label="Kind"
+                    isRequired
+                    placeholder={
+                      kinds.length === 0
+                        ? 'Every kind is registered already'
+                        : 'Pick a backend kind'
+                    }
+                    options={kinds.map(id => ({
+                      id,
+                      label: BACKEND_KIND_LABEL[id],
+                    }))}
+                    selectedKey={kind ?? null}
+                    onSelectionChange={key =>
+                      setKind(key ? (String(key) as BackendKind) : undefined)
+                    }
+                    {...kindError.selectProps}
+                  />
+                  {kindError.message}
+                </div>
+                {isHost && (
+                  <TextField
+                    label="Endpoint"
+                    isRequired
+                    description="The base URL as model-manager reaches it, http(s)://host:port."
+                    value={form.endpoint}
+                    onChange={set('endpoint')}
+                    {...fieldErrorProps(errorFor('endpoint'))}
+                  />
                 )}
                 {kind === 'kserve' && (
                   <>
@@ -353,6 +469,7 @@ export function AddModelBackendDialog({
                           isRequired
                           value={form.cluster}
                           onChange={set('cluster')}
+                          {...fieldErrorProps(errorFor('cluster'))}
                         />
                         <TextField
                           label="Organization"
@@ -365,7 +482,7 @@ export function AddModelBackendDialog({
                           description="The target apiserver URL. It must trust the environment's Dex: every call presents your own token."
                           value={form.apiServer}
                           onChange={set('apiServer')}
-                          isInvalid={apiServerInvalid}
+                          {...fieldErrorProps(errorFor('apiServer'))}
                         />
                         <TextAreaField
                           label="CA bundle"
@@ -373,6 +490,7 @@ export function AddModelBackendDialog({
                           description="The target apiserver's CA, PEM. Never credentials."
                           value={form.caBundle}
                           onChange={set('caBundle')}
+                          {...fieldErrorProps(errorFor('caBundle'))}
                         />
                       </>
                     )}
@@ -382,23 +500,44 @@ export function AddModelBackendDialog({
                       description="Where the InferenceServices, download Jobs and the cache live on the target."
                       value={form.servingNamespace}
                       onChange={set('servingNamespace')}
-                    />
-                    <TextField
-                      label="Discovery ConfigMap namespace"
-                      description="Where the model-serving discovery ConfigMap lives (default: the serving namespace)."
-                      value={form.discoveryNamespace}
-                      onChange={set('discoveryNamespace')}
-                    />
-                    <TextField
-                      label="Discovery ConfigMap name"
-                      description="Default agent-platform-model-serving."
-                      value={form.discoveryName}
-                      onChange={set('discoveryName')}
+                      {...fieldErrorProps(errorFor('servingNamespace'))}
                     />
                   </>
                 )}
                 {kind && (
-                  <>
+                  <MoreOptions
+                    open={moreOptionsOpen}
+                    onOpenChange={setMoreOptionsOpen}
+                    summary={moreOptionsSummary}
+                  >
+                    <Text variant="body-small" color="secondary">
+                      The defaults work for most backends.
+                    </Text>
+                    {isHost && (
+                      <TextField
+                        label="Agent endpoint"
+                        description="The base URL as agent pods reach it, when it differs from the endpoint."
+                        value={form.agentEndpoint}
+                        onChange={set('agentEndpoint')}
+                        {...fieldErrorProps(errorFor('agentEndpoint'))}
+                      />
+                    )}
+                    {kind === 'kserve' && (
+                      <>
+                        <TextField
+                          label="Discovery ConfigMap namespace"
+                          description="Where the model-serving discovery ConfigMap lives (default: the serving namespace)."
+                          value={form.discoveryNamespace}
+                          onChange={set('discoveryNamespace')}
+                        />
+                        <TextField
+                          label="Discovery ConfigMap name"
+                          description={`Default ${DEFAULT_DISCOVERY_NAME}.`}
+                          value={form.discoveryName}
+                          onChange={set('discoveryName')}
+                        />
+                      </>
+                    )}
                     <TextField
                       label="Credentials Secret"
                       description={
@@ -417,7 +556,7 @@ export function AddModelBackendDialog({
                         onChange={set('credentialsKey')}
                       />
                     )}
-                  </>
+                  </MoreOptions>
                 )}
               </Flex>
             )}
@@ -469,50 +608,40 @@ export function AddModelBackendDialog({
             {committed && <CommitOutcome result={committed} />}
           </Flex>
         </DialogBody>
-        <DialogFooter>
-          <Flex gap="2" justify="end">
-            <Button
-              variant="secondary"
-              onPress={() => onOpenChange(false)}
-              isDisabled={write.isWriting}
-            >
-              {done ? 'Close' : 'Cancel'}
+        <DialogFooter style={DIALOG_FOOTER_WRAP_STYLE}>
+          <Button
+            variant="secondary"
+            onPress={() => onOpenChange(false)}
+            isDisabled={write.isWriting}
+          >
+            {done ? 'Close' : 'Cancel'}
+          </Button>
+          {!review && (
+            <Button type="submit" variant="primary" isPending={isBusy}>
+              {isBusy ? 'Rendering…' : 'Review'}
             </Button>
-            {!review && (
+          )}
+          {review && !done && (
+            <>
               <Button
-                type="submit"
-                variant="primary"
-                isDisabled={!input || isBusy}
+                variant="secondary"
+                onPress={() => setReview(undefined)}
+                isDisabled={isBusy}
               >
-                {isBusy ? 'Rendering…' : 'Review'}
+                Back
               </Button>
-            )}
-            {review && !done && (
-              <>
-                <Button
-                  variant="secondary"
-                  onPress={() => setReview(undefined)}
-                  isDisabled={isBusy}
-                >
-                  Back
-                </Button>
-                <Button
-                  variant="secondary"
-                  onPress={onCommit}
-                  isDisabled={isBusy}
-                >
-                  Commit
-                </Button>
-                <Button
-                  variant="primary"
-                  onPress={onDeploy}
-                  isDisabled={isBusy}
-                >
-                  {isBusy ? 'Deploying…' : 'Deploy'}
-                </Button>
-              </>
-            )}
-          </Flex>
+              <Button
+                variant="secondary"
+                onPress={onCommit}
+                isDisabled={isBusy}
+              >
+                Commit
+              </Button>
+              <Button variant="primary" onPress={onDeploy} isDisabled={isBusy}>
+                {isBusy ? 'Deploying…' : 'Deploy'}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </form>
     </Dialog>

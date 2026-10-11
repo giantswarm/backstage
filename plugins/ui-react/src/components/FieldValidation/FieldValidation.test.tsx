@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -155,6 +155,47 @@ describe('field validation', () => {
     );
 
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useFieldValidation in a scope of its own', () => {
+  function ScopedForm() {
+    const scope = useRef<HTMLDivElement>(null);
+    const [name, setName] = useState('');
+    const validation = useFieldValidation(scope);
+    return (
+      <>
+        <TextField label="Outside" {...fieldErrorProps('Always wrong')} />
+        <div ref={scope}>
+          <TextField
+            label="Name"
+            value={name}
+            onChange={setName}
+            {...fieldErrorProps(
+              validation.errorFor(name ? undefined : 'Name is required'),
+            )}
+          />
+        </div>
+        <button onClick={() => (name ? undefined : validation.reveal())}>
+          Submit
+        </button>
+        <button onClick={validation.reset}>Reset</button>
+      </>
+    );
+  }
+
+  it('focuses inside its scope, and goes quiet again on reset', async () => {
+    render(<ScopedForm />);
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    // The field outside the scope is invalid too, and first in the document.
+    expect(screen.getByRole('textbox', { name: /Name/ })).toHaveFocus();
+    expect(screen.getByText('Name is required')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(screen.queryByText('Name is required')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Name/ })).not.toHaveAttribute(
+      'aria-invalid',
+    );
   });
 });
 

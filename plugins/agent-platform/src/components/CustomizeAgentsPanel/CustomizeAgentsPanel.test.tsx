@@ -478,11 +478,28 @@ describe('CustomizeAgentsPanel', () => {
   });
 });
 
-describe('CustomizeAgentsPanel filters (T49)', () => {
-  const chips = (name: string) =>
-    within(screen.getByRole('radiogroup', { name }))
-      .getAllByRole('radio')
-      .map(chip => chip.textContent);
+describe('CustomizeAgentsPanel filters (T49, T64)', () => {
+  /** A filter's dropdown; `hidden` keeps it readable while its list is open. */
+  const filterDropdown = (field: string) =>
+    screen.getByRole('button', {
+      name: new RegExp(`Filter by ${field}`),
+      hidden: true,
+    });
+  /** A filter dropdown's options, as "label count", read and closed again. */
+  const filterOptions = async (field: string) => {
+    await userEvent.click(filterDropdown(field));
+    const options = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    await userEvent.keyboard('{Escape}');
+    return options;
+  };
+  /** Toggles one option of a filter dropdown. */
+  const pickFilter = async (field: string, option: string) => {
+    await userEvent.click(filterDropdown(field));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+    await userEvent.keyboard('{Escape}');
+  };
   const listed = (name = 'Agents') =>
     within(screen.getByRole('list', { name })).getAllByRole('listitem');
 
@@ -491,7 +508,7 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     mockMetaAgent = undefined;
   });
 
-  it('draws no filter over three agents on one model, none starred', async () => {
+  it('offers the model dropdown over three agents on one model, none starred', async () => {
     mockAgents = {
       rows: [
         row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
@@ -505,8 +522,11 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     await renderPanel();
 
     expect(listed()).toHaveLength(3);
+    // One model is still a dropdown, of one option (T64); nothing starred is
+    // nothing to offer.
+    expect(await filterOptions('model')).toEqual(['Sonnet 4.5 3']);
     expect(
-      screen.queryByRole('group', { name: 'Filters' }),
+      screen.queryByRole('button', { name: /Filter by favorites/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -524,30 +544,33 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     expect(
       await screen.findByRole('region', { name: 'Last used by you' }),
     ).toBeInTheDocument();
-    expect(chips('Filter by model')).toEqual([
-      'All 3',
-      'Sonnet 4.5 2',
-      'Opus 1',
-    ]);
-    expect(chips('Filter by favorites')).toEqual(['All 3', 'Starred 1']);
+    expect(await filterOptions('model')).toEqual(['Sonnet 4.5 2', 'Opus 1']);
+    expect(await filterOptions('favorites')).toEqual(['Starred 1']);
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Sonnet 4.5 2' }));
+    await pickFilter('model', 'Sonnet 4.5 2');
     expect(listed().map(item => item.textContent)).toEqual([
       expect.stringContaining('Support triage'),
       expect.stringContaining('Release notes'),
     ]);
     // The favorites count follows the model pick.
-    expect(chips('Filter by favorites')).toEqual(['All 2', 'Starred 0']);
+    expect(await filterOptions('favorites')).toEqual(['Starred 0']);
     expect(
       screen.queryByRole('region', { name: 'Last used by you' }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Starred 0' }));
+    await pickFilter('favorites', 'Starred 0');
     expect(
       screen.getByText('No agents match these filters.'),
     ).toBeInTheDocument();
+    // A second model widens the list to the starred Opus agent.
+    await pickFilter('model', 'Opus 1');
+    expect(listed('Favorite agents')).toHaveLength(1);
+
     await userEvent.click(
-      screen.getByRole('button', { name: 'Clear filters' }),
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
     );
     expect(screen.getByRole('list', { name: 'Favorite agents' })).toBeVisible();
     expect(listed()).toHaveLength(2);
@@ -562,7 +585,7 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     };
     await renderPanel();
     expect(
-      screen.queryByRole('radiogroup', { name: 'Filter by favorites' }),
+      screen.queryByRole('button', { name: /Filter by favorites/ }),
     ).not.toBeInTheDocument();
 
     await userEvent.click(
@@ -570,16 +593,16 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     );
 
     expect(
-      await screen.findByRole('radiogroup', { name: 'Filter by favorites' }),
+      await screen.findByRole('button', { name: /Filter by favorites/ }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Starred 1' }));
+    await pickFilter('favorites', 'Starred 1');
     expect(listed('Favorite agents')).toHaveLength(1);
     expect(
       screen.queryByRole('list', { name: 'Agents' }),
     ).not.toBeInTheDocument();
   });
 
-  it('picks one of many models from a select at 300 agents, paging from the first page', async () => {
+  it('picks several of many models at 300 agents, paging from the first page', async () => {
     mockAgents = {
       rows: manyAgents(300).map((each, index) => ({
         ...each,
@@ -591,24 +614,28 @@ describe('CustomizeAgentsPanel filters (T49)', () => {
     };
     await renderPanel();
 
-    // Twelve models are a select, not a row of twelve chips.
-    expect(
-      screen.queryByRole('radiogroup', { name: 'Filter by model' }),
-    ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('button', { name: 'Show 25 more agents' }),
     );
     expect(listed()).toHaveLength(50);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Filter by model/ }),
-    );
-    await userEvent.click(
-      await screen.findByRole('option', { name: 'Model 03 (25)' }),
-    );
+    const models = await filterOptions('model');
+    expect(models).toHaveLength(12);
+    expect(models[0]).toBe('Model 00 25');
 
+    await pickFilter('model', 'Model 03 25');
     // 25 agents on Model 03: one page, shown whole.
     expect(listed()).toHaveLength(25);
     expect(screen.queryByRole('button', { name: /more/ })).toBeNull();
+
+    // Model 04 too: 50 agents, paged again from the first page.
+    await pickFilter('model', 'Model 04 25');
+    expect(listed()).toHaveLength(25);
+    expect(
+      screen.getByRole('button', { name: 'Show 25 more agents' }),
+    ).toBeInTheDocument();
+    expect(filterDropdown('model')).toHaveTextContent(
+      'Model 2Model 03 and Model 04',
+    );
   });
 });

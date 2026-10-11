@@ -218,6 +218,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       <CatalogFilterBar
         dimensions={filters.dimensions}
         onSelect={filters.select}
+        onClear={filters.clear}
       />
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}

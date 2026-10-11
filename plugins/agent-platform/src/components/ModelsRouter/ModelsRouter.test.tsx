@@ -32,7 +32,9 @@ jest.mock('../ModelCachePage', () => ({
   ModelCachePage: () => <div>cache-view</div>,
 }));
 jest.mock('../ModelHostingKpis', () => ({
-  ModelHostingKpis: () => <div>hosting-kpis</div>,
+  ModelHostingKpis: ({ scope }: { scope?: string }) => (
+    <div>hosting-kpis: {scope ?? 'all'}</div>
+  ),
 }));
 
 // Whether an installation in view runs cluster-manager: what offers the GPU
@@ -210,18 +212,29 @@ describe('ModelsRouter', () => {
       expect(await screen.findByText('cache-view')).toBeInTheDocument();
     });
 
-    it('heads every view with the hosting figures', async () => {
-      renderTab('/agent-platform/models/serving');
+    it.each([
+      ['serving', 'serving-view', 'all'],
+      ['capacity', 'capacity-view without cache', 'gpu'],
+      ['cache', 'cache-view', 'cache'],
+    ])(
+      'heads the %s view with the figures about what it lists',
+      async (view, content, scope) => {
+        mockClusterManager = ['inst-1'];
+        renderTab(`/agent-platform/models/${view}`);
 
-      expect(await screen.findByText('hosting-kpis')).toBeInTheDocument();
-    });
+        expect(await screen.findByText(content)).toBeInTheDocument();
+        // One row, scoped: never the full row repeated on every tab.
+        expect(screen.getAllByText(/^hosting-kpis/)).toHaveLength(1);
+        expect(screen.getByText(`hosting-kpis: ${scope}`)).toBeInTheDocument();
+      },
+    );
 
     it('shows no figures on a portal without a serving layer', async () => {
       mockUseServing.mockReturnValue(noServingLayer);
       renderTab('/agent-platform/models/serving');
 
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
-      expect(screen.queryByText('hosting-kpis')).toBeNull();
+      expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
     });
 
     it('leaves the model page to frame itself, with no tab strip above it', async () => {
