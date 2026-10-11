@@ -1,18 +1,11 @@
-import { useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex } from '@backstage/ui';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import { readMetaAgents } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
-import { useCreateSession } from '../../hooks/useCreateSession';
-import { useMetaAgent } from '../../hooks/useMetaAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
-import { sessionDetailRouteRef } from '../../routes';
+import { useMetaAgentHandoff } from '../../hooks/useMetaAgentHandoff';
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { MetaAgentBanner } from '../MetaAgentBanner';
-import { isStartableAgent } from '../NewSessionComposer';
 import {
   skillCreationPrompt,
   type SkillCreationTarget,
@@ -21,9 +14,12 @@ import {
 export type SkillCreationAssistProps = {
   /**
    * What the session is about, read when the person presses the button — so
-   * a new skill carries the repository, name and description as typed then.
+   * a new skill carries the repository, name, description and instructions as
+   * typed then.
    */
   getTarget: () => SkillCreationTarget;
+  /** The Edit Skill form: the button reads "Edit with …". */
+  isEdit?: boolean;
 };
 
 /**
@@ -32,9 +28,12 @@ export type SkillCreationAssistProps = {
  * SKILL.md only, so complex, nested skills — reference files, scripts, data —
  * go through that agent instead (multi-file-skills plan, PO decision 1). The
  * same tinted strip as the create-agent flow's "Let Swarm Operator help"
- * (`MetaAgentBanner`); pressing it starts a session with the agent, its first
- * message naming the repository (or the skill being changed), and opens it
- * like every other session entry point.
+ * (`MetaAgentBanner`), but a "<verb> with X" hand-off (see its naming
+ * contract): pressing it starts a session with the agent and opens it, so the
+ * strip says so. The form is left behind, so its input goes with the session
+ * instead of being lost (UX review H1): the first message carries everything
+ * typed — a new skill's name, description and instructions, or what was
+ * changed of an existing one — fenced as a draft (`skillCreationPrompt`).
  *
  * Hidden entirely — no teaser, no disabled button — while the role is
  * unconfigured, still resolving, names an agent that does not exist, or names
@@ -55,47 +54,18 @@ export function SkillCreationAssist(props: SkillCreationAssistProps) {
   );
 }
 
-function SkillCreationAssistControl({ getTarget }: SkillCreationAssistProps) {
-  const creator = useMetaAgent('skillCreation');
-  const navigate = useNavigate();
-  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
-  const { createSession, isCreating, error } = useCreateSession(
-    'skillCreationAssist',
-  );
+function SkillCreationAssistControl({
+  getTarget,
+  isEdit = false,
+}: SkillCreationAssistProps) {
+  const {
+    agent: creator,
+    start,
+    isCreating,
+    error,
+  } = useMetaAgentHandoff('skillCreation', 'skillCreationAssist');
 
-  const onStart = useCallback(async () => {
-    if (!creator) {
-      return;
-    }
-    const prompt = skillCreationPrompt(getTarget());
-    let sessionId: string;
-    try {
-      sessionId = await createSession({ agent: creator, prompt });
-    } catch {
-      // Shown from the hook's error, below the strip.
-      return;
-    }
-    const href = sessionDetailRoute?.({
-      installation: creator.installation,
-      sessionId,
-    });
-    if (!href) {
-      return;
-    }
-    // The prompt travels with the navigation and is sent by the session
-    // detail page — see "Starting a session" in docs/agent-platform.md.
-    navigate(href, {
-      state: {
-        [NEW_SESSION_STATE_KEY]: {
-          text: prompt,
-          agentNamespace: creator.namespace,
-          agentName: creator.technicalName,
-        },
-      },
-    });
-  }, [createSession, creator, getTarget, navigate, sessionDetailRoute]);
-
-  if (!creator || !isStartableAgent(creator)) {
+  if (!creator) {
     return null;
   }
   return (
@@ -104,16 +74,20 @@ function SkillCreationAssistControl({ getTarget }: SkillCreationAssistProps) {
         agent={creator}
         label={`Write complex skills with ${creator.name}`}
         title="Rather let an agent write it?"
-        description={`This form is for simple skills; for complex, multi-file ones, work with ${creator.name}.`}
+        description={`This form is for simple skills; for complex, multi-file ones, start a session with ${creator.name}, which continues from what you typed.`}
         action={
           <Button
             variant="secondary"
             size="small"
             iconEnd={<ArrowForwardIcon fontSize="small" />}
             isDisabled={isCreating}
-            onPress={onStart}
+            onPress={() => {
+              start(skillCreationPrompt(getTarget())).catch(() => {});
+            }}
           >
-            {isCreating ? 'Starting…' : `Let ${creator.name} help`}
+            {isCreating
+              ? 'Starting…'
+              : `${isEdit ? 'Edit' : 'Create'} with ${creator.name}`}
           </Button>
         }
       />

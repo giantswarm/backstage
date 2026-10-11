@@ -3,6 +3,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import type { InstallationScope } from '@giantswarm/backstage-plugin-gs';
+import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerAvailability,
@@ -46,9 +47,13 @@ export type GpuNodePoolControls = {
   /**
    * **Add GPU node pool** as a page header's action (`ModelHostingActions`):
    * offered while the installations are read too, disabled until one lists
-   * cluster-manager; `undefined` where none does. Opens the flow's page.
+   * cluster-manager, and disabled with a reason where none of them has a
+   * cluster; `undefined` where none lists cluster-manager. Opens the flow's
+   * page.
    */
-  addAction: { open: () => void; isDisabled: boolean } | undefined;
+  addAction:
+    | { open: () => void; isDisabled: boolean; disabledReason?: string }
+    | undefined;
   /** The Remove dialogs (pool, cache); render once, anywhere in the page. */
   dialogs: JSX.Element | undefined;
   /** The pools list with **Remove pool**; null where cluster-manager is absent. */
@@ -60,6 +65,13 @@ export type GpuNodePoolControls = {
    */
   cachePanel: JSX.Element | undefined;
 };
+
+/**
+ * Why Add GPU node pool is disabled when every environment that runs
+ * cluster-manager answered with no cluster: the flow could not succeed.
+ */
+export const NO_CLUSTER_REASON =
+  'No environment in reach has a cluster to add a GPU node pool to.';
 
 /**
  * The router-state key under which Add GPU node pool hands the pool it
@@ -210,9 +222,26 @@ export function useGpuNodePoolControls(
     ? HIDE_INSTALLATION
     : undefined;
 
+  // Every installation with cluster-manager answered, and none has a cluster
+  // to add a pool to: the flow cannot succeed, so the action says why
+  // instead of opening it. An installation whose read failed gets the
+  // benefit of the doubt.
+  const noCluster =
+    available &&
+    !pools.isLoading &&
+    availability.available.every(installation =>
+      pools.clusterless.includes(installation),
+    );
   const addAction = useMemo(
-    () => (shown ? { open: openAdd, isDisabled: !available } : undefined),
-    [shown, openAdd, available],
+    () =>
+      shown
+        ? {
+            open: openAdd,
+            isDisabled: !available || noCluster,
+            ...(noCluster ? { disabledReason: NO_CLUSTER_REASON } : {}),
+          }
+        : undefined,
+    [shown, openAdd, available, noCluster],
   );
 
   // The opened pool's intent, as the panel shows it.
@@ -229,19 +258,35 @@ export function useGpuNodePoolControls(
     };
   }, [opened, intents, servedModels, runner]);
 
+  // Without a cluster to add to, the button says why instead of opening it.
+  const addButton = noCluster ? (
+    <DisabledAction reason={NO_CLUSTER_REASON}>
+      {describedBy => (
+        <Button
+          variant="secondary"
+          iconStart={<AddIcon />}
+          isDisabled
+          aria-describedby={describedBy}
+        >
+          Add GPU node pool
+        </Button>
+      )}
+    </DisabledAction>
+  ) : (
+    <Button
+      variant="secondary"
+      iconStart={<AddIcon />}
+      onPress={openAdd}
+      isDisabled={!available}
+    >
+      Add GPU node pool
+    </Button>
+  );
+
   return {
     available,
     isLoading: availability.isLoading,
-    addButton: shown ? (
-      <Button
-        variant="secondary"
-        iconStart={<AddIcon />}
-        onPress={openAdd}
-        isDisabled={!available}
-      >
-        Add GPU node pool
-      </Button>
-    ) : undefined,
+    addButton: shown ? addButton : undefined,
     addAction,
     dialogs: available ? (
       <>

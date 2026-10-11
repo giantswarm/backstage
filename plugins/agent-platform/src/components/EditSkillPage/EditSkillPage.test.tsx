@@ -170,7 +170,7 @@ describe('EditSkillPage', () => {
     const { unmount } = await renderPage();
     expect(
       screen.queryByText(
-        'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.',
+        'This form is for simple skills; for complex, multi-file ones, start a session with Skill Creator, which continues from what you typed.',
       ),
     ).not.toBeInTheDocument();
     unmount();
@@ -179,11 +179,11 @@ describe('EditSkillPage', () => {
     await renderPage();
     expect(
       screen.getByText(
-        'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.',
+        'This form is for simple skills; for complex, multi-file ones, start a session with Skill Creator, which continues from what you typed.',
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
     ).toBeInTheDocument();
   });
 

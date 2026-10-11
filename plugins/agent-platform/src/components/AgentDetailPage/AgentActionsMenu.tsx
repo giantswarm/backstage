@@ -159,7 +159,7 @@ export function AgentActionsMenu({
           ) : null}
           {writeMode !== undefined ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
-              Update skills…
+              Update all skills to latest…
             </MenuItem>
           ) : null}
           {writeMode !== undefined ? (

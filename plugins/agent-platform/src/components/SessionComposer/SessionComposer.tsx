@@ -79,10 +79,12 @@ export type SessionComposerProps = {
    */
   autoFocus?: boolean;
   /**
-   * Whether the last turn reached a terminal state, which changes what sending
-   * means — a finished session is resumed by it rather than continued.
+   * Whether the last turn reached a terminal state: the agent has spoken, so
+   * the message is a reply to it (T100 H4).
    */
   isFinished: boolean;
+  /** The agent's display name, for the reply placeholder. */
+  agentName?: string;
   /**
    * Why the composer cannot be used right now, when it cannot.
    *
@@ -206,6 +208,7 @@ export function SessionComposer({
   isAgentWorking,
   isStalled = false,
   isFinished,
+  agentName,
   disabledReason,
   attachment,
   error,
@@ -324,8 +327,9 @@ export function SessionComposer({
   let placeholder = 'Send a message to this session…';
   if (newSessionReplacesSend) {
     placeholder = 'Start a new session with this message…';
-  } else if (isFinished) {
-    placeholder = 'Send a message to resume this session…';
+  } else if (isFinished && agentName) {
+    // The session is idle, not over: the next message continues it.
+    placeholder = `Reply to ${agentName}…`;
   }
 
   let caption: string;
@@ -345,8 +349,8 @@ export function SessionComposer({
       : 'The agent is working. You can reply once this turn finishes.';
   } else {
     // The prototype's resting caption, whether or not the last turn finished:
-    // a finished session is the usual state between turns, and the
-    // placeholder already says a message resumes it.
+    // an idle session is the usual state between turns, and the placeholder
+    // already says a message continues it.
     caption = COMPOSER_DISCLAIMER;
   }
 

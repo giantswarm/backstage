@@ -9,6 +9,7 @@ import {
 } from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
+  DisabledAction,
   MENU_WIDTH,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -28,7 +29,54 @@ export type HostingAction = {
   onAction: () => void;
   /** Offered but not usable yet (e.g. still reading where it would apply). */
   isDisabled?: boolean;
+  /**
+   * Why a disabled action cannot succeed here, in one sentence: a button
+   * says it on hover, focus and press (`DisabledAction`); in the ⋯ menu,
+   * where a disabled item cannot say why, the action is left out.
+   */
+  disabledReason?: string;
 };
+
+/** Whether the action is disabled for a reason it can only say as a button. */
+function isUnavailable(action: HostingAction): boolean {
+  return Boolean(action.isDisabled && action.disabledReason);
+}
+
+/** One header button, saying why when it is disabled for a reason. */
+function ActionButton({
+  action,
+  variant,
+}: {
+  action: HostingAction;
+  variant: 'primary' | 'secondary';
+}): JSX.Element {
+  if (isUnavailable(action)) {
+    return (
+      <DisabledAction reason={action.disabledReason!}>
+        {describedBy => (
+          <Button
+            variant={variant}
+            iconStart={action.icon}
+            isDisabled
+            aria-describedby={describedBy}
+          >
+            {action.label}
+          </Button>
+        )}
+      </DisabledAction>
+    );
+  }
+  return (
+    <Button
+      variant={variant}
+      iconStart={action.icon}
+      onPress={action.onAction}
+      isDisabled={action.isDisabled}
+    >
+      {action.label}
+    </Button>
+  );
+}
 
 export type ModelHostingActionsProps = {
   /** The view's main action, rightmost (Serve model, Add GPU node pool). */
@@ -48,7 +96,9 @@ export type ModelHostingActionsProps = {
  *
  * At phone width (`usePhoneLayout`) one button stays — the primary, else the
  * secondary — and the others move into the menu, so the header is one
- * button and the ⋯ wide. A menu that would hold nothing is left out.
+ * button and the ⋯ wide. A menu that would hold nothing is left out, and so
+ * is a menu item disabled for a reason (`disabledReason`): only a button can
+ * say why.
  */
 export function ModelHostingActions({
   primary,
@@ -61,7 +111,7 @@ export function ModelHostingActions({
   const menuItems = [
     ...(secondary && secondary !== shownSecondary ? [secondary] : []),
     ...more,
-  ];
+  ].filter(action => !isUnavailable(action));
   if (!primary && !shownSecondary && menuItems.length === 0) {
     return null;
   }
@@ -69,25 +119,9 @@ export function ModelHostingActions({
   return (
     <Flex align="center" gap="2">
       {shownSecondary && (
-        <Button
-          variant="secondary"
-          iconStart={shownSecondary.icon}
-          onPress={shownSecondary.onAction}
-          isDisabled={shownSecondary.isDisabled}
-        >
-          {shownSecondary.label}
-        </Button>
+        <ActionButton action={shownSecondary} variant="secondary" />
       )}
-      {primary && (
-        <Button
-          variant="primary"
-          iconStart={primary.icon}
-          onPress={primary.onAction}
-          isDisabled={primary.isDisabled}
-        >
-          {primary.label}
-        </Button>
-      )}
+      {primary && <ActionButton action={primary} variant="primary" />}
       {menuItems.length > 0 && (
         <MenuTrigger>
           <ButtonIcon

@@ -280,7 +280,11 @@ function CreateAgentReview() {
   const valuesYaml = dryRun ? dump(dryRun.manifests.values, YAML_OPTS) : '';
 
   return (
-    <AgentWizardFrame step="review" onBack={onBack}>
+    <AgentWizardFrame
+      step="review"
+      onBack={onBack}
+      isProposed={commitResult?.commit !== undefined}
+    >
       <Flex direction="column" gap="5">
         <WizardStepHeading title="Check and create">
           The agent is ready to chat with about a minute after you create it.

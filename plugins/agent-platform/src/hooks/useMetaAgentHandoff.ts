@@ -8,7 +8,10 @@ import { isStartableAgent } from '../components/NewSessionComposer';
 import { sessionDetailRouteRef } from '../routes';
 import { useCreateSession, type SessionEntryPoint } from './useCreateSession';
 import { useMetaAgent } from './useMetaAgent';
-import { NEW_SESSION_STATE_KEY } from './useNewSessionHandoff';
+import {
+  NEW_SESSION_STATE_KEY,
+  type NewSessionHandoff,
+} from './useNewSessionHandoff';
 
 export type MetaAgentHandoff = {
   /**
@@ -26,9 +29,9 @@ export type MetaAgentHandoff = {
  * A hand-off to a meta agent (decision G13): one press creates a session with
  * the agent serving `role` and opens it, the prompt travelling with the
  * navigation as its first message — the session detail page sends it (see
- * "Starting a session" in docs/agent-platform.md). The machinery of the skill
- * forms' `SkillCreationAssist` and the skill page's Evaluate, for features
- * that hand over the same way. The start reports
+ * "Starting a session" in docs/agent-platform.md), marked `prepared` so the
+ * session page captions it as the portal's, not the person's. The machinery
+ * of every "<verb> with X" hand-off (`MetaAgentBanner`'s naming contract). The start reports
  * `AgentPlatform.sessionStarted` with `entryPoint`.
  *
  * Reads `useAgents`, so it must be called under an `AgentsDataProvider`.
@@ -68,7 +71,8 @@ export function useMetaAgentHandoff(
             text: prompt,
             agentNamespace: agent.namespace,
             agentName: agent.technicalName,
-          },
+            prepared: true,
+          } satisfies NewSessionHandoff,
         },
       });
     },

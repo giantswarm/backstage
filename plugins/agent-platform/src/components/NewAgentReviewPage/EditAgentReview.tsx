@@ -249,7 +249,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const skillNames = editState.skills.map(skill => skill.name);
 
   return (
-    <AgentWizardFrame step="review" onBack={onBack}>
+    <AgentWizardFrame step="review" onBack={onBack} isProposed={isCommitted}>
       <Flex direction="column" gap="5">
         <WizardStepHeading title="Check and save">
           {viaPullRequest

@@ -18,6 +18,29 @@ import {
 } from '../../lib/serving';
 import { hasRowActions, ServedModelActions } from './ServedModelActions';
 
+/** The agents the Remove model config dialog reads, per test. */
+let mockAgents: {
+  rows: Array<Record<string, unknown>>;
+  isLoading: boolean;
+  unreachableInstallations: string[];
+};
+jest.mock('../AgentsDataProvider', () => ({
+  AgentsDataProvider: ({ children }: { children: unknown }) => children,
+  useAgents: () => mockAgents,
+}));
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => undefined,
+}));
+
+const agentRow = (name: string, modelConfigId: string) => ({
+  id: `lab/kagent/${name}`,
+  installation: 'lab',
+  namespace: 'kagent',
+  technicalName: name,
+  name,
+  modelConfigId,
+});
+
 const loadModel = jest.fn();
 const unloadModel = jest.fn();
 const deleteModel = jest.fn();
@@ -156,6 +179,7 @@ async function openMenu(name: string) {
 }
 
 beforeEach(() => {
+  mockAgents = { rows: [], isLoading: false, unreachableInstallations: [] };
   [loadModel, unloadModel, deleteModel, wireModel, unwireModel, post].forEach(
     fn => fn.mockReset(),
   );
@@ -190,7 +214,88 @@ describe('ServedModelActions', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map(item => item.textContent),
-    ).toEqual(['Unload', 'Remove model config', 'Delete…']);
+    ).toEqual(['Unload', 'Remove model config…', 'Delete…']);
+  });
+
+  it('asks before removing the model config, naming the agents that use it', async () => {
+    unwireModel.mockResolvedValue(undefined);
+    mockAgents.rows = [
+      agentRow('Lab Helper', 'lab/kagent/qwen3-5-9b'),
+      agentRow('Other', 'lab/kagent/another-config'),
+    ];
+    await render(loadedWired);
+    const menu = await openMenu('qwen3.5:9b');
+    await userEvent.click(within(menu).getByText('Remove model config…'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('Remove model config "qwen3-5-9b"?'),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        'This agent uses it and fails until it gets another model.',
+      ),
+    ).toBeInTheDocument();
+    const list = within(dialog).getByRole('grid', {
+      name: 'Agents using this model config',
+    });
+    expect(within(list).getByText('Lab Helper')).toBeInTheDocument();
+    expect(within(list).queryByText('Other')).not.toBeInTheDocument();
+    expect(unwireModel).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Remove model config' }),
+    );
+    await waitFor(() =>
+      expect(unwireModel).toHaveBeenCalledWith('lab', 'qwen3.5:9b', {
+        backend: 'ollama',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'qwen3.5:9b: model config removed',
+        status: 'success',
+      }),
+    );
+  });
+
+  it('still confirms with a generic sentence when the agents cannot be read', async () => {
+    unwireModel.mockResolvedValue(undefined);
+    mockAgents.unreachableInstallations = ['lab'];
+    await render(loadedWired);
+    const menu = await openMenu('qwen3.5:9b');
+    await userEvent.click(within(menu).getByText('Remove model config…'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(
+        'Agents that use it fail until they get another model.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Remove model config' }),
+    );
+    await waitFor(() => expect(unwireModel).toHaveBeenCalled());
+  });
+
+  it('says no agent uses it, and keeps the dialog open with the error when removing fails', async () => {
+    unwireModel.mockRejectedValue(new Error('model-manager said no'));
+    await render(loadedWired);
+    const menu = await openMenu('qwen3.5:9b');
+    await userEvent.click(within(menu).getByText('Remove model config…'));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('No agent uses it.')).toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Remove model config' }),
+    );
+    expect(
+      await within(dialog).findByText('model-manager said no'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('renders per capability flag: no load/unload without them, no wiring without wire', async () => {
@@ -431,7 +536,7 @@ describe('ServedModelActions', () => {
       // portal's, so model-manager may not remove it.
       expect(within(menu).queryByText('Delete…')).not.toBeInTheDocument();
       expect(
-        within(menu).queryByText('Remove model config'),
+        within(menu).queryByText('Remove model config…'),
       ).not.toBeInTheDocument();
 
       await userEvent.click(within(menu).getByText('Stop serving…'));
@@ -451,7 +556,12 @@ describe('ServedModelActions', () => {
       );
       const menu = await openMenu('qwen3-14b');
 
-      await userEvent.click(within(menu).getByText('Remove model config'));
+      await userEvent.click(within(menu).getByText('Remove model config…'));
+      await userEvent.click(
+        within(await screen.findByRole('dialog')).getByRole('button', {
+          name: 'Remove model config',
+        }),
+      );
 
       await waitFor(() =>
         expect(unwireModel).toHaveBeenCalledWith('gpu', 'qwen3-14b', {

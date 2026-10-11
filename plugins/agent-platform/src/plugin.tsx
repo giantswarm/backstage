@@ -395,7 +395,7 @@ const connectorUsedBy = createExtension({
   },
 });
 
-// The shell workflow page's "Edit via agent": the hand-off to the workflow
+// The shell workflow page's "Edit with <agent>": the hand-off to the workflow
 // agent (`metaAgents.workflowManagement`).
 //
 // **The contract, a cross-plugin coupling by string:** the target node is

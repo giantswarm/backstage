@@ -84,7 +84,7 @@ describe('AgentSessionsCard in the shell', () => {
     expect(screen.getByText('Check the clusters')).toBeInTheDocument();
     // The Sessions page's state words, not the classic list's.
     expect(screen.getByText('Waiting for you')).toBeInTheDocument();
-    expect(screen.getByText('Finished')).toBeInTheDocument();
+    expect(screen.getByText('Idle')).toBeInTheDocument();
     expect(screen.queryByText('Completed')).not.toBeInTheDocument();
     // Two rows: no pagination chrome and nothing to search or filter.
     expect(screen.queryByText(/of 2/)).not.toBeInTheDocument();

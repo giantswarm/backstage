@@ -5,6 +5,7 @@ import {
   Accordion,
   AccordionPanel,
   AccordionTrigger,
+  Badge,
   Button,
   Flex,
   Text,
@@ -30,6 +31,7 @@ import type { ClientServingSummary } from '../../lib/serving';
 import {
   canonicalSkillId,
   repoSlug,
+  sameCommit,
   skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
@@ -187,18 +189,33 @@ function SkillCard({
   const href =
     skillsRoute && detailPath ? `${skillsRoute()}/${detailPath}` : undefined;
   const from = skill.source === 'git' ? repoSlug(skill.url) : skill.url;
+  // Behind the catalog's head of the skill's branch — the comparison Skill ›
+  // Used by makes, from the catalog this page has read already: no read of
+  // its own. Unknown (no catalog entry, no pin) says nothing.
+  const isBehind =
+    skill.source === 'git' &&
+    Boolean(discovered?.commit && skill.pin) &&
+    !sameCommit(skill.pin, discovered!.commit);
+  const name = href ? (
+    // core-components' `Link`, which routes client-side.
+    <Link to={href}>
+      <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
+        {label}
+      </Text>
+    </Link>
+  ) : (
+    <Text variant="body-medium">{label}</Text>
+  );
 
   return (
     <li className={classes.skillCard}>
-      {href ? (
-        // core-components' `Link`, which routes client-side.
-        <Link to={href}>
-          <Text as="span" variant="body-medium" style={{ color: 'inherit' }}>
-            {label}
-          </Text>
-        </Link>
+      {isBehind ? (
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          {name}
+          <Badge size="small">Update available</Badge>
+        </Flex>
       ) : (
-        <Text variant="body-medium">{label}</Text>
+        name
       )}
       {discovered?.description && (
         <Text
@@ -239,7 +256,7 @@ function SkillsSection({
   const action =
     onUpdateSkills && skills.length > 0 ? (
       <Button variant="secondary" size="small" onPress={onUpdateSkills}>
-        Update skills…
+        Update all skills to latest…
       </Button>
     ) : undefined;
 
@@ -423,7 +440,7 @@ export type AgentPlainOverviewProps = {
   modelServing: ClientServingSummary | undefined;
   /** The agent's tools view, which resolves the toolset to exact tools. */
   toolsHref?: string;
-  /** Opens Update skills. Absent when the page cannot write the agent. */
+  /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
   onUpdateSkills?: () => void;
   /** Opens the edit page, where skills are added. Absent when not editable. */
   onAddSkills?: () => void;

@@ -44,8 +44,10 @@ import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
+  describeSessionState,
   isRuntimeLostFailureText,
   RuntimeLoss,
+  SessionState,
   SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -875,32 +877,47 @@ export function SessionDetailPage() {
   }, [cancelTurn, currentTaskId, state?.isActive]);
 
   /**
+   * The session's state as this page shows it: the one source for the
+   * header's badge, the composer and the rail (T100 H4).
+   *
+   * The polled state lags the page: a send is in flight before any poll has
+   * seen its task, so the poll still reads "no activity" or the previous
+   * turn's end while the body already says "Working…". `showWorking` is the
+   * signal that row uses, so while it holds the state is Working, and nothing
+   * on the page can contradict the body.
+   */
+  const shownState = useMemo<SessionState | undefined>(
+    () => (showWorking ? describeSessionState('working') : state),
+    [showWorking, state],
+  );
+
+  /**
    * What the rail should believe about *this* session.
    *
    * The rail's own source is a summary the backend caches for 15 s, so it is
    * structurally behind this page — which polls the session's tasks directly and
    * additionally knows about a send still in flight. Left to the summary, a
-   * message appended to a finished session would leave it filed under "Recently
-   * finished" while the agent is visibly working beside it.
+   * message appended to an idle session would leave it filed as idle while the
+   * agent is visibly working beside it.
    *
-   * `showWorking` is the same signal the "Working…" indicator uses, so the rail
-   * and the page cannot disagree about whether the agent is busy. When nothing
-   * is in flight this still overrides, with the state and timestamp read from
-   * the same task — a fresher copy of what the summary would eventually say.
+   * Built from {@link shownState}, so the rail, the header and the "Working…"
+   * row cannot disagree about whether the agent is busy. When nothing is in
+   * flight this still overrides, with the state and timestamp read from the
+   * same task — a fresher copy of what the summary would eventually say.
    */
   const currentSessionState = useMemo<SessionStateEntry | undefined>(() => {
     if (showWorking) {
       return { sessionId, state: 'working', changedAt: Date.now() };
     }
-    if (!state) {
+    if (!shownState) {
       return undefined;
     }
     return {
       sessionId,
-      state: state.raw,
+      state: shownState.raw,
       ...(stateChangedAt === undefined ? {} : { changedAt: stateChangedAt }),
     };
-  }, [showWorking, sessionId, state, stateChangedAt]);
+  }, [showWorking, sessionId, shownState, stateChangedAt]);
 
   // The conversation column and the chat bar docked at its end, held as state
   // through callback refs: both exist only on the loaded path (and the dock
@@ -1160,7 +1177,8 @@ export function SessionDetailPage() {
           // a reply.
           isAgentWorking={isConfirming ? false : showWorking || isStalled}
           isStalled={isStalled}
-          isFinished={Boolean(state && !state.isActive)}
+          isFinished={Boolean(shownState && !shownState.isActive)}
+          agentName={row.agentName || undefined}
           // The prototype's waiting caption, naming who waits on what and
           // pointing at the card attached just above the box. A plain message
           // cannot answer it (it would open a new turn), which is why the box
@@ -1298,11 +1316,11 @@ export function SessionDetailPage() {
   const stateBadges = (
     <>
       {/* The dot and word the sessions list and the rail draw (T98). */}
-      {state ? (
+      {shownState ? (
         <StatusDot
-          tone={state.tone}
-          label={state.label}
-          colorVar={sessionStateDotVar(state.tone)}
+          tone={shownState.tone}
+          label={shownState.label}
+          colorVar={sessionStateDotVar(shownState.tone)}
         />
       ) : (
         <StatusDot
@@ -1428,6 +1446,12 @@ export function SessionDetailPage() {
           stalledSince={stalledSince}
           onCancelTurn={isStalled ? stopTurn : undefined}
           isCancellingTurn={cancellation.isCancelling}
+          // A hand-off's opener was written by the portal, not the person
+          // (UX review M20). Known only from the router state of the arrival:
+          // kagent stores no such flag, so a later visit shows it plain.
+          firstMessageCaption={
+            handoff?.prepared ? 'Prepared by the portal' : undefined
+          }
         />
 
         {bottomControl}

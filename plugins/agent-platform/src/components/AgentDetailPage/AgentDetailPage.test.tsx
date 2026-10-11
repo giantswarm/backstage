@@ -2349,16 +2349,37 @@ describe('AgentDetailPage inside the agent shell', () => {
       ).toBeInTheDocument();
       // The pin is a technical detail.
       expect(within(skills).queryByText(/0123456789ab/)).toBeNull();
+      // At the catalog's head: nothing to update.
+      expect(within(skills).queryByText('Update available')).toBeNull();
     });
 
-    it('keeps Update skills reachable for an agent agent-manager can write', async () => {
+    it("marks a skill pinned behind the catalog's head, from the catalog alone", async () => {
+      mockSkillCatalog.skills = [
+        {
+          repoUrl: 'https://github.com/giantswarm/skills',
+          path: 'pr-review',
+          ref: 'main',
+          commit: 'fedcba9876543210fedcba9876543210fedcba98',
+          name: 'PR review conventions',
+          description: 'How we review pull requests at Giant Swarm.',
+        },
+      ];
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      const skills = screen.getByRole('list', { name: 'Skills' });
+      expect(within(skills).getByText('Update available')).toBeInTheDocument();
+    });
+
+    it('keeps Update all skills to latest reachable for an agent agent-manager can write', async () => {
       withAgentManager();
       stubResources({ resource: makeAgent() });
 
       await renderShell();
 
       expect(
-        screen.getByRole('button', { name: 'Update skills…' }),
+        screen.getByRole('button', { name: 'Update all skills to latest…' }),
       ).toBeInTheDocument();
     });
 

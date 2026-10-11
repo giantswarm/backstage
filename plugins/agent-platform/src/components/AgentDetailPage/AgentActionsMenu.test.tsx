@@ -96,7 +96,7 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Edit, Update skills and Delete when the installation has agent-manager, and asks the page to open them', async () => {
+  it('offers Edit, Update all skills to latest and Delete when the installation has agent-manager, and asks the page to open them', async () => {
     await renderMenu();
     await openMenu();
 
@@ -105,7 +105,7 @@ describe('AgentActionsMenu', () => {
 
     await openMenu();
     await userEvent.click(
-      screen.getByRole('menuitem', { name: /Update skills/ }),
+      screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
     expect(onUpdateSkills).toHaveBeenCalledTimes(1);
 
@@ -133,7 +133,7 @@ describe('AgentActionsMenu', () => {
       screen.queryByRole('menuitem', { name: /Edit agent/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('menuitem', { name: /Update skills/ }),
+      screen.queryByRole('menuitem', { name: 'Update all skills to latest…' }),
     ).not.toBeInTheDocument();
     // The read-only escape hatch, and nothing else: a menu lists things to do,
     // so what cannot be offered is left out rather than explained in place.
@@ -156,7 +156,7 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Edit, Update skills and Delete for an agent applied from git when agent-manager can commit', async () => {
+  it('offers Edit, Update all skills to latest and Delete for an agent applied from git when agent-manager can commit', async () => {
     // All three go through a pull request in the GitOps repository then.
     await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
     await openMenu();
@@ -165,7 +165,7 @@ describe('AgentActionsMenu', () => {
     expect(onEdit).toHaveBeenCalledTimes(1);
     await openMenu();
     await userEvent.click(
-      screen.getByRole('menuitem', { name: /Update skills/ }),
+      screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
     expect(onUpdateSkills).toHaveBeenCalledTimes(1);
     await openMenu();

@@ -15,7 +15,9 @@ import { GpuCapacityPage } from './GpuCapacityPage';
 const mockUseServing = jest.fn<Partial<ServingContextValue>, []>();
 // cluster-manager is absent on most of these fleets: the controls render
 // nothing. The header case offers Add GPU node pool through `addAction`.
-let mockAddAction: { open: () => void; isDisabled: boolean } | undefined;
+let mockAddAction:
+  | { open: () => void; isDisabled: boolean; disabledReason?: string }
+  | undefined;
 jest.mock('../GpuNodePools', () => ({
   useGpuNodePoolControls: () => ({
     available: false,
@@ -95,6 +97,30 @@ describe('GpuCapacityPage', () => {
         expect(mockAddAction.open).toHaveBeenCalledTimes(1);
       },
     );
+
+    it('disables Add GPU node pool with the reason where it cannot succeed', async () => {
+      layout = mockDesktopLayout();
+      const reason =
+        'No environment in reach has a cluster to add a GPU node pool to.';
+      mockAddAction = {
+        open: jest.fn(),
+        isDisabled: true,
+        disabledReason: reason,
+      };
+      await renderInTestApp(
+        <PageHeaderActionsProvider>
+          <HeaderActions />
+          <GpuCapacityPage />
+        </PageHeaderActionsProvider>,
+      );
+
+      const header = screen.getByTestId('page-header-actions');
+      const button = within(header).getByRole('button', {
+        name: 'Add GPU node pool',
+      });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(reason);
+    });
 
     it('offers nothing where no installation runs cluster-manager', async () => {
       await renderInTestApp(

@@ -2,6 +2,7 @@ import {
   encodeKagentAgentId,
   KagentSession,
   readReportedRuntimeLoss,
+  SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
 
@@ -169,6 +170,44 @@ function timestampValue(value: string | undefined): number | undefined {
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * When a session was last active, epoch ms: the later of its start and the
+ * moment its state last moved — a message sent, a reply finished, a question
+ * asked. kagent does not move a session's `updatedAt` on a turn
+ * (kagent-dev/kagent#2397), so the derived state's `changedAt` is the only
+ * record of activity after the start. Undefined when neither is known.
+ */
+export function lastActiveAt(
+  row: SessionRow,
+  state?: SessionStateEntry,
+): number | undefined {
+  const times = [timestampValue(row.createdAt), state?.changedAt].filter(
+    (time): time is number => time !== undefined && !Number.isNaN(time),
+  );
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+/**
+ * The one recency order of the session lists (T100 M1): most recently active
+ * first (see {@link lastActiveAt}), a session with no known time last, the
+ * title breaking ties. The rail and the Sessions page both sort with this, so
+ * the same two sessions never read in opposite orders.
+ */
+export function byLastActive<T extends Pick<SessionRow, 'title'>>(
+  activeAtOf: (row: T) => number | undefined,
+): (a: T, b: T) => number {
+  return (a, b) => {
+    const aTime = activeAtOf(a);
+    const bTime = activeAtOf(b);
+    if (aTime !== bTime) {
+      if (aTime === undefined) return 1;
+      if (bTime === undefined) return -1;
+      return bTime - aTime;
+    }
+    return a.title.localeCompare(b.title);
+  };
 }
 
 /**

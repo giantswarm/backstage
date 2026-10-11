@@ -1,10 +1,10 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { Button } from '@backstage/ui';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/test-utils';
 import {
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '../../utils/mockPhoneLayout';
 import { DisabledAction } from './DisabledAction';
 
 const REASON = 'Applied from Git — change it there.';

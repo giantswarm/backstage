@@ -318,7 +318,7 @@ sees that installation but not the intended one.
 | -------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------- |
 | `generalInformation` | The Agents tab's helper banner                                                           | `AgentsHelperBanner`                         |
 | `agentManagement`    | The create flow's helper, which drafts the agent's instructions in a side chat           | `CreateAgentAssist`                          |
-| `skillEvaluation`    | A skill's **Evaluate**, a session with this agent about the skill                        | `SkillDetailPage`                            |
+| `skillEvaluation`    | A skill's **Evaluate with <agent>**, a session with this agent about the skill           | `SkillDetailPage`                            |
 | `skillCreation`      | Add and Edit skill: a hand-off into a session with this agent for complex, nested skills | `SkillCreationAssist`                        |
 | `workflowManagement` | Creating and editing workflows through a session with this agent                         | `WorkflowCreateAssist`, `WorkflowEditAssist` |
 | `platformOperations` | **Nothing yet.** No UI reads it.                                                         | —                                            |

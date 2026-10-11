@@ -57,7 +57,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
  * The shell's four words for a session that has run (`SESSION_STATE_LABELS`,
  * which `describeSessionState` maps every kagent task state onto).
  */
-const STATE_LABELS = ['Waiting for you', 'Working', 'Finished', 'Failed'];
+const STATE_LABELS = ['Waiting for you', 'Working', 'Idle', 'Failed'];
 
 test('a session started in the portal reports its state on the list', async ({
   admin,

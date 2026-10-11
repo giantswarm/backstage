@@ -374,7 +374,7 @@ describe('SessionsTable — the State column', () => {
 
     expect(screen.getByText('State')).toBeInTheDocument();
     expect(screen.getByText('Waiting for you')).toBeInTheDocument();
-    expect(screen.getByText('Finished')).toBeInTheDocument();
+    expect(screen.getByText('Idle')).toBeInTheDocument();
   });
 
   it('says a session it could not read is unknown, never that it is finished', async () => {
@@ -388,7 +388,7 @@ describe('SessionsTable — the State column', () => {
 
     expect(screen.getByText('Unknown')).toHaveAttribute(
       'title',
-      expect.stringContaining('not the same as finished'),
+      expect.stringContaining('not the same as idle'),
     );
   });
 
@@ -528,7 +528,7 @@ describe('SessionsTable — filters', () => {
       'Waiting for you 2',
       'Working 0',
       'Failed 1',
-      'Finished 1',
+      'Idle 1',
       'No activity yet 0',
       'Unknown 1',
     ]);
@@ -549,7 +549,7 @@ describe('SessionsTable — filters', () => {
       'Waiting for you 1',
       'Working 0',
       'Failed 1',
-      'Finished 0',
+      'Idle 0',
       'No activity yet 0',
       'Unknown 1',
     ]);
@@ -588,7 +588,7 @@ describe('SessionsTable — filters', () => {
       'Waiting for you 1',
       'Working 0',
       'Failed 1',
-      'Finished 0',
+      'Idle 0',
       'No activity yet 0',
       'Unknown 1',
     ]);

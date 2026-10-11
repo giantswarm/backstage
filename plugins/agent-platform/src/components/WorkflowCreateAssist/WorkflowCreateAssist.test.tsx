@@ -128,7 +128,9 @@ describe('WorkflowCreateAssist', () => {
     const strip = screen.getByRole('region', {
       name: 'Create workflows with Flo',
     });
-    expect(strip).toHaveTextContent('Need a workflow? Flo builds it with you.');
+    expect(strip).toHaveTextContent(
+      'Need a workflow? Flo builds it with you in a new session.',
+    );
     // One line: the title, no second sentence.
     expect(strip.querySelectorAll('p')).toHaveLength(1);
     expect(
@@ -160,6 +162,7 @@ describe('WorkflowCreateAssist', () => {
             text: prompt,
             agentNamespace: 'kagent',
             agentName: 'workflow-manager',
+            prepared: true,
           },
         },
       },

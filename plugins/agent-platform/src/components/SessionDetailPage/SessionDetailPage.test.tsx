@@ -614,6 +614,7 @@ describe('SessionDetailPage', () => {
       timeline: emptyTimeline,
       state: undefined,
       taskCount: 0,
+      isAgentWorking: false,
     });
 
     await render();
@@ -622,6 +623,25 @@ describe('SessionDetailPage', () => {
     expect(
       screen.getByText('This session has no messages yet.'),
     ).toBeInTheDocument();
+  });
+
+  it('says Working in the header from the moment a message is sent (T100 H4)', async () => {
+    // The first beat of a session started from the home composer: no poll has
+    // seen a task yet, so the conversation alone would say "no activity" while
+    // the body already says "Working…". The header follows the body.
+    mockUseSessionDetail.mockReturnValue({
+      ...loadedView,
+      timeline: emptyTimeline,
+      state: undefined,
+      taskCount: 0,
+      isAgentWorking: false,
+    });
+    mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+
+    await render();
+
+    expect(screen.getByText('Working')).toBeInTheDocument();
+    expect(screen.queryByText('No activity yet')).not.toBeInTheDocument();
   });
 
   describe('opening', () => {
@@ -762,11 +782,22 @@ describe('SessionDetailPage', () => {
       state: {
         raw: 'completed',
         key: 'completed',
-        label: 'Finished',
+        label: 'Idle',
         tone: 'success' as const,
         isActive: false,
       },
     };
+
+    it('invites a reply on an idle session, never to "resume" it (T100 H4)', async () => {
+      mockUseSessionDetail.mockReturnValue(settledView);
+      await render();
+
+      expect(screen.getByText('Idle')).toBeInTheDocument();
+      expect(composer()).toHaveAttribute(
+        'placeholder',
+        expect.stringMatching(/^Reply to .+…$/),
+      );
+    });
 
     it('is offered on a session whose agent can be addressed', async () => {
       mockUseSessionDetail.mockReturnValue(settledView);
@@ -1182,7 +1213,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByText(/live stream was lost/),
         ).not.toBeInTheDocument();
-        expect(screen.getByText('Finished')).toBeInTheDocument();
+        expect(screen.getByText('Idle')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Send' }),
         ).toBeInTheDocument();
@@ -1890,6 +1921,28 @@ describe('SessionDetailPage', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(
         'why is the ingress failing?',
       );
+    });
+
+    it('captions the first message as the portal’s when a hand-off prepared it', async () => {
+      // A meta-agent hand-off wrote it, not the person (UX review M20).
+      mockUseNewSessionHandoff.mockReturnValue({ ...handoff, prepared: true });
+      await render();
+
+      const captions = screen.getAllByTestId('timeline-user-message-caption');
+      expect(captions).toHaveLength(1);
+      expect(captions[0]).toHaveTextContent('Prepared by the portal');
+      expect(
+        screen.getAllByTestId('timeline-user-message')[0],
+      ).toContainElement(captions[0]);
+    });
+
+    it('captions nothing the person typed themselves', async () => {
+      mockUseNewSessionHandoff.mockReturnValue(handoff);
+      await render();
+
+      expect(
+        screen.queryByTestId('timeline-user-message-caption'),
+      ).not.toBeInTheDocument();
     });
   });
 

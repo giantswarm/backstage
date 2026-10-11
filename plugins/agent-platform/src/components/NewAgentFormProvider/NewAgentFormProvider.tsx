@@ -11,7 +11,11 @@ import type {
   AgentSkillEntry,
   WriteMode,
 } from '../../lib/agentManager';
-import { skillEntryKey } from '../../lib/agentEdit';
+import {
+  changedFields,
+  editStateOfForm,
+  skillEntryKey,
+} from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
 import { systemMessageProblem } from '../../lib/systemMessage';
 import { egressProblem, parseEgressText } from '../../lib/egress';
@@ -141,6 +145,13 @@ export type NewAgentFormContextValue = {
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
   reset: () => void;
+  /**
+   * Whether leaving now would lose the person's work, so the wizard's Close
+   * and Cancel ask first. Editing: any change the review would save.
+   * Creating: anything typed or chosen beyond the start — the environment
+   * and model are left out, since the form picks those itself.
+   */
+  isDirty: boolean;
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -190,6 +201,23 @@ const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
 function isValidSlug(slug: string): boolean {
   return slug.length <= 63 && DNS_LABEL_PATTERN.test(slug);
+}
+
+/** A new agent's form holds work of the person's own (see `isDirty`). */
+function hasCreateInput(state: NewAgentFormState): boolean {
+  return (
+    [
+      state.name,
+      state.slug,
+      state.description,
+      state.systemMessage,
+      state.egressText,
+    ].some(text => text.trim() !== '') ||
+    state.harness !== undefined ||
+    state.selectedSkills.length > 0 ||
+    state.toolset.length > 0 ||
+    state.toolsChatOnly !== initialState.toolsChatOnly
+  );
 }
 
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
@@ -263,6 +291,10 @@ export function NewAgentFormProvider({
     // and only when it cannot be applied; nothing selected is no tools.
     const problems = toolsetProblems(state.toolset);
     const isToolsetValid = problems.length === 0;
+
+    const isDirty = edit
+      ? changedFields(edit.agent, editStateOfForm(edit.agent, state)).length > 0
+      : hasCreateInput(state);
 
     return {
       state,
@@ -351,6 +383,7 @@ export function NewAgentFormProvider({
         setSlugEdited(Boolean(edit));
         setState(seed);
       },
+      isDirty,
       isComplete,
       validationErrors,
       fieldErrors,

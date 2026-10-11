@@ -5,7 +5,11 @@ import {
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
-import { SessionRow } from '../SessionsDataProvider/helpers';
+import {
+  byLastActive,
+  lastActiveAt,
+  SessionRow,
+} from '../SessionsDataProvider/helpers';
 
 /**
  * What the State column has to say about one row.
@@ -40,12 +44,17 @@ export type SessionTableRow = SessionRow & {
    * it.
    */
   pinned?: boolean;
+  /**
+   * When the session was last active, epoch ms (`lastActiveAt`): what the
+   * shell list orders and groups by, as the rail does (T100 M1).
+   */
+  lastActiveAt?: number;
 };
 
 /**
  * Order the State column sorts in, ascending: what needs a person first.
  *
- * Alphabetical labels would put "Finished" above "Waiting for you", which
+ * Alphabetical labels would put "Failed" above "Waiting for you", which
  * inverts the only reason to sort by state at all. Descending still reverses
  * this, so both directions are useful — most urgent first, or everything
  * settled first.
@@ -89,41 +98,26 @@ export function stateRank(cell: SessionStateCell): number {
     : STATE_RANKS.finished;
 }
 
+/** The session lists' one recency order, over the joined rows. */
+export const compareSessionRecency = byLastActive<SessionTableRow>(
+  row => row.lastActiveAt,
+);
+
 /**
- * Sort by the State column: by {@link stateRank}, then newest first -- by when
- * the state last changed where the summary says, otherwise by start -- so two
- * waiting sessions do not read in whatever order the fleet answered in.
+ * Sort by the State column: by {@link stateRank}, then most recently active
+ * first ({@link compareSessionRecency}, unknown last in either direction), so
+ * two waiting sessions do not read in whatever order the fleet answered in.
  */
 export function sortSessionsByState(
   rows: SessionTableRow[],
   direction: 'ascending' | 'descending',
 ): SessionTableRow[] {
   const factor = direction === 'ascending' ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    if (a.stateRank !== b.stateRank) {
-      return (a.stateRank - b.stateRank) * factor;
-    }
-    const aTime = changedAtOf(a);
-    const bTime = changedAtOf(b);
-    if (aTime === bTime) {
-      return a.title.localeCompare(b.title);
-    }
-    // Unknown last in either direction, as everywhere else in this table.
-    if (aTime === undefined) return 1;
-    if (bTime === undefined) return -1;
-    return bTime - aTime;
-  });
-}
-
-function changedAtOf(row: SessionTableRow): number | undefined {
-  if (row.stateCell.kind === 'state' && row.stateCell.changedAt !== undefined) {
-    return row.stateCell.changedAt;
-  }
-  if (!row.createdAt) {
-    return undefined;
-  }
-  const parsed = Date.parse(row.createdAt);
-  return Number.isNaN(parsed) ? undefined : parsed;
+  return [...rows].sort((a, b) =>
+    a.stateRank !== b.stateRank
+      ? (a.stateRank - b.stateRank) * factor
+      : compareSessionRecency(a, b),
+  );
 }
 
 /**
@@ -141,7 +135,12 @@ export function withSessionStates(
 ): SessionTableRow[] {
   return rows.map(row => {
     const cell = readStateCell(row, states);
-    return { ...row, stateCell: cell, stateRank: stateRank(cell) };
+    return {
+      ...row,
+      stateCell: cell,
+      stateRank: stateRank(cell),
+      lastActiveAt: lastActiveAt(row, states?.states.get(row.id)),
+    };
   });
 }
 
@@ -177,7 +176,10 @@ function readStateCell(
     : { kind: 'unevaluated' };
 }
 
-/** The day a shell list row is grouped under, by when its session started. */
+/**
+ * The day a shell list row is grouped under, by when its session was last
+ * active — the time it is ordered by.
+ */
 export type SessionDayGroup = 'today' | 'yesterday' | 'earlier';
 
 export const SESSION_DAY_GROUPS: ReadonlyArray<{
@@ -190,24 +192,23 @@ export const SESSION_DAY_GROUPS: ReadonlyArray<{
 ];
 
 /**
- * The groups a shell list row can sit under: the day it started, or the
- * Pinned group that leads the list whatever day its rows started.
+ * The groups a shell list row can sit under: the day it was last active, or
+ * the Pinned group that leads the list whatever day its rows were.
  */
 export type SessionListGroup = SessionDayGroup | 'pinned';
 
 export const PINNED_GROUP_LABEL = 'Pinned';
 
 /**
- * The day group of a session started at `createdAt`, in the reader's local
- * calendar. A start later than `now` (clock skew) counts as today; a missing
- * or unparseable one as earlier.
+ * The day group of a session last active at `activeAt` (epoch ms), in the
+ * reader's local calendar. A time later than `now` (clock skew) counts as
+ * today; an unknown one as earlier.
  */
 export function sessionDayGroup(
-  createdAt: string | undefined,
+  activeAt: number | undefined,
   now: Date,
 ): SessionDayGroup {
-  const started = createdAt ? Date.parse(createdAt) : Number.NaN;
-  if (Number.isNaN(started)) {
+  if (activeAt === undefined || Number.isNaN(activeAt)) {
     return 'earlier';
   }
   const startOfToday = new Date(
@@ -220,32 +221,33 @@ export function sessionDayGroup(
     now.getMonth(),
     now.getDate() - 1,
   ).getTime();
-  if (started >= startOfToday) {
+  if (activeAt >= startOfToday) {
     return 'today';
   }
-  return started >= startOfYesterday ? 'yesterday' : 'earlier';
+  return activeAt >= startOfYesterday ? 'yesterday' : 'earlier';
 }
 
 /**
- * When a session started, as short as its group allows: the time of day under
- * Today and Yesterday, the date under Earlier and Pinned (whose rows can be
- * from any day), with the year only when it is not the current one.
+ * A session's time (when it was last active), as short as its group allows:
+ * the time of day under Today and Yesterday, the date under Earlier and Pinned
+ * (whose rows can be from any day), with the year only when it is not the
+ * current one.
  */
-export function formatSessionStart(
-  createdAt: string,
+export function formatSessionTime(
+  at: number,
   group: SessionListGroup,
   currentYear: number,
 ): string {
-  const started = new Date(createdAt);
+  const date = new Date(at);
   if (group === 'today' || group === 'yesterday') {
-    return started.toLocaleTimeString(undefined, {
+    return date.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
     });
   }
-  return started.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(undefined, {
     day: 'numeric',
     month: 'short',
-    ...(started.getFullYear() === currentYear ? {} : { year: 'numeric' }),
+    ...(date.getFullYear() === currentYear ? {} : { year: 'numeric' }),
   });
 }

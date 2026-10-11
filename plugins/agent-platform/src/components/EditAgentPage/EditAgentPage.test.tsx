@@ -459,6 +459,41 @@ describe('EditAgentPage', () => {
     } satisfies AgentUpdate);
   });
 
+  it('leaves an untouched edit without asking', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE);
+
+    await screen.findByLabelText(/^What is it for\?/);
+    await user.click(screen.getByRole('link', { name: 'Cancel' }));
+
+    expect(await screen.findByText('agent detail')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks before Close or Cancel discards a change, on any step', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE);
+
+    await changeDescriptionAndReview(user);
+    await user.click(screen.getByRole('link', { name: 'Close' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Discard your changes?');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Keep editing' }),
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Check and save' }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('link', { name: 'Cancel' }));
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    );
+    expect(await screen.findByText('agent detail')).toBeInTheDocument();
+  });
+
   it('reopens on the saved values, not a cached pre-save reading', async () => {
     // Live round 2 (R2): opening the wizard straight after a save prefilled the
     // pre-save description, and a second save would have diffed against it.

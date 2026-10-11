@@ -15,6 +15,12 @@ export type NewSessionHandoff = {
   text: string;
   agentNamespace: string;
   agentName: string;
+  /**
+   * The portal wrote `text`, not the person: a meta-agent hand-off
+   * (`useMetaAgentHandoff`). The session page captions that first message so
+   * it does not read as the person's own words (UX review M20).
+   */
+  prepared?: boolean;
 };
 
 /** The router-state key the composers write and this hook reads. */
@@ -29,7 +35,7 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     return undefined;
   }
 
-  const { text, agentNamespace, agentName } = candidate as Record<
+  const { text, agentNamespace, agentName, prepared } = candidate as Record<
     string,
     unknown
   >;
@@ -44,7 +50,12 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
     return undefined;
   }
 
-  return { text, agentNamespace, agentName };
+  return {
+    text,
+    agentNamespace,
+    agentName,
+    ...(prepared === true ? { prepared: true } : {}),
+  };
 }
 
 /**

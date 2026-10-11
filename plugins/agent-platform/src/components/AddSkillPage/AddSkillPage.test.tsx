@@ -450,14 +450,14 @@ describe('AddSkillPage editing an existing skill', () => {
 
 describe('AddSkillPage · the skill creator hand-off', () => {
   const caveat =
-    'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.';
+    'This form is for simple skills; for complex, multi-file ones, start a session with Skill Creator, which continues from what you typed.';
 
   it('is absent while the skillCreation role is unconfigured', async () => {
     await renderPage();
 
     expect(screen.queryByText(caveat)).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Let Skill Creator help' }),
+      screen.queryByRole('button', { name: 'Create with Skill Creator' }),
     ).not.toBeInTheDocument();
   });
 
@@ -479,7 +479,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
     expect(strip).toHaveTextContent(caveat);
     await user.type(screen.getByLabelText(/Name/), 'notes');
     await user.click(
-      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+      screen.getByRole('button', { name: 'Create with Skill Creator' }),
     );
 
     expect(createSession).toHaveBeenCalledWith({
@@ -502,7 +502,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
 
     await user.type(screen.getByLabelText(/Instructions/), 'Take notes.');
     await user.click(
-      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+      screen.getByRole('button', { name: 'Create with Skill Creator' }),
     );
 
     expect(createSession.mock.calls[0][0].prompt).toContain(
@@ -518,11 +518,27 @@ describe('AddSkillPage · the skill creator hand-off', () => {
 
     await user.type(screen.getByLabelText(/Instructions/), ' Then close.');
     await user.click(
-      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
     );
 
     expect(createSession.mock.calls[0][0].prompt).toContain(
       '```markdown\nClassify, prioritise, route. Then close.\n```',
+    );
+  }, 30_000);
+
+  it('carries a description rewritten on an edit', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage(edit);
+
+    await user.type(screen.getByLabelText(/Description/), ' Fast.');
+    await user.click(
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      '```markdown\nHow to triage. Fast.\n```',
     );
   }, 30_000);
 
@@ -533,7 +549,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
 
     expect(screen.getByText(caveat)).toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
     );
 
     expect(createSession).toHaveBeenCalledWith({

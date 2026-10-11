@@ -177,6 +177,8 @@ type GpuNodePoolsOfInstallation = {
   caches: ModelCacheRow[];
   /** The tool's note where the installation does not serve the Cluster API. */
   note?: string;
+  /** Whether `list_clusters` named any cluster a pool could be added to. */
+  hasClusters: boolean;
 };
 
 /**
@@ -225,6 +227,7 @@ export function useGpuNodePools(installations: string[]) {
           rows,
           caches,
           note: clusterApiNote(clusterApi, 'environment'),
+          hasClusters: clusters.length > 0,
         };
       },
       staleTime: 30_000,
@@ -254,6 +257,13 @@ export function useGpuNodePools(installations: string[]) {
         : undefined,
     )
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  // Installations that answered with no cluster at all: Add GPU node pool
+  // has nothing to add to there.
+  const clusterless = queries
+    .map((query, index) =>
+      query.data && !query.data.hasClusters ? installations[index] : undefined,
+    )
+    .filter((entry): entry is string => Boolean(entry));
   const errors = queries
     .map((query, index) =>
       query.error
@@ -266,6 +276,7 @@ export function useGpuNodePools(installations: string[]) {
     rows,
     caches,
     notes,
+    clusterless,
     errors,
     isLoading:
       Boolean(musterApi) && queries.some(query => isAwaitingData(query)),

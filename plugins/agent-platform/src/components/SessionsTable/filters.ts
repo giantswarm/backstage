@@ -20,7 +20,7 @@ import {
  * most of its rows; the others are close kin that the person acts on the same
  * way: auth-required under "Waiting for you" (both wait on the person),
  * submitted under "Working", rejected under "Failed", canceled under
- * "Finished" (ended, nothing left to do) — the buckets `describeSessionState`
+ * "Idle" (the turn ended; the session takes the next message) — the buckets `describeSessionState`
  * names them by. "Unknown" holds unreadable
  * sessions and any state kagent reports that the portal does not recognise.
  * Rows whose state has not been loaded are a fact about this page, not the

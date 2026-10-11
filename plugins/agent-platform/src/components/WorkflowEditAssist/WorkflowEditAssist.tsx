@@ -35,7 +35,7 @@ function EditButton({ target }: { target: WorkflowEditTarget }) {
           start(workflowEditPrompt(target)).catch(() => {});
         }}
       >
-        {isCreating ? 'Starting…' : 'Edit via agent'}
+        {isCreating ? 'Starting…' : `Edit with ${agent.name}`}
       </Button>
       {error && (
         <Text as="p" variant="body-small" color="danger" role="alert">
@@ -47,7 +47,7 @@ function EditButton({ target }: { target: WorkflowEditTarget }) {
 }
 
 /**
- * The shell workflow page's "Edit via agent": workflows are read-only in the
+ * The shell workflow page's "Edit with <agent>": workflows are read-only in the
  * UI (D11), so a change goes through the workflow agent
  * (`agentPlatform.metaAgents.workflowManagement`). One press starts a session
  * with it and opens it, its first message naming the workflow, its

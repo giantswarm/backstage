@@ -4,9 +4,12 @@ import {
   SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
-  sortSessionRows,
+  byLastActive,
+  lastActiveAt,
   type SessionRow,
 } from '../SessionsDataProvider/helpers';
+
+export { lastActiveAt };
 
 /**
  * How many recent sessions a list shows, pinned ones not counted: the shell
@@ -22,21 +25,18 @@ export const DEFAULT_RECENT_SESSIONS_LIMIT = 8;
 export const MAX_RAIL_PINS = 8;
 
 /**
- * When a session was last active, epoch ms: the later of its start and the
- * moment its state last moved — a message sent, a reply finished, a question
- * asked. kagent does not move a session's `updatedAt` on a turn
- * (kagent-dev/kagent#2397), so the derived state's `changedAt` is the only
- * record of activity after the start. Undefined when neither is known.
+ * The sessions in the lists' one recency order ({@link byLastActive}): most
+ * recently active first, sessions with no time at all last. Without `states`
+ * that is simply the most recently started.
  */
-export function lastActiveAt(
-  row: SessionRow,
-  state?: SessionStateEntry,
-): number | undefined {
-  const started = row.createdAt ? Date.parse(row.createdAt) : Number.NaN;
-  const times = [started, state?.changedAt ?? Number.NaN].filter(
-    time => !Number.isNaN(time),
+function sortByLastActive(
+  rows: SessionRow[],
+  states?: ReadonlyMap<string, SessionStateEntry>,
+): SessionRow[] {
+  const active = new Map(
+    rows.map(row => [row.id, lastActiveAt(row, states?.get(row.id))]),
   );
-  return times.length > 0 ? Math.max(...times) : undefined;
+  return [...rows].sort(byLastActive<SessionRow>(row => active.get(row.id)));
 }
 
 /**
@@ -49,24 +49,7 @@ export function pickRecentSessions(
   limit: number,
   states?: ReadonlyMap<string, SessionStateEntry>,
 ): SessionRow[] {
-  if (!states) {
-    return sortSessionRows(rows).slice(0, Math.max(0, limit));
-  }
-  const active = new Map(
-    rows.map(row => [row.id, lastActiveAt(row, states.get(row.id))]),
-  );
-  return [...rows]
-    .sort((a, b) => {
-      const aTime = active.get(a.id);
-      const bTime = active.get(b.id);
-      if (aTime !== bTime) {
-        if (aTime === undefined) return 1;
-        if (bTime === undefined) return -1;
-        return bTime - aTime;
-      }
-      return a.title.localeCompare(b.title);
-    })
-    .slice(0, Math.max(0, limit));
+  return sortByLastActive(rows, states).slice(0, Math.max(0, limit));
 }
 
 /** Whether the session's agent is on a reply, not waiting on a person. */
@@ -128,23 +111,35 @@ export type GroupedRailSessions = {
   pinned: SessionRow[];
   /** Pinned sessions past {@link MAX_RAIL_PINS}, not listed. */
   pinnedOverflow: number;
+  /**
+   * The unpinned sessions waiting for the person, most recently active first:
+   * listed whatever their age, up to the limit (T100 H5).
+   */
+  waiting: SessionRow[];
   /** The recent, unpinned sessions, most recently active first, bucketed. */
   groups: Array<{ id: RailSessionGroup; label: string; rows: SessionRow[] }>;
   /** Unpinned sessions past the limit: on All sessions, not in the rail. */
   recentOverflow: number;
+  /** Every session waiting for the person, pinned or not, listed or not. */
+  waitingCount: number;
 };
 
 /**
- * The rail's session list (T91). The rule, in full:
+ * The rail's session list (T91, T100). The rule, in full:
  *
  * 1. **Pinned** sessions first, in pin order — the latest
  *    {@link MAX_RAIL_PINS}; older pins are a "N more pinned" link away.
- * 2. Then the **`limit` most recently active** of the other sessions (see
- *    {@link lastActiveAt}: the later of start and last state change), under
+ * 2. Then every other session **waiting for the person**, most recently
+ *    active first, however long ago it asked: a question must not age out of
+ *    view. They take their room out of the limit; past it, the most recent
+ *    `limit` of them are listed.
+ * 3. Then the **most recently active** of the rest (see {@link lastActiveAt}:
+ *    the later of start and last state change), filling the limit, under
  *    Today / Previous 7 days / Earlier by that same time — so a session
  *    continued today is under Today whenever it was started.
- * 3. Everything past the limit is on **All sessions**, whose link closes the
- *    list and, when the list is cut, says how many more there are.
+ * 4. Everything past the limit is on **All sessions**, whose link closes the
+ *    list and, when the list is cut, says how many more there are; the count
+ *    of waiting sessions sits beside it.
  *
  * Pinned sessions do not repeat below and do not count towards the limit.
  * A pin whose session was deleted simply stops matching.
@@ -166,8 +161,16 @@ export function groupRailSessions(
   const pinnedOverflow = Math.max(0, allPinned.length - maxPins);
   const pinned = allPinned.slice(pinnedOverflow);
 
-  const unpinned = rows.filter(row => !pinnedSet.has(row.id));
-  const recent = pickRecentSessions(unpinned, limit, states);
+  const isWaiting = (row: SessionRow) => needsAttention(states.get(row.id));
+  const cap = Math.max(0, limit);
+  const unpinned = sortByLastActive(
+    rows.filter(row => !pinnedSet.has(row.id)),
+    states,
+  );
+  const waiting = unpinned.filter(isWaiting).slice(0, cap);
+  const recent = unpinned
+    .filter(row => !isWaiting(row))
+    .slice(0, cap - waiting.length);
   const byGroup = new Map<RailSessionGroup, SessionRow[]>();
   for (const row of recent) {
     const group = railSessionGroup(lastActiveAt(row, states.get(row.id)), now);
@@ -181,7 +184,9 @@ export function groupRailSessions(
   return {
     pinned,
     pinnedOverflow,
+    waiting,
     groups,
-    recentOverflow: unpinned.length - recent.length,
+    recentOverflow: unpinned.length - waiting.length - recent.length,
+    waitingCount: rows.filter(isWaiting).length,
   };
 }

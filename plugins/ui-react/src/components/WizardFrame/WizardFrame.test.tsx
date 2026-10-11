@@ -40,7 +40,9 @@ function UnstableAction() {
   return null;
 }
 
-function renderFrame(props: { onBack?: () => void } = {}) {
+function renderFrame(
+  props: { onBack?: () => void; confirmDiscard?: boolean } = {},
+) {
   return render(
     <MemoryRouter initialEntries={['/agents/new/tools']}>
       <PageHeaderActionsProvider>
@@ -145,6 +147,39 @@ describe('WizardFrame', () => {
       'href',
       '/customize/agents',
     );
+  });
+
+  it.each(['Close', 'Cancel'])(
+    'asks before %s discards a dirty flow, and stays on Keep editing',
+    async name => {
+      renderFrame({ confirmDiscard: true });
+
+      await userEvent.click(screen.getByRole('link', { name }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('Discard your changes?');
+      expect(dialog).toHaveTextContent('What you entered will not be saved.');
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Keep editing' }),
+      );
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'New agent' }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('leaves to the close href on Discard changes', async () => {
+    renderFrame({ confirmDiscard: true });
+
+    await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    );
+
+    expect(await screen.findByText('Customize page')).toBeInTheDocument();
   });
 
   it('renders Back when it can go back, then the step’s registered buttons', async () => {

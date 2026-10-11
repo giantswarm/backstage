@@ -472,7 +472,7 @@ describe('SkillDetailPage', () => {
     await renderPage();
 
     expect(
-      screen.queryByRole('button', { name: 'Evaluate' }),
+      screen.queryByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).not.toBeInTheDocument();
   });
 
@@ -483,11 +483,12 @@ describe('SkillDetailPage', () => {
     // Agent detail's header actions: secondary first, the primary last.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit.parentElement).toBe(
-      screen.getByRole('button', { name: 'Evaluate' }).parentElement,
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' })
+        .parentElement,
     );
     expect(
       Array.from(edit.parentElement!.children).map(child => child.textContent),
-    ).toEqual(['Edit', 'View source ↗', 'Evaluate']);
+    ).toEqual(['Edit', 'View source ↗', 'Evaluate with skill-evaluator']);
 
     await userEvent.click(edit);
     expect(mockNavigate).toHaveBeenCalledWith(
@@ -514,7 +515,7 @@ describe('SkillDetailPage', () => {
       screen.queryByRole('tab', { name: 'Instructions' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Evaluate' }),
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /View source/ }),
@@ -558,7 +559,7 @@ describe('SkillDetailPage', () => {
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Evaluate' }),
+      screen.queryByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /View source/ }),
@@ -575,7 +576,9 @@ describe('SkillDetailPage', () => {
     createSession.mockResolvedValue('session-1');
     await renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Evaluate' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
+    );
 
     expect(mockUseCreateSession).toHaveBeenCalledWith('skillDetail');
     const prompt = evaluationPrompt(skill);
@@ -592,6 +595,7 @@ describe('SkillDetailPage', () => {
             text: prompt,
             agentNamespace: 'kagent',
             agentName: 'skill-evaluator',
+            prepared: true,
           },
         },
       },
@@ -604,7 +608,9 @@ describe('SkillDetailPage', () => {
     createSession.mockRejectedValue(mockCreationError);
     await renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Evaluate' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
+    );
 
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(
@@ -647,7 +653,9 @@ describe('SkillDetailPage at phone width', () => {
     await renderPage();
 
     // Four buttons wrapped to two rows at 343px; now one and the ⋯.
-    expect(screen.getByRole('button', { name: 'Evaluate' })).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
+    ).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'More actions' }));

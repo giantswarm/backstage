@@ -207,7 +207,7 @@ describe('SessionsTable in the shell layout', () => {
     mockRenameSession.mockClear();
   });
 
-  it('shows one table per day the sessions started, each named by its heading', async () => {
+  it('shows one table per day the sessions were last active, each named by its heading', async () => {
     await renderShell();
 
     const headings = screen
@@ -225,6 +225,35 @@ describe('SessionsTable in the shell layout', () => {
       'Pricing research',
       'Untimed',
     ]);
+  });
+
+  it('orders and groups by last activity, as the rail does (T100 M1)', async () => {
+    // Started five days ago, its newest turn ended a minute ago.
+    await renderShell(rows, {
+      ...states,
+      states: new Map([
+        ...states.states,
+        [
+          'gazelle/c',
+          {
+            sessionId: 'c',
+            state: 'completed',
+            changedAt: Date.now() - 60_000,
+          },
+        ],
+      ]),
+    });
+
+    expect(rowTitles(screen.getByRole('grid', { name: 'Today' }))).toEqual([
+      'Pricing research',
+      'Triage this week',
+    ]);
+    expect(
+      within(screen.getByRole('grid', { name: 'Today' })).getByRole(
+        'columnheader',
+        { name: 'Last active' },
+      ),
+    ).toBeInTheDocument();
   });
 
   it('leaves out a day without sessions', async () => {
@@ -245,7 +274,7 @@ describe('SessionsTable in the shell layout', () => {
     const today = screen.getByRole('grid', { name: 'Today' });
     expect(within(today).getByText('Waiting for you')).toBeInTheDocument();
     const earlier = screen.getByRole('grid', { name: 'Earlier' });
-    expect(within(earlier).getByText('Finished')).toBeInTheDocument();
+    expect(within(earlier).getByText('Idle')).toBeInTheDocument();
     expect(within(earlier).getByText('Failed')).toBeInTheDocument();
   });
 
@@ -254,7 +283,7 @@ describe('SessionsTable in the shell layout', () => {
 
     const earlier = screen.getByRole('grid', { name: 'Earlier' });
     const finishedDot = within(earlier)
-      .getByText('Finished')
+      .getByText('Idle')
       .parentElement?.querySelector<HTMLElement>('[data-tone]');
     const tone = finishedDot?.dataset.tone;
     expect(finishedDot?.style.backgroundColor).toMatch(
@@ -284,7 +313,7 @@ describe('SessionsTable in the shell layout', () => {
     expect(await optionsOf('state')).toEqual([
       'Waiting for you 1',
       'Working 1',
-      'Finished 1',
+      'Idle 1',
       'Failed 1',
     ]);
   });

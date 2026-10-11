@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Alert, Badge } from '@backstage/ui';
+import { Alert, Badge, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
@@ -27,7 +27,9 @@ const useStyles = makeStyles(theme => ({
   // left — the alignment carries who speaks, the way every chat surface does.
   userRow: {
     display: 'flex',
-    justifyContent: 'flex-end',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: theme.spacing(0.5),
   },
   userBubble: {
     maxWidth: '85%',
@@ -164,6 +166,11 @@ export type TimelineEntryProps = {
    * is a disclosure on the row, never a view-wide switch.
    */
   technical?: boolean;
+  /**
+   * A user message only: a line under the bubble saying who wrote it when it
+   * was not the person — the portal's prepared opener of a hand-off session.
+   */
+  caption?: string;
 };
 
 /** Prose from the agent, rendered as markdown. */
@@ -375,6 +382,7 @@ export function TimelineEntry({
   defaultExpanded = false,
   isAgentWorking = false,
   technical = false,
+  caption,
 }: TimelineEntryProps) {
   const classes = useStyles();
 
@@ -387,6 +395,16 @@ export function TimelineEntry({
           <span className={classes.srOnly}>You</span>
           <pre className={classes.userText}>{item.text}</pre>
         </div>
+        {caption && (
+          <Text
+            as="p"
+            variant="body-x-small"
+            color="secondary"
+            data-testid="timeline-user-message-caption"
+          >
+            {caption}
+          </Text>
+        )}
       </div>
     );
   }

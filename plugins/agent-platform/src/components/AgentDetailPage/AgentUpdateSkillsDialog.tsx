@@ -138,7 +138,7 @@ export type AgentUpdateSkillsDialogProps = {
 };
 
 /**
- * "Update skills": re-pin every git skill of the agent to the head of its
+ * "Update all skills to latest": re-pin every git skill of the agent to the head of its
  * repository's default branch (D8 — skills never move on their own).
  *
  * Open, the dialog asks agent-manager for the dry run (`validate_agent` with
@@ -247,8 +247,8 @@ export function AgentUpdateSkillsDialog({
         }
         onOpenChange(isOpenNow);
       }}
-      title={`Update the skills of "${displayName}"?`}
-      confirmLabel={viaPullRequest ? 'Open pull request' : 'Update skills'}
+      title={`Update all skills of "${displayName}" to latest?`}
+      confirmLabel={viaPullRequest ? 'Open pull request' : 'Update all skills'}
       busyLabel={viaPullRequest ? 'Opening pull request…' : 'Updating…'}
       isBusy={updating.isUpdating || updating.isCommitting}
       isDone={isCommitted}
@@ -261,8 +261,8 @@ export function AgentUpdateSkillsDialog({
     >
       <Flex direction="column" gap="3">
         <Text variant="body-medium">
-          Re-pins every git skill to its repository's default-branch head.
-          Nothing else about the agent changes.
+          Every git skill moves to the latest commit of its repository's default
+          branch. Nothing else about the agent changes.
         </Text>
         {viaPullRequest && (
           <Text variant="body-medium">

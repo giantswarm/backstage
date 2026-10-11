@@ -229,6 +229,10 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             kind: 'update',
             skill: edit.skill,
             // Only what the person changed: the rest is in the repository.
+            description:
+              description.trim() !== edit.content.description.trim()
+                ? description
+                : undefined,
             instructions:
               instructions.trim() !== edit.content.instructions.trim()
                 ? instructions
@@ -305,7 +309,10 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       )}
 
       {repositories.length > 0 && !result && (
-        <SkillCreationAssist getTarget={getCreationTarget} />
+        <SkillCreationAssist
+          getTarget={getCreationTarget}
+          isEdit={Boolean(edit)}
+        />
       )}
       {repositories.length > 0 && !result && (
         <Flex direction="column" gap="3">

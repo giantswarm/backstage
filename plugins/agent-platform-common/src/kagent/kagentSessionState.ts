@@ -26,7 +26,7 @@ export type SessionState = {
   key: string;
   /**
    * The state in the platform's words, one of four a person tells apart at a
-   * glance ({@link SESSION_STATE_LABELS}): Waiting for you, Working, Finished,
+   * glance ({@link SESSION_STATE_LABELS}): Waiting for you, Working, Idle,
    * Failed. Every surface — lists, filters, the session's badge — shows this,
    * so one session cannot be called two things on two screens. An
    * unrecognised state keeps its raw form, so a future kagent state still
@@ -42,11 +42,15 @@ export type SessionState = {
  * The platform's four state words, see {@link SessionState.label}: the one
  * vocabulary for session states. Finer A2A states (submitted, auth-required,
  * canceled, rejected) map onto these rather than getting words of their own.
+ *
+ * `finished` is the newest turn having ended, completed or stopped. A kagent
+ * session never closes, so the word is "Idle", not "Finished": the agent is
+ * done with its turn and the session takes the next message (T100 H4).
  */
 export const SESSION_STATE_LABELS = {
   waiting: 'Waiting for you',
   working: 'Working',
-  finished: 'Finished',
+  finished: 'Idle',
   failed: 'Failed',
 } as const;
 

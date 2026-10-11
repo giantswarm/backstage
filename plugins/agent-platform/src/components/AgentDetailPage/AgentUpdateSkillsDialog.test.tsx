@@ -177,7 +177,7 @@ describe('AgentUpdateSkillsDialog', () => {
     const { callTool } = await renderDialog();
     await screen.findByTestId('skill-refresh-pr-review');
 
-    const confirm = screen.getByRole('button', { name: 'Update skills' });
+    const confirm = screen.getByRole('button', { name: 'Update all skills' });
     await waitFor(() => expect(confirm).toBeEnabled());
     await userEvent.click(confirm);
 
@@ -224,7 +224,7 @@ describe('AgentUpdateSkillsDialog', () => {
         screen.getByText(/opens a pull request as you with the new pins/),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Update skills' }),
+        screen.queryByRole('button', { name: 'Update all skills' }),
       ).not.toBeInTheDocument();
       expect(
         callTool.mock.calls.some(
@@ -301,7 +301,7 @@ describe('AgentUpdateSkillsDialog', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Update skills' }),
+      screen.getByRole('button', { name: 'Update all skills' }),
     ).toBeDisabled();
   });
 
@@ -319,7 +319,7 @@ describe('AgentUpdateSkillsDialog', () => {
       screen.getByText(/GitHub answered 404 — the repository does not exist/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Update skills' }),
+      screen.getByRole('button', { name: 'Update all skills' }),
     ).toBeDisabled();
     expect(
       callTool.mock.calls.some(
@@ -335,7 +335,7 @@ describe('AgentUpdateSkillsDialog', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Update skills' }),
+      screen.getByRole('button', { name: 'Update all skills' }),
     ).toBeDisabled();
   });
 
@@ -346,7 +346,7 @@ describe('AgentUpdateSkillsDialog', () => {
       ),
     });
     await screen.findByTestId('skill-refresh-pr-review');
-    const confirm = screen.getByRole('button', { name: 'Update skills' });
+    const confirm = screen.getByRole('button', { name: 'Update all skills' });
     await waitFor(() => expect(confirm).toBeEnabled());
     await userEvent.click(confirm);
 

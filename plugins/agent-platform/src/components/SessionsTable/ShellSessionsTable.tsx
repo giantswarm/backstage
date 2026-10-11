@@ -48,15 +48,12 @@ import { useKagentCapabilities } from '../../hooks/useKagentCapabilities';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useRenameSession } from '../../hooks/useRenameSession';
 import { PinIcon } from '../PinIcon';
-import {
-  SessionRow,
-  sessionSearchFn,
-  sortSessionsBy,
-} from '../SessionsDataProvider/helpers';
+import { SessionRow, sessionSearchFn } from '../SessionsDataProvider/helpers';
 import { SessionActionsMenu } from '../SessionDetailPage/SessionActionsMenu';
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
-  formatSessionStart,
+  compareSessionRecency,
+  formatSessionTime,
   PINNED_GROUP_LABEL,
   SESSION_DAY_GROUPS,
   SessionListGroup,
@@ -104,7 +101,7 @@ export const MAX_RENDERED_SESSIONS = 4 * SESSIONS_PAGE_SIZE;
 const ROW_ATTRIBUTE = 'data-session-row';
 
 const STATE_UNKNOWN_TITLE =
-  'kagent could not be read for this session, so its state is unknown, which is not the same as finished.';
+  'kagent could not be read for this session, so its state is unknown, which is not the same as idle.';
 const STATE_IDLE_TITLE = 'It started, but no turn has reported a state.';
 const STATE_UNEVALUATED_LABEL = 'Not loaded';
 const STATE_UNEVALUATED_TITLE = 'Open the session to see its state.';
@@ -395,19 +392,18 @@ function shellColumns({
   }
   columns.push(
     {
-      id: 'createdAt',
-      label: 'Started',
+      id: 'lastActiveAt',
+      label: 'Last active',
       width: '12%',
       cell: (row, group) => (
         <Cell>
-          {row.createdAt ? (
+          {row.lastActiveAt !== undefined ? (
             <Text variant="body-medium" color="secondary">
-              <time
-                dateTime={row.createdAt}
-                title={formatLocalDateFull(row.createdAt)}
-              >
-                {formatSessionStart(row.createdAt, group, currentYear)}
-              </time>
+              <SessionTime
+                at={row.lastActiveAt}
+                group={group}
+                currentYear={currentYear}
+              />
             </Text>
           ) : (
             <Unknown />
@@ -433,6 +429,27 @@ function shellColumns({
     },
   );
   return columns;
+}
+
+/**
+ * When the session was last active, as short as its group allows, with the
+ * full local stamp on hover.
+ */
+function SessionTime({
+  at,
+  group,
+  currentYear,
+}: {
+  at: number;
+  group: SessionListGroup;
+  currentYear: number;
+}) {
+  const iso = new Date(at).toISOString();
+  return (
+    <time dateTime={iso} title={formatLocalDateFull(iso)}>
+      {formatSessionTime(at, group, currentYear)}
+    </time>
+  );
 }
 
 function emptyTitle(
@@ -497,7 +514,7 @@ function DayTable({
 /**
  * One day's sessions at phone width: stacked rows named by the day's heading
  * (T22 B1). A table there gave the title ~31px; a row gives it the width and
- * two lines, with the agent, state and start time under it.
+ * two lines, with the agent, state and last-active time under it.
  */
 function DayList({
   label,
@@ -536,11 +553,14 @@ function DayList({
           showState: showStates,
           showAgent,
           showInstallation,
-          started: row.createdAt ? (
-            <time dateTime={row.createdAt}>
-              {formatSessionStart(row.createdAt, group, currentYear)}
-            </time>
-          ) : undefined,
+          time:
+            row.lastActiveAt !== undefined ? (
+              <SessionTime
+                at={row.lastActiveAt}
+                group={group}
+                currentYear={currentYear}
+              />
+            ) : undefined,
           actions: renderActions(row),
         }),
       )}
@@ -627,8 +647,8 @@ function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
 /**
  * The agent-platform shell's sessions list: search and the State, Agent and
  * Pinned dropdowns over one data set, shown as one table per day the sessions
- * started (Today, Yesterday, Earlier), newest first, a page of sessions at a
- * time.
+ * were last active (Today, Yesterday, Earlier), most recently active first —
+ * the rail's order — a page of sessions at a time.
  */
 export function ShellSessionsTable({
   rows,
@@ -676,21 +696,16 @@ export function ShellSessionsTable({
   const today = now.toDateString();
   const currentYear = now.getFullYear();
 
-  // Pinned rows lead whatever page of the list is shown — the Pinned group is
-  // no use when its rows sit past the first Load more.
-  const sortPinnedFirst = useCallback(
-    (
-      sorted: SessionTableRow[],
-      sort: { column: unknown; direction: 'ascending' | 'descending' },
-    ) => {
-      const ordered = sortSessionsBy(sorted, sort);
-      const pinned = ordered.filter(row => row.pinned);
-      return pinned.length > 0
-        ? [...pinned, ...ordered.filter(row => !row.pinned)]
-        : ordered;
-    },
-    [],
-  );
+  // Most recently active first, by the comparator the rail orders with
+  // (T100 M1). Pinned rows lead whatever page of the list is shown — the
+  // Pinned group is no use when its rows sit past the first Load more.
+  const sortPinnedFirst = useCallback((sorted: SessionTableRow[]) => {
+    const ordered = [...sorted].sort(compareSessionRecency);
+    const pinned = ordered.filter(row => row.pinned);
+    return pinned.length > 0
+      ? [...pinned, ...ordered.filter(row => !row.pinned)]
+      : ordered;
+  }, []);
 
   // A link can open the list already narrowed (`?q=`, `?state=`): the
   // palette's "+N more sessions", the toast for several sessions waiting.
@@ -709,7 +724,7 @@ export function ShellSessionsTable({
     initialFilter: sessionSelectionOf(opening.filter),
     filterFn: filterSessionsBySelection,
     sortFn: sortPinnedFirst,
-    initialSort: { column: 'createdAt', direction: 'descending' },
+    initialSort: { column: 'lastActiveAt', direction: 'descending' },
     paginationOptions: { type: 'none' },
   });
 
@@ -780,7 +795,7 @@ export function ShellSessionsTable({
       if (row.pinned) {
         continue;
       }
-      const group = sessionDayGroup(row.createdAt, now);
+      const group = sessionDayGroup(row.lastActiveAt, now);
       byGroup.set(group, [...(byGroup.get(group) ?? []), row]);
     }
     const dayGroups = SESSION_DAY_GROUPS.flatMap(({ id, label }) => {

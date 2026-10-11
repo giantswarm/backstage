@@ -19,9 +19,12 @@ The first part of this page summarises the product. The second part, from
 where it is off, decides whether the shell appears. Where it is on, the shell
 owns its routes and the classic portal keeps its chrome everywhere else.
 
-The rail (`AgentShellNav`, `navItems.ts`) lists up to eight pinned sessions and
-the eight most recently active ones, where activity is the later of a session's
-start and its last state change (`groupRailSessions`). On a phone it becomes a
+The rail (`AgentShellNav`, `navItems.ts`) lists up to eight pinned sessions,
+then every session waiting for the person, then the most recently active ones,
+eight unpinned rows in all (`groupRailSessions`). Activity is the later of a
+session's start and its last state change; the rail and the sessions list
+order by it with one comparator (`byLastActive`). The waiting count beside
+"All sessions" opens the list filtered to those sessions. On a phone it becomes a
 bottom bar. The **Platform Portal** item appears only where the deployment also
 serves the classic portal. When an agent waits for an answer, a toast says so
 anywhere in the shell (`NeedsInputToasts`); more than three become one toast.
@@ -63,10 +66,12 @@ only when the person accepts. Review is agent-manager's dry run, and **Create
 agent** deploys as the person. **Propose as pull request instead** appears
 where agent-manager supports it.
 
-On the agent page, Edit, Update skills and Delete appear only where
-agent-manager allows writes; an agent that comes from git gets a pull request
-instead of a direct change. Update skills moves the agent's skills to their
-repositories' newest commits.
+On the agent page, Edit, Update all skills to latest and Delete appear only
+where agent-manager allows writes; an agent that comes from git gets a pull
+request instead of a direct change. Update all skills to latest moves every
+git skill of the agent to its repository's newest commit. A skill pinned
+behind the catalog's newest commit shows "Update available"; the mark comes
+from the skill catalog the page reads anyway.
 
 ### Skills
 
@@ -79,14 +84,15 @@ remote images, and only when the portal can read the file.
   once through muster if needed). Nothing changes until it is merged. Both
   write the SKILL.md only, and both work for github.com repositories only; a
   skill from another git repository has a read-only page. A `skillCreation`
-  meta-agent adds **Let <agent> help**, which starts a session with that agent
-  about the skill (repository and draft, or path and commit) for complex,
+  meta-agent adds **Create with <agent>** (Edit skill: **Edit with <agent>**),
+  which starts a session with that agent about the skill (repository and
+  draft, or path, commit and the fields the person changed) for complex,
   nested skills; the agent proposes those as a pull request itself.
-- **Evaluate** (with a `skillEvaluation` meta-agent) starts a session with that
-  agent about the skill's repository, path and commit.
+- **Evaluate with <agent>** (with a `skillEvaluation` meta-agent) starts a
+  session with that agent about the skill's repository, path and commit.
 - **Update agents** appears when agents pin an older commit than the newest
-  one. It runs Update skills for each selected agent, which re-pins every git
-  skill of that agent, not only this one. An agent from git gets a pull
+  one. It runs Update all skills to latest for each selected agent, which
+  re-pins every git skill of that agent, not only this one. An agent from git gets a pull
   request; an agent the person cannot update is listed with the reason.
 
 ### Connectors
@@ -435,9 +441,9 @@ Either way, 409 also means the branch exists. The edit form is prefilled from
 github.com, and from discovery's clone otherwise, which answers 409 once the
 branch has moved on.
 
-**Evaluate** starts a session with `metaAgents.skillEvaluation`
-(`useCreateSession('skillDetail')`) and opens it (see "Starting a session").
-The first message names the skill, repository, path, commit and branch, and
+**Evaluate with <agent>** starts a session with
+`metaAgents.skillEvaluation` (`useMetaAgentHandoff('skillEvaluation',
+'skillDetail')`) and opens it (see "Starting a session"). The first message names the skill, repository, path, commit and branch, and
 asks for a report and a pull request with improvements.
 
 ### The runtime is a Harness
@@ -706,14 +712,16 @@ Conversations were **not migrated** to the API v2 line (plan decision D9).
 A kagent API v2 `Session` carries `id`, `creator`, `agent` (namespace and name),
 `state`, `operation`, `failure`, `created_at`, `updated_at`, `name`,
 `context_id` and runtime fields, and nothing about cost or outcome. The columns
-are therefore Session, Agent, State, Environment and Started; the prototype's
-other columns and its summary band have no data. Environment is dropped when
-rows come from one installation.
+are therefore Session, Agent, State, Environment and Last active; the
+prototype's other columns and its summary band have no data. Environment is
+dropped when rows come from one installation.
 
-There is **no Last activity column**: `Session.updated_at` moves only at
-creation and on `CREATING` → `READY`, never on a message. The detail page drops
-last activity and Duration for the same reason. Restore them once
-kagent-dev/kagent#2397 exposes the newest task's time on `ListSessions`.
+**Last active** is not `Session.updated_at`, which moves only at creation and on
+`CREATING` → `READY`, never on a message. It is the later of the start and the
+newest state change from the states summary, so a session the summary does not
+evaluate shows its start. The detail page shows only the start, and no
+Duration. Read the newest task's time from `ListSessions` once
+kagent-dev/kagent#2397 exposes it.
 
 - **Only the caller's sessions exist.** kagent lists with the caller as creator
   and has no cross-user endpoint.
@@ -1584,7 +1592,8 @@ separate new-session form. Both composers use `ComposerFrame` from `ui-react`.
 Every entry point creates through `useCreateSession`: the home screen at `/`
 (`AgentPlatformHome`), the command palette (`NewSessionDialog`), the sessions
 list's first-run card (`StartNewSession`), the agent page's dialog, a lost
-runtime's new-session action, a skill's **Evaluate** and `CreateAgentAssist`.
+runtime's new-session action, the meta-agent hand-offs ("<verb> with
+<agent>", `useMetaAgentHandoff`) and `CreateAgentAssist`.
 The composer grows with its content and never shrinks back. Enter starts.
 
 #### Create, navigate, then send — in that order
@@ -1610,6 +1619,10 @@ and name travel with the prompt, so the send goes out on the first render.
 The router state is consumed once and cleared with a replacing navigation
 (`useNewSessionHandoff`), because router state survives reload and Back and
 would otherwise start a second paid turn.
+
+A meta-agent hand-off marks its prompt `prepared`, and the detail page captions
+that first message "Prepared by the portal". kagent stores no such flag, so a
+later visit shows the message plain.
 
 A tab closed between create and send leaves an empty but working session in
 the list.
@@ -1792,8 +1805,8 @@ tabs refetches nothing; the toolset's muster queries run only on the Tools tab.
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
   (consumed once) and polls `get_agent_status` until the Harness reports ready
   or failed.
-- **Header** — the actions menu offers `Update skills…` and `Delete agent…`
-  where agent-manager is available (`Edit agent…` too outside the shell, whose
+- **Header** — the actions menu offers `Update all skills to latest…` and
+  `Delete agent…` where agent-manager is available (`Edit agent…` too outside the shell, whose
   header has its own Edit button), and always the **manifest
   dialog**: the `Agent` as YAML without `metadata.managedFields` and the
   `last-applied-configuration` annotation. It shows what the page does not

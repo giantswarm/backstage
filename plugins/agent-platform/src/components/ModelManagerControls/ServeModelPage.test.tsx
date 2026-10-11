@@ -503,6 +503,91 @@ describe('ServeModelPage', () => {
     ).toBeChecked();
   });
 
+  describe('preselecting a preset', () => {
+    const cpuPreset = {
+      name: 'qwen2-5-0-5b-cpu',
+      displayName: 'Qwen2.5 0.5B Instruct (CPU)',
+      model: 'Qwen/Qwen2.5-0.5B-Instruct',
+      gpus: 0,
+    };
+    const noAccelerator: ModelManagerFitResult = {
+      ...fits,
+      fits: false,
+      reason: 'no accelerator node',
+    };
+    const renderWithInventory = () =>
+      render({
+        targets: [
+          {
+            ...pool,
+            capabilities: { ...poolCapabilities, nodeInventory: true },
+          },
+        ],
+      });
+
+    it('skips presets that need more GPUs than the nodes have', async () => {
+      listPresets.mockResolvedValue([...presets, cpuPreset]);
+      listNodes.mockResolvedValue([
+        { name: 'worker', ready: true, eligible: true, gpuCount: 0 },
+      ]);
+      await renderWithInventory();
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /Preset/ }),
+        ).toHaveTextContent('Qwen2.5 0.5B Instruct (CPU)'),
+      );
+      expect(checkFit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'qwen3-4b-instruct' }),
+      );
+    });
+
+    it('keeps the first preset where check_fit says it fits, even with no GPU node yet (a pool scaling from zero)', async () => {
+      listNodes.mockResolvedValue([]);
+      await renderWithInventory();
+
+      const verdict = await screen.findByTestId('serve-fit-verdict');
+      await waitFor(() =>
+        expect(verdict).toHaveTextContent('Fits — the node comes as g6.xlarge'),
+      );
+      expect(screen.getByRole('button', { name: /Preset/ })).toHaveTextContent(
+        'Qwen3 4B Instruct',
+      );
+    });
+
+    it('moves to a preset that needs no GPU when check_fit turns its pick down and the nodes are not known', async () => {
+      listPresets.mockResolvedValue([...presets, cpuPreset]);
+      checkFit.mockImplementation(async ({ model }: { model: string }) =>
+        model === 'qwen2-5-0-5b-cpu'
+          ? { ...fits, model: 'Qwen/Qwen2.5-0.5B-Instruct' }
+          : { ...noAccelerator, model: 'Qwen/Qwen3-4B-Instruct-2507' },
+      );
+      await render();
+
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /Preset/ }),
+        ).toHaveTextContent('Qwen2.5 0.5B Instruct (CPU)'),
+      );
+      expect(checkFit).toHaveBeenCalledTimes(2);
+    });
+
+    it('chooses nothing when check_fit turns its pick down', async () => {
+      listNodes.mockResolvedValue([]);
+      checkFit.mockResolvedValue(noAccelerator);
+      await renderWithInventory();
+
+      await waitFor(() => expect(checkFit).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: /Preset/ }),
+        ).not.toHaveTextContent(/Qwen3 4B Instruct|Qwen3 8B FP8/),
+      );
+      expect(screen.queryByTestId('serve-fit-verdict')).not.toBeInTheDocument();
+      expect(checkFit).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('says on the preset field that there is nothing to serve when Serve is pressed', async () => {
     listPresets.mockResolvedValue([]);
     await render();

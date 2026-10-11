@@ -141,6 +141,13 @@ export function shortCommit(commit: string): string {
   return commit.slice(0, 7);
 }
 
+/** Whether two commit ids name the same commit, either possibly abbreviated. */
+export function sameCommit(a: string, b: string): boolean {
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x.length >= 7 && y.length >= 7 && (x.startsWith(y) || y.startsWith(x));
+}
+
 /** `owner` and `repo` of a (normalized) github.com URL, or undefined. */
 export function githubRepoParts(
   repoUrl: string,

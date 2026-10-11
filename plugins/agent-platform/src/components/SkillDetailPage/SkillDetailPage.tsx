@@ -39,9 +39,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
-import { useCreateSession } from '../../hooks/useCreateSession';
-import { useMetaAgent } from '../../hooks/useMetaAgent';
-import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import { useMetaAgentHandoff } from '../../hooks/useMetaAgentHandoff';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useSkillContent } from '../../hooks/useSkillContent';
 import { skillSource, usedByLabel } from '../../lib/customize';
@@ -51,6 +49,7 @@ import {
   canProposeSkillTo,
   isSkillContentReadable,
   resolveSkillDetailPath,
+  sameCommit,
   shortCommit,
   skillCommitUrl,
   skillDetailPath,
@@ -58,11 +57,7 @@ import {
   type DiscoveredSkill,
   type SkillDetailTab,
 } from '../../lib/skills';
-import {
-  agentDetailRouteRef,
-  sessionDetailRouteRef,
-  skillsRouteRef,
-} from '../../routes';
+import { agentDetailRouteRef, skillsRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
@@ -86,13 +81,6 @@ export function agentsUsingSkill(
   return rows
     .filter(row => (row.skillIds ?? []).includes(id))
     .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/** Whether two commit ids name the same commit, either possibly abbreviated. */
-function sameCommit(a: string, b: string): boolean {
-  const x = a.trim().toLowerCase();
-  const y = b.trim().toLowerCase();
-  return x.length >= 7 && y.length >= 7 && (x.startsWith(y) || y.startsWith(x));
 }
 
 /**
@@ -465,7 +453,6 @@ function SkillPage({
 }) {
   const navigate = useNavigate();
   const isPhone = usePhoneLayout();
-  const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const skillsRoute = useRouteRef(skillsRouteRef);
   const {
     rows,
@@ -489,49 +476,20 @@ function SkillPage({
   // here, and the Overview says why.
   const proposable = canProposeSkillTo(skill.repoUrl);
 
-  // "Evaluate" exists only where the Skill Evaluator role is configured and
-  // resolves to a live agent (decisions G8/G13); unresolved, no button.
-  const evaluator = useMetaAgent('skillEvaluation');
+  // "Evaluate with …" exists only where the Skill Evaluator role is
+  // configured and resolves to an agent that can take a session (decisions
+  // G8/G13); unresolved, no button. It is a session, not a form: one press
+  // creates it with the evaluator and the prompt naming this skill, then
+  // opens it (`useMetaAgentHandoff`, a "<verb> with X" hand-off).
   const {
-    createSession,
+    agent: evaluator,
+    start: startEvaluation,
     isCreating,
     error: evaluateError,
-  } = useCreateSession('skillDetail');
-
-  // Evaluate is a session, not a form: one press creates it with the
-  // evaluator and the prompt naming this skill, then hands over to the
-  // session page like every other entry point.
-  const onEvaluate = useCallback(async () => {
-    if (!evaluator) {
-      return;
-    }
-    const prompt = evaluationPrompt(skill);
-    let sessionId: string;
-    try {
-      sessionId = await createSession({ agent: evaluator, prompt });
-    } catch {
-      // Shown from the hook's error, above the page's content.
-      return;
-    }
-    const href = sessionDetailRoute?.({
-      installation: evaluator.installation,
-      sessionId,
-    });
-    if (!href) {
-      return;
-    }
-    // The prompt travels with the navigation and is sent by the session
-    // detail page — see "Starting a session" in docs/agent-platform.md.
-    navigate(href, {
-      state: {
-        [NEW_SESSION_STATE_KEY]: {
-          text: prompt,
-          agentNamespace: evaluator.namespace,
-          agentName: evaluator.technicalName,
-        },
-      },
-    });
-  }, [createSession, evaluator, navigate, sessionDetailRoute, skill]);
+  } = useMetaAgentHandoff('skillEvaluation', 'skillDetail');
+  const onEvaluate = useCallback(() => {
+    startEvaluation(evaluationPrompt(skill)).catch(() => {});
+  }, [startEvaluation, skill]);
 
   // Editing is the add-skill flow, prefilled from the SKILL.md; it opens a
   // pull request. Only for a skill whose file the portal could read — an edit
@@ -619,6 +577,7 @@ function SkillPage({
   // "Update agents" only while some agent pins an older commit; with none
   // behind, the Used by tab says so in a line instead.
   const canEvaluate = Boolean(evaluator) && proposable;
+  const evaluateLabel = `Evaluate with ${evaluator?.name}`;
   const canUpdateAgents = !agentsLoading && behind.length > 0;
   let actions: ReactNode;
   if (isPhone) {
@@ -643,7 +602,7 @@ function SkillPage({
           canEvaluate
             ? {
                 id: 'evaluate',
-                label: isCreating ? 'Starting…' : 'Evaluate',
+                label: isCreating ? 'Starting…' : evaluateLabel,
                 onAction: onEvaluate,
                 isDisabled: isCreating,
               }
@@ -681,7 +640,7 @@ function SkillPage({
             onPress={onEvaluate}
             isDisabled={isCreating}
           >
-            {isCreating ? 'Starting…' : 'Evaluate'}
+            {isCreating ? 'Starting…' : evaluateLabel}
           </Button>
         )}
       </>
@@ -777,7 +736,7 @@ function SkillPage({
  * add-skill flow prefilled (`EditSkillPage`), which
  * proposes the change as a pull request — only for a readable skill in a
  * github.com repository; "View source" opens the folder at the pinned commit
- * (github.com only); "Evaluate" appears only where `metaAgents.skillEvaluation`
+ * (github.com only); "Evaluate with …" appears only where `metaAgents.skillEvaluation`
  * resolves and starts a session with that agent straight away — the prompt
  * names the skill and asks for a report and an improvement pull request.
  *

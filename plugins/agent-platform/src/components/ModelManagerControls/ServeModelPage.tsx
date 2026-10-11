@@ -101,6 +101,8 @@ type Choice = {
   disabled?: boolean;
   /** Where the preset serves already (`Serving on gpu-a`); such a choice is disabled. */
   served?: string;
+  /** The GPUs the preset needs, where it says. */
+  gpus?: number;
 };
 
 function presetChoice(
@@ -124,6 +126,7 @@ function presetChoice(
       .filter(Boolean)
       .join(' — '),
     ...(where ? { disabled: true, served: where } : {}),
+    ...(preset.gpus !== undefined ? { gpus: preset.gpus } : {}),
   };
 }
 
@@ -285,14 +288,6 @@ export function ServeModelPage({
       .map(cachedModelChoice);
   }, [target, usesPresets, presets.data, models]);
 
-  // The first servable choice stands in for none; a seeded name the list
-  // does not carry gives way to it too. A seeded preset that serves already
-  // stays chosen, so the page can say where.
-  useEffect(() => {
-    if (choices.length > 0 && !choices.some(choice => choice.id === model)) {
-      setModel((choices.find(choice => !choice.disabled) ?? choices[0]).id);
-    }
-  }, [choices, model]);
   const choice = choices.find(candidate => candidate.id === model);
   const servedWhere = choice?.served;
 
@@ -328,6 +323,72 @@ export function ServeModelPage({
     enabled: Boolean(target) && needsFit && nodeInventory,
     staleTime: 30_000,
   });
+  // The GPUs the backend's nodes carry, once read. Unknown (no inventory, a
+  // failed read) rules nothing out.
+  const backendGpus =
+    nodeInventory && nodes.isSuccess
+      ? (nodes.data ?? [])
+          .filter(node => !node.backend || !backend || node.backend === backend)
+          .reduce((total, node) => total + (node.gpuCount ?? 0), 0)
+      : undefined;
+  const nodesSettled = !(nodeInventory && needsFit) || !nodes.isPending;
+
+  // What the page chose on its own, and what check_fit turned down of it:
+  // a preselection never stands on a preset that cannot be served.
+  const [autoPicked, setAutoPicked] = useState<string>();
+  const [declined, setDeclined] = useState<string[]>([]);
+  useEffect(() => {
+    setAutoPicked(undefined);
+    setDeclined(current => (current.length > 0 ? [] : current));
+  }, [targetKey, seed]);
+
+  // A choice stands in for none: the first free one the nodes have the GPUs
+  // for, else the first free one until check_fit turns a pick down (a pool
+  // that scales from zero shows no GPU yet), then one that needs no GPU,
+  // else none. A seeded name the list does not carry gives way too; a
+  // seeded preset that serves already stays chosen, so the page can say
+  // where, and so does the first choice when every one serves already.
+  useEffect(() => {
+    if (
+      !nodesSettled ||
+      choices.length === 0 ||
+      choices.some(candidate => candidate.id === model)
+    ) {
+      return;
+    }
+    if (choices.every(candidate => candidate.disabled)) {
+      setModel(choices[0].id);
+      return;
+    }
+    const free = choices.filter(
+      candidate => !candidate.disabled && !declined.includes(candidate.id),
+    );
+    const pick =
+      free.find(
+        candidate =>
+          backendGpus !== undefined && (candidate.gpus ?? 0) <= backendGpus,
+      ) ??
+      (declined.length === 0
+        ? free[0]
+        : free.find(candidate => candidate.gpus === 0));
+    setAutoPicked(pick?.id);
+    setModel(pick?.id ?? '');
+  }, [choices, model, nodesSettled, backendGpus, declined]);
+  useEffect(() => {
+    // `fit` is keyed by the model, so its answer is this pick's (its `model`
+    // names the repository, not the preset).
+    if (
+      autoPicked !== undefined &&
+      model === autoPicked &&
+      fit.data &&
+      !fit.data.fits
+    ) {
+      setDeclined(current => [...current, autoPicked]);
+      setAutoPicked(undefined);
+      setModel('');
+    }
+  }, [autoPicked, model, fit.data]);
+
   const modelImage = isModelImagePreset(
     presets.data?.find(preset => preset.name === model)?.storageUri,
   );

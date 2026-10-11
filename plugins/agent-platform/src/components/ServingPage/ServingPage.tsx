@@ -454,6 +454,7 @@ export function ServingPage() {
           icon: <AddIcon />,
           onAction: poolAddAction.open,
           isDisabled: poolAddAction.isDisabled,
+          disabledReason: poolAddAction.disabledReason,
         }
       : undefined;
     // The import is the richer way to get a model; a plain pull is the

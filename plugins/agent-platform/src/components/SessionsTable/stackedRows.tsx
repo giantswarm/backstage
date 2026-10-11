@@ -112,8 +112,8 @@ export type SessionStackedRowOptions = {
   showState: boolean;
   showAgent: boolean;
   showInstallation: boolean;
-  /** When the session started, as the list words it (a time, a date). */
-  started: ReactNode;
+  /** The row's time, as the list words it (a time, a date). */
+  time: ReactNode;
   /** The row's pin and ⋯ menu, when the list offers them. */
   actions?: ReactNode;
 };
@@ -124,7 +124,7 @@ export type SessionStackedRowOptions = {
  *
  * - Line 1: the title — the link to the session, its hit area the whole row,
  *   wrapping to two lines — the runtime-lost mark, and the row's actions.
- * - Line 2: avatar and agent · state · environment · when it started.
+ * - Line 2: avatar and agent · state · environment · the row's time.
  *
  * The columns a page hides (an agent's own sessions hide the agent and the
  * environment) are left out of line 2 the same way.
@@ -137,7 +137,7 @@ export function sessionStackedRow({
   showState,
   showAgent,
   showInstallation,
-  started,
+  time,
   actions,
 }: SessionStackedRowOptions): StackedRowItem {
   return {
@@ -160,7 +160,7 @@ export function sessionStackedRow({
         <StateFact key="state" row={row} isLoading={isLoadingStates} />
       ),
       showInstallation && row.installation,
-      started,
+      time,
     ],
     actions,
   };

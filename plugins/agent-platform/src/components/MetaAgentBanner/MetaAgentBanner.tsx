@@ -57,12 +57,25 @@ export type MetaAgentBannerProps = {
 };
 
 /**
- * A create/edit form's meta-agent hand-off strip: the tinted band above the
- * form with the meta agent's avatar, a title line, what the agent does, and
- * the control that hands over to it. The create-agent flow's "Let Swarm
- * Operator help" (`CreateAgentAssist`) and the skill forms' skill-creator
- * hand-off (`SkillCreationAssist`) both draw it, so every form that hands
- * over to a meta agent reads the same. Gating on the role is the caller's.
+ * A meta-agent hand-off strip: the tinted band with the meta agent's avatar,
+ * a title line, what the agent does, and the control that hands over to it.
+ * The create-agent flow (`CreateAgentAssist`), the skill forms
+ * (`SkillCreationAssist`) and the workflows overview (`WorkflowCreateAssist`)
+ * draw it. Gating on the role is the caller's.
+ *
+ * **Naming contract (UX review H1).** One strip, three behaviours, each with
+ * its own wording so the label says what pressing does:
+ * - "Let X help" opens a side chat beside the form and keeps the form; nothing
+ *   is sent until the person writes (`CreateAgentAssist`).
+ * - "Ask X …" opens New session with X preselected; nothing starts until the
+ *   person sends (`AgentsHelperBanner`, the same tint without this component).
+ * - "<Verb> with X" ("Create with X", "Edit with X", "Evaluate with X") starts
+ *   a session with X at once, its first message prepared from the page, and
+ *   opens it (`useMetaAgentHandoff`). Where the strip carries such a control,
+ *   its title or description says a session starts; a form's typed input goes
+ *   with the first message, never lost silently. Header buttons of the same
+ *   kind (the skill page's Evaluate, the workflow page's Edit) follow the same
+ *   wording.
  */
 export function MetaAgentBanner({
   agent,

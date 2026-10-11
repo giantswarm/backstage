@@ -300,12 +300,13 @@ test('agent edit: every entry point opens the commit-mode Edit page for an agent
     .click();
   await expectCommitModeEditPage(admin, labAgent);
 
-  // The actions menu: Update skills, which commits too (T70). Edit is the
-  // header's button alone; the menu does not list it a second time (T98).
+  // The actions menu: Update all skills to latest, which commits too (T70).
+  // Edit is the header's button alone; the menu does not list it a second
+  // time (T98).
   await open(admin, labAgent.detailPath);
   await admin.getByRole('button', { name: 'Agent actions' }).click();
   await expect(
-    admin.getByRole('menuitem', { name: /Update skills/ }),
+    admin.getByRole('menuitem', { name: /Update all skills to latest/ }),
   ).toBeVisible();
   await expect(admin.getByRole('menuitem', { name: /Edit agent/ })).toHaveCount(
     0,
@@ -348,7 +349,7 @@ test('agent edit: an agent applied from git offers no Edit without the commit ca
     0,
   );
   await expect(
-    admin.getByRole('menuitem', { name: /Update skills/ }),
+    admin.getByRole('menuitem', { name: /Update all skills to latest/ }),
   ).toHaveCount(0);
   await admin.keyboard.press('Escape');
 

@@ -81,6 +81,37 @@ describe('ModelHostingActions', () => {
       expect(addBackend.onAction).toHaveBeenCalledTimes(1);
     });
 
+    it('says why a button is disabled, and leaves such an action out of the menu', async () => {
+      const reason =
+        'No environment in reach has a cluster to add a GPU node pool to.';
+      render(
+        <ModelHostingActions
+          primary={action('add-pool', 'Add GPU node pool', {
+            isDisabled: true,
+            disabledReason: reason,
+          })}
+          more={[
+            action('add-backend', 'Add model backend'),
+            action('pool-again', 'Add GPU node pool', {
+              isDisabled: true,
+              disabledReason: reason,
+            }),
+          ]}
+        />,
+      );
+
+      const button = screen.getByRole('button', { name: 'Add GPU node pool' });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleDescription(reason);
+
+      const menu = await openMenu();
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(item => item.textContent),
+      ).toEqual(['Add model backend']);
+    });
+
     it('leaves the menu out when nothing goes in it', () => {
       render(
         <ModelHostingActions primary={action('add', 'Add GPU node pool')} />,

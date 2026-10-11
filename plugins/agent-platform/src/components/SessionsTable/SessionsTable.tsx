@@ -67,7 +67,7 @@ export { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE };
 
 /** Copy for each way a state can be missing, kept in one place. */
 const STATE_UNKNOWN_TITLE =
-  'kagent could not be read for this session, so its state is not known. This is not the same as finished.';
+  'kagent could not be read for this session, so its state is not known. This is not the same as idle.';
 const STATE_IDLE_TITLE =
   'This session was started and has no turn that reported a state.';
 const STATE_UNEVALUATED_LABEL = 'Not loaded';
@@ -690,7 +690,7 @@ function PhoneSessionsList({
               showState,
               showAgent,
               showInstallation,
-              started: row.createdAt ? (
+              time: row.createdAt ? (
                 <DateComponent value={row.createdAt} relative />
               ) : undefined,
             }),

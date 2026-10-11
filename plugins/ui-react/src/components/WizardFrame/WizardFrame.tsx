@@ -1,17 +1,21 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button, ButtonIcon, Link, Text, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import ArrowBackIcon from '@material-ui/icons/ArrowBack';
 import CheckIcon from '@material-ui/icons/Check';
 import CloseIcon from '@material-ui/icons/Close';
+import { ConfirmDialog } from '../ConfirmDialog';
 import {
   useOwnPageHeader,
   usePageHeaderActionsSlot,
@@ -452,6 +456,14 @@ export interface WizardFrameProps {
   currentStep?: string;
   /** Where Close and Cancel leave to. */
   closeHref: string;
+  /**
+   * The flow holds input that leaving would lose: Close and Cancel then ask
+   * first, in one dialog ("Discard changes" / "Keep editing"). Off by default,
+   * and while nothing was entered — an untouched flow leaves at once. Only
+   * these two controls ask; the browser's Back is not intercepted (the app's
+   * router has no navigation blocker).
+   */
+  confirmDiscard?: boolean;
   /** Shows a Back button in the footer. */
   onBack?: () => void;
   /** The centered column's width. The connector wizard's 640px is the default. */
@@ -491,6 +503,7 @@ export function WizardFrame({
   steps,
   currentStep,
   closeHref,
+  confirmDiscard = false,
   onBack,
   width = 'narrow',
   rail,
@@ -498,6 +511,27 @@ export function WizardFrame({
 }: WizardFrameProps) {
   const classes = useStyles();
   useOwnPageHeader();
+  const navigate = useNavigate();
+  const [isDiscardOpen, setDiscardOpen] = useState(false);
+  // Close and Cancel stay links — a modified click still opens the target in
+  // a new tab, which loses nothing — and a plain click with input to lose
+  // asks first. Preventing the default also stops the client-side routing.
+  const onLeave = useCallback(
+    (event: MouseEvent<Element>) => {
+      if (
+        !confirmDiscard ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setDiscardOpen(true);
+    },
+    [confirmDiscard],
+  );
   const isPhone = usePhoneLayout();
   const isTwoColumn = useMediaQueryMatch(TWO_COLUMN_QUERY);
   const { rootRef, footerRef, frameWidth } = useFrameMeasurements();
@@ -604,7 +638,12 @@ export function WizardFrame({
       >
         <header className={classes.header}>
           <div className={classes.heading}>
-            <Link href={closeHref} aria-label="Close" className={classes.close}>
+            <Link
+              href={closeHref}
+              aria-label="Close"
+              className={classes.close}
+              onClick={onLeave}
+            >
               <CloseIcon />
             </Link>
             <div className={classes.titles}>
@@ -641,7 +680,12 @@ export function WizardFrame({
           </div>
         </WizardRailContext.Provider>
         <footer ref={footerRef} className={classes.footer}>
-          <Link href={closeHref} variant="body-medium" color="secondary">
+          <Link
+            href={closeHref}
+            variant="body-medium"
+            color="secondary"
+            onClick={onLeave}
+          >
             Cancel
           </Link>
           <div className={classes.footerActions}>
@@ -662,6 +706,19 @@ export function WizardFrame({
           </div>
         </footer>
       </div>
+      <ConfirmDialog
+        isOpen={isDiscardOpen}
+        onOpenChange={setDiscardOpen}
+        title="Discard your changes?"
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        onConfirm={() => {
+          setDiscardOpen(false);
+          navigate(closeHref);
+        }}
+      >
+        <Text variant="body-medium">What you entered will not be saved.</Text>
+      </ConfirmDialog>
     </WizardAsideContext.Provider>
   );
 }

@@ -143,7 +143,7 @@ describe('filterSessions', () => {
     expect(ids(filterSessions(rows, { state: 'waiting' }))).toEqual(['a', 'f']);
   });
 
-  it('keeps completed and canceled sessions under "Finished"', () => {
+  it('keeps completed and canceled sessions under "Idle"', () => {
     expect(ids(filterSessions(rows, { state: 'finished' }))).toEqual([
       'c',
       'i',
@@ -249,7 +249,7 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       ['all', 'All'],
       ['waiting', 'Waiting for you'],
       ['running', 'Working'],
-      ['finished', 'Finished'],
+      ['finished', 'Idle'],
       ['failed', 'Failed'],
     ]);
     // The shell adds the Pinned chip; everything else is the same buckets.

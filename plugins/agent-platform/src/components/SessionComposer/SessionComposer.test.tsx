@@ -256,12 +256,13 @@ describe('SessionComposer', () => {
     });
   });
 
-  it('says that sending resumes a finished session', () => {
-    renderComposer({ isFinished: true });
+  it('invites a reply to the agent once its turn ended, never to "resume"', () => {
+    renderComposer({ isFinished: true, agentName: 'Lab Helper' });
 
     expect(
-      screen.getByPlaceholderText('Send a message to resume this session…'),
+      screen.getByPlaceholderText('Reply to Lab Helper…'),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/resume/)).not.toBeInTheDocument();
     // Between turns is the usual state of a session, so the caption is the
     // prototype's disclaimer there too; the placeholder says what Send does.
     expect(

@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -113,6 +113,31 @@ describe('NewAgentPage', () => {
     ]) {
       expect(inside.closest('details')).toBe(details);
     }
+  });
+
+  it('leaves without asking while only the preselections are made', async () => {
+    await renderPage();
+    await screen.findByText(
+      'Runs on Claude Sonnet · change under More options',
+    );
+
+    await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks before Cancel discards a typed agent', async () => {
+    await renderPage();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Notes');
+    await userEvent.click(screen.getByRole('link', { name: 'Cancel' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Discard your changes?');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Discard changes' }),
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents');
   });
 
   it('names the preselected model under the plain fields', async () => {

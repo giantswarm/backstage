@@ -206,6 +206,11 @@ export type SessionTimelineProps = {
   onCancelTurn?: () => void;
   /** A cancel has been asked for and the server has not answered yet. */
   isCancellingTurn?: boolean;
+  /**
+   * A caption for the session's first user message, when the portal wrote it
+   * rather than the person (a meta-agent hand-off, UX review M20).
+   */
+  firstMessageCaption?: string;
 };
 
 /**
@@ -226,6 +231,7 @@ export function SessionTimeline({
   stalledSince,
   onCancelTurn,
   isCancellingTurn = false,
+  firstMessageCaption,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -340,12 +346,16 @@ export function SessionTimeline({
    * opens onto its exact call; a row inside one is technical, because opening
    * the summary was already the decision to see how the work was done.
    */
+  const firstUserMessageId = firstMessageCaption
+    ? timeline.items.find(item => item.kind === 'user-message')?.id
+    : undefined;
   const renderEntry = (item: TimelineItem, technical = false) => (
     <TimelineEntry
       key={item.id}
       item={item}
       isAgentWorking={isAgentWorking}
       technical={technical}
+      caption={item.id === firstUserMessageId ? firstMessageCaption : undefined}
     />
   );
 

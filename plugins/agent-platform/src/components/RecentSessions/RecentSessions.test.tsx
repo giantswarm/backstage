@@ -230,7 +230,9 @@ describe('RecentSessions', () => {
       // After the last session, not on a heading.
       const sessionLinks = screen
         .getAllByRole('link')
-        .filter(element => element !== link);
+        .filter(element =>
+          element.getAttribute('href')?.startsWith('/agent-platform/sessions/'),
+        );
       expect(
         sessionLinks.every(
           element =>
@@ -308,6 +310,96 @@ describe('RecentSessions', () => {
       // Past the cutoff of two.
       expect(screen.queryByText('Untouched')).not.toBeInTheDocument();
       expect(screen.getByText('1 more')).toBeInTheDocument();
+    });
+
+    it('keeps a waiting session in view above the recent ones, however old (T100 H5)', async () => {
+      const base = Date.parse('2026-07-01T00:00:00Z');
+      listSessions.mockResolvedValue(
+        Array.from({ length: 300 }, (_, index) =>
+          session(
+            `s${index}`,
+            new Date(base + index * 60_000).toISOString(),
+            `Session ${index}`,
+          ),
+        ),
+      );
+      listSessionStates.mockResolvedValue({
+        evaluatedAt: 0,
+        // The oldest session asked a question and has waited ever since.
+        states: [{ sessionId: 's0', state: 'input-required' }],
+        unreadable: [],
+        skipped: 0,
+      });
+
+      await renderRecent({ shellRail: true, limit: 8 });
+
+      const waiting = await screen.findByRole('list', {
+        name: 'Waiting for you',
+      });
+      expect(within(waiting).getByText('Session 0')).toBeInTheDocument();
+      // Above the recency groups, and inside the same bound of eight.
+      const lists = screen.getAllByRole('list');
+      expect(lists[0]).toBe(waiting);
+      expect(screen.getAllByRole('listitem')).toHaveLength(8);
+      expect(screen.getByText('Session 299')).toBeInTheDocument();
+      expect(screen.queryByText('Session 292')).not.toBeInTheDocument();
+      expect(screen.getByText('292 more')).toBeInTheDocument();
+      // The count beside All sessions opens the list narrowed to them.
+      expect(
+        screen.getByRole('link', { name: '1 waiting for you' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions?state=waiting');
+      expect(screen.getByText('1 waiting')).toBeInTheDocument();
+    });
+
+    it('past the cap, lists the most recent waiting sessions and counts them all (T100 H5)', async () => {
+      listSessionStates.mockResolvedValue({
+        evaluatedAt: 0,
+        states: [
+          { sessionId: 'old', state: 'input-required' },
+          { sessionId: 'mid', state: 'input-required' },
+          { sessionId: 'new', state: 'auth-required' },
+        ],
+        unreadable: [],
+        skipped: 0,
+      });
+
+      await renderRecent({ shellRail: true, limit: 2 });
+
+      const waiting = await screen.findByRole('list', {
+        name: 'Waiting for you',
+      });
+      await waitFor(() =>
+        expect(
+          within(waiting)
+            .getAllByRole('listitem')
+            .map(item => item.textContent),
+        ).toEqual([
+          expect.stringContaining('Newest'),
+          expect.stringContaining('Middle'),
+        ]),
+      );
+      expect(screen.queryByText('Oldest')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: '3 waiting for you' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('1 more')).toBeInTheDocument();
+    });
+
+    it('shows no waiting count while nothing waits', async () => {
+      listSessionStates.mockResolvedValue({
+        evaluatedAt: 0,
+        states: [],
+        unreadable: [],
+        skipped: 0,
+      });
+
+      await renderRecent({ shellRail: true, limit: 8 });
+
+      await screen.findByText('Oldest');
+      expect(
+        screen.queryByRole('list', { name: 'Waiting for you' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/ waiting$/)).not.toBeInTheDocument();
     });
 
     it('marks All sessions current on the sessions list', async () => {

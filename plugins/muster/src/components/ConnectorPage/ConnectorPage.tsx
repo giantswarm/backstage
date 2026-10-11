@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
+  DisabledAction,
   FactsColumn,
   LoadingIndicator,
   MENU_WIDTH,
@@ -102,7 +103,6 @@ import {
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
-import { DisabledAction } from './DisabledAction';
 
 /** The shell's Customize page and its Connectors tab, where the app binds them. */
 function useCustomizePaths(): {

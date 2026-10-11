@@ -1,9 +1,18 @@
 import { useId, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
-import { Box, ButtonIcon, Flex, Link, Skeleton, Text } from '@backstage/ui';
+import {
+  Badge,
+  Box,
+  ButtonIcon,
+  Flex,
+  Link,
+  Skeleton,
+  Text,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
@@ -75,6 +84,14 @@ const useStyles = makeStyles({
   },
   pinned: {
     opacity: 1,
+  },
+  // The waiting count is a badge that links; the badge is the affordance.
+  countLink: {
+    display: 'inline-flex',
+    textDecoration: 'none',
+    '&:hover': {
+      textDecoration: 'none',
+    },
   },
 });
 
@@ -231,7 +248,14 @@ function RecentSessionsList({
     () =>
       shellRail
         ? groupRailSessions(rows, pinnedIds, limit, now, states)
-        : { pinned: [], pinnedOverflow: 0, groups: [], recentOverflow: 0 },
+        : {
+            pinned: [],
+            pinnedOverflow: 0,
+            waiting: [],
+            groups: [],
+            recentOverflow: 0,
+            waitingCount: 0,
+          },
     // `now` changes every render; the groups only change with its day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, pinnedKey, limit, shellRail, today, states],
@@ -264,11 +288,13 @@ function RecentSessionsList({
   };
 
   // The list's end, in one place whatever the list holds: the way to the full
-  // list and, when the list is cut, how many sessions it holds beyond the
-  // rail (T91). The count sits beside the link rather than in it, so the
-  // link's name stays "All sessions" whatever the count.
+  // list, how many sessions wait for the person (T100 H5) and, when the list
+  // is cut, how many it holds beyond the rail (T91). The counts sit beside the
+  // link rather than in it, so the link's name stays "All sessions" whatever
+  // the counts. The waiting count opens the list narrowed to them, as "N more
+  // pinned" does for pins.
   const allSessionsLink = allSessionsHref && (
-    <Flex px="2" align="baseline" gap="2">
+    <Flex px="2" align="center" gap="2">
       <Link
         href={allSessionsHref}
         variant="body-x-small"
@@ -276,6 +302,15 @@ function RecentSessionsList({
       >
         All sessions
       </Link>
+      {grouped.waitingCount > 0 && (
+        <Link
+          href={`${allSessionsHref}${sessionsListSearch({ state: 'waiting' })}`}
+          aria-label={`${grouped.waitingCount} ${SESSION_STATE_LABELS.waiting.toLowerCase()}`}
+          className={classes.countLink}
+        >
+          <Badge size="small">{`${grouped.waitingCount} waiting`}</Badge>
+        </Link>
+      )}
       {grouped.recentOverflow > 0 && (
         <Text variant="body-x-small" color="secondary">
           {`${grouped.recentOverflow} more`}
@@ -320,6 +355,19 @@ function RecentSessionsList({
             )}
           </>
         )}
+        {/* Sessions waiting for the person stay in view whatever their age
+            (T100 H5), above the recency groups. */}
+        {grouped.waiting.length > 0 && (
+          <>
+            <GroupHeader
+              id={`${baseId}-waiting`}
+              label={SESSION_STATE_LABELS.waiting}
+            />
+            <ul className={classes.list} aria-labelledby={`${baseId}-waiting`}>
+              {grouped.waiting.map(renderRow)}
+            </ul>
+          </>
+        )}
         {grouped.groups.map(group => (
           <Flex key={group.id} direction="column" gap="1">
             <GroupHeader id={`${baseId}-${group.id}`} label={group.label} />
@@ -331,16 +379,18 @@ function RecentSessionsList({
             </ul>
           </Flex>
         ))}
-        {grouped.pinned.length === 0 && !hasTimeGroups && (
-          <>
-            <GroupHeader id={`${baseId}-empty`} label="Sessions" />
-            <Box px="2">
-              <Text variant="body-small" color="secondary">
-                No sessions yet
-              </Text>
-            </Box>
-          </>
-        )}
+        {grouped.pinned.length === 0 &&
+          grouped.waiting.length === 0 &&
+          !hasTimeGroups && (
+            <>
+              <GroupHeader id={`${baseId}-empty`} label="Sessions" />
+              <Box px="2">
+                <Text variant="body-small" color="secondary">
+                  No sessions yet
+                </Text>
+              </Box>
+            </>
+          )}
         {allSessionsLink}
       </Flex>
     );
@@ -374,9 +424,9 @@ function RecentSessionsList({
 /**
  * The signed-in user's most recently started sessions across the fleet, each
  * linking to its detail page, with the ones waiting on them marked. In the
- * shell rail it is the rail's session list instead — pinned first, then the
- * most recently *active*, closed by the All sessions link; the full rule is
- * `groupRailSessions`'.
+ * shell rail it is the rail's session list instead — pinned first, then every
+ * session waiting for the person, then the most recently *active*, closed by
+ * the All sessions link; the full rule is `groupRailSessions`'.
  *
  * Mounts its own data providers. Renders nothing when the session detail route
  * is not bound, which is the case when the Agent Platform page is disabled.

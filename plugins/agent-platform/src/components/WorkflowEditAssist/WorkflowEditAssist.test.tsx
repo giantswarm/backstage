@@ -157,7 +157,7 @@ describe('WorkflowEditAssist', () => {
     configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     await renderAssist();
 
-    const button = screen.getByRole('button', { name: /Edit via agent/ });
+    const button = screen.getByRole('button', { name: 'Edit with Flo' });
     // No wrapper of its own between it and the row.
     expect(button.parentElement).toBe(screen.getByTestId('header-actions'));
     expect(button).toHaveAttribute('data-variant', 'secondary');
@@ -169,7 +169,7 @@ describe('WorkflowEditAssist', () => {
     await renderAssist();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Edit via agent' }),
+      screen.getByRole('button', { name: 'Edit with Flo' }),
     );
 
     // Reported as the existing session-start event, from this entry point.
@@ -190,6 +190,7 @@ describe('WorkflowEditAssist', () => {
             text: prompt,
             agentNamespace: 'kagent',
             agentName: 'workflow-manager',
+            prepared: true,
           },
         },
       },
@@ -203,7 +204,7 @@ describe('WorkflowEditAssist', () => {
     await renderAssist();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Edit via agent' }),
+      screen.getByRole('button', { name: 'Edit with Flo' }),
     );
 
     expect(mockNavigate).not.toHaveBeenCalled();

@@ -91,23 +91,30 @@ export function useAgentWizardLinks(): AgentWizardLinks {
  * appears when skill repositories are configured, matching the routing. Each
  * step provides its primary button through `useProvidePageHeaderActions`.
  * Editing an agent is the same wizard, titled "Edit agent" and closing to the
- * agent's page.
+ * agent's page. Close and Cancel ask before discarding a dirty form
+ * (`isDirty`), on every step.
  */
 export function AgentWizardFrame({
   step,
   onBack,
+  isProposed = false,
   rail,
   children,
 }: {
   step: AgentWizardStepId;
   /** Shown as the footer's Back button; the first step passes none. */
   onBack?: () => void;
+  /**
+   * The review proposed the form as a pull request: the work is in it, so
+   * leaving no longer asks.
+   */
+  isProposed?: boolean;
   /** A sticky overview beside the step, where there is room (`WizardFrame`). */
   rail?: ReactNode;
   children: ReactNode;
 }) {
   const links = useAgentWizardLinks();
-  const { edit } = useNewAgentForm();
+  const { edit, isDirty } = useNewAgentForm();
   const createCloseHref = useAgentWizardCloseHref();
   const closeHref = edit
     ? (edit.detailHref ?? createCloseHref)
@@ -134,6 +141,7 @@ export function AgentWizardFrame({
       steps={steps}
       currentStep={step}
       closeHref={closeHref}
+      confirmDiscard={isDirty && !isProposed}
       onBack={onBack}
       width="wide"
       rail={rail}

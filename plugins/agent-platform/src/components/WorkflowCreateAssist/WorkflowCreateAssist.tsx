@@ -29,7 +29,7 @@ function CreateBanner({ installation }: WorkflowCreateAssistProps) {
       <MetaAgentBanner
         agent={agent}
         label={`Create workflows with ${agent.name}`}
-        title={`Need a workflow? ${agent.name} builds it with you.`}
+        title={`Need a workflow? ${agent.name} builds it with you in a new session.`}
         action={
           <Button
             variant="secondary"

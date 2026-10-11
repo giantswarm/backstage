@@ -76,6 +76,24 @@ describe('SessionTimeline', () => {
     expect(screen.getByText(/You have two open issues/)).toBeInTheDocument();
   });
 
+  it('captions only the first user message when the portal prepared it', async () => {
+    const timeline = timelineFor(tasksV099);
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timeline}
+        agentName="Issue tracker"
+        firstMessageCaption="Prepared by the portal"
+      />,
+    );
+
+    const captions = screen.getAllByTestId('timeline-user-message-caption');
+    expect(captions).toHaveLength(1);
+    expect(captions[0]).toHaveTextContent('Prepared by the portal');
+    expect(screen.getAllByTestId('timeline-user-message')[0]).toContainElement(
+      captions[0],
+    );
+  });
+
   it('labels the user and the resolved agent', async () => {
     await render(tasksV099);
 

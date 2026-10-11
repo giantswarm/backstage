@@ -35,6 +35,7 @@ import type {
   ServingCapabilities,
   ServingLoading,
 } from '../../lib/serving';
+import { RemoveModelConfigDialog } from './RemoveModelConfigDialog';
 
 const TOAST_TIMEOUT_MS = 6000;
 
@@ -139,9 +140,10 @@ export function hasRowActions(
  *
  * Deletion asks first, with the one choice the backend offers: whether to
  * take the model's ModelConfig with it (the default, so no agent is left
- * pointing at a model that is gone). Everything else runs on click and reports
- * through a toast; failures land in a toast too, since there is no dialog to
- * hold them.
+ * pointing at a model that is gone). Removing the model config asks too,
+ * naming the agents that use it (`RemoveModelConfigDialog`). Everything else
+ * runs on click and reports through a toast; failures land in a toast too,
+ * since there is no dialog to hold them.
  */
 export function ServedModelActions({
   model,
@@ -153,6 +155,7 @@ export function ServedModelActions({
   const toastApi = useApi(toastApiRef);
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const [unwireOnDelete, setUnwireOnDelete] = useState(true);
+  const [isUnwireOpen, setUnwireOpen] = useState(false);
   const { run, isPending, pendingAction, error, reset } = useServedModelAction(
     model.installation,
   );
@@ -254,9 +257,12 @@ export function ServedModelActions({
     } else if (managedModelConfig) {
       entries.push({
         key: 'unwire',
-        label: SERVED_MODEL_ACTION_LABEL.unwire,
+        label: `${SERVED_MODEL_ACTION_LABEL.unwire}…`,
         icon: LinkOffIcon,
-        run: () => onMenuAction({ type: 'unwire', model: ref, backend }),
+        run: () => {
+          reset();
+          setUnwireOpen(true);
+        },
       });
     }
   }
@@ -295,6 +301,22 @@ export function ServedModelActions({
     setDeleteOpen(false);
     toastApi.post({
       title: `${model.name} deleted`,
+      status: 'success',
+      timeout: TOAST_TIMEOUT_MS,
+    });
+  };
+
+  const confirmUnwire = async () => {
+    const action: ServedModelAction = { type: 'unwire', model: ref, backend };
+    try {
+      await run(action);
+    } catch {
+      // Left to the dialog, which stays open and renders `error`.
+      return;
+    }
+    setUnwireOpen(false);
+    toastApi.post({
+      title: `${model.name}: ${describeOutcome(action, kserve)}`,
       status: 'success',
       timeout: TOAST_TIMEOUT_MS,
     });
@@ -343,6 +365,18 @@ export function ServedModelActions({
           )}
         </Menu>
       </MenuTrigger>
+
+      {managedModelConfig && model.modelConfig && (
+        <RemoveModelConfigDialog
+          installation={model.installation}
+          modelConfig={model.modelConfig}
+          isOpen={isUnwireOpen}
+          onOpenChange={setUnwireOpen}
+          isRemoving={isPending && pendingAction?.type === 'unwire'}
+          error={error?.message}
+          onConfirm={confirmUnwire}
+        />
+      )}
 
       {canDelete && (
         <ConfirmDialog

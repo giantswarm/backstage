@@ -77,6 +77,7 @@ export function GpuCapacityPage({
             icon: <AddIcon />,
             onAction: addAction.open,
             isDisabled: addAction.isDisabled,
+            disabledReason: addAction.disabledReason,
           }}
         />
       ) : null,

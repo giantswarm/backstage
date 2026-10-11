@@ -2,7 +2,7 @@ import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-c
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
-  formatSessionStart,
+  formatSessionTime,
   sessionDayGroup,
   SessionTableRow,
   sortSessionsByState,
@@ -144,6 +144,31 @@ describe('withSessionStates', () => {
   });
 });
 
+describe('withSessionStates, last activity', () => {
+  it('joins when each session was last active: its start or its newest state change', () => {
+    const started = '2026-09-01T00:00:00Z';
+    const joined = withSessionStates(
+      [
+        row('gazelle/moved', { createdAt: started }),
+        row('gazelle/still', { createdAt: started }),
+      ],
+      view({
+        states: new Map<string, SessionStateEntry>([
+          [
+            'gazelle/moved',
+            { sessionId: 'moved', state: 'completed', changedAt: 2e12 },
+          ],
+        ]),
+      }),
+    );
+
+    expect(joined.map(r => r.lastActiveAt)).toEqual([
+      2e12,
+      Date.parse(started),
+    ]);
+  });
+});
+
 describe('sortSessionsByState', () => {
   const states = new Map<string, SessionStateEntry>([
     ['gazelle/done', { sessionId: 'done', state: 'completed', changedAt: 40 }],
@@ -214,39 +239,39 @@ describe('sessionDayGroup', () => {
     ['the previous day', new Date(2026, 9, 8, 23, 59), 'yesterday'],
     ['the previous day at midnight', new Date(2026, 9, 8, 0, 0), 'yesterday'],
     ['two days ago', new Date(2026, 9, 7, 23, 59), 'earlier'],
-  ])('groups a start %s', (_, started, group) => {
-    expect(sessionDayGroup(started.toISOString(), now)).toBe(group);
+  ])('groups a last activity %s', (_, activeAt, group) => {
+    expect(sessionDayGroup(activeAt.getTime(), now)).toBe(group);
   });
 
   it('counts the last day of the previous month as yesterday', () => {
     const firstOfMonth = new Date(2026, 9, 1, 8, 0);
     expect(
-      sessionDayGroup(new Date(2026, 8, 30, 20, 0).toISOString(), firstOfMonth),
+      sessionDayGroup(new Date(2026, 8, 30, 20, 0).getTime(), firstOfMonth),
     ).toBe('yesterday');
   });
 
-  it.each([undefined, '', 'not a date'])(
-    'puts an unknown start (%p) under earlier',
-    createdAt => {
-      expect(sessionDayGroup(createdAt, now)).toBe('earlier');
+  it.each([undefined, Number.NaN])(
+    'puts an unknown time (%p) under earlier',
+    activeAt => {
+      expect(sessionDayGroup(activeAt, now)).toBe('earlier');
     },
   );
 });
 
-describe('formatSessionStart', () => {
-  const started = new Date(2026, 9, 2, 9, 5).toISOString();
+describe('formatSessionTime', () => {
+  const started = new Date(2026, 9, 2, 9, 5).getTime();
 
   it('shows the time of day under today and yesterday', () => {
     const time = new Date(started).toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
     });
-    expect(formatSessionStart(started, 'today', 2026)).toBe(time);
-    expect(formatSessionStart(started, 'yesterday', 2026)).toBe(time);
+    expect(formatSessionTime(started, 'today', 2026)).toBe(time);
+    expect(formatSessionTime(started, 'yesterday', 2026)).toBe(time);
   });
 
   it('shows the date under earlier, with the year only when it is another', () => {
-    expect(formatSessionStart(started, 'earlier', 2026)).not.toContain('2026');
-    expect(formatSessionStart(started, 'earlier', 2027)).toContain('2026');
+    expect(formatSessionTime(started, 'earlier', 2026)).not.toContain('2026');
+    expect(formatSessionTime(started, 'earlier', 2027)).toContain('2026');
   });
 });

@@ -22,9 +22,9 @@ describe('describeSessionState', () => {
   it.each([
     ['working', 'Working', true],
     ['input-required', 'Waiting for you', true],
-    ['completed', 'Finished', false],
+    ['completed', 'Idle', false],
     ['failed', 'Failed', false],
-    ['canceled', 'Finished', false],
+    ['canceled', 'Idle', false],
   ])('describes %s', (raw, label, isActive) => {
     expect(describeSessionState(raw)).toMatchObject({ raw, label, isActive });
   });
@@ -34,8 +34,8 @@ describe('describeSessionState', () => {
     ['working', 'Working'],
     ['input-required', 'Waiting for you'],
     ['auth-required', 'Waiting for you'],
-    ['completed', 'Finished'],
-    ['canceled', 'Finished'],
+    ['completed', 'Idle'],
+    ['canceled', 'Idle'],
     ['failed', 'Failed'],
     ['rejected', 'Failed'],
   ])('names %s "%s", one of the four state words', (raw, label) => {
@@ -45,7 +45,7 @@ describe('describeSessionState', () => {
 
   it('is case-insensitive about the state name', () => {
     expect(describeSessionState('COMPLETED')).toMatchObject({
-      label: 'Finished',
+      label: 'Idle',
       // The raw value is kept verbatim, so the original casing survives.
       raw: 'COMPLETED',
     });
