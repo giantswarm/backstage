@@ -219,6 +219,13 @@ describe('CustomizeConnectorsPanel', () => {
       'data-href',
       '/agent-platform/connectors/kubernetes?installation=gazelle',
     );
+    // The name is a real link too (M21): keyboard, new tab.
+    expect(
+      within(rowOf('kubernetes')).getByRole('link', { name: 'kubernetes' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors/kubernetes?installation=gazelle',
+    );
   });
 
   it('searches connectors by their tools too', async () => {

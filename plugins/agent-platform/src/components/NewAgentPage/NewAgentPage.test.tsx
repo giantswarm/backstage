@@ -185,6 +185,16 @@ describe('NewAgentPage', () => {
     expect(moreOptions().querySelector('summary')).toHaveTextContent(
       'More options · Standard runtime, technical name support-triage',
     );
+    // The irreversible part is said beside the name, outside the
+    // disclosure (M7).
+    const consequence = screen.getByText((_, element) =>
+      Boolean(
+        element?.tagName === 'P' &&
+        element.textContent ===
+          'Its technical name is support-triage; it cannot be changed once the agent exists.',
+      ),
+    );
+    expect(consequence.closest('details')).toBeNull();
   });
 
   it('opens More options when a field inside it blocks Continue', async () => {

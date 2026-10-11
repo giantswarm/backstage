@@ -663,7 +663,9 @@ describe('ServeModelPage', () => {
     await render();
 
     const verdict = await screen.findByTestId('serve-fit-verdict');
-    await waitFor(() => expect(verdict).toHaveTextContent('Fit check failed'));
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent('Could not check the fit'),
+    );
     expect(verdict).toHaveTextContent('model-manager: deadline exceeded');
     expect(serveButton()).toBeDisabled();
   });
@@ -712,7 +714,7 @@ describe('ServeModelPage', () => {
     expect(checkFit).not.toHaveBeenCalled();
   });
 
-  it('shows a preset that serves already as Serving on its node, and never serves it again', async () => {
+  it('shows a preset that serves already in its Running models state, and never serves it again', async () => {
     const servedPreset: ServedModel = {
       id: 'gazelle/kserve/kserve/qwen3-4b-instruct',
       installation: 'gazelle',
@@ -729,8 +731,10 @@ describe('ServeModelPage', () => {
     });
 
     const note = await screen.findByTestId('serve-already-serving');
-    expect(note).toHaveTextContent('Qwen3 4B Instruct: Serving on gpu-a');
-    expect(note).toHaveTextContent('Stop it under Running models');
+    expect(note).toHaveTextContent(
+      'Qwen3 4B Instruct is in Running models: Ready on gpu-a',
+    );
+    expect(note).toHaveTextContent('Stop it there');
     expect(serveButton()).toBeDisabled();
     expect(checkFit).not.toHaveBeenCalledWith(
       expect.objectContaining({ model: 'qwen3-4b-instruct' }),

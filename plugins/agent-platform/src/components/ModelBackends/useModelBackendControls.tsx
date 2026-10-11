@@ -166,11 +166,14 @@ export function useModelBackendControls(): ModelBackendControls {
             setRemoving(undefined);
           }
         }}
-        onRemoved={() =>
+        onRemoved={result =>
           toastApi.post({
             title: `Removed the ${removing.kind} backend from ${removing.installation}`,
-            description:
-              'Its model configs are unwired and its group leaves this page; the backend itself keeps running where it is.',
+            description: `${
+              result.unwired && result.unwired.length > 0
+                ? `Model configs unwired: ${result.unwired.join(', ')}.`
+                : 'No model configs had to be unwired.'
+            } Its group leaves this page; the backend itself keeps running where it is.`,
             status: 'success',
             timeout: TOAST_TIMEOUT_MS,
           })

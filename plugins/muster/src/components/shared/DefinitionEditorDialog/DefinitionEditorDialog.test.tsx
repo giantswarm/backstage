@@ -187,10 +187,32 @@ describe('DefinitionEditorDialog', () => {
     expect(await screen.findByText(/Invalid JSON/)).toBeInTheDocument();
     expect(editor()).toHaveValue('{"name":"a"} typed');
 
+    // Unsaved edits: Escape asks before they go.
     await userEvent.keyboard('{Escape}');
+    expect(
+      await screen.findByText('Discard your changes?'),
+    ).toBeInTheDocument();
+    // The editor dialog behind is hidden from the accessibility tree, so the
+    // one "Discard changes" left is the confirm's.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Discard changes' }),
+    );
     await userEvent.click(screen.getByRole('button', { name: 'open' }));
     expect(editor()).toHaveValue('{"name":"b"}');
     expect(screen.queryByText(/Invalid JSON/)).not.toBeInTheDocument();
+  });
+
+  it('says "Discard changes" rather than "Close" while edits are unsaved', async () => {
+    const { onClose } = await renderDialog();
+
+    expect(
+      screen.getAllByRole('button', { name: 'Close' }).length,
+    ).toBeGreaterThan(0);
+    await userEvent.type(editor(), ' typed');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Discard changes' }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('says the definition could not be parsed when parse throws no message', async () => {

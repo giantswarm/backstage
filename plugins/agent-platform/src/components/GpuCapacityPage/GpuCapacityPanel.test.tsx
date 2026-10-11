@@ -71,6 +71,26 @@ describe('GpuCapacityPanel', () => {
     expect(screen.getByText('0')).toBeInTheDocument();
   });
 
+  it('shows 300 nodes a page at a time (list scale)', async () => {
+    const nodes = Array.from({ length: 300 }, (_, i) => ({
+      ...withPlugin,
+      id: `inst-1/gpu-node-${i}`,
+      name: `gpu-node-${String(i).padStart(3, '0')}`,
+    }));
+    await renderInTestApp(
+      <GpuCapacityPanel
+        nodes={nodes}
+        installations={['inst-1']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+    expect(screen.getByText('gpu-node-000')).toBeInTheDocument();
+    expect(screen.queryByText('gpu-node-020')).not.toBeInTheDocument();
+    expect(screen.getByText('20 nodes shown, 280 more')).toBeInTheDocument();
+  });
+
   it('says allocatable, requested and free are unknown without a device plugin', async () => {
     await renderInTestApp(
       <GpuCapacityPanel

@@ -549,11 +549,15 @@ async function rosterPathOf(
 
 /**
  * The agent detail page's header button that starts a session with the agent:
- * **Use this agent** in the shell (the prototype's word), offered once the
- * agent is ready.
+ * **Start a session**, the one verb for it (T98), offered once the agent is
+ * ready.
  */
 export function startSessionButton(page: Page): Locator {
-  return page.getByRole('button', { name: 'Use this agent', exact: true });
+  // First: the header's; an agent with no sessions offers the same verb again
+  // in its sessions card further down.
+  return page
+    .getByRole('button', { name: 'Start a session', exact: true })
+    .first();
 }
 
 /**

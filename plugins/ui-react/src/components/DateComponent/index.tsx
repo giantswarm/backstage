@@ -4,4 +4,4 @@ export {
   useDateTimeZone,
   type DateTimeZone,
 } from './DateTimeZone';
-export { formatLocalDate, formatLocalDateFull } from './utils';
+export { formatLocalDate, formatLocalDateFull, getRelativeDate } from './utils';

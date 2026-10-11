@@ -1,6 +1,8 @@
-import type {
-  StatusDotTone,
-  StatusLabelIntent,
+import {
+  countNoun,
+  matchesQuery,
+  type StatusDotTone,
+  type StatusLabelIntent,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
@@ -35,7 +37,7 @@ export function toneOfIntent(intent: StatusLabelIntent): StatusDotTone {
  */
 export function agentStatus(row: AgentRow): CustomizeStatus {
   if (row.modelServing?.readiness === 'notServing') {
-    return { label: 'Model not running', tone: 'warning' };
+    return { label: 'Model not serving', tone: 'warning' };
   }
   const { label, intent } = READINESS_PRESENTATION[row.readiness];
   return { label, tone: toneOfIntent(intent) };
@@ -71,10 +73,6 @@ export function connectorCount(row: AgentRow): number | undefined {
   return new Set(selectors.map(selector => selector?.name)).size;
 }
 
-function countNoun(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
 /** "2 skills · 3 connectors", leaving out the connectors when unknown. */
 export function agentParts(row: AgentRow): string {
   const connectors = connectorCount(row);
@@ -85,9 +83,11 @@ export function agentParts(row: AgentRow): string {
 }
 
 /**
- * A model's state in the mockup's words: the controller's verdict on the
- * ModelConfig first, then what the serving layer says about the model behind
- * it.
+ * A model's state: the controller's verdict on the ModelConfig first, then
+ * what the serving layer says about the model behind it — in the Running
+ * models table's words, so one served model reads the same everywhere (UX
+ * review M14). A model nothing here serves (a provider's) is Ready once
+ * accepted.
  */
 export function modelStatus(row: ModelRow): CustomizeStatus {
   if (row.readiness === 'notAccepted') {
@@ -97,16 +97,8 @@ export function modelStatus(row: ModelRow): CustomizeStatus {
     return { label: 'Pending', tone: 'neutral' };
   }
   const readiness = row.servedBy?.readiness;
-  if (readiness === 'notServing') {
-    return { label: 'Not running', tone: 'warning' };
-  }
-  if (
-    readiness === undefined ||
-    readiness === 'ready' ||
-    readiness === 'idle' ||
-    readiness === 'available'
-  ) {
-    return { label: 'Available', tone: 'success' };
+  if (readiness === undefined) {
+    return { label: SERVED_MODEL_READINESS.ready.label, tone: 'success' };
   }
   const { label, intent } = SERVED_MODEL_READINESS[readiness];
   return { label, tone: toneOfIntent(intent) };
@@ -169,14 +161,25 @@ export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
     : rows;
 }
 
-export function searchSkills(
-  skills: DiscoveredSkill[],
+/**
+ * The skill catalog's one search, for Customize › Skills and the agent
+ * wizard's skill step alike: token-boundary matching (`matchesQuery`) over the
+ * name, description, path and source, so one query finds the same skills in
+ * both places.
+ */
+export function searchSkills<T extends DiscoveredSkill>(
+  skills: T[],
   search: string,
-): DiscoveredSkill[] {
-  const needle = search.trim().toLowerCase();
-  return needle
+): T[] {
+  const query = search.trim();
+  return query
     ? skills.filter(skill =>
-        matches(needle, [skill.name, skill.description, skillSource(skill)]),
+        matchesQuery(
+          query,
+          [skill.name, skill.description, skill.path, skillSource(skill)].join(
+            ' ',
+          ),
+        ),
       )
     : skills;
 }

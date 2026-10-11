@@ -131,7 +131,7 @@ test.describe('models: GPU node pools', () => {
       `${lab.installation}: ${CLUSTER_API_NOTE}`,
     );
     await expect(
-      page.getByText('Node pools could not be read for some installations'),
+      page.getByText('Could not read the node pools of some environments'),
     ).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: /^Remove pool/ }),
@@ -156,7 +156,7 @@ test.describe('models: GPU node pools', () => {
     await expect(page.getByTestId('cluster-api-note')).toContainText(
       CLUSTER_API_NOTE,
     );
-    await expect(page.getByText('Clusters could not be read')).toHaveCount(0);
+    await expect(page.getByText('Could not read the clusters')).toHaveCount(0);
     // Review says why it cannot go on, on the cluster field (T67).
     await page.getByRole('button', { name: 'Review' }).click();
     await expect(

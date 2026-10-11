@@ -14,6 +14,7 @@
  */
 
 import { toolErrorDetails } from '@giantswarm/backstage-plugin-muster';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
 import { looksNotConnected, type GitOpsCommit } from './agentManager';
 
@@ -1251,7 +1252,7 @@ export function presetLabel(
 
 /** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
 export function describePresetNeeds(fit: PresetSizeFit): string {
-  const gpus = `${fit.gpus} GPU${fit.gpus === 1 ? '' : 's'}`;
+  const gpus = countNoun(fit.gpus, 'GPU');
   return `${fit.cpu} vCPU / ${fit.memory}, ${gpus}, ${trimNumber(
     fit.gpuMemoryGiB,
   )} GiB of GPU memory`;

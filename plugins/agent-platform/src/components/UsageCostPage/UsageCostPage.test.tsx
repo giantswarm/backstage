@@ -183,7 +183,7 @@ describe('UsageCostPage with gateway metrics', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Spend (estimated)')).toBeInTheDocument();
+    expect(await screen.findByText('Est. spend')).toBeInTheDocument();
     expect(screen.getByText('€5.00')).toBeInTheDocument();
     expect(screen.getByText('Blended cost/1M tokens')).toBeInTheDocument();
   });

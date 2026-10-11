@@ -74,7 +74,7 @@ const SIGN_IN_CHOICES: Array<{
     title: 'Company login',
     recommended: true,
     description:
-      'Signs people in automatically with the company account and forwards their platform identity token, which is not scoped to this server. Use it only for apps your platform team runs.',
+      'Signs people in automatically with the company account and forwards their platform identity token, which is not scoped to this connector. Use it only for apps your platform team runs.',
   },
   {
     value: 'own-account',
@@ -85,13 +85,13 @@ const SIGN_IN_CHOICES: Array<{
   {
     value: 'none',
     title: 'No sign-in',
-    description: 'Use it for public servers, such as web search.',
+    description: 'Use it for public connectors, such as web search.',
   },
   {
     value: 'sigv4',
     title: 'AWS request signing (SigV4)',
     description:
-      'Use it for AWS-hosted servers. Muster signs every request with one shared AWS identity, not the person’s.',
+      'Use it for connectors hosted on AWS. Muster signs every request with one shared AWS identity, not the person’s.',
   },
 ];
 
@@ -531,7 +531,11 @@ export function NewConnectorSignInPage() {
       {registrationError && (
         <Alert
           status="danger"
-          title={isEdit ? 'Save failed' : 'Adding the connector failed'}
+          title={
+            isEdit
+              ? 'Could not save the connector'
+              : 'Could not add the connector'
+          }
           description={registrationError}
         />
       )}

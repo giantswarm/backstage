@@ -2,6 +2,8 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Cell, CellText, Link, Table, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
+  INITIAL_ROWS,
+  ShowMore,
   usePhoneColumns,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -160,7 +162,20 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       wide
       note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values."
     >
-      <Table<UnpricedModelRow> {...tableProps} columnConfig={shownColumns} />
+      {/* A page of the sorted models at a time, like the other usage tables. */}
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="model"
+      >
+        {visible => (
+          <Table<UnpricedModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+          />
+        )}
+      </ShowMore>
     </UsageCard>
   );
 }

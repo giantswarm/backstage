@@ -165,7 +165,7 @@ export function modelConfigFieldErrors(
   const errors: ModelConfigFieldErrors = {};
 
   if (!options.isEdit && !values.displayName.trim()) {
-    errors.displayName = 'Display name is required';
+    errors.displayName = 'Name is required';
   }
 
   if (!values.name.trim()) {

@@ -35,6 +35,10 @@ const useStyles = makeStyles({
     verticalAlign: 'text-bottom',
     marginLeft: 2,
   },
+  technicalName: {
+    marginTop: 'var(--bui-space-1)',
+    overflowWrap: 'anywhere',
+  },
 });
 
 export function NewAgentPage() {
@@ -123,8 +127,9 @@ function NewAgentPageContent() {
   useProvidePageHeaderActions(actions);
 
   // The disclosure's one-line summary of what it holds: the runtime (the
-  // platform's standard one unless another is picked) and the technical name.
-  // An edited agent's Harness is known by its name until the picker reads it.
+  // platform's standard one unless another is picked) and, while creating,
+  // the technical name it can override. An edited agent's Harness is known by
+  // its name until the picker reads it.
   let runtimeName = 'Standard';
   if (state.harness) {
     runtimeName =
@@ -133,7 +138,7 @@ function NewAgentPageContent() {
         : state.harness.name;
   }
   const defaultsSummary = `${runtimeName} runtime${
-    state.slug ? `, technical name ${state.slug}` : ''
+    state.slug && !edit ? `, technical name ${state.slug}` : ''
   }`;
 
   // The plain view's one line about the model picked for the person (the
@@ -214,6 +219,23 @@ function NewAgentPageContent() {
               placeholder="e.g. Support triage"
               {...fieldErrorProps(validation.errorFor(fieldErrors.name))}
             />
+            {/* The one irreversible choice on this step (M7), next to the
+                name it comes from rather than behind More options, where
+                only its override lives. The connector wizard's "Registered
+                as" line. */}
+            {state.slug && (
+              <Text
+                as="p"
+                variant="body-small"
+                color="secondary"
+                className={classes.technicalName}
+              >
+                Its technical name is <code>{state.slug}</code>;{' '}
+                {edit
+                  ? 'it cannot be changed.'
+                  : 'it cannot be changed once the agent exists.'}
+              </Text>
+            )}
           </div>
         </Flex>
         <TextAreaField
@@ -261,15 +283,9 @@ function NewAgentPageContent() {
           </Text>
           <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
           <HarnessPicker />
-          {edit ? (
-            <TextField
-              label="Technical name"
-              secondaryLabel="fixed"
-              isReadOnly
-              value={state.slug}
-              description={`Used in links and resource names on ${edit.installation}.`}
-            />
-          ) : (
+          {/* Creating only: an existing agent's technical name is shown,
+              locked, under its name. */}
+          {!edit && (
             <TextField
               label="Technical name"
               secondaryLabel="filled in from the name"
@@ -277,7 +293,7 @@ function NewAgentPageContent() {
               value={state.slug}
               onChange={setSlug}
               placeholder="support-triage"
-              description="Used in links and resource names; it cannot be changed later."
+              description="Used in links and resource names."
               {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
             />
           )}

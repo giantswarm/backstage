@@ -329,7 +329,7 @@ describe('ImportModelPage', () => {
     await userEvent.click(downloadButton());
 
     expect(
-      await screen.findByText('The download could not be started'),
+      await screen.findByText('Could not start the download'),
     ).toBeInTheDocument();
     expect(screen.getByText(/104\.8 GiB exceed/)).toBeInTheDocument();
     expect(onImported).not.toHaveBeenCalled();
@@ -340,7 +340,7 @@ describe('ImportModelPage', () => {
     await render();
     await search('anything');
     expect(
-      await screen.findByText('The hub could not be searched'),
+      await screen.findByText('Could not search the hub'),
     ).toBeInTheDocument();
     expect(screen.getByText('hub unreachable')).toBeInTheDocument();
 

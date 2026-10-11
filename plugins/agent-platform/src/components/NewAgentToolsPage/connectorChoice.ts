@@ -217,9 +217,7 @@ export function railGroups(
     } else {
       const name = owner.get(selector);
       if (name === ADMINISTRATION_KEY) {
-        at(ADMINISTRATION_KEY, 'Platform administration').selectors.push(
-          selector,
-        );
+        at(ADMINISTRATION_KEY, 'Platform tools').selectors.push(selector);
       } else if (name) {
         at(`connector:${name}`, name).selectors.push(selector);
       } else {

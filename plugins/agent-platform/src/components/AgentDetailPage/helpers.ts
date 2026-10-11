@@ -2,6 +2,7 @@ import {
   Agent,
   AgentMcpBinding,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
 import { isGatewayBinding } from '../../lib/toolset';
 
@@ -44,7 +45,7 @@ export function describeToolScope(binding: AgentMcpBinding): string {
     return 'All tools from this server';
   }
 
-  return `${tools.length} tool${tools.length === 1 ? '' : 's'}: ${tools.join(', ')}`;
+  return `${countNoun(tools.length, 'tool')}: ${tools.join(', ')}`;
 }
 
 /**

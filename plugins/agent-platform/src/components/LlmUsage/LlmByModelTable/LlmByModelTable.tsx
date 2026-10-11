@@ -120,7 +120,7 @@ export function LlmByModelTable({
     },
     {
       id: 'costUsd',
-      label: 'Est. cost',
+      label: 'Spend',
       isSortable: true,
       cell: row => (
         <Cell>

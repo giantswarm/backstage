@@ -9,6 +9,7 @@ import {
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import { TimelineEntry } from './TimelineEntry';
 
 import {
   attachmentPngV2,
@@ -533,7 +534,7 @@ describe('SessionTimeline', () => {
       ).toBeInTheDocument();
 
       await userEvent.click(
-        screen.getByRole('button', { name: 'Cancel the turn' }),
+        screen.getByRole('button', { name: 'Stop the turn' }),
       );
       expect(onCancelTurn).toHaveBeenCalledTimes(1);
     });
@@ -549,7 +550,7 @@ describe('SessionTimeline', () => {
 
       expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Cancel the turn' }),
+        screen.queryByRole('button', { name: 'Stop the turn' }),
       ).not.toBeInTheDocument();
     });
 
@@ -567,7 +568,7 @@ describe('SessionTimeline', () => {
 
       expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Cancel the turn' }),
+        screen.getByRole('button', { name: 'Stop the turn' }),
       ).toBeInTheDocument();
     });
   });
@@ -592,7 +593,7 @@ describe('SessionTimeline', () => {
     );
 
     expect(
-      screen.getByText('Some messages could not be read'),
+      screen.getByText('Could not read some messages'),
     ).toBeInTheDocument();
     expect(screen.getByText(/2 messages/)).toBeInTheDocument();
   });
@@ -612,7 +613,7 @@ describe('SessionTimeline', () => {
     );
 
     expect(
-      screen.getByText('Some messages could not be read'),
+      screen.getByText('Could not read some messages'),
     ).toBeInTheDocument();
     expect(screen.getByText(/3 messages/)).toBeInTheDocument();
     // And it must not claim there were none.
@@ -780,7 +781,7 @@ describe('SessionTimeline — a turn the runtime failed', () => {
     );
 
     expect(
-      screen.getAllByText('The agent’s runtime could not be reached'),
+      screen.getAllByText('Could not reach the agent’s runtime'),
     ).toHaveLength(2);
     expect(
       screen.getAllByText(
@@ -1270,5 +1271,47 @@ describe('SessionTimeline — at 3 turns and at 300 (T39)', () => {
       'true',
     );
     expect(summaries[0]).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('TimelineEntry — the connector of a tool call (UX review M2)', () => {
+  const call = {
+    kind: 'tool-call',
+    id: 'c',
+    taskIndex: 0,
+    toolName: 'x_agentlab-mcp-kubernetes_get_pods',
+    args: { namespace: 'default' },
+    result: 'ok',
+    isPending: false,
+    via: 'Muster',
+  } as TimelineItem;
+  const connectorOf = (name: string) =>
+    name.startsWith('x_agentlab-mcp-kubernetes_')
+      ? {
+          connector: 'kubernetes',
+          tool: name.slice('x_agentlab-mcp-kubernetes_'.length),
+        }
+      : undefined;
+
+  it('names the connector as Customize does in a plain row, never the gateway', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={call} connectorOf={connectorOf} />,
+    );
+
+    const row = screen.getByRole('button', { name: /Get pods/ });
+    expect(row).toHaveTextContent('kubernetes');
+    expect(row).not.toHaveTextContent('via Muster');
+    expect(row).not.toHaveTextContent('agentlab-mcp');
+  });
+
+  it('keeps the exact name and the proxy in a technical row', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={call} connectorOf={connectorOf} technical />,
+    );
+
+    const row = screen.getByRole('button', {
+      name: /x_agentlab-mcp-kubernetes_get_pods/,
+    });
+    expect(row).toHaveTextContent('via Muster');
   });
 });

@@ -60,7 +60,7 @@ function UsedByList({ target }: { target: ConnectorPageTarget }) {
     return (
       <Alert
         status="warning"
-        title="The agents could not be read"
+        title="Could not read the agents"
         description={`The agents on ${target.installation} could not be listed, so it is not known which of them use this connector.`}
       />
     );

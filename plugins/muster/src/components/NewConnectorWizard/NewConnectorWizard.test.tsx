@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -576,9 +576,17 @@ describe('shell connector wizard', () => {
       expect(
         await screen.findByRole('heading', {
           level: 1,
-          name: 'Edit connector: jira',
+          name: 'Edit connector',
         }),
       ).toBeInTheDocument();
+      // The connector is named in the context line and the document title,
+      // as on every edit frame.
+      expect(
+        screen.getByText('Customize / Connectors / jira'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(document.title).toBe('Edit jira · Connectors · Agent Platform'),
+      );
       expect(screen.getByLabelText(/^Server address/)).toHaveValue(
         'https://jira.example.com/mcp',
       );
@@ -588,7 +596,11 @@ describe('shell connector wizard', () => {
       // The registered name is the CR's: kept, not renamed.
       const name = screen.getByRole('textbox', { name: /^Name/ });
       expect(name).toHaveValue('jira');
-      expect(name).toBeDisabled();
+      // Locked like every immutable field on edit: read-only, said once.
+      expect(name).toHaveAttribute('readonly');
+      expect(name).toHaveAccessibleDescription(
+        'It cannot be changed after registration.',
+      );
       // Leaving goes back to the connector's page, where Edit was pressed.
       expect(screen.getByRole('link', { name: 'Close' })).toHaveAttribute(
         'href',

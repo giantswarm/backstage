@@ -6,6 +6,8 @@ import { makeStyles, Theme } from '@material-ui/core';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { connectorName } from '../../lib/toolset';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
@@ -130,6 +132,9 @@ export function AgentUsageSection() {
   // wrong claim — see the branch for it below.)
   const { usage, isLoading, isError, isNotDeployed } =
     useSessionUsage(installation);
+  // kagent names a connector by muster's server segment; Customize by the
+  // family a server belongs to. Read the CRs to name it the same way here.
+  const { servers: musterServers } = useMusterServers(installation);
 
   const { rows: agentRows } = useAgents();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
@@ -384,8 +389,12 @@ export function AgentUsageSection() {
               // server. NOT "not through muster": muster's own core tools
               // (`filter_tools`, `describe_tool`) land here too, and real data
               // showed 44 such calls mislabelled as bypassing the thing they
-              // went through. The wire leaves the wording to us.
-              name: entry.server ?? 'No downstream server',
+              // went through. The wire leaves the wording to us: the Tools
+              // step calls muster's own tools "Platform tools".
+              name:
+                entry.server === null
+                  ? 'Platform tools'
+                  : connectorName(entry.server, musterServers),
               calls: entry.calls,
             }))}
             other={usage.otherMcpServers}

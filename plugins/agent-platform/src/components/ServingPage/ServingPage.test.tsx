@@ -1244,7 +1244,7 @@ describe('ServingPage', () => {
         await renderSection();
 
         expect(
-          screen.getByText('Downloads could not be read'),
+          screen.getByText('Could not read the downloads'),
         ).toBeInTheDocument();
         expect(
           screen.getByText(/inst-2: 502 from the gateway/),

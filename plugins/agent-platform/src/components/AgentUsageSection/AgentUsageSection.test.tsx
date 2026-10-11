@@ -46,6 +46,15 @@ jest.mock('../../hooks/useSessionUsage', () => ({
 // app here provides — and this file is about which state renders, not about
 // pricing. `costEstimate.test.ts` covers the arithmetic; an empty `rates` here
 // makes every cost read "—", which the assertions below never look at.
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
 jest.mock('../../hooks/useTokenRates', () => ({
   useTokenRates: () => ({
     rates: {},

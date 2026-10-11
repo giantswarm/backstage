@@ -4,7 +4,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   agentsRouteRef,
+  modelsRouteRef,
   musterServersExternalRouteRef,
+  musterWorkflowDetailExternalRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
 } from '../../routes';
@@ -95,6 +97,29 @@ jest.mock('./usePaletteConnectors', () => ({
   usePaletteConnectors: () => mockConnectors,
 }));
 
+let mockModels: {
+  rows: {
+    id: string;
+    installation: string;
+    namespace: string;
+    name: string;
+    displayName: string;
+    description?: string;
+  }[];
+  isLoading: boolean;
+};
+jest.mock('./usePaletteModels', () => ({
+  usePaletteModels: () => mockModels,
+}));
+
+let mockWorkflows: {
+  rows: { name: string; description?: string; installation: string }[];
+  isLoading: boolean;
+};
+jest.mock('./usePaletteWorkflows', () => ({
+  usePaletteWorkflows: () => mockWorkflows,
+}));
+
 const mockCreateSession = jest.fn();
 const mockEntryPoints: string[] = [];
 jest.mock('../../hooks/useCreateSession', () => ({
@@ -156,6 +181,8 @@ function renderPalette() {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/connectors': musterServersExternalRouteRef,
+        '/agent-platform/models': modelsRouteRef,
+        '/agent-platform/workflows/:name': musterWorkflowDetailExternalRouteRef,
       },
     },
   );
@@ -165,7 +192,7 @@ async function openPalette() {
   await renderPalette();
   await userEvent.click(screen.getByRole('button', { name: 'Open search' }));
   return screen.findByRole('combobox', {
-    name: 'Search sessions, agents, skills and connectors',
+    name: 'Search sessions, agents, skills, connectors, models and workflows',
   });
 }
 
@@ -211,6 +238,29 @@ beforeEach(() => {
     rows: [{ page: 'confluence', installations: ['gazelle'] }],
     isLoading: false,
   };
+  mockModels = {
+    rows: [
+      {
+        id: 'gazelle/kagent/default-model',
+        installation: 'gazelle',
+        namespace: 'kagent',
+        name: 'default-model',
+        displayName: 'Default model',
+        description: 'OpenAI · gpt-4o',
+      },
+    ],
+    isLoading: false,
+  };
+  mockWorkflows = {
+    rows: [
+      {
+        name: 'release-readiness',
+        description: 'Checks a release before it ships',
+        installation: 'gazelle',
+      },
+    ],
+    isLoading: false,
+  };
 });
 
 describe('CommandPalette', () => {
@@ -222,7 +272,7 @@ describe('CommandPalette', () => {
     await waitFor(() =>
       expect(
         screen.queryByRole('combobox', {
-          name: 'Search sessions, agents, skills and connectors',
+          name: 'Search sessions, agents, skills, connectors, models and workflows',
         }),
       ).not.toBeInTheDocument(),
     );
@@ -235,7 +285,7 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
     expect(
       screen.queryByRole('combobox', {
-        name: 'Search sessions, agents, skills and connectors',
+        name: 'Search sessions, agents, skills, connectors, models and workflows',
       }),
     ).not.toBeInTheDocument();
 
@@ -243,7 +293,7 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
     expect(
       await screen.findByRole('combobox', {
-        name: 'Search sessions, agents, skills and connectors',
+        name: 'Search sessions, agents, skills, connectors, models and workflows',
       }),
     ).toBeVisible();
   });
@@ -258,7 +308,7 @@ describe('CommandPalette', () => {
 
     expect(
       screen.queryByRole('combobox', {
-        name: 'Search sessions, agents, skills and connectors',
+        name: 'Search sessions, agents, skills, connectors, models and workflows',
       }),
     ).not.toBeInTheDocument();
   });
@@ -398,14 +448,28 @@ describe('CommandPalette', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('always offers the portal-wide search for the typed query', async () => {
+  it('finds a model and opens its page', async () => {
     const input = await openPalette();
-    await userEvent.type(input, 'sso login');
+    await userEvent.type(input, 'default-model');
 
-    await userEvent.click(
-      screen.getByText('Search the whole portal for “sso login”'),
+    const listbox = screen.getByRole('listbox', { name: 'Results' });
+    expect(within(listbox).getByText('Models')).toBeVisible();
+    await userEvent.click(within(listbox).getByText('Default model'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/models/gazelle/kagent/default-model',
     );
-    expect(mockNavigate).toHaveBeenCalledWith('/search?query=sso%20login');
+  });
+
+  it('finds a workflow and opens its page on its installation', async () => {
+    const input = await openPalette();
+    await userEvent.type(input, 'release-readiness');
+
+    const listbox = screen.getByRole('listbox', { name: 'Results' });
+    expect(within(listbox).getByText('Workflows')).toBeVisible();
+    await userEvent.click(within(listbox).getByText('release-readiness'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/workflows/release-readiness?installation=gazelle',
+    );
   });
 
   describe('at list scale (T39)', () => {
@@ -422,6 +486,8 @@ describe('CommandPalette', () => {
         'Sessions',
         'Agents',
         'Connectors',
+        'Models',
+        'Workflows',
       ]);
     });
 
@@ -429,6 +495,8 @@ describe('CommandPalette', () => {
       mockAgents = { ...mockAgents, rows: [] };
       mockCatalog = { skills: [], isLoading: false };
       mockConnectors = { rows: [], isLoading: false };
+      mockModels = { rows: [], isLoading: false };
+      mockWorkflows = { rows: [], isLoading: false };
       await openPalette();
 
       expect(chipGroup()).not.toBeInTheDocument();
@@ -449,7 +517,7 @@ describe('CommandPalette', () => {
       await userEvent.type(input, 'release');
 
       const listbox = screen.getByRole('listbox', { name: 'Results' });
-      // Five sessions plus the portal-search row.
+      // Five sessions, plus the one workflow that matches too.
       expect(within(listbox).getAllByRole('option')).toHaveLength(6);
       const more = screen.getByRole('link', {
         name: 'Show 295 more sessions',
@@ -461,7 +529,7 @@ describe('CommandPalette', () => {
 
       // The Sessions chip lists more of them, still bounded.
       await userEvent.click(screen.getByRole('button', { name: 'Sessions' }));
-      expect(within(listbox).getAllByRole('option')).toHaveLength(51);
+      expect(within(listbox).getAllByRole('option')).toHaveLength(50);
       expect(
         screen.getByRole('link', { name: 'Show 250 more sessions' }),
       ).toBeInTheDocument();
@@ -490,15 +558,18 @@ describe('CommandPalette', () => {
     });
   });
 
-  it('says honestly when nothing matches, keeping the portal search', async () => {
+  it('says honestly when nothing matches, staying in the shell', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'zzz-no-such-thing');
 
     expect(
-      screen.getByText(
-        'Nothing in your sessions, agents, skills or connectors matches “zzz-no-such-thing”.',
-      ),
+      screen.getByText('No results for “zzz-no-such-thing”.'),
     ).toBeVisible();
+    // No way out to the classic portal search (M18).
+    expect(
+      screen.queryByRole('listbox', { name: 'Results' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/whole portal/)).not.toBeInTheDocument();
   });
 });
 

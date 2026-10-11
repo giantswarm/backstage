@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  EmptyStateCard,
   LoadingIndicator,
   ShellDocumentTitle,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EmptyState } from '@backstage/core-components';
+
 import {
   identityApiRef,
   useApi,
@@ -258,8 +259,7 @@ export function AgentPlatformHome({
 
   if (!sessionDetailRoute) {
     return (
-      <EmptyState
-        missing="info"
+      <EmptyStateCard
         title="Agent Platform is not enabled"
         description="Sessions need it enabled on this portal."
       />

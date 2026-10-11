@@ -21,10 +21,12 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   groupNames,
   InfoCard,
+  INITIAL_ROWS,
   joinNames,
   LoadingIndicator,
   MENU_WIDTH,
   NAMED_IN_SENTENCE,
+  ShowMore,
   SimpleAccordion,
   StackedRowList,
   usePhoneLayout,
@@ -425,25 +427,39 @@ export function GpuNodePoolsPanel({
   const openedRow = opened ? rows.find(row => row.id === opened.id) : undefined;
 
   let body: ReactNode;
-  if (rows.length > 0 && isPhone) {
-    // At phone width each pool is a stacked row, in the table's order.
+  if (rows.length > 0) {
+    // A page of the sorted pools at a time (list scale): a fleet's pools are
+    // tens, and never an unbounded DOM. At phone width each pool is a
+    // stacked row, in the table's order.
     body = (
-      <StackedRowList
-        aria-label="GPU node pools"
-        rows={(tableProps.data ?? []).map(row =>
-          gpuNodePoolStackedRow(row, {
-            isOpen: row.id === opened?.id,
-            onToggleLifecycle,
-            onRemove,
-            prices,
-            showInstallation: !hideColumns?.includes('installation'),
-          }),
-        )}
-      />
-    );
-  } else if (rows.length > 0) {
-    body = (
-      <Table<GpuNodePoolRow> {...tableProps} columnConfig={columnConfig} />
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="pool"
+      >
+        {visible =>
+          isPhone ? (
+            <StackedRowList
+              aria-label="GPU node pools"
+              rows={visible.map(row =>
+                gpuNodePoolStackedRow(row, {
+                  isOpen: row.id === opened?.id,
+                  onToggleLifecycle,
+                  onRemove,
+                  prices,
+                  showInstallation: !hideColumns?.includes('installation'),
+                }),
+              )}
+            />
+          ) : (
+            <Table<GpuNodePoolRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+            />
+          )
+        }
+      </ShowMore>
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading node pools…" />;
@@ -493,7 +509,7 @@ export function GpuNodePoolsPanel({
           {errors.length > 0 && (
             <Alert
               status="info"
-              title="Node pools could not be read for some environments"
+              title="Could not read the node pools of some environments"
               description={
                 <GroupedByInstallation
                   lines={errors.map(({ installation, error }) =>

@@ -98,7 +98,7 @@ export const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
 /** How a shipped preset reads in the plain summary; `none` adds nothing. */
 const PRESET_PHRASES: Record<string, string> = {
-  'read-only': 'read-only tools everywhere',
+  'read-only': 'read-only tools',
   none: '',
   full: 'every tool the gateway exposes',
   infrastructure: 'the Infrastructure tools',

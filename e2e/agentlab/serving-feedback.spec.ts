@@ -6,8 +6,8 @@ import { expect, open, test } from './fixtures';
  * and the Serving list against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
- * - a preset that serves already is offered as "Serving on <node>" and
- *   cannot be chosen, and model-manager is never asked to serve it again;
+ * - a preset that serves already is offered with its Running models state
+ *   ("In Running models: Ready on <node>") and cannot be chosen, and model-manager is never asked to serve it again;
  * - Stop serving takes the row off the list without a reload;
  * - Serve ends in a toast naming the node, and the row reads Starting (never
  *   a red Not ready) until the model answers.
@@ -160,7 +160,7 @@ test.describe.serial('Serve feedback on KServe', () => {
     test.skip(!offered, 'the lab has no KServe backend (platform.serving)');
   });
 
-  test('a served preset reads "Serving on <node>" and cannot be served again', async ({
+  test('a served preset reads "Ready on <node>" and cannot be served again', async ({
     admin,
   }) => {
     const row = presetRow(admin);
@@ -179,7 +179,7 @@ test.describe.serial('Serve feedback on KServe', () => {
     await openServeOnKServe(admin);
     await admin.getByRole('button', { name: /Preset/ }).click();
     const option = admin.getByRole('option', { name: PRESET_LABEL });
-    await expect(option).toContainText(/Serving on \S+/);
+    await expect(option).toContainText(/In Running models: Ready on \S+/);
     await expect(option).toHaveAttribute('aria-disabled', 'true');
     await snapshot(admin, 'serve-page-served-preset', option);
     await admin.keyboard.press('Escape');

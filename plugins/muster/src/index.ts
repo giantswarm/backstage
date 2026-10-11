@@ -42,7 +42,12 @@ export type {
   WorkflowArgDefinition,
   WorkflowStep,
 } from './lib/k8s';
-export { isReadOnly, isDestructive, toolEffect } from './lib/toolAnnotations';
+export {
+  isReadOnly,
+  isDestructive,
+  toolEffect,
+  TOOL_EFFECT_LABELS,
+} from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {

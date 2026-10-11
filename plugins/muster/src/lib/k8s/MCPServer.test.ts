@@ -135,7 +135,7 @@ describe('TOOL_GROUPS', () => {
     expect(TOOL_GROUP_ORDER.map(key => TOOL_GROUPS[key].title)).toEqual([
       'Agent Platform',
       'Infrastructure',
-      'Registered servers',
+      'Registered connectors',
     ]);
     for (const key of TOOL_GROUP_ORDER) {
       expect(TOOL_GROUPS[key].key).toBe(key);

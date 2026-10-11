@@ -114,6 +114,15 @@ jest.mock('../../hooks/useRenameSession', () => ({
   }),
 }));
 
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
@@ -436,7 +445,7 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Tokens in / out')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
-    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
     expect(screen.getByText('Memory used')).toBeInTheDocument();
   });
 
@@ -467,7 +476,7 @@ describe('SessionDetailPage', () => {
       screen.getByRole('button', { name: /Session cost and memory/ }),
     );
 
-    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
     expect(screen.getByText('Reported cost')).toBeInTheDocument();
     // Twice on purpose: the chip leads with the reported figure, and the
     // popover row repeats it beside its label.
@@ -481,7 +490,7 @@ describe('SessionDetailPage', () => {
       screen.getByRole('button', { name: /Session cost and memory/ }),
     );
 
-    expect(screen.getByText('Estimated cost')).toBeInTheDocument();
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
     expect(screen.queryByText('Reported cost')).not.toBeInTheDocument();
   });
 
@@ -851,7 +860,9 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByRole('button', { name: 'Send' }),
       ).not.toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop the turn' }),
+      );
 
       // Server-side: the task the badge describes, not the stream.
       expect(mockCancelTask).toHaveBeenCalledWith('task-9');
@@ -876,7 +887,9 @@ describe('SessionDetailPage', () => {
       );
       await render();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Stop the turn' }),
+      );
 
       expect(mockCancelTask).toHaveBeenCalledWith('task-new');
     });
@@ -1173,7 +1186,9 @@ describe('SessionDetailPage', () => {
         );
         await render();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Stop the turn' }),
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-new');
       });
@@ -1198,7 +1213,7 @@ describe('SessionDetailPage', () => {
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
         expect(
-          screen.getByRole('button', { name: 'Stop' }),
+          screen.getByRole('button', { name: 'Stop the turn' }),
         ).toBeInTheDocument();
       });
 
@@ -1275,7 +1290,7 @@ describe('SessionDetailPage', () => {
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
         expect(
-          screen.getByText(/stopped reporting progress. Cancel the turn/),
+          screen.getByText(/stopped reporting progress. Stop the turn/),
         ).toBeInTheDocument();
       });
 
@@ -1298,7 +1313,8 @@ describe('SessionDetailPage', () => {
         await render();
 
         await userEvent.click(
-          screen.getByRole('button', { name: 'Cancel the turn' }),
+          // The labelled button, not the composer's icon of the same name.
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
         );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-9');
@@ -1323,7 +1339,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(
-          screen.queryByRole('button', { name: 'Cancel the turn' }),
+          screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
         expect(
           screen.getByText(/has not reported progress/),
@@ -1364,10 +1380,13 @@ describe('SessionDetailPage', () => {
         ).not.toBeInTheDocument();
         expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
         expect(
-          screen.getByText(/stopped reporting progress. Cancel the turn/),
+          screen.getByText(/stopped reporting progress. Stop the turn/),
         ).toBeInTheDocument();
 
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        // The composer's and the stalled row's: one action, one name.
+        await userEvent.click(
+          screen.getAllByRole('button', { name: 'Stop the turn' })[0],
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
       });
@@ -1399,7 +1418,7 @@ describe('SessionDetailPage', () => {
         });
 
         expect(
-          screen.getByRole('button', { name: 'Stop' }),
+          screen.getByRole('button', { name: 'Stop the turn' }),
         ).toBeInTheDocument();
         expect(screen.getByText('Working…')).toBeInTheDocument();
 
@@ -1414,19 +1433,22 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        // The composer's and the stalled row's: one action, one name.
+        await userEvent.click(
+          screen.getAllByRole('button', { name: 'Stop the turn' })[0],
+        );
 
         expect(mockCancelTask).toHaveBeenCalledWith('task-stuck');
       });
 
-      it('reports a failed Stop as "Stop failed" with the backend’s message', async () => {
+      it('reports a failed Stop as "Could not stop the turn" with the backend’s message', async () => {
         mockUseSessionDetail.mockReturnValue(workingView);
         mockUseCancelTask.mockReturnValue(
           idleCancel({ error: new Error('kagent is unavailable') }),
         );
         await render();
 
-        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(screen.getByText('kagent is unavailable')).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
         // Nothing was sent, so nothing is put back into the box.
@@ -1442,7 +1464,7 @@ describe('SessionDetailPage', () => {
         mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
         await render();
 
-        expect(screen.getByText('Stop failed')).toBeInTheDocument();
+        expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(
           screen.getByText(
             /Failed user token verification\. Your sign-in expired — reload the page and stop the turn again\./,
@@ -1482,7 +1504,8 @@ describe('SessionDetailPage', () => {
         expect(composer()).toHaveValue('the refused message');
 
         await userEvent.click(
-          screen.getByRole('button', { name: 'Cancel the turn' }),
+          // The labelled button, not the composer's icon of the same name.
+          screen.getByText('Stop the turn', { selector: 'button, button *' }),
         );
         expect(mockCancelTask).toHaveBeenCalledWith('task-9');
       });
@@ -1553,7 +1576,9 @@ describe('SessionDetailPage', () => {
         expect(composer()).toBeEnabled();
 
         // Stop aims at the task the answer resumed.
-        await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Stop the turn' }),
+        );
         expect(mockCancelTask).toHaveBeenCalledWith('task-1');
       });
 

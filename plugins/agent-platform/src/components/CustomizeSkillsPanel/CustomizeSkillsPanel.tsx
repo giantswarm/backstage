@@ -4,6 +4,7 @@ import { Alert, Card, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   CatalogNoMatch,
+  countNoun,
   EmptyStateCard,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -102,10 +103,6 @@ type Row = {
   href?: string;
 };
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
 /** "71 skills from 3 sources in total." */
 export function skillsTotalLine(
   skills: SkillCatalog['skills'],
@@ -116,7 +113,7 @@ export function skillsTotalLine(
   }
   const sources = new Set(unique.map(skill => canonicalRepoUrl(skill.repoUrl)))
     .size;
-  return `${plural(unique.length, 'skill')} from ${plural(
+  return `${countNoun(unique.length, 'skill')} from ${countNoun(
     sources,
     'source',
   )} in total.`;

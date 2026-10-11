@@ -13,6 +13,7 @@ import {
 import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
+  CatalogNoMatch,
   LoadingIndicator,
   useProvidePageHeaderActions,
   useWizardFrameRail,
@@ -576,8 +577,8 @@ export function NewAgentToolsPage() {
           onToggle={selector => removeSelectors([selector])}
         />
 
-        <section aria-label="Which apps?">
-          <SectionTitle title="Which apps?" />
+        <section aria-label="Which connectors?">
+          <SectionTitle title="Which connectors?" />
           <Flex direction="column" gap="2">
             {hint && (
               <Text variant="body-small" color="secondary">
@@ -680,13 +681,12 @@ export function NewAgentToolsPage() {
                         onToggle={toggleSelected}
                       />
                     ) : (
-                      <Text color="secondary">
-                        {activeQuery === ''
-                          ? 'No tool of this kind.'
-                          : `Nothing matches "${activeQuery}"${
-                              effect === 'all' ? '' : ' with this filter'
-                            }.`}
-                      </Text>
+                      <CatalogNoMatch
+                        plural="tools"
+                        search={activeQuery}
+                        isFiltered={effect !== 'all'}
+                        onClearFilters={() => setEffect('all')}
+                      />
                     )}
                   </>
                 )}

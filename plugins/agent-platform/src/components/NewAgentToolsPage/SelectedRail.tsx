@@ -10,10 +10,7 @@ import {
   presetLabel,
 } from '../../lib/toolset';
 import { railGroups, railToolLabel, type RailGroup } from './connectorChoice';
-import { toolsetEffect } from './ToolsetSummaryBar';
-
-/** Entries per group before *Show all*. */
-const RAIL_ROWS = 8;
+import { RAIL_ROWS, toolsetEffect } from './ToolsetSummaryBar';
 
 const useStyles = makeStyles(theme => ({
   // The artboard's tinted "Selected" rail (CreateAgentTools), docked by the

@@ -6,7 +6,11 @@ import type {
   ModelManagerServeStep,
 } from './modelManager';
 import { formatBytes } from './formatNumbers';
-import type { ServedModel, ServingBackend } from './serving';
+import {
+  SERVED_MODEL_READINESS,
+  type ServedModel,
+  type ServingBackend,
+} from './serving';
 
 /**
  * Serving through model-manager as the signed-in person: what the Serve
@@ -415,12 +419,15 @@ export function servedPresetRow(
   );
 }
 
-/** Where a served row runs, in words: `Serving on gpu-a`, `Stopping on gpu-a`. */
+/**
+ * A served row's state and where it runs, in the Running models table's
+ * words (UX review M14): `Ready on gpu-a`, `Stopping on gpu-a`, `Pending`.
+ */
 export function describeServedWhere(row: ServedModel): string {
-  const verb = row.readiness === 'terminating' ? 'Stopping' : 'Serving';
+  const { label } = SERVED_MODEL_READINESS[row.readiness];
   const several = row.splitNodes ?? row.copyNodes;
   const nodes = several?.length ? several.join(', ') : row.node;
-  return nodes ? `${verb} on ${nodes}` : `${verb} already`;
+  return nodes ? `${label} on ${nodes}` : label;
 }
 
 /** The nodes a load answer serves on: an existing object's, else the fit's. */

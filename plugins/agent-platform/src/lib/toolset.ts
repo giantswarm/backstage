@@ -68,7 +68,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'read-only',
     description:
-      "Includes every tool whose server marks it read-only and every workflow whose steps only use such tools. It is evaluated live, so it follows the servers' own annotations.",
+      "Includes every tool whose connector marks it read-only and every workflow whose steps only use such tools. It is evaluated live, so it follows the connectors' own annotations.",
     built_in: true,
   },
   {
@@ -80,7 +80,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'full',
     description:
-      "Includes everything the gateway exposes to whoever invokes the agent, platform administration tools included. This makes today's unbounded behaviour explicit.",
+      "Includes everything the gateway exposes to whoever invokes the agent, platform tools included. This makes today's unbounded behaviour explicit.",
     built_in: true,
   },
 ];
@@ -510,6 +510,49 @@ export function serverOfTool(
   return best ? surfaceName(best) : undefined;
 }
 
+/**
+ * The connector an `x_*` tool name belongs to, by its longest matching
+ * prefix, with the tool's own part: `x_agentlab-mcp-kubernetes_get_pods` →
+ * `{ connector: 'kubernetes', tool: 'get_pods' }` for a server of the
+ * kubernetes family. The connector is named as Customize names it (the family
+ * for a family member). `undefined` for a name no server's prefix matches.
+ */
+export function connectorOfTool(
+  name: string,
+  servers: ServerInfo[],
+): { connector: string; tool: string } | undefined {
+  let best: ServerInfo | undefined;
+  for (const server of servers) {
+    const prefix = server.toolNamePrefix;
+    if (
+      prefix &&
+      name.startsWith(`${prefix}_`) &&
+      (!best || prefix.length > best.toolNamePrefix.length)
+    ) {
+      best = server;
+    }
+  }
+  return best
+    ? {
+        connector: surfaceName(best),
+        tool: name.slice(best.toolNamePrefix.length + 1),
+      }
+    : undefined;
+}
+
+/**
+ * A muster server as Customize names it — the family for a family member —
+ * from its CR name or its tool-name segment (`agentlab-mcp-kubernetes` →
+ * `kubernetes`); the name itself when no server matches.
+ */
+export function connectorName(server: string, servers: ServerInfo[]): string {
+  const match = servers.find(
+    candidate =>
+      candidate.name === server || candidate.toolNamePrefix === `x_${server}`,
+  );
+  return match ? surfaceName(match) : server;
+}
+
 export function isCoreTool(tool: Pick<ToolSummary, 'name' | 'kind'>): boolean {
   return tool.kind === 'core' || (!tool.kind && tool.name.startsWith('core_'));
 }
@@ -620,7 +663,7 @@ export function hasEntries(group: CatalogueGroup): boolean {
  * installation has is listed — as an empty, sign-in-gated bucket when the
  * caller's session cannot see its tools — so an author can pick a whole server
  * they cannot browse themselves. Tools muster attributes to a server no CR
- * describes still appear (under Registered servers) so nothing is hidden.
+ * describes still appear (under Registered connectors) so nothing is hidden.
  * Empty groups are dropped.
  */
 export function buildCatalogue(

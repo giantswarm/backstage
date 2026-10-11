@@ -5,7 +5,6 @@ import {
   matchesQuery,
   PALETTE_GROUP_CAP,
   PALETTE_SINGLE_GROUP_CAP,
-  portalSearchHref,
   visiblePaletteFilters,
   type PaletteCandidate,
 } from './helpers';
@@ -85,12 +84,6 @@ describe('buildPaletteGroups', () => {
   it('strips the haystack off the entries it returns', () => {
     const [group] = buildPaletteGroups(candidates, 'release', 'all');
     expect(group.entries[0]).not.toHaveProperty('haystack');
-  });
-});
-
-describe('portalSearchHref', () => {
-  it('hands the query to the classic search page, encoded', () => {
-    expect(portalSearchHref('sso login')).toBe('/search?query=sso%20login');
   });
 });
 

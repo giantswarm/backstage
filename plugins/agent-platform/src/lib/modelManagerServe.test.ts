@@ -490,16 +490,14 @@ describe('served presets', () => {
   });
 
   it('says where a served row runs', () => {
-    expect(describeServedWhere(row({}))).toBe('Serving on spark-b');
+    expect(describeServedWhere(row({}))).toBe('Ready on spark-b');
     expect(describeServedWhere(row({ readiness: 'terminating' }))).toBe(
       'Stopping on spark-b',
     );
     expect(
       describeServedWhere(row({ splitNodes: ['spark-a', 'spark-b'] })),
-    ).toBe('Serving on spark-a, spark-b');
-    expect(describeServedWhere(row({ node: undefined }))).toBe(
-      'Serving already',
-    );
+    ).toBe('Ready on spark-a, spark-b');
+    expect(describeServedWhere(row({ node: undefined }))).toBe('Ready');
   });
 
   it('names the nodes of a load answer: the existing object’s, else the fit’s', () => {

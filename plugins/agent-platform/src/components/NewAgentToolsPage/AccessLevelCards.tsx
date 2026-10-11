@@ -21,22 +21,26 @@ type Option = {
   warning?: string;
 };
 
-/** The built-in presets in the artboard's plain words; others by their label. */
+/**
+ * Every preset by its own label (`presetLabel`), the one name the review, the
+ * agent page and the composer use too; the built-in ones with a plain line.
+ */
 function presetOption(preset: ToolsetPreset): Option {
   const level = presetSelector(preset.name);
   if (level === PRESET_READ_ONLY) {
     return {
       level,
-      title: 'Look things up · recommended',
-      description: 'Uses only the read-only tools of every connector.',
+      title: `${presetLabel(preset.name)} · recommended`,
+      description:
+        'The agent can read through every connector but change nothing.',
     };
   }
   if (level === PRESET_FULL) {
     return {
       level,
-      title: 'Look things up and make changes',
+      title: presetLabel(preset.name),
       warning:
-        'Full gateway includes every tool, platform administration included. Choose deliberately.',
+        'It includes every tool, the platform tools too. Choose deliberately.',
     };
   }
   return {

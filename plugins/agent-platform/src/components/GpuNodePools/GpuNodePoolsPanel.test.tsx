@@ -317,4 +317,34 @@ describe('GpuNodePoolsPanel at phone width', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'GPU node pools' })).toBeNull();
   });
+
+  it('shows 300 pools a page at a time (list scale)', async () => {
+    layout = mockDesktopLayout();
+    const rows = Array.from({ length: 300 }, (_, i) => ({
+      ...POOL,
+      id: `inst-1/wc1/l4-${i}`,
+      poolName: `l4-${i}`,
+      pool: { ...POOL.pool, name: `wc1-l4-${String(i).padStart(3, '0')}` },
+    })) as GpuNodePoolRow[];
+    await renderInTestApp(
+      <GpuNodePoolsPanel
+        rows={rows}
+        isLoading={false}
+        notes={[]}
+        errors={[]}
+        onRemove={jest.fn()}
+        opened={undefined}
+        onToggleLifecycle={jest.fn()}
+        onCloseLifecycle={jest.fn()}
+      />,
+    );
+
+    // A header row plus the first page.
+    expect(screen.getAllByRole('row')).toHaveLength(21);
+    expect(screen.getByText('20 pools shown, 280 more')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more pools' }),
+    );
+    expect(screen.getAllByRole('row')).toHaveLength(41);
+  });
 });

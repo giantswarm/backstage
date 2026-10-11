@@ -2,7 +2,7 @@ import { Fragment, ReactNode } from 'react';
 import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
@@ -350,9 +350,7 @@ export function WorkflowStepDetails({
   }
   if (isHead && group?.kind === 'parallel') {
     const count = group.children.length;
-    facts.push(
-      `Runs its ${count} step${count === 1 ? '' : 's'} at the same time.`,
-    );
+    facts.push(`Runs its ${countNoun(count, 'step')} at the same time.`);
   }
   if (parent) {
     facts.push(

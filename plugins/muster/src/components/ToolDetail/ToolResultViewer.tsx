@@ -18,11 +18,12 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import ReplayIcon from '@material-ui/icons/Replay';
 import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
 import UnfoldMoreIcon from '@material-ui/icons/UnfoldMore';
-import { CopyTextButton } from '@backstage/core-components';
 import {
+  CopyButton,
   ShowMore,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { formatBytes } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { detectTable } from '../../lib/resultShape';
 
 type ViewMode = 'parsed' | 'raw' | 'table';
@@ -51,12 +52,6 @@ export const RESULT_TABLE_ROWS = 50;
 
 /** One table row: a stable id plus the raw record `detectTable` produced. */
 type ResultRow = { id: string; values: Record<string, unknown> };
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function cellText(value: unknown): string {
   if (value === null || value === undefined) {
@@ -173,7 +168,7 @@ export function ToolResultViewer({
             <ToggleButton id="parsed">Parsed</ToggleButton>
             <ToggleButton id="raw">Raw</ToggleButton>
           </ToggleButtonGroup>
-          <CopyTextButton text={copyText} tooltipText="Copied result" />
+          <CopyButton text={copyText} label="Copy result" />
           <TooltipTrigger>
             <ButtonIcon
               variant="tertiary"

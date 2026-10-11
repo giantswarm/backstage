@@ -27,7 +27,9 @@ import { skillSource, uniqueSkills } from '../../lib/customize';
 import { skillDetailPath } from '../../lib/skills';
 import {
   agentDetailRouteRef,
+  modelDetailRouteRef,
   musterServersExternalRouteRef,
+  musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
@@ -45,7 +47,6 @@ import {
   buildPaletteGroups,
   isEditableTarget,
   isPaletteHotkey,
-  portalSearchHref,
   type PaletteCandidate,
   type PaletteEntry,
   type PaletteFilter,
@@ -53,6 +54,8 @@ import {
   visiblePaletteFilters,
 } from './helpers';
 import { usePaletteConnectors } from './usePaletteConnectors';
+import { usePaletteModels } from './usePaletteModels';
+import { usePaletteWorkflows } from './usePaletteWorkflows';
 
 const useStyles = makeStyles({
   // The Modal container. On a phone the palette is the screen: a floating
@@ -199,9 +202,6 @@ export type CommandPaletteProps = {
   renderTrigger: (open: () => void) => ReactNode;
 };
 
-/** The id of the pseudo-entry that hands the query to the classic search. */
-const PORTAL_SEARCH_ID = 'portal-search';
-
 /** A session's palette meta: "Today", or a short date. */
 function sessionDate(createdAt: string | undefined): string | undefined {
   if (!createdAt) {
@@ -225,9 +225,10 @@ function isApplePlatform(): boolean {
 
 /**
  * The ⌘K command palette (decision W4): a client-side search over the data
- * the shell already reads — session titles, agents, skills and connectors —
- * plus a way out to the classic portal-wide search. Session *content* is not
- * searched (gap G6): titles and metadata only.
+ * the shell already reads — session titles, agents, skills, connectors,
+ * models and workflows. It stays in the shell: no result is a no-result
+ * state, not a hop to the classic portal search (M18). Session *content* is
+ * not searched (gap G6): titles and metadata only.
  *
  * Opens on ⌘K / Ctrl+K and through the trigger the caller renders. The
  * hotkey is deliberately narrow: it only fires while the document root
@@ -392,11 +393,15 @@ function PaletteDialog({
   const sessions = useSessions();
   const skillCatalog = useSkillCatalog();
   const connectors = usePaletteConnectors(agents.installations);
+  const models = usePaletteModels();
+  const workflows = usePaletteWorkflows(agents.installations);
 
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillsRoute = useRouteRef(skillsRouteRef);
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
+  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
   const [query, setQuery] = useState('');
@@ -472,21 +477,55 @@ function PaletteDialog({
         }))
       : [];
 
+    const modelCandidates: PaletteCandidate[] = modelDetailRoute
+      ? models.rows.map(model => ({
+          id: `model:${model.id}`,
+          title: model.displayName,
+          description: model.description,
+          meta: model.installation,
+          href: modelDetailRoute({
+            installation: model.installation,
+            namespace: model.namespace,
+            name: model.name,
+          }),
+          haystack: [model.displayName, model.name, model.description],
+        }))
+      : [];
+
+    const workflowCandidates: PaletteCandidate[] = workflowDetailRoute
+      ? workflows.rows.map(workflow => ({
+          id: `workflow:${workflow.installation}/${workflow.name}`,
+          title: workflow.name,
+          description: workflow.description,
+          meta: workflow.installation,
+          href: `${workflowDetailRoute({
+            name: workflow.name,
+          })}?installation=${encodeURIComponent(workflow.installation)}`,
+          haystack: [workflow.name, workflow.description],
+        }))
+      : [];
+
     return {
       sessions: sessionCandidates.filter(candidate => candidate.href),
       agents: agentCandidates.filter(candidate => candidate.href),
       skills: skillCandidates,
       connectors: connectorCandidates,
+      models: modelCandidates,
+      workflows: workflowCandidates,
     };
   }, [
     sessions.rows,
     agents.rows,
     skillCatalog.skills,
     connectors.rows,
+    models.rows,
+    workflows.rows,
     sessionDetailRoute,
     agentDetailRoute,
     skillsRoute,
     serversRoute,
+    modelDetailRoute,
+    workflowDetailRoute,
   ]);
 
   const groups = useMemo(
@@ -496,7 +535,7 @@ function PaletteDialog({
   const chips = visiblePaletteFilters(candidates, filter);
 
   // Where a group's "+N more" goes: that kind's own list, searching for the
-  // same thing. The shell lists agents, skills and connectors on Customize.
+  // same thing. The shell lists every other kind on its Customize tab.
   const moreHref = (group: PaletteGroupId): string | undefined => {
     if (group === 'sessions') {
       return sessionsRoute
@@ -507,18 +546,11 @@ function PaletteDialog({
     return `${SHELL_CUSTOMIZE_PATH}/${group}${search}`;
   };
 
-  // What the arrow keys walk: the groups' rows, then the portal-search row.
-  const flatEntries = useMemo<PaletteEntry[]>(() => {
-    const entries = groups.flatMap(group => group.entries);
-    if (trimmedQuery) {
-      entries.push({
-        id: PORTAL_SEARCH_ID,
-        title: `Search the whole portal for “${trimmedQuery}”`,
-        href: portalSearchHref(trimmedQuery),
-      });
-    }
-    return entries;
-  }, [groups, trimmedQuery]);
+  // What the arrow keys walk: the groups' rows, in order.
+  const flatEntries = useMemo<PaletteEntry[]>(
+    () => groups.flatMap(group => group.entries),
+    [groups],
+  );
 
   // A new query or chip starts the selection over at the top.
   useEffect(() => {
@@ -575,20 +607,23 @@ function PaletteDialog({
     sessions.isLoading ||
     sessions.isLoadingMore ||
     skillCatalog.isLoading ||
-    connectors.isLoading;
+    connectors.isLoading ||
+    models.isLoading ||
+    workflows.isLoading;
 
   const listboxId = `${baseId}-listbox`;
-  const inputLabel = 'Search sessions, agents, skills and connectors';
+  const inputLabel =
+    'Search sessions, agents, skills, connectors, models and workflows';
   const mod = isApplePlatform() ? '⌘' : 'Ctrl';
 
-  // Honest about an empty result; the portal-search row below stays either
-  // way, since the classic search may still know the term.
+  // Honest about an empty result, and in the shell: no way out to the
+  // classic portal search (M18).
   let emptyText: string | undefined;
   if (groups.length === 0) {
     if (trimmedQuery) {
-      emptyText = `Nothing in your sessions, agents, skills or connectors matches “${trimmedQuery}”.`;
+      emptyText = `No results for “${trimmedQuery}”.`;
     } else if (isLoadingAny) {
-      emptyText = 'Loading your sessions, agents, skills and connectors…';
+      emptyText = 'Reading what there is to search…';
     } else {
       emptyText = 'Nothing to search yet.';
     }
@@ -621,7 +656,7 @@ function PaletteDialog({
             aria-activedescendant={
               activeEntry ? optionId(activeEntry) : undefined
             }
-            placeholder="Search sessions, agents, skills, connectors…"
+            placeholder="Search the agent platform…"
             value={query}
             onChange={event => setQuery(event.target.value)}
             onKeyDown={onInputKeyDown}
@@ -708,31 +743,6 @@ function PaletteDialog({
                 </ul>
               </li>
             ))}
-            {trimmedQuery && (
-              <li key={PORTAL_SEARCH_ID} role="presentation">
-                <div className={classes.groupLabel}>
-                  <Text variant="body-x-small" weight="bold" color="secondary">
-                    Everything else
-                  </Text>
-                </div>
-                <ul role="presentation" className={classes.groupList}>
-                  {flatEntries
-                    .filter(entry => entry.id === PORTAL_SEARCH_ID)
-                    .map(entry => (
-                      <PaletteOption
-                        key={entry.id}
-                        entry={entry}
-                        id={optionId(entry)}
-                        isActive={activeEntry?.id === entry.id}
-                        onActivate={() =>
-                          setActiveIndex(flatEntries.length - 1)
-                        }
-                        onOpen={() => openEntry(entry)}
-                      />
-                    ))}
-                </ul>
-              </li>
-            )}
           </ul>
         )}
         {/* Key hints only where there are keys (T22 P7): on touch input the

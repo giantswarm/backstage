@@ -135,7 +135,7 @@ export function LastUsedAgents() {
                 )}
               </span>
               <Text as="span" variant="body-small" className={classes.action}>
-                New session
+                Start a session
               </Text>
             </Link>
           </li>

@@ -118,7 +118,7 @@ Muster's workflows, read-only.
 `/agent-platform/usage` reports over 7, 30 (the default) or 90 days:
 
 - **Overview** — platform health and trends from the LLM gateway.
-- **Cost** — estimated spend from the gateway, by agent and model.
+- **Cost** — spend from the gateway, by agent and model.
 - **Connectors** — every caller's tool calls from muster's metrics, always 30
   days. Only where the muster plugin is registered.
 - **Your sessions** — the person's own usage from their kagent sessions,
@@ -1118,7 +1118,10 @@ only while the page is scrolled to the end.
 
 **Calls through Muster are unwrapped** (`unwrapProxiedCall`,
 [klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163)), so
-a row names the real tool with a `via Muster` badge. The payload must be only
+a row names the real tool. In plain rows the badge is the tool's connector as
+Customize names it (from the installation's `MCPServer` CRs, the family for a
+family member) and the title drops the connector's prefix; technical rows keep
+the exact name and a `via Muster` badge. The payload must be only
 the wrapper: a non-empty `name` and no key besides `name` and `arguments`.
 Anything else shows the proxy call intact rather than losing arguments.
 `{ name }` without `arguments` still unwraps.
@@ -1186,7 +1189,7 @@ Some sessions' `adk_usage_metadata` has only `promptTokenCount` and
 `candidatesTokenCount`; the total is then derived. A reported total wins,
 because it includes separately billed thinking tokens.
 
-**Estimated cost** multiplies the tokens by the $/token this agent (else the
+**Est. cost** multiplies the tokens by the $/token this agent (else the
 installation) achieved over the last 7 days, because gateway metrics carry no
 session label (see
 [One cost is measured, the other is estimated](#one-cost-is-measured-the-other-is-estimated--and-the-labels-say-which)).
@@ -1387,7 +1390,7 @@ the poll). It calls `POST /kagent/sessions/:sessionId/tasks/:taskId/cancel` →
 actor and records the task cancelled, so the turn stays stopped after the tab
 closes. Cancelling a finished turn is not an error. `useCancelTask` invalidates
 the conversation. Stop is withheld while a confirmation is open. A failure shows
-as **Stop failed**; a 401 (for example after a Backstage pod roll) adds that a
+as **Could not stop the turn**; a 401 (for example after a Backstage pod roll) adds that a
 reload signs the tab back in.
 
 **A stalled turn** (no progress for the 5-minute bound, see "Refreshing")
@@ -1767,7 +1770,7 @@ The shell (`ShellPage`):
 | -------- | -------------------- | ----------------------------------------------------------------------------- |
 | Overview | the agent URL itself | what it's for, instructions, skills, connectors; model and environment beside |
 | Sessions | `…/<name>/sessions`  | your sessions with this agent                                                 |
-| Usage    | `…/<name>/usage`     | its estimated cost, tokens and model calls; your sessions with it             |
+| Usage    | `…/<name>/usage`     | its spend, tokens and model calls; your sessions with it                      |
 
 In the shell, Tools and Skills fold into the Overview (`…/<name>/tools` still
 shows the toolset; `…/skills` lands on the Overview), and the classic cards sit
@@ -2069,10 +2072,11 @@ token.
 
 ### One cost is measured, the other is estimated — and the labels say which
 
-- **Per agent and per model** (Cost tab, Overview tiles): **Spend** ("Spend
-  (estimated)" when converted to another currency), "Cost" in tables. The
-  gateway prices each call from its catalogue as it happens; this is measured.
-- **Per session** (the cost popover): **Estimated cost**, kagent's tokens times
+- **Per agent and per model** (Cost tab, Overview tiles, an agent's and a
+  model's Usage): **Spend** ("Est. spend" when converted to another currency),
+  in tiles and tables alike. The gateway prices each call from its catalogue as
+  it happens; this is measured. Every tile says whose calls it covers.
+- **Per session** (the cost popover): **Est. cost**, kagent's tokens times
   a gateway-derived $/token over 7 days, so the rate reflects the current model
   mix. See the tier chain below.
 - **Per agent on Your sessions**: **Est. cost** at one rate, the installation's

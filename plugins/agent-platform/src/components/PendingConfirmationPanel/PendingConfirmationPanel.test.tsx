@@ -357,11 +357,27 @@ describe('PendingConfirmationPanel', () => {
       ).toBeInTheDocument();
     });
 
-    it('shows the connector the proposed call would go through', () => {
+    it('names the connector the proposed call would go through, as Customize does', () => {
+      renderPanel(
+        { ...approval, toolName: 'x_files_delete_file', via: 'Muster' },
+        {
+          connectorOf: name =>
+            name.startsWith('x_files_')
+              ? { connector: 'files', tool: name.slice('x_files_'.length) }
+              : undefined,
+        },
+      );
+
+      expect(
+        screen.getByText('The agent wants to run “Delete file” on files'),
+      ).toBeInTheDocument();
+    });
+
+    it('never names the gateway as the connector', () => {
       renderPanel({ ...approval, via: 'Muster' });
 
       expect(
-        screen.getByText('The agent wants to run “Delete file” via Muster'),
+        screen.getByText('The agent wants to run “Delete file”'),
       ).toBeInTheDocument();
     });
 

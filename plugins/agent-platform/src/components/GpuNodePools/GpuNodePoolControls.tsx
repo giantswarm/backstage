@@ -1,5 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { Button } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import type { InstallationScope } from '@giantswarm/backstage-plugin-gs';
@@ -79,6 +83,9 @@ export const NO_CLUSTER_REASON =
  * it (`useHostingFlowOutcome`).
  */
 export const OPENED_POOL_KEY = 'openedPool';
+
+/** How long the cache-removal toast stays, as the other hosting toasts. */
+const TOAST_TIMEOUT_MS = 6000;
 
 /** An {@link OpenedPool} as the router state carries it, or `undefined`. */
 function parseOpenedPool(value: unknown): OpenedPool | undefined {
@@ -179,6 +186,18 @@ export function useGpuNodePoolControls(
       });
     },
     [intents],
+  );
+  // A removed cache simply leaves the list, so a toast is its one
+  // confirmation (a pool closes into its teardown panel instead).
+  const toastApi = useApi(toastApiRef);
+  const onCacheRemoved = useCallback(
+    (row: ModelCacheRow) =>
+      toastApi.post({
+        title: `Removed the model cache ${row.claim.name} on ${row.cluster.name}`,
+        status: 'success',
+        timeout: TOAST_TIMEOUT_MS,
+      }),
+    [toastApi],
   );
   const onToggleLifecycle = useCallback(
     (row: GpuNodePoolRow) =>
@@ -317,6 +336,7 @@ export function useGpuNodePoolControls(
           }}
           write={cacheWrite}
           servedModels={servedModels}
+          onRemoved={onCacheRemoved}
         />
       </>
     ) : undefined,

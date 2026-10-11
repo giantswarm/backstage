@@ -9,7 +9,9 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import {
   InfoCard,
+  INITIAL_ROWS,
   LoadingIndicator,
+  ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -82,32 +84,38 @@ function DeclaredSelectors({
   const classes = useStyles();
   const missing = new Set(unmatched);
   return (
-    <div
-      className={classes.selectors}
-      role="list"
-      aria-label="Declared toolset"
-    >
-      {selectors.map(selector => {
-        const isUnmatched = missing.has(selector);
-        return (
-          <span
-            key={selector}
-            role="listitem"
-            className={[
-              classes.selector,
-              labelOfPresetSelector(selector) === undefined
-                ? classes.selectorCode
-                : '',
-              isUnmatched ? classes.selectorUnmatched : '',
-            ].join(' ')}
-            title={selectorTitle(selector, isUnmatched)}
-          >
-            {selectorLabel(selector)}
-            {isUnmatched ? ' (matches nothing for you)' : ''}
-          </span>
-        );
-      })}
-    </div>
+    // A page of chips at a time: a toolset written out tool by tool can run
+    // to hundreds of selectors.
+    <ShowMore items={selectors} initial={INITIAL_ROWS} noun="selection">
+      {visible => (
+        <div
+          className={classes.selectors}
+          role="list"
+          aria-label="Declared toolset"
+        >
+          {visible.map(selector => {
+            const isUnmatched = missing.has(selector);
+            return (
+              <span
+                key={selector}
+                role="listitem"
+                className={[
+                  classes.selector,
+                  labelOfPresetSelector(selector) === undefined
+                    ? classes.selectorCode
+                    : '',
+                  isUnmatched ? classes.selectorUnmatched : '',
+                ].join(' ')}
+                title={selectorTitle(selector, isUnmatched)}
+              >
+                {selectorLabel(selector)}
+                {isUnmatched ? ' (matches nothing for you)' : ''}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </ShowMore>
   );
 }
 
@@ -233,7 +241,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="warning"
         title="Implicit full access"
-        description={`No toolset declared: gateway server ${declared.carrier} carries no X-Muster-Toolset header, so this agent can call every tool the gateway exposes to whoever invokes it — platform administration included. Assign one with agent-manager's update_agent or the chart's toolset value.`}
+        description={`No toolset declared: gateway server ${declared.carrier} carries no X-Muster-Toolset header, so this agent can call every tool the gateway exposes to whoever invokes it, platform tools included. Assign one with agent-manager's update_agent or the chart's toolset value.`}
       />
     );
   } else {
@@ -247,7 +255,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           <Alert
             status="warning"
             title="Full gateway access"
-            description="The full preset: this agent can call every tool the gateway exposes to whoever invokes it — platform administration included."
+            description="The full preset: this agent can call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
         )}
         {shape === 'none' && (
@@ -261,7 +269,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           <Flex direction="column" gap="2">
             <Alert
               status="info"
-              title="Sign in to see these servers' tools"
+              title="Sign in to see these connectors' tools"
               description={`${unsignedServers.join(
                 ', ',
               )} — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.`}

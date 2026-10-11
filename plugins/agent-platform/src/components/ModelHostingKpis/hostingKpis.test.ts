@@ -11,7 +11,7 @@ const node = (overrides: Partial<GpuNode>): GpuNode => ({
 });
 
 describe('countRunningModels', () => {
-  it('counts the answering models, and those starting or idle apart', () => {
+  it('counts the answering models, and those starting, pending or idle apart', () => {
     expect(
       countRunningModels([
         { readiness: 'ready' },
@@ -22,7 +22,7 @@ describe('countRunningModels', () => {
         { readiness: 'notServing' },
         { readiness: 'ready', kind: 'download' },
       ]),
-    ).toEqual({ running: 2, starting: 2, idle: 1 });
+    ).toEqual({ running: 2, starting: 1, pending: 1, idle: 1 });
   });
 });
 

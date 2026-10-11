@@ -138,7 +138,7 @@ export function LlmByAgentTable({
     },
     {
       id: 'costUsd',
-      label: 'Est. cost',
+      label: 'Spend',
       isSortable: true,
       cell: row => (
         <Cell>

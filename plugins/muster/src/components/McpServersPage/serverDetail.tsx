@@ -17,6 +17,7 @@ import {
   type Fact,
   INITIAL_ROWS,
   isAwaitingData,
+  CatalogNoMatch,
   matchesQuery,
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -712,7 +713,7 @@ function CapabilityList<T>({
       )}
       {shown.length === 0 ? (
         <Box mt="1">
-          <Note>No {noun}s match.</Note>
+          <CatalogNoMatch plural={`${noun}s`} search={query} />
         </Box>
       ) : (
         <ShowMore key={query} items={shown} noun={noun}>

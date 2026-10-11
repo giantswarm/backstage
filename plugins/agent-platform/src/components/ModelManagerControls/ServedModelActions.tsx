@@ -124,6 +124,18 @@ export function hasRowActions(
   );
 }
 
+/** A failed operation's toast title, in the "Could not …" form of every error title. */
+const FAILURE_TITLE: Record<
+  ServedModelAction['type'],
+  (name: string) => string
+> = {
+  load: name => `Could not load ${name}`,
+  unload: name => `Could not unload ${name}`,
+  delete: name => `Could not delete ${name}`,
+  wire: name => `Could not create a model config for ${name}`,
+  unwire: name => `Could not remove the model config of ${name}`,
+};
+
 /**
  * The per-row kebab menu of the Serving view — one menu per row, whatever
  * mix of sources listed it.
@@ -177,7 +189,7 @@ export function ServedModelActions({
       await run(action);
     } catch (failure) {
       toastApi.post({
-        title: `${SERVED_MODEL_ACTION_LABEL[action.type]} failed for ${model.name}`,
+        title: FAILURE_TITLE[action.type](model.name),
         description: (failure as Error).message,
         status: 'danger',
         timeout: TOAST_TIMEOUT_MS * 2,

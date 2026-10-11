@@ -444,11 +444,11 @@ describe('McpUsageSection tables at phone width', () => {
     expect(headers()).toEqual(['Top tools', 'Calls', 'Connector', 'Calls']);
     const tool = screen
       .getByText('x_kubernetes_gazelle_list_resources')
-      .closest('td') as HTMLElement;
+      .closest('th, td') as HTMLElement;
     expect(tool).toHaveTextContent('3 errors · p95 1.2 s');
     const connector = screen
       .getByText('kubernetes')
-      .closest('td') as HTMLElement;
+      .closest('th, td') as HTMLElement;
     expect(connector).toHaveTextContent('3 errors');
     expect(connector).not.toHaveTextContent('p95');
   });

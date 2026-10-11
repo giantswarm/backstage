@@ -7,12 +7,13 @@ import {
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
+  countNoun,
   EmptyStateCard,
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
-  StackedRowList,
   type StackedRowItem,
+  StackedRowList,
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -31,7 +32,7 @@ import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { SessionGate, useToolCatalogue } from '../shared';
-import { WorkflowEffectBadge } from '../WorkflowPage/WorkflowEffectBadge';
+import { EffectBadge } from '../shared';
 import {
   LAST_RUN_LABELS,
   LAST_RUN_ORDER,
@@ -79,7 +80,7 @@ export function runsLabel(response: WorkflowExecutionListResponse): string {
     return 'No runs yet';
   }
   const latest = formatRelativeTime(response.executions?.[0]?.started_at);
-  const runs = `${response.total} run${response.total === 1 ? '' : 's'}`;
+  const runs = countNoun(response.total, 'run');
   return latest ? `${runs} · ${latest}` : runs;
 }
 
@@ -147,7 +148,7 @@ function WorkflowRows({
       name: workflow.getName(),
       description: workflow.getDescription() ?? '',
       ...(category ? { category } : {}),
-      steps: `${steps} step${steps === 1 ? '' : 's'}`,
+      steps: countNoun(steps, 'step'),
       ...(effect ? { effect } : {}),
       ...(response ? { runs: runsLabel(response) } : {}),
       source: SOURCE_LABELS[isGitOpsManaged(workflow) ? 'gitops' : 'manual'],
@@ -160,7 +161,15 @@ function WorkflowRows({
       label: 'Workflow',
       isRowHeader: true,
       defaultWidth: '3fr',
-      cell: row => <CellText title={row.name} description={row.description} />,
+      // The name is the row's link (M21): reachable by keyboard and opens in
+      // a new tab on cmd/middle-click; the whole row stays clickable too.
+      cell: row => (
+        <CellText
+          title={row.name}
+          description={row.description}
+          href={hrefOf(row)}
+        />
+      ),
     },
     {
       id: 'category',
@@ -184,7 +193,9 @@ function WorkflowRows({
       // hint stays empty, claiming nothing.
       cell: row => (
         <Cell>
-          {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
+          {row.effect ? (
+            <EffectBadge effect={row.effect} subject="workflow" />
+          ) : null}
         </Cell>
       ),
     },
@@ -215,7 +226,7 @@ function WorkflowRows({
         title: row.name,
         ...(href ? { href } : {}),
         ...(row.effect
-          ? { status: <WorkflowEffectBadge effect={row.effect} /> }
+          ? { status: <EffectBadge effect={row.effect} subject="workflow" /> }
           : {}),
         facts: [row.category, row.steps, row.runs, row.source],
         ...(row.description

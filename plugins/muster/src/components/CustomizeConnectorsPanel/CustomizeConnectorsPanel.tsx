@@ -8,6 +8,7 @@ import {
   CellText,
   ColumnConfig,
   Flex,
+  Link,
   Table,
   Text,
 } from '@backstage/ui';
@@ -107,7 +108,7 @@ const CONNECTOR_FACETS: CatalogFacet<Row>[] = [
   },
 ];
 
-function ConnectorName({ row }: { row: Row }) {
+function ConnectorName({ row, href }: { row: Row; href?: string }) {
   const classes = useStyles();
   return (
     <Cell>
@@ -116,9 +117,23 @@ function ConnectorName({ row }: { row: Row }) {
           {row.entry.id.charAt(0).toUpperCase()}
         </span>
         <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-          <Text variant="body-medium" weight="bold" truncate>
-            {row.entry.id}
-          </Text>
+          {/* The name is the row's link (M21): reachable by keyboard and
+              opens in a new tab on cmd/middle-click; the row stays clickable. */}
+          {href ? (
+            <Link
+              href={href}
+              variant="body-medium"
+              weight="bold"
+              truncate
+              title={row.entry.id}
+            >
+              {row.entry.id}
+            </Link>
+          ) : (
+            <Text variant="body-medium" weight="bold" truncate>
+              {row.entry.id}
+            </Text>
+          )}
           {row.description && (
             <Text variant="body-small" color="secondary" truncate>
               {row.description}
@@ -320,7 +335,7 @@ function ConnectorsTable({
       label: 'Connector',
       isRowHeader: true,
       defaultWidth: '3fr',
-      cell: row => <ConnectorName row={row} />,
+      cell: row => <ConnectorName row={row} href={hrefOf(row)} />,
     },
     {
       id: 'auth',

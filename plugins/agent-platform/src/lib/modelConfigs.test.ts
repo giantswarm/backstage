@@ -113,7 +113,7 @@ describe('validateModelConfigForm', () => {
     // made with kubectl may have none and stays saveable as it is.
     expect(
       modelConfigFieldErrors(values({ displayName: ' ' })).displayName,
-    ).toBe('Display name is required');
+    ).toBe('Name is required');
     expect(
       modelConfigFieldErrors(values({ displayName: '' }), { isEdit: true }),
     ).toEqual({});

@@ -27,6 +27,10 @@ test('Customize · Workflows lists the lab workflow and opens its page', async (
   await expect(row.getByRole('gridcell', { name: '2 steps' })).toBeVisible();
   await expect(row.getByRole('gridcell', { name: 'Only reads' })).toBeVisible();
 
+  // The name is a real link (M21): keyboard-reachable, opens in a new tab.
+  await expect(
+    row.getByRole('link', { name: WORKFLOW, exact: true }),
+  ).toHaveAttribute('href', new RegExp(`${workflowPath}\\?installation=`));
   await row.getByRole('rowheader').click();
   await expect(admin).toHaveURL(new RegExp(`${workflowPath}(\\?|$)`));
   await expect(

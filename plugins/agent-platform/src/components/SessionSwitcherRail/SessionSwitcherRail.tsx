@@ -1,13 +1,14 @@
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { Button, ButtonIcon, Skeleton, Text } from '@backstage/ui';
-import { makeStyles, Tooltip, useTheme } from '@material-ui/core';
+import { makeStyles, Tooltip } from '@material-ui/core';
 import {
   ArrowMenuCloseIcon,
   ArrowMenuOpenIcon,
   PLUGIN_CONTENT_VIEWPORT_OFFSET,
+  StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { SessionSwitcherGroup } from './SessionSwitcherGroup';
-import { toneColor } from '../../lib/sessionStateTone';
+import { sessionStateDotVar } from '../../lib/stableClassNames';
 import { useRailCollapsed } from './useRailCollapsed';
 import { useSessionSwitcher } from './useSessionSwitcher';
 
@@ -121,11 +122,6 @@ const useStyles = makeStyles(theme => ({
     alignItems: 'center',
     gap: theme.spacing(0.25),
   },
-  stripDot: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-  },
   stripUnknown: {
     fontSize: theme.typography.caption.fontSize,
     fontWeight: theme.typography.fontWeightBold as number,
@@ -166,7 +162,6 @@ export function SessionSwitcherRail({
   currentSessionState,
 }: SessionSwitcherRailProps) {
   const classes = useStyles();
-  const theme = useTheme();
   const [collapsed, setCollapsed] = useRailCollapsed();
   const {
     groups,
@@ -226,7 +221,7 @@ export function SessionSwitcherRail({
               title={
                 isError
                   ? 'Could not load active sessions'
-                  : 'Some sessions could not be read'
+                  : 'Could not read some sessions'
               }
             >
               <span className={classes.stripUnknown}>?</span>
@@ -241,9 +236,9 @@ export function SessionSwitcherRail({
               title={`${group.sessions.length} ${group.label.toLowerCase()}`}
             >
               <div className={classes.stripGroup}>
-                <span
-                  className={classes.stripDot}
-                  style={{ backgroundColor: toneColor(group.tone, theme) }}
+                <StatusDot
+                  tone={group.tone}
+                  colorVar={sessionStateDotVar(group.tone)}
                 />
                 <span className={classes.stripCount}>
                   {group.sessions.length}

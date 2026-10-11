@@ -56,7 +56,7 @@ export function CostKpiTiles({
   return (
     <KpiTileGrid>
       <KpiTile
-        label={converted ? 'Spend (estimated)' : 'Spend'}
+        label={converted ? 'Est. spend' : 'Spend'}
         hint={
           converted
             ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice.`

@@ -320,7 +320,7 @@ function CreateAgentReview() {
           <Alert
             status="warning"
             title="Full gateway access"
-            description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
+            description="This agent can discover and call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
         )}
 
@@ -501,7 +501,7 @@ function CreateAgentReview() {
             <div className={classes.section}>
               <SectionTitle
                 title="What the tools resolve to"
-                description="This is the toolset the agent declares and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
+                description="This is the toolset the agent declares and what it resolves to for you right now. Resolution happens per person: someone with access to more connectors sees more through the same agent, never less than the toolset allows."
               />
               <Flex direction="column" gap="3">
                 {shape === 'none' && (

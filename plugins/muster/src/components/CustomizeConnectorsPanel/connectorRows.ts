@@ -1,4 +1,5 @@
 import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
   mcpServerStateSeverity,
@@ -56,7 +57,7 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
   if (entry.toolMatches !== undefined && entry.toolMatches > 0) {
     return `${entry.toolMatches} of ${entry.toolCount} tools match`;
   }
-  return `${entry.toolCount} tool${entry.toolCount === 1 ? '' : 's'}`;
+  return countNoun(entry.toolCount, 'tool');
 }
 
 /**

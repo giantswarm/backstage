@@ -669,7 +669,7 @@ describe('ServedModelsTable', () => {
       'Model',
       'Node',
       'GPUs',
-      'Used by',
+      'Model config',
     ]) {
       expect(
         within(first).getByRole('columnheader', { name: header }),
@@ -711,11 +711,6 @@ describe('ServedModelsTable', () => {
     ).toBeNull();
     const copies = screen.getAllByRole('button', { name: 'Copy endpoint' });
     expect(copies).toHaveLength(2);
-    expect(
-      screen.getByTitle(
-        'Copy http://qwen3-14b-predictor.kserve.svc.cluster.local',
-      ),
-    ).toBeInTheDocument();
     // A node only pinned by the spec says so; an observed one does not.
     expect(screen.getAllByText('gpu-node-1')).toHaveLength(2);
     expect(screen.getByText('pinned')).toBeInTheDocument();
@@ -723,17 +718,20 @@ describe('ServedModelsTable', () => {
   });
 
   it('copies an endpoint to the clipboard', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    // The shared CopyButton copies through react-use's useCopyToClipboard,
+    // which uses document.execCommand under the hood.
+    const original = document.execCommand;
+    document.execCommand = jest.fn(() => true);
 
     await renderTable(<ServedModelsTable rows={ollamaRows} />);
     await userEvent.click(
       screen.getByRole('button', { name: 'Copy endpoint' }),
     );
 
-    expect(writeText).toHaveBeenCalledWith('http://172.21.0.1:11434');
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    document.execCommand = original;
     expect(
-      await screen.findByRole('button', { name: 'Endpoint copied' }),
+      await screen.findByRole('button', { name: 'Copied' }),
     ).toBeInTheDocument();
   });
 
@@ -805,7 +803,12 @@ describe('ServedModelsTable', () => {
     it('shows name, status, features, used by — and no placement, model, runtime or dash', async () => {
       await renderTable(<ServedModelsTable rows={ollamaRows} />);
 
-      for (const header of ['Served model', 'Status', 'Features', 'Used by']) {
+      for (const header of [
+        'Served model',
+        'Status',
+        'Features',
+        'Model config',
+      ]) {
         expect(
           screen.getByRole('columnheader', { name: header }),
         ).toBeInTheDocument();

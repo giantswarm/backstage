@@ -275,7 +275,7 @@ export function ToolDetailPanel({
         <Box mt="3">
           <Alert
             status="danger"
-            title="Execution failed"
+            title="Could not run the tool"
             description={(mutation.error as Error).message}
           />
         </Box>

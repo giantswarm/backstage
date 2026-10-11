@@ -360,7 +360,7 @@ describe('ServedModelActions', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Unload failed for qwen3.5:9b',
+          title: 'Could not unload qwen3.5:9b',
           description: 'Capability not supported by the backend',
           status: 'danger',
         }),

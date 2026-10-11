@@ -6,6 +6,7 @@ import {
   useResources,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CatalogNoMatch,
   INITIAL_ROWS,
   matchesQuery,
   ShowMore,
@@ -156,7 +157,7 @@ export function CopyFromAgent({
         />
       )}
       {matching.length === 0 ? (
-        <Text color="secondary">No agent matches “{trimmed}”.</Text>
+        <CatalogNoMatch plural="agents" search={trimmed} />
       ) : (
         // Keyed on the search, so a new one starts over at the first page.
         <ShowMore

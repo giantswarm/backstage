@@ -147,6 +147,14 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+/**
+ * The connector a tool name belongs to, as Customize names it, with the
+ * tool's own part — `undefined` when no connector's prefix matches.
+ */
+export type ConnectorOf = (
+  toolName: string,
+) => { connector: string; tool: string } | undefined;
+
 export type TimelineEntryProps = {
   item: TimelineItem;
   /** Whether a collapsible entry starts open. */
@@ -171,6 +179,8 @@ export type TimelineEntryProps = {
    * was not the person — the portal's prepared opener of a hand-off session.
    */
   caption?: string;
+  /** Names a tool call's connector in the plain register (UX review M2). */
+  connectorOf?: ConnectorOf;
 };
 
 /** Prose from the agent, rendered as markdown. */
@@ -259,10 +269,12 @@ function CollapsedSummary({
   item,
   isAgentWorking = false,
   technical = false,
+  connectorOf,
 }: {
   item: TimelineItem;
   isAgentWorking?: boolean;
   technical?: boolean;
+  connectorOf?: ConnectorOf;
 }) {
   const classes = useStyles();
 
@@ -276,20 +288,25 @@ function CollapsedSummary({
           </span>
         </span>
       );
-    case 'tool-call':
+    case 'tool-call': {
+      // Plain names the connector as Customize does, and the tool without
+      // the connector's prefix; technical keeps the exact identifiers.
+      const owner = technical ? undefined : connectorOf?.(item.toolName);
       return (
         <span className={classes.triggerContent}>
           {technical ? (
             <span className={classes.rowName}>{item.toolName}</span>
           ) : (
             <span className={classes.rowTitle}>
-              {humanizeToolName(item.toolName)}
+              {humanizeToolName(owner?.tool ?? item.toolName)}
             </span>
           )}
           {/* Agents reach most MCP tools through muster's `call_tool`, so the
-              parser looks through that wrapper and names the real tool. The badge
-              keeps the fact that it was proxied, which is otherwise lost. */}
-          {item.via && <Badge size="small">via {item.via}</Badge>}
+              parser looks through that wrapper and names the real tool. Plain
+              names the connector the call went to; technical keeps the fact
+              that it was proxied, which is otherwise lost. */}
+          {owner && <Badge size="small">{owner.connector}</Badge>}
+          {technical && item.via && <Badge size="small">via {item.via}</Badge>}
           <PendingMarker
             isPending={item.isPending}
             isAgentWorking={isAgentWorking}
@@ -299,6 +316,7 @@ function CollapsedSummary({
           )}
         </span>
       );
+    }
     case 'agent-call':
       return (
         <span className={classes.triggerContent}>
@@ -383,6 +401,7 @@ export function TimelineEntry({
   isAgentWorking = false,
   technical = false,
   caption,
+  connectorOf,
 }: TimelineEntryProps) {
   const classes = useStyles();
 
@@ -466,7 +485,7 @@ export function TimelineEntry({
     const runtimeLost = isRuntimeLostFailureText(item.reason);
     let title = 'This turn failed';
     if (runtimeLost) {
-      title = 'The agent’s runtime could not be reached';
+      title = 'Could not reach the agent’s runtime';
     } else if (item.state === 'rejected') {
       title = 'This turn was rejected';
     }
@@ -508,6 +527,7 @@ export function TimelineEntry({
             item={item}
             isAgentWorking={isAgentWorking}
             technical={technical}
+            connectorOf={connectorOf}
           />
         </InertActivityRow>
         {/* A question is the last thing the agent said, so it reads as prose in
@@ -540,6 +560,7 @@ export function TimelineEntry({
             item={item}
             isAgentWorking={isAgentWorking}
             technical={technical}
+            connectorOf={connectorOf}
           />
         }
       >

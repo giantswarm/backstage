@@ -7,6 +7,7 @@ import {
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import {
   byLastActive,
+  dayBucket,
   lastActiveAt,
   SessionRow,
 } from '../SessionsDataProvider/helpers';
@@ -199,6 +200,11 @@ export type SessionListGroup = SessionDayGroup | 'pinned';
 
 export const PINNED_GROUP_LABEL = 'Pinned';
 
+const SESSION_DAY_BUCKETS = [
+  { id: 'today', daysBack: 0 },
+  { id: 'yesterday', daysBack: 1 },
+] as const;
+
 /**
  * The day group of a session last active at `activeAt` (epoch ms), in the
  * reader's local calendar. A time later than `now` (clock skew) counts as
@@ -208,23 +214,7 @@ export function sessionDayGroup(
   activeAt: number | undefined,
   now: Date,
 ): SessionDayGroup {
-  if (activeAt === undefined || Number.isNaN(activeAt)) {
-    return 'earlier';
-  }
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
-  const startOfYesterday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - 1,
-  ).getTime();
-  if (activeAt >= startOfToday) {
-    return 'today';
-  }
-  return activeAt >= startOfYesterday ? 'yesterday' : 'earlier';
+  return dayBucket(activeAt, now, SESSION_DAY_BUCKETS, 'earlier');
 }
 
 /**

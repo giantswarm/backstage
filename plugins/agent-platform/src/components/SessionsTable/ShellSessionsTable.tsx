@@ -32,6 +32,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   CatalogFilterBar,
   catalogFilterDimensions,
+  CatalogNoMatch,
   catalogFilterKey,
   type CatalogFilterSelection,
   formatLocalDateFull,
@@ -452,17 +453,6 @@ function SessionTime({
   );
 }
 
-function emptyTitle(
-  searchTerm: string,
-  filtered: boolean,
-  emptyMessage: string,
-): string {
-  if (searchTerm) {
-    return `No sessions match “${searchTerm}”`;
-  }
-  return filtered ? 'No sessions match the filters' : emptyMessage;
-}
-
 /** One day's sessions, a table named by the day's heading. */
 function DayTable({
   headingId,
@@ -875,11 +865,6 @@ export function ShellSessionsTable({
     [hrefFor, navigate],
   );
 
-  const clearAll = () => {
-    search.onChange('');
-    filter.onChange(NO_SELECTION);
-  };
-
   const loadMore = () => {
     const firstNew = matching?.[range.end];
     const end = range.end + SESSIONS_PAGE_SIZE;
@@ -944,23 +929,24 @@ export function ShellSessionsTable({
           </Flex>
         )}
 
-        {isSettled && groups.length === 0 && (
-          <Flex direction="column" gap="1" py="6" align="center">
-            <Text variant="body-large" weight="bold">
-              {emptyTitle(searchTerm, filtered, emptyMessage)}
-            </Text>
-            {searchTerm && (
-              <Text variant="body-medium" color="secondary">
-                Try another word.
+        {isSettled &&
+          groups.length === 0 &&
+          (searchTerm || filtered ? (
+            // The catalogs' one no-match line; the search field above clears
+            // itself.
+            <CatalogNoMatch
+              plural="sessions"
+              search={searchTerm}
+              isFiltered={filtered}
+              onClearFilters={() => filter.onChange(NO_SELECTION)}
+            />
+          ) : (
+            <Flex direction="column" gap="1" py="6" align="center">
+              <Text variant="body-large" weight="bold">
+                {emptyMessage}
               </Text>
-            )}
-            {(searchTerm || filtered) && (
-              <Button variant="secondary" size="small" onPress={clearAll}>
-                Clear search and filters
-              </Button>
-            )}
-          </Flex>
-        )}
+            </Flex>
+          ))}
 
         {groups.map(group => {
           const headingId = `${baseId}-${group.id}`;

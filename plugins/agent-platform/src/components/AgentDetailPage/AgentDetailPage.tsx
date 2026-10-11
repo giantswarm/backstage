@@ -8,7 +8,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import { Content, EmptyState, Link } from '@backstage/core-components';
+import { Content, Link } from '@backstage/core-components';
 import {
   toastApiRef,
   useApi,
@@ -26,6 +26,7 @@ import {
 import {
   type BreadcrumbItem,
   DateComponent,
+  EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
   ShellPage,
@@ -692,7 +693,7 @@ function AgentDetailPageContent() {
   useProvidePageHeaderActions(agentShell ? null : actions);
 
   // The shell header's actions, per the prototype: Edit beside the primary
-  // "Use this agent", and the rest in the menu.
+  // "Start a session" (one verb for it everywhere, T98), the rest in the menu.
   const shellActions =
     agent && (canEditAgent || isReady) ? (
       <>
@@ -703,7 +704,7 @@ function AgentDetailPageContent() {
         )}
         {isReady && (
           <Button variant="primary" onPress={openNewSession}>
-            Use this agent
+            Start a session
           </Button>
         )}
       </>
@@ -827,13 +828,12 @@ function AgentDetailPageContent() {
     if (errors.some(isNotFoundError)) {
       return (
         <AgentFrame title="Agent">
-          <EmptyState
-            missing="data"
+          <EmptyStateCard
             title="Agent not found"
             description={`No agent named "${name}" exists in namespace "${namespace}" on ${
               installation || 'that environment'
             }. It may have been deleted or renamed, or that environment may not run kagent API v2.`}
-            action={<BackToAgents>Back to agents</BackToAgents>}
+            actions={<BackToAgents>Back to agents</BackToAgents>}
           />
         </AgentFrame>
       );

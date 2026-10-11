@@ -347,7 +347,7 @@ describe('NewAgentReviewPage', () => {
       'Standard (platform default)',
     );
     expect(plainRow('Skills')).toHaveTextContent('Incident responder');
-    expect(plainRow('Tools')).toHaveTextContent('Read-only tools everywhere');
+    expect(plainRow('Tools')).toHaveTextContent('Read-only tools');
 
     // The release and its manifests sit in a collapsed disclosure.
     const release = await screen.findByTestId('code-go-service-reviewer.yaml');

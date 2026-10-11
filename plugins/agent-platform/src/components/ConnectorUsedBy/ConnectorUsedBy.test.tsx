@@ -105,9 +105,9 @@ describe('ConnectorUsedBy', () => {
     });
     const items = within(list).getAllByRole('row');
     expect(items.map(item => item.textContent)).toEqual([
-      expect.stringContaining('Escalation HelperLook things up · 2 tools'),
+      expect.stringContaining('Escalation HelperRead-only tools · 2 tools'),
       expect.stringContaining('OpsAll tools'),
-      expect.stringContaining('Support TriageLook things up'),
+      expect.stringContaining('Support TriageRead-only tools'),
     ]);
     expect(screen.queryByText('Other')).not.toBeInTheDocument();
     expect(screen.queryByText('Elsewhere')).not.toBeInTheDocument();
@@ -140,9 +140,7 @@ describe('ConnectorUsedBy', () => {
     mockUnreachable = ['gazelle'];
     await render();
 
-    expect(
-      screen.getByText('The agents could not be read'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Could not read the agents')).toBeInTheDocument();
   });
 
   it('renders nothing outside a connector page', async () => {

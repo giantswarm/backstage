@@ -82,10 +82,17 @@ export function ConnectorWizardFrame({
 
   return (
     <WizardFrame
-      title={
-        registeredName ? `Edit connector: ${registeredName}` : 'Add connector'
+      // Like every edit frame: the action in the h1, the resource in the
+      // context line and the document title.
+      title={registeredName ? 'Edit connector' : 'Add connector'}
+      documentTitle={
+        registeredName ? [`Edit ${registeredName}`, 'Connectors'] : undefined
       }
-      context="Customize / Connectors"
+      context={
+        registeredName
+          ? `Customize / Connectors / ${registeredName}`
+          : 'Customize / Connectors'
+      }
       steps={steps}
       currentStep={step}
       closeHref={closeHref}

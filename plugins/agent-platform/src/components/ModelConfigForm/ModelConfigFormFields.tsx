@@ -97,9 +97,10 @@ function apiKeyCopy({
  * problems back as `errors` for each field to show under itself.
  *
  * Plain first, like the agent wizard's first step: what the model is called,
- * which provider and model, and its key. The technical knobs — the technical
- * name (filled in from the display name) and skipping TLS verification — wait
- * under More options.
+ * which provider and model, and its key. The technical name is said under the
+ * name, with the fact that it cannot be changed (M7, like the agent wizard);
+ * its override (create only) and skipping TLS verification wait under More
+ * options.
  */
 export function ModelConfigFormFields({
   values,
@@ -124,7 +125,9 @@ export function ModelConfigFormFields({
 
   // The disclosure's one line of what it holds now.
   const moreOptionsSummary = [
-    values.name ? `technical name ${values.name}` : undefined,
+    values.name && mode === 'create'
+      ? `technical name ${values.name}`
+      : undefined,
     hasEndpoint && values.insecureSkipTlsVerify
       ? 'TLS verification skipped'
       : undefined,
@@ -142,13 +145,29 @@ export function ModelConfigFormFields({
             description="People creating agents see the model under this name."
           />
           <TextField
-            label="Display name"
+            label="Name"
             isRequired={mode === 'create'}
             value={values.displayName}
             onChange={displayName => onChange({ displayName })}
             placeholder="e.g. Sonnet 4.5"
             {...fieldErrorProps(errors.displayName)}
           />
+          {values.name && (
+            <Text
+              as="p"
+              variant="body-small"
+              color="secondary"
+              style={{
+                marginTop: 'var(--bui-space-1)',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              Its technical name is <code>{values.name}</code>;{' '}
+              {mode === 'edit'
+                ? 'it cannot be changed.'
+                : 'it cannot be changed once the model exists.'}
+            </Text>
+          )}
         </CardBody>
       </Card>
 
@@ -236,44 +255,40 @@ export function ModelConfigFormFields({
         </Card>
       )}
 
-      <MoreOptions
-        open={moreOptionsOpen}
-        onOpenChange={onMoreOptionsOpenChange}
-        summary={moreOptionsSummary || undefined}
-      >
-        <Text variant="body-small" color="secondary">
-          The defaults work for most models.
-        </Text>
-        {mode === 'edit' ? (
-          <TextField
-            label="Technical name"
-            secondaryLabel="fixed"
-            isReadOnly
-            value={values.name}
-            description="Names the resource and its key Secret. It cannot be changed."
-          />
-        ) : (
-          <TextField
-            label="Technical name"
-            secondaryLabel="filled in from the display name"
-            isRequired
-            value={values.name}
-            onChange={name => onChange({ name })}
-            placeholder="e.g. sonnet-4-5"
-            description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret; it cannot be changed later."
-            {...fieldErrorProps(errors.name)}
-          />
-        )}
-        {hasEndpoint && (
-          <Switch
-            label="Skip TLS certificate verification (for endpoints with self-signed certificates)"
-            isSelected={values.insecureSkipTlsVerify}
-            onChange={insecureSkipTlsVerify =>
-              onChange({ insecureSkipTlsVerify })
-            }
-          />
-        )}
-      </MoreOptions>
+      {/* Edit keeps nothing here without an endpoint: the technical name is
+          locked and said under the name. */}
+      {(mode === 'create' || hasEndpoint) && (
+        <MoreOptions
+          open={moreOptionsOpen}
+          onOpenChange={onMoreOptionsOpenChange}
+          summary={moreOptionsSummary || undefined}
+        >
+          <Text variant="body-small" color="secondary">
+            The defaults work for most models.
+          </Text>
+          {mode === 'create' && (
+            <TextField
+              label="Technical name"
+              secondaryLabel="filled in from the name"
+              isRequired
+              value={values.name}
+              onChange={name => onChange({ name })}
+              placeholder="e.g. sonnet-4-5"
+              description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret."
+              {...fieldErrorProps(errors.name)}
+            />
+          )}
+          {hasEndpoint && (
+            <Switch
+              label="Skip TLS certificate verification (for endpoints with self-signed certificates)"
+              isSelected={values.insecureSkipTlsVerify}
+              onChange={insecureSkipTlsVerify =>
+                onChange({ insecureSkipTlsVerify })
+              }
+            />
+          )}
+        </MoreOptions>
+      )}
     </>
   );
 }

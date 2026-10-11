@@ -315,6 +315,10 @@ describe('EditAgentPage', () => {
     expect(
       screen.getByText('Customize / Agents / PR reviewer'),
     ).toBeInTheDocument();
+    // The document title names the agent, like the skill edit frames.
+    await waitFor(() =>
+      expect(document.title).toBe('Edit PR reviewer · Agents · Agent Platform'),
+    );
     expect(screen.getByLabelText(/^What is it for\?/)).toHaveValue(
       'Reviews pull requests.',
     );
@@ -347,9 +351,18 @@ describe('EditAgentPage', () => {
     expect(
       screen.queryByRole('radio', { name: 'Select model Elsewhere' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText(/^Technical name/)).toHaveAttribute(
-      'readonly',
-    );
+    // The locked technical name is shown under the name, stated once.
+    expect(screen.queryByLabelText(/^Technical name/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === 'P' &&
+          /^Its technical name is \S+; it cannot be changed\.$/.test(
+            element.textContent ?? '',
+          ),
+        ),
+      ),
+    ).toBeInTheDocument();
     const runtime = screen.getByRole('list', { name: 'Runtime' });
     expect(runtime).toHaveTextContent('Harness claude-code');
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
@@ -398,7 +411,7 @@ describe('EditAgentPage', () => {
       within(summary).queryByText(label, { selector: 'dt' })
         ?.nextElementSibling;
 
-    expect(row('Tools')).toHaveTextContent('Read-only tools everywhere');
+    expect(row('Tools')).toHaveTextContent('Read-only tools');
     expect(summary).not.toHaveTextContent('preset:');
     // A Harness known by its name alone has no title: no raw name outside.
     expect(row('Runtime')).toBeUndefined();

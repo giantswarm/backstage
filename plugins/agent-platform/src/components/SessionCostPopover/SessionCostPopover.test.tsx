@@ -62,7 +62,7 @@ describe('SessionCostPopover', () => {
 
     const dialog = await open();
 
-    expect(within(dialog).getByText('Estimated cost')).toBeInTheDocument();
+    expect(within(dialog).getByText('Est. cost')).toBeInTheDocument();
     expect(within(dialog).getByText('$0.210')).toBeInTheDocument();
     expect(within(dialog).getByText('Tokens in / out')).toBeInTheDocument();
     expect(within(dialog).getByText('15.6k / 2.6k')).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe('SessionCostPopover', () => {
 
     const dialog = await open();
 
-    const row = within(dialog).getByText('Estimated cost')
+    const row = within(dialog).getByText('Est. cost')
       .parentElement as HTMLElement;
     expect(within(row).getByText('—')).toBeInTheDocument();
   });

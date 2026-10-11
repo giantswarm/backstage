@@ -75,7 +75,7 @@ export function UsageKpiTiles({
   return (
     <KpiTileGrid>
       <KpiTile
-        label={converted ? 'Spend (estimated)' : 'Spend'}
+        label={converted ? 'Est. spend' : 'Spend'}
         hint={
           converted
             ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice.`
@@ -99,7 +99,7 @@ export function UsageKpiTiles({
         label="Tokens"
         hint={`Counts all tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
         value={formatTokens(totals.tokens)}
-        sub={`across ${formatCount(totals.calls)} model calls`}
+        sub={`every user's, across ${formatCount(totals.calls)} model calls`}
       />
       {sessions && (
         <KpiTile
@@ -123,7 +123,7 @@ export function UsageKpiTiles({
         label="Active agents"
         hint={`Counts the distinct callers the gateway attributed a model call to over ${windowNote}, including any it could not name.`}
         value={formatCount(totals.agents)}
-        sub={`${formatCount(totals.models)} ${modelsNoun} answered`}
+        sub={`every user's, ${formatCount(totals.models)} ${modelsNoun} answered`}
       />
     </KpiTileGrid>
   );

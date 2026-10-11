@@ -17,13 +17,15 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 
 import { modelDetailRouteRef } from '../../routes';
 import {
+  CatalogNoMatch,
+  countNoun,
   INITIAL_ROWS,
   matchesQuery,
   ShowMore,
+  type StackedRowItem,
   StackedRowList,
   stopRowPress,
   usePhoneLayout,
-  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
@@ -979,9 +981,11 @@ function getColumnConfig(
     );
   }
 
+  // "Model config", not "Used by": on Customize › Models "Used by" lists
+  // agents, so one heading means one thing (UX review M16).
   config.push({
     id: 'usedBy',
-    label: 'Used by',
+    label: 'Model config',
     cell: row => {
       const entries = usedByEntries(row);
       return (
@@ -1150,7 +1154,7 @@ function PhoneUsedBy({
   if (entries.length === 0) {
     return isDownloadRow(row) ? null : (
       <Text as="p" variant="body-small" color="secondary">
-        Used by no model config
+        No model config
       </Text>
     );
   }
@@ -1161,7 +1165,7 @@ function PhoneUsedBy({
         const key = `${consumer.namespace}/${consumer.name}`;
         return (
           <Text key={key} as="p" variant="body-small" color="secondary">
-            Used by{' '}
+            Model config{' '}
             {href ? (
               <Link to={href}>{consumer.displayName}</Link>
             ) : (
@@ -1230,9 +1234,7 @@ export function servedModelStackedRow(
       row.publicName ? `model name ${row.publicName}` : undefined,
       columns.runtime ? row.runtime : undefined,
       describePlacement(row),
-      row.gpuCount !== undefined
-        ? `${row.gpuCount} GPU${row.gpuCount === 1 ? '' : 's'}`
-        : undefined,
+      row.gpuCount !== undefined ? countNoun(row.gpuCount, 'GPU') : undefined,
     ],
     details: (
       <Flex direction="column" gap="1">
@@ -1476,9 +1478,7 @@ export function ServedModelsTable({
         />
       )}
       {groups.length === 0 && (
-        <Text variant="body-medium" color="secondary">
-          No models match “{trimmed}”.
-        </Text>
+        <CatalogNoMatch plural="models" search={trimmed} />
       )}
       {groups.map(group => (
         <ServedModelsGroupCard

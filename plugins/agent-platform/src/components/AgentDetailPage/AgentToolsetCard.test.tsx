@@ -348,9 +348,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(withToolset('preset:full'), api);
 
     expect(screen.getByText('Full gateway access')).toBeInTheDocument();
-    expect(
-      screen.getByText(/platform administration included/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/platform tools included/)).toBeInTheDocument();
   });
 
   it('shows the declared selectors and what they resolve to for the viewer, per group', async () => {
@@ -377,7 +375,7 @@ describe('AgentToolsetCard', () => {
     // counts; a resolution this short opens itself.
     expect(
       screen.getByRole('button', {
-        name: 'Infrastructure — 1 server · 1 tool',
+        name: 'Infrastructure — 1 connector with 1 tool',
       }),
     ).toBeInTheDocument();
     expect(
@@ -419,7 +417,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(withToolset('preset:read-only,server:pro'), api);
 
     expect(
-      await screen.findByText("Sign in to see these servers' tools"),
+      await screen.findByText("Sign in to see these connectors' tools"),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
   });

@@ -700,7 +700,7 @@ describe('WorkflowPage', () => {
     await waitFor(() =>
       expect(node('s0')).toHaveAttribute('data-run-status', 'completed'),
     );
-    expect(node('s0')).toHaveTextContent('✓ 1.2s');
+    expect(node('s0')).toHaveTextContent('✓ 1.2 s');
     expect(node('s1')).toHaveAttribute('data-run-status', 'skipped');
     expect(node('s1')).toHaveTextContent('Skipped');
     // Two loop iterations, no recorded duration: a count, no made-up time.
@@ -759,7 +759,7 @@ describe('WorkflowPage', () => {
     expect(lastRun).toHaveTextContent('Last run');
     expect(lastRun).toHaveTextContent('Succeeded');
     expect(lastRun).toHaveTextContent('started 9 Oct 2026, 08:00 UTC');
-    expect(lastRun).toHaveTextContent('took 18.0s');
+    expect(lastRun).toHaveTextContent('took 18 s');
     // The breakdown counts every recorded run (muster's per-status totals),
     // not the stats sample of two.
     expect(await screen.findByText('1,200')).toBeInTheDocument();
@@ -802,7 +802,7 @@ describe('WorkflowPage', () => {
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
     expect(lastRun).toHaveTextContent('apply refused');
-    expect(lastRun).toHaveTextContent('took 2.0s');
+    expect(lastRun).toHaveTextContent('took 2.0 s');
   });
 
   it('holds where agents use it and the technical details in one Advanced disclosure', async () => {
@@ -1091,7 +1091,7 @@ describe('WorkflowPage at phone width', () => {
     await waitFor(() =>
       expect(card('s0')).toHaveAttribute('data-run-status', 'completed'),
     );
-    expect(card('s0')).toHaveTextContent('✓ 1.2s');
+    expect(card('s0')).toHaveTextContent('✓ 1.2 s');
     expect(card('s1')).toHaveTextContent('Skipped');
     expect(card('s2.0')).toHaveTextContent('✓ ×2');
     expect(card('f0')).toHaveAttribute('data-run-status', 'notRun');

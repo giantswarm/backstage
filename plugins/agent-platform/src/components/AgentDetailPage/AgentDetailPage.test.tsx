@@ -2231,7 +2231,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       );
     });
 
-    it('puts Edit beside "Use this agent", with the rest in the menu', async () => {
+    it('puts Edit beside "Start a session", with the rest in the menu', async () => {
       withAgentManager();
       stubResources({ resource: makeAgent() });
 
@@ -2239,7 +2239,7 @@ describe('AgentDetailPage inside the agent shell', () => {
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Use this agent' }),
+        screen.getAllByRole('button', { name: 'Start a session' })[0],
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
@@ -2253,7 +2253,7 @@ describe('AgentDetailPage inside the agent shell', () => {
 
       expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
       expect(
-        screen.getByRole('button', { name: 'Use this agent' }),
+        screen.getAllByRole('button', { name: 'Start a session' })[0],
       ).toBeInTheDocument();
     });
 
@@ -2306,7 +2306,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(
         screen.getByRole('heading', { name: 'Connectors' }),
       ).toBeInTheDocument();
-      expect(screen.getByText('Can use Read-only tools')).toBeInTheDocument();
+      expect(screen.getByText('Can use read-only tools')).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: 'See which tools' }),
       ).toHaveAttribute('href', `${AGENT_PATH}/tools`);
@@ -2478,8 +2478,8 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(sectionTitle('Status')).toBeInTheDocument();
       // Nothing to start a session with yet.
       expect(
-        screen.queryByRole('button', { name: 'Use this agent' }),
-      ).toBeNull();
+        screen.queryAllByRole('button', { name: 'Start a session' }),
+      ).toHaveLength(0);
     });
 
     it('sends the retired Skills tab to the Overview that now shows them', async () => {
@@ -2607,7 +2607,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(
         screen.getByText(/need the gateway's metrics, which gazelle/),
       ).toBeInTheDocument();
-      expect(screen.queryByText('Est. cost')).toBeNull();
+      expect(screen.queryByText('Spend')).toBeNull();
       expect(screen.getByText('Your sessions')).toBeInTheDocument();
       // No runtime reported a cost, so none is shown — not "$0.00".
       expect(screen.queryByText('Reported cost')).toBeNull();
@@ -2630,7 +2630,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       // Edit, the primary action and the ⋯: no fourth button to wrap.
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Use this agent' }),
+        screen.getAllByRole('button', { name: 'Start a session' })[0],
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),

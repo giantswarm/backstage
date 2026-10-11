@@ -1,5 +1,5 @@
-import { ReactNode, useRef, useState } from 'react';
-import { Popover, Text } from '@backstage/ui';
+import { ReactNode } from 'react';
+import { Button, DialogTrigger, Popover, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import type { TokenUsage } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -14,24 +14,17 @@ import {
 } from '../../lib/formatNumbers';
 
 const useStyles = makeStyles(theme => ({
-  // The prototype's chip: cost, a divider, the memory ring — one quiet button
-  // that opens the details. Styled on bui's tokens with the theme as fallback
-  // so it reads right in the shell and in classic chrome alike.
+  // The prototype's chip: cost, a divider, the memory ring — one quiet bui
+  // button that opens the details, on the neutral ground of a chip rather
+  // than a tertiary button's bare one.
   trigger: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(1.25),
-    height: 32,
-    padding: theme.spacing(0, 1.25),
-    border: 0,
-    borderRadius: 'var(--bui-radius-2, 8px)',
     background: `var(--bui-bg-neutral-2, ${theme.palette.action.hover})`,
     color: `var(--bui-fg-secondary, ${theme.palette.text.secondary})`,
-    fontSize: '0.8125rem',
-    fontFamily: 'inherit',
-    cursor: 'pointer',
     whiteSpace: 'nowrap',
-    '&:hover': {
+    '& > span': {
+      gap: theme.spacing(1.25),
+    },
+    '&[data-hovered]': {
       color: `var(--bui-fg-primary, ${theme.palette.text.primary})`,
     },
   },
@@ -171,8 +164,6 @@ export function SessionCostPopover({
   costBasis,
 }: SessionCostPopoverProps) {
   const classes = useStyles();
-  const [isOpen, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const currency = useCurrency(installation);
   const { config } = useSignedInConfig();
@@ -211,18 +202,16 @@ export function SessionCostPopover({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        ref={triggerRef}
+    <DialogTrigger>
+      <Button
+        variant="tertiary"
+        size="small"
         className={classes.trigger}
-        aria-expanded={isOpen}
         aria-label={`Session cost and memory: ${chipCost}${
           memory.percent !== undefined
             ? `, ${formatPercent(memory.percent)} of memory used`
             : ''
         }`}
-        onClick={() => setOpen(open => !open)}
       >
         <span>{chipCost}</span>
         {memoryChip && (
@@ -231,13 +220,10 @@ export function SessionCostPopover({
             {memoryChip}
           </>
         )}
-      </button>
-      <Popover
-        triggerRef={triggerRef}
-        isOpen={isOpen}
-        onOpenChange={setOpen}
-        placement="top end"
-      >
+      </Button>
+      {/* bui's Popover does not pass a name on, so the content is the named
+          dialog; react-aria then leaves the popover itself unroled. */}
+      <Popover placement="top end">
         <div
           className={classes.content}
           role="dialog"
@@ -247,7 +233,7 @@ export function SessionCostPopover({
             This session
           </Text>
           <Row
-            label="Estimated cost"
+            label="Est. cost"
             value={formatMoney(estimatedCostUsd, currency)}
           />
           {/* Beside the estimate, never in place of it: a figure only some
@@ -283,6 +269,6 @@ export function SessionCostPopover({
           <div className={classes.footnote}>{costBasis}</div>
         </div>
       </Popover>
-    </>
+    </DialogTrigger>
   );
 }

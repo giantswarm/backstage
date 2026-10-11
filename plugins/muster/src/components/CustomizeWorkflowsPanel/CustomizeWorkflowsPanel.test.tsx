@@ -210,6 +210,13 @@ describe('CustomizeWorkflowsPanel', () => {
       'data-href',
       '/agent-platform/workflows/ticket-report?installation=gazelle',
     );
+    // The name is a real link too (M21): keyboard, new tab.
+    expect(
+      within(report).getByRole('link', { name: 'ticket-report' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/workflows/ticket-report?installation=gazelle',
+    );
 
     const check = screen.getByRole('row', { name: /upgrade-check/ });
     expect(within(check).getByText('1 step')).toBeInTheDocument();

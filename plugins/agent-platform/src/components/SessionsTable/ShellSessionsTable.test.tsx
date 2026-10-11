@@ -386,14 +386,19 @@ describe('SessionsTable in the shell layout', () => {
     );
 
     expect(
-      await screen.findByText('No sessions match “zebra”'),
+      await screen.findByText('No sessions match “zebra”.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    // The catalogs' no-match line: the search field clears itself, and
+    // there is no filter to clear.
+    expect(
+      screen.queryByRole('button', { name: 'Clear filters' }),
+    ).not.toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Clear search and filters' }),
+    await user.clear(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
     );
-    expect(screen.getAllByRole('grid')).toHaveLength(3);
+    expect(await screen.findAllByRole('grid')).toHaveLength(3);
   });
 
   it('opens on the state a link asks for, even under SEARCH_MIN', async () => {

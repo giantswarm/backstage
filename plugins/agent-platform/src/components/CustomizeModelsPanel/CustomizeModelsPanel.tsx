@@ -118,15 +118,25 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
     new Set(modelRows.map(row => row.installation)).size > 1;
   const isPhone = usePhoneLayout();
 
+  const hrefOf = (row: Row) =>
+    modelDetailRoute?.({
+      installation: row.installation,
+      namespace: row.namespace,
+      name: row.name,
+    });
+
   const columns: ColumnConfig<Row>[] = [
     {
       id: 'name',
       label: 'Model',
       isRowHeader: true,
       defaultWidth: '3fr',
+      // The name is the row's link (M21): reachable by keyboard and opens in
+      // a new tab on cmd/middle-click; the whole row stays clickable too.
       cell: row => (
         <CellText
           title={row.displayName}
+          href={hrefOf(row)}
           description={[
             row.provider,
             row.model,
@@ -211,14 +221,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
             columnConfig={shownColumns}
             data={page}
             pagination={{ type: 'none' }}
-            rowConfig={{
-              getHref: row =>
-                modelDetailRoute?.({
-                  installation: row.installation,
-                  namespace: row.namespace,
-                  name: row.name,
-                }),
-            }}
+            rowConfig={{ getHref: hrefOf }}
           />
         )}
       </ShowMore>

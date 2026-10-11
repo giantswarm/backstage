@@ -126,6 +126,8 @@ export function EditAgentPage() {
   // wizard waits for the catalog (a failed one leaves every pin as it is).
   const isCatalogPending = catalog.isLoading && catalog.skills.length === 0;
 
+  const shownName = agent?.displayName || agent?.name || name;
+
   const backLink = detailHref ? (
     <Link to={detailHref}>Back to the agent</Link>
   ) : undefined;
@@ -187,9 +189,12 @@ export function EditAgentPage() {
   }
 
   return (
+    // Named like the wizard it hands over to, so neither the document title
+    // nor the context line shifts when it does.
     <WizardFrame
       title="Edit agent"
-      context="Customize / Agents"
+      documentTitle={[`Edit ${shownName}`, 'Agents']}
+      context={`Customize / Agents / ${shownName}`}
       closeHref={detailHref ?? '/'}
     >
       {body}

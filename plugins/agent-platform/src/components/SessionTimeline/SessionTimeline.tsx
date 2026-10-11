@@ -15,7 +15,7 @@ import {
   TimelineItem,
 } from '../../lib/kagentTimeline';
 import { countNoun, INITIAL_ROWS } from '../../lib/toolset';
-import { TimelineEntry } from './TimelineEntry';
+import { TimelineEntry, type ConnectorOf } from './TimelineEntry';
 import { WorkSummary } from './WorkSummary';
 import {
   authorLabel,
@@ -211,6 +211,8 @@ export type SessionTimelineProps = {
    * rather than the person (a meta-agent hand-off, UX review M20).
    */
   firstMessageCaption?: string;
+  /** Names a tool call's connector in the plain register (UX review M2). */
+  connectorOf?: ConnectorOf;
 };
 
 /**
@@ -232,6 +234,7 @@ export function SessionTimeline({
   onCancelTurn,
   isCancellingTurn = false,
   firstMessageCaption,
+  connectorOf,
 }: SessionTimelineProps) {
   const classes = useStyles();
 
@@ -276,7 +279,7 @@ export function SessionTimeline({
   const skippedAlert = timeline.skippedMessages > 0 && (
     <Alert
       status="warning"
-      title="Some messages could not be read"
+      title="Could not read some messages"
       description={`${timeline.skippedMessages} ${
         timeline.skippedMessages === 1 ? 'message' : 'messages'
       } in this session could not be read and are not shown.`}
@@ -304,7 +307,7 @@ export function SessionTimeline({
             isPending={isCancellingTurn}
             onPress={onCancelTurn}
           >
-            Cancel the turn
+            Stop the turn
           </Button>
         )}
       </div>
@@ -356,6 +359,7 @@ export function SessionTimeline({
       isAgentWorking={isAgentWorking}
       technical={technical}
       caption={item.id === firstUserMessageId ? firstMessageCaption : undefined}
+      connectorOf={connectorOf}
     />
   );
 

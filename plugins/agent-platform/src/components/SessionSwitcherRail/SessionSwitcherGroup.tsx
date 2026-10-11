@@ -1,5 +1,6 @@
-import { makeStyles, useTheme } from '@material-ui/core';
-import { toneColor } from '../../lib/sessionStateTone';
+import { makeStyles } from '@material-ui/core';
+import { StatusDot } from '@giantswarm/backstage-plugin-ui-react';
+import { sessionStateDotVar } from '../../lib/stableClassNames';
 import { SessionSwitcherCard } from './SessionSwitcherCard';
 import { RailGroup } from './helpers';
 
@@ -19,12 +20,6 @@ const useStyles = makeStyles(theme => ({
     letterSpacing: '0.06em',
     textTransform: 'uppercase',
     color: theme.palette.text.secondary,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    flexShrink: 0,
   },
   list: {
     listStyle: 'none',
@@ -56,15 +51,13 @@ export function SessionSwitcherGroup({
   now,
 }: SessionSwitcherGroupProps) {
   const classes = useStyles();
-  const theme = useTheme();
 
   return (
     <section className={classes.group}>
       <h3 className={classes.heading}>
-        <span
-          aria-hidden="true"
-          className={classes.dot}
-          style={{ backgroundColor: toneColor(group.tone, theme) }}
+        <StatusDot
+          tone={group.tone}
+          colorVar={sessionStateDotVar(group.tone)}
         />
         <span>{group.label}</span>
         <span>({group.sessions.length})</span>

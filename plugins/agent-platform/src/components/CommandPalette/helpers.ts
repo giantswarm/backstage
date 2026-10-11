@@ -2,7 +2,13 @@ import type { AgentRow } from '../AgentsDataProvider';
 
 /** What the palette's filter chips narrow the results to. */
 export type PaletteFilter =
-  'all' | 'sessions' | 'agents' | 'skills' | 'connectors';
+  | 'all'
+  | 'sessions'
+  | 'agents'
+  | 'skills'
+  | 'connectors'
+  | 'models'
+  | 'workflows';
 
 export type PaletteGroupId = Exclude<PaletteFilter, 'all'>;
 
@@ -13,6 +19,8 @@ export const PALETTE_FILTERS: { id: PaletteFilter; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'skills', label: 'Skills' },
   { id: 'connectors', label: 'Connectors' },
+  { id: 'models', label: 'Models' },
+  { id: 'workflows', label: 'Workflows' },
 ];
 
 /** The groups in display order, with the label each is headed by. */
@@ -21,6 +29,8 @@ export const PALETTE_GROUPS: { id: PaletteGroupId; label: string }[] = [
   { id: 'agents', label: 'Agents' },
   { id: 'skills', label: 'Skills' },
   { id: 'connectors', label: 'Connectors' },
+  { id: 'models', label: 'Models' },
+  { id: 'workflows', label: 'Workflows' },
 ];
 
 /** One row the palette can open. */
@@ -133,14 +143,6 @@ export function buildPaletteGroups(
       },
     ];
   });
-}
-
-/**
- * The classic search page, queried — the palette's way out to everything the
- * portal indexes (catalog, TechDocs) beyond the agent area's own data.
- */
-export function portalSearchHref(query: string): string {
-  return `/search?query=${encodeURIComponent(query.trim())}`;
 }
 
 /** ⌘K / Ctrl+K and nothing else — no Shift/Alt chords, no plain K. */

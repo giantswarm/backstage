@@ -1,13 +1,15 @@
 import { ReactElement, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import { EmptyState } from '@backstage/core-components';
+
 import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
+  countNoun,
   DateComponent,
+  EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
   SectionHeader,
@@ -34,8 +36,12 @@ import {
   workflowDetailRouteRef,
 } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { DisclosureAccordion, SessionGate, StateBadge } from '../shared';
-import { WorkflowEffectBadge } from './WorkflowEffectBadge';
+import {
+  DisclosureAccordion,
+  EffectBadge,
+  SessionGate,
+  StateBadge,
+} from '../shared';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
 import { WorkflowStatistics } from './WorkflowStatistics';
 import {
@@ -374,13 +380,13 @@ function WorkflowPageContent({
         actions={editAction}
         badges={
           <>
-            {effect && <WorkflowEffectBadge effect={effect} />}
+            {effect && <EffectBadge effect={effect} subject="workflow" />}
             {workflow.hasValidationWarning() && (
               <StateBadge tone="warning" label="Validation warning" />
             )}
           </>
         }
-        meta={`${steps.length} step${steps.length === 1 ? '' : 's'} · ${
+        meta={`${countNoun(steps.length, 'step')} · ${
           args.length
         } input${args.length === 1 ? '' : 's'}`}
         // No description in the header — the agent and skill pages carry none
@@ -620,8 +626,7 @@ function WorkflowPageBody({
           { label: name },
         ]}
       >
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title={
             activeInstallation
               ? `No workflow “${name}” on ${activeInstallation}`
@@ -632,7 +637,7 @@ function WorkflowPageBody({
               ? 'It may be on another environment, or removed.'
               : "None of this portal's environments runs muster."
           }
-          action={
+          actions={
             paths.workflows ? (
               <Link href={paths.workflows}>Back to workflows</Link>
             ) : undefined

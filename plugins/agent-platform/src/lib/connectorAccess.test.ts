@@ -44,16 +44,16 @@ describe('connectorAccess', () => {
     );
   });
 
-  it('reads preset:read-only as looking things up, with any tools beside it', () => {
+  it('reads preset:read-only by its label, with any tools beside it', () => {
     expect(connectorAccess(declared('preset:read-only'), target)).toBe(
-      'Look things up',
+      'Read-only tools',
     );
     expect(
       connectorAccess(
         declared('preset:read-only', 'tool:x_kubernetes_delete'),
         target,
       ),
-    ).toBe('Look things up · 1 tool');
+    ).toBe('Read-only tools · 1 tool');
   });
 
   it('leaves preset:read-only out for a connector without read-only tools', () => {

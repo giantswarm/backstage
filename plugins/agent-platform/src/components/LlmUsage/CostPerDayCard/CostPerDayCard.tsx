@@ -59,7 +59,7 @@ export function CostPerDayCard({
   }, [daily, theme]);
 
   return (
-    <UsageCard title="Cost per day" note={note} wide>
+    <UsageCard title="Spend per day" note={note} wide>
       <StackedBarChart
         data={rows}
         xAxisKey="day"

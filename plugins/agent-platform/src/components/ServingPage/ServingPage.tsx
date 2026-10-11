@@ -598,7 +598,7 @@ export function ServingPage() {
           {downloadRows.errors.length > 0 && (
             <Alert
               status="warning"
-              title="Downloads could not be read"
+              title="Could not read the downloads"
               description={downloadRows.errors
                 .map(problem =>
                   installationErrorLine(problem.installation, problem.error),

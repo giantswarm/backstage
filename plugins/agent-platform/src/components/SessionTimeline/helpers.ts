@@ -1,3 +1,4 @@
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 
@@ -160,10 +161,6 @@ export function segmentTurn(items: TimelineItem[]): TimelineSegment[] {
   return segments;
 }
 
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 export type WorkSummary = {
   /** The plain summary line, e.g. "Loaded 1 skill · Used 3 tools". */
   label: string;
@@ -224,20 +221,19 @@ export function summarizeWork(items: TimelineItem[]): WorkSummary {
   }
   const parts: string[] = [];
   if (skills.size > 0) {
-    parts.push(`Loaded ${plural(skills.size, 'skill', 'skills')}`);
+    parts.push(`Loaded ${countNoun(skills.size, 'skill')}`);
   }
   if (tools.size > 0) {
-    parts.push(`Used ${plural(tools.size, 'tool', 'tools')}`);
+    parts.push(`Used ${countNoun(tools.size, 'tool')}`);
   }
   if (agents.size > 0) {
-    parts.push(`Asked ${plural(agents.size, 'agent', 'agents')}`);
+    parts.push(`Asked ${countNoun(agents.size, 'agent')}`);
   }
   return {
     label: parts.join(' · '),
-    technicalLabel: `${plural(items.length, 'step', 'steps')} · ${plural(
+    technicalLabel: `${countNoun(items.length, 'step')} · ${countNoun(
       calls,
       'tool call',
-      'tool calls',
     )}`,
   };
 }

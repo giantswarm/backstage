@@ -105,7 +105,7 @@ export function updateVerdictOf({
       ? { kind: 'checking' }
       : {
           kind: 'blocked',
-          reason: `Could not read which servers muster on ${installation} offers.`,
+          reason: `Could not read which connectors ${installation} offers.`,
         };
   }
   if (read.isLoading) {

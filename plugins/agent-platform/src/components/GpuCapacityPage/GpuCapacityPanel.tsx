@@ -11,11 +11,14 @@ import {
   useTable,
 } from '@backstage/ui';
 import {
+  countNoun,
   groupNames,
   InfoCard,
+  INITIAL_ROWS,
   joinNames,
   LoadingIndicator,
   NAMED_IN_SENTENCE,
+  ShowMore,
   SimpleAccordion,
   usePhoneColumns,
   usePhoneLayout,
@@ -248,7 +251,7 @@ export function phoneNodeFacts(
       node.memoryMiB !== undefined
         ? formatGpuMemory(node.memoryMiB)
         : undefined,
-      total !== undefined ? `${total} GPU${total === 1 ? '' : 's'}` : undefined,
+      total !== undefined ? countNoun(total, 'GPU') : undefined,
       node.requested !== undefined ? `${node.requested} requested` : undefined,
     ].filter(Boolean);
     if (gpu.length > 0) {
@@ -280,7 +283,7 @@ export function phoneNodeFacts(
     if (cache) {
       const models = cache.models ?? 0;
       facts.push(
-        `Model cache: ${models} model${models === 1 ? '' : 's'}${
+        `Model cache: ${countNoun(models, 'model')}${
           cache.bytesUsed !== undefined
             ? ` · ${formatBytes(cache.bytesUsed)}`
             : ''
@@ -786,7 +789,23 @@ export function GpuCapacityPanel({
 
   let body: ReactNode;
   if (nodes.length > 0) {
-    body = <Table<GpuNode> {...tableProps} columnConfig={shownColumns} />;
+    // A page of the sorted nodes at a time (list scale): a fleet's GPU
+    // nodes can run into the hundreds.
+    body = (
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="node"
+      >
+        {visible => (
+          <Table<GpuNode>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+          />
+        )}
+      </ShowMore>
+    );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading nodes…" />;
   } else {

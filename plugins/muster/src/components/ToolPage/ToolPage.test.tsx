@@ -248,11 +248,11 @@ describe('ToolPage in the agent-platform shell, at phone width', () => {
           link.getAttribute('href'),
         ]),
     ).toEqual([
-      ['Back to Tools', `${BASE}/aws-root?installation=gazelle`],
+      ['Back to aws-root', `${BASE}/aws-root?installation=gazelle`],
       ['Customize', '/customize'],
       ['Connectors', '/customize/connectors'],
+      // One link to the connector: no "Tools" crumb repeating it.
       ['aws-root', `${BASE}/aws-root?installation=gazelle`],
-      ['Tools', `${BASE}/aws-root?installation=gazelle`],
     ]);
     // The unbroken snake_case name may break anywhere instead of widening
     // the page.

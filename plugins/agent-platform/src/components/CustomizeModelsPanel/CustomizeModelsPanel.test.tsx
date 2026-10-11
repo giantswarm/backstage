@@ -87,11 +87,18 @@ describe('CustomizeModelsPanel', () => {
 
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows.map(r => r.textContent)).toEqual([
-      expect.stringMatching(
-        /Sonnet 4\.5.*Anthropic.*Used by 2 agents.*Available/,
-      ),
-      expect.stringMatching(/Qwen 2\.5.*Ollama.*Not used yet.*Not running/),
+      expect.stringMatching(/Sonnet 4\.5.*Anthropic.*Used by 2 agents.*Ready/),
+      expect.stringMatching(/Qwen 2\.5.*Ollama.*Not used yet.*Not serving/),
     ]);
+  });
+
+  it('makes each name a link to the model (M21)', async () => {
+    await renderPanel();
+
+    const row = screen.getAllByRole('row')[1];
+    expect(
+      within(row).getByRole('link', { name: 'Sonnet 4.5' }),
+    ).toHaveAttribute('href', row.getAttribute('data-href'));
   });
 
   it('narrows to the search', async () => {
@@ -221,11 +228,11 @@ describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
         'Anthropic · claude-sonnet-4-5 · Used by 2 agents',
       ),
     ).toBeInTheDocument();
-    expect(within(sonnetRow).getByText('Available')).toBeInTheDocument();
+    expect(within(sonnetRow).getByText('Ready')).toBeInTheDocument();
     expect(
       within(qwenRow).getByText('Ollama · qwen2.5:32b · Not used yet'),
     ).toBeInTheDocument();
-    expect(within(qwenRow).getByText('Not running')).toBeInTheDocument();
+    expect(within(qwenRow).getByText('Not serving')).toBeInTheDocument();
   });
 
   it('brings the Used by column back on a wide viewport', async () => {

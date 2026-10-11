@@ -8,14 +8,16 @@ import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 
 import { modelManagerApiRef, type TryServedModelResult } from '../../apis';
 import { formatSeconds } from '../../lib/lifecycle';
-import { modelLifecycleSteps, modelPhaseLabel } from '../../lib/modelLifecycle';
+import { modelLifecycleSteps } from '../../lib/modelLifecycle';
 import {
   requestAuthOf,
   requestExamples,
   requestModelOf,
 } from '../../lib/servedModelApi';
 import { LifecycleSteps } from '../LifecycleSteps';
-import { CopyEndpointButton, CopyTextButton } from './ServedModelsGroupHeader';
+import { ServedReadinessLabel } from '../ModelServingStatus';
+import { CopyButton } from '@giantswarm/backstage-plugin-ui-react';
+import { CopyEndpointButton } from './ServedModelsGroupHeader';
 import type { ServedModelRow } from './ServedModelsTable';
 
 /** The served model whose step timeline is open: Serve's answer, or a row's chevron. */
@@ -143,10 +145,9 @@ function RequestExamples({
             <Text as="span" variant="body-small">
               {example.label}
             </Text>
-            <CopyTextButton
+            <CopyButton
               text={example.command}
               label={`Copy the ${example.label} request`}
-              copiedLabel={`${example.label} request copied`}
             />
           </Flex>
           <pre
@@ -304,7 +305,6 @@ export function ServedModelLifecyclePanel({
   onClose,
 }: ServedModelLifecyclePanelProps) {
   const steps = useMemo(() => (row ? modelLifecycleSteps(row) : []), [row]);
-  const phase = row ? modelPhaseLabel(row) : undefined;
   const isReady = row?.phase === 'ready' || row?.readiness === 'ready';
 
   let body;
@@ -352,8 +352,17 @@ export function ServedModelLifecyclePanel({
           </Text>
           <Text as="span" variant="body-small" color="secondary">
             {opened.installation}
-            {phase ? ` · ${phase}` : ''}
           </Text>
+          {/* The row's own status, not the backend's phase word: one served
+              model reads the same in the table and here (UX review M14). The
+              phase is the step list below. */}
+          {row && (
+            <ServedReadinessLabel
+              readiness={row.readiness}
+              reason={row.readinessReason}
+              title={row.readinessMessage}
+            />
+          )}
         </Flex>
         <ButtonIcon
           size="small"

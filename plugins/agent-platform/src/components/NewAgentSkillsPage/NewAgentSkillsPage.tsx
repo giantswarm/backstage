@@ -15,7 +15,6 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogNoMatch,
   LoadingIndicator,
-  matchesQuery,
   SEARCH_MIN,
   ShowMore,
   useProvidePageHeaderActions,
@@ -24,7 +23,7 @@ import {
 
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { agentsBySkill } from '../../lib/customize';
+import { agentsBySkill, searchSkills } from '../../lib/customize';
 import {
   DiscoveredSkill,
   repoSlug,
@@ -366,21 +365,13 @@ function NewAgentSkillsPageContent() {
   );
 
   // Client-side only: the whole catalogue is already loaded (unlike muster's
-  // tool search, which delegates ranking to a backend BM25 endpoint), so a
-  // simple token-boundary filter is enough and needs no debounce.
-  const visibleSkills = useMemo(() => {
-    if (trimmed === '') {
-      return skills;
-    }
-    return skills.filter(skill =>
-      matchesQuery(
-        trimmed,
-        `${skill.name} ${skill.description} ${skill.path} ${repoSlug(
-          skill.repoUrl,
-        )}`,
-      ),
-    );
-  }, [skills, trimmed]);
+  // tool search, which delegates ranking to a backend BM25 endpoint), and the
+  // same token search as Customize › Skills, so one query finds the same
+  // skills in both places.
+  const visibleSkills = useMemo(
+    () => searchSkills(skills, trimmed),
+    [skills, trimmed],
+  );
 
   // Source and Usage, as on Customize → Skills (T49, T64): a multi-select
   // dropdown each, always there — three skills from one repository get a
@@ -501,7 +492,7 @@ function NewAgentSkillsPageContent() {
         {failedRepositories.length > 0 && (
           <Alert
             status="warning"
-            title="Some skill repositories could not be read"
+            title="Could not read some skill repositories"
             description={`Skipped: ${failedRepositories.join(', ')}.`}
           />
         )}

@@ -94,7 +94,7 @@ describe('NewModelPage', () => {
     expect(moreOptions()).not.toHaveAttribute('open');
     expect(moreOptions()).toContainElement(technicalName);
 
-    await userEvent.type(screen.getByLabelText(/^Display name/), 'Sonnet 4.5');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Sonnet 4.5');
     expect(technicalName).toHaveValue('sonnet-4-5');
     expect(moreOptions().querySelector('summary')).toHaveTextContent(
       'More options · technical name sonnet-4-5',
@@ -107,7 +107,7 @@ describe('NewModelPage', () => {
     await userEvent.click(screen.getByText('More options'));
     const technicalName = screen.getByLabelText(/^Technical name/);
     await userEvent.type(technicalName, 'my-model');
-    await userEvent.type(screen.getByLabelText(/^Display name/), 'Sonnet');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Sonnet');
     expect(technicalName).toHaveValue('my-model');
   });
 
@@ -129,7 +129,7 @@ describe('NewModelPage', () => {
       expect.stringContaining('Leave it empty if the endpoint needs none'),
     );
 
-    await userEvent.type(screen.getByLabelText(/^Display name/), 'Local vLLM');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Local vLLM');
     await userEvent.type(
       screen.getByRole('textbox', { name: /^Model/ }),
       'qwen3-8b',
@@ -154,7 +154,7 @@ describe('NewModelPage', () => {
   it('marks each missing field itself on a blocked submit and focuses the first', async () => {
     await renderPage();
 
-    const displayName = screen.getByLabelText(/^Display name/);
+    const displayName = screen.getByLabelText(/^Name/);
     const model = screen.getByRole('textbox', { name: /^Model/ });
     expect(displayName).not.toHaveAttribute('aria-invalid');
 
@@ -164,7 +164,7 @@ describe('NewModelPage', () => {
 
     expect(displayName).toHaveAttribute('aria-invalid', 'true');
     expect(displayName).toHaveAccessibleDescription(
-      expect.stringContaining('Display name is required'),
+      expect.stringContaining('Name is required'),
     );
     expect(displayName).toHaveFocus();
     expect(model).toHaveAttribute('aria-invalid', 'true');
@@ -194,7 +194,7 @@ describe('NewModelPage', () => {
   it('opens More options when the technical name blocks the submit', async () => {
     await renderPage();
 
-    await userEvent.type(screen.getByLabelText(/^Display name/), 'Sonnet');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Sonnet');
     await userEvent.type(
       screen.getByRole('textbox', { name: /^Model/ }),
       'claude-sonnet-4-5',
@@ -272,13 +272,21 @@ describe('NewModelPage · editing a model', () => {
     expect(screen.getByText('Customize / Models / Sonnet 4.5')).toBeVisible();
     // An existing model stays where it is: no environment to choose.
     expect(screen.queryByRole('button', { name: /Environment/ })).toBeNull();
-    expect(screen.getByLabelText(/^Display name/)).toHaveValue('Sonnet 4.5');
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Sonnet 4.5');
     expect(screen.getByRole('textbox', { name: /^Model/ })).toHaveValue(
       'claude-sonnet-4-5',
     );
-    const technicalName = screen.getByLabelText(/^Technical name/);
-    expect(technicalName).toHaveValue('sonnet');
-    expect(technicalName).toHaveAttribute('readonly');
+    // The locked technical name is said under the name, once.
+    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === 'P' &&
+          element.textContent ===
+            'Its technical name is sonnet; it cannot be changed.',
+        ),
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('switch', { name: /Skip TLS certificate verification/ }),
     ).toBeChecked();
@@ -290,8 +298,16 @@ describe('NewModelPage · editing a model', () => {
     const save = screen.getByRole('button', { name: 'Save changes' });
     expect(save).toBeDisabled();
     // Typing does not touch the technical name of an existing model.
-    await userEvent.type(screen.getByLabelText(/^Display name/), ' (EU)');
-    expect(technicalName).toHaveValue('sonnet');
+    await userEvent.type(screen.getByLabelText(/^Name/), ' (EU)');
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === 'P' &&
+          element.textContent ===
+            'Its technical name is sonnet; it cannot be changed.',
+        ),
+      ),
+    ).toBeInTheDocument();
     expect(save).toBeEnabled();
   });
 

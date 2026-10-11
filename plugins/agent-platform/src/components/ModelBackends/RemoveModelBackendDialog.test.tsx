@@ -41,6 +41,7 @@ jest.mock('../../hooks/useModelManagerBackends', () => ({
 }));
 
 const onRemoved = jest.fn();
+const onOpenChange = jest.fn();
 
 function renderDialog() {
   return render(
@@ -49,7 +50,7 @@ function renderDialog() {
       kind="ollama"
       servedModels={['Llama 3.2 3B', 'smollm2:135m']}
       isOpen
-      onOpenChange={jest.fn()}
+      onOpenChange={onOpenChange}
       onRemoved={onRemoved}
     />,
   );
@@ -108,12 +109,14 @@ describe('RemoveModelBackendDialog', () => {
     await userEvent.click(confirm);
 
     expect(write.remove).toHaveBeenCalledWith('ollama', 'apply');
-    expect(
-      await screen.findByText('Removed the Ollama backend as you'),
-    ).toBeInTheDocument();
-    expect(onRemoved).toHaveBeenCalledWith(
-      expect.objectContaining({ removed: true }),
+    // The caller's toast is the one confirmation: the dialog closes.
+    await waitFor(() =>
+      expect(onRemoved).toHaveBeenCalledWith(
+        expect.objectContaining({ removed: true }),
+      ),
     );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByText(/as you/)).not.toBeInTheDocument();
   });
 
   it("shows model-manager's refusal verbatim and never enables the confirm", async () => {

@@ -230,7 +230,7 @@ describe('HarnessPicker', () => {
 
     expect(
       screen.getByText(
-        'Some runtimes could not be loaded; the list may be incomplete.',
+        'Could not read some runtimes, so the list may be incomplete.',
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(2);

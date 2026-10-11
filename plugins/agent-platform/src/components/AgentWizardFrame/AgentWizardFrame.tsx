@@ -133,6 +133,11 @@ export function AgentWizardFrame({
   return (
     <WizardFrame
       title={edit ? 'Edit agent' : 'New agent'}
+      documentTitle={
+        edit
+          ? [`Edit ${edit.agent.displayName || edit.agent.name}`, 'Agents']
+          : undefined
+      }
       context={
         edit
           ? `Customize / Agents / ${edit.agent.displayName || edit.agent.name}`

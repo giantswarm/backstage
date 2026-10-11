@@ -3,6 +3,7 @@ import { Alert, ButtonIcon, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
 import {
+  countNoun,
   groupNames,
   joinNames,
   NAMED_IN_SENTENCE,
@@ -65,7 +66,7 @@ export function UnreachableInstallationsAlert({
   }
 
   const count = installations.length;
-  const title = `Could not read ${count} environment${count === 1 ? '' : 's'}`;
+  const title = `Could not read ${countNoun(count, 'environment')}`;
 
   if (count <= NAMED_IN_SENTENCE) {
     return (

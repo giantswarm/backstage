@@ -18,8 +18,10 @@ import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   InfoCard,
+  INITIAL_ROWS,
   LoadingIndicator,
   MENU_WIDTH,
+  ShowMore,
   StackedRowList,
   usePhoneLayout,
   useVisibleSort,
@@ -317,7 +319,7 @@ function getColumnConfig(
     },
     {
       id: 'use',
-      label: 'Used by',
+      label: 'Mount',
       cell: row => <CellText title={describeUse(row)} />,
     },
     {
@@ -401,22 +403,37 @@ export function ModelCachePanel({
   );
 
   let body: ReactNode;
-  if (rows.length > 0 && isPhone) {
-    // At phone width each claim is a stacked row, in the table's order.
+  if (rows.length > 0) {
+    // A page of the sorted claims at a time (list scale). At phone width
+    // each claim is a stacked row, in the table's order.
     body = (
-      <StackedRowList
-        aria-label="Model cache claims"
-        rows={(tableProps.data ?? []).map(row =>
-          modelCacheStackedRow(row, {
-            removable: removable.includes(row.installation),
-            onRemove,
-            showInstallation: !hideColumns?.includes('installation'),
-          }),
-        )}
-      />
+      <ShowMore
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="cache claim"
+      >
+        {visible =>
+          isPhone ? (
+            <StackedRowList
+              aria-label="Model cache claims"
+              rows={visible.map(row =>
+                modelCacheStackedRow(row, {
+                  removable: removable.includes(row.installation),
+                  onRemove,
+                  showInstallation: !hideColumns?.includes('installation'),
+                }),
+              )}
+            />
+          ) : (
+            <Table<ModelCacheRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+            />
+          )
+        }
+      </ShowMore>
     );
-  } else if (rows.length > 0) {
-    body = <Table<ModelCacheRow> {...tableProps} columnConfig={columnConfig} />;
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading model caches…" />;
   } else {

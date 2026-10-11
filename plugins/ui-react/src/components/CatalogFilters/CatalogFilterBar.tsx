@@ -156,8 +156,9 @@ export type CatalogNoMatchProps = {
   /** What the list holds, in the plural: "agents". */
   plural: string;
   search: string;
-  isFiltered: boolean;
-  onClearFilters: () => void;
+  /** Whether filters narrow the list too; a search-only list leaves it out. */
+  isFiltered?: boolean;
+  onClearFilters?: () => void;
 };
 
 /**
@@ -168,7 +169,7 @@ export type CatalogNoMatchProps = {
 export function CatalogNoMatch({
   plural,
   search,
-  isFiltered,
+  isFiltered = false,
   onClearFilters,
 }: CatalogNoMatchProps) {
   const term = search.trim();
@@ -183,7 +184,7 @@ export function CatalogNoMatch({
       <Text as="p" variant="body-medium" color="secondary">
         {message}
       </Text>
-      {isFiltered && (
+      {isFiltered && onClearFilters && (
         <Button variant="secondary" size="small" onPress={onClearFilters}>
           Clear filters
         </Button>

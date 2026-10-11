@@ -5,7 +5,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { EmptyState } from '@backstage/core-components';
+
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
@@ -24,18 +24,19 @@ import {
 import { makeStyles } from '@material-ui/core/styles';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
+  type BreadcrumbItem,
+  EmptyStateCard,
+  type Fact,
   FactsColumn,
   LoadingIndicator,
   MENU_WIDTH,
+  type RouteTabSpec,
   SectionHeader,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
   usePhoneLayout,
-  type BreadcrumbItem,
-  type Fact,
-  type RouteTabSpec,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -531,7 +532,9 @@ function SkillPage({
     },
     { label: 'Branch', value: skill.ref },
     {
-      label: 'Pinned commit',
+      // The catalog's head, not a pin: "pinned" is each agent's own commit
+      // (UX review M19).
+      label: 'Latest commit',
       value: commitUrl ? (
         <Link
           href={commitUrl}
@@ -824,11 +827,10 @@ export function SkillDetailPage() {
     );
   } else {
     body = (
-      <EmptyState
-        missing="data"
+      <EmptyStateCard
         title="Skill not found"
         description="No skill with this address exists in the configured repositories. It may have been renamed or removed."
-        action={backToSkills}
+        actions={backToSkills}
       />
     );
   }

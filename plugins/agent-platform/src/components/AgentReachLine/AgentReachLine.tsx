@@ -2,6 +2,7 @@ import { Flex, Text } from '@backstage/ui';
 import LinkIcon from '@material-ui/icons/Link';
 import {
   parseSelector,
+  PRESET_READ_ONLY,
   selectorLabel,
   toolsetShape,
   type DeclaredToolset,
@@ -18,6 +19,10 @@ function joinNames(names: string[]): string {
 /** A selector as a reader names it: a labelled preset by its label, anything else by its name. */
 function reachName(selector: string): string {
   const label = selectorLabel(selector);
+  if (selector === PRESET_READ_ONLY) {
+    // Mid-sentence: "Can use read-only tools", the preset's label in lower case.
+    return label.toLowerCase();
+  }
   if (label !== selector) {
     return label;
   }

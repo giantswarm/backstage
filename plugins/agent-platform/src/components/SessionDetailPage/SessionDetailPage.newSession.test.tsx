@@ -45,6 +45,15 @@ jest.mock('../../hooks/useTokenRates', () => ({
   }),
 }));
 
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => ({
+    servers: [],
+    resources: [],
+    isLoading: false,
+    isUnavailable: false,
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));

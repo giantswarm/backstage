@@ -16,10 +16,12 @@ import {
   PHONE_MEDIA,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { EffectBadge } from '@giantswarm/backstage-plugin-muster';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import SecurityIcon from '@material-ui/icons/Security';
 import { MessageMarkdown } from '../SessionTimeline/MessageMarkdown';
+import type { ConnectorOf } from '../SessionTimeline/TimelineEntry';
 import { formatPayload, humanizeToolName } from '../SessionTimeline/helpers';
 import type {
   ConfirmationAnswer,
@@ -123,20 +125,11 @@ const useStyles = makeStyles(theme => ({
     },
   },
   // The accent for an action with effects outside the conversation — the
-  // reason the card interrupts at all.
+  // reason the card interrupts at all — as the shared effect badge.
   changesThings: {
     flex: 'none',
     alignSelf: 'flex-start',
     display: 'inline-flex',
-    alignItems: 'center',
-    height: 20,
-    padding: theme.spacing(0, 1),
-    borderRadius: 999,
-    backgroundColor: 'var(--bui-bg-warning, #ffe9d6)',
-    color: 'var(--bui-fg-warning-on-bg, #8a3f00)',
-    fontSize: '0.71875rem',
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
   },
   // What Allow would run, on its own quiet surface inside the card. Shorter
   // than it was in the conversation: the card is docked, and the body around
@@ -198,6 +191,8 @@ export type PendingConfirmationPanelProps = {
    * asking. Falls back to "The agent".
    */
   agentName?: string;
+  /** Names the connector the tool belongs to, as Customize does (UX review M2). */
+  connectorOf?: ConnectorOf;
 };
 
 /**
@@ -275,6 +270,7 @@ export function PendingConfirmationPanel({
   onAnswer,
   isUserScoped,
   agentName,
+  connectorOf,
 }: PendingConfirmationPanelProps) {
   const classes = useStyles();
   const touch = useTouchInput();
@@ -530,10 +526,11 @@ export function PendingConfirmationPanel({
   const proposedArgs = isQuestion ? undefined : formatPayload(pending.args);
   const asker = agentName || 'The agent';
   let approvalTitle: string;
+  const owner = pending.toolName ? connectorOf?.(pending.toolName) : undefined;
   if (pending.toolName) {
-    approvalTitle = `${asker} wants to run “${humanizeToolName(pending.toolName)}”${
-      pending.via ? ` via ${pending.via}` : ''
-    }`;
+    approvalTitle = `${asker} wants to run “${humanizeToolName(
+      owner?.tool ?? pending.toolName,
+    )}”${owner ? ` on ${owner.connector}` : ''}`;
   } else {
     approvalTitle = `${asker} is asking permission to continue`;
   }
@@ -595,7 +592,9 @@ export function PendingConfirmationPanel({
           </Flex>
           {/* The accent: this call has effects outside the conversation,
               which is why the agent stopped to ask. */}
-          <span className={classes.changesThings}>Changes things</span>
+          <span className={classes.changesThings}>
+            <EffectBadge effect="changes" />
+          </span>
         </div>
       )}
 

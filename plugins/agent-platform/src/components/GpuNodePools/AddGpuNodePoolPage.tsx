@@ -9,6 +9,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  countNoun,
   fieldErrorProps,
   MoreOptions,
   searchableIf,
@@ -376,7 +377,7 @@ export function AddGpuNodePoolPage({
 
   // More options' one line of what it holds now.
   const moreOptionsSummary = [
-    `up to ${maxGpus} GPU${maxGpus === 1 ? '' : 's'}`,
+    `up to ${countNoun(maxGpus, 'GPU')}`,
     offers.zones && clusterZones.length > 0
       ? describeZonesSummary(zones, clusterZones)
       : undefined,
@@ -620,7 +621,7 @@ export function AddGpuNodePoolPage({
             {clustersError && (
               <Alert
                 status="warning"
-                title="Clusters could not be read"
+                title="Could not read the clusters"
                 description={clustersError.message}
               />
             )}

@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Content, EmptyState, Link } from '@backstage/core-components';
+import { Content, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
@@ -12,6 +12,7 @@ import {
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
   DateComponent,
+  EmptyStateCard,
   type Fact,
   FactsColumn,
   LoadingIndicator,
@@ -293,11 +294,10 @@ export function ModelDetailPage() {
             <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
           </Flex>
         ) : (
-          <EmptyState
-            missing="data"
+          <EmptyStateCard
             title="Model not found"
             description={`ModelConfig ${namespace}/${name} does not exist on ${installation}.`}
-            action={
+            actions={
               <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
             }
           />

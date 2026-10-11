@@ -19,7 +19,7 @@ describe('describeReach', () => {
         carrier: 'sre-agent',
         selectors: ['preset:read-only'],
       }),
-    ).toBe('Can use Read-only tools');
+    ).toBe('Can use read-only tools');
   });
 
   it('says when the agent has no connectors', () => {

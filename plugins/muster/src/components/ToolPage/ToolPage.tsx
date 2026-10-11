@@ -1,11 +1,12 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Content, EmptyState } from '@backstage/core-components';
+import { Content } from '@backstage/core-components';
 import { Alert, Flex, Link, Text } from '@backstage/ui';
 import {
   BreadcrumbItem,
   Breadcrumbs,
+  EmptyStateCard,
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -95,8 +96,7 @@ export function ToolPage() {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
   } else if (!activeInstallation) {
     body = (
-      <EmptyState
-        missing="data"
+      <EmptyStateCard
         title="No muster environment"
         description="None of this portal's environments runs muster."
       />
@@ -124,15 +124,14 @@ export function ToolPage() {
       ? links.server(serverKey, activeInstallation)
       : listHref;
     body = (
-      <EmptyState
-        missing="data"
+      <EmptyStateCard
         title={`No tool “${tool}” on ${activeInstallation}`}
         description={
           row
             ? 'It may have been removed, or run on another environment — pick it in the page header.'
             : `There is no connector “${key}” on ${activeInstallation}. It may run on another environment — pick it in the page header.`
         }
-        action={
+        actions={
           serverHref ? (
             <Link href={serverHref}>
               {row ? `Back to the tools of ${serverKey}` : 'Back to connectors'}
@@ -173,7 +172,10 @@ export function ToolPage() {
             label: 'Connectors',
             href: customize ? `${customize}/connectors` : listHref,
           },
-          ...crumbs.slice(1),
+          // No "Tools" crumb: Tools is the connector page's index, so it
+          // would repeat the connector's own link.
+          { label: serverKey, href: toolsHref },
+          { label: shortName },
         ]}
         badges={<ToolMarkers annotations={annotations} />}
         meta={exposedAs}

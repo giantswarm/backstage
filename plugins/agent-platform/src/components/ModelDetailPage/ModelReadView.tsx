@@ -109,12 +109,12 @@ function UsageSection({
     );
   }
 
-  const sub = `last ${MODEL_USAGE_WINDOW_DAYS} days, every agent`;
+  const sub = `every user's, last ${MODEL_USAGE_WINDOW_DAYS} days`;
   return (
     <Flex direction="column" gap="4">
       <KpiTileGrid>
         <KpiTile
-          label="Cost"
+          label="Spend"
           hint="Shows the gateway's price for calls to this model. A model missing from its catalogue shows —."
           // No calls is zero spend; calls without a price are "—".
           value={formatMoney(slice.calls === 0 ? 0 : slice.costUsd, currency)}

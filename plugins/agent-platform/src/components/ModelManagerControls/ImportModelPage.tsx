@@ -414,7 +414,7 @@ export function ImportModelPage({
         {search.isError && (
           <Alert
             status="danger"
-            title="The hub could not be searched"
+            title="Could not search the hub"
             description={(search.error as Error).message}
           />
         )}
@@ -509,7 +509,7 @@ export function ImportModelPage({
             {fit.isError && (
               <Alert
                 status="danger"
-                title="The fit could not be checked"
+                title="Could not check the fit"
                 description={(fit.error as Error).message}
               />
             )}
@@ -550,7 +550,7 @@ export function ImportModelPage({
         {pull.error ? (
           <Alert
             status="danger"
-            title="The download could not be started"
+            title="Could not start the download"
             description={(pull.error as Error).message}
           />
         ) : null}

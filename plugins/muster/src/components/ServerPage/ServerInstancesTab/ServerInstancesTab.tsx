@@ -12,6 +12,8 @@ import {
 } from '@backstage/ui';
 import {
   DetailsPane,
+  INITIAL_ROWS,
+  ShowMore,
   useDetailsPane,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer, mcpServerStateSeverity } from '../../../lib/k8s';
@@ -80,6 +82,12 @@ export interface ServerInstancesTabProps {
    */
   fleetClusters: string[];
   authenticated: boolean;
+  /**
+   * Render a page of instances at a time (the shell's list-scale rule: a
+   * family can span hundreds of clusters). The classic page keeps its table
+   * whole.
+   */
+  windowed?: boolean;
 }
 
 /**
@@ -95,6 +103,7 @@ export function ServerInstancesTab({
   instances,
   fleetClusters,
   authenticated,
+  windowed = false,
 }: ServerInstancesTabProps) {
   const instanceHref = useInstanceHref();
   const instanceArg = instances[0]?.getInstanceArg();
@@ -196,7 +205,23 @@ export function ServerInstancesTab({
           {coverageLine(clusters, fleetClusters)}
         </Text>
       )}
-      <Table<InstanceRow> {...tableProps} columnConfig={columns} />
+      {windowed ? (
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="instance"
+        >
+          {visible => (
+            <Table<InstanceRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columns}
+            />
+          )}
+        </ShowMore>
+      ) : (
+        <Table<InstanceRow> {...tableProps} columnConfig={columns} />
+      )}
       <DetailsPane
         paneId={INSTANCE_PANE_ID}
         title={({ name }) => name}

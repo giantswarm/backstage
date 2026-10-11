@@ -2,6 +2,7 @@ import type { ConnectorPageTarget } from '@giantswarm/backstage-plugin-muster';
 import {
   DeclaredToolset,
   parseSelector,
+  presetLabel,
   PRESET_FULL,
   PRESET_READ_ONLY,
 } from './toolset';
@@ -13,7 +14,7 @@ import {
  *
  * - "All tools": the toolset is `preset:full`, names the connector with a
  *   `server:` selector, or the agent binds the gateway without declaring one.
- * - "Look things up": `preset:read-only`, which reaches the connector's
+ * - "Read-only tools": `preset:read-only`, which reaches the connector's
  *   read-only tools (unless the connector is known to have none).
  * - "N tools": the `tool:` selectors that name tools of the connector.
  *
@@ -54,7 +55,7 @@ export function connectorAccess(
     toolset.selectors.includes(PRESET_READ_ONLY) &&
     target.readOnlyToolCount !== 0
   ) {
-    parts.push('Look things up');
+    parts.push(presetLabel('read-only'));
   }
   const tools = new Set(
     selectors

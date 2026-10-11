@@ -228,7 +228,7 @@ export function NewConnectorConnectPage() {
       <TextField
         label="Name"
         isRequired
-        isDisabled={Boolean(registeredName)}
+        isReadOnly={Boolean(registeredName)}
         value={state.name}
         onChange={setName}
         placeholder="e.g. Jira"

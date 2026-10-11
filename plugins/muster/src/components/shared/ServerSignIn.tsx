@@ -1,5 +1,6 @@
-import { Tooltip, makeStyles, Theme } from '@material-ui/core';
+import { makeStyles, Theme } from '@material-ui/core';
 import { Button, ButtonLink, Text } from '@backstage/ui';
+import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
   SignInNoun,
@@ -261,14 +262,18 @@ function SignInFlow({
  */
 function GatedSignIn({ reason }: { reason: string }) {
   return (
-    <Tooltip title={reason}>
-      {/* span wrapper so the tooltip still fires over the disabled button */}
-      <span>
-        <Button variant="primary" size="small" isDisabled>
+    <DisabledAction reason={reason}>
+      {describedBy => (
+        <Button
+          variant="primary"
+          size="small"
+          isDisabled
+          aria-describedby={describedBy}
+        >
           Sign in
         </Button>
-      </span>
-    </Tooltip>
+      )}
+    </DisabledAction>
   );
 }
 

@@ -49,19 +49,19 @@ export const TOOL_GROUPS: Readonly<Record<ToolGroupKey, ToolGroupInfo>> = {
     key: 'agent-platform',
     title: 'Agent Platform',
     description:
-      "The platform's own management surface: the managers for agents, models and clusters, and muster's core tools. Writes act as the caller.",
+      "The platform's own management surface: the managers for agents, models and clusters, and the platform tools. Writes act as the caller.",
   },
   infrastructure: {
     key: 'infrastructure',
     title: 'Infrastructure',
     description:
-      'Servers for the infrastructure the platform runs on -- the management clusters this installation federates, as families with one instance per cluster.',
+      'Connectors for the infrastructure the platform runs on, each with one instance per management cluster this installation federates.',
   },
   registered: {
     key: 'registered',
-    title: 'Registered servers',
+    title: 'Registered connectors',
     description:
-      'Everything this installation or its users registered -- integrations and shared services, through GitOps or the Register server flow.',
+      'Everything this installation or its users registered: integrations and shared services, through GitOps or Add connector.',
   },
 };
 
@@ -80,7 +80,7 @@ const DECLARED_TOOL_GROUPS: readonly ToolGroup[] = [
 /**
  * Narrow a label value to a declared tool group. Anything else -- absent,
  * empty, a typo in a chart's values -- reads as undefined, so a mislabelled
- * server lands in *Registered servers* instead of breaking the page.
+ * server lands in *Registered connectors* instead of breaking the page.
  */
 export function parseToolGroup(
   value: string | undefined,

@@ -172,7 +172,9 @@ describe('UsageOverviewPage', () => {
     expect(screen.getByText('5.0M')).toBeInTheDocument();
     expect(screen.getByText('Active agents')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
-    expect(screen.getByText('2 models answered')).toBeInTheDocument();
+    expect(
+      screen.getByText("every user's, 2 models answered"),
+    ).toBeInTheDocument();
   });
 
   // Live round L4.
@@ -180,7 +182,9 @@ describe('UsageOverviewPage', () => {
     view.usage = usage({ models: 1 });
     renderPage();
 
-    expect(await screen.findByText('1 model answered')).toBeInTheDocument();
+    expect(
+      await screen.findByText("every user's, 1 model answered"),
+    ).toBeInTheDocument();
   });
 
   it('carries exactly one spend number, a teaser pointing to Cost', async () => {
@@ -278,7 +282,7 @@ describe('UsageOverviewPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Spend (estimated)')).toBeInTheDocument();
+    expect(await screen.findByText('Est. spend')).toBeInTheDocument();
     expect(screen.getByText('€5.00')).toBeInTheDocument();
     expect(screen.queryByText('$10.00')).toBeNull();
   });

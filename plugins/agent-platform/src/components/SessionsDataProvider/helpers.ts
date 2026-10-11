@@ -190,6 +190,41 @@ export function lastActiveAt(
 }
 
 /**
+ * The start of the reader's local calendar day `daysBack` days before `now`,
+ * epoch ms. The session lists' day groups (the rail's Today / Previous 7 days,
+ * the Sessions page's Today / Yesterday) and the palette's "Today" all cut on
+ * it, so a session never sits under Today in one place and not another.
+ */
+export function localDayStart(now: Date, daysBack: number = 0): number {
+  return new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - daysBack,
+  ).getTime();
+}
+
+/**
+ * The first of `buckets` whose window holds `activeAt` (epoch ms), each
+ * bucket reaching back to the local day start `daysBack` days ago; `fallback`
+ * past the last one, and for an unknown time. A time later than `now` (clock
+ * skew) lands in the first bucket.
+ */
+export function dayBucket<G extends string>(
+  activeAt: number | undefined,
+  now: Date,
+  buckets: ReadonlyArray<{ id: G; daysBack: number }>,
+  fallback: G,
+): G {
+  if (activeAt === undefined || Number.isNaN(activeAt)) {
+    return fallback;
+  }
+  const bucket = buckets.find(
+    ({ daysBack }) => activeAt >= localDayStart(now, daysBack),
+  );
+  return bucket?.id ?? fallback;
+}
+
+/**
  * The one recency order of the session lists (T100 M1): most recently active
  * first (see {@link lastActiveAt}), a session with no known time last, the
  * title breaking ties. The rail and the Sessions page both sort with this, so

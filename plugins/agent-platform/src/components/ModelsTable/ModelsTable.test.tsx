@@ -457,7 +457,7 @@ describe('ModelsTable serving state', () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: 'Load failed for qwen3:0.6b',
+          title: 'Could not load qwen3:0.6b',
           description: 'backend is busy',
           status: 'danger',
         }),

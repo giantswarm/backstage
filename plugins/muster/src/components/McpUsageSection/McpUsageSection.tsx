@@ -1,21 +1,13 @@
-import {
-  Box,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
+import { Paper, makeStyles, useTheme, Theme } from '@material-ui/core';
 import { Progress } from '@backstage/core-components';
+import { Box, Cell, Table, Text, useTable } from '@backstage/ui';
+import type { ColumnConfig } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
+  formatCount,
+  formatSeconds,
   parseUsageWindowParam,
   USAGE_WINDOW_PARAM,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -24,14 +16,16 @@ import {
   columnMax,
   DataBar,
   SectionHeader,
-  PHONE_MEDIA,
   ShowMore,
   StackedBarChart,
   isAwaitingData,
+  usePhoneColumns,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
+import { connectorNames } from '../../lib/connectorName';
+import type { MCPServer } from '../../lib/k8s';
 import type { McpUsage } from '../../apis';
 import {
   isUnreachableSession,
@@ -107,22 +101,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(3),
   },
   tableCard: {
+    padding: theme.spacing(2),
     borderRadius: theme.shape.borderRadius * 2,
     // Scrolls inside the card if a row still does not fit, rather than being
     // clipped by it (T22 C19); the radius clips the same either way.
     overflowX: 'auto',
     overflowY: 'hidden',
-  },
-  /**
-   * MUI's small cells pad 16px left and 24px right, ~40px of every column —
-   * at phone width that is a third of a tool name's room.
-   */
-  table: {
-    [PHONE_MEDIA]: {
-      '& th, & td': {
-        padding: theme.spacing(0.75, 1),
-      },
-    },
   },
   /** The figures a phone's table has no column for, under the name. */
   phoneFacts: {
@@ -158,30 +142,8 @@ const useStyles = makeStyles((theme: Theme) => ({
   note: {
     display: 'block',
     marginTop: theme.spacing(2),
-    color: theme.palette.text.secondary,
   },
 }));
-
-/**
- * Thousands grouping fixed to `en-US`, whatever the browser's locale, to match
- * the agent-platform figures this section sits beside on the Usage page
- * (`formatCount` in that plugin's `lib/formatNumbers.ts`).
- */
-const grouped = new Intl.NumberFormat('en-US');
-
-function formatCount(value: number): string {
-  return grouped.format(Math.round(value));
-}
-
-function formatSeconds(value: number | null): string {
-  if (value === null) {
-    return '—';
-  }
-  if (value < 1) {
-    return `${Math.round(value * 1000)} ms`;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
-}
 
 /** Axis tick for a bucket start: hour of day for hourly, date for daily. */
 function formatBucketTick(start: string, stepHours: number): string {
@@ -238,19 +200,57 @@ function PhoneFacts({
   );
 }
 
-function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
+/** Name and Calls at phone width; every column elsewhere. */
+const PHONE_COLUMNS = ['name', 'calls'];
+
+/**
+ * One of the section's ranked tables: a bui `Table` like the other usage
+ * tables on the page, in the order the route sends (busiest first), unsorted
+ * and unpaged — the connectors are revealed by `ShowMore` around it.
+ */
+function UsageTable<T extends { id: string }>({
+  rows,
+  columns,
+}: {
+  rows: T[];
+  columns: ColumnConfig<T>[];
+}) {
+  const shown = usePhoneColumns(columns, PHONE_COLUMNS);
+  const { tableProps } = useTable<T>({
+    mode: 'complete',
+    data: rows,
+    paginationOptions: { type: 'none' },
+  });
+  return <Table<T> {...tableProps} data={rows} columnConfig={shown} />;
+}
+
+function UsageBody({
+  data,
+  hours,
+  servers = [],
+}: {
+  data: McpUsage;
+  hours: number;
+  /** The installation's MCPServer CRs, to name each connector as Customize does. */
+  servers?: MCPServer[];
+}) {
   const classes = useStyles();
   const theme = useTheme();
-  // At phone width each table keeps the name and Calls; Errors and p95 move
-  // under the name, as words.
   const isPhone = usePhoneLayout();
+  const names = connectorNames(
+    [
+      ...(data.servers ?? []).map(entry => entry.server),
+      ...(data.source?.server ? [data.source.server] : []),
+    ],
+    servers,
+  );
 
   if (!data.available) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-medium" color="secondary">
         Usage metrics are not available for this environment:{' '}
         {data.reason ?? 'unknown reason'}
-      </Typography>
+      </Text>
     );
   }
 
@@ -304,6 +304,136 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
     serverErrors: columnMax(data.servers, row => row.errors),
   };
 
+  type ToolRow = McpUsage['top_tools'][number] & { id: string };
+  type ServerRow = NonNullable<McpUsage['servers']>[number] & { id: string };
+  const toolRows: ToolRow[] = data.top_tools.map(row => ({
+    ...row,
+    id: row.tool,
+  }));
+  const serverRows: ServerRow[] = (data.servers ?? []).map(row => ({
+    ...row,
+    id: row.server,
+  }));
+
+  const errorsCell = (errors: number, maxErrors: number | undefined) => (
+    <Cell>
+      <span
+        className={`${classes.numeric} ${errors > 0 ? classes.errorValue : ''}`}
+      >
+        <DataBar
+          label={formatCount(errors)}
+          value={errors}
+          max={maxErrors}
+          color={barColors.errors}
+        />
+      </span>
+    </Cell>
+  );
+
+  // At phone width each table keeps the name and Calls; Errors and p95 move
+  // under the name, as words (`PhoneFacts`).
+  const toolColumns: ColumnConfig<ToolRow>[] = [
+    {
+      id: 'name',
+      label: 'Top tools',
+      isRowHeader: true,
+      cell: row => (
+        <Cell>
+          <span className={classes.toolName}>
+            {row.tool}
+            {isPhone && (
+              <PhoneFacts
+                errors={row.errors}
+                p95Seconds={row.p95_seconds}
+                className={classes.phoneFacts}
+                errorClassName={classes.errorValue}
+              />
+            )}
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'calls',
+      label: 'Calls',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.toolCalls}
+              color={barColors.calls}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'errors',
+      label: 'Errors',
+      cell: row => errorsCell(row.errors, max.toolErrors),
+    },
+    {
+      id: 'p95',
+      label: 'p95',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatSeconds(row.p95_seconds)}
+              value={row.p95_seconds ?? undefined}
+              max={max.toolP95}
+              color={barColors.latency}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+  ];
+  const serverColumns: ColumnConfig<ServerRow>[] = [
+    {
+      id: 'name',
+      label: 'Connector',
+      isRowHeader: true,
+      cell: row => (
+        <Cell>
+          <span className={classes.toolName}>
+            {names.get(row.server) ?? row.server}
+            {isPhone && (
+              <PhoneFacts
+                errors={row.errors}
+                className={classes.phoneFacts}
+                errorClassName={classes.errorValue}
+              />
+            )}
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'calls',
+      label: 'Calls',
+      cell: row => (
+        <Cell>
+          <span className={classes.numeric}>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.serverCalls}
+              color={barColors.calls}
+            />
+          </span>
+        </Cell>
+      ),
+    },
+    {
+      id: 'errors',
+      label: 'Errors',
+      cell: row => errorsCell(row.errors, max.serverErrors),
+    },
+  ];
+
   return (
     <>
       <Box className={classes.statRow}>
@@ -331,17 +461,15 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
       </Box>
 
       {totals.calls === 0 ? (
-        <Typography variant="body2" color="textSecondary">
+        <Text as="p" variant="body-medium" color="secondary">
           No tool calls were dispatched to connectors in the last {rangeLabel}.
           If usage is expected, this environment's muster may not export
           dispatch metrics yet.
-        </Typography>
+        </Text>
       ) : (
         <>
           <Paper variant="outlined" className={classes.chartCard}>
-            <Typography component="div" className={classes.chartTitle}>
-              Tool calls by outcome
-            </Typography>
+            <div className={classes.chartTitle}>Tool calls by outcome</div>
             <StackedBarChart
               data={data.buckets}
               xAxisKey="start"
@@ -370,123 +498,19 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 
           <Box className={classes.tables}>
             <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small" className={classes.table}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Top tools</TableCell>
-                    <TableCell>Calls</TableCell>
-                    {!isPhone && <TableCell>Errors</TableCell>}
-                    {!isPhone && <TableCell>p95</TableCell>}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {data.top_tools.map(row => (
-                    <TableRow key={row.tool}>
-                      <TableCell className={classes.toolName}>
-                        {row.tool}
-                        {isPhone && (
-                          <PhoneFacts
-                            errors={row.errors}
-                            p95Seconds={row.p95_seconds}
-                            className={classes.phoneFacts}
-                            errorClassName={classes.errorValue}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatCount(row.calls)}
-                          value={row.calls}
-                          max={max.toolCalls}
-                          color={barColors.calls}
-                        />
-                      </TableCell>
-                      {!isPhone && (
-                        <TableCell
-                          className={`${classes.numeric} ${
-                            row.errors > 0 ? classes.errorValue : ''
-                          }`}
-                        >
-                          <DataBar
-                            label={formatCount(row.errors)}
-                            value={row.errors}
-                            max={max.toolErrors}
-                            color={barColors.errors}
-                          />
-                        </TableCell>
-                      )}
-                      {!isPhone && (
-                        <TableCell className={classes.numeric}>
-                          <DataBar
-                            label={formatSeconds(row.p95_seconds)}
-                            value={row.p95_seconds ?? undefined}
-                            max={max.toolP95}
-                            color={barColors.latency}
-                          />
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <UsageTable rows={toolRows} columns={toolColumns} />
             </Paper>
 
             {/* Sorted by calls on the server; the slice keeps the busiest. */}
             <ShowMore
-              items={data.servers}
+              items={serverRows}
               initial={CONNECTOR_ROWS}
               noun="connector"
               revealAll
             >
               {visible => (
                 <Paper variant="outlined" className={classes.tableCard}>
-                  <Table size="small" className={classes.table}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Connector</TableCell>
-                        <TableCell>Calls</TableCell>
-                        {!isPhone && <TableCell>Errors</TableCell>}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {visible.map(row => (
-                        <TableRow key={row.server}>
-                          <TableCell className={classes.toolName}>
-                            {row.server}
-                            {isPhone && (
-                              <PhoneFacts
-                                errors={row.errors}
-                                className={classes.phoneFacts}
-                                errorClassName={classes.errorValue}
-                              />
-                            )}
-                          </TableCell>
-                          <TableCell className={classes.numeric}>
-                            <DataBar
-                              label={formatCount(row.calls)}
-                              value={row.calls}
-                              max={max.serverCalls}
-                              color={barColors.calls}
-                            />
-                          </TableCell>
-                          {!isPhone && (
-                            <TableCell
-                              className={`${classes.numeric} ${
-                                row.errors > 0 ? classes.errorValue : ''
-                              }`}
-                            >
-                              <DataBar
-                                label={formatCount(row.errors)}
-                                value={row.errors}
-                                max={max.serverErrors}
-                                color={barColors.errors}
-                              />
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <UsageTable rows={visible} columns={serverColumns} />
                 </Paper>
               )}
             </ShowMore>
@@ -495,11 +519,16 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
       )}
 
       {data.source && (
-        <Typography variant="caption" className={classes.note}>
+        <Text
+          as="p"
+          variant="body-x-small"
+          color="secondary"
+          className={classes.note}
+        >
           Counted at muster's dispatch layer, so meta-tool wrapping (call_tool)
-          is attributed to the resolved tool and server. Queried via{' '}
-          {data.source.server}.
-        </Typography>
+          is attributed to the resolved tool and connector. Queried through the{' '}
+          {names.get(data.source.server) ?? data.source.server} connector.
+        </Text>
       )}
     </>
   );
@@ -529,7 +558,7 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 function McpUsageBody() {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
-  const { activeInstallation } = useMusterInstance();
+  const { activeInstallation, mcpServers } = useMusterInstance();
   // The usage route reads muster's own metrics through the live session; an
   // installation whose muster the backend cannot reach gets the note instead
   // of a request that can only fail.
@@ -561,12 +590,12 @@ function McpUsageBody() {
     body = <Progress />;
   } else if (error) {
     body = (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-medium" color="secondary">
         Usage unavailable: {(error as Error).message}
-      </Typography>
+      </Text>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={hours} />;
+    body = <UsageBody data={data} hours={hours} servers={mcpServers} />;
   }
 
   return (

@@ -105,6 +105,7 @@ describe('ModelHostingKpis', () => {
       { readiness: 'ready' },
       { readiness: 'ready' },
       { readiness: 'starting' },
+      { readiness: 'pending' },
     ];
     mockAvailable = ['inst-1'];
     mockPools = { rows: [pool('l4', 2)], caches: [] };
@@ -116,7 +117,7 @@ describe('ModelHostingKpis', () => {
 
     expect(within(tile('Models running')).getByText('2')).toBeInTheDocument();
     expect(
-      within(tile('Models running')).getByText('1 starting'),
+      within(tile('Models running')).getByText('1 pending · 1 starting'),
     ).toBeInTheDocument();
     expect(within(tile('GPUs in use')).getByText('1 of 2')).toBeInTheDocument();
     expect(within(tile('GPU pools')).getByText('1')).toBeInTheDocument();

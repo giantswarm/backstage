@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerAvailability,
@@ -7,14 +8,11 @@ import {
 import { useNodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { formatCount } from '../../lib/formatNumbers';
 import { describeHourlyRange, totalHourlyCost } from '../../lib/poolPricing';
+import { SERVED_MODEL_READINESS } from '../../lib/serving';
 import { KpiTile, KpiTileGrid } from '../LlmUsage';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { cacheSize, countRunningModels, gpuUse } from './hostingKpis';
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
 
 export type ModelHostingKpisScope = 'all' | 'gpu' | 'cache';
 
@@ -83,8 +81,12 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
     return null;
   }
 
+  // The table's state words, lower-cased mid-line.
   const runningSub = [
-    running.starting > 0 && `${running.starting} starting`,
+    running.pending > 0 &&
+      `${running.pending} ${SERVED_MODEL_READINESS.pending.phrase}`,
+    running.starting > 0 &&
+      `${running.starting} ${SERVED_MODEL_READINESS.starting.phrase}`,
     running.idle > 0 && `${running.idle} idle`,
   ]
     .filter(Boolean)
@@ -99,7 +101,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
         value={describeHourlyRange(cost.minUSD, cost.maxUSD)}
         sub={
           unpricedRunning > 0
-            ? `list price · ${plural(unpricedRunning, 'pool')} without a price left out`
+            ? `list price · ${countNoun(unpricedRunning, 'pool')} without a price left out`
             : 'on-demand list price'
         }
       />
@@ -143,7 +145,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             label="GPUs in use"
             hint="Counts the accelerators that scheduled pods hold, out of those the nodes make schedulable."
             value={`${formatCount(gpus.used)} of ${formatCount(gpus.total)}`}
-            sub={`on ${plural(gpus.nodes, 'node')}`}
+            sub={`on ${countNoun(gpus.nodes, 'node')}`}
           />
         )}
         {showsGpu && hasPools && (
@@ -151,7 +153,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             label="GPU pools"
             hint="Counts the GPU node pools cluster-manager runs. A pool runs nodes only while something is scheduled on them."
             value={formatCount(pools.rows.length)}
-            sub={`${plural(nodesRunning, 'node')} running`}
+            sub={`${countNoun(nodesRunning, 'node')} running`}
           />
         )}
         {showsGpu && costTile}
@@ -167,13 +169,13 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             sub={
               cache.basis === 'claims'
                 ? [
-                    plural(cache.count, 'volume'),
+                    countNoun(cache.count, 'volume'),
                     cache.monthlyUSD !== undefined &&
                       `$${cache.monthlyUSD.toFixed(2)}/month`,
                   ]
                     .filter(Boolean)
                     .join(' · ')
-                : `used, ${plural(cache.count, 'cache')}`
+                : `used, ${countNoun(cache.count, 'cache')}`
             }
           />
         )}

@@ -77,7 +77,7 @@ describe('agentStatus', () => {
           },
         }),
       ),
-    ).toEqual({ label: 'Model not running', tone: 'warning' });
+    ).toEqual({ label: 'Model not serving', tone: 'warning' });
   });
 });
 
@@ -162,9 +162,9 @@ describe('modelStatus', () => {
     });
   });
 
-  it('is available unless the serving layer says otherwise', () => {
+  it('reads in the Running models words, Ready when nothing here serves it', () => {
     expect(modelStatus(model())).toEqual({
-      label: 'Available',
+      label: 'Ready',
       tone: 'success',
     });
     const servedBy = {
@@ -177,10 +177,10 @@ describe('modelStatus', () => {
       modelStatus(
         model({ servedBy: { ...servedBy, readiness: 'notServing' } }),
       ),
-    ).toEqual({ label: 'Not running', tone: 'warning' });
+    ).toEqual({ label: 'Not serving', tone: 'warning' });
     expect(
       modelStatus(model({ servedBy: { ...servedBy, readiness: 'idle' } })),
-    ).toEqual({ label: 'Available', tone: 'success' });
+    ).toEqual({ label: 'Idle', tone: 'neutral' });
     expect(
       modelStatus(model({ servedBy: { ...servedBy, readiness: 'starting' } }))
         .label,

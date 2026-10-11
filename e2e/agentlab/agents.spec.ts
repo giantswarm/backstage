@@ -116,6 +116,12 @@ test('the New agent wizard opens on Details, derives the technical name and list
   await admin
     .getByRole('textbox', { name: 'Name', exact: true })
     .fill('E2E Probe Agent');
+  await expect(
+    admin.getByText(
+      'Its technical name is e2e-probe-agent; it cannot be changed once the agent exists.',
+    ),
+    'the irreversible technical name is said beside the name (M7)',
+  ).toBeVisible();
   await openWizardMoreOptions(admin);
   await expect(
     admin.getByRole('textbox', { name: 'Technical name' }),

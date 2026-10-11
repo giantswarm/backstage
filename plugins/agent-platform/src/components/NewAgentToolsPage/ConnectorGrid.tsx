@@ -8,6 +8,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CatalogNoMatch,
   matchesQuery,
   SEARCH_MIN,
   ShowMore,
@@ -88,7 +89,7 @@ function ConnectorCard({
   const classes = useStyles();
   const { choice, picked } = connectorState(bucket, selected);
   const readOnlyCount = readOnlySelectors(bucket).length;
-  const name = `${bucket.name}${bucket.isFamily ? ' (family)' : ''}`;
+  const name = bucket.name;
   return (
     <div
       role="group"
@@ -180,7 +181,7 @@ export function ConnectorGrid({
         />
       )}
       {matching.length === 0 ? (
-        <Text color="secondary">No connector matches “{trimmed}”.</Text>
+        <CatalogNoMatch plural="connectors" search={trimmed} />
       ) : (
         <ShowMore
           key={trimmed}

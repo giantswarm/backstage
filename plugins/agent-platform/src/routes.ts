@@ -234,6 +234,15 @@ export const musterServerToolExternalRouteRef = createExternalRouteRef({
 });
 
 /**
+ * A workflow's page in muster's plugin (`/agent-platform/workflows/<name>`),
+ * read with `?installation=`. Unbound when the muster plugin is disabled.
+ */
+export const musterWorkflowDetailExternalRouteRef = createExternalRouteRef({
+  params: ['name'],
+  defaultTarget: 'muster.workflowDetail',
+});
+
+/**
  * The gs plugin's deployment details page.
  *
  * An agent created through this plugin is deployed as a Flux `HelmRelease`, and

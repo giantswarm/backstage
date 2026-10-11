@@ -5,7 +5,10 @@ import {
   toolTableItem,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  CatalogNoMatch,
+  LoadingIndicator,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
 import { filterCatalogue } from '../../lib/filterCatalogue';
@@ -100,25 +103,22 @@ function Workflows({
   );
 }
 
-/** The trigger line of a group: what it resolved to, in counts. */
+/**
+ * The trigger line of a group: what it resolved to, in counts that say what
+ * they count — "3 connectors with 24 tools · 16 platform tools".
+ */
 function groupSummary(group: CatalogueGroup): string {
   const parts: string[] = [];
   if (group.servers.length > 0) {
-    parts.push(countNoun(group.servers.length, 'server'));
     parts.push(
-      countNoun(
+      `${countNoun(group.servers.length, 'connector')} with ${countNoun(
         group.servers.reduce((sum, bucket) => sum + bucket.tools.length, 0),
         'tool',
-      ),
+      )}`,
     );
   }
   if (group.platformAdministration.length > 0) {
-    parts.push(
-      countNoun(
-        group.platformAdministration.length,
-        'platform administration tool',
-      ),
-    );
+    parts.push(countNoun(group.platformAdministration.length, 'platform tool'));
   }
   if (group.workflows.length > 0) {
     parts.push(countNoun(group.workflows.length, 'workflow'));
@@ -144,9 +144,10 @@ function groupEntries(
             defaultExpanded={defaultExpanded}
             entries={group.servers.map(bucket => ({
               key: `${group.key}/${bucket.name}`,
-              trigger: `${bucket.name}${
-                bucket.isFamily ? ' (family)' : ''
-              } — ${countNoun(bucket.tools.length, 'tool')}`,
+              trigger: `${bucket.name} — ${countNoun(
+                bucket.tools.length,
+                'tool',
+              )}`,
               panel: () => (
                 <ToolRows tools={bucket.tools} toolHref={toolHref} />
               ),
@@ -161,16 +162,16 @@ function groupEntries(
             entries={[
               {
                 key: `${group.key}/platform-administration`,
-                trigger: `Platform administration — ${countNoun(
+                trigger: `Platform tools — ${countNoun(
                   group.platformAdministration.length,
                   'tool',
-                )} of muster itself`,
+                )}`,
                 panel: () => (
                   <>
                     <Alert
                       status="warning"
-                      title="Platform administration tools"
-                      description="muster's own core tools manage the platform itself — its servers, workflows and configuration."
+                      title="Platform tools"
+                      description="These are the Agent Platform's own tools. They act on its connectors, workflows and configuration."
                     />
                     <ToolRows
                       tools={group.platformAdministration}
@@ -207,7 +208,7 @@ export type ToolsetResolutionListProps = {
 
 /**
  * The tools a toolset resolves to for the caller, grouped the way the platform
- * groups its servers (Infrastructure / Agent Platform / Registered servers /
+ * groups its servers (Infrastructure / Agent Platform / Registered connectors /
  * Workflows), with muster's core tools set apart as *Platform administration*.
  *
  * A preset resolves to hundreds of tools on a real installation, so the list
@@ -242,7 +243,7 @@ export function ToolsetResolutionList({
   // The selection can shrink the resolution under the threshold while a query
   // is still typed, and the field goes away with it. Two things follow, and
   // both are needed: the query must stop filtering on the very render that
-  // hides the field (or the card flashes "Nothing matches" with nothing left
+  // hides the field (or the card flashes "No tools match" with nothing left
   // to clear it), and it must not survive to be reapplied if the resolution
   // grows back — the author would meet a pre-filtered list they never typed.
   const activeQuery = isShort ? '' : trimmed;
@@ -325,7 +326,7 @@ export function ToolsetResolutionList({
   const inventoryLine =
     activeQuery === ''
       ? [
-          countNoun(inventory.servers, 'server'),
+          countNoun(inventory.servers, 'connector'),
           countNoun(inventory.tools + inventory.platformAdministration, 'tool'),
           countNoun(inventory.workflows, 'workflow'),
         ].join(' · ')
@@ -342,7 +343,7 @@ export function ToolsetResolutionList({
           title="Some selectors match nothing for you"
           description={`${resolution.unmatched.join(
             ', ',
-          )} — a renamed or removed tool, a workflow that is not available, or a server you have not signed in to. They select nothing until that changes.`}
+          )} — a renamed or removed tool, a workflow that is not available, or a connector you have not signed in to. They select nothing until that changes.`}
         />
       )}
       {resolution.truncated && (
@@ -381,9 +382,7 @@ export function ToolsetResolutionList({
             </Flex>
           )}
           {visibleGroups.length === 0 ? (
-            <Text color="secondary">
-              Nothing matches &quot;{activeQuery}&quot;.
-            </Text>
+            <CatalogNoMatch plural="tools" search={activeQuery} />
           ) : (
             <Disclosures
               query={activeQuery}

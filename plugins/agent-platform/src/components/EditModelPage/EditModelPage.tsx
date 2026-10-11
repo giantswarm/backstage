@@ -81,6 +81,8 @@ export function EditModelPage() {
       { enabled: Boolean(modelConfig) },
     );
 
+  const shownName = modelConfig?.getDisplayName() || name;
+
   const backLink = detailHref ? (
     <Link to={detailHref}>Back to the model</Link>
   ) : undefined;
@@ -131,9 +133,12 @@ export function EditModelPage() {
   }
 
   return (
+    // Named like the edit form it hands over to, so neither the document
+    // title nor the context line shifts when it does.
     <WizardFrame
       title="Edit model"
-      context="Customize / Models"
+      documentTitle={[`Edit ${shownName}`, 'Models']}
+      context={`Customize / Models / ${shownName}`}
       closeHref={detailHref ?? '/'}
       width="medium"
     >

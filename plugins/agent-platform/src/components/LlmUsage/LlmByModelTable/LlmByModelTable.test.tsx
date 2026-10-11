@@ -163,7 +163,7 @@ describe('LlmByModelTable at phone width', () => {
     layout = mockPhoneLayout();
     render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
 
-    expect(headers()).toEqual(['Model', 'Est. cost', 'Avg tokens/call']);
+    expect(headers()).toEqual(['Model', 'Spend', 'Avg tokens/call']);
     const name = screen.getByText(ROWS[0].model);
     // Wraps to two lines rather than truncating to one, and no `title=`.
     expect(name).not.toHaveAttribute('data-truncate');

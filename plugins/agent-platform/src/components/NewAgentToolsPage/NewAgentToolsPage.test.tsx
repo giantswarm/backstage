@@ -469,7 +469,7 @@ const summaryBar = () =>
 /** The access-level radio. */
 const levels = () => screen.getByRole('radiogroup', { name: 'What it may do' });
 const level = (name: string) => within(levels()).getByRole('radio', { name });
-/** One connector of *Which apps?*. */
+/** One connector of *Which connectors?*. */
 const connector = (name: string) =>
   screen.getByRole('group', { name: `Connector ${name}` });
 const access = (name: string, option: 'Read-only' | 'All') =>
@@ -552,9 +552,9 @@ describe('NewAgentToolsPage', () => {
             .map(option => option.getAttribute('aria-label')),
         ).toEqual([
           'Nothing outside the chat',
-          'Look things up',
+          'Read-only tools',
           'Infrastructure',
-          'Look things up and make changes',
+          'Full gateway',
           'Only the tools I choose below',
         ]),
       );
@@ -614,7 +614,7 @@ describe('NewAgentToolsPage', () => {
       // A preset replaces whatever was picked.
       await ownPicks(user);
       await user.click(access('agent-manager', 'All'));
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       expect(toolsetOutput()).toBe('preset:read-only');
 
       // Read-only covers kubernetes' one read-only tool: shown as Read-only.
@@ -654,7 +654,7 @@ describe('NewAgentToolsPage', () => {
       const user = userEvent.setup();
       await connectorsListed();
 
-      await user.click(level('Look things up and make changes'));
+      await user.click(level('Full gateway'));
       expect(toolsetOutput()).toBe('preset:full');
       expect(
         screen.getByText('Full gateway includes every tool.'),
@@ -698,7 +698,7 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.queryByText('Only the built-in presets are known'),
       ).not.toBeInTheDocument();
-      expect(level('Look things up')).toBeInTheDocument();
+      expect(level('Read-only tools')).toBeInTheDocument();
 
       release();
 
@@ -722,7 +722,7 @@ describe('NewAgentToolsPage', () => {
         screen.queryByRole('radio', { name: 'Infrastructure' }),
       ).not.toBeInTheDocument();
 
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
 
       expect(
         await within(summaryBar()).findByText(
@@ -743,8 +743,8 @@ describe('NewAgentToolsPage', () => {
           .map(option => option.getAttribute('aria-label')),
       ).toEqual([
         'Nothing outside the chat',
-        'Look things up',
-        'Look things up and make changes',
+        'Read-only tools',
+        'Full gateway',
         'Only the tools I choose below',
       ]);
       expect(
@@ -772,7 +772,8 @@ describe('NewAgentToolsPage', () => {
       await ownPicks(user);
 
       // Name and tool count only.
-      expect(connector('kubernetes')).toHaveTextContent('kubernetes (family)');
+      expect(connector('kubernetes')).toHaveTextContent(/^kubernetes/);
+      expect(connector('kubernetes')).not.toHaveTextContent('(family)');
       expect(connector('kubernetes')).toHaveTextContent('2 tools');
 
       await user.click(access('kubernetes', 'Read-only'));
@@ -835,7 +836,7 @@ describe('NewAgentToolsPage', () => {
       await openIndividual(user);
 
       await open(user, /^Infrastructure — /);
-      await open(user, /^kubernetes \(family\) — 2 tools/);
+      await open(user, /^kubernetes — 2 tools/);
       await user.click(
         screen.getByRole('checkbox', { name: 'Tool x_kubernetes_delete_pod' }),
       );
@@ -928,7 +929,7 @@ describe('NewAgentToolsPage', () => {
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       await waitFor(() =>
         expect(access('kubernetes', 'Read-only')).toBeChecked(),
       );
@@ -956,7 +957,7 @@ describe('NewAgentToolsPage', () => {
       await user.click(access('kubernetes', 'Read-only'));
       await user.click(access('agent-manager', 'All'));
       expect(toolsetOutput()).toBe('preset:read-only');
-      expect(level('Look things up')).toBeChecked();
+      expect(level('Read-only tools')).toBeChecked();
     });
 
     it('writes the preset out when part of it is taken away, and names what to reduce over the cap', async () => {
@@ -968,7 +969,7 @@ describe('NewAgentToolsPage', () => {
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       await waitFor(() =>
         expect(access('kubernetes', 'Read-only')).toBeChecked(),
       );
@@ -1093,13 +1094,13 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
       expect(
         within(catalogueCard()).queryByRole('button', {
-          name: /^Registered servers/,
+          name: /^Registered connectors/,
         }),
       ).not.toBeInTheDocument();
 
       await user.type(screen.getByLabelText('Search tools'), 'github');
       expect(
-        screen.getByText('Nothing matches "github" with this filter.'),
+        screen.getByText('No tools match “github” with these filters.'),
       ).toBeInTheDocument();
       await user.click(
         screen.getByRole('button', { name: 'Show everything again' }),
@@ -1132,7 +1133,7 @@ describe('NewAgentToolsPage', () => {
         screen.queryByRole('button', { name: /Filter by what it does/ }),
       ).not.toBeInTheDocument();
       await open(user, /^Infrastructure — /);
-      await open(user, /^kubernetes \(family\) — 1 tool/);
+      await open(user, /^kubernetes — 1 tool/);
       expect(
         within(catalogueCard()).queryByRole('button', {
           name: /^Show \d+ more/,
@@ -1158,7 +1159,7 @@ describe('NewAgentToolsPage', () => {
       await ownPicks(user);
       expect(connector('github')).toHaveTextContent('300 tools');
       await openIndividual(user);
-      await open(user, /^Registered servers — /);
+      await open(user, /^Registered connectors — /);
       await open(user, /^github — 300 tools/);
 
       const catalogue = within(catalogueCard());
@@ -1206,7 +1207,7 @@ describe('NewAgentToolsPage', () => {
       await ownPicks(user);
       await openIndividual(user);
 
-      await open(user, /^Registered servers — /);
+      await open(user, /^Registered connectors — /);
       await open(user, /^pro — sign in to see its tools/);
       await user.click(screen.getByRole('button', { name: 'Sign in' }));
       await waitFor(() =>
@@ -1329,7 +1330,7 @@ describe('NewAgentToolsPage', () => {
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       await waitFor(() => expect(individualToggle()).toBeEnabled());
       await openIndividual(user);
 
@@ -1360,11 +1361,11 @@ describe('NewAgentToolsPage', () => {
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       await waitFor(() => expect(individualToggle()).toBeEnabled());
       await openIndividual(user);
       await open(user, /^Infrastructure — /);
-      await open(user, /^kubernetes \(family\) — 2 tools/);
+      await open(user, /^kubernetes — 2 tools/);
       // The preset's coverage is shown in the catalogue too.
       expect(
         screen.getByRole('checkbox', { name: 'Tool x_kubernetes_get_pods' }),
@@ -1416,7 +1417,7 @@ describe('NewAgentToolsPage', () => {
       expect(within(rail).getByText('No tools')).toBeInTheDocument();
 
       // An untouched preset is listed with what it covers.
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
       expect(
         await within(rail).findByRole('list', { name: 'kubernetes' }),
       ).toHaveTextContent('get_pods');
@@ -1453,7 +1454,7 @@ describe('NewAgentToolsPage', () => {
       // Back to the preset alone, which the radio shows as that preset.
       expect(toolsetOutput()).toBe('preset:read-only');
       expect(access('agent-manager', 'All')).not.toBeChecked();
-      expect(level('Look things up')).toBeChecked();
+      expect(level('Read-only tools')).toBeChecked();
     });
 
     it('opens the resolved list from the rail', async () => {
@@ -1464,7 +1465,7 @@ describe('NewAgentToolsPage', () => {
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
-      await user.click(level('Look things up'));
+      await user.click(level('Read-only tools'));
 
       await user.click(
         screen.getByRole('button', { name: 'Show the resolved list' }),

@@ -2,11 +2,9 @@ import { SessionStateTone } from '@giantswarm/backstage-plugin-agent-platform-co
 import { Theme } from '@material-ui/core';
 
 /**
- * Tone to colour. bui's `Badge` takes no tone in this version, so the dot is
- * hand-drawn — which is also what `PullReviewPage` does for its status dots.
- *
- * Shared, so the rail's group dots and the sessions list's state dots cannot
- * come out different colours for one state.
+ * Tone to colour, for the classic-chrome sessions table's state dots only.
+ * Every shell surface draws session states with ui-react's `StatusDot` (bui
+ * tokens behind `sessionStateDotVar`), so the shell's dots share one source.
  */
 export function toneColor(tone: SessionStateTone, theme: Theme): string {
   switch (tone) {

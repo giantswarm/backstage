@@ -176,7 +176,7 @@ export function HarnessPicker() {
       {errors.length > 0 && (
         <Alert
           status="warning"
-          title="Some runtimes could not be loaded; the list may be incomplete."
+          title="Could not read some runtimes, so the list may be incomplete."
         />
       )}
       {hasChoice ? (

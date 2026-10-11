@@ -14,6 +14,7 @@ import {
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
+  countNoun,
   MoreOptions,
   searchableIf,
   useFieldValidation,
@@ -99,7 +100,7 @@ type Choice = {
   label: string;
   description?: string;
   disabled?: boolean;
-  /** Where the preset serves already (`Serving on gpu-a`); such a choice is disabled. */
+  /** The preset's served row, in words (`Ready on gpu-a`); such a choice is disabled. */
   served?: string;
   /** The GPUs the preset needs, where it says. */
   gpus?: number;
@@ -114,15 +115,17 @@ function presetChoice(
     preset.weightsBytes !== undefined
       ? `${formatBytes(preset.weightsBytes)} of weights`
       : undefined,
-    preset.gpus !== undefined
-      ? `${preset.gpus} GPU${preset.gpus === 1 ? '' : 's'}`
-      : undefined,
+    preset.gpus !== undefined ? countNoun(preset.gpus, 'GPU') : undefined,
   ].filter(Boolean);
   const where = served ? describeServedWhere(served) : undefined;
   return {
     id: preset.name,
     label: preset.displayName ?? preset.name,
-    description: [where, preset.description, facts.join(' · ')]
+    description: [
+      where && `In Running models: ${where}`,
+      preset.description,
+      facts.join(' · '),
+    ]
       .filter(Boolean)
       .join(' — '),
     ...(where ? { disabled: true, served: where } : {}),
@@ -776,8 +779,8 @@ export function ServeModelPage({
           <Alert
             status="info"
             data-testid="serve-already-serving"
-            title={`${choice.label}: ${servedWhere}`}
-            description="model-manager serves each preset once. Stop it under Running models to serve it on another node."
+            title={`${choice.label} is in Running models: ${servedWhere}`}
+            description="model-manager serves each preset once. Stop it there to serve it on another node."
           />
         )}
 
@@ -791,7 +794,7 @@ export function ServeModelPage({
             {activeFit.isError && (
               <Alert
                 status="danger"
-                title="Fit check failed"
+                title="Could not check the fit"
                 description={activeFit.error.message}
               />
             )}

@@ -7,7 +7,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { EmptyState } from '@backstage/core-components';
+
 import {
   toastApiRef,
   useApi,
@@ -30,6 +30,7 @@ import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
   DisabledAction,
+  EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
   MENU_WIDTH,
@@ -629,6 +630,7 @@ function ConnectorPageContent({
                     instances={row.servers}
                     fleetClusters={fleetClusters}
                     authenticated={authenticated}
+                    windowed
                   />
                 }
               />
@@ -756,8 +758,7 @@ function ConnectorPageBody({
           { label: key },
         ]}
       >
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title="No muster environment"
           description="None of this portal's environments runs muster."
         />
@@ -774,11 +775,10 @@ function ConnectorPageBody({
           { label: key },
         ]}
       >
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title={`No connector “${key}” on ${activeInstallation}`}
           description="It may be on another environment, or removed."
-          action={
+          actions={
             paths.connectors ? (
               <Link href={paths.connectors}>Back to connectors</Link>
             ) : undefined

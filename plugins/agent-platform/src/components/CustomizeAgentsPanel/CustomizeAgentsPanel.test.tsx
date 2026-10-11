@@ -380,7 +380,7 @@ describe('CustomizeAgentsPanel', () => {
         `/?agent=${encodeURIComponent(docs.id)}`,
       );
       expect(cards[1]).toHaveTextContent('Support triage');
-      expect(cards[1]).toHaveTextContent('New session');
+      expect(cards[1]).toHaveTextContent('Start a session');
     });
 
     it('shows at most three cards however many sessions there are', async () => {

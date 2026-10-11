@@ -136,7 +136,7 @@ describe('the Selected rail', () => {
   const groups: CatalogueGroup[] = [
     {
       key: 'registered',
-      title: 'Registered servers',
+      title: 'Registered connectors',
       servers: [JIRA, bucket('github', [changes('x_github_merge')])],
       platformAdministration: [{ name: 'core_service_list', kind: 'core' }],
       workflows: [],
@@ -173,7 +173,7 @@ describe('the Selected rail', () => {
       { key: 'workflows', title: 'Workflows', selectors: ['workflow:triage'] },
       {
         key: 'platform-administration',
-        title: 'Platform administration',
+        title: 'Platform tools',
         selectors: ['tool:core_service_list'],
       },
       { key: 'other', title: 'Other', selectors: ['server:gone'] },
@@ -192,7 +192,7 @@ describe('a preset written out', () => {
   const groups: CatalogueGroup[] = [
     {
       key: 'registered',
-      title: 'Registered servers',
+      title: 'Registered connectors',
       servers: [
         JIRA,
         bucket('github', [changes('x_github_merge'), changes('x_github_pr')]),
@@ -248,7 +248,7 @@ describe('a compact toolset (B1)', () => {
   const groups: CatalogueGroup[] = [
     {
       key: 'registered',
-      title: 'Registered servers',
+      title: 'Registered connectors',
       servers: [JIRA, GITHUB, DOCS],
       platformAdministration: [],
       workflows: [],
@@ -350,7 +350,7 @@ describe('a compact toolset (B1)', () => {
     const wide: CatalogueGroup[] = [
       {
         key: 'registered',
-        title: 'Registered servers',
+        title: 'Registered connectors',
         servers: [
           bucket(
             'jira',

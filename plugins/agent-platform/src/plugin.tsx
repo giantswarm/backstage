@@ -38,6 +38,7 @@ import {
   modelsRouteRef,
   musterServersExternalRouteRef,
   musterServerToolExternalRouteRef,
+  musterWorkflowDetailExternalRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
@@ -468,6 +469,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
   externalRoutes: {
     musterServers: musterServersExternalRouteRef,
     musterServerTool: musterServerToolExternalRouteRef,
+    musterWorkflowDetail: musterWorkflowDetailExternalRouteRef,
     deploymentDetails: deploymentDetailsExternalRouteRef,
     installations: installationsExternalRouteRef,
   },

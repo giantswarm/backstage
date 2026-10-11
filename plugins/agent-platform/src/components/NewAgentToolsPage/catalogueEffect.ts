@@ -1,4 +1,5 @@
 import {
+  TOOL_EFFECT_LABELS,
   toolEffect,
   type ToolEffect,
   type ToolSummary,
@@ -11,11 +12,6 @@ import { type CatalogueGroup, hasEntries } from '../../lib/toolset';
 export type EffectFilter = 'all' | ToolEffect;
 
 export const EFFECT_FILTER_ID = 'effect';
-
-const EFFECT_LABELS: Record<ToolEffect, string> = {
-  reads: 'Reads',
-  changes: 'Changes things',
-};
 
 /** Every pickable entry of the catalogue: server tools, muster's own, workflows. */
 function catalogueTools(groups: CatalogueGroup[]): ToolSummary[] {
@@ -86,7 +82,7 @@ export function effectDimension(
     label: 'What it does',
     options: (['reads', 'changes'] as const).map(id => ({
       id,
-      label: EFFECT_LABELS[id],
+      label: TOOL_EFFECT_LABELS[id],
       count: counts[id],
     })),
     selected: effect === 'all' ? [] : [effect],

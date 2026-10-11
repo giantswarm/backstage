@@ -81,7 +81,7 @@ function AgentUsageContent({
         {hasGateway && (
           <>
             <KpiTile
-              label="Est. cost"
+              label="Spend"
               hint="Shows the gateway's price for every user's calls to this agent's model. Models missing from its catalogue add nothing."
               // No row is no calls, which is zero spend; a row without a
               // cost is a model the catalogue cannot price, which is "—".
@@ -90,19 +90,19 @@ function AgentUsageContent({
                   ? formatMoney(gatewayRow.costUsd, currency)
                   : formatMoney(0, currency)
               }
-              sub="every user"
+              sub="every user's"
             />
             <KpiTile
               label="Tokens"
               hint="Counts the tokens this agent's model calls used, as the gateway counted them."
               value={formatTokens(gatewayRow?.tokens ?? 0)}
-              sub="every user"
+              sub="every user's"
             />
             <KpiTile
               label="Model calls"
               hint="Counts how often this agent called its model."
               value={formatCount(gatewayRow?.calls ?? 0)}
-              sub="every user"
+              sub="every user's"
             />
           </>
         )}
@@ -120,7 +120,7 @@ function AgentUsageContent({
             label="Reported cost"
             hint="Shows what the agent's runtime reported for your turns. Only some runtimes report a cost."
             value={formatUsd(sessionRow.reportedCostUsd)}
-            sub="from the agent's runtime, your sessions"
+            sub="yours, from the agent's runtime"
           />
         )}
       </KpiTileGrid>

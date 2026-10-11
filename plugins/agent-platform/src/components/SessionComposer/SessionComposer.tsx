@@ -114,7 +114,7 @@ export type SessionComposerProps = {
   /** Why the last send failed, shown as "Message not sent". */
   error?: string;
   /**
-   * Why the last Stop failed, shown as "Stop failed" — its own notice, because
+   * Why the last Stop failed, shown as "Could not stop the turn" — its own notice, because
    * a Stop is not a send and the words "Message not sent" over a turn that is
    * still running say the opposite of what happened. The caller words it: the
    * backend's message, with what to do about it where that is known.
@@ -338,14 +338,14 @@ export function SessionComposer({
   } else if (newSession) {
     caption = newSession.caption;
   } else if (isStopping) {
-    caption = 'Stopping the agent…';
+    caption = 'Stopping the turn…';
   } else if (isAgentWorking && isStalled) {
     caption = showStop
-      ? 'The agent has stopped reporting progress. Cancel the turn to send again.'
+      ? 'The agent has stopped reporting progress. Stop the turn to send again.'
       : 'The agent has stopped reporting progress. You can reply once this turn ends.';
   } else if (isAgentWorking) {
     caption = showStop
-      ? 'The agent is working. Stop it, or reply once this turn finishes.'
+      ? 'The agent is working. Stop the turn, or reply once it finishes.'
       : 'The agent is working. You can reply once this turn finishes.';
   } else {
     // The prototype's resting caption, whether or not the last turn finished:
@@ -367,7 +367,11 @@ export function SessionComposer({
         <Alert status="danger" title="Message not sent" description={error} />
       )}
       {stopError && (
-        <Alert status="danger" title="Stop failed" description={stopError} />
+        <Alert
+          status="danger"
+          title="Could not stop the turn"
+          description={stopError}
+        />
       )}
 
       {attachment}
@@ -415,7 +419,7 @@ export function SessionComposer({
                     // this box invites.
                     <ButtonIcon
                       type="button"
-                      aria-label="Stop"
+                      aria-label="Stop the turn"
                       variant="secondary"
                       icon={<StopIcon />}
                       isPending={isStopping}

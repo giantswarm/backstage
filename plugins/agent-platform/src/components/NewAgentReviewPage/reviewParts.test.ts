@@ -7,7 +7,7 @@ describe('toolsetSummaryLabel', () => {
         'preset:read-only',
         'server:agent-manager',
       ]),
-    ).toBe('Read-only tools everywhere; all agent-manager tools');
+    ).toBe('Read-only tools; all agent-manager tools');
   });
 
   it('counts tools and workflows picked one by one rather than listing them', () => {

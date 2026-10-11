@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   byLastActive,
+  dayBucket,
   lastActiveAt,
   type SessionRow,
 } from '../SessionsDataProvider/helpers';
@@ -75,6 +76,11 @@ export const RAIL_SESSION_GROUPS: ReadonlyArray<{
   { id: 'earlier', label: 'Earlier' },
 ];
 
+const RAIL_DAY_BUCKETS = [
+  { id: 'today', daysBack: 0 },
+  { id: 'week', daysBack: 7 },
+] as const;
+
 /**
  * The rail bucket of a session last active at `activeAt` (epoch ms), in the
  * reader's local calendar. A time later than `now` (clock skew) counts as
@@ -84,23 +90,7 @@ export function railSessionGroup(
   activeAt: number | undefined,
   now: Date,
 ): RailSessionGroup {
-  if (activeAt === undefined || Number.isNaN(activeAt)) {
-    return 'earlier';
-  }
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
-  if (activeAt >= startOfToday) {
-    return 'today';
-  }
-  const startOfWindow = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - 7,
-  ).getTime();
-  return activeAt >= startOfWindow ? 'week' : 'earlier';
+  return dayBucket(activeAt, now, RAIL_DAY_BUCKETS, 'earlier');
 }
 
 export type GroupedRailSessions = {

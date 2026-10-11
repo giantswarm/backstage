@@ -34,7 +34,10 @@ export type RemoveModelBackendDialogProps = {
   servedModels: string[];
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  /** After the remove: the document is gone and the ModelConfigs unwired. */
+  /**
+   * After the remove: the document is gone and the ModelConfigs unwired. The
+   * dialog closes; the caller's toast is the one confirmation.
+   */
   onRemoved?: (result: RemoveBackendResult) => void;
 };
 
@@ -59,7 +62,6 @@ export function RemoveModelBackendDialog({
 }: RemoveModelBackendDialogProps) {
   const [typed, setTyped] = useState('');
   const [plan, setPlan] = useState<RemoveBackendResult>();
-  const [removed, setRemoved] = useState<RemoveBackendResult>();
   const write = useBackendWrite(installation);
   const startAnswer = useOpenGeneration(isOpen);
   const label = BACKEND_KIND_LABEL[kind];
@@ -70,7 +72,6 @@ export function RemoveModelBackendDialog({
     if (!isOpen) {
       setTyped('');
       setPlan(undefined);
-      setRemoved(undefined);
       validation.reset();
       write.reset();
       return;
@@ -93,7 +94,7 @@ export function RemoveModelBackendDialog({
   const isBusy = write.isBusy;
   const notConnected = write.failure?.kind === 'not-connected';
   // Nothing to confirm until model-manager has said what would go.
-  const canConfirm = Boolean(plan) && !removed && !isBusy;
+  const canConfirm = Boolean(plan) && !isBusy;
   const typedError =
     typed === kind ? undefined : `Type ${kind} to confirm the removal.`;
 
@@ -104,8 +105,8 @@ export function RemoveModelBackendDialog({
     }
     try {
       const result = await write.remove(kind, 'apply');
-      setRemoved(result);
       onRemoved?.(result);
+      onOpenChange(false);
     } catch {
       // Shown from `write.failure`.
     }
@@ -175,18 +176,7 @@ export function RemoveModelBackendDialog({
                 server={MODEL_MANAGER_SERVER}
               />
             )}
-            {removed && (
-              <Alert
-                status="success"
-                title={`Removed the ${label} backend as you`}
-                description={
-                  removed.unwired && removed.unwired.length > 0
-                    ? `Model configs unwired: ${removed.unwired.join(', ')}.`
-                    : 'No model configs had to be unwired.'
-                }
-              />
-            )}
-            {plan && !removed && (
+            {plan && (
               <TextField
                 label={`Type ${kind} to confirm`}
                 value={typed}
@@ -203,18 +193,16 @@ export function RemoveModelBackendDialog({
             onPress={() => onOpenChange(false)}
             isDisabled={write.isWriting}
           >
-            {removed ? 'Close' : 'Cancel'}
+            Cancel
           </Button>
-          {!removed && (
-            <Button
-              type="submit"
-              variant="primary"
-              destructive
-              isDisabled={!canConfirm}
-            >
-              {isBusy && plan ? 'Removing…' : 'Remove backend'}
-            </Button>
-          )}
+          <Button
+            type="submit"
+            variant="primary"
+            destructive
+            isDisabled={!canConfirm}
+          >
+            {isBusy && plan ? 'Removing…' : 'Remove backend'}
+          </Button>
         </DialogFooter>
       </form>
     </Dialog>

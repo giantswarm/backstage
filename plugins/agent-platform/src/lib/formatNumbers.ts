@@ -16,9 +16,17 @@
 
 import { useMemo } from 'react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import {
+  formatBytes,
+  formatCount,
+  formatSeconds,
+  groupedNumberFormat as grouped,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
-/** Thousands grouping (`1,040`), the same on every machine. */
-const grouped = new Intl.NumberFormat('en-US');
+// Counts, latencies and sizes are formatted in agent-platform-common, which
+// muster shares (one Usage page shows both plugins' figures); re-exported for
+// this plugin's existing imports.
+export { formatBytes, formatCount, formatSeconds };
 
 /** Format a token count compactly (`1.5k`, `1.2M`). */
 export function formatTokens(total: number): string {
@@ -29,17 +37,6 @@ export function formatTokens(total: number): string {
     return `${(total / 1000).toFixed(1)}k`;
   }
   return `${(total / 1_000_000).toFixed(1)}M`;
-}
-
-/**
- * Format a plain count with thousands separators.
- *
- * Not compacted the way tokens are: a turn or tool-call count is small enough
- * to read exactly, and rounding "1,040 calls" to "1.0k" would lose a figure
- * someone might reconcile against a list.
- */
-export function formatCount(value: number): string {
-  return grouped.format(Math.round(value));
 }
 
 /** A currency to show costs in; see `InstallationCurrency` in the gs plugin. */
@@ -217,40 +214,4 @@ export function formatTokensPerSecond(value: number | undefined): string {
   const magnitude = 10 ** (Math.floor(Math.log10(value)) - 1);
   const rounded = Math.round(value / magnitude) * magnitude;
   return `${grouped.format(rounded)}/s`;
-}
-
-/**
- * Format a latency in seconds, or `—`. A space before the unit, as every
- * other duration on the platform has ("1.2 s", "took 35 s").
- *
- * `undefined` is the normal answer for an idle installation, not an error:
- * `histogram_quantile` over a histogram with no observations is `NaN`.
- */
-export function formatSeconds(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) {
-    return '—';
-  }
-  if (value < 1) {
-    return `${Math.round(value * 1000)} ms`;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
-}
-
-const BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-
-/** Bytes → a short binary-prefixed figure: 6594474711 → "6.1 GiB". */
-export function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) {
-    return '—';
-  }
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < BYTE_UNITS.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  // Whole bytes are exact; above that one decimal until the figure has three
-  // digits, where a decimal is noise ("498 MiB", "6.1 GiB").
-  const digits = unit === 0 || value >= 100 ? 0 : 1;
-  return `${value.toFixed(digits)} ${BYTE_UNITS[unit]}`;
 }

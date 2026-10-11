@@ -331,7 +331,11 @@ export function NewMcpServerReviewPage() {
                 {error && (
                   <Alert
                     status="danger"
-                    title={isEdit ? 'Save failed' : 'Registration failed'}
+                    title={
+                      isEdit
+                        ? 'Could not save the connector'
+                        : 'Could not add the connector'
+                    }
                     description={error}
                   />
                 )}

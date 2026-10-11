@@ -1,12 +1,18 @@
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
 import type { GpuNode, ServedModelReadiness } from '../../lib/serving';
 
-/** How many served models answer now, and how many are on their way. */
+/**
+ * How many served models answer now, and how many are on their way — counted
+ * by the Running models table's states, so the tile and the rows use the same
+ * words (UX review M14).
+ */
 export type RunningModels = {
   /** Loaded and answering. */
   running: number;
-  /** Being placed or loaded. */
+  /** Placed and loading (`starting`). */
   starting: number;
+  /** No verdict from the backend yet, e.g. unschedulable (`pending`). */
+  pending: number;
   /** Listed, loads on its first request. */
   idle: number;
 };
@@ -14,15 +20,22 @@ export type RunningModels = {
 export function countRunningModels(
   rows: { readiness: ServedModelReadiness; kind?: string }[],
 ): RunningModels {
-  const counts: RunningModels = { running: 0, starting: 0, idle: 0 };
+  const counts: RunningModels = {
+    running: 0,
+    starting: 0,
+    pending: 0,
+    idle: 0,
+  };
   for (const row of rows) {
     if (row.kind === 'download') {
       continue;
     }
     if (row.readiness === 'ready') {
       counts.running += 1;
-    } else if (row.readiness === 'starting' || row.readiness === 'pending') {
+    } else if (row.readiness === 'starting') {
       counts.starting += 1;
+    } else if (row.readiness === 'pending') {
+      counts.pending += 1;
     } else if (row.readiness === 'idle') {
       counts.idle += 1;
     }

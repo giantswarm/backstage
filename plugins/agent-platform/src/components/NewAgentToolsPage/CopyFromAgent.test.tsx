@@ -143,6 +143,6 @@ describe('CopyFromAgent', () => {
     await userEvent.clear(search);
     await userEvent.type(search, 'nobody');
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
-    expect(screen.getByText('No agent matches “nobody”.')).toBeVisible();
+    expect(screen.getByText('No agents match “nobody”.')).toBeVisible();
   });
 });

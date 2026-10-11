@@ -413,7 +413,8 @@ describe('SessionComposer', () => {
 });
 
 describe('SessionComposer — Stop', () => {
-  const stopButton = () => screen.getByRole('button', { name: 'Stop' });
+  const stopButton = () =>
+    screen.getByRole('button', { name: 'Stop the turn' });
 
   it('offers Stop in place of Send while the agent works and the turn is known', async () => {
     const onStop = jest.fn();
@@ -424,7 +425,7 @@ describe('SessionComposer — Stop', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /The agent is working\. Stop it, or reply once this turn finishes\./,
+        /The agent is working\. Stop the turn, or reply once it finishes\./,
       ),
     ).toBeInTheDocument();
 
@@ -441,7 +442,7 @@ describe('SessionComposer — Stop', () => {
     renderComposer({ isAgentWorking: true });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     expect(
@@ -460,7 +461,7 @@ describe('SessionComposer — Stop', () => {
     });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -476,7 +477,7 @@ describe('SessionComposer — Stop', () => {
       'aria-disabled',
       'true',
     );
-    expect(screen.getByText('Stopping the agent…')).toBeInTheDocument();
+    expect(screen.getByText('Stopping the turn…')).toBeInTheDocument();
   });
 
   it('goes back to Send once the turn has ended', () => {
@@ -484,14 +485,16 @@ describe('SessionComposer — Stop', () => {
       isAgentWorking: true,
       onStop: jest.fn(),
     });
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
 
     rerender(
       <SessionComposer isAgentWorking={false} isFinished onSubmit={onSubmit} />,
     );
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
@@ -506,7 +509,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(
       screen.getByText(
-        'The agent has stopped reporting progress. Cancel the turn to send again.',
+        'The agent has stopped reporting progress. Stop the turn to send again.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -514,7 +517,9 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    );
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
@@ -527,7 +532,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -538,13 +543,15 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       stopError: 'Failed user token verification',
     });
 
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(
       screen.getByText('Failed user token verification'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
     // The turn is still running: Stop stays offered for another try.
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps a failed send and a failed Stop apart', () => {
@@ -555,7 +562,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(screen.getByText('Message not sent')).toBeInTheDocument();
     expect(screen.getByText('kagent said no')).toBeInTheDocument();
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(screen.getByText('the cancel was refused')).toBeInTheDocument();
   });
 });

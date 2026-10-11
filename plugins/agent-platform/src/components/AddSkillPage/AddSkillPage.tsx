@@ -286,7 +286,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       {edit ? (
         <WizardStepHeading title="Propose a change">
           This opens a pull request as you. The change reaches the catalog once
-          a teammate merges it.
+          a teammate merges it; agents keep their pinned version until their
+          skills are updated.
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Propose a skill">
@@ -356,7 +357,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
           {edit ? (
             <TextField
               label="Name"
-              description="The skill's name stays as it is; agents find it by its folder."
+              description="It cannot be changed; agents find the skill by its folder."
               value={skillName}
               isReadOnly
             />

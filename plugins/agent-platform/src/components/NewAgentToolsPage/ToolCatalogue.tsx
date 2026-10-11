@@ -235,7 +235,7 @@ function serverEntries(
       : countNoun(bucket.tools.length, 'tool');
     return {
       key: `${group.key}/${bucket.name}`,
-      trigger: `${bucket.name}${bucket.isFamily ? ' (family)' : ''} — ${summary}${pickedSuffix(
+      trigger: `${bucket.name} — ${summary}${pickedSuffix(
         pickedTools(bucket.tools, props.selected),
         whole,
       )}`,
@@ -261,20 +261,20 @@ function platformAdministrationEntry(
   const tools = group.platformAdministration;
   return {
     key: `${group.key}/platform-administration`,
-    trigger: `Platform administration — ${countNoun(
+    trigger: `Platform tools — ${countNoun(
       tools.length,
       'tool',
-    )} of muster itself${pickedSuffix(pickedTools(tools, selected))}`,
+    )}${pickedSuffix(pickedTools(tools, selected))}`,
     panel: () => (
       <>
         <Alert
           status="warning"
           title="These tools manage the platform itself"
-          description="muster's own tools: they register connectors, run and change workflows, and change configuration. Only Full gateway includes them."
+          description="The Agent Platform's own tools register connectors, run and change workflows, and change configuration. Read-only tools includes only those that read; Full gateway includes all of them."
         />
         <ToolRows
           tools={tools}
-          ariaLabel="Platform administration tools"
+          ariaLabel="Platform tools"
           noun="tool"
           selected={selected}
           onToggle={onToggle}
@@ -358,12 +358,7 @@ export function groupSummary(
     }
   }
   if (group.platformAdministration.length > 0) {
-    parts.push(
-      `${countNoun(
-        group.platformAdministration.length,
-        'platform administration tool',
-      )}`,
-    );
+    parts.push(countNoun(group.platformAdministration.length, 'platform tool'));
   }
   if (group.workflows.length > 0) {
     parts.push(countNoun(group.workflows.length, 'workflow'));
@@ -399,7 +394,7 @@ export type ToolCatalogueProps = {
 /**
  * The gateway's catalogue, grouped the way the platform thinks about it:
  * Infrastructure, Agent Platform (with muster's own core tools as a warned,
- * collapsed *Platform administration* entry), Registered servers and
+ * collapsed *Platform tools* entry), Registered connectors and
  * Workflows (by name prefix). Every group is collapsed until the author opens
  * it or a search matches inside it, and every list of rows shows a first page
  * before the rest, so no state of the page renders hundreds of options at

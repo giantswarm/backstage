@@ -237,7 +237,7 @@ describe('ModelDetailPage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Sonnet 4.5' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Available')).toBeInTheDocument();
+    expect(screen.getByText('Ready')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     // No form on this page at all: Edit opens the Connect-a-model flow.
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();

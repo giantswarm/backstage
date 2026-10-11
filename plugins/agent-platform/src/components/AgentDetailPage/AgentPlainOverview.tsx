@@ -21,6 +21,7 @@ import {
   DateComponent,
   type Fact,
   SectionHeader,
+  ShowMore,
   useSimpleAccordionStyles,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -37,6 +38,7 @@ import {
 } from '../../lib/skills';
 import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
 import { describeReach } from '../AgentReachLine';
+import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
@@ -281,26 +283,32 @@ function SkillsSection({
           )}
         </Flex>
       ) : (
-        <ul className={classes.skillGrid} aria-label="Skills">
-          {skills.map((skill, index) => (
-            <SkillCard
-              // The same source can be mounted at several paths, so the index
-              // is part of the key.
-              key={`${skill.url}#${skill.path ?? ''}#${index}`}
-              skill={skill}
-              discovered={
-                skill.source === 'git'
-                  ? catalog.get(
-                      canonicalSkillId({
-                        repoUrl: skill.url,
-                        path: skill.path ?? '',
-                      }),
-                    )
-                  : undefined
-              }
-            />
-          ))}
-        </ul>
+        // A page of cards at a time, at the Customize skills grid's size:
+        // an agent may pin many skills, never an unbounded grid.
+        <ShowMore items={skills} initial={SKILL_CARDS_SHOWN} noun="skill">
+          {visible => (
+            <ul className={classes.skillGrid} aria-label="Skills">
+              {visible.map((skill, index) => (
+                <SkillCard
+                  // The same source can be mounted at several paths, so the
+                  // index is part of the key.
+                  key={`${skill.url}#${skill.path ?? ''}#${index}`}
+                  skill={skill}
+                  discovered={
+                    skill.source === 'git'
+                      ? catalog.get(
+                          canonicalSkillId({
+                            repoUrl: skill.url,
+                            path: skill.path ?? '',
+                          }),
+                        )
+                      : undefined
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </ShowMore>
       )}
     </Section>
   );

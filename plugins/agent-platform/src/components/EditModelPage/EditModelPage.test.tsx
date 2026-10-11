@@ -123,8 +123,22 @@ describe('EditModelPage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Edit model' }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Display name/)).toHaveValue('Sonnet 4.5');
-    expect(screen.getByLabelText(/^Technical name/)).toHaveValue('sonnet');
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Sonnet 4.5');
+    // The document title names the model, like the skill edit frames.
+    await waitFor(() =>
+      expect(document.title).toBe('Edit Sonnet 4.5 · Models · Agent Platform'),
+    );
+    // The locked technical name is said under the name, once.
+    expect(
+      screen.getByText((_, element) =>
+        Boolean(
+          element?.tagName === 'P' &&
+          element.textContent ===
+            'Its technical name is sonnet; it cannot be changed.',
+        ),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
     // The model stays on its environment: nothing to choose.
     expect(screen.queryByRole('button', { name: /Environment/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Connect model' })).toBeNull();
@@ -150,7 +164,7 @@ describe('EditModelPage', () => {
     await renderPage();
 
     expect(await screen.findByText('Reading the model…')).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Display name/)).toBeNull();
+    expect(screen.queryByLabelText(/^Name/)).toBeNull();
   });
 
   it('says the model does not exist, with the way back', async () => {
@@ -193,7 +207,7 @@ describe('EditModelPage', () => {
         screen.getByText('This model cannot be edited from here'),
       ).toBeInTheDocument();
       expect(screen.getByText(why)).toBeInTheDocument();
-      expect(screen.queryByLabelText(/^Display name/)).toBeNull();
+      expect(screen.queryByLabelText(/^Name/)).toBeNull();
       expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     },
   );
@@ -205,6 +219,6 @@ describe('EditModelPage', () => {
     expect(
       screen.getByText('You do not have permission to change this model.'),
     ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Display name/)).toBeNull();
+    expect(screen.queryByLabelText(/^Name/)).toBeNull();
   });
 });

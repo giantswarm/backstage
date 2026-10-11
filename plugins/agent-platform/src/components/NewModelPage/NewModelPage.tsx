@@ -293,6 +293,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   return (
     <WizardFrame
       title={edit ? 'Edit model' : 'Connect a model'}
+      documentTitle={
+        edit
+          ? [`Edit ${edit.modelConfig.getDisplayName()}`, 'Models']
+          : undefined
+      }
       context={
         edit
           ? `Customize / Models / ${edit.modelConfig.getDisplayName()}`
@@ -366,9 +371,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         <Alert
           status="danger"
           title={
-            edit
-              ? 'The model could not be saved'
-              : 'The model could not be connected'
+            edit ? 'Could not save the model' : 'Could not connect the model'
           }
           description={error.message}
         />

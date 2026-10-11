@@ -8,12 +8,13 @@ import {
   useState,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Content, EmptyState, Link } from '@backstage/core-components';
+import { Content, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles, useMediaQuery, useTheme } from '@material-ui/core';
 import {
   DateComponent,
+  EmptyStateCard,
   LoadingIndicator,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
@@ -41,6 +42,8 @@ import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { connectorOfTool } from '../../lib/toolset';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
   AWAITING_INPUT_STATES,
@@ -340,6 +343,13 @@ export function SessionDetailPage() {
   // just deleted it deliberately.
   const deletion = useDeleteSession(installation, sessionId);
   const { isUserScoped } = useKagentCapabilities(installation);
+  // Tool calls name their connector as Customize does (UX review M2), from
+  // the installation's MCPServer CRs.
+  const { servers: musterServers } = useMusterServers(installation);
+  const connectorOf = useCallback(
+    (toolName: string) => connectorOfTool(toolName, musterServers),
+    [musterServers],
+  );
 
   // The prompt this session was started with, if the user arrived here by
   // starting it. Read once and cleared, so returning to the session later cannot
@@ -968,13 +978,12 @@ export function SessionDetailPage() {
   if (isNotFound) {
     return (
       <Shell installation={installation} sessionId={sessionId}>
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title="Session not found"
           description={`No session with this id on ${
             installation || 'that environment'
           }. It may have been deleted, or be someone else's — kagent shows only your own.`}
-          action={<BackToSessions>Back to sessions</BackToSessions>}
+          actions={<BackToSessions>Back to sessions</BackToSessions>}
         />
       </Shell>
     );
@@ -1138,7 +1147,7 @@ export function SessionDetailPage() {
           <Alert
             status="warning"
             title="This session is still working on the previous turn"
-            description="kagent takes one message per session at a time. Wait for the turn to finish, or cancel it and send again."
+            description="kagent takes one message per session at a time. Wait for the turn to finish, or stop it and send again."
             customActions={
               cancelConflictingTurn ? (
                 <Button
@@ -1147,7 +1156,7 @@ export function SessionDetailPage() {
                   isPending={cancellation.isCancelling}
                   onPress={cancelConflictingTurn}
                 >
-                  Cancel the turn
+                  Stop the turn
                 </Button>
               ) : undefined
             }
@@ -1159,6 +1168,7 @@ export function SessionDetailPage() {
               <PendingConfirmationPanel
                 pending={pendingConfirmation!}
                 agentName={row.agentName || undefined}
+                connectorOf={connectorOf}
                 isAnswering={confirmation.isAnswering}
                 error={confirmation.error?.message}
                 restore={confirmation.failed}
@@ -1452,6 +1462,7 @@ export function SessionDetailPage() {
           firstMessageCaption={
             handoff?.prepared ? 'Prepared by the portal' : undefined
           }
+          connectorOf={connectorOf}
         />
 
         {bottomControl}

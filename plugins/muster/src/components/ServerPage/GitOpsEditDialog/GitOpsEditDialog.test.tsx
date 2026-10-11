@@ -227,19 +227,18 @@ describe('GitOpsEditDialog', () => {
       errors: [],
       kustomization: KUSTOMIZATION,
     });
-    const writeText = jest.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
+    // The shared ManifestDialog copies through react-use's
+    // useCopyToClipboard, which uses document.execCommand under the hood.
+    const original = document.execCommand;
+    document.execCommand = jest.fn(() => true);
 
     await openDialog(makeServer(KUSTOMIZE_LABELS));
     await userEvent.click(
       screen.getByRole('button', { name: 'Copy manifest' }),
     );
 
-    expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining('kind: MCPServer'),
-    );
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    document.execCommand = original;
   });
 });

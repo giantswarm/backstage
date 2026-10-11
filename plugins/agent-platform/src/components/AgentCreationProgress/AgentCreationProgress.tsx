@@ -75,7 +75,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     return (
       <Alert
         status="warning"
-        title={`${wording.done}, but the readiness could not be read`}
+        title={`${wording.done}, but could not read the agent's readiness`}
         description={`agent-manager ${wording.wrote}${as}. ${error.message}`}
       />
     );

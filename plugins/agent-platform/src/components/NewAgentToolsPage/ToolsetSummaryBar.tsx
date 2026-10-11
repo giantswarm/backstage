@@ -4,6 +4,7 @@ import { makeStyles } from '@material-ui/core';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import {
   PHONE_QUERY,
+  ShowMore,
   TOUCH_QUERY,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -17,6 +18,13 @@ import {
   toolsetShape,
 } from '../../lib/toolset';
 import { changingToolCount } from './catalogueEffect';
+
+/**
+ * Selections the Selected rail lists per group, and the summary bar in all,
+ * before *Show all*: the bar stays at the top of the viewport and must never
+ * grow into a scroll of its own.
+ */
+export const RAIL_ROWS = 8;
 
 const useStyles = makeStyles(theme => ({
   // The artboard's tinted "Selected" rail (CreateAgentTools), as a sticky bar
@@ -163,7 +171,7 @@ export function toolsetEffect({
   if (shape === 'full') {
     return {
       line: 'Full gateway access',
-      hint: 'The agent can call every tool the gateway exposes to whoever invokes it, platform administration included.',
+      hint: 'The agent can call every tool the gateway exposes to whoever invokes it, platform tools included.',
       tone: 'warning',
     };
   }
@@ -279,34 +287,43 @@ export function ToolsetSummaryBar({
         Nothing is added yet; a preset is the usual start.
       </Text>
     ) : (
-      <div className={classes.selectors} role="list" aria-label="Toolset">
-        {selectors.map(selector => {
-          const label = selectorLabel(selector);
-          return (
-            <span
-              key={selector}
-              className={
-                labelOfPresetSelector(selector) === undefined
-                  ? `${classes.selector} ${classes.selectorCode}`
-                  : classes.selector
-              }
-              role="listitem"
-            >
-              {/* On the label, not the chip: the remove button would
+      <ShowMore
+        items={selectors}
+        initial={RAIL_ROWS}
+        noun="selection"
+        revealAll
+      >
+        {visible => (
+          <div className={classes.selectors} role="list" aria-label="Toolset">
+            {visible.map(selector => {
+              const label = selectorLabel(selector);
+              return (
+                <span
+                  key={selector}
+                  className={
+                    labelOfPresetSelector(selector) === undefined
+                      ? `${classes.selector} ${classes.selectorCode}`
+                      : classes.selector
+                  }
+                  role="listitem"
+                >
+                  {/* On the label, not the chip: the remove button would
                   otherwise show the selector as its own hint. */}
-              <span title={selector}>{label}</span>
-              <button
-                type="button"
-                className={classes.removeSelector}
-                aria-label={`Remove ${label}`}
-                onClick={() => onRemove(selector)}
-              >
-                ×
-              </button>
-            </span>
-          );
-        })}
-      </div>
+                  <span title={selector}>{label}</span>
+                  <button
+                    type="button"
+                    className={classes.removeSelector}
+                    aria-label={`Remove ${label}`}
+                    onClick={() => onRemove(selector)}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </ShowMore>
     );
 
   const showDetails = (

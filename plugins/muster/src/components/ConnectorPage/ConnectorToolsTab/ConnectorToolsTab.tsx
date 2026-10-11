@@ -22,7 +22,11 @@ import {
   useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
-import { toolEffect, ToolEffect } from '../../../lib/toolAnnotations';
+import {
+  TOOL_EFFECT_LABELS,
+  toolEffect,
+  ToolEffect,
+} from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
 import { EffectBadge } from '../../shared';
 import { ToolDetailPanel } from '../../ToolDetail';
@@ -67,18 +71,13 @@ const useStyles = makeStyles({
   },
 });
 
-const EFFECT_LABELS: Record<ToolEffect, string> = {
-  reads: 'Reads',
-  changes: 'Changes things',
-};
-
 /** The "What it does" dropdown, as the wizard's catalogue draws it (T81). */
 const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
   {
     id: 'effect',
     label: 'What it does',
     value: tool => toolEffect(tool),
-    optionLabel: id => EFFECT_LABELS[id as ToolEffect] ?? id,
+    optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
     order: ['reads', 'changes'],
   },
 ];

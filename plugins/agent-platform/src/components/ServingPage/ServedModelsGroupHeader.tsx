@@ -1,13 +1,6 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
-import { ButtonIcon, Flex, Text } from '@backstage/ui';
-import CheckIcon from '@material-ui/icons/Check';
-import FileCopyOutlinedIcon from '@material-ui/icons/FileCopyOutlined';
+import type { ReactNode } from 'react';
+import { Flex, Text } from '@backstage/ui';
+import { CopyButton } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ServingBackend } from '../../lib/serving';
 import type { ServedModelGroup } from './ServedModelsTable';
@@ -19,9 +12,6 @@ export const BACKEND_LABEL: Record<ServingBackend, string> = {
   lmstudio: 'LM Studio',
   lemonade: 'Lemonade',
 };
-
-/** How long the copy control shows its tick before reverting. */
-const COPIED_MS = 1500;
 
 /**
  * Backend and runtime of a group in one phrase: `Ollama 0.33.2` (Ollama names
@@ -44,64 +34,14 @@ export function describeGroup(
 }
 
 /**
- * Icon-only copy control: the text goes to the clipboard, the button shows a
- * tick for a moment. Refused clipboard access (an insecure context, a
- * permission) leaves the text in the tooltip to copy by hand.
- */
-export function CopyTextButton({
-  text,
-  label,
-  copiedLabel,
-}: {
-  text: string;
-  /** What the button copies, for its accessible name (`Copy endpoint`). */
-  label: string;
-  copiedLabel: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  const timer = useRef<number>();
-
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-
-  const copy = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
-    setCopied(true);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
-  }, [text]);
-
-  return (
-    <span
-      title={copied ? 'Copied' : `Copy ${text}`}
-      style={{ display: 'inline-flex' }}
-    >
-      <ButtonIcon
-        size="small"
-        variant="tertiary"
-        aria-label={copied ? copiedLabel : label}
-        icon={copied ? <CheckIcon /> : <FileCopyOutlinedIcon />}
-        onPress={copy}
-      />
-    </span>
-  );
-}
-
-/**
  * Icon-only "copy this endpoint" control. The URL is what a client base URL
  * is set to, so it is worth a click, not a column: a group of Ollama models
  * shares one, an LLMInferenceService has its own.
  */
 export function CopyEndpointButton({ url }: { url: string }) {
+  // The endpoint is not shown elsewhere, so the tooltip names it.
   return (
-    <CopyTextButton
-      text={url}
-      label="Copy endpoint"
-      copiedLabel="Endpoint copied"
-    />
+    <CopyButton text={url} label="Copy endpoint" tooltip={`Copy ${url}`} />
   );
 }
 
