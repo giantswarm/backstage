@@ -14,6 +14,11 @@ import {
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import {
+  parseUsageWindowParam,
+  USAGE_WINDOW_PARAM,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   categoricalColors,
   columnMax,
@@ -38,23 +43,22 @@ import { MusterProviders } from '../MusterProviders';
 import { SessionGate, Stat } from '../shared';
 
 /**
- * The window, fixed at 30 days to match the personal section above it.
+ * The window: the Usage screen's own time-range control (`?window=7d`, the
+ * 7 | 30 | 90 days every view of the screen reads), never a control of this
+ * section's. muster's `/usage` takes any span up to 90 days, so the figures
+ * follow the selection like the gateway views beside them (QA round 1: the
+ * control showed here and changed nothing).
  *
- * There used to be a 24h/7d/30d switcher here, and it had to go when this moved
- * onto the shared Usage page. Three reasons. The kagent route backing the
- * section above takes no window parameter, so a control on this one alone would
- * make the page's stated window false for whichever section a reader just
- * switched. The two stop being comparable, which is the whole reason they share
- * a page. And the bucket size changes with the window (`formatBucketTick`
- * switches to hours below 24h), so a 24h selection put an hourly-bucketed chart
- * directly under a daily one — same idiom, different meaning per bar.
- *
- * What was lost is the 24h zoom, whose real question ("is muster dispatching
- * right now") the per-server health on the Servers view answers. Bringing a control back
- * means one *page-level* control driving both sections, once the kagent route
- * accepts a window.
+ * There used to be a 24h/7d/30d switcher on the section itself, and it went
+ * when this moved onto the shared Usage page: a control on one section would
+ * make the page's stated window false for the others, and a 24h selection put
+ * an hourly-bucketed chart (`formatBucketTick`) under daily ones. The page's
+ * windows are whole days, so the buckets stay daily.
  */
-const WINDOW_HOURS = 30 * 24;
+function useWindowHours(): number {
+  const [searchParams] = useSearchParams();
+  return parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM)) * 24;
+}
 
 /**
  * How many connectors the table shows before *Show all N connectors*.
@@ -531,13 +535,14 @@ function McpUsageBody() {
   // of a request that can only fail.
   const session = useMusterSession();
   const unreachable = isUnreachableSession(session);
+  const hours = useWindowHours();
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'mcp-usage', activeInstallation, WINDOW_HOURS],
+    queryKey: ['muster', 'mcp-usage', activeInstallation, hours],
     queryFn: () =>
       musterApi.getMcpUsage({
         installation: activeInstallation,
-        hours: WINDOW_HOURS,
+        hours,
       }),
     enabled: Boolean(activeInstallation) && !unreachable,
   });
@@ -561,7 +566,7 @@ function McpUsageBody() {
       </Typography>
     );
   } else if (data) {
-    body = <UsageBody data={data} hours={WINDOW_HOURS} />;
+    body = <UsageBody data={data} hours={hours} />;
   }
 
   return (
@@ -579,7 +584,9 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description="This covers every caller's tool calls, not only yours, over the last 30 days."
+        description={`This covers every caller's tool calls, not only yours, over the last ${Math.round(
+          hours / 24,
+        )} days.`}
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

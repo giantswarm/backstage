@@ -64,11 +64,9 @@ function AgentFact({
 function StateFact({
   row,
   isLoading,
-  words,
 }: {
   row: SessionTableRow;
   isLoading: boolean;
-  words: 'shell' | 'classic';
 }): JSX.Element | null {
   const cell = row.stateCell;
   let tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' = 'neutral';
@@ -88,7 +86,7 @@ function StateFact({
       break;
     default:
       tone = cell.state.tone;
-      label = words === 'shell' ? cell.state.shellLabel : cell.state.label;
+      label = cell.state.label;
   }
   return (
     <span
@@ -112,8 +110,6 @@ export type SessionStackedRowOptions = {
   isLoadingStates: boolean;
   /** Whether the list has states at all; without, the state fact is left out. */
   showState: boolean;
-  /** The table's wording for a state: the shell's or the classic list's. */
-  stateWords: 'shell' | 'classic';
   showAgent: boolean;
   showInstallation: boolean;
   /** When the session started, as the list words it (a time, a date). */
@@ -139,7 +135,6 @@ export function sessionStackedRow({
   buildAvatarUrl,
   isLoadingStates,
   showState,
-  stateWords,
   showAgent,
   showInstallation,
   started,
@@ -162,12 +157,7 @@ export function sessionStackedRow({
         <AgentFact key="agent" row={row} buildAvatarUrl={buildAvatarUrl} />
       ),
       showState && (
-        <StateFact
-          key="state"
-          row={row}
-          isLoading={isLoadingStates}
-          words={stateWords}
-        />
+        <StateFact key="state" row={row} isLoading={isLoadingStates} />
       ),
       showInstallation && row.installation,
       started,

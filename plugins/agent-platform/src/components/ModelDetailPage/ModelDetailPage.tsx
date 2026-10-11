@@ -62,9 +62,7 @@ const useStyles = makeStyles(theme => ({
  * (`ShellPage`): breadcrumbs reading "Customize / Models / <model>", the
  * model's name as the h1 at the standard scale, its status, environment and
  * provider beside it, and the facts in the column beside the content. The
- * actions the page registers land in that header's slot, and the shell's
- * generic sub-page header stands aside because `ShellPage` claims the page
- * header.
+ * actions the page registers land in that header's slot.
  *
  * In classic chrome it is `Content` under the Agent Platform page's header,
  * with the page's own heading inside and the facts under the content.

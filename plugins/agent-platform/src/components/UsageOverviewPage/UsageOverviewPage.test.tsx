@@ -229,6 +229,40 @@ describe('UsageOverviewPage', () => {
     expect(screen.getByText('37')).toBeInTheDocument();
   });
 
+  it("counts the sessions tile over the selected window, not kagent's", async () => {
+    // QA round 1: at 7 days the tile still read "over the last 30 days".
+    const today = new Date().toISOString().slice(0, 10);
+    sessionUsageState.usage = sessionUsage({
+      daily: [
+        {
+          day: '2000-01-01',
+          inputTokens: 0,
+          outputTokens: 0,
+          turns: 9,
+          toolCalls: 0,
+          lastActiveSessions: 33,
+        },
+        {
+          day: today,
+          inputTokens: 0,
+          outputTokens: 0,
+          turns: 6,
+          toolCalls: 2,
+          lastActiveSessions: 6,
+        },
+      ],
+    });
+
+    renderPage('/agent-platform/usage/overview?window=7d');
+
+    expect(await screen.findByText('Your sessions')).toBeInTheDocument();
+    expect(screen.getByText('6')).toBeInTheDocument();
+    expect(
+      screen.getByText('yours, over the last 7 days — see Your sessions'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/over the last 30 days/)).toBeNull();
+  });
+
   it('omits the sessions tile where kagent is not deployed', async () => {
     sessionUsageState.isNotDeployed = true;
 
@@ -328,7 +362,8 @@ describe('UsageOverviewPage', () => {
   it('reads the window from the URL', async () => {
     renderPage('/agent-platform/usage/overview?window=7d');
 
-    expect(await screen.findByText(/over the last 7 days/)).toBeInTheDocument();
+    // The caption and the sessions tile both follow it.
+    expect(await screen.findAllByText(/over the last 7 days/)).toHaveLength(2);
   });
 
   it('lays its content out in the platform content column', async () => {

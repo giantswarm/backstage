@@ -37,6 +37,7 @@ import {
   selectorProblem,
   type ServerBucket,
   toggleSelector,
+  toolsetProblems as problemsOf,
   unsignedServerSelectors,
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -60,11 +61,15 @@ import {
   type AccessLevel,
   accessLevelOf,
   type ConnectorChoice,
+  compactSelection,
   connectorsOf,
+  expandSelection,
+  inlineCapProblem,
   isPresetLevel,
   isSelectionOff,
   materialize,
   needsIndividualTools,
+  presetBaseOf,
   withConnectorChoice,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
@@ -137,10 +142,13 @@ function connectorsHint({
   if (!derived) {
     return "This preset can't be shown per connector here.";
   }
-  // The first change writes the preset out (T81b); what the author cannot
-  // see does not make it into that list.
+  // A change keeps the preset as the base while everything it covers stays
+  // chosen (B1); taking part of it away writes it out, and what the author
+  // cannot see does not make it into that list.
   return `Changing anything below switches to Only the tools I choose below${
-    unsignedConnectors ? ', without connectors you are not signed in to' : ''
+    unsignedConnectors
+      ? ', and removing something this preset covers also drops connectors you are not signed in to'
+      : ''
   }.`;
 }
 
@@ -175,9 +183,10 @@ function NarrowSelection({
  * individual tools instead*, which opens the catalogue and the power-user
  * paths (copy another agent's toolset, a selector by name, the resolved
  * list). The selection stays in view in the *Selected* rail. A preset is a
- * macro: the grid and the catalogue show what it covers, and the first change
- * there writes it out and switches to *Only the tools I choose below*.
- * Nothing is rewritten until the author picks something.
+ * macro: the grid and the catalogue show what it covers, and a change there
+ * switches to *Only the tools I choose below*, stored as the preset plus what
+ * was added where selectors allow (B1), else written out. Nothing is
+ * rewritten until the author picks something.
  */
 export function NewAgentToolsPage() {
   const classes = useStyles();
@@ -230,31 +239,65 @@ export function NewAgentToolsPage() {
     Boolean(state.toolsChatOnly),
     offered,
   );
-  // While a preset is the whole toolset, the grid and the catalogue show what
-  // it resolves to (T81b) — once the resolution and the catalogue are in, and
-  // only when the resolution is whole.
   const presetLevel = isPresetLevel(level);
-  const derived = useMemo(
-    () =>
-      presetLevel &&
-      !isCatalogueLoading &&
-      resolution.status === 'resolved' &&
-      !resolution.truncated
-        ? materialize(resolution.tools, groups)
-        : undefined,
-    [
-      presetLevel,
-      isCatalogueLoading,
-      resolution.status,
-      resolution.truncated,
-      resolution.tools,
-      groups,
-    ],
+  // The preset the toolset is built on, alone or with more beside it (B1).
+  // Its own resolution is the toolset's while it stands alone (one query).
+  const presetBase = presetBaseOf(state.toolset, offered);
+  const presetResolution = useToolsetResolution(
+    installation,
+    presetBase ? [presetBase] : [],
   );
-  // What every change below starts from: the preset written out, or the
-  // selection as it is.
-  const base = derived ?? state.toolset;
+  const presetResolved =
+    presetBase !== undefined &&
+    !isCatalogueLoading &&
+    presetResolution.status === 'resolved' &&
+    !presetResolution.truncated;
+  // While the toolset is built on a preset, the grid and the catalogue show
+  // what it selects (T81b): the preset written out plus what is beside it —
+  // once the resolution and the catalogue are in, and only when the
+  // resolution is whole.
+  const expanded = useMemo(
+    () =>
+      presetResolved
+        ? expandSelection(
+            materialize(presetResolution.tools, groups),
+            state.toolset.filter(selector => selector !== presetBase),
+            groups,
+          )
+        : undefined,
+    [presetResolved, presetResolution.tools, groups, state.toolset, presetBase],
+  );
+  // The preset alone, written out.
+  const derived = presetLevel ? expanded : undefined;
+  // What every change below starts from: the selection as it shows, or as it
+  // is when there is no preset to write out.
+  const base = expanded ?? state.toolset;
   const selected = useMemo(() => new Set(base), [base]);
+  // Every change is stored as compactly as selectors allow (B1): the preset
+  // plus what was added while everything it covers is still chosen.
+  const commit = useCallback(
+    (next: string[]) =>
+      setToolset(
+        compactSelection(
+          next,
+          expanded && presetBase
+            ? { preset: presetBase, resolved: presetResolution.tools }
+            : undefined,
+          groups,
+        ),
+      ),
+    [setToolset, expanded, presetBase, presetResolution.tools, groups],
+  );
+  // Over the cap, the step can say which connectors to reduce.
+  const problems = useMemo(
+    () =>
+      toolsetProblems.length === 0
+        ? toolsetProblems
+        : problemsOf(state.toolset, selectors =>
+            inlineCapProblem(selectors, groups),
+          ),
+    [toolsetProblems, state.toolset, groups],
+  );
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -270,10 +313,30 @@ export function NewAgentToolsPage() {
       return;
     }
     decided.current = true;
-    if (needsIndividualTools(state.toolset, groups, level)) {
+    // Beside a preset the step writes out, only what is added counts: the
+    // grid shows the preset's part itself.
+    const builtOn = presetBaseOf(state.toolset, offered);
+    const shown =
+      builtOn === undefined || state.toolset.length === 1
+        ? state.toolset
+        : state.toolset.filter(selector => selector !== builtOn);
+    if (
+      needsIndividualTools(
+        shown,
+        groups,
+        shown === state.toolset ? level : ACCESS_OWN_PICKS,
+      )
+    ) {
       setShowIndividual(true);
     }
-  }, [isCatalogueLoading, presets.isLoading, state.toolset, groups, level]);
+  }, [
+    isCatalogueLoading,
+    presets.isLoading,
+    state.toolset,
+    groups,
+    level,
+    offered,
+  ]);
   const individualOpen = showIndividual && !selectionOff;
 
   // The catalogue's search and its All / Reads / Changes things filter, both
@@ -333,10 +396,10 @@ export function NewAgentToolsPage() {
     }
     setManualProblem(undefined);
     setManualSelector('');
-    if (!base.includes(value)) {
-      setToolset(toggleSelector(base, value));
+    if (!base.includes(value) && !state.toolset.includes(value)) {
+      commit(toggleSelector(base, value));
     }
-  }, [manualSelector, base, setToolset]);
+  }, [manualSelector, base, state.toolset, commit]);
 
   // A preset replaces the selection; *Only the tools I choose below* keeps
   // what a preset showed, written out (Full gateway's everything is not a
@@ -359,25 +422,28 @@ export function NewAgentToolsPage() {
     },
     [setToolsChatOnly, setToolset, state.toolset, level, derived],
   );
-  // Every change below starts from `base`: under a preset, that writes the
-  // preset out, and the radio then reads Only the tools I choose below.
+  // Every change below starts from `base`, what the grid shows; unless it
+  // lands back on the preset alone, the radio then reads Only the tools I
+  // choose below.
   const chooseConnector = useCallback(
     (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
-      setToolset(withConnectorChoice(base, bucket, choice)),
-    [setToolset, base],
+      commit(withConnectorChoice(base, bucket, choice)),
+    [commit, base],
   );
   const toggleSelected = useCallback(
-    (selector: string) => setToolset(toggleSelector(base, selector)),
-    [setToolset, base],
+    (selector: string) => commit(toggleSelector(base, selector)),
+    [commit, base],
   );
+  // The rail and the bar list the toolset's own selectors (the preset among
+  // them) beside the preset's part: removing one of its own takes just that
+  // out — the preset with all it covers — and anything else is a change like
+  // the grid's.
   const removeSelectors = useCallback(
     (selectors: string[]) =>
-      setToolset(
-        selectors.includes(level)
-          ? []
-          : base.filter(entry => !selectors.includes(entry)),
-      ),
-    [setToolset, base, level],
+      selectors.every(entry => state.toolset.includes(entry))
+        ? setToolset(state.toolset.filter(entry => !selectors.includes(entry)))
+        : commit(base.filter(entry => !selectors.includes(entry))),
+    [setToolset, commit, state.toolset, base],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.
@@ -425,11 +491,12 @@ export function NewAgentToolsPage() {
 
   const railProps: SelectedRailProps = {
     // An untouched preset is listed with what it covers.
-    selectors: derived ? [level, ...derived] : state.toolset,
+    selectors:
+      expanded && presetBase ? [presetBase, ...expanded] : state.toolset,
     catalogue: groups,
     resolution,
     unsigned,
-    problems: toolsetProblems,
+    problems,
     onRemove: removeSelectors,
     onShowDetails: selectionOff ? undefined : showResolvedList,
   };
@@ -673,15 +740,15 @@ export function NewAgentToolsPage() {
                 <section ref={resolvedListRef} aria-label="Toolset">
                   <SectionTitle title="Toolset" />
                   <Flex direction="column" gap="3">
-                    {toolsetProblems.length > 0 && (
+                    {problems.length > 0 && (
                       <Alert
                         status="danger"
                         title={
                           state.toolset.length > MAX_INLINE_SELECTORS
-                            ? 'Too many selectors — define a preset'
+                            ? 'Too many selectors'
                             : 'The toolset cannot be applied as it is'
                         }
-                        description={toolsetProblems.join(' ')}
+                        description={problems.join(' ')}
                       />
                     )}
                     {unsigned.length > 0 && (

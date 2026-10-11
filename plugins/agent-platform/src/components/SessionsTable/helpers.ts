@@ -45,7 +45,7 @@ export type SessionTableRow = SessionRow & {
 /**
  * Order the State column sorts in, ascending: what needs a person first.
  *
- * Alphabetical labels would put "Completed" above "Waiting for input", which
+ * Alphabetical labels would put "Finished" above "Waiting for you", which
  * inverts the only reason to sort by state at all. Descending still reverses
  * this, so both directions are useful — most urgent first, or everything
  * settled first.

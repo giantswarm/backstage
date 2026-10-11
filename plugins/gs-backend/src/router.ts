@@ -35,7 +35,11 @@ import {
   SkillContent,
   skillContentFromRaw,
 } from './agentSkills/readSkillContent';
-import { SkillDiscoveryCache } from './agentSkills/skillDiscoveryCache';
+import {
+  repositoryKey,
+  SkillDiscoveryCache,
+} from './agentSkills/skillDiscoveryCache';
+import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
   isSkillFilePath,
   needsFileBytes,
@@ -67,6 +71,8 @@ export async function createRouter({
   logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
+  const isGitHubUrl = (repoUrl: string): boolean =>
+    repoUrl.toLowerCase().startsWith('https://github.com/');
   // The skill pull request carries a whole SKILL.md (up to
   // MAX_SKILL_INSTRUCTIONS characters), more than the 100 KB default allows.
   // Registered first: the general parser below skips a body already read.
@@ -79,25 +85,31 @@ export async function createRouter({
   // The skill listings this instance read, per repository and ref (see
   // SkillDiscoveryCache): page views answer from memory, not from GitHub.
   const skillDiscoveryCache = new SkillDiscoveryCache({ logger });
+  // Every skill read upstream on a cache miss: misses remembered, concurrent
+  // reads shared and capped (security audit 1, M2).
+  const upstreamReads = new UpstreamReadGuard();
 
   /**
-   * Whether a repository URL is one of `agentPlatform.skills.repositories`,
-   * compared case-insensitively and tolerating `.git` and trailing slashes.
-   * The skill routes that read or clone a caller-named repository act only on
-   * these: this backend can reach hosts the browser cannot.
+   * The entry of `agentPlatform.skills.repositories` a caller-named
+   * repository URL is, compared the way the caches key it (`repositoryKey`:
+   * case-insensitive, tolerating `.git` and trailing slashes); `undefined`
+   * for any other repository. The skill read routes act only on these, and
+   * read the configured URL rather than the caller's spelling of it: this
+   * backend can reach hosts the browser cannot, and reads with the portal's
+   * own GitHub token.
    */
-  const isConfiguredSkillRepository = (repoUrl: string): boolean => {
+  const configuredSkillRepository = (repoUrl: string): string | undefined => {
     const repositories =
       config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-    const normalize = (url: string) =>
-      url
-        .trim()
-        .replace(/\/+$/, '')
-        .replace(/\.git$/i, '')
-        .toLowerCase();
-    const target = normalize(repoUrl);
-    return repositories.some(url => normalize(url) === target);
+    const target = repositoryKey(repoUrl);
+    return repositories.find(url => repositoryKey(url) === target)?.trim();
   };
+
+  /** The 400 for a repository that is not a configured skill source. */
+  const notConfigured = (repoUrl: string) =>
+    new InputError(
+      `${repoUrl} is not one of the configured skill repositories`,
+    );
 
   /** A full commit id (SHA-1 or SHA-256). */
   const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
@@ -338,19 +350,22 @@ export async function createRouter({
    * a rate limit while there is one to show. Discovery reads with the
    * portal's own credentials, never a person's, so the cache is shared.
    *
+   * Only the configured `agentPlatform.skills.repositories` (400 otherwise),
+   * for both providers: the backend reads with the portal's own GitHub token
+   * (which can read private repositories) and can reach cluster-internal
+   * hosts, and the portal only ever lists the configured sources. That also
+   * keeps the cache to configured repositories (security audit 1, L2).
+   *
    * Two providers, chosen by the repository's host:
    * - github.com URLs go through the GitHub REST API (no clone; subject to
    *   GitHub's API rate limit — 60/h unauthenticated — with precise wording
-   *   when it bites). Any github.com repository may be asked for.
+   *   when it bites).
    * - Every other http(s) URL is read over the plain git protocol (a depth-1
    *   clone, no REST API and no API rate limit) — a Gitea in a lab cluster,
-   *   any git host. To keep the backend from cloning arbitrary URLs a caller
-   *   names (it can reach cluster-internal hosts), a non-GitHub URL must be
-   *   one of the configured `agentPlatform.skills.repositories`.
+   *   any git host.
    *
    * Query parameters:
-   * - repoUrl: The repository URL (https://github.com/<owner>/<repo>, or a
-   *   configured http(s) git URL)
+   * - repoUrl: one of the configured skill repositories
    * - ref: Optional git ref (branch; for GitHub also a tag/SHA); defaults to
    *   the default branch
    *
@@ -379,32 +394,29 @@ export async function createRouter({
       throw new InputError(parsed.error.toString());
     }
 
-    const { repoUrl, ref } = parsed.data;
-    const isGitHub = repoUrl.toLowerCase().startsWith('https://github.com/');
-
-    if (!isGitHub) {
-      // Only the configured sources: the generic provider clones whatever URL
-      // it is handed, and this backend can reach hosts the browser cannot.
-      if (!isConfiguredSkillRepository(repoUrl)) {
-        throw new InputError(
-          `${repoUrl} is not one of the configured skill repositories; only github.com repositories can be discovered ad hoc`,
-        );
-      }
+    const { ref } = parsed.data;
+    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repoUrl) {
+      throw notConfigured(parsed.data.repoUrl);
     }
+    const isGitHub = isGitHubUrl(repoUrl);
 
     try {
       const { result, readAt, stale } = await skillDiscoveryCache.discover(
         repoUrl,
         ref,
         previous =>
-          isGitHub
-            ? discoverAgentSkills({
-                repoUrl,
-                ref,
-                githubCredentialsProvider,
-                previous,
-              })
-            : discoverAgentSkillsFromGit({ repoUrl, ref }),
+          upstreamReads.limit(isGitHub ? 'github' : 'clone', () =>
+            isGitHub
+              ? discoverAgentSkills({
+                  repoUrl,
+                  ref,
+                  githubCredentialsProvider,
+                  previous,
+                  logger,
+                })
+              : discoverAgentSkillsFromGit({ repoUrl, ref }),
+          ),
       );
       res.json({ ...result, readAt: new Date(readAt).toISOString(), stale });
     } catch (error) {
@@ -421,9 +433,6 @@ export async function createRouter({
       throw error;
     }
   });
-
-  const isGitHubUrl = (repoUrl: string): boolean =>
-    repoUrl.toLowerCase().startsWith('https://github.com/');
 
   /** The query both content routes take: a skill at a commit. */
   const skillAtCommitQuery = z.object({
@@ -442,57 +451,62 @@ export async function createRouter({
     ref: z.string().min(1).max(255).optional(),
   });
 
-  // Generic-git reads of a commit the cache does not hold, in flight: the
-  // file viewer's requests share one clone.
-  const gitCommitReads = new Map<string, Promise<SkillDiscoverySnapshot>>();
-
   /**
    * A generic-git repository read at `commit` outside a listing: one depth-1
    * clone whose head must still be `commit` (a 409 otherwise), scanned like
    * discovery — every SKILL.md, every skill's files, the small files' bytes
    * (`mustRead`'s whatever the budget) — and remembered, so the next views
-   * are answered from memory.
+   * are answered from memory. Through `upstreamReads`: the file viewer's
+   * concurrent requests share one clone, a 404 or 409 is answered from
+   * memory for a while, and only a few clones run at once.
    */
   const readGitCommit = (
     repoUrl: string,
     ref: string | undefined,
     commit: string,
     mustRead?: string,
-  ): Promise<SkillDiscoverySnapshot> => {
-    const key = `${repoUrl.toLowerCase()}#${commit}#${mustRead ?? ''}`;
-    let pending = gitCommitReads.get(key);
-    if (!pending) {
-      pending = discoverAgentSkillsFromGit({ repoUrl, ref, commit, mustRead })
-        .then(snapshot => {
-          skillDiscoveryCache.rememberPinned(repoUrl, commit, {
-            files: snapshot.files ?? new Map(),
-            contents: snapshot.contents,
-            fileContents: snapshot.fileContents,
-          });
-          return snapshot;
-        })
-        .finally(() => gitCommitReads.delete(key));
-      gitCommitReads.set(key, pending);
-    }
-    return pending;
-  };
+  ): Promise<SkillDiscoverySnapshot> =>
+    upstreamReads.read(
+      'clone',
+      `${repositoryKey(repoUrl)}#${ref ?? ''}#${commit}#${mustRead ?? ''}`,
+      async () => {
+        const snapshot = await discoverAgentSkillsFromGit({
+          repoUrl,
+          ref,
+          commit,
+          mustRead,
+        });
+        skillDiscoveryCache.rememberPinned(repoUrl, commit, {
+          files: snapshot.files ?? new Map(),
+          contents: snapshot.contents,
+          fileContents: snapshot.fileContents,
+        });
+        return snapshot;
+      },
+    );
 
   /**
    * Every skill's files of a github.com repository at a commit no listing
-   * covers (an agent's older pin): one tree read, remembered.
+   * covers (an agent's older pin): one tree read, remembered (through
+   * `upstreamReads`, as the clone above).
    */
-  const readGitHubCommitFiles = async (
+  const readGitHubCommitFiles = (
     repoUrl: string,
     commit: string,
-  ): Promise<Map<string, SkillFileList>> => {
-    const files = await listSkillFilesFromGitHub({
-      repoUrl,
-      commit,
-      githubCredentialsProvider,
-    });
-    skillDiscoveryCache.rememberPinned(repoUrl, commit, { files });
-    return files;
-  };
+  ): Promise<Map<string, SkillFileList>> =>
+    upstreamReads.read(
+      'github',
+      `tree#${repositoryKey(repoUrl)}#${commit}`,
+      async () => {
+        const files = await listSkillFilesFromGitHub({
+          repoUrl,
+          commit,
+          githubCredentialsProvider,
+        });
+        skillDiscoveryCache.rememberPinned(repoUrl, commit, { files });
+        return files;
+      },
+    );
 
   /** A 404 for a skill directory without a SKILL.md at the commit. */
   const noSkillAt = (repoUrl: string, path: string, commit: string) =>
@@ -540,11 +554,10 @@ export async function createRouter({
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
-    const { repoUrl, path, commit, ref } = parsed.data;
-    if (!isConfiguredSkillRepository(repoUrl)) {
-      throw new InputError(
-        `${repoUrl} is not one of the configured skill repositories`,
-      );
+    const { path, commit, ref } = parsed.data;
+    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repoUrl) {
+      throw notConfigured(parsed.data.repoUrl);
     }
 
     try {
@@ -558,12 +571,17 @@ export async function createRouter({
               path,
               commit,
             })
-          : await readSkillContentFromGitHub({
-              repoUrl,
-              path,
-              commit,
-              githubCredentialsProvider,
-            });
+          : await upstreamReads.read(
+              'github',
+              `content#${repositoryKey(repoUrl)}#${commit}#${path}`,
+              () =>
+                readSkillContentFromGitHub({
+                  repoUrl,
+                  path,
+                  commit,
+                  githubCredentialsProvider,
+                }),
+            );
         if (!files) {
           files = await readGitHubCommitFiles(content.repoUrl, commit).then(
             all => all.get(path),
@@ -651,6 +669,13 @@ export async function createRouter({
    *   must still be the commit asked for, so a branch that moved on answers
    *   409 ("reload the skill"), as `/content` does.
    *
+   * Every upstream read on a miss, here and in `/content`, goes through
+   * `UpstreamReadGuard`: a 404, 409 or 422 is answered from memory for five
+   * minutes per read, concurrent reads of one key share one, and at most two
+   * clones and four GitHub reads run at once (32 more wait each; past that,
+   * 503), so random commit ids cannot make the backend clone or spend the
+   * GitHub token without bound.
+   *
    * Query parameters: repoUrl, path, commit, ref (as `/content`), and file.
    */
   router.get('/agent-skills/content/file', async (req, res) => {
@@ -664,11 +689,10 @@ export async function createRouter({
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
-    const { repoUrl, path, commit, ref, file } = parsed.data;
-    if (!isConfiguredSkillRepository(repoUrl)) {
-      throw new InputError(
-        `${repoUrl} is not one of the configured skill repositories`,
-      );
+    const { path, commit, ref, file } = parsed.data;
+    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repoUrl) {
+      throw notConfigured(parsed.data.repoUrl);
     }
     const isGitHub = isGitHubUrl(repoUrl);
     const filePath = repositoryFilePath(path, file);
@@ -709,12 +733,17 @@ export async function createRouter({
           ? { bytes: scanned }
           : skillDiscoveryCache.readFile(repoUrl, commit, filePath);
         if (!read && isGitHub) {
-          const bytes = await readSkillFileFromGitHub({
-            repoUrl,
-            filePath,
-            commit,
-            githubCredentialsProvider,
-          });
+          const bytes = await upstreamReads.read(
+            'github',
+            `file#${repositoryKey(repoUrl)}#${commit}#${filePath}`,
+            () =>
+              readSkillFileFromGitHub({
+                repoUrl,
+                filePath,
+                commit,
+                githubCredentialsProvider,
+              }),
+          );
           read = skillDiscoveryCache.rememberFile(
             repoUrl,
             commit,

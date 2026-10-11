@@ -399,21 +399,64 @@ describe('GET /agent-skills', () => {
       .mockResolvedValue(discovered);
   });
 
-  it('sends a github.com repository through the GitHub API provider', async () => {
+  it('sends a configured github.com repository through the GitHub API provider', async () => {
     const app = await buildDiscoveryApp();
 
     const response = await request(app)
       .get('/agent-skills')
-      .query({ repoUrl: 'https://github.com/giantswarm/other-skills' });
+      .query({ repoUrl: 'https://github.com/giantswarm/skills' });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual(answered);
     expect(discoverAgentSkills).toHaveBeenCalledWith(
       expect.objectContaining({
-        repoUrl: 'https://github.com/giantswarm/other-skills',
+        repoUrl: 'https://github.com/giantswarm/skills',
       }),
     );
     expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a github.com repository that is not configured (no reads with the portal token)', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'https://github.com/giantswarm/private-things' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe(
+      'https://github.com/giantswarm/private-things is not one of the configured skill repositories',
+    );
+    expect(discoverAgentSkills).not.toHaveBeenCalled();
+  });
+
+  it('reads the configured URL, not the caller’s spelling of it', async () => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: 'https://github.com/GiantSwarm/Skills.git/' });
+
+    expect(response.status).toBe(200);
+    expect(discoverAgentSkills).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoUrl: 'https://github.com/giantswarm/skills',
+      }),
+    );
+  });
+
+  it.each([
+    'https://github.com/%2e%2e/rate_limit?',
+    'https://github.com/../rate_limit',
+  ])('refuses %p before anything is read', async repoUrl => {
+    const app = await buildDiscoveryApp();
+
+    const response = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl, ref: 'main' });
+
+    expect(response.status).toBe(400);
+    expect(discoverAgentSkills).not.toHaveBeenCalled();
   });
 
   it('sends a configured non-GitHub repository through the git provider', async () => {
@@ -642,8 +685,9 @@ describe('GET /agent-skills/content', () => {
       files: notesFiles.files,
       filesTruncated: false,
     });
+    // The configured URL is read, whatever the caller's spelling of it.
     expect(readSkillContentFromGitHub).toHaveBeenCalledWith({
-      repoUrl: 'https://github.com/GiantSwarm/skills.git',
+      repoUrl: 'https://github.com/giantswarm/skills',
       path: 'notes',
       commit: COMMIT,
       githubCredentialsProvider,
@@ -1198,6 +1242,77 @@ describe('GET /agent-skills/content/file', () => {
         'Failed to read the skill file: main has moved on; reload the skill.',
       );
     });
+
+    it('answers a commit that moved on again from memory, without another clone', async () => {
+      jest
+        .mocked(discoverAgentSkillsFromGit)
+        .mockRejectedValue(
+          new GitFetchError(409, 'main has moved on; reload the skill.'),
+        );
+      const app = await buildFileApp();
+
+      await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('SKILL.md'));
+      const again = await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('SKILL.md'));
+      const viaContent = await request(app)
+        .get('/agent-skills/content')
+        .query({ repoUrl: GIT_REPO, path: 'ops', commit: COMMIT, ref: 'main' });
+
+      expect(again.status).toBe(409);
+      expect(viaContent.status).toBe(409);
+      // `/content` reads without `mustRead`: one more clone, then remembered.
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(2);
+    });
+
+    it('runs at most two clones at once, however many commits are asked for', async () => {
+      let running = 0;
+      let peak = 0;
+      jest.mocked(discoverAgentSkillsFromGit).mockImplementation(async () => {
+        running += 1;
+        peak = Math.max(peak, running);
+        await new Promise(resolve => setTimeout(resolve, 20));
+        running -= 1;
+        throw new GitFetchError(409, 'moved on');
+      });
+      const app = await buildFileApp();
+
+      const responses = await Promise.all(
+        Array.from({ length: 6 }, (_, i) =>
+          request(app)
+            .get('/agent-skills/content/file')
+            .query({
+              ...gitQuery('SKILL.md'),
+              commit: String(i).repeat(40),
+            }),
+        ),
+      );
+
+      expect(responses.map(r => r.status)).toEqual(Array(6).fill(409));
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(6);
+      expect(peak).toBe(2);
+    });
+  });
+
+  it('answers a commit GitHub does not have from memory, without another tree read', async () => {
+    jest
+      .mocked(listSkillFilesFromGitHub)
+      .mockRejectedValue(new GitHubApiError(404, 'Not Found'));
+    const app = await buildFileApp();
+    const query = fileQuery('SKILL.md', { commit: 'f'.repeat(40) });
+
+    const first = await request(app)
+      .get('/agent-skills/content/file')
+      .query(query);
+    const second = await request(app)
+      .get('/agent-skills/content/file')
+      .query(query);
+
+    expect(first.status).toBe(404);
+    expect(second.status).toBe(404);
+    expect(listSkillFilesFromGitHub).toHaveBeenCalledTimes(1);
   });
 });
 

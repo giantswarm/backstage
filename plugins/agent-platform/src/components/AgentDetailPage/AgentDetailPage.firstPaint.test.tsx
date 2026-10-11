@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Profiler } from 'react';
+import { lazy, Profiler, Suspense } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
@@ -16,6 +16,8 @@ import {
   skillsRouteRef,
   usageRouteRef,
 } from '../../routes';
+import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
+import { AgentPlatformPageRoutes } from '../AgentPlatformPageRoutes';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { AgentDetailPage } from './AgentDetailPage';
 
@@ -28,6 +30,30 @@ import { AgentDetailPage } from './AgentDetailPage';
  * header. Every React commit is recorded (Profiler), because a flash is
  * exactly what a final-state assertion misses.
  */
+
+// The agent-platform backend's cookie, which the Agents tab waits for:
+// answered when the test says so.
+type CookieState =
+  { status: 'loading' } | { status: 'success'; data: { expiresAt: string } };
+const mockCookieStore = {
+  value: { status: 'loading' } as CookieState,
+  listeners: new Set<() => void>(),
+};
+function setCookie(value: CookieState) {
+  mockCookieStore.value = value;
+  mockCookieStore.listeners.forEach(listener => listener());
+}
+jest.mock('@backstage/plugin-auth-react', () => {
+  const { useSyncExternalStore } = jest.requireActual('react');
+  const subscribe = (listener: () => void) => {
+    mockCookieStore.listeners.add(listener);
+    return () => mockCookieStore.listeners.delete(listener);
+  };
+  return {
+    useCookieAuthRefresh: () =>
+      useSyncExternalStore(subscribe, () => mockCookieStore.value),
+  };
+});
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () =>
@@ -215,7 +241,7 @@ type HeaderShape = {
  * such a case, drawn by a synchronous second render (from a layout effect)
  * after the strip mounts. Everything else counts, conservatively.
  */
-type Commit = { shape: HeaderShape; paintable: boolean };
+type Commit = { shape: HeaderShape; h1: Element; paintable: boolean };
 let commits: Commit[] = [];
 let inCommitTask = false;
 
@@ -240,7 +266,7 @@ function recordCommit() {
   if (previous && inCommitTask) {
     previous.paintable = false;
   }
-  commits.push({ shape, paintable: true });
+  commits.push({ shape, h1, paintable: true });
   inCommitTask = true;
   queueMicrotask(() => {
     inCommitTask = false;
@@ -260,6 +286,17 @@ function paintedShapes(): HeaderShape[] {
     }
   }
   return shapes;
+}
+
+/** The h1 elements that could have been on screen, in order, repeats folded. */
+function paintedH1s(): Element[] {
+  const h1s: Element[] = [];
+  for (const { h1, paintable } of commits) {
+    if (paintable && h1s[h1s.length - 1] !== h1) {
+      h1s.push(h1);
+    }
+  }
+  return h1s;
 }
 
 /** Somewhere else in the app, and the way to the agent from there. */
@@ -320,6 +357,78 @@ async function renderApp() {
   );
 }
 
+/**
+ * The way the app mounts the agent's page: the Agent Platform page's
+ * sub-page routes, the Agents tab's element loaded lazily behind a Suspense
+ * boundary (Backstage's `ExtensionBoundary.lazy`), then the cookie the tab
+ * waits for, then its router. `releaseChunk` lets the chunk arrive.
+ */
+async function renderThroughThePage() {
+  let releaseChunk: () => void = () => {};
+  const chunk = new Promise<void>(resolve => {
+    releaseChunk = resolve;
+  });
+  const AgentsTab = lazy(async () => {
+    await chunk;
+    return {
+      default: () => (
+        <AgentPlatformCookieAuth>
+          <QueryClientProvider>
+            <Routes>
+              <Route
+                path=":installation/:namespace/:name/*"
+                element={<AgentDetailPage />}
+              />
+            </Routes>
+          </QueryClientProvider>
+        </AgentPlatformCookieAuth>
+      ),
+    };
+  });
+  await renderInTestApp(
+    <Profiler id="agent-platform-page" onRender={recordCommit}>
+      <Routes>
+        <Route path="/elsewhere" element={<Elsewhere />} />
+        <Route
+          path="/agent-platform/*"
+          element={
+            <AgentPlatformPageRoutes
+              pageTitle="Agent Platform"
+              pages={[
+                {
+                  path: 'agents',
+                  title: 'Agents',
+                  element: (
+                    <Suspense fallback={<div data-testid="chunk-loading" />}>
+                      <AgentsTab />
+                    </Suspense>
+                  ),
+                },
+              ]}
+            />
+          }
+        />
+      </Routes>
+    </Profiler>,
+    {
+      apis: [
+        mockApis.featureFlags({
+          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
+        }),
+        [kubernetesApiRef, { proxy }],
+      ],
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        '/agent-platform/models': modelsRouteRef,
+        '/agent-platform/skills': skillsRouteRef,
+        '/agent-platform/usage': usageRouteRef,
+      },
+      initialRouteEntries: ['/elsewhere'],
+    },
+  );
+  return { releaseChunk: () => releaseChunk() };
+}
+
 /** The final header: avatar, title, badge row, the three tabs, the trail. */
 const FINAL_FRAME = {
   leading: true,
@@ -343,6 +452,7 @@ beforeEach(() => {
   window.localStorage.clear();
   commits = [];
   proxy.mockClear();
+  mockCookieStore.value = { status: 'loading' };
 });
 
 describe('AgentDetailPage — the first paint', () => {
@@ -363,6 +473,9 @@ describe('AgentDetailPage — the first paint', () => {
     expect(screen.getByTestId('agent-readiness')).toHaveTextContent('Ready');
 
     expectEveryPaintInFinalFrame();
+    // The skeleton title and the name are the one h1 element: the same type
+    // scale, the same place after the avatar.
+    expect(paintedH1s()).toHaveLength(1);
   });
 
   it('opens an agent read before straight at its page, not a loading frame', async () => {
@@ -389,5 +502,37 @@ describe('AgentDetailPage — the first paint', () => {
     // Nothing but the agent itself, from the first commit.
     expect(paintedShapes().map(shape => shape.title)).toEqual(['PR reviewer']);
     expect(paintedShapes().some(shape => shape.loading)).toBe(false);
+  });
+
+  it('shows no other page’s header while the route’s code and cookie load', async () => {
+    const { releaseChunk } = await renderThroughThePage();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open the agent' }),
+    );
+
+    // The tab's code is still loading: nothing but the empty content area —
+    // in particular not the section's "Agents" header.
+    expect(screen.getByTestId('chunk-loading')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+
+    // The code is there, the cookie is not: still nothing.
+    await act(async () => releaseChunk());
+    expect(screen.queryByTestId('chunk-loading')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+
+    // The cookie arrives: the agent's own frame is the first h1 painted.
+    act(() =>
+      setCookie({
+        status: 'success',
+        data: { expiresAt: new Date(Date.now() + 3_600_000).toISOString() },
+      }),
+    );
+    await act(async () => releaseAgent());
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'PR reviewer' }),
+    ).toBeInTheDocument();
+
+    expect(paintedShapes().map(shape => shape.title)).not.toContain('Agents');
+    expectEveryPaintInFinalFrame();
   });
 });

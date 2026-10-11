@@ -48,6 +48,19 @@ describe('parseRepoUrl', () => {
   it('rejects non-github URLs', () => {
     expect(() => parseRepoUrl('https://gitlab.com/a/b')).toThrow();
   });
+
+  it.each([
+    'https://github.com/%2e%2e/rate_limit',
+    'https://github.com/../rate_limit',
+    'https://github.com/./rate_limit',
+    'https://github.com/giantswarm/..',
+    'https://github.com/rate_limit?/x',
+    'https://github.com/giantswarm/skills?x=1',
+    'https://github.com/giantswarm/skills#x',
+    'https://github.com/giant%20swarm/skills',
+  ])('rejects %p, whose parts would leave the repository endpoint', url => {
+    expect(() => parseRepoUrl(url)).toThrow(/Not a github.com repository/);
+  });
 });
 
 describe('discoverAgentSkills', () => {
@@ -583,6 +596,34 @@ describe('discoverAgentSkills', () => {
     expect(error).toBeInstanceOf(GitHubApiError);
     expect(error.status).toBe(404);
     expect(error.rateLimited).toBe(false);
+  });
+
+  it('does not echo what GitHub answered when it is not a commit id', async () => {
+    global.fetch = jest.fn(async (url: string) =>
+      url.includes('/commits/')
+        ? ({ ok: true, text: async () => '{"secret":"body"}' } as Response)
+        : ({
+            ok: true,
+            json: async () => ({ default_branch: 'main' }),
+          } as Response),
+    ) as unknown as typeof fetch;
+    const logger = { debug: jest.fn() };
+
+    const error = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      logger: logger as never,
+    }).catch(e => e);
+
+    expect(error).toBeInstanceOf(GitHubApiError);
+    expect(error.status).toBe(502);
+    expect(error.message).toBe(
+      'GitHub did not answer a commit id for giantswarm/agent-skills@main.',
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      'GitHub did not answer a commit id',
+      expect.objectContaining({ body: '{"secret":"body"}' }),
+    );
   });
 
   function rateLimited(status: number) {

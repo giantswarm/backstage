@@ -231,6 +231,9 @@ export class SessionUsageReader {
     let undatedTurns = 0;
     let unparseableMessages = 0;
     const days = new Map<string, UsageTally>();
+    // Sessions by the UTC day of their newest turn in the window: a narrower
+    // window's session count is a trailing sum of these (see UsageDayEntry).
+    const lastActive = new Map<string, number>();
     const tools = new Map<string | null, number>();
     const servers = new Map<string | null, number>();
     const agents = new Map<string | null, UsageTally & { sessions: number }>();
@@ -263,10 +266,17 @@ export class SessionUsageReader {
           undatedTurns += usage.undatedTurns;
           unparseableMessages += usage.unparseableMessages;
 
+          let newestDay: string | undefined;
           for (const [day, tally] of usage.days) {
             const existing = days.get(day) ?? emptyTally();
             addInto(existing, tally);
             days.set(day, existing);
+            if (tally.turns > 0 && (!newestDay || day > newestDay)) {
+              newestDay = day;
+            }
+          }
+          if (newestDay) {
+            lastActive.set(newestDay, (lastActive.get(newestDay) ?? 0) + 1);
           }
           for (const [tool, calls] of usage.tools) {
             tools.set(tool, (tools.get(tool) ?? 0) + calls);
@@ -318,7 +328,7 @@ export class SessionUsageReader {
       windowStart: startMs,
       windowDays: this.windowDays,
       totals: { ...totals, sessions: sessionsWithActivity },
-      daily: this.denseDaily(days, startMs, endMs),
+      daily: this.denseDaily(days, lastActive, startMs, endMs),
       byAgent: this.rankAgents(agents),
       topTools: rankedTools.top,
       otherTools: rankedTools.other,
@@ -344,6 +354,7 @@ export class SessionUsageReader {
    */
   private denseDaily(
     days: Map<string, UsageTally>,
+    lastActive: Map<string, number>,
     startMs: number,
     endMs: number,
   ): UsageDayEntry[] {
@@ -361,6 +372,8 @@ export class SessionUsageReader {
         inputTokens: tally?.inputTokens ?? 0,
         outputTokens: tally?.outputTokens ?? 0,
         turns: tally?.turns ?? 0,
+        toolCalls: tally?.toolCalls ?? 0,
+        lastActiveSessions: lastActive.get(day) ?? 0,
       });
     }
     return daily;

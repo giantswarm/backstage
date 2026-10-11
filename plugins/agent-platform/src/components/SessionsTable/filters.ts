@@ -2,7 +2,7 @@ import {
   AWAITING_INPUT_STATES,
   CANCELED_STATE,
   FAILED_STATES,
-  SHELL_STATE_LABELS,
+  SESSION_STATE_LABELS,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   applyCatalogFilters,
@@ -18,9 +18,10 @@ import {
 /**
  * The State chips' buckets. Each chip is named after the State cell label of
  * most of its rows; the others are close kin that the person acts on the same
- * way: "Authentication required" under "Waiting for input" (both wait on the
- * person), "Submitted" under "Working", "Rejected" under "Failed", "Canceled"
- * under "Completed" (ended, nothing left to do). "Unknown" holds unreadable
+ * way: auth-required under "Waiting for you" (both wait on the person),
+ * submitted under "Working", rejected under "Failed", canceled under
+ * "Finished" (ended, nothing left to do) — the buckets `describeSessionState`
+ * names them by. "Unknown" holds unreadable
  * sessions and any state kagent reports that the portal does not recognise.
  * Rows whose state has not been loaded are a fact about this page, not the
  * session, so only "All" holds them.
@@ -56,17 +57,17 @@ export const SESSION_STATE_FILTERS: ReadonlyArray<{
   label: string;
 }> = [
   { id: 'all', label: 'All' },
-  { id: 'waiting', label: 'Waiting for input' },
-  { id: 'running', label: 'Working' },
-  { id: 'failed', label: 'Failed' },
-  { id: 'finished', label: 'Completed' },
+  { id: 'waiting', label: SESSION_STATE_LABELS.waiting },
+  { id: 'running', label: SESSION_STATE_LABELS.working },
+  { id: 'failed', label: SESSION_STATE_LABELS.failed },
+  { id: 'finished', label: SESSION_STATE_LABELS.finished },
   { id: 'idle', label: STATE_IDLE_LABEL },
   { id: 'unknown', label: STATE_UNKNOWN_LABEL },
 ];
 
 /**
- * The shell's State chips: the same buckets, named in the shell's four state
- * words. `whenPresent` chips show only while a row falls in them, because the
+ * The shell's State chips: the same buckets, in the same four state words.
+ * `whenPresent` chips show only while a row falls in them, because the
  * shell does not name those as states of their own.
  */
 export const SHELL_SESSION_STATE_FILTERS: ReadonlyArray<{
@@ -78,10 +79,10 @@ export const SHELL_SESSION_STATE_FILTERS: ReadonlyArray<{
   // Only once something is pinned: before the first pin the chip filters down
   // to nothing, and the affordance that introduces pinning is the row's pin.
   { id: 'pinned', label: 'Pinned', whenPresent: true },
-  { id: 'waiting', label: SHELL_STATE_LABELS.waiting },
-  { id: 'running', label: SHELL_STATE_LABELS.working },
-  { id: 'finished', label: SHELL_STATE_LABELS.finished },
-  { id: 'failed', label: SHELL_STATE_LABELS.failed },
+  { id: 'waiting', label: SESSION_STATE_LABELS.waiting },
+  { id: 'running', label: SESSION_STATE_LABELS.working },
+  { id: 'finished', label: SESSION_STATE_LABELS.finished },
+  { id: 'failed', label: SESSION_STATE_LABELS.failed },
   { id: 'idle', label: STATE_IDLE_LABEL, whenPresent: true },
   { id: 'unknown', label: STATE_UNKNOWN_LABEL, whenPresent: true },
 ];
@@ -334,17 +335,23 @@ const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
 
 /**
  * The facets to draw: the agent options named as {@link sessionAgentOptions}
- * names them, and State only where the list has states at all.
+ * names them (none on one agent's own sessions), and State only where the
+ * list has states at all.
  */
 export function sessionFacets(
   rows: SessionTableRow[],
-  { showStates }: { showStates: boolean },
+  {
+    showStates,
+    showAgents = true,
+  }: { showStates: boolean; showAgents?: boolean },
 ): CatalogFacet<SessionTableRow>[] {
   const agentLabels = new Map(
     sessionAgentOptions(rows).map(option => [option.id, option.label]),
   );
   return SESSION_FACETS.filter(
-    facet => showStates || facet.id !== SESSION_STATE_FACET,
+    facet =>
+      (showStates || facet.id !== SESSION_STATE_FACET) &&
+      (showAgents || facet.id !== SESSION_AGENT_FACET),
   ).map(facet =>
     facet.id === SESSION_AGENT_FACET
       ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }

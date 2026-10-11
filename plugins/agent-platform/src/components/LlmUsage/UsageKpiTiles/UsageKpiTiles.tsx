@@ -11,12 +11,20 @@ import {
 import { KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type UsageKpiSessions = {
-  /** The signed-in user's session count, from the kagent fan-out. */
+  /**
+   * The signed-in user's session count over the selected window, from the
+   * kagent fan-out; undefined when that window's count is not knowable.
+   */
   count: number | undefined;
-  /** The window that count covers, as the backend reported it. */
+  /** The window that count covers: the selected one, or kagent's when narrower. */
   windowDays: number | undefined;
   isLoading: boolean;
 };
+
+/** A session count, or `—` where the window's count is not knowable. */
+function sessionCount(count: number | undefined): string {
+  return count === undefined ? '—' : formatCount(count);
+}
 
 export type UsageKpiTilesProps = {
   usage: LlmUsage;
@@ -101,7 +109,7 @@ export function UsageKpiTiles({
             sessions.isLoading ? (
               <Skeleton width={56} height={28} rounded />
             ) : (
-              formatCount(sessions.count ?? 0)
+              sessionCount(sessions.count)
             )
           }
           sub={

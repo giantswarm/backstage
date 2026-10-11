@@ -175,7 +175,7 @@ describe('EditSkillPage', () => {
     ).not.toBeInTheDocument();
     unmount();
 
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     await renderPage();
     expect(
       screen.getByText(
@@ -238,7 +238,9 @@ describe('EditSkillPage', () => {
       screen.getByText("The portal cannot read this skill's source"),
     ).toBeInTheDocument();
     await waitFor(() =>
-      expect(document.title).toBe('Edit ticket-triage · Skills'),
+      expect(document.title).toBe(
+        'Edit ticket-triage · Skills · Agent Platform',
+      ),
     );
     expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
   });
@@ -248,6 +250,8 @@ describe('EditSkillPage', () => {
 
     expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
     expect(screen.getByText('Skill not found')).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe('Edit skill · Skills'));
+    await waitFor(() =>
+      expect(document.title).toBe('Edit skill · Skills · Agent Platform'),
+    );
   });
 });

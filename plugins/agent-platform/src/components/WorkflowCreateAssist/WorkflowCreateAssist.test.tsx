@@ -107,14 +107,14 @@ describe('WorkflowCreateAssist', () => {
   });
 
   it('renders nothing when the configured agent does not exist', async () => {
-    configuredRoles = { workflowManagement: 'gone-agent' };
+    configuredRoles = { workflowManagement: 'kagent/gone-agent' };
     await renderAssist();
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('renders nothing when the configured agent cannot take a session', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     mockRows = [agent('workflow-manager', 'Flo', 'notReady')];
     await renderAssist();
 
@@ -122,7 +122,7 @@ describe('WorkflowCreateAssist', () => {
   });
 
   it('offers, in one line of the meta-agent strip, to create workflows with the agent', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     await renderAssist();
 
     const strip = screen.getByRole('region', {
@@ -137,7 +137,7 @@ describe('WorkflowCreateAssist', () => {
   });
 
   it('starts a session with the workflow agent and opens it', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     createSession.mockResolvedValue('session-3');
     await renderAssist();
 
@@ -167,7 +167,7 @@ describe('WorkflowCreateAssist', () => {
   }, 30_000);
 
   it('stays on the overview and says why when the session could not start', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     mockCreationError = new Error('kagent is unreachable');
     createSession.mockRejectedValue(mockCreationError);
     await renderAssist();

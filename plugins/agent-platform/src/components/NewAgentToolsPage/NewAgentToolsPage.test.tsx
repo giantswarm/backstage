@@ -611,13 +611,14 @@ describe('NewAgentToolsPage', () => {
       expect(access('agent-manager', 'All')).not.toBeChecked();
       expect(
         screen.getByText(
-          'Changing anything below switches to Only the tools I choose below, without connectors you are not signed in to.',
+          'Changing anything below switches to Only the tools I choose below, and removing something this preset covers also drops connectors you are not signed in to.',
         ),
       ).toBeInTheDocument();
       // Untouched, the toolset stays the preset (it follows the gateway).
       expect(toolsetOutput()).toBe('preset:read-only');
 
-      // The first change writes the preset out and applies itself.
+      // Taking part of the preset away writes it out ("the preset minus x"
+      // has no selector) and applies itself.
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).toBe('workflow:incident-triage');
       expect(level('Only the tools I choose below')).toBeChecked();
@@ -891,6 +892,127 @@ describe('NewAgentToolsPage', () => {
     });
   });
 
+  describe('a compact toolset (B1)', () => {
+    /** 40 read-only connectors, listed after the fixture's three: the read-only
+     * preset written out is 42 selectors. */
+    const MANY_READ_ONLY: ToolSummary[] = Array.from(
+      { length: 40 },
+      (_, i) => ({
+        name: `x_svc${String(i).padStart(2, '0')}_get`,
+        summary: `App ${i}`,
+        server: `svc${String(i).padStart(2, '0')}`,
+        kind: 'tool' as const,
+        annotations: { readOnlyHint: true },
+      }),
+    );
+
+    it('keeps a broad preset as the base when one connector gets All', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: MANY_READ_ONLY,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await user.click(level('Look things up'));
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+
+      // The QA repro: written out, this would be 43 selectors.
+      await user.click(access('agent-manager', 'All'));
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
+      expect(level('Only the tools I choose below')).toBeChecked();
+      expect(continueButton()).toBeEnabled();
+      expect(
+        screen.queryByText('Fix the toolset to continue.'),
+      ).not.toBeInTheDocument();
+      // The grid still shows everything the toolset selects.
+      expect(access('agent-manager', 'All')).toBeChecked();
+      expect(access('kubernetes', 'Read-only')).toBeChecked();
+      expect(access('svc00', 'Read-only')).toBeChecked();
+
+      // A further addition stays on top of the preset.
+      await user.click(access('kubernetes', 'All'));
+      expect(toolsetOutput()).toBe(
+        'preset:read-only | server:agent-manager | server:kubernetes',
+      );
+
+      // Back to what the preset covers: the preset alone again.
+      await user.click(access('kubernetes', 'Read-only'));
+      await user.click(access('agent-manager', 'All'));
+      expect(toolsetOutput()).toBe('preset:read-only');
+      expect(level('Look things up')).toBeChecked();
+    });
+
+    it('writes the preset out when part of it is taken away, and names what to reduce over the cap', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: MANY_READ_ONLY,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await user.click(level('Look things up'));
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+
+      // "Read-only everywhere but kubernetes" has no selector: written out,
+      // it is 41 selectors, one per connector plus the workflow.
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
+      expect(continueButton()).toBeDisabled();
+      expect(
+        within(summaryBar()).getByText(
+          'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('names the connectors that list the most when a selection is over the cap', async () => {
+      const wide = (server: string): ToolSummary[] => [
+        ...Array.from({ length: 20 }, (_, i) => ({
+          name: `x_${server}_get_${String(i).padStart(2, '0')}`,
+          summary: `Read ${i}`,
+          server,
+          kind: 'tool' as const,
+          annotations: { readOnlyHint: true },
+        })),
+        {
+          name: `x_${server}_write`,
+          summary: 'Write',
+          server,
+          kind: 'tool' as const,
+        },
+      ];
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: [...wide('alpha'), ...wide('beta')],
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+
+      await user.click(access('alpha', 'Read-only'));
+      await user.click(access('beta', 'Read-only'));
+      expect(continueButton()).toBeDisabled();
+      expect(
+        within(summaryBar()).getByText(
+          'This toolset needs 40 selectors but may list at most 32; most come from alpha (20) and beta (20), so choose All or fewer tools there.',
+        ),
+      ).toBeInTheDocument();
+
+      // All on one of them fits.
+      await user.click(access('alpha', 'All'));
+      expect(continueButton()).toBeEnabled();
+    });
+  });
+
   describe('the individual tools', () => {
     it('open from the link, straight to the catalogue, with the power-user paths inside', async () => {
       const { api } = makeMusterApi({
@@ -1121,7 +1243,7 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('caps inline selectors at 32 and asks for a preset', async () => {
+    it('caps inline selectors at 32 and says what to reduce', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -1142,8 +1264,11 @@ describe('NewAgentToolsPage', () => {
         }),
       );
 
+      expect(screen.getByText('Too many selectors')).toBeInTheDocument();
       expect(
-        screen.getByText('Too many selectors — define a preset'),
+        within(toolsetCard()).getByText(
+          'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+        ),
       ).toBeInTheDocument();
       expect(screen.getByText('Fix the toolset to continue.')).toBeVisible();
       expect(continueButton()).toBeDisabled();
@@ -1164,10 +1289,8 @@ describe('NewAgentToolsPage', () => {
       await user.type(screen.getByLabelText('Selector'), 'preset:foo');
       await user.click(screen.getByRole('button', { name: 'Add selector' }));
 
-      // A change like any other: the preset is written out first.
-      expect(toolsetOutput()).toBe(
-        'tool:x_kubernetes_get_pods | workflow:incident-triage | preset:foo',
-      );
+      // A change like any other: added on top of the preset.
+      expect(toolsetOutput()).toBe('preset:read-only | preset:foo');
       expect(level('Only the tools I choose below')).toBeChecked();
       expect(
         await screen.findByText(
@@ -1203,9 +1326,11 @@ describe('NewAgentToolsPage', () => {
         screen.getByRole('checkbox', { name: 'Tool x_kubernetes_delete_pod' }),
       );
 
+      // Everything the preset covers is still chosen: it stays the base.
       expect(toolsetOutput()).toBe(
-        'tool:x_kubernetes_get_pods | workflow:incident-triage | tool:x_kubernetes_delete_pod',
+        'preset:read-only | tool:x_kubernetes_delete_pod',
       );
+      expect(level('Only the tools I choose below')).toBeChecked();
       await waitFor(() =>
         expect(
           within(toolsetCard()).getByText('x_kubernetes_delete_pod'),
@@ -1256,10 +1381,12 @@ describe('NewAgentToolsPage', () => {
       ).toHaveTextContent('incident-triage');
       expect(await within(rail).findByText('2 tools')).toBeInTheDocument();
 
+      // Added on top: the preset stays listed as the base.
       await user.click(access('agent-manager', 'All'));
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
       expect(
-        within(rail).queryByRole('list', { name: 'Access' }),
-      ).not.toBeInTheDocument();
+        within(rail).getByRole('list', { name: 'Access' }),
+      ).toHaveTextContent('Read-only tools');
       expect(
         within(rail).getByRole('list', { name: 'agent-manager' }),
       ).toHaveTextContent('All tools, including ones added later');
@@ -1276,10 +1403,10 @@ describe('NewAgentToolsPage', () => {
           name: 'Remove all of agent-manager',
         }),
       );
-      expect(toolsetOutput()).toBe(
-        'tool:x_kubernetes_get_pods | workflow:incident-triage',
-      );
+      // Back to the preset alone, which the radio shows as that preset.
+      expect(toolsetOutput()).toBe('preset:read-only');
       expect(access('agent-manager', 'All')).not.toBeChecked();
+      expect(level('Look things up')).toBeChecked();
     });
 
     it('opens the resolved list from the rail', async () => {
@@ -1318,7 +1445,7 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('preset:infrastructure');
     });
 
-    it('shows a preset with more beside it as own picks, every selector kept', async () => {
+    it('shows a preset with more beside it as own picks, the grid showing both, every selector kept', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -1333,11 +1460,41 @@ describe('NewAgentToolsPage', () => {
         expect(level('Only the tools I choose below')).toBeChecked(),
       );
       expect(access('agent-manager', 'All')).toBeChecked();
+      // The preset's part, written out for the grid only.
+      await waitFor(() => expect(access('kubernetes', 'All')).toBeChecked());
+      expect(
+        screen.queryByRole('heading', { name: 'Individual tools' }),
+      ).not.toBeInTheDocument();
       expect(
         within(summaryBar()).getByTitle('preset:infrastructure'),
       ).toBeInTheDocument();
       expect(toolsetOutput()).toBe(
         'preset:infrastructure | server:agent-manager',
+      );
+    });
+
+    it('round-trips a read-only base with a connector on top, and stores a change compactly', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({
+        api,
+        toolset: ['preset:read-only', 'server:agent-manager'],
+      });
+      await connectorsListed();
+
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+      expect(level('Only the tools I choose below')).toBeChecked();
+      expect(access('agent-manager', 'All')).toBeChecked();
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
+
+      const user = userEvent.setup();
+      await user.click(access('kubernetes', 'All'));
+      expect(toolsetOutput()).toBe(
+        'preset:read-only | server:agent-manager | server:kubernetes',
       );
     });
 

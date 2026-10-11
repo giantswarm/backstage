@@ -64,15 +64,20 @@ describe('selector grammar', () => {
     expect(selectorProblem('preset:none')).toBeUndefined();
   });
 
-  it('caps a toolset at 32 inline selectors and points at a preset', () => {
+  it('caps a toolset at 32 inline selectors and says what to reduce', () => {
     const fine = Array.from(
       { length: MAX_INLINE_SELECTORS },
       (_, i) => `tool:x_srv_t${i}`,
     );
     expect(toolsetProblems(fine)).toEqual([]);
     const problems = toolsetProblems([...fine, 'tool:x_srv_one_more']);
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatch(/Define a preset/);
+    expect(problems).toEqual([
+      'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+    ]);
+    // Where the catalogue can say more, the caller words it.
+    expect(
+      toolsetProblems([...fine, 'tool:x_srv_one_more'], s => `${s.length}!`),
+    ).toEqual(['33!']);
   });
 
   it('splits a rendered header back into selectors', () => {

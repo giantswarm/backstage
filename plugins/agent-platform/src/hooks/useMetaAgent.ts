@@ -7,32 +7,48 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import { useAgents } from '../components/AgentsDataProvider';
 
 /**
- * The agent configured to serve a meta-agent role, matched against the rows:
- * by its technical (resource) name, or `<namespace>/<name>` when the config
- * qualifies it. Rows come home-installation first, so a fleet running the
- * agent in several places resolves to the home one.
+ * The agent configured to serve a meta-agent role. The configured value must
+ * be qualified: `<namespace>/<name>`, or `<installation>/<namespace>/<name>`
+ * to pick one installation where the agent runs in several. It must match
+ * exactly one row; anything else resolves to nothing, so the feature hides:
+ *
+ * - a bare name: any user who can create an agent in a namespace others can
+ *   list could otherwise squat on the role (security audit 1, M1);
+ * - a `<namespace>/<name>` that exists on several installations: no row is
+ *   preferred over another, ordering included, so the config must name the
+ *   installation;
+ * - an empty segment or more than three segments.
  */
 export function resolveMetaAgent(
   rows: AgentRow[],
   configured: string | undefined,
 ): AgentRow | undefined {
-  if (!configured) {
+  const segments = configured?.split('/') ?? [];
+  if (
+    segments.length < 2 ||
+    segments.length > 3 ||
+    segments.some(segment => segment === '')
+  ) {
     return undefined;
   }
-  return rows.find(
+  const [name, namespace, installation] = [...segments].reverse();
+  const matches = rows.filter(
     row =>
-      row.technicalName === configured ||
-      `${row.namespace}/${row.technicalName}` === configured,
+      row.technicalName === name &&
+      row.namespace === namespace &&
+      (installation === undefined || row.installation === installation),
   );
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**
- * The agent serving a meta-agent role (decision G13): the name configured
+ * The agent serving a meta-agent role (decision G13): the agent configured
  * under `agentPlatform.metaAgents.<role>` (signed-in config), resolved against
- * the agent index. `undefined` while the config or the agents are loading,
- * when the role is unconfigured, and when the configured name matches no
- * agent — a feature gated on a role renders nothing in all three cases, which
- * is the decision's point: features light up only where the role resolves.
+ * the agent index by {@link resolveMetaAgent}. `undefined` while the config or
+ * the agents are loading, when the role is unconfigured, and when the
+ * configured reference matches no agent, or more than one — a feature gated
+ * on a role renders nothing then, which is the decision's point: features
+ * light up only where the role resolves.
  *
  * Reads `useAgents`, so it must be called under an `AgentsDataProvider`.
  */

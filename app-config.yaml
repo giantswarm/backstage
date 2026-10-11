@@ -459,17 +459,18 @@ agentPlatform:
     # must be able to `git fetch` it at boot too.
     repositories:
       - https://github.com/giantswarm/agent-skills
-  # Which agent serves each meta-agent role. Values are agent names (the Agent
-  # resource's name, optionally `<namespace>/<name>`); a feature gated on a
-  # role appears only where the name resolves to an existing agent, and stays
-  # hidden otherwise. All roles are optional.
+  # Which agent serves each meta-agent role, as `<namespace>/<name>` (or
+  # `<installation>/<namespace>/<name>` where the agent runs on several
+  # installations). A bare name resolves to nothing. A feature gated on a role
+  # appears only where the value matches exactly one agent, and stays hidden
+  # otherwise. All roles are optional.
   # metaAgents:
-  #   generalInformation: swarmgeist
-  #   agentManagement: swarm-operator
-  #   workflowManagement: swarm-operator
-  #   platformOperations: platform-manager
-  #   skillEvaluation: skill-evaluator
-  #   skillCreation: skill-creator
+  #   generalInformation: kagent/swarmgeist
+  #   agentManagement: kagent/swarm-operator
+  #   workflowManagement: kagent/workflow-manager
+  #   platformOperations: kagent/platform-manager
+  #   skillEvaluation: kagent/skill-evaluator
+  #   skillCreation: kagent/skill-creator
   # Integrations living outside the portal that it points people at. `slack`
   # shows the dismissible "Use your agents right in Slack" banner on the
   # new-session home; leave it off until the installation's Slack integration

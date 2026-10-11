@@ -4,7 +4,7 @@ import {
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import {
@@ -21,6 +21,15 @@ function RegistersHeaderAction() {
   return <div>Models content</div>;
 }
 
+/** A view framing itself, as every view in the shell does. */
+function ModelsView() {
+  return (
+    <ShellPage title="Models">
+      <RegistersHeaderAction />
+    </ShellPage>
+  );
+}
+
 function stubSubPage(name: string, title: string) {
   return SubPageBlueprint.make({
     name,
@@ -32,7 +41,7 @@ function stubSubPage(name: string, title: string) {
   });
 }
 
-/** The sessions list titles itself with a `ShellPage`; one session does not. */
+/** The sessions list titles itself with a `ShellPage`; one session is still loading. */
 const sessionsSubPage = SubPageBlueprint.make({
   name: 'sessions',
   params: {
@@ -85,7 +94,7 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
             params: {
               path: 'models',
               title: 'Models',
-              loader: async () => <RegistersHeaderAction />,
+              loader: async () => <ModelsView />,
             },
           }),
         ],
@@ -134,9 +143,8 @@ describe('the Agent Platform page', () => {
       renderPage(FeatureFlagState.Active, '/agent-platform/agents');
 
       expect(await screen.findByText('Agents content')).toBeInTheDocument();
-      expect(
-        screen.getAllByRole('heading', { level: 1 }).map(h => h.textContent),
-      ).toEqual(['Agents']);
+      // No header of the section's own either: each view frames itself.
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
       expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     });
@@ -153,23 +161,17 @@ describe('the Agent Platform page', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('heads one session with its description and a new-session action', async () => {
+    it('puts no list header over a session that is still loading', async () => {
+      // The section's "Sessions" header used to stand in until the session's
+      // own frame claimed the header: a different page for a moment (T95).
       renderPage(
         FeatureFlagState.Active,
         '/agent-platform/sessions/gazelle/abc',
       );
 
       expect(await screen.findByText('Sessions content')).toBeInTheDocument();
-      expect(
-        screen.getByRole('heading', { level: 1, name: 'Sessions' }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("Every conversation you've had with an agent."),
-      ).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
-        'href',
-        '/',
-      );
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'New session' })).toBeNull();
     });
 
     it('routes to another plugin’s sub-page', async () => {
@@ -190,11 +192,12 @@ describe('the Agent Platform page', () => {
       renderPage(FeatureFlagState.Active, '/agent-platform/models');
 
       expect(await screen.findByText('Models content')).toBeInTheDocument();
-      const heading = screen.getByRole('heading', { level: 1, name: 'Models' });
-      const header = heading.parentElement?.parentElement as HTMLElement;
       expect(
-        within(header).getByRole('button', { name: 'Header action' }),
-      ).toBeVisible();
+        screen.getByRole('heading', { level: 1, name: 'Models' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: 'Header action' }),
+      ).toHaveLength(1);
     });
 
     it('names the sub-page in the document title', async () => {

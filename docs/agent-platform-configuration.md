@@ -31,24 +31,45 @@ Two channels, and a key works only in the one it is meant for:
 
 ## Quick reference
 
-| Key                                                       | Default    | Required?                                    | Without it                                                               |
-| --------------------------------------------------------- | ---------- | -------------------------------------------- | ------------------------------------------------------------------------ |
-| `app.portals.agentPlatform`                               | `false`    | Yes, to serve the shell to everyone          | Shell only for people who opt in with the `agent-platform-shell` flag    |
-| `app.portals.platformPortal`                              | `true`     | No                                           | —                                                                        |
-| `app.extensions: page:agent-platform`                     | disabled   | Yes, wherever the shell is on                | Sessions, Agents, Models and Usage screens do not exist                  |
-| `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform   | No kagent, muster, Mimir or avatar endpoint can be derived               |
-| `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir   | Usage metrics are requested from a Mimir that does not exist             |
-| `gs.installations.<name>.currency`                        | USD        | No                                           | Costs shown in USD                                                       |
-| `agentPlatform.kagent.installations`                      | derived    | No                                           | Every installation with a `baseDomain` is tried                          |
-| `agentPlatform.kagent.*` timeouts and bounds              | see below  | No                                           | —                                                                        |
-| `agentPlatform.skills.repositories`                       | `[]`       | Yes, for skills                              | No Skills tab, no skills step in the agent flows                         |
-| `integrations.github` (Backstage integration)             | —          | Recommended with github.com skill repos      | Anonymous GitHub API, 60 requests per hour shared by the backend         |
-| `gs.github` or `auth.providers.github`                    | —          | Yes, for the skill pull-request flows        | Adding or editing a skill cannot get a GitHub token                      |
-| `agentPlatform.metaAgents.<role>`                         | unset      | No                                           | The feature that role lights up stays hidden                             |
-| `agentPlatform.integrations.slack`                        | `false`    | No                                           | No Slack banner on the new-session home                                  |
-| `agentPlatform.integrations.slackDocsUrl`                 | GS docs    | No                                           | The banner's "How it works" opens docs.giantswarm.io                     |
-| `agentPlatform.models.contextWindows`                     | `{}`       | No                                           | The memory indicator shows raw token counts instead of a percentage      |
-| `@backstage/plugin-user-settings-backend` + persistent DB | registered | Yes, for roaming pins, favorites, dismissals | State is lost on backend restart (in-memory SQLite) or stays per browser |
+| Key                                                       | Default    | Required?                                      | Without it                                                               |
+| --------------------------------------------------------- | ---------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| `app.portals.agentPlatform`                               | `false`    | Yes, to serve the shell to everyone            | Shell only for people who opt in with the `agent-platform-shell` flag    |
+| `app.portals.platformPortal`                              | `true`     | No                                             | —                                                                        |
+| `app.extensions: page:agent-platform`                     | disabled   | Yes, wherever the shell is on                  | Sessions, Agents, Models and Usage screens do not exist                  |
+| `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform     | No kagent, muster, Mimir or avatar endpoint can be derived               |
+| `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir     | Usage metrics are requested from a Mimir that does not exist             |
+| `gs.installations.<name>.currency`                        | USD        | No                                             | Costs shown in USD                                                       |
+| `agentPlatform.kagent.installations`                      | derived    | No                                             | Every installation with a `baseDomain` is tried                          |
+| `agentPlatform.kagent.*` timeouts and bounds              | see below  | No                                             | —                                                                        |
+| `agentPlatform.skills.repositories`                       | `[]`       | Yes, for skills                                | No Skills tab, no skills step in the agent flows                         |
+| `integrations.github` (Backstage integration)             | —          | Yes, in production with github.com skill repos | Anonymous GitHub API, 60 requests per hour shared by the backend         |
+| `gs.github` or `auth.providers.github`                    | —          | Yes, for the skill pull-request flows          | Adding or editing a skill cannot get a GitHub token                      |
+| `agentPlatform.metaAgents.<role>`                         | unset      | No                                             | The feature that role lights up stays hidden                             |
+| `agentPlatform.integrations.slack`                        | `false`    | No                                             | No Slack banner on the new-session home                                  |
+| `agentPlatform.integrations.slackDocsUrl`                 | GS docs    | No                                             | The banner's "How it works" opens docs.giantswarm.io                     |
+| `agentPlatform.models.contextWindows`                     | `{}`       | No                                             | The memory indicator shows raw token counts instead of a percentage      |
+| `@backstage/plugin-user-settings-backend` + persistent DB | registered | Yes, for roaming pins, favorites, dismissals   | State is lost on backend restart (in-memory SQLite) or stays per browser |
+
+## Production requirements
+
+Three settings the shell works without in a lab but must have in production:
+
+- **A GitHub token for skills.** Configure `integrations.github` (a GitHub App
+  or a token) that can read every github.com repository in
+  `agentPlatform.skills.repositories`. Without one, gs-backend reads GitHub
+  anonymously, and the 60 requests an hour GitHub allows per IP ran out during
+  QA and took the whole Skills catalogue down. gs-backend caches listings,
+  remembers misses and bounds concurrent reads, which slows the budget's use but
+  does not remove the need for a token.
+- **Qualified meta-agent names.** Every `agentPlatform.metaAgents.<role>` must
+  be `<namespace>/<name>` or `<installation>/<namespace>/<name>`. A bare name
+  resolves to nothing, so the feature that role lights up disappears without an
+  error (see [Meta-agents](#meta-agents-agentplatformmetaagents)).
+- **The avatar service.** Agent avatars come from the chart's DiceBear service
+  (`dicebear`, on by default) at `avatars.<baseDomain>`, through
+  `plugins/agent-platform-backend/src/avatarRouter.ts`. Where it is off or its
+  route is missing, whatever answers that host fails every avatar, the backend
+  logs a warning per image, and the UI shows initials.
 
 ## Portals: `app.portals`
 
@@ -308,30 +329,40 @@ integrations:
 
 ## Meta-agents: `agentPlatform.metaAgents`
 
-Which agent serves each platform role. Values are the Agent resource's
-technical name, optionally `<namespace>/<name>`. Read through
-`readMetaAgents` (`plugins/agent-platform-common/src/metaAgents.ts`) and
-resolved by `useMetaAgent` against the agents the person can see. A feature
-gated on a role is **hidden** — no teaser, no disabled button — while the role
-is unconfigured, still loading, or names an agent that does not exist. All
-roles are optional; default unset.
+Which agent serves each platform role. Values must be qualified:
+`<namespace>/<name>` (the Agent resource's namespace and technical name), or
+`<installation>/<namespace>/<name>` where the same agent runs on several
+installations. Read through `readMetaAgents`
+(`plugins/agent-platform-common/src/metaAgents.ts`) and resolved by
+`useMetaAgent` against the agents the person can see. A feature gated on a
+role is **hidden** — no teaser, no disabled button — while the role is
+unconfigured or still loading, and when its value matches no agent or more than
+one. All roles are optional; default unset.
 
-| Role                 | Lights up                                                                                                                                                             | Consumer              |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| `generalInformation` | Customize → Agents' helper banner ("Ask <agent> about agents")                                                                                                        | `AgentsHelperBanner`  |
-| `agentManagement`    | The create flow's "Let <agent> help" button: drafts the agent's instructions with the person in a side chat; the form changes only when they accept                   | `CreateAgentAssist`   |
-| `skillEvaluation`    | The skill detail page's **Evaluate** button, which starts a session with this agent about that skill                                                                  | `SkillDetailPage`     |
-| `skillCreation`      | Add Skill and Edit Skill: the "use the skill creator agent for more complex, nested skills" caveat and its "Let <agent> help" hand-off into a session with this agent | `SkillCreationAssist` |
-| `workflowManagement` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                     |
-| `platformOperations` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                     |
+A bare name (`swarmgeist`) resolves to nothing. Agents are listed across every
+namespace a person can read, so a bare name would let anyone who can create an
+agent in such a namespace take over the role, and with it the context the
+portal hands that agent (workflow definitions, skill drafts). Put meta-agents in
+a namespace only the platform team can write to, such as `kagent`. A
+`<namespace>/<name>` that exists on two installations is ambiguous and hides the
+feature too; name the installation then.
+
+| Role                 | Lights up                                                                                                                                                             | Consumer                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `generalInformation` | Customize → Agents' helper banner ("Ask <agent> about agents")                                                                                                        | `AgentsHelperBanner`                         |
+| `agentManagement`    | The create flow's "Let <agent> help" button: drafts the agent's instructions with the person in a side chat; the form changes only when they accept                   | `CreateAgentAssist`                          |
+| `skillEvaluation`    | The skill detail page's **Evaluate** button, which starts a session with this agent about that skill                                                                  | `SkillDetailPage`                            |
+| `skillCreation`      | Add Skill and Edit Skill: the "use the skill creator agent for more complex, nested skills" caveat and its "Let <agent> help" hand-off into a session with this agent | `SkillCreationAssist`                        |
+| `workflowManagement` | Customize → Workflows' "Create workflows with <agent>" banner and the workflow page's **Edit via agent**, each starting a session with this agent                     | `WorkflowCreateAssist`, `WorkflowEditAssist` |
+| `platformOperations` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                                            |
 
 ```yaml
 agentPlatform:
   metaAgents:
-    generalInformation: swarmgeist
-    agentManagement: swarm-operator
+    generalInformation: kagent/swarmgeist
+    agentManagement: kagent/swarm-operator
     skillEvaluation: kagent/skill-evaluator
-    skillCreation: skill-creator
+    skillCreation: gazelle/kagent/skill-creator
 ```
 
 The agents themselves are ordinary agents created on the platform; the lab's
@@ -449,9 +480,9 @@ agentPlatform:
     repositories:
       - https://github.com/giantswarm/agent-skills
   metaAgents:
-    generalInformation: swarmgeist
-    agentManagement: swarm-operator
-    skillEvaluation: skill-evaluator
+    generalInformation: kagent/swarmgeist
+    agentManagement: kagent/swarm-operator
+    skillEvaluation: kagent/skill-evaluator
   integrations:
     slack: true
   models:

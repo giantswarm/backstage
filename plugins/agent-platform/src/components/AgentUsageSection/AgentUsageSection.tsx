@@ -20,7 +20,7 @@ import { ByAgentTable } from './ByAgentTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';
 import { TopCallsTable } from './TopCallsTable';
-import { TotalsStrip } from './TotalsStrip';
+import { TotalsStrip, type StripTotals } from './TotalsStrip';
 import {
   couldNotTell,
   fillMissingDays,
@@ -309,11 +309,12 @@ export function AgentUsageSection() {
       </Text>
     );
   } else if (usage) {
-    // A narrowed window totals only what the daily buckets carry; the strip
-    // renders the rest as unknown (see `TotalsStrip`), so the zeros here are
-    // placeholders it never shows.
-    const stripTotals = narrowed
-      ? { sessions: 0, toolCalls: 0, totalTokens: 0, ...narrowed.totals }
+    // A narrowed window totals what the daily buckets carry — sessions and
+    // tool calls too, where the backend reports them per day; the strip
+    // renders a figure left undefined as unknown (see `TotalsStrip`). The
+    // zero total is a placeholder the strip never shows.
+    const stripTotals: StripTotals = narrowed
+      ? { totalTokens: 0, ...narrowed.totals }
       : usage.totals;
     body = (
       <>

@@ -8,6 +8,7 @@ import {
   EXCLUSIVE_PRESETS,
   MAX_INLINE_SELECTORS,
   parseSelector,
+  presetNameOf,
   PRESET_FULL,
   selectorForTool,
   type ServerBucket,
@@ -22,9 +23,10 @@ import {
  *
  * A preset is a macro over the selection (T81b): while the toolset is just
  * `[preset:x]`, the grid and the catalogue show what it resolves to
- * ({@link materialize}); the first change below writes that out as concrete
- * selectors, applies the change, and the radio reads *Only the tools I choose
- * below*. The step never produces "preset plus additions".
+ * ({@link materialize}); a change below applies to that, the radio reads
+ * *Only the tools I choose below*, and the toolset is stored as compactly as
+ * selectors allow (B1, {@link compactSelection}): the preset plus what was
+ * added while everything it covers is still chosen, else written out.
  */
 
 /** The access level *Nothing outside the chat*: no tools, selection off. */
@@ -329,4 +331,162 @@ export function materialize(
     }
   }
   return out;
+}
+
+/** Each listed tool's selector, by the connector that lists it. */
+function connectorOfSelector(
+  groups: readonly CatalogueGroup[],
+): Map<string, string> {
+  const owner = new Map<string, string>();
+  for (const bucket of connectorsOf(groups)) {
+    for (const tool of bucket.tools) {
+      owner.set(selectorForTool(tool), bucket.name);
+    }
+  }
+  return owner;
+}
+
+/**
+ * The preset a toolset is built on (B1): its one preset selector, when the
+ * environment offers it and it is not *Full gateway* — whether it stands alone
+ * or with selectors beside it. Several presets, or one not offered, have no
+ * base the step can write out, and are shown as they are.
+ */
+export function presetBaseOf(
+  toolset: readonly string[],
+  offered: ReadonlySet<string>,
+): string | undefined {
+  const presets = toolset.filter(
+    selector => presetNameOf(selector) !== undefined,
+  );
+  return presets.length === 1 &&
+    offered.has(presets[0]) &&
+    !EXCLUSIVE_PRESETS.has(presets[0])
+    ? presets[0]
+    : undefined;
+}
+
+/**
+ * The selection a preset-based toolset shows as: the preset written out
+ * ({@link materialize}) with the selectors beside it added on top — a
+ * `server:x` replacing what the preset covers of x, any other selector added
+ * unless a `server:` already holds it. Toolset selectors only union, so this
+ * is exactly what the toolset selects.
+ */
+export function expandSelection(
+  coverage: readonly string[],
+  extras: readonly string[],
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const owner = connectorOfSelector(groups);
+  const connectors = new Set(connectorsOf(groups).map(bucket => bucket.name));
+  let out = [...coverage];
+  for (const selector of extras) {
+    const parsed = parseSelector(selector);
+    if (parsed?.kind === 'server' && connectors.has(parsed.name)) {
+      out = out.filter(
+        entry => entry !== selector && owner.get(entry) !== parsed.name,
+      );
+      out.push(selector);
+      continue;
+    }
+    const connector = owner.get(selector);
+    if (
+      !out.includes(selector) &&
+      !(connector && out.includes(serverSelector(connector)))
+    ) {
+      out.push(selector);
+    }
+  }
+  return out;
+}
+
+/**
+ * The cheapest toolset for a selection (B1). Selectors only union, so a
+ * preset can stay the base while the selection still holds everything it
+ * covers: the toolset is then the preset plus what the selection adds — a
+ * `server:x` the preset does not already hold whole, and the tools it does not
+ * cover. A selection that leaves out part of the preset cannot keep it ("the
+ * preset minus x" has no selector), so it is written out as it is: `server:x`
+ * per whole connector, a read-only choice as its read-only tools (no inline
+ * selector means "the read-only tools of x"), the rest tool by tool.
+ */
+export function compactSelection(
+  selection: readonly string[],
+  base: { preset: string; resolved: readonly ToolSummary[] } | undefined,
+  groups: readonly CatalogueGroup[],
+): string[] {
+  if (!base || selection.some(selector => EXCLUSIVE_PRESETS.has(selector))) {
+    return [...selection];
+  }
+  const owner = connectorOfSelector(groups);
+  const chosen = new Set(selection);
+  const holds = (selector: string) => {
+    const connector = owner.get(selector);
+    return (
+      chosen.has(selector) ||
+      (connector !== undefined && chosen.has(serverSelector(connector)))
+    );
+  };
+  const covered = new Set(base.resolved.map(selectorForTool));
+  if (![...covered].every(holds)) {
+    return [...selection];
+  }
+  const whole = new Set(
+    materialize(base.resolved, groups).filter(
+      selector => parseSelector(selector)?.kind === 'server',
+    ),
+  );
+  const rest = selection.filter(
+    selector =>
+      selector !== base.preset &&
+      !covered.has(selector) &&
+      !whole.has(selector),
+  );
+  // An empty or tiny coverage is no saving: the preset is kept only when it
+  // costs no more than writing the selection out.
+  return rest.length + 1 <= selection.length
+    ? [base.preset, ...rest]
+    : [...selection];
+}
+
+const CAP_CONTRIBUTORS = 3;
+
+/** A rail group in running text: a connector by its name, the rest in words. */
+function contributorName(group: RailGroup): string {
+  if (group.key.startsWith('connector:')) {
+    return group.title;
+  }
+  return group.key === OTHER_KEY
+    ? 'other selectors'
+    : group.title.toLowerCase();
+}
+
+/**
+ * Why a toolset over the inline cap cannot be applied, naming what to reduce:
+ * the connectors (or workflows, or other selectors) that list the most.
+ */
+export function inlineCapProblem(
+  toolset: readonly string[],
+  groups: readonly CatalogueGroup[],
+): string {
+  const contributors = railGroups(toolset, groups)
+    .filter(group => group.key !== PRESETS_KEY)
+    .map(group => ({
+      name: contributorName(group),
+      count: group.selectors.length + (group.whole ? 1 : 0),
+    }))
+    .filter(entry => entry.count > 1)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, CAP_CONTRIBUTORS);
+  const need = `This toolset needs ${toolset.length} selectors but may list at most ${MAX_INLINE_SELECTORS}`;
+  if (contributors.length === 0) {
+    return `${need}, so choose fewer connectors or tools.`;
+  }
+  const names = contributors.map(entry => `${entry.name} (${entry.count})`);
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `${need}; most come from ${list}, so choose All or fewer tools there.`;
 }

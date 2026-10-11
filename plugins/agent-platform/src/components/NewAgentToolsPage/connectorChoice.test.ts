@@ -5,7 +5,11 @@ import {
   ACCESS_CHAT_ONLY,
   ACCESS_OWN_PICKS,
   accessLevelOf,
+  compactSelection,
   connectorState,
+  expandSelection,
+  inlineCapProblem,
+  presetBaseOf,
   railGroups,
   railToolLabel,
   readOnlyFits,
@@ -232,5 +236,175 @@ describe('a preset written out', () => {
     const written = materialize([tool('x_jira_create_issue')], groups);
     expect(written).toEqual(['tool:x_jira_create_issue']);
     expect(connectorState(JIRA, new Set(written)).choice).toBe('partial');
+  });
+});
+
+describe('a compact toolset (B1)', () => {
+  const GITHUB = bucket('github', [
+    changes('x_github_merge'),
+    changes('x_github_pr'),
+  ]);
+  const DOCS = bucket('docs', [reads('x_docs_get'), reads('x_docs_find')]);
+  const groups: CatalogueGroup[] = [
+    {
+      key: 'registered',
+      title: 'Registered servers',
+      servers: [JIRA, GITHUB, DOCS],
+      platformAdministration: [],
+      workflows: [],
+    },
+  ];
+  const triage: ToolSummary = {
+    name: 'workflow_triage',
+    kind: 'workflow',
+    annotations: { readOnlyHint: true },
+  };
+  // What `preset:read-only` resolves to here.
+  const readOnly = [...JIRA.tools, ...DOCS.tools, triage].filter(
+    tool => tool.annotations?.readOnlyHint,
+  );
+  const base = { preset: 'preset:read-only', resolved: readOnly };
+  const coverage = materialize(readOnly, groups);
+
+  it('builds on one offered preset, alone or with more beside it', () => {
+    expect(presetBaseOf(['preset:read-only'], OFFERED)).toBe(
+      'preset:read-only',
+    );
+    expect(presetBaseOf(['preset:read-only', 'server:github'], OFFERED)).toBe(
+      'preset:read-only',
+    );
+    expect(presetBaseOf(['preset:read-only', 'preset:infra'], OFFERED)).toBe(
+      undefined,
+    );
+    expect(presetBaseOf(['preset:mine', 'server:github'], OFFERED)).toBe(
+      undefined,
+    );
+    expect(presetBaseOf(['preset:full'], OFFERED)).toBe(undefined);
+    expect(presetBaseOf(['server:github'], OFFERED)).toBe(undefined);
+  });
+
+  it('shows a preset with more beside it as the preset written out plus that', () => {
+    const shown = expandSelection(
+      coverage,
+      ['server:jira', 'tool:x_github_pr', 'tool:x_docs_get'],
+      groups,
+    );
+    expect(shown).toEqual([
+      'tool:x_docs_get',
+      'tool:x_docs_find',
+      'workflow:triage',
+      'server:jira',
+      'tool:x_github_pr',
+    ]);
+    const selected = new Set(shown);
+    expect(connectorState(JIRA, selected).choice).toBe('all');
+    expect(connectorState(DOCS, selected).choice).toBe('read-only');
+    expect(connectorState(GITHUB, selected).choice).toBe('partial');
+  });
+
+  it('keeps the preset as the base while everything it covers is chosen', () => {
+    // Read-only everywhere plus all of jira: the QA repro's shape.
+    const allJira = withConnectorChoice(coverage, JIRA, 'all');
+    expect(compactSelection(allJira, base, groups)).toEqual([
+      'preset:read-only',
+      'server:jira',
+    ]);
+    // Plus one tool picked by hand.
+    expect(
+      compactSelection([...allJira, 'tool:x_github_pr'], base, groups),
+    ).toEqual(['preset:read-only', 'server:jira', 'tool:x_github_pr']);
+    // Exactly what it covers: the preset alone.
+    expect(compactSelection(coverage, base, groups)).toEqual([
+      'preset:read-only',
+    ]);
+    // And a toolset built that way shows as it was chosen.
+    expect(expandSelection(coverage, ['server:jira'], groups).sort()).toEqual(
+      [...allJira].sort(),
+    );
+  });
+
+  it('writes the selection out when part of the preset is taken away', () => {
+    // "Read-only minus docs" has no selector.
+    const withoutDocs = withConnectorChoice(coverage, DOCS, 'none');
+    expect(compactSelection(withoutDocs, base, groups)).toEqual(withoutDocs);
+    // No preset to build on: the selection as it is.
+    expect(compactSelection(['server:jira'], undefined, groups)).toEqual([
+      'server:jira',
+    ]);
+    // Full gateway stands alone.
+    expect(compactSelection(['preset:full'], base, groups)).toEqual([
+      'preset:full',
+    ]);
+  });
+
+  it('drops a preset that saves nothing', () => {
+    const nothing = { preset: 'preset:infra', resolved: [] };
+    expect(compactSelection(['server:jira'], nothing, groups)).toEqual([
+      'server:jira',
+    ]);
+  });
+
+  it('names what to reduce over the cap', () => {
+    const many = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `tool:x_${prefix}_${i}`);
+    const wide: CatalogueGroup[] = [
+      {
+        key: 'registered',
+        title: 'Registered servers',
+        servers: [
+          bucket(
+            'jira',
+            many('jira', 20).map(selector => reads(selector.slice(5))),
+          ),
+          bucket(
+            'github',
+            many('github', 12).map(selector => reads(selector.slice(5))),
+          ),
+        ],
+        platformAdministration: [],
+        workflows: [],
+      },
+    ];
+    expect(
+      inlineCapProblem(
+        [
+          'preset:read-only',
+          ...many('jira', 20),
+          ...many('github', 12),
+          'workflow:a',
+          'workflow:b',
+          'server:docs',
+        ],
+        wide,
+      ),
+    ).toBe(
+      'This toolset needs 36 selectors but may list at most 32; most come from jira (20), github (12) and workflows (2), so choose All or fewer tools there.',
+    );
+    // Selectors naming nothing listed are named as such.
+    expect(
+      inlineCapProblem(
+        Array.from({ length: 33 }, (_, i) => `server:s${i}`),
+        wide,
+      ),
+    ).toBe(
+      'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+    );
+    // One selector per connector: nothing stands out.
+    const singles: CatalogueGroup[] = [
+      {
+        ...wide[0],
+        servers: Array.from({ length: 33 }, (_, i) =>
+          bucket(`s${i}`, [reads(`x_s${i}_get`)]),
+        ),
+      },
+    ];
+    expect(
+      inlineCapProblem(
+        Array.from({ length: 33 }, (_, i) => `server:s${i}`),
+        singles,
+      ),
+    ).toBe(
+      'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+    );
   });
 });

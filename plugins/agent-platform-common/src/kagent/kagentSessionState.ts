@@ -24,20 +24,26 @@ export type SessionState = {
    * human.
    */
   key: string;
-  label: string;
   /**
-   * The agent-platform shell's word for the state, one of four a person tells
-   * apart at a glance: Waiting for you, Working, Finished, Failed. An
-   * unrecognised state keeps its raw form, as `label` does.
+   * The state in the platform's words, one of four a person tells apart at a
+   * glance ({@link SESSION_STATE_LABELS}): Waiting for you, Working, Finished,
+   * Failed. Every surface — lists, filters, the session's badge — shows this,
+   * so one session cannot be called two things on two screens. An
+   * unrecognised state keeps its raw form, so a future kagent state still
+   * shows as itself.
    */
-  shellLabel: string;
+  label: string;
   tone: SessionStateTone;
   /** True while the session may still produce output. */
   isActive: boolean;
 };
 
-/** The shell's four state words, see {@link SessionState.shellLabel}. */
-export const SHELL_STATE_LABELS = {
+/**
+ * The platform's four state words, see {@link SessionState.label}: the one
+ * vocabulary for session states. Finer A2A states (submitted, auth-required,
+ * canceled, rejected) map onto these rather than getting words of their own.
+ */
+export const SESSION_STATE_LABELS = {
   waiting: 'Waiting for you',
   working: 'Working',
   finished: 'Finished',
@@ -114,63 +120,53 @@ const KNOWN_STATES: Record<
   string,
   {
     label: string;
-    shellLabel: string;
     tone: SessionStateTone;
     isActive: boolean;
   }
 > = {
   submitted: {
-    label: 'Submitted',
-    shellLabel: SHELL_STATE_LABELS.working,
+    label: SESSION_STATE_LABELS.working,
     tone: 'info',
     isActive: true,
   },
   working: {
-    label: 'Working',
-    shellLabel: SHELL_STATE_LABELS.working,
+    label: SESSION_STATE_LABELS.working,
     tone: 'info',
     isActive: true,
   },
   'input-required': {
-    label: 'Waiting for input',
-    shellLabel: SHELL_STATE_LABELS.waiting,
+    label: SESSION_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
   'auth-required': {
-    label: 'Authentication required',
-    shellLabel: SHELL_STATE_LABELS.waiting,
+    label: SESSION_STATE_LABELS.waiting,
     tone: 'warning',
     isActive: true,
   },
   completed: {
-    label: 'Completed',
-    shellLabel: SHELL_STATE_LABELS.finished,
+    label: SESSION_STATE_LABELS.finished,
     tone: 'success',
     isActive: false,
   },
   failed: {
-    label: 'Failed',
-    shellLabel: SHELL_STATE_LABELS.failed,
+    label: SESSION_STATE_LABELS.failed,
     tone: 'danger',
     isActive: false,
   },
   // Stopped on purpose, so over rather than failed.
   canceled: {
-    label: 'Canceled',
-    shellLabel: SHELL_STATE_LABELS.finished,
+    label: SESSION_STATE_LABELS.finished,
     tone: 'neutral',
     isActive: false,
   },
   rejected: {
-    label: 'Rejected',
-    shellLabel: SHELL_STATE_LABELS.failed,
+    label: SESSION_STATE_LABELS.failed,
     tone: 'danger',
     isActive: false,
   },
   unknown: {
     label: 'Unknown',
-    shellLabel: 'Unknown',
     tone: 'neutral',
     isActive: false,
   },
@@ -210,7 +206,6 @@ export function describeSessionState(
     raw: state,
     key,
     label: state,
-    shellLabel: state,
     tone: 'neutral',
     isActive: false,
   };

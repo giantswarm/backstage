@@ -5,6 +5,7 @@ import {
   createExtensionInput,
 } from '@backstage/frontend-plugin-api';
 import { SidebarPage } from '@backstage/core-components';
+import { DateTimeZoneProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentShellArea } from './agentArea';
 import { ShellMain } from './ShellMain';
 
@@ -13,7 +14,8 @@ import { ShellMain } from './ShellMain';
  * content in the shell's main region on the agent area's routes while the
  * Agent Platform is available (`app.portals`, or the person's opt-in flag).
  * Everywhere else — and without the Agent Platform, everywhere — the layout
- * is exactly the upstream one, so the classic portal keeps its chrome. The shell is decided per location at
+ * is exactly the upstream one, so the classic portal keeps its chrome (and
+ * its UTC dates; the shell's are local). The shell is decided per location at
  * render time; the nav element makes the same choice for the rail vs the
  * classic sidebar.
  */
@@ -25,11 +27,16 @@ function AgentShellLayout({
   content: ReactNode;
 }) {
   const shellActive = useAgentShellArea();
+  // The shell tells time on the browser's clock, as its lists already do by
+  // grouping on the local day; classic pages keep the portal's UTC. Always
+  // mounted, so moving between the two does not remount the page.
   return (
-    <SidebarPage>
-      {nav}
-      {shellActive ? <ShellMain>{content}</ShellMain> : content}
-    </SidebarPage>
+    <DateTimeZoneProvider timeZone={shellActive ? 'local' : 'utc'}>
+      <SidebarPage>
+        {nav}
+        {shellActive ? <ShellMain>{content}</ShellMain> : content}
+      </SidebarPage>
+    </DateTimeZoneProvider>
   );
 }
 

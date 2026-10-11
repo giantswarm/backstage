@@ -15,6 +15,7 @@ import {
   usePageHeaderActionsSlot,
 } from '../PageHeaderActions';
 import { RouteTabs, RouteTabSpec } from '../RouteTabs';
+import { ShellDocumentTitle, shellTitleParts } from '../ShellDocumentTitle';
 import { useSimpleAccordionStyles } from '../SimpleAccordion';
 
 /**
@@ -141,6 +142,13 @@ const useStyles = makeStyles({
 export interface ShellPageProps {
   /** The page's h1. */
   title: ReactNode;
+  /**
+   * The document title's parts, most specific first; " · Agent Platform"
+   * follows (`ShellDocumentTitle`). Defaults to the title when it is text, or
+   * the current breadcrumb, then the breadcrumb above it. Give it when the h1
+   * is not text, e.g. the session's rename button.
+   */
+  documentTitle?: string | ReadonlyArray<string | undefined>;
   /** Ancestors of the page above the title, the current page last. */
   breadcrumbs?: BreadcrumbItem[];
   /** Before the title, e.g. the resource's icon tile or avatar. */
@@ -287,10 +295,11 @@ function AsideFoldOut({
  * `PageHeaderActionsProvider`: the route that renders the page provides it,
  * so the actions of everything below the route land in this header. It also
  * claims the page header (`useOwnPageHeader`), so a layout header above it
- * stands aside.
+ * stands aside, and sets the document title (`documentTitle`).
  */
 export function ShellPage({
   title,
+  documentTitle,
   breadcrumbs,
   leading,
   badges,
@@ -312,9 +321,11 @@ export function ShellPage({
   useOwnPageHeader();
   const hasBreadcrumbs = breadcrumbs !== undefined && breadcrumbs.length > 0;
   const hasActions = Boolean(actions || slotActions || menu);
+  const titleParts = documentTitle ?? shellTitleParts(title, breadcrumbs);
 
   return (
     <div className={classes.root}>
+      {titleParts && <ShellDocumentTitle title={titleParts} />}
       {hasBreadcrumbs && <Breadcrumbs items={breadcrumbs} />}
       <div
         className={`${classes.header} ${

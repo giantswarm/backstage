@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
@@ -274,14 +273,12 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   return (
     <WizardFrame
       title={edit ? 'Edit skill' : 'Add skill'}
+      documentTitle={[edit ? `Edit ${edit.skill.name}` : 'Add skill', 'Skills']}
       context={
         edit ? `Customize / Skills / ${edit.skill.name}` : 'Customize / Skills'
       }
       closeHref={closeHref}
     >
-      <Helmet
-        title={edit ? `Edit ${edit.skill.name} · Skills` : 'Add skill · Skills'}
-      />
       {edit ? (
         <WizardStepHeading title="Propose a change">
           This opens a pull request as you. The change reaches the catalog once

@@ -105,15 +105,13 @@ describe('TotalsStrip', () => {
 
   it('marks the figures a narrowed window cannot re-cut as unknown', () => {
     // The screen's window control can ask for fewer days than the backend's
-    // fixed fan-out window. Turns and tokens re-total from the daily buckets;
-    // sessions, tool calls and the reported cost exist only over the full
-    // window, so they read `—` ("not knowable for this window") rather than
-    // full-window numbers under a 7-day label.
+    // fixed fan-out window. A backend that does not report sessions and tool
+    // calls per day leaves them undefined: they read `—` ("not knowable for
+    // this window") rather than full-window numbers under a 7-day label. The
+    // reported cost exists only over the full window.
     render(
       <TotalsStrip
         totals={{
-          sessions: 0,
-          toolCalls: 0,
           totalTokens: 0,
           turns: 4,
           inputTokens: 1_000_000,
@@ -137,6 +135,30 @@ describe('TotalsStrip', () => {
     // when the caller passed one.
     expect(screen.queryByText('Reported cost')).toBeNull();
     expect(screen.queryByText('$3.21')).toBeNull();
+  });
+
+  it('shows the sessions and tool calls a narrowed window re-totals per day', () => {
+    // QA round 1: at 7 days both read `—` though the daily buckets can carry
+    // them.
+    render(
+      <TotalsStrip
+        totals={{
+          sessions: 3,
+          toolCalls: 12,
+          totalTokens: 0,
+          turns: 4,
+          inputTokens: 1_000_000,
+          outputTokens: 10_000,
+        }}
+        windowDays={7}
+        narrowedFromDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
+    );
+
+    expect(screen.queryByText('—')).toBeNull();
+    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByText('12')).toBeInTheDocument();
   });
 
   it('has no combined token total', () => {

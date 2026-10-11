@@ -373,8 +373,8 @@ describe('SessionsTable — the State column', () => {
     );
 
     expect(screen.getByText('State')).toBeInTheDocument();
-    expect(screen.getByText('Waiting for input')).toBeInTheDocument();
-    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for you')).toBeInTheDocument();
+    expect(screen.getByText('Finished')).toBeInTheDocument();
   });
 
   it('says a session it could not read is unknown, never that it is finished', async () => {
@@ -525,10 +525,10 @@ describe('SessionsTable — filters', () => {
 
     expect(chipLabels()).toEqual([
       'All 5',
-      'Waiting for input 2',
+      'Waiting for you 2',
       'Working 0',
       'Failed 1',
-      'Completed 1',
+      'Finished 1',
       'No activity yet 0',
       'Unknown 1',
     ]);
@@ -546,10 +546,10 @@ describe('SessionsTable — filters', () => {
     expect(await screen.findByRole('radio', { name: 'All 3' })).toBeVisible();
     expect(chipLabels()).toEqual([
       'All 3',
-      'Waiting for input 1',
+      'Waiting for you 1',
       'Working 0',
       'Failed 1',
-      'Completed 0',
+      'Finished 0',
       'No activity yet 0',
       'Unknown 1',
     ]);
@@ -559,9 +559,7 @@ describe('SessionsTable — filters', () => {
     const user = userEvent.setup();
     await renderFiltered();
 
-    await user.click(
-      screen.getByRole('radio', { name: 'Waiting for input 2' }),
-    );
+    await user.click(screen.getByRole('radio', { name: 'Waiting for you 2' }));
 
     expect([...titles()].sort()).toEqual([
       'Triage the backlog',
@@ -587,10 +585,10 @@ describe('SessionsTable — filters', () => {
     expect(titles()).toHaveLength(3);
     expect(chipLabels()).toEqual([
       'All 3',
-      'Waiting for input 1',
+      'Waiting for you 1',
       'Working 0',
       'Failed 1',
-      'Completed 0',
+      'Finished 0',
       'No activity yet 0',
       'Unknown 1',
     ]);

@@ -6,6 +6,7 @@ import {
   isAwaitingInput,
   readNewestTaskState,
   readTurnProgress,
+  SESSION_STATE_LABELS,
 } from './kagentSessionState';
 import { normalizeTaskList } from './kagentSessionDetail';
 
@@ -20,10 +21,10 @@ function stateFor(fixture: unknown) {
 describe('describeSessionState', () => {
   it.each([
     ['working', 'Working', true],
-    ['input-required', 'Waiting for input', true],
-    ['completed', 'Completed', false],
+    ['input-required', 'Waiting for you', true],
+    ['completed', 'Finished', false],
     ['failed', 'Failed', false],
-    ['canceled', 'Canceled', false],
+    ['canceled', 'Finished', false],
   ])('describes %s', (raw, label, isActive) => {
     expect(describeSessionState(raw)).toMatchObject({ raw, label, isActive });
   });
@@ -37,28 +38,14 @@ describe('describeSessionState', () => {
     ['canceled', 'Finished'],
     ['failed', 'Failed'],
     ['rejected', 'Failed'],
-  ])('names %s "%s" in the shell, next to its own label', (raw, shellLabel) => {
-    const state = describeSessionState(raw);
-    expect(state?.shellLabel).toBe(shellLabel);
-    expect(state?.label).not.toBe('');
-  });
-
-  it('keeps the existing labels', () => {
-    expect(
-      ['input-required', 'auth-required', 'completed', 'canceled'].map(
-        raw => describeSessionState(raw)?.label,
-      ),
-    ).toEqual([
-      'Waiting for input',
-      'Authentication required',
-      'Completed',
-      'Canceled',
-    ]);
+  ])('names %s "%s", one of the four state words', (raw, label) => {
+    expect(describeSessionState(raw)?.label).toBe(label);
+    expect(Object.values(SESSION_STATE_LABELS)).toContain(label);
   });
 
   it('is case-insensitive about the state name', () => {
     expect(describeSessionState('COMPLETED')).toMatchObject({
-      label: 'Completed',
+      label: 'Finished',
       // The raw value is kept verbatim, so the original casing survives.
       raw: 'COMPLETED',
     });
@@ -71,7 +58,6 @@ describe('describeSessionState', () => {
       raw: 'quantum-superposition',
       key: 'quantum-superposition',
       label: 'quantum-superposition',
-      shellLabel: 'quantum-superposition',
       tone: 'neutral',
       isActive: false,
     });
@@ -92,7 +78,6 @@ describe('describeSessionState', () => {
         raw: state,
         key: state,
         label: state,
-        shellLabel: state,
         tone: 'neutral',
         isActive: false,
       });
@@ -319,7 +304,7 @@ describe('describeSessionState normalisation', () => {
     expect(describeSessionState('Input-Required')).toMatchObject({
       raw: 'Input-Required',
       key: 'input-required',
-      label: 'Waiting for input',
+      label: 'Waiting for you',
     });
   });
 

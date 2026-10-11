@@ -1,5 +1,4 @@
 import { ReactElement, useMemo } from 'react';
-import { Helmet } from 'react-helmet';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EmptyState } from '@backstage/core-components';
@@ -16,6 +15,7 @@ import {
   DateComponent,
   FactsColumn,
   LoadingIndicator,
+  ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
@@ -573,7 +573,7 @@ export function WorkflowPage({ editAction }: WorkflowPageProps = {}) {
   // as an agent's page: "<name> · Agents · Agent Platform".
   return (
     <>
-      <Helmet title={`${name} · Workflows · Agent Platform`} />
+      <ShellDocumentTitle title={[name, 'Workflows']} />
       <WorkflowPageBody name={name} editAction={editAction} />
     </>
   );

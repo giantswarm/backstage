@@ -124,7 +124,7 @@ describe('WorkflowEditAssist', () => {
   });
 
   it('renders nothing outside a workflow page', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     mockTarget = undefined;
     await renderAssist();
 
@@ -132,14 +132,21 @@ describe('WorkflowEditAssist', () => {
   });
 
   it('renders nothing when the configured agent does not exist', async () => {
-    configuredRoles = { workflowManagement: 'gone-agent' };
+    configuredRoles = { workflowManagement: 'kagent/gone-agent' };
+    await renderAssist();
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing when the role names the agent without its namespace', async () => {
+    configuredRoles = { workflowManagement: 'workflow-manager' };
     await renderAssist();
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('renders nothing when the configured agent cannot take a session', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     mockRows = [agent('workflow-manager', 'Flo', 'notReady')];
     await renderAssist();
 
@@ -147,7 +154,7 @@ describe('WorkflowEditAssist', () => {
   });
 
   it('is a secondary button straight in the header-actions row, as the skill page’s Edit', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     await renderAssist();
 
     const button = screen.getByRole('button', { name: /Edit via agent/ });
@@ -190,7 +197,7 @@ describe('WorkflowEditAssist', () => {
   }, 30_000);
 
   it('stays on the page and says why when the session could not start', async () => {
-    configuredRoles = { workflowManagement: 'workflow-manager' };
+    configuredRoles = { workflowManagement: 'kagent/workflow-manager' };
     mockCreationError = new Error('kagent is unreachable');
     createSession.mockRejectedValue(mockCreationError);
     await renderAssist();

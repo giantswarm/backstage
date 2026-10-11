@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Helmet } from 'react-helmet';
+import { ShellDocumentTitle } from '@giantswarm/backstage-plugin-ui-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EmptyState, Progress } from '@backstage/core-components';
 import {
@@ -269,7 +269,7 @@ export function AgentPlatformHome({
       {/* The rail names this screen "New session"; titled like the section's
           tabs ("Sessions · Agent Platform"), so arriving here from another
           page never keeps that page's title (live round 2, R5). */}
-      <Helmet title="New session · Agent Platform" />
+      <ShellDocumentTitle title="New session" />
       <QueryClientProvider>
         <ModelConfigsProvider>
           <ServingProvider>

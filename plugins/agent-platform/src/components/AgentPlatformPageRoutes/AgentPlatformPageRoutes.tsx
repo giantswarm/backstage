@@ -2,14 +2,7 @@ import type { ReactElement } from 'react';
 import { Helmet } from 'react-helmet';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { BreadcrumbEntry } from '@backstage/frontend-plugin-api';
-import { ButtonLink, Flex, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core/styles';
-import AddIcon from '@material-ui/icons/Add';
-import {
-  PageHeaderActionsProvider,
-  usePageHeaderActionsSlot,
-  usePageHeaderOwned,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 export type AgentPlatformSubPage = {
   path: string;
@@ -17,77 +10,22 @@ export type AgentPlatformSubPage = {
   element: ReactElement;
 };
 
-type ShellPageHeader = {
-  description?: string;
-  action?: { label: string; href: string };
-};
-
-const SHELL_PAGE_HEADERS: Record<string, ShellPageHeader> = {
-  sessions: {
-    description: 'Lists every conversation you have had with an agent.',
-    action: { label: 'New session', href: '/' },
-  },
-  usage: {
-    description:
-      'Shows what agents cost, how much they are used and how healthy the platform is.',
-  },
-};
-
-const useStyles = makeStyles(theme => ({
-  header: {
-    padding: theme.spacing(5, 3, 0),
-  },
-}));
-
-function SubPageHeader({ title, path }: { title: string; path: string }) {
-  const classes = useStyles();
-  const { description, action } = SHELL_PAGE_HEADERS[path] ?? {};
-  const slotActions = usePageHeaderActionsSlot();
-  if (usePageHeaderOwned()) {
-    return null;
-  }
-  return (
-    <Flex justify="between" align="start" gap="4" className={classes.header}>
-      <Flex direction="column" gap="1">
-        <Text as="h1" variant="title-medium">
-          {title}
-        </Text>
-        {description && (
-          <Text variant="body-medium" color="secondary">
-            {description}
-          </Text>
-        )}
-      </Flex>
-      {(action || slotActions) && (
-        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-          {slotActions}
-          {action && (
-            <ButtonLink
-              href={action.href}
-              variant="primary"
-              iconStart={<AddIcon />}
-            >
-              {action.label}
-            </ButtonLink>
-          )}
-        </Flex>
-      )}
-    </Flex>
-  );
-}
-
 /**
  * The page's sub-pages routed the way `PageBlueprint` routes its tabs, for the
  * page rendered without its tab strip: a bare path lands on the first one, and
- * each names itself in the document title as its tab would and heads its
- * content with its own title.
+ * each names itself in the document title as its tab would.
+ *
+ * No header of its own: every view in the shell draws its page frame itself
+ * (`ShellPage`, `WizardFrame`) or redirects. A generic sub-page header here —
+ * "Agents" in a different type scale and position, standing aside once the
+ * view's frame claimed the header — was all a person saw while the view's
+ * code chunk or its cookie loaded: on every navigation into an agent, a
+ * session or a model, the section's list header first, then the real page
+ * (T95/T46b-B2). Until the view renders, the content area stays empty.
  *
  * The page renders without the app's page layout, so the header-actions slot
  * that layout would provide is mounted here: the actions a sub-page registers
- * with `useProvidePageHeaderActions` render in its header. A route that renders
- * its own header (`ShellPage`, `WizardFrame`) claims it, and the
- * sub-page header then stands aside, so the page has one h1 and each action
- * once.
+ * with `useProvidePageHeaderActions` render in its frame's header.
  */
 export function AgentPlatformPageRoutes({
   pageTitle,
@@ -112,7 +50,6 @@ export function AgentPlatformPageRoutes({
               element={
                 <BreadcrumbEntry entry={{ label, href: page.path }}>
                   <Helmet title={`${label} · ${pageTitle}`} />
-                  <SubPageHeader title={label} path={page.path} />
                   {page.element}
                 </BreadcrumbEntry>
               }

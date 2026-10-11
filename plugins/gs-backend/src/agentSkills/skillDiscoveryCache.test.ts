@@ -373,6 +373,25 @@ describe('SkillDiscoveryCache', () => {
     await cache.discover('https://github.com/o/r0', undefined, load);
     expect(load).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the default-branch listing when callers flood it with refs', async () => {
+    const load = jest.fn(async () => snapshot());
+    await cache.discover(REPO, undefined, load);
+    const missing = jest.fn(async () => {
+      throw new GitHubApiError(404, 'Not Found');
+    });
+    for (let i = 0; i < MAX_ENTRIES; i++) {
+      await cache.discover(REPO, `bad-${i}`, missing).catch(() => undefined);
+    }
+    for (let i = 0; i < MAX_ENTRIES; i++) {
+      await cache.discover(REPO, `ref-${i}`, load);
+    }
+    load.mockClear();
+
+    await cache.discover(REPO, undefined, load);
+
+    expect(load).not.toHaveBeenCalled();
+  });
 });
 
 describe('repositoryKey', () => {

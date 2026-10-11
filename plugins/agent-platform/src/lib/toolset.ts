@@ -44,7 +44,10 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
 
-/** Inline selectors are capped; beyond this, the platform admin defines a preset. */
+/**
+ * Inline selectors are capped platform-wide (muster, the agent chart and
+ * agent-manager each refuse more); this mirrors that cap, it does not set it.
+ */
 export const MAX_INLINE_SELECTORS = 32;
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
@@ -125,15 +128,20 @@ export function selectorProblem(raw: string): string | undefined {
 /**
  * Everything wrong with a whole toolset, for the step to block Continue on.
  * Empty when the toolset is acceptable. An empty list is not reported here:
- * the step reads "nothing chosen yet" as its own state.
+ * the step reads "nothing chosen yet" as its own state. `describeCap` words
+ * the cap problem where the catalogue can say what to reduce.
  */
-export function toolsetProblems(selectors: string[]): string[] {
+export function toolsetProblems(
+  selectors: string[],
+  describeCap?: (selectors: string[]) => string,
+): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
   if (selectors.length > MAX_INLINE_SELECTORS) {
     problems.push(
-      `${selectors.length} selectors is more than the ${MAX_INLINE_SELECTORS} a toolset may list inline. Define a preset for this selection and reference it instead.`,
+      describeCap?.(selectors) ??
+        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
     );
   }
   return problems;

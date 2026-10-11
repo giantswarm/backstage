@@ -556,6 +556,15 @@ unauthenticated). The frontend `useSkillCatalog` hook aggregates results across
 all configured repositories (one failing repo doesn't fail the rest), and
 `NewAgentSkillsPage` renders them as multi-select cards.
 
+All three read routes (`/agent-skills`, `/agent-skills/content` and
+`/agent-skills/content/file`) answer only for the configured repositories, with
+a 400 for any other: they read with the portal's own GitHub token, which can see
+private repositories. On a cache miss, a read at a commit goes through
+`UpstreamReadGuard` (`src/agentSkills/upstreamReadGuard.ts`). It remembers a
+404, 409 or 422 for five minutes, shares concurrent reads of one key and runs at
+most two clones and four GitHub reads at once. Up to 32 more wait per pool;
+past that, the route answers 503.
+
 Skill selection is its own step because these repositories get large — one
 internal repo alone holds 100+ skills across a dozen plugins, which swamped the
 create form when the picker was inlined there. The step therefore:

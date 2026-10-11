@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Helmet } from 'react-helmet';
 import {
   Navigate,
   Route,
@@ -8,10 +7,8 @@ import {
   useParams,
 } from 'react-router-dom';
 import {
-  configApiRef,
   RouteRef,
   SubRouteRef,
-  useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
 import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
@@ -19,6 +16,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  ShellDocumentTitle,
   ShellPage,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -177,14 +175,14 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   return (
     <ShellPage
       title="Customize"
+      // Each tab names itself, as the section's pages do: "Agents · Customize
+      // · Agent Platform". Without it every tab carried the bare "Customize"
+      // (live round 2, R5).
+      documentTitle={[tab.title, 'Customize']}
       description="Manage the agents, skills, connectors and models behind your sessions."
       actions={<EnvironmentSelect component={tab.component} />}
       tabs={tabs}
     >
-      {/* Each tab names itself, as the section's tabs do ("Sessions · Agent
-          Platform"): "Agents · Customize | <app>", under the page's template.
-          Without it every tab carried the bare "Customize" (live round 2, R5). */}
-      <Helmet title={`${tab.title} · Customize`} />
       <Flex direction="column" gap="5">
         <Flex
           align="center"
@@ -255,11 +253,10 @@ function CustomizeTabPage() {
  * it mounts the header-actions slot its pages render.
  */
 export function CustomizePage() {
-  const appTitle =
-    useApi(configApiRef).getOptionalString('app.title') ?? 'Backstage';
   return (
     <PageHeaderActionsProvider>
-      <Helmet title="Customize" titleTemplate={`%s | ${appTitle}`} />
+      {/* Until a tab's page names itself. */}
+      <ShellDocumentTitle title="Customize" />
       <CustomizeMusterProvider>
         <CustomizeDataProvider>
           <Routes>

@@ -139,11 +139,11 @@ describe('filterSessions', () => {
     );
   });
 
-  it('keeps input and auth requests under "Waiting for input"', () => {
+  it('keeps input and auth requests under "Waiting for you"', () => {
     expect(ids(filterSessions(rows, { state: 'waiting' }))).toEqual(['a', 'f']);
   });
 
-  it('keeps completed and canceled sessions under "Completed"', () => {
+  it('keeps completed and canceled sessions under "Finished"', () => {
     expect(ids(filterSessions(rows, { state: 'finished' }))).toEqual([
       'c',
       'i',
@@ -287,7 +287,7 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       isError: false,
     });
     const chip = SHELL_SESSION_STATE_FILTERS.find(
-      ({ label }) => label === describeSessionState(state)?.shellLabel,
+      ({ label }) => label === describeSessionState(state)?.label,
     );
     if (!chip) {
       throw new Error(`no chip is named for ${state}`);

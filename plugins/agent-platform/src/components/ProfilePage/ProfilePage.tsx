@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Helmet } from 'react-helmet';
 import {
   identityApiRef,
   ProfileInfo,
@@ -79,7 +78,6 @@ export function ProfilePage() {
 
   return (
     <PageHeaderActionsProvider>
-      <Helmet title="Profile and settings" />
       <ShellPage title="Profile and settings">
         <section aria-label="Profile" className={classes.section}>
           <Flex align="center" gap="4">

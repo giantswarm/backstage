@@ -34,6 +34,18 @@ export type UsageDayEntry = {
   inputTokens: number;
   outputTokens: number;
   turns: number;
+  /**
+   * Tool calls made in the day's turns. Absent from a backend that predates
+   * the field, which is "not reported" rather than zero.
+   */
+  toolCalls?: number;
+  /**
+   * Sessions whose newest turn in the window fell on this day. The window
+   * ends now, so summing a trailing run of days counts the sessions with at
+   * least one turn in that run — what a narrower window's session total is.
+   * Absent from a backend that predates the field.
+   */
+  lastActiveSessions?: number;
 };
 
 export type UsageAgentEntry = {
@@ -159,6 +171,8 @@ const dayEntrySchema = z.looseObject({
   inputTokens: z.unknown().optional(),
   outputTokens: z.unknown().optional(),
   turns: z.unknown().optional(),
+  toolCalls: z.unknown().optional(),
+  lastActiveSessions: z.unknown().optional(),
 });
 
 const agentEntrySchema = z.looseObject({
@@ -281,11 +295,15 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
     if (!entry.success || !entry.data.day) {
       continue;
     }
+    const toolCalls = finiteOptional(entry.data.toolCalls);
+    const lastActiveSessions = finiteOptional(entry.data.lastActiveSessions);
     daily.push({
       day: entry.data.day,
       inputTokens: finite(entry.data.inputTokens),
       outputTokens: finite(entry.data.outputTokens),
       turns: finite(entry.data.turns),
+      ...(toolCalls !== undefined && { toolCalls }),
+      ...(lastActiveSessions !== undefined && { lastActiveSessions }),
     });
   }
 

@@ -1,3 +1,4 @@
+import { LoggerService } from '@backstage/backend-plugin-api';
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
@@ -98,7 +99,14 @@ export class GitHubApiError extends Error {
   }
 }
 
-const REPO_URL_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+/**
+ * `https://github.com/<owner>/<repo>`, optionally `.git` and one trailing
+ * slash. Owner and repository are GitHub's own name alphabet, so nothing
+ * percent-encoded, no `?` or `#`, and (checked in `parseRepoUrl`) no `.` or
+ * `..` can turn the API URLs built from them into another endpoint.
+ */
+const REPO_URL_RE =
+  /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/;
 
 const SKILL_FILE = 'SKILL.md';
 
@@ -136,7 +144,7 @@ async function mapWithConcurrency<T, R>(
 /** Splits a `https://github.com/{owner}/{repo}` URL into its parts. */
 export function parseRepoUrl(repoUrl: string): { owner: string; repo: string } {
   const match = repoUrl.match(REPO_URL_RE);
-  if (!match) {
+  if (!match || /^\.+$/.test(match[1]) || /^\.+$/.test(match[2])) {
     throw new InputError(
       `Not a github.com repository URL: ${repoUrl} (expected https://github.com/<owner>/<repo>)`,
     );
@@ -274,6 +282,7 @@ async function resolveHeadCommit(
   repo: string,
   ref: string,
   token: string | undefined,
+  logger?: LoggerService,
 ): Promise<string> {
   const response = await githubApiFetch(
     `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(
@@ -284,9 +293,15 @@ async function resolveHeadCommit(
   );
   const sha = (await response.text()).trim();
   if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(sha)) {
+    // The body stays out of the answer: it is whatever GitHub served.
+    logger?.debug('GitHub did not answer a commit id', {
+      repository: `${owner}/${repo}`,
+      ref,
+      body: sha.slice(0, 200),
+    });
     throw new GitHubApiError(
       502,
-      `GitHub did not answer a commit id for ${owner}/${repo}@${ref}: ${sha}`,
+      `GitHub did not answer a commit id for ${owner}/${repo}@${ref}.`,
     );
   }
   return sha;
@@ -405,8 +420,9 @@ export async function discoverAgentSkills(options: {
   ref?: string;
   /** The last snapshot of this repository and ref, to reuse what it read. */
   previous?: SkillDiscoverySnapshot;
+  logger?: LoggerService;
 }): Promise<SkillDiscoverySnapshot> {
-  const { repoUrl, githubCredentialsProvider, ref, previous } = options;
+  const { repoUrl, githubCredentialsProvider, ref, previous, logger } = options;
   const { owner, repo } = parseRepoUrl(repoUrl);
   const canonicalRepoUrl = `https://github.com/${owner}/${repo}`;
 
@@ -416,7 +432,7 @@ export async function discoverAgentSkills(options: {
   );
 
   const branch = ref ?? (await resolveDefaultBranch(owner, repo, token));
-  const commit = await resolveHeadCommit(owner, repo, branch, token);
+  const commit = await resolveHeadCommit(owner, repo, branch, token, logger);
 
   const unchanged =
     previous !== undefined &&

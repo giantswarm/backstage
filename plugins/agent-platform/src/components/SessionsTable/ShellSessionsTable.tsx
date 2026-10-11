@@ -34,6 +34,7 @@ import {
   catalogFilterDimensions,
   catalogFilterKey,
   type CatalogFilterSelection,
+  formatLocalDateFull,
   isCatalogFiltered,
   StackedRowList,
   StatusDot,
@@ -177,7 +178,7 @@ function ShellStateCell({
         <Cell>
           <StatusDot
             tone={cell.state.tone}
-            label={cell.state.shellLabel}
+            label={cell.state.label}
             colorVar={sessionStateDotVar(cell.state.tone)}
           />
         </Cell>
@@ -301,6 +302,7 @@ function shellColumns({
   buildAvatarUrl,
   hrefFor,
   isLoadingStates,
+  showAgent,
   showInstallation,
   currentYear,
   focusAfterDelete,
@@ -310,6 +312,8 @@ function shellColumns({
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   hrefFor: (row: SessionRow) => string | undefined;
   isLoadingStates: boolean;
+  /** Off on one agent's own sessions, where every row has that agent. */
+  showAgent: boolean;
   showInstallation: boolean;
   currentYear: number;
   /** The row to focus once a row is deleted, by the deleted row's id. */
@@ -362,7 +366,9 @@ function shellColumns({
         );
       },
     },
-    {
+  ];
+  if (showAgent) {
+    columns.push({
       id: 'agentName',
       label: 'Agent',
       width: '22%',
@@ -371,14 +377,14 @@ function shellColumns({
           <SessionAgent row={row} buildAvatarUrl={buildAvatarUrl} />
         </Cell>
       ),
-    },
-    {
-      id: 'state',
-      label: 'State',
-      width: '17%',
-      cell: row => <ShellStateCell row={row} isLoading={isLoadingStates} />,
-    },
-  ];
+    });
+  }
+  columns.push({
+    id: 'state',
+    label: 'State',
+    width: '17%',
+    cell: row => <ShellStateCell row={row} isLoading={isLoadingStates} />,
+  });
   if (showInstallation) {
     columns.push({
       id: 'installation',
@@ -398,7 +404,7 @@ function shellColumns({
             <Text variant="body-medium" color="secondary">
               <time
                 dateTime={row.createdAt}
-                title={new Date(row.createdAt).toLocaleString()}
+                title={formatLocalDateFull(row.createdAt)}
               >
                 {formatSessionStart(row.createdAt, group, currentYear)}
               </time>
@@ -501,6 +507,7 @@ function DayList({
   buildAvatarUrl,
   isLoadingStates,
   showStates,
+  showAgent,
   showInstallation,
   currentYear,
   renderActions,
@@ -512,6 +519,7 @@ function DayList({
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   isLoadingStates: boolean;
   showStates: boolean;
+  showAgent: boolean;
   showInstallation: boolean;
   currentYear: number;
   renderActions: (row: SessionTableRow) => ReactNode;
@@ -526,8 +534,7 @@ function DayList({
           buildAvatarUrl,
           isLoadingStates,
           showState: showStates,
-          stateWords: 'shell',
-          showAgent: true,
+          showAgent,
           showInstallation,
           started: row.createdAt ? (
             <time dateTime={row.createdAt}>
@@ -553,6 +560,7 @@ function ShellFilterBar({
   selection,
   onChange,
   showStates,
+  showAgents,
 }: {
   searchField: ReactNode;
   rows: SessionTableRow[];
@@ -560,10 +568,11 @@ function ShellFilterBar({
   selection: CatalogFilterSelection;
   onChange: (selection: CatalogFilterSelection) => void;
   showStates: boolean;
+  showAgents: boolean;
 }) {
   const facets = useMemo(
-    () => sessionFacets(rows, { showStates }),
-    [rows, showStates],
+    () => sessionFacets(rows, { showStates, showAgents }),
+    [rows, showStates, showAgents],
   );
   // Known undercount (platform follow-up, list-scale-inventory #7): the
   // backend evaluates states only for the newest sessions per installation
@@ -660,6 +669,7 @@ export function ShellSessionsTable({
   const hasStates = sessionStates !== undefined;
   const isLoadingStates = sessionStates?.isLoading ?? false;
   const showInstallation = !hideColumns?.includes('installation');
+  const showAgent = !hideColumns?.includes('agentName');
   // The day groups follow the calendar day, so a list left open past
   // midnight regroups on its next render.
   const now = new Date();
@@ -820,6 +830,7 @@ export function ShellSessionsTable({
         buildAvatarUrl,
         hrefFor,
         isLoadingStates,
+        showAgent,
         showInstallation,
         currentYear,
         focusAfterDelete,
@@ -830,6 +841,7 @@ export function ShellSessionsTable({
       buildAvatarUrl,
       hrefFor,
       isLoadingStates,
+      showAgent,
       showInstallation,
       currentYear,
       focusAfterDelete,
@@ -889,7 +901,9 @@ export function ShellSessionsTable({
             searchField={
               <SearchField
                 aria-label="Search sessions"
-                placeholder="Search by title or agent"
+                placeholder={
+                  showAgent ? 'Search by title or agent' : 'Search by title'
+                }
                 value={search.value}
                 onChange={search.onChange}
                 style={{ maxWidth: 420 }}
@@ -900,6 +914,7 @@ export function ShellSessionsTable({
             selection={selection}
             onChange={filter.onChange}
             showStates={hasStates}
+            showAgents={showAgent}
           />
         )}
 
@@ -955,6 +970,7 @@ export function ShellSessionsTable({
                   buildAvatarUrl={buildAvatarUrl}
                   isLoadingStates={isLoadingStates}
                   showStates={hasStates}
+                  showAgent={showAgent}
                   showInstallation={showInstallation}
                   currentYear={currentYear}
                   renderActions={row => (

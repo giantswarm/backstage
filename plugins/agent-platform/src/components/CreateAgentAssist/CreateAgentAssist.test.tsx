@@ -212,7 +212,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('renders nothing when the configured name matches no agent', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('some-other-agent')];
     await renderAssist();
 
@@ -220,7 +220,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('presents the assist as the artboard banner above the form', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     await renderAssist();
 
@@ -242,7 +242,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('offers the assist when the role resolves, and opens the panel', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     await renderAssist();
 
@@ -265,7 +265,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('starts the session with the configured agent, tracked as createAgentAssist, and dispatches the prompt', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     mockView = viewWithDraft();
     await renderAssist();
@@ -298,7 +298,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('copies a fenced suggestion into the instructions, with undo', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     mockView = viewWithDraft();
     await renderAssist();
@@ -333,7 +333,7 @@ describe('CreateAgentAssist', () => {
   });
 
   it('keeps the conversation when the panel is closed and opened again', async () => {
-    configuredRoles = { agentManagement: 'swarm-operator' };
+    configuredRoles = { agentManagement: 'kagent/swarm-operator' };
     mockRows = [agent('swarm-operator', 'Swarm Operator')];
     mockView = viewWithDraft();
     await renderAssist();
@@ -381,7 +381,7 @@ describe('CreateAgentAssist', () => {
     afterEach(() => layout.restore());
 
     async function openOnPhone() {
-      configuredRoles = { agentManagement: 'swarm-operator' };
+      configuredRoles = { agentManagement: 'kagent/swarm-operator' };
       mockRows = [agent('swarm-operator', 'Swarm Operator')];
       mockView = viewWithDraft();
       const rendered = await renderAssist();

@@ -29,7 +29,7 @@ function SessionsFrame({
  * all-time" has no equivalent here, and inventing one from this list would be
  * wrong by orders of magnitude on a shared agent.
  *
- * The whole list, searchable and paged: this is a tab of its own, and the five
+ * The whole list, searchable once it is long: this is a tab of its own, and the five
  * rows it showed while it was one section of a scrolling page were a teaser for
  * a page that does not exist — the section's Sessions tab lists every agent's,
  * not this agent's, so it is not the "rest" of this list and is not linked here.
@@ -115,11 +115,16 @@ export function AgentSessionsCard({
           {caption}
         </Text>
 
+        {/* In the shell, the Sessions page's own list (T46b): its state
+            words, day groups and windowed Load more instead of pagination
+            chrome, with search and filters only once there is something to
+            narrow down. */}
         <SessionsTable
           rows={rows}
           sessionStates={sessionStates}
           isLoading={isLoading}
           hideColumns={['agentName', 'installation']}
+          layout={plain ? 'shell' : undefined}
         />
       </Flex>
     </SessionsFrame>

@@ -12,6 +12,7 @@
 export * from './agentShellFlag';
 export * from './portals';
 export * from './metaAgents';
+export * from './usageWindow';
 export * from './kagent/kagentSchema';
 export * from './kagent/kagentTaskSchema';
 export * from './kagent/kagentA2aV1';

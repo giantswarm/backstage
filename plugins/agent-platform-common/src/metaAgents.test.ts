@@ -11,15 +11,15 @@ describe('readMetaAgents', () => {
     expect(
       readMetaAgents(
         readerOf({
-          'agentPlatform.metaAgents.skillEvaluation': 'skill-evaluator',
+          'agentPlatform.metaAgents.skillEvaluation': 'kagent/skill-evaluator',
           'agentPlatform.metaAgents.agentManagement': 'kagent/swarm-operator',
-          'agentPlatform.metaAgents.skillCreation': 'skill-creator',
+          'agentPlatform.metaAgents.skillCreation': 'kagent/skill-creator',
         }),
       ),
     ).toEqual({
-      skillEvaluation: 'skill-evaluator',
+      skillEvaluation: 'kagent/skill-evaluator',
       agentManagement: 'kagent/swarm-operator',
-      skillCreation: 'skill-creator',
+      skillCreation: 'kagent/skill-creator',
     });
   });
 

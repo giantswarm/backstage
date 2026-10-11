@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { Helmet } from 'react-helmet';
 import {
   Navigate,
   useLocation,
@@ -702,7 +701,6 @@ function SkillPage({
 
   return (
     <>
-      <Helmet title={`${skill.name} · Skills`} />
       <ShellPage
         title={skill.name}
         breadcrumbs={breadcrumbs}

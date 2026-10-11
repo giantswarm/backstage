@@ -262,8 +262,7 @@ const loadedView: SessionDetailView = {
 const awaitingInput = {
   raw: 'input-required',
   key: 'input-required',
-  label: 'Waiting for input',
-  shellLabel: 'Waiting for you',
+  label: 'Waiting for you',
   tone: 'warning' as const,
   isActive: true,
 };
@@ -764,8 +763,7 @@ describe('SessionDetailPage', () => {
       state: {
         raw: 'completed',
         key: 'completed',
-        label: 'Completed',
-        shellLabel: 'Finished',
+        label: 'Finished',
         tone: 'success' as const,
         isActive: false,
       },
@@ -1101,8 +1099,7 @@ describe('SessionDetailPage', () => {
         state: {
           raw: 'input-required',
           key: 'input-required',
-          label: 'Waiting for input',
-          shellLabel: 'Waiting for you',
+          label: 'Waiting for you',
           tone: 'warning',
           isActive: true,
         },
@@ -1186,7 +1183,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByText(/live stream was lost/),
         ).not.toBeInTheDocument();
-        expect(screen.getByText('Completed')).toBeInTheDocument();
+        expect(screen.getByText('Finished')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Send' }),
         ).toBeInTheDocument();
@@ -1904,7 +1901,6 @@ describe('SessionDetailPage', () => {
       raw: 'failed',
       key: 'failed',
       label: 'Failed',
-      shellLabel: 'Failed',
       tone: 'danger' as const,
       isActive: false,
     };
@@ -2407,7 +2403,6 @@ describe('SessionDetailPage', () => {
           raw: 'failed',
           key: 'failed',
           label: 'Failed',
-          shellLabel: 'Failed',
           tone: 'danger' as const,
           isActive: false,
         },

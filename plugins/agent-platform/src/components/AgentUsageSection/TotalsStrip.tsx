@@ -43,13 +43,21 @@ const useStyles = makeStyles((theme: Theme) => ({
  * "not yet" is a third thing again.
  *
  * **Narrowed windows**: the screen's time control can ask for fewer days than
- * the backend's fixed fan-out window. Turns and tokens re-total from the daily
- * buckets, but the backend reports sessions, tool calls and the reported cost
- * only over its full window — so with `narrowedFromDays` set those render `—`
- * ("not knowable for this window", the same meaning the em dash carries
- * everywhere else here) rather than full-window numbers under a narrower
- * label, and the reported-cost stat stays out entirely.
+ * the backend's fixed fan-out window. Turns, tokens, sessions and tool calls
+ * re-total from the daily buckets; a backend that does not report sessions or
+ * tool calls per day leaves them undefined, and those render `—` ("not
+ * knowable for this window", the same meaning the em dash carries everywhere
+ * else here) rather than full-window numbers under a narrower label. The
+ * reported cost has no daily buckets, so with `narrowedFromDays` set its stat
+ * stays out entirely.
  */
+export type StripTotals = Omit<SessionUsageTotals, 'sessions' | 'toolCalls'> & {
+  /** Undefined when not knowable for the window. */
+  sessions?: number;
+  /** Undefined when not knowable for the window. */
+  toolCalls?: number;
+};
+
 export function TotalsStrip({
   totals,
   windowDays,
@@ -59,7 +67,7 @@ export function TotalsStrip({
   costBasis,
   currency = USD,
 }: {
-  totals: SessionUsageTotals;
+  totals: StripTotals;
   /** The window the totals cover, as the response reports it. */
   windowDays: number;
   /**
@@ -85,9 +93,11 @@ export function TotalsStrip({
     <div className={classes.strip}>
       <Stat
         label="Sessions"
-        value={narrowed ? '—' : formatCount(totals.sessions)}
+        value={
+          totals.sessions === undefined ? '—' : formatCount(totals.sessions)
+        }
         hint={
-          narrowed
+          totals.sessions === undefined
             ? notNarrowable('session counts')
             : `Counts sessions with at least one turn ${windowNote}.`
         }
@@ -109,9 +119,11 @@ export function TotalsStrip({
       />
       <Stat
         label="Tool calls"
-        value={narrowed ? '—' : formatCount(totals.toolCalls)}
+        value={
+          totals.toolCalls === undefined ? '—' : formatCount(totals.toolCalls)
+        }
         hint={
-          narrowed
+          totals.toolCalls === undefined
             ? notNarrowable('tool-call counts')
             : 'Counts the tools called in these turns; a hand-off to another agent does not count.'
         }

@@ -53,6 +53,14 @@ const UPSTREAM_TIMEOUT_MS = 10_000;
 /** Far above any avatar the renderer produces: a bound, not a budget. */
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
+/**
+ * What the upstream is asked for: any image. The renderer answers a `.png`
+ * path with a PNG whatever the header says; a narrower `Accept` only gives a
+ * negotiating proxy in front of it a reason to refuse (406). The content type
+ * is checked on the answer instead.
+ */
+const UPSTREAM_ACCEPT = 'image/*';
+
 /** What the browser should see of an avatar exactly as the upstream sent it. */
 const FORWARDED_HEADERS = ['content-type', 'cache-control', 'etag'] as const;
 
@@ -139,7 +147,7 @@ async function fetchAvatar(
   try {
     const upstream = await fetchFn(url, {
       headers: {
-        Accept: 'image/png',
+        Accept: UPSTREAM_ACCEPT,
         ...(ifNoneMatch ? { 'If-None-Match': ifNoneMatch } : {}),
       },
       redirect: 'error',
@@ -152,11 +160,19 @@ async function fetchAvatar(
     if (upstream.status === 404) {
       return { kind: 'not-found' };
     }
+    const contentType = upstream.headers.get('content-type') ?? '';
     if (!upstream.ok) {
-      return { kind: 'failed', reason: `answered ${upstream.status}` };
+      // An error that is not even an image service's (an HTML or plain-text
+      // page) usually means the host is not routed to the avatar service at
+      // all — the chart's DiceBear is off, and a catch-all route answered.
+      return {
+        kind: 'failed',
+        reason: contentType
+          ? `answered ${upstream.status} with ${contentType}`
+          : `answered ${upstream.status}`,
+      };
     }
 
-    const contentType = upstream.headers.get('content-type') ?? '';
     if (!contentType.startsWith('image/')) {
       return {
         kind: 'failed',

@@ -1,0 +1,96 @@
+import { render, waitFor } from '@testing-library/react';
+import { Helmet } from 'react-helmet';
+import { MemoryRouter } from 'react-router-dom';
+import { PageHeaderActionsProvider } from '../PageHeaderActions';
+import { ShellPage } from '../ShellPage';
+import {
+  ShellDocumentTitle,
+  shellDocumentTitle,
+  shellTitleParts,
+} from './ShellDocumentTitle';
+
+describe('shellDocumentTitle', () => {
+  it('puts the product last, most specific part first', () => {
+    expect(shellDocumentTitle(['Lab Helper', 'Agents'])).toBe(
+      'Lab Helper · Agents · Agent Platform',
+    );
+  });
+
+  it('drops empty parts, repeats and the product itself', () => {
+    expect(
+      shellDocumentTitle(['Usage', undefined, '', 'Usage', 'Agent Platform']),
+    ).toBe('Usage · Agent Platform');
+  });
+});
+
+describe('shellTitleParts', () => {
+  it('names the current breadcrumb and its section', () => {
+    expect(
+      shellTitleParts('jira', [
+        { label: 'Customize', href: '/customize' },
+        { label: 'Connectors', href: '/customize/connectors' },
+        { label: 'jira' },
+      ]),
+    ).toEqual(['jira', 'Connectors']);
+  });
+
+  it('falls back to a text title without breadcrumbs', () => {
+    expect(shellTitleParts('Sessions')).toEqual(['Sessions', '']);
+  });
+
+  it('names nothing when neither says what the page is', () => {
+    expect(shellTitleParts(<span>Loading</span>)).toBeUndefined();
+  });
+});
+
+describe('ShellDocumentTitle', () => {
+  it('is not suffixed again by an outer page template', async () => {
+    render(
+      <>
+        <Helmet title="Agents" titleTemplate="%s | Agent Platform" />
+        <ShellDocumentTitle title={['Lab Helper', 'Agents']} />
+      </>,
+    );
+    await waitFor(() =>
+      expect(document.title).toBe('Lab Helper · Agents · Agent Platform'),
+    );
+  });
+});
+
+describe('ShellPage', () => {
+  function renderPage(element: JSX.Element) {
+    return render(
+      <MemoryRouter>
+        <PageHeaderActionsProvider>{element}</PageHeaderActionsProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it('titles the document after its breadcrumbs', async () => {
+    renderPage(
+      <ShellPage
+        title="Lab Helper"
+        breadcrumbs={[
+          { label: 'Customize', href: '/customize' },
+          { label: 'Agents', href: '/customize/agents' },
+          { label: 'Lab Helper' },
+        ]}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.title).toBe('Lab Helper · Agents · Agent Platform'),
+    );
+  });
+
+  it('takes the title it is given when the h1 is not text', async () => {
+    renderPage(
+      <ShellPage
+        title={<button>Rename</button>}
+        documentTitle={['Weekly report', 'Sessions']}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.title).toBe('Weekly report · Sessions · Agent Platform'),
+    );
+  });
+});

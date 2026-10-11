@@ -134,8 +134,7 @@ const HostingView = ({
  * figures about what it lists (`ModelHostingKpis`: the whole row on Running
  * models, the GPU tiles on GPU pools, the cache tile on Model cache). The
  * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
- * pool…) land in this header's slot, top right, and the shell's generic
- * sub-page header stands aside because `ShellPage` claims it.
+ * pool…) land in this header's slot, top right.
  *
  * The tabs and figures show where a serving layer exists; a deep link on a
  * portal without one keeps the frame and lets the view's own empty state

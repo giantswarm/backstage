@@ -3,7 +3,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { UsageConnectorsPage } from './UsageConnectorsPage';
 
 describe('UsageConnectorsPage', () => {
-  it('renders the contributed connector sections under a caption naming their window', async () => {
+  it('renders the contributed connector sections, with no caveat about the window', async () => {
     await renderInTestApp(
       <UsageConnectorsPage
         sections={[<div key="mcp">contributed tool-call section</div>]}
@@ -13,9 +13,8 @@ describe('UsageConnectorsPage', () => {
     expect(
       await screen.findByText('contributed tool-call section'),
     ).toBeInTheDocument();
-    // muster's metrics do not follow the screen's time-range control.
-    expect(
-      screen.getByText(/ignore the selected time range/),
-    ).toBeInTheDocument();
+    // The section follows the screen's time-range control (QA round 1), so
+    // nothing says it ignores it.
+    expect(screen.queryByText(/ignore the selected time range/)).toBeNull();
   });
 });

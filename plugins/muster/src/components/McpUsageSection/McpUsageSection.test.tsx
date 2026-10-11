@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
+import { MemoryRouter } from 'react-router-dom';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -14,6 +15,12 @@ import {
 } from '../MusterInstanceProvider';
 import { makeTestMusterInstance } from '../MusterInstanceProvider/testInstance';
 import { McpUsageSection } from './McpUsageSection';
+
+/** The Usage screen's address; a test sets `?window=` on it. */
+let path = '/agent-platform/usage/connectors';
+beforeEach(() => {
+  path = '/agent-platform/usage/connectors';
+});
 
 // The section brings its own MusterProviders so it can be mounted anywhere;
 // passed through here so these tests keep injecting MusterInstanceContext
@@ -84,13 +91,15 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
       defaultOptions: { queries: { retry: false } },
     });
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <MusterInstanceContext.Provider value={instance()}>
-            {children}
-          </MusterInstanceContext.Provider>
-        </QueryClientProvider>
-      </TestApiProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={instance()}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
     );
 
     render(<McpUsageSection />, { wrapper });
@@ -121,13 +130,15 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
       defaultOptions: { queries: { retry: false } },
     });
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <MusterInstanceContext.Provider value={instance()}>
-            {children}
-          </MusterInstanceContext.Provider>
-        </QueryClientProvider>
-      </TestApiProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={instance()}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
     );
 
     render(<McpUsageSection />, { wrapper });
@@ -187,13 +198,15 @@ describe('McpUsageSection chart', () => {
       activeInstallationInfo: instance().installationInfos[0],
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <MusterInstanceContext.Provider value={reachable}>
-            {children}
-          </MusterInstanceContext.Provider>
-        </QueryClientProvider>
-      </TestApiProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={reachable}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
     );
 
     render(<McpUsageSection />, { wrapper });
@@ -204,6 +217,65 @@ describe('McpUsageSection chart', () => {
     ).toEqual([['5,271', '17', '282']]);
     // Three series told apart by fill alone need a legend.
     expect(chart).toHaveAttribute('data-legend', 'true');
+  });
+});
+
+describe('McpUsageSection window', () => {
+  it("reads the Usage screen's selected window", async () => {
+    // QA round 1: the 7 | 30 | 90 control showed on Connectors and changed
+    // nothing there.
+    path = '/agent-platform/usage/connectors?window=7d';
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue({
+        available: true,
+        range_hours: 168,
+        step_hours: 24,
+        buckets: [],
+        totals: {
+          calls: 0,
+          errors: 0,
+          error_ratio: 0,
+          p95_seconds: 0,
+          distinct_tools: 0,
+        },
+        top_tools: [],
+        servers: [],
+      }),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const reachable = {
+      ...instance(),
+      activeInstallation: 'gazelle',
+      scope: 'gazelle',
+      activeInstallationInfo: instance().installationInfos[0],
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={reachable}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
+    );
+
+    render(<McpUsageSection />, { wrapper });
+
+    expect(
+      await screen.findByText(
+        "This covers every caller's tool calls, not only yours, over the last 7 days.",
+      ),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 168,
+    });
   });
 });
 
@@ -247,13 +319,15 @@ describe('McpUsageSection connectors table', () => {
       activeInstallationInfo: instance().installationInfos[0],
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <MusterInstanceContext.Provider value={reachable}>
-            {children}
-          </MusterInstanceContext.Provider>
-        </QueryClientProvider>
-      </TestApiProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={reachable}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
     );
     render(<McpUsageSection />, { wrapper });
     await screen.findByText('connector-000');
@@ -346,13 +420,15 @@ describe('McpUsageSection tables at phone width', () => {
       activeInstallationInfo: instance().installationInfos[0],
     };
     const wrapper = ({ children }: { children: ReactNode }) => (
-      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
-        <QueryClientProvider client={queryClient}>
-          <MusterInstanceContext.Provider value={reachable}>
-            {children}
-          </MusterInstanceContext.Provider>
-        </QueryClientProvider>
-      </TestApiProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+          <QueryClientProvider client={queryClient}>
+            <MusterInstanceContext.Provider value={reachable}>
+              {children}
+            </MusterInstanceContext.Provider>
+          </QueryClientProvider>
+        </TestApiProvider>
+      </MemoryRouter>
     );
     render(<McpUsageSection />, { wrapper });
     await screen.findByText('x_kubernetes_gazelle_list_resources');

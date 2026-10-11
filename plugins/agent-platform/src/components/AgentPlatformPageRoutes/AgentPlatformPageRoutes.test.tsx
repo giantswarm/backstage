@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import {
   ShellPage,
@@ -15,7 +15,7 @@ function RegistersAction({ label }: { label: string }) {
   return null;
 }
 
-/** The sessions sub-page: a self-titled list, one session headed by the route. */
+/** The sessions sub-page: a self-titled list, and a session still loading. */
 function SessionsSubPage() {
   return (
     <Routes>
@@ -35,7 +35,7 @@ function SessionsSubPage() {
   );
 }
 
-/** The connectors sub-page: the list headed by the route, a connector self-titled. */
+/** The connectors sub-page: a list, and a self-titled connector. */
 function ConnectorsSubPage() {
   return (
     <Routes>
@@ -112,28 +112,19 @@ describe('AgentPlatformPageRoutes', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
   });
 
-  it('still heads one session with the sub-page title', async () => {
+  it('draws no header of its own over a view that has none yet', async () => {
+    // A view whose code, cookie or data is still loading: an empty content
+    // area, not the section's list header standing in for the page.
     await renderAt('/agent-platform/sessions/gazelle/abc');
 
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Sessions' }),
-    ).toBeInTheDocument();
+    expect(screen.getByText('one session')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
-  it('heads any other sub-page with its title', async () => {
+  it('names the sub-page in the document title', async () => {
     await renderAt('/agent-platform/agents');
 
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Agents' }),
-    ).toBeInTheDocument();
-  });
-
-  it('heads the connectors list with the sub-page title', async () => {
-    await renderAt('/agent-platform/mcp-servers');
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'MCP Servers' }),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe('Agents · Agent Platform'));
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 });

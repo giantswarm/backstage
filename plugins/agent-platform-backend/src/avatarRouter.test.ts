@@ -68,7 +68,9 @@ describe('GET /avatars/:installation/v1/...', () => {
     expect(url).toBe('https://avatars.gazelle.example/v1/48/go-developer.png');
     // Nothing of the browser's request travels along, and a redirect would
     // be a hop off the allowlisted host.
-    expect(init.headers).toEqual({ Accept: 'image/png' });
+    // Any image: a narrower Accept gave a negotiating proxy a reason to
+    // answer 406 (QA round 1).
+    expect(init.headers).toEqual({ Accept: 'image/*' });
     expect(init.redirect).toBe('error');
   });
 
@@ -121,7 +123,7 @@ describe('GET /avatars/:installation/v1/...', () => {
     expect(response.status).toBe(304);
     expect(response.headers.etag).toBe('"v1-go-developer"');
     expect(fetchFn.mock.calls[0][1].headers).toEqual({
-      Accept: 'image/png',
+      Accept: 'image/*',
       'If-None-Match': '"v1-go-developer"',
     });
   });
@@ -169,6 +171,16 @@ describe('GET /avatars/:installation/v1/...', () => {
       'answers an error',
       () => new Response('down', { status: 503 }),
       /answered 503/,
+    ],
+    [
+      // The lab's avatars host without DiceBear: a catch-all MCP route.
+      'is not behind the host at all',
+      () =>
+        new Response('mcp: client must accept text/event-stream', {
+          status: 406,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        }),
+      /answered 406 with text\/plain/,
     ],
     [
       'answers something that is not an image',

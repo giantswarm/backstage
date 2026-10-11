@@ -26,9 +26,10 @@ export const META_AGENT_ROLES = [
 export type MetaAgentRole = (typeof META_AGENT_ROLES)[number];
 
 /**
- * The configured role mapping: each role names an agent, as the agent's
- * technical (resource) name, optionally qualified as `<namespace>/<name>`.
- * Every role is optional — an absent one hides the features needing it.
+ * The configured role mapping: each role names an agent as `<namespace>/<name>`
+ * or `<installation>/<namespace>/<name>` (a bare name resolves to nothing; see
+ * the frontend's `resolveMetaAgent`). Every role is optional — an absent one
+ * hides the features needing it.
  */
 export type MetaAgents = Partial<Record<MetaAgentRole, string>>;
 

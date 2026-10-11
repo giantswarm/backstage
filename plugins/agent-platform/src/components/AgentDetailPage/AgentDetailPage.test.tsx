@@ -52,6 +52,29 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   useProvidePageHeaderActions: jest.fn(),
 }));
 
+// The shell's Sessions tab is the Sessions page's list (T46b), whose rows
+// carry rename and delete; their writes are that list's own tests' concern.
+jest.mock('../../hooks/useDeleteSession', () => ({
+  useDeleteSession: () => ({
+    deleteSession: jest.fn(),
+    isDeleting: false,
+    isDeleted: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useRenameSession', () => ({
+  useRenameSession: () => ({
+    renameSession: jest.fn(),
+    isRenaming: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+jest.mock('../../hooks/useKagentCapabilities', () => ({
+  useKagentCapabilities: () => ({ isUserScoped: true }),
+}));
+
 const mockUseAgentSessions = jest.fn<AgentSessionsView, unknown[]>();
 
 jest.mock('../../hooks/useAgentSessions', () => ({

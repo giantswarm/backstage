@@ -35,6 +35,7 @@ import {
 } from '../LlmUsage';
 import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
+import { sessionCountForWindow } from '../AgentUsageSection/helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -165,19 +166,23 @@ export function UsageOverviewPage() {
   const currency = useCurrency(installation);
 
   // The reader's own session count, shared (same query key) with the Your
-  // sessions tab — so after either view loads, the other costs nothing. Its
-  // window is the backend's own, which the tile names when it has one.
+  // sessions tab — so after either view loads, the other costs nothing. It
+  // follows the selected window, cut from the backend's daily buckets as Your
+  // sessions cuts it; a wider selection than kagent keeps names kagent's.
   const sessionUsage = useSessionUsage(installation);
   const hasSessionUsage =
     !sessionUsage.isNotDeployed &&
     !sessionUsage.isError &&
     !!sessionUsage.usage;
+  const sessionWindow = sessionUsage.usage
+    ? sessionCountForWindow(sessionUsage.usage, days)
+    : undefined;
   const sessions: UsageKpiSessions | undefined =
     sessionUsage.isNotDeployed || sessionUsage.isError
       ? undefined
       : {
-          count: sessionUsage.usage?.totals.sessions,
-          windowDays: sessionUsage.usage?.windowDays || undefined,
+          count: sessionWindow?.count,
+          windowDays: sessionWindow?.days || undefined,
           isLoading: sessionUsage.isLoading,
         };
 

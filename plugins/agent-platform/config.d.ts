@@ -51,11 +51,13 @@ export interface Config {
     };
     /**
      * Which agent serves each meta-agent role (iteration-1 decision G13).
-     * Values are agent names: the Agent resource's technical name, optionally
-     * qualified as `<namespace>/<name>` when the same name exists in several
-     * namespaces. A feature gated on a role (`useMetaAgent`) appears only when
-     * the configured name resolves to an existing agent, and is hidden while
-     * the role is unconfigured or unresolved. Read by the frontend from the
+     * Values must be qualified: `<namespace>/<name>` (the Agent resource's
+     * namespace and technical name), or `<installation>/<namespace>/<name>`
+     * where the same agent runs on several installations. A bare name
+     * resolves to nothing, so no agent outside the named namespace can take
+     * the role over. A feature gated on a role (`useMetaAgent`) appears only
+     * when the value matches exactly one agent, and is hidden while the role
+     * is unconfigured, unresolved or ambiguous. Read by the frontend from the
      * signed-in config. A platform CR becomes the source later; this stays the
      * override.
      */

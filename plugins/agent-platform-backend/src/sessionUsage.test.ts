@@ -232,6 +232,50 @@ describe('SessionUsageReader', () => {
     expect(busy[0]).toMatchObject({ day: '2026-09-04', inputTokens: 100 });
   });
 
+  it("files each day's tool calls, and each session under its newest day", async () => {
+    // What a narrower window needs to total sessions and tool calls honestly:
+    // the window ends now, so a trailing sum of `lastActiveSessions` counts
+    // the sessions with a turn in it.
+    const early = wireTasks({
+      timestamp: '2026-09-01T09:00:00Z',
+      tools: ['x_kubernetes_get', 'x_kubernetes_list'],
+    });
+    const late = wireTasks({
+      timestamp: '2026-09-04T09:00:00Z',
+      tools: ['x_kubernetes_get'],
+    });
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('a'), wireSession('b')],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      id === 'a'
+        ? {
+            error: false,
+            data: [
+              early.data[0],
+              { ...late.data[0], id: 't2', contextId: 'c1' },
+            ],
+          }
+        : early,
+    );
+
+    const result = await reader().read('tok');
+    const day = (key: string) => result.daily.find(d => d.day === key);
+
+    expect(day('2026-09-01')).toMatchObject({
+      toolCalls: 4,
+      lastActiveSessions: 1,
+    });
+    expect(day('2026-09-04')).toMatchObject({
+      toolCalls: 1,
+      lastActiveSessions: 1,
+    });
+    expect(
+      result.daily.reduce((sum, d) => sum + (d.lastActiveSessions ?? 0), 0),
+    ).toBe(result.totals.sessions);
+  });
+
   it('ranks tools and their muster servers, deterministically', async () => {
     listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
     listSessionTasks.mockResolvedValue(

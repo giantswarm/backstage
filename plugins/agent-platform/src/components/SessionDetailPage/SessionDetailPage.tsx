@@ -211,8 +211,7 @@ function BackToSessions({ children }: { children: ReactNode }) {
  * (`ShellPage`, the one All Sessions and Customize use): breadcrumbs reading
  * "Sessions / Session", the session's name as the h1 at the standard scale,
  * and the badges beside it. The actions the page registers land in that
- * header's slot, and the shell's generic "Sessions" sub-page header stands
- * aside because `ShellPage` claims the page header.
+ * header's slot.
  *
  * In classic chrome it is the switcher rail, then the conversation column.
  *
@@ -231,6 +230,7 @@ function Shell({
   sessionId,
   currentSessionState,
   title,
+  documentTitle,
   badges,
   meta,
   children,
@@ -241,6 +241,8 @@ function Shell({
   currentSessionState?: SessionStateEntry;
   /** The shell header's h1; the exits leave it to the fallback "Session". */
   title?: ReactNode;
+  /** The session's name for the document title, as the h1 is a button. */
+  documentTitle?: string;
   /** The shell header's badge row: state, agent, installation. */
   badges?: ReactNode;
   /** Muted text at the end of that row: when the session started. */
@@ -259,6 +261,7 @@ function Shell({
         // The exits (loading, not found, unreadable) have no name to show;
         // "Session" keeps the frame honest about where the reader is.
         title={title ?? 'Session'}
+        documentTitle={[documentTitle || 'Session', 'Sessions']}
         // Singular "Session" last: this page is one conversation, and the
         // linked "Sessions" ancestor is the way back to the list.
         breadcrumbs={[
@@ -1050,7 +1053,7 @@ export function SessionDetailPage() {
     // would be guessing at what the agent asked.
     composerWithheldReason = pendingConfirmation
       ? undefined
-      : 'Waiting for input, but the request could not be read — reply in the kagent UI.';
+      : 'The agent is waiting for you, but its request could not be read. Reply in the kagent UI.';
   }
 
   /**
@@ -1363,6 +1366,7 @@ export function SessionDetailPage() {
       sessionId={sessionId}
       currentSessionState={currentSessionState}
       title={titleButton}
+      documentTitle={row.title}
       badges={
         <>
           {stateBadges}

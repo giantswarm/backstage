@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
-import { Flex, Text } from '@backstage/ui';
+import { Fragment, ReactNode } from 'react';
+import { Flex } from '@backstage/ui';
 import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
@@ -18,19 +18,18 @@ import { UsageColumn } from '../UsageColumn';
  * in the muster plugin), so this view knows nothing of its layout. The router
  * offers the view only when something was contributed.
  *
- * muster's metrics cover a fixed 30 days and do not follow the screen's
- * time-range control yet, which the caption says — the section's own heading
- * names its window too.
+ * The section follows the screen's time-range control, as every other view
+ * does, and its heading names the window.
  */
 export function UsageConnectorsPage({ sections }: { sections: ReactNode[] }) {
   return (
     <ShellAwareContent>
       <UsageColumn>
         <Flex direction="column" gap="6">
-          <Text as="p" variant="body-medium" color="secondary">
-            These figures ignore the selected time range.
-          </Text>
-          {sections}
+          {/* Contributed elements carry no key of their own. */}
+          {sections.map((section, index) => (
+            <Fragment key={index}>{section}</Fragment>
+          ))}
         </Flex>
       </UsageColumn>
     </ShellAwareContent>

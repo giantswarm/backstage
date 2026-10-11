@@ -55,6 +55,42 @@ describe('normalizeSessionUsage', () => {
     expect(usage.topMcpServers).toEqual([{ server: 'kubernetes', calls: 84 }]);
   });
 
+  it("reads a day's tool calls and sessions, and leaves them out when absent", () => {
+    const usage = normalizeSessionUsage(
+      body({
+        daily: [
+          {
+            day: '2026-08-06',
+            inputTokens: 1_000,
+            outputTokens: 100,
+            turns: 3,
+            toolCalls: 7,
+            lastActiveSessions: 2,
+          },
+          { day: '2026-08-07', inputTokens: 0, outputTokens: 0, turns: 0 },
+          {
+            day: '2026-08-08',
+            inputTokens: 0,
+            outputTokens: 0,
+            turns: 0,
+            toolCalls: Number.NaN,
+            lastActiveSessions: -1,
+          },
+        ],
+      }),
+    );
+
+    expect(usage.daily[0]).toMatchObject({
+      toolCalls: 7,
+      lastActiveSessions: 2,
+    });
+    // A backend that predates the fields: not reported, not zero.
+    expect(usage.daily[1]).not.toHaveProperty('toolCalls');
+    expect(usage.daily[1]).not.toHaveProperty('lastActiveSessions');
+    expect(usage.daily[2]).not.toHaveProperty('toolCalls');
+    expect(usage.daily[2]).not.toHaveProperty('lastActiveSessions');
+  });
+
   it('reads the reported cost on the totals and per agent', () => {
     const usage = normalizeSessionUsage(
       body({

@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { Helmet } from 'react-helmet';
 import { Navigate, useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert } from '@backstage/ui';
@@ -119,12 +118,10 @@ export function EditSkillPage() {
   return (
     <WizardFrame
       title="Edit skill"
+      documentTitle={[skill ? `Edit ${skill.name}` : 'Edit skill', 'Skills']}
       context="Customize / Skills"
       closeHref={skillHref}
     >
-      <Helmet
-        title={skill ? `Edit ${skill.name} · Skills` : 'Edit skill · Skills'}
-      />
       {body}
     </WizardFrame>
   );

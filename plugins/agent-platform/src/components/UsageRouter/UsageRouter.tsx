@@ -31,8 +31,8 @@ import { UsageScopeBar } from './UsageScopeBar';
 // scope their queries by it directly; Your sessions narrows the kagent
 // fan-out's fixed-window answer client-side and says so when the selection
 // asks for more than that window holds (the fan-out's window is a backend
-// caching contract this screen must not reach into). Connectors' figures
-// come from muster's own fixed window, which that view says.
+// caching contract this screen must not reach into). Connectors asks muster
+// for the selected span directly.
 type UsageView = { path: string; title: string };
 
 const OVERVIEW: UsageView = { path: 'overview', title: 'Overview' };
@@ -124,19 +124,24 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
  * Inside the agent-platform shell: the platform-standard page frame
  * (`ShellPage`, the one Sessions and Customize use) — "Usage" as the h1 at the
  * standard scale with its one-line description, the scope controls at the
- * header's right, and the views as the page's routed tabs. The shell's generic
- * sub-page header stands aside because `ShellPage` claims the page header, so
- * the screen has one title and each view adds none of its own.
+ * header's right, and the views as the page's routed tabs. The screen has one
+ * title; each view adds none of its own.
  */
 const ShellUsageViews = ({ sections }: { sections?: ReactNode[] }) => {
-  const { search } = useLocation();
+  const { search, pathname } = useLocation();
+  const views = usageViews(hasSectionsIn(sections));
+  // The open view names the document: "Cost · Usage · Agent Platform".
+  const openView = views.find(view =>
+    new RegExp(`/${view.path}/?$`).test(pathname),
+  );
 
   return (
     <ShellPage
       title="Usage"
+      documentTitle={[openView?.title, 'Usage']}
       description={USAGE_DESCRIPTION}
       actions={<UsageScopeBar />}
-      tabs={usageViews(hasSectionsIn(sections)).map(view => ({
+      tabs={views.map(view => ({
         id: view.path,
         path: view.path,
         title: view.title,

@@ -354,7 +354,9 @@ describe('EditAgentPage', () => {
     expect(runtime).toHaveTextContent('Harness claude-code');
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
     expect(
-      screen.getByText('What runs the agent. Fixed once the agent exists.'),
+      screen.getByText(
+        'Choose what runs the agent. It cannot be changed once the agent exists.',
+      ),
     ).toBeInTheDocument();
   });
 

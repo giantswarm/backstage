@@ -37,8 +37,9 @@ const MAX_BACKOFF_MS = 60 * 60 * 1000;
 export const MAX_STALE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Repositories × refs remembered. The configured repositories are a handful;
- * the bound is for ad-hoc github.com repositories a caller names.
+ * Repositories × refs remembered. Only configured repositories are read (the
+ * route refuses others), a handful; the bound is for the refs a caller can
+ * name.
  */
 export const MAX_ENTRIES = 100;
 
@@ -378,9 +379,28 @@ export class SkillDiscoveryCache {
     this.entries.delete(key);
     this.entries.set(key, entry);
     while (this.entries.size > MAX_ENTRIES) {
-      const oldest = this.entries.keys().next().value as string;
-      this.entries.delete(oldest);
+      this.entries.delete(this.evictionCandidate());
     }
+  }
+
+  /**
+   * The entry to drop when full, oldest first within each class: a
+   * remembered failure, then a listing at an explicit ref, and only then a
+   * default-branch listing — what the portal shows. Callers can name refs
+   * freely, so a flood of them never pushes the configured repositories'
+   * listings out.
+   */
+  private evictionCandidate(): string {
+    let explicitRef: string | undefined;
+    for (const [key, entry] of this.entries) {
+      if (!entry.snapshot) {
+        return key;
+      }
+      if (explicitRef === undefined && key !== `${entry.repoKey}#`) {
+        explicitRef = key;
+      }
+    }
+    return explicitRef ?? (this.entries.keys().next().value as string);
   }
 }
 

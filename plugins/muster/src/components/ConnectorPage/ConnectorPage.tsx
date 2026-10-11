@@ -1,5 +1,4 @@
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
-import { Helmet } from 'react-helmet';
 import {
   Navigate,
   Route,
@@ -31,6 +30,7 @@ import {
   LoadingIndicator,
   MENU_WIDTH,
   RouteTabSpec,
+  ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
@@ -656,7 +656,7 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
   // Above every state the page can be in; the form an agent's page uses.
   return (
     <>
-      <Helmet title={`${key} · Connectors · Agent Platform`} />
+      <ShellDocumentTitle title={[key, 'Connectors']} />
       <ConnectorPageBody serverKey={key} usedBy={usedBy} />
     </>
   );

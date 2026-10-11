@@ -453,19 +453,20 @@ describe('CustomizePage', () => {
 
   it('names itself and its tab in the document title, and follows the tab', async () => {
     // Live round 2 (R5): every tab carried the bare "Customize", so the title
-    // never said which one was open.
+    // never said which one was open. QA round 1: the app title must not be
+    // appended on top of the product ("… · Agent Platform | Agent Platform").
     await renderCustomize('/customize/agents', {
-      config: { app: { title: 'Dev Portal' } },
+      config: { app: { title: 'Agent Platform' } },
     });
 
     await waitFor(() =>
-      expect(document.title).toBe('Agents · Customize | Dev Portal'),
+      expect(document.title).toBe('Agents · Customize · Agent Platform'),
     );
 
     await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
 
     await waitFor(() =>
-      expect(document.title).toBe('Workflows · Customize | Dev Portal'),
+      expect(document.title).toBe('Workflows · Customize · Agent Platform'),
     );
   });
 });

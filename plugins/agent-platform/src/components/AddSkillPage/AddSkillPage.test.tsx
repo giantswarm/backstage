@@ -137,7 +137,9 @@ describe('AddSkillPage', () => {
   it('names itself in the document title', async () => {
     await renderPage();
 
-    await waitFor(() => expect(document.title).toBe('Add skill · Skills'));
+    await waitFor(() =>
+      expect(document.title).toBe('Add skill · Skills · Agent Platform'),
+    );
   });
 
   // Typing three fields with userEvent outruns the 5s default under a loaded
@@ -320,7 +322,9 @@ describe('AddSkillPage editing an existing skill', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
     await waitFor(() =>
-      expect(document.title).toBe('Edit ticket-triage · Skills'),
+      expect(document.title).toBe(
+        'Edit ticket-triage · Skills · Agent Platform',
+      ),
     );
     expect(screen.getByLabelText(/Name/)).toHaveValue('ticket-triage');
     expect(screen.getByLabelText(/Description/)).toHaveValue('How to triage.');
@@ -464,7 +468,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
   });
 
   it('shows the caveat above the add form and hands the typed skill over', async () => {
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     createSession.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup();
     await renderPage();
@@ -491,7 +495,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
   }, 30_000);
 
   it('carries the typed instructions of a new skill into the first message', async () => {
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     createSession.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup();
     await renderPage();
@@ -507,7 +511,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
   }, 30_000);
 
   it('carries instructions rewritten on an edit, but not the unchanged ones', async () => {
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     createSession.mockReturnValue(new Promise(() => {}));
     const user = userEvent.setup();
     await renderPage(edit);
@@ -523,7 +527,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
   }, 30_000);
 
   it('shows the caveat on an edit and hands the skill being changed over', async () => {
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     createSession.mockReturnValue(new Promise(() => {}));
     await renderPage(edit);
 
@@ -539,7 +543,7 @@ describe('AddSkillPage · the skill creator hand-off', () => {
   }, 30_000);
 
   it('is gone once the pull request is open', async () => {
-    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
     mockState = { isProposing: false, error: null, result: opened };
     await renderPage();
 

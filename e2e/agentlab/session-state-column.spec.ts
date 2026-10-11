@@ -54,7 +54,7 @@ async function deleteCurrentSession(page: Page): Promise<void> {
 }
 
 /**
- * The shell's four words for a session that has run (`SHELL_STATE_LABELS`,
+ * The shell's four words for a session that has run (`SESSION_STATE_LABELS`,
  * which `describeSessionState` maps every kagent task state onto).
  */
 const STATE_LABELS = ['Waiting for you', 'Working', 'Finished', 'Failed'];

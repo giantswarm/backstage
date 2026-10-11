@@ -247,7 +247,7 @@ function getColumnConfig(
       id: 'state',
       label: 'State',
       isSortable: true,
-      // Sized for the longest label, "Waiting for input".
+      // Sized for the longest label, "Waiting for you".
       defaultWidth: '1fr',
       minWidth: 150,
       cell: row => <StateCell row={row} isLoading={isLoadingStates} />,
@@ -688,7 +688,6 @@ function PhoneSessionsList({
               buildAvatarUrl,
               isLoadingStates,
               showState,
-              stateWords: 'classic',
               showAgent,
               showInstallation,
               started: row.createdAt ? (

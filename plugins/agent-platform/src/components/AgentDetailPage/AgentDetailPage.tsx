@@ -227,8 +227,6 @@ function agentBreadcrumbs(
  * (`ShellPage`): breadcrumbs reading "Customize / Agents / <agent>", the
  * agent's name as the h1 at the standard scale with its avatar and
  * readiness, its actions at the header's right and the routed tabs under it.
- * The shell's generic "Agents" sub-page header stands aside because
- * `ShellPage` claims the page header, so the page has one title.
  *
  * In classic chrome it is `Content` under the Agent Platform page's header
  * and tabs, with the page's own header (`AgentHeader`) inside.

@@ -16,6 +16,7 @@ import {
   useOwnPageHeader,
   usePageHeaderActionsSlot,
 } from '../PageHeaderActions';
+import { ShellDocumentTitle } from '../ShellDocumentTitle';
 import {
   PHONE_MEDIA,
   TWO_COLUMN_MEDIA,
@@ -439,6 +440,11 @@ export interface WizardStep {
 export interface WizardFrameProps {
   /** What the flow creates, e.g. "New agent": the page's h1. */
   title: string;
+  /**
+   * The document title's parts, most specific first; " · Agent Platform"
+   * follows (`ShellDocumentTitle`). Defaults to the title.
+   */
+  documentTitle?: ReadonlyArray<string | undefined>;
   /** Muted text after the title, e.g. "Customize / Models". */
   context?: ReactNode;
   steps?: WizardStep[];
@@ -476,10 +482,11 @@ export interface WizardFrameProps {
  * `useProvidePageHeaderActions`, so a route above the frame must mount a
  * `PageHeaderActionsProvider`; the frame renders the slot and mounts none,
  * and claims the page header (`useOwnPageHeader`) like `ShellPage`, so a
- * layout header above it stands aside.
+ * layout header above it stands aside. It sets the document title too.
  */
 export function WizardFrame({
   title,
+  documentTitle,
   context,
   steps,
   currentStep,
@@ -586,6 +593,7 @@ export function WizardFrame({
 
   return (
     <WizardAsideContext.Provider value={aside}>
+      <ShellDocumentTitle title={documentTitle ?? title} />
       {/* `data-field-validation-scope`: where useFieldValidation looks for the
           first invalid field (FIELD_VALIDATION_SCOPE_ATTRIBUTE). */}
       <div
