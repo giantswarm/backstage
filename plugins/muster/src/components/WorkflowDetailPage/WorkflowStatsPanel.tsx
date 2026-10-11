@@ -230,23 +230,23 @@ export function WorkflowStatsPanel({
         <Stat
           label="Runs"
           value={data.runs.toLocaleString()}
-          hint="Every recorded run, including those in progress."
+          hint="Counts every recorded run, including those in progress."
         />
         <Stat
           label="Success rate"
           value={successRate}
           tone={successTone}
-          hint={`Completed share of finished runs${sampleScope}. Amber below 95%.`}
+          hint={`Shows the completed share of finished runs${sampleScope}. Amber below 95%.`}
         />
         <Stat
           label="Avg duration"
           value={avg}
-          hint={`Mean of finished runs, failed ones included${sampleScope}.`}
+          hint={`Shows the mean of finished runs, failed ones included${sampleScope}.`}
         />
         <Stat
           label="Max duration"
           value={max}
-          hint={`Longest finished run, failed ones included${sampleScope}.`}
+          hint={`Shows the longest finished run, failed ones included${sampleScope}.`}
         />
       </Box>
 

@@ -10,7 +10,12 @@ import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
 import { RecentSessions } from './RecentSessions';
-import { MAX_RAIL_PINS, pickRecentSessions, railSessionGroup } from './helpers';
+import {
+  lastActiveAt,
+  MAX_RAIL_PINS,
+  pickRecentSessions,
+  railSessionGroup,
+} from './helpers';
 import type { SessionRow } from '../SessionsDataProvider';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -211,16 +216,106 @@ describe('RecentSessions', () => {
   });
 
   describe('in the shell rail', () => {
-    it('links to all sessions next to the list label', async () => {
-      await renderRecent({ shellRail: true });
+    it('at 3 sessions lists them all, closed by a plain All sessions link (T91)', async () => {
+      await renderRecent({ shellRail: true, limit: 8 });
 
-      const link = await screen.findByRole('link', { name: 'All sessions' });
+      await screen.findByText('Oldest');
+      expect(screen.getByText('Middle')).toBeInTheDocument();
+      expect(screen.getByText('Newest')).toBeInTheDocument();
+      // No cutoff, so no count: the link is only the way to the full list.
+      expect(screen.queryByText(/ more$/)).not.toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'All sessions' });
       expect(link).toHaveAttribute('href', '/agent-platform/sessions');
       expect(link).not.toHaveAttribute('aria-current');
+      // After the last session, not on a heading.
+      const sessionLinks = screen
+        .getAllByRole('link')
+        .filter(element => element !== link);
+      expect(
+        sessionLinks.every(
+          element =>
+            element.compareDocumentPosition(link) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      ).toBe(true);
+    });
+
+    it('at 300 sessions lists the cutoff and says how many more All sessions has (T91)', async () => {
+      const base = Date.parse('2026-07-01T00:00:00Z');
+      listSessions.mockResolvedValue(
+        Array.from({ length: 300 }, (_, index) =>
+          session(
+            `s${index}`,
+            new Date(base + index * 60_000).toISOString(),
+            `Session ${index}`,
+          ),
+        ),
+      );
+      listSessionStates.mockResolvedValue({
+        evaluatedAt: 0,
+        states: [],
+        unreadable: [],
+        skipped: 0,
+      });
+
+      await renderRecent({ shellRail: true, limit: 8 });
+
+      await screen.findByText('Session 299');
+      // Bounded: the cutoff's rows and the link, nothing else.
+      const rows = screen
+        .getAllByRole('listitem')
+        .map(item => within(item).getByRole('link').textContent);
+      expect(rows).toHaveLength(8);
+      expect(rows[0]).toContain('Session 299');
+      expect(rows[7]).toContain('Session 292');
+      expect(
+        screen.getByRole('link', { name: 'All sessions' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions');
+      expect(screen.getByText('292 more')).toBeInTheDocument();
+    });
+
+    it('orders by last activity: a session continued today leads, under Today (T91)', async () => {
+      const now = Date.now();
+      const daysAgo = (days: number) =>
+        new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+      listSessions.mockResolvedValue([
+        session('started', daysAgo(1), 'Started yesterday'),
+        session('continued', daysAgo(5), 'Continued today'),
+        session('idle', daysAgo(3), 'Untouched'),
+      ]);
+      listSessionStates.mockResolvedValue({
+        evaluatedAt: 0,
+        states: [
+          // Its newest turn finished a minute ago.
+          {
+            sessionId: 'continued',
+            state: 'completed',
+            changedAt: now - 60_000,
+          },
+        ],
+        unreadable: [],
+        skipped: 0,
+      });
+
+      await renderRecent({ shellRail: true, limit: 2 });
+
+      const today = await screen.findByRole('list', { name: 'Today' });
+      expect(
+        await within(today).findByText('Continued today'),
+      ).toBeInTheDocument();
+      const week = screen.getByRole('list', { name: 'Previous 7 days' });
+      expect(within(week).getByText('Started yesterday')).toBeInTheDocument();
+      // Past the cutoff of two.
+      expect(screen.queryByText('Untouched')).not.toBeInTheDocument();
+      expect(screen.getByText('1 more')).toBeInTheDocument();
     });
 
     it('marks All sessions current on the sessions list', async () => {
-      await renderRecent({ shellRail: true, path: '/agent-platform/sessions' });
+      await renderRecent({
+        shellRail: true,
+        limit: 8,
+        path: '/agent-platform/sessions',
+      });
 
       expect(
         await screen.findByRole('link', { name: 'All sessions' }),
@@ -453,6 +548,26 @@ describe('pickRecentSessions', () => {
     ).toEqual(['b', 'a', 'undated']);
   });
 
+  it('with states, orders by last activity', () => {
+    const states = new Map([
+      [
+        'a',
+        {
+          sessionId: 'a',
+          state: 'working',
+          changedAt: Date.parse('2026-07-10T00:00:00Z'),
+        },
+      ],
+    ]);
+    expect(
+      pickRecentSessions(
+        [row('a', '2026-07-01T00:00:00Z'), row('b', '2026-07-03T00:00:00Z')],
+        2,
+        states,
+      ).map(r => r.id),
+    ).toEqual(['a', 'b']);
+  });
+
   it('caps the list at the limit', () => {
     expect(
       pickRecentSessions(
@@ -473,10 +588,33 @@ describe('railSessionGroup', () => {
     ['2026-10-02T00:00:00', 'week'],
     ['2026-10-01T23:59:00', 'earlier'],
     [undefined, 'earlier'],
-    ['not a date', 'earlier'],
-  ])('buckets %s as %s', (createdAt, expected) => {
-    expect(railSessionGroup(createdAt as string | undefined, now)).toBe(
-      expected,
-    );
+  ])('buckets %s as %s', (activeAt, expected) => {
+    expect(
+      railSessionGroup(activeAt ? Date.parse(activeAt) : undefined, now),
+    ).toBe(expected);
+  });
+});
+
+describe('lastActiveAt', () => {
+  const row = (createdAt?: string): SessionRow => ({
+    id: 'gazelle/a',
+    sessionId: 'a',
+    installation: 'gazelle',
+    title: 'a',
+    agentName: '',
+    createdAt,
+  });
+
+  it('is the later of the start and the last state change', () => {
+    const started = '2026-07-01T00:00:00Z';
+    expect(lastActiveAt(row(started))).toBe(Date.parse(started));
+    expect(
+      lastActiveAt(row(started), {
+        sessionId: 'a',
+        state: 'completed',
+        changedAt: Date.parse('2026-07-05T00:00:00Z'),
+      }),
+    ).toBe(Date.parse('2026-07-05T00:00:00Z'));
+    expect(lastActiveAt(row())).toBeUndefined();
   });
 });

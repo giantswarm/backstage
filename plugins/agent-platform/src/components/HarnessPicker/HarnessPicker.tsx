@@ -99,7 +99,7 @@ export function HarnessPicker() {
         <FieldLabel
           label="Runtime"
           secondaryLabel="Harness"
-          description="What runs the agent. Fixed once the agent exists."
+          description="Choose what runs the agent. It cannot be changed once the agent exists."
         />
         <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
           <StaticCard>{content(current)}</StaticCard>
@@ -129,7 +129,7 @@ export function HarnessPicker() {
         <FieldLabel
           label="Runtime"
           secondaryLabel="Harness"
-          description="What runs the agent."
+          description="Choose what runs the agent."
         />
         {dropNotice}
         <Text color="secondary">Loading runtimes…</Text>
@@ -168,8 +168,8 @@ export function HarnessPicker() {
         secondaryLabel="Harness"
         description={
           hasChoice
-            ? 'What runs the agent. Fixed once the agent exists.'
-            : `What runs the agent: the only Harness in ${namespace} on ${installation}.`
+            ? 'Choose what runs the agent. It cannot be changed once the agent exists.'
+            : `The only Harness in ${namespace} on ${installation} runs the agent.`
         }
       />
       {dropNotice}

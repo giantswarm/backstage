@@ -266,8 +266,8 @@ export function AgentUpdateSkillsDialog({
         </Text>
         {viaPullRequest && (
           <Text variant="body-medium">
-            Applied from GitOps: agent-manager opens a pull request as you with
-            the new pins. The skills move once it is merged.
+            This agent is applied from GitOps, so agent-manager opens a pull
+            request as you with the new pins. The skills move once it is merged.
           </Text>
         )}
 

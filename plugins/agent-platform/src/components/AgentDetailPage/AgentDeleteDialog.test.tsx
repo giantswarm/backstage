@@ -63,7 +63,7 @@ describe('AgentDeleteDialog', () => {
 
     expect(
       screen.getByText(
-        /Applied from GitOps: agent-manager opens a pull request/,
+        /applied from GitOps, so agent-manager opens a pull request/,
       ),
     ).toBeInTheDocument();
     expect(

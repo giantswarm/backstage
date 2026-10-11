@@ -126,7 +126,7 @@ export function updateVerdictOf({
       ? { kind: 'commit' }
       : {
           kind: 'blocked',
-          reason: `Applied from git, and agent-manager on ${installation} cannot open pull requests — update it in its GitOps repository.`,
+          reason: `It is applied from git, and agent-manager on ${installation} cannot open pull requests, so update it in its GitOps repository.`,
         };
   }
   // A read that settled without an answer (refused, unreachable) leaves the
@@ -338,7 +338,7 @@ function AgentLine({
     note = verdict.reason;
   } else if (verdict.kind === 'commit') {
     note =
-      'Applied from git: updated through a pull request in its GitOps repository.';
+      'It is applied from git, so it is updated through a pull request in its GitOps repository.';
   }
 
   return (

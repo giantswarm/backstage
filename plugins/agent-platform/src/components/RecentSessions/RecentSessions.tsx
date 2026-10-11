@@ -1,4 +1,4 @@
-import { ReactNode, useId, useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import { Box, ButtonIcon, Flex, Link, Skeleton, Text } from '@backstage/ui';
@@ -181,22 +181,13 @@ function SessionItem({
   );
 }
 
-function GroupHeader({
-  id,
-  label,
-  trailing,
-}: {
-  id: string;
-  label: string;
-  trailing?: ReactNode;
-}) {
+function GroupHeader({ id, label }: { id: string; label: string }) {
   return (
-    <Flex px="2" align="center" justify="between" gap="2">
+    <Box px="2">
       <Text id={id} variant="body-x-small" color="secondary" weight="bold">
         {label}
       </Text>
-      {trailing}
-    </Flex>
+    </Box>
   );
 }
 
@@ -217,6 +208,20 @@ function RecentSessionsList({
   const { rows, isLoading } = useSessions();
   const { pinnedIds, isPinned, togglePin } = usePinnedSessions();
 
+  // Every installation that has a session, not only the listed ones: the rail
+  // orders by last activity, which the states carry, so they decide what is
+  // listed rather than the other way round.
+  const installations = useMemo(
+    () => Array.from(new Set(rows.map(row => row.installation))).sort(),
+    [rows],
+  );
+  // The rail is what tells the person a session started needing them, so it
+  // polls on the fast tier; the classic home list keeps the baseline.
+  const { states } = useFleetSessionStates(
+    installations,
+    shellRail ? { refetchIntervalMs: ACTIVE_REFETCH_INTERVAL_MS } : undefined,
+  );
+
   // The headings follow the calendar day, so a rail left open past midnight
   // regroups on its next render.
   const now = new Date();
@@ -225,29 +230,13 @@ function RecentSessionsList({
   const grouped = useMemo(
     () =>
       shellRail
-        ? groupRailSessions(rows, pinnedIds, limit, now)
-        : { pinned: [], pinnedOverflow: 0, groups: [] },
+        ? groupRailSessions(rows, pinnedIds, limit, now, states)
+        : { pinned: [], pinnedOverflow: 0, groups: [], recentOverflow: 0 },
     // `now` changes every render; the groups only change with its day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, pinnedKey, limit, shellRail, today],
+    [rows, pinnedKey, limit, shellRail, today, states],
   );
   const recent = useMemo(() => pickRecentSessions(rows, limit), [rows, limit]);
-
-  const listed = shellRail
-    ? [...grouped.pinned, ...grouped.groups.flatMap(group => group.rows)]
-    : recent;
-  const installations = useMemo(
-    () => Array.from(new Set(listed.map(row => row.installation))).sort(),
-    // Keyed on contents — `listed` is derived fresh every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [listed.map(row => row.installation).join(',')],
-  );
-  // The rail is what tells the person a session started needing them, so it
-  // polls on the fast tier; the classic home list keeps the baseline.
-  const { states } = useFleetSessionStates(
-    installations,
-    shellRail ? { refetchIntervalMs: ACTIVE_REFETCH_INTERVAL_MS } : undefined,
-  );
 
   const renderRow = (row: SessionRow) => {
     const href = sessionDetailRoute({
@@ -274,14 +263,25 @@ function RecentSessionsList({
     );
   };
 
+  // The list's end, in one place whatever the list holds: the way to the full
+  // list and, when the list is cut, how many sessions it holds beyond the
+  // rail (T91). The count sits beside the link rather than in it, so the
+  // link's name stays "All sessions" whatever the count.
   const allSessionsLink = allSessionsHref && (
-    <Link
-      href={allSessionsHref}
-      variant="body-x-small"
-      aria-current={pathname === allSessionsHref ? 'page' : undefined}
-    >
-      All sessions
-    </Link>
+    <Flex px="2" align="baseline" gap="2">
+      <Link
+        href={allSessionsHref}
+        variant="body-x-small"
+        aria-current={pathname === allSessionsHref ? 'page' : undefined}
+      >
+        All sessions
+      </Link>
+      {grouped.recentOverflow > 0 && (
+        <Text variant="body-x-small" color="secondary">
+          {`${grouped.recentOverflow} more`}
+        </Text>
+      )}
+    </Flex>
   );
 
   if (isLoading) {
@@ -300,13 +300,7 @@ function RecentSessionsList({
       <Flex direction="column" gap="1">
         {grouped.pinned.length > 0 && (
           <>
-            <GroupHeader
-              id={`${baseId}-pinned`}
-              label="Pinned"
-              // The prototype keeps "All sessions" on the first time heading;
-              // it only moves up here when there is no time group to carry it.
-              trailing={hasTimeGroups ? undefined : allSessionsLink}
-            />
+            <GroupHeader id={`${baseId}-pinned`} label="Pinned" />
             <ul className={classes.list} aria-labelledby={`${baseId}-pinned`}>
               {grouped.pinned.map(renderRow)}
             </ul>
@@ -326,13 +320,9 @@ function RecentSessionsList({
             )}
           </>
         )}
-        {grouped.groups.map((group, index) => (
+        {grouped.groups.map(group => (
           <Flex key={group.id} direction="column" gap="1">
-            <GroupHeader
-              id={`${baseId}-${group.id}`}
-              label={group.label}
-              trailing={index === 0 ? allSessionsLink : undefined}
-            />
+            <GroupHeader id={`${baseId}-${group.id}`} label={group.label} />
             <ul
               className={classes.list}
               aria-labelledby={`${baseId}-${group.id}`}
@@ -343,12 +333,7 @@ function RecentSessionsList({
         ))}
         {grouped.pinned.length === 0 && !hasTimeGroups && (
           <>
-            <Flex px="2" align="center" justify="between" gap="2">
-              <Text variant="body-x-small" color="secondary" weight="bold">
-                Sessions
-              </Text>
-              {allSessionsLink}
-            </Flex>
+            <GroupHeader id={`${baseId}-empty`} label="Sessions" />
             <Box px="2">
               <Text variant="body-small" color="secondary">
                 No sessions yet
@@ -356,6 +341,7 @@ function RecentSessionsList({
             </Box>
           </>
         )}
+        {allSessionsLink}
       </Flex>
     );
   }
@@ -388,7 +374,9 @@ function RecentSessionsList({
 /**
  * The signed-in user's most recently started sessions across the fleet, each
  * linking to its detail page, with the ones waiting on them marked. In the
- * shell rail the pinned sessions lead, under their own heading.
+ * shell rail it is the rail's session list instead — pinned first, then the
+ * most recently *active*, closed by the All sessions link; the full rule is
+ * `groupRailSessions`'.
  *
  * Mounts its own data providers. Renders nothing when the session detail route
  * is not bound, which is the case when the Agent Platform page is disabled.

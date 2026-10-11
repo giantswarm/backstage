@@ -323,7 +323,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
           <CardBody>
             <SectionHeader
               title="Environment"
-              description="The management cluster this model becomes available on."
+              description="Choose the management cluster this model becomes available on."
             />
             <Flex direction="column" gap="2">
               <Select

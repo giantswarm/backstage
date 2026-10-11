@@ -45,7 +45,7 @@ test('an unreadable installation names the reason and the request id', async ({
 
   await open(admin, '/agent-platform/sessions');
 
-  await expect(admin.getByText("Couldn't read 1 installation")).toBeVisible({
+  await expect(admin.getByText("Couldn't read 1 environment")).toBeVisible({
     timeout: 60_000,
   });
   const reason = admin.getByText(

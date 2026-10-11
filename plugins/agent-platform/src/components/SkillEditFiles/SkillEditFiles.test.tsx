@@ -123,7 +123,7 @@ describe('SkillEditFiles', () => {
 
     expect(
       screen.getByText(
-        'Links to files the skill does not have: references/gone.md',
+        'The instructions link to files the skill does not have: references/gone.md',
       ),
     ).toBeInTheDocument();
   });

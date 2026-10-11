@@ -398,7 +398,7 @@ export function ImportModelDialog({
                   value={query}
                   onChange={setQuery}
                   placeholder="e.g. Qwen3-14B, devstral, org/repository"
-                  description="Repository ids or words from the name; the hub ranks by downloads."
+                  description="Enter repository ids or words from the name; the hub ranks by downloads."
                   {...fieldErrorProps(validation.errorFor(errors.model))}
                 />
               </div>
@@ -504,7 +504,7 @@ export function ImportModelDialog({
                         : BEST_NODE,
                     )
                   }
-                  description="Whose cache receives the download; the fit is checked against this node's memory budget."
+                  description="Choose whose cache receives the download; the fit is checked against this node's memory budget."
                 />
               </MoreOptions>
 

@@ -100,3 +100,33 @@ export const contextOptions = {
   ignoreHTTPSErrors: true,
   viewport: { width: 1440, height: 900 },
 } as const;
+
+/**
+ * The browser a project drives: `desktop` (1440×900, every project but one)
+ * or `mobile`, the `agentlab-mobile` project's phone — an iPhone 13's 375×812
+ * CSS viewport with its pixel ratio, touch and user agent on Chromium
+ * (Playwright's `devices['iPhone 13']` minus its WebKit browser type; the
+ * width is the plan's 375 rather than the 13's 390, the narrowest phone the
+ * shell promises to work on).
+ */
+export type Variant = 'desktop' | 'mobile';
+
+const IPHONE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
+/** The `mobile` {@link Variant}'s context options. */
+export const mobileContextOptions = {
+  baseURL: lab.baseURL,
+  ignoreHTTPSErrors: true,
+  viewport: { width: 375, height: 812 },
+  screen: { width: 375, height: 812 },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+  userAgent: IPHONE_UA,
+} as const;
+
+/** {@link contextOptions} for a {@link Variant}. */
+export function contextOptionsFor(variant: Variant) {
+  return variant === 'mobile' ? mobileContextOptions : contextOptions;
+}

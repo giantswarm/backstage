@@ -71,7 +71,7 @@ function apiKeyCopy({
     return {
       placeholder: '',
       description:
-        'The key agents on this model authenticate with. Leave empty if the endpoint needs none.',
+        'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
     };
   }
   if (originalProvider === provider) {
@@ -87,7 +87,7 @@ function apiKeyCopy({
     placeholder: '',
     description: hadKey
       ? `The stored key is for ${providerLabel(originalProvider!)}, not ${providerLabel(provider)}. Enter a new one, or leave empty if the endpoint needs none.`
-      : 'The key agents on this model authenticate with. Leave empty if the endpoint needs none.',
+      : 'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
   };
 }
 
@@ -138,7 +138,7 @@ export function ModelConfigFormFields({
         <CardBody>
           <SectionHeader
             title="Name"
-            description="How this model appears to people creating agents."
+            description="People creating agents see the model under this name."
           />
           <TextField
             label="Display name"
@@ -155,7 +155,7 @@ export function ModelConfigFormFields({
         <CardBody>
           <SectionHeader
             title="Provider & model"
-            description="Where the model runs and which model to request there."
+            description="Choose where the model runs and which model to request there."
           />
           {/* One column, full width: Provider above Model. Side by side, the
               provider's description (one line or three) set where the Model
@@ -186,7 +186,7 @@ export function ModelConfigFormFields({
               placeholder={
                 isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
               }
-              description="The model id, as the provider names it."
+              description="Enter the model id as the provider names it."
               {...fieldErrorProps(errors.model)}
             />
 
@@ -204,7 +204,7 @@ export function ModelConfigFormFields({
                 }
                 description={
                   isOllama
-                    ? 'The Ollama server to talk to.'
+                    ? 'Enter the Ollama server to talk to.'
                     : 'Leave empty for the provider’s own endpoint, or set a compatible one like vLLM, llama.cpp or OpenRouter.'
                 }
                 {...fieldErrorProps(errors.endpoint)}

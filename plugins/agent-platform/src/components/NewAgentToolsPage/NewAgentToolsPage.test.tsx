@@ -573,16 +573,9 @@ describe('NewAgentToolsPage', () => {
       const user = userEvent.setup();
       await connectorsListed();
 
-      await user.click(level('Look things up'));
-      expect(toolsetOutput()).toBe('preset:read-only');
-      expect(level('Look things up')).toBeChecked();
-      expect(
-        screen.getByText(
-          'Look things up already reads every connector; All adds its changes.',
-        ),
-      ).toBeInTheDocument();
+      await ownPicks(user);
       await user.click(access('kubernetes', 'All'));
-      expect(toolsetOutput()).toBe('preset:read-only | server:kubernetes');
+      expect(toolsetOutput()).toBe('server:kubernetes');
 
       await user.click(level('Nothing outside the chat'));
       expect(toolsetOutput()).toBe('');
@@ -592,11 +585,11 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(level('Infrastructure'));
       expect(toolsetOutput()).toBe('preset:infrastructure');
-      expect(access('kubernetes', 'All')).toBeEnabled();
+      await waitFor(() => expect(access('kubernetes', 'All')).toBeEnabled());
       expect(individualToggle()).toBeEnabled();
     });
 
-    it('keeps the picks below as the base changes; Full gateway stands alone', async () => {
+    it('shows what a preset covers, and writes it out on the first change below', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -605,26 +598,62 @@ describe('NewAgentToolsPage', () => {
       const user = userEvent.setup();
       await connectorsListed();
 
+      // A preset replaces whatever was picked.
       await ownPicks(user);
-      expect(toolsetOutput()).toBe('');
-      expect(continueButton()).toBeEnabled();
-      await user.click(access('kubernetes', 'All'));
+      await user.click(access('agent-manager', 'All'));
       await user.click(level('Look things up'));
-      expect(toolsetOutput()).toBe('preset:read-only | server:kubernetes');
+      expect(toolsetOutput()).toBe('preset:read-only');
+
+      // Read-only covers kubernetes' one read-only tool: shown as Read-only.
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+      expect(access('agent-manager', 'All')).not.toBeChecked();
+      expect(
+        screen.getByText(
+          'Changing anything below switches to Only the tools I choose below, without connectors you are not signed in to.',
+        ),
+      ).toBeInTheDocument();
+      // Untouched, the toolset stays the preset (it follows the gateway).
+      expect(toolsetOutput()).toBe('preset:read-only');
+
+      // The first change writes the preset out and applies itself.
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()).toBe('workflow:incident-triage');
+      expect(level('Only the tools I choose below')).toBeChecked();
+
+      // Infrastructure covers every kubernetes tool: shown as All; switching
+      // to own picks keeps what it showed, written out.
       await user.click(level('Infrastructure'));
-      expect(toolsetOutput()).toBe('preset:infrastructure | server:kubernetes');
+      expect(toolsetOutput()).toBe('preset:infrastructure');
+      await waitFor(() => expect(access('kubernetes', 'All')).toBeChecked());
       await user.click(level('Only the tools I choose below'));
       expect(toolsetOutput()).toBe('server:kubernetes');
+    });
+
+    it('keeps the selection off under Full gateway, and starts own picks empty from it', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
 
       await user.click(level('Look things up and make changes'));
       expect(toolsetOutput()).toBe('preset:full');
       expect(
-        screen.getByText('Full gateway already includes every tool.'),
+        screen.getByText('Full gateway includes every tool.'),
       ).toBeInTheDocument();
       expect(access('kubernetes', 'All')).toBeDisabled();
+      expect(individualToggle()).toBeDisabled();
       expect(screen.getAllByText('Full gateway access').length).toBeGreaterThan(
         0,
       );
+
+      await user.click(level('Only the tools I choose below'));
+      expect(toolsetOutput()).toBe('');
+      expect(access('kubernetes', 'All')).toBeEnabled();
     });
 
     it('shows progress while the presets are read, offering the built-ins meanwhile', async () => {
@@ -747,7 +776,7 @@ describe('NewAgentToolsPage', () => {
       expect(access('kubernetes', 'All')).toBeChecked();
       expect(access('kubernetes', 'Read-only')).not.toBeChecked();
       expect(connector('kubernetes')).toHaveTextContent(
-        '2 tools · also ones added later',
+        '2 tools, including ones added later',
       );
 
       // Choosing it again takes it back.
@@ -1083,7 +1112,8 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe(
         'preset:read-only | workflow:incident-triage',
       );
-      expect(level('Look things up')).toBeChecked();
+      // A preset with more beside it is no radio answer: shown as it is.
+      expect(level('Only the tools I choose below')).toBeChecked();
       expect(
         within(catalogueCard()).getByRole('button', {
           name: 'Workflows — 1 workflow · 1 selected',
@@ -1119,7 +1149,7 @@ describe('NewAgentToolsPage', () => {
       expect(continueButton()).toBeDisabled();
     });
 
-    it("adds a selector by name, a second preset too, and surfaces muster's unknown-preset error", async () => {
+    it("adds a selector by name, a preset too, and surfaces muster's unknown-preset error", async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -1128,13 +1158,16 @@ describe('NewAgentToolsPage', () => {
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Look things up'));
+      await waitFor(() => expect(individualToggle()).toBeEnabled());
       await openIndividual(user);
 
       await user.type(screen.getByLabelText('Selector'), 'preset:foo');
       await user.click(screen.getByRole('button', { name: 'Add selector' }));
 
-      expect(toolsetOutput()).toBe('preset:read-only | preset:foo');
-      // Two presets are no radio answer: shown as own picks, rewritten never.
+      // A change like any other: the preset is written out first.
+      expect(toolsetOutput()).toBe(
+        'tool:x_kubernetes_get_pods | workflow:incident-triage | preset:foo',
+      );
       expect(level('Only the tools I choose below')).toBeChecked();
       expect(
         await screen.findByText(
@@ -1147,7 +1180,6 @@ describe('NewAgentToolsPage', () => {
       expect(
         screen.getByText(/reserved for shared toolsets/),
       ).toBeInTheDocument();
-      expect(toolsetOutput()).toBe('preset:read-only | preset:foo');
     });
 
     it('resolves the selection in the Toolset list, with the destructive marker', async () => {
@@ -1159,15 +1191,20 @@ describe('NewAgentToolsPage', () => {
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Look things up'));
+      await waitFor(() => expect(individualToggle()).toBeEnabled());
       await openIndividual(user);
       await open(user, /^Infrastructure — /);
       await open(user, /^kubernetes \(family\) — 2 tools/);
+      // The preset's coverage is shown in the catalogue too.
+      expect(
+        screen.getByRole('checkbox', { name: 'Tool x_kubernetes_get_pods' }),
+      ).toBeChecked();
       await user.click(
         screen.getByRole('checkbox', { name: 'Tool x_kubernetes_delete_pod' }),
       );
 
       expect(toolsetOutput()).toBe(
-        'preset:read-only | tool:x_kubernetes_delete_pod',
+        'tool:x_kubernetes_get_pods | workflow:incident-triage | tool:x_kubernetes_delete_pod',
       );
       await waitFor(() =>
         expect(
@@ -1206,25 +1243,26 @@ describe('NewAgentToolsPage', () => {
       ).not.toBeInTheDocument();
       expect(within(rail).getByText('No tools')).toBeInTheDocument();
 
+      // An untouched preset is listed with what it covers.
       await user.click(level('Look things up'));
-      await user.click(access('agent-manager', 'All'));
-      await user.click(access('kubernetes', 'Read-only'));
+      expect(
+        await within(rail).findByRole('list', { name: 'kubernetes' }),
+      ).toHaveTextContent('get_pods');
+      expect(
+        within(rail).getByRole('list', { name: 'Access' }),
+      ).toHaveTextContent('Read-only tools');
+      expect(
+        within(rail).getByRole('list', { name: 'Workflows' }),
+      ).toHaveTextContent('incident-triage');
+      expect(await within(rail).findByText('2 tools')).toBeInTheDocument();
 
+      await user.click(access('agent-manager', 'All'));
       expect(
-        within(within(rail).getByRole('list', { name: 'Access' })).getByText(
-          'Read-only tools',
-        ),
-      ).toBeInTheDocument();
+        within(rail).queryByRole('list', { name: 'Access' }),
+      ).not.toBeInTheDocument();
       expect(
-        within(
-          within(rail).getByRole('list', { name: 'agent-manager' }),
-        ).getByText('All tools, also ones added later'),
-      ).toBeInTheDocument();
-      expect(
-        within(
-          within(rail).getByRole('list', { name: 'kubernetes' }),
-        ).getByText('get_pods'),
-      ).toBeInTheDocument();
+        within(rail).getByRole('list', { name: 'agent-manager' }),
+      ).toHaveTextContent('All tools, including ones added later');
       // get_pods, the workflow, create_agent: one of them changes things —
       // said plainly, without claiming the agent asks first.
       expect(await within(rail).findByText('3 tools')).toBeInTheDocument();
@@ -1239,7 +1277,7 @@ describe('NewAgentToolsPage', () => {
         }),
       );
       expect(toolsetOutput()).toBe(
-        'preset:read-only | tool:x_kubernetes_get_pods',
+        'tool:x_kubernetes_get_pods | workflow:incident-triage',
       );
       expect(access('agent-manager', 'All')).not.toBeChecked();
     });
@@ -1264,24 +1302,42 @@ describe('NewAgentToolsPage', () => {
   });
 
   describe('editing an agent', () => {
-    it('shows a preset with a connector’s read-only tools as such, without opening the catalogue', async () => {
+    it('shows a preset alone as that preset, its coverage in the grid, without opening the catalogue', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, toolset: ['preset:infrastructure'] });
+      await connectorsListed();
+
+      await waitFor(() => expect(level('Infrastructure')).toBeChecked());
+      await waitFor(() => expect(access('kubernetes', 'All')).toBeChecked());
+      expect(
+        screen.queryByRole('heading', { name: 'Individual tools' }),
+      ).not.toBeInTheDocument();
+      expect(toolsetOutput()).toBe('preset:infrastructure');
+    });
+
+    it('shows a preset with more beside it as own picks, every selector kept', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
       });
       await renderStep({
         api,
-        toolset: ['preset:infrastructure', 'tool:x_kubernetes_get_pods'],
+        toolset: ['preset:infrastructure', 'server:agent-manager'],
       });
       await connectorsListed();
 
-      await waitFor(() => expect(level('Infrastructure')).toBeChecked());
-      expect(access('kubernetes', 'Read-only')).toBeChecked();
+      await waitFor(() =>
+        expect(level('Only the tools I choose below')).toBeChecked(),
+      );
+      expect(access('agent-manager', 'All')).toBeChecked();
       expect(
-        screen.queryByRole('heading', { name: 'Individual tools' }),
-      ).not.toBeInTheDocument();
+        within(summaryBar()).getByTitle('preset:infrastructure'),
+      ).toBeInTheDocument();
       expect(toolsetOutput()).toBe(
-        'preset:infrastructure | tool:x_kubernetes_get_pods',
+        'preset:infrastructure | server:agent-manager',
       );
     });
 

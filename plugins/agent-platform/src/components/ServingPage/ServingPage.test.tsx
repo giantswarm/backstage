@@ -352,7 +352,7 @@ describe('ServingPage', () => {
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Agents reach them through model configs/),
+      screen.getByText(/agents reach them through model configs/),
     ).toBeInTheDocument();
     // Nothing is composed in the browser: no permission probe for a create.
     expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
@@ -812,7 +812,7 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText(/Models served by KServe or a model-manager/),
+      screen.getByText(/These models are served by KServe or a model-manager/),
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();

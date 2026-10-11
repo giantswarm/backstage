@@ -169,14 +169,18 @@ describe('EditSkillPage', () => {
     };
     const { unmount } = await renderPage();
     expect(
-      screen.queryByText('Use this form for simple skills.'),
+      screen.queryByText(
+        'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.',
+      ),
     ).not.toBeInTheDocument();
     unmount();
 
     mockMetaAgents = { skillCreation: 'skill-creator' };
     await renderPage();
     expect(
-      screen.getByText('Use this form for simple skills.'),
+      screen.getByText(
+        'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.',
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Let Skill Creator help' }),

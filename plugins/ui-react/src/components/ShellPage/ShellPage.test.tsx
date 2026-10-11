@@ -11,7 +11,12 @@ import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
 } from '../PageHeaderActions';
-import { ShellPage } from './ShellPage';
+import {
+  ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
+  ShellPageTitleSkeleton,
+} from './ShellPage';
 
 function RegistersAction({ label }: { label: string }) {
   const actions = useMemo(() => <button>{label}</button>, [label]);
@@ -56,6 +61,9 @@ describe('ShellPage', () => {
     expect(
       within(crumbs).getByRole('link', { name: 'Customize' }),
     ).toHaveAttribute('href', '/customize');
+    expect(
+      within(crumbs).getByRole('link', { name: 'Back to Connectors' }),
+    ).toHaveAttribute('href', '/customize/connectors');
     expect(
       screen.getByRole('heading', { level: 1, name: 'Jira' }),
     ).toBeInTheDocument();
@@ -252,6 +260,34 @@ describe('ShellPage', () => {
         aside.compareDocumentPosition(screen.getByText('Hundreds of tools')) &
           Node.DOCUMENT_POSITION_PRECEDING,
       ).toBeTruthy();
+    });
+  });
+
+  describe('while the page is read', () => {
+    let layout: MockedLayout | undefined;
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+    });
+
+    it('keeps the header in place, the skeletons named for assistive tech', () => {
+      layout = mockDesktopLayout();
+      const { container } = renderAt(
+        '/connectors/jira',
+        <ShellPage
+          title={<ShellPageTitleSkeleton label="Loading connector" />}
+          breadcrumbs={[{ label: 'Connectors', href: '/connectors' }]}
+          badges={<ShellPageBadgeSkeleton />}
+          aside={<ShellPageFactsSkeleton />}
+        />,
+      );
+
+      // The h1 is there from the first render, named meanwhile.
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Loading connector' }),
+      ).toBeInTheDocument();
+      // Title line, badge row and three facts' caption and value.
+      expect(container.querySelectorAll('.bui-Skeleton')).toHaveLength(8);
     });
   });
 });

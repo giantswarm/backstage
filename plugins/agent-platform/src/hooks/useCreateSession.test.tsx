@@ -177,6 +177,27 @@ describe('useCreateSession', () => {
     );
   });
 
+  it.each([
+    ['the workflow page’s hand-off to the workflow agent', 'workflowEdit'],
+    ['the workflows overview’s create hint', 'workflowCreateAssist'],
+  ] as const)(
+    'reports a session started from %s as such',
+    async (_, entryPoint) => {
+      const { result } = renderWith(entryPoint);
+
+      await act(async () => {
+        await result.current.createSession({ agent, prompt: 'A workflow' });
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.sessionStarted',
+          attributes: { entryPoint },
+        }),
+      );
+    },
+  );
+
   it('reports a session started from the ⌘K search palette as such', async () => {
     const { result } = renderWith('searchPalette');
 

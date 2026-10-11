@@ -90,8 +90,9 @@ export function AgentDeleteDialog({
       <Flex direction="column" gap="3">
         {viaPullRequest && (
           <Text variant="body-medium">
-            Applied from GitOps: agent-manager opens a pull request as you that
-            removes its files. The agent is deleted once it is merged.
+            This agent is applied from GitOps, so agent-manager opens a pull
+            request as you that removes its files. The agent is deleted once it
+            is merged.
           </Text>
         )}
         <Text variant="body-medium">

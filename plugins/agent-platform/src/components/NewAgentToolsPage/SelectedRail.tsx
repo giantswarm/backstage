@@ -172,7 +172,7 @@ export function SelectedRail({
               <ul className={classes.group} aria-label={group.title}>
                 {group.whole && (
                   <Entry
-                    label="All tools, also ones added later"
+                    label="All tools, including ones added later"
                     title={group.whole}
                     removeLabel={`Remove all of ${group.title}`}
                     onRemove={() => onRemove([group.whole!])}

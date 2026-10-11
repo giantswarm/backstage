@@ -675,7 +675,7 @@ export function LoadModelDialog({
                 <Flex direction="column" gap="1" data-testid="serve-nodes">
                   <CheckboxGroup
                     label="Nodes"
-                    description="One copy per ticked node, behind one endpoint. None ticked: one copy on a node that fits."
+                    description="Each ticked node runs one copy, behind one endpoint. With none ticked, one copy runs on a node that fits."
                     value={copyNodes}
                     onChange={setTickedNodes}
                     isDisabled={isBusy}

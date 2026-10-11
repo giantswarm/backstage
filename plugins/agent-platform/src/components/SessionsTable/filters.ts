@@ -5,6 +5,11 @@ import {
   SHELL_STATE_LABELS,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
+  applyCatalogFilters,
+  type CatalogFacet,
+  type CatalogFilterSelection,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   SessionTableRow,
   STATE_IDLE_LABEL,
   STATE_UNKNOWN_LABEL,
@@ -278,4 +283,99 @@ export function sessionAgentOptions(
     return { id: agent.key, label: `${agent.name} (${where})` };
   });
   return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * The shell list's filters (T92): the shared catalog dropdowns —
+ * `CatalogFilterBar`, the idiom every Customize tab uses — over three facets.
+ * State and Agent are multi-selects (picks within one widen, the two narrow
+ * each other); Pinned is a dropdown of one option, drawn only once something
+ * is pinned, like the Agents tab's Favorites. Each option counts what picking
+ * it would show under the search and the other picks.
+ */
+export const SESSION_STATE_FACET = 'state';
+export const SESSION_AGENT_FACET = 'agent';
+export const SESSION_PINNED_FACET = 'pinned';
+
+const PINNED_VALUE = 'pinned';
+
+/** The shell's state options, in its order and words. */
+const SHELL_STATE_OPTIONS = SHELL_SESSION_STATE_FILTERS.filter(
+  ({ id }) => id !== 'all' && id !== 'pinned',
+);
+
+/**
+ * The facets, as filtering needs them: a value per row, nothing that depends
+ * on the rows in hand. {@link sessionFacets} adds how each value reads.
+ */
+const SESSION_FACETS: ReadonlyArray<CatalogFacet<SessionTableRow>> = [
+  {
+    id: SESSION_STATE_FACET,
+    label: 'State',
+    // Rows whose state is not loaded have no value: only an unfiltered State
+    // keeps them, as only "All" did.
+    value: row => stateBucket(row),
+    optionLabel: value =>
+      SHELL_STATE_OPTIONS.find(({ id }) => id === value)?.label ?? value,
+    order: SHELL_STATE_OPTIONS.map(({ id }) => id),
+  },
+  {
+    id: SESSION_AGENT_FACET,
+    label: 'Agent',
+    value: row => agentKey(row),
+  },
+  {
+    id: SESSION_PINNED_FACET,
+    label: 'Pinned',
+    value: row => (row.pinned ? PINNED_VALUE : undefined),
+    optionLabel: () => 'Pinned',
+  },
+];
+
+/**
+ * The facets to draw: the agent options named as {@link sessionAgentOptions}
+ * names them, and State only where the list has states at all.
+ */
+export function sessionFacets(
+  rows: SessionTableRow[],
+  { showStates }: { showStates: boolean },
+): CatalogFacet<SessionTableRow>[] {
+  const agentLabels = new Map(
+    sessionAgentOptions(rows).map(option => [option.id, option.label]),
+  );
+  return SESSION_FACETS.filter(
+    facet => showStates || facet.id !== SESSION_STATE_FACET,
+  ).map(facet =>
+    facet.id === SESSION_AGENT_FACET
+      ? { ...facet, optionLabel: value => agentLabels.get(value) ?? value }
+      : facet,
+  );
+}
+
+/** The rows every facet's picks keep — the shell table's `filterFn`. */
+export function filterSessionsBySelection(
+  rows: SessionTableRow[],
+  selection: CatalogFilterSelection,
+): SessionTableRow[] {
+  return applyCatalogFilters(rows, SESSION_FACETS, selection);
+}
+
+/**
+ * The picks a narrowed-list link asks for (`?state=`, see
+ * {@link sessionsListSearch}): "pinned" is the Pinned dropdown, any other
+ * state that one State option.
+ */
+export function sessionSelectionOf(
+  filter: SessionsFilter,
+): CatalogFilterSelection {
+  const selection: Record<string, string[]> = {};
+  if (filter.state === 'pinned') {
+    selection[SESSION_PINNED_FACET] = [PINNED_VALUE];
+  } else if (filter.state !== 'all') {
+    selection[SESSION_STATE_FACET] = [filter.state];
+  }
+  if (filter.agent !== undefined) {
+    selection[SESSION_AGENT_FACET] = [filter.agent];
+  }
+  return selection;
 }

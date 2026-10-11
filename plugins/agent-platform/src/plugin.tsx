@@ -32,6 +32,7 @@ import {
   agentsRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
+  modelCacheRouteRef,
   installationsExternalRouteRef,
   modelDetailRouteRef,
   modelsRouteRef,
@@ -394,6 +395,34 @@ const connectorUsedBy = createExtension({
   },
 });
 
+// The shell workflow page's "Edit via agent": the hand-off to the workflow
+// agent (`metaAgents.workflowManagement`).
+//
+// **The contract, a cross-plugin coupling by string:** the target node is
+// `sub-page:muster/workflows`, its input `editAction` (a singleton), declared
+// there with `SubPageBlueprint.makeWithOverrides` +
+// `createExtensionInput([coreExtensionData.reactElement])`. The element reads
+// its workflow with muster's `useWorkflowPageTarget`. Both ends carry this
+// comment; changing either without the other makes the action silently
+// vanish.
+const workflowEditAssist = createExtension({
+  kind: 'workflow-action',
+  name: 'edit-via-agent',
+  attachTo: { id: 'sub-page:muster/workflows', input: 'editAction' },
+  output: [coreExtensionData.reactElement],
+  factory({ node }) {
+    return [
+      coreExtensionData.reactElement(
+        ExtensionBoundary.lazy(node, async () => {
+          const { WorkflowEditAssist } =
+            await import('./components/WorkflowEditAssist');
+          return <WorkflowEditAssist />;
+        }),
+      ),
+    ];
+  },
+});
+
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
   extensions: [
@@ -408,6 +437,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     createClusterAction,
     deleteClusterAction,
     connectorUsedBy,
+    workflowEditAssist,
     kagentApi,
     modelManagerApi,
   ],
@@ -430,6 +460,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newModel: newModelRouteRef,
     serving: servingRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
+    modelCache: modelCacheRouteRef,
   },
   // All carry a `defaultTarget`, so they resolve without an app-config binding
   // and are simply unbound when the target plugin is disabled. Every call site

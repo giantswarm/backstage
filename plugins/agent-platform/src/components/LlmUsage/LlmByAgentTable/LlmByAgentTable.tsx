@@ -34,7 +34,7 @@ export type LlmByAgentTableProps = {
 /** The mark on a row whose agent the portal no longer knows. */
 const REMOVED_MARK = 'Removed';
 const REMOVED_EXPLANATION =
-  'Unknown to this portal — removed, or outside this view. Its spend stays in the totals.';
+  'This agent is unknown to this portal, either removed or outside this view. Its spend stays in the totals.';
 
 /**
  * The agent column: a known agent's name, linked to its page; a removed

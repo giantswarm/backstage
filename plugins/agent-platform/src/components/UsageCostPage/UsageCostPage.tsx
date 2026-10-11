@@ -89,11 +89,11 @@ export function UsageCostPage() {
           <Text as="p" variant="body-medium" color="secondary">
             {installation ? (
               <>
-                Spend on <strong>{installation}</strong> over the last {days}{' '}
-                days, for every user.
+                Shows the spend on <strong>{installation}</strong> over the last{' '}
+                {days} days, for every user.
               </>
             ) : (
-              `Spend over the last ${days} days, for every user.`
+              `Shows the spend over the last ${days} days, for every user.`
             )}
           </Text>
 
@@ -104,14 +104,14 @@ export function UsageCostPage() {
               <div className={classes.row}>
                 <KpiTile
                   label="Reported cost"
-                  hint="What your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost; never a fleet total."
+                  hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
                   value={formatUsd(reportedCostUsd)}
                   sub={`your sessions, over the last ${sessionWindowDays} days`}
                 />
               </div>
               <Text variant="body-small" color="secondary">
-                The only cost figure available without the gateway's gen_ai
-                metrics. The Your sessions tab breaks it down.
+                This is the only cost figure available without the gateway's
+                gen_ai metrics. The Your sessions tab breaks it down.
               </Text>
             </>
           )}
@@ -138,7 +138,7 @@ export function UsageCostPage() {
                 rows={usage.byAgent}
                 currency={currency}
                 emptyMessage="The gateway attributed no calls to an agent in this window."
-                note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed: an agent this portal no longer knows; its spend stays in the totals. Unattributed: traffic matched to no caller."
+                note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed marks an agent this portal no longer knows, and its spend stays in the totals. Unattributed marks traffic matched to no caller."
               />
               <LlmByModelTable
                 rows={usage.byModel}
@@ -152,16 +152,16 @@ export function UsageCostPage() {
                   <>
                     Measured in USD per call from the gateway's model catalogue
                     and converted at this environment's configured rate, so
-                    these are estimates. Not a provider invoice: the catalogue
-                    is our own price list, and a model it cannot price adds
-                    nothing.
+                    these are estimates. They are not a provider invoice,
+                    because the catalogue is our own price list and a model it
+                    cannot price adds nothing.
                   </>
                 ) : (
                   <>
                     Measured, not estimated: the gateway prices each call from
-                    its model catalogue. Still not a provider invoice — the
-                    catalogue is our own price list, and a model it cannot price
-                    adds nothing.
+                    its model catalogue. It is still not a provider invoice,
+                    because the catalogue is our own price list and a model it
+                    cannot price adds nothing.
                   </>
                 )}
               </Text>

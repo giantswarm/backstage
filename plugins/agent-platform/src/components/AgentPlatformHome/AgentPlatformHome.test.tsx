@@ -420,18 +420,13 @@ describe('AgentPlatformHome', () => {
         agentPicker().compareDocumentPosition(prompt) &
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      expect(
-        within(composer).getByText('First choose an agent'),
-      ).toBeInTheDocument();
+      expect(within(composer).getByText('Select agent')).toBeInTheDocument();
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Research Agent' }),
       );
 
-      expect(within(composer).getByText('Agent')).toBeInTheDocument();
-      expect(
-        within(composer).queryByText('First choose an agent'),
-      ).not.toBeInTheDocument();
+      expect(within(composer).getByText('Select agent')).toBeInTheDocument();
     });
 
     it('preselects the agent a ?agent= link names', async () => {

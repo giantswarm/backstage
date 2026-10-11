@@ -1,4 +1,7 @@
-import { toolEffect } from '@giantswarm/backstage-plugin-muster';
+import {
+  toolEffect,
+  type ToolSummary,
+} from '@giantswarm/backstage-plugin-muster';
 
 import {
   type CatalogueGroup,
@@ -12,10 +15,16 @@ import {
 } from '../../lib/toolset';
 
 /**
- * The Tools step's presentation of the toolset (T81). The model stays the
- * selector list; these helpers only read it as the step's three parts — the
- * access level (a radio), the per-connector choice of *Which apps?*, and the
- * picks the catalogue makes — and write a user's choice back into it.
+ * The Tools step's presentation of the toolset (T81, T81b). The model stays
+ * the selector list; these helpers read it as the step's parts — the access
+ * level (a radio), the per-connector choice of *Which apps?*, and the picks
+ * the catalogue makes — and write a person's choice back into it.
+ *
+ * A preset is a macro over the selection (T81b): while the toolset is just
+ * `[preset:x]`, the grid and the catalogue show what it resolves to
+ * ({@link materialize}); the first change below writes that out as concrete
+ * selectors, applies the change, and the radio reads *Only the tools I choose
+ * below*. The step never produces "preset plus additions".
  */
 
 /** The access level *Nothing outside the chat*: no tools, selection off. */
@@ -26,16 +35,12 @@ export const ACCESS_OWN_PICKS = 'own-picks';
 /** A preset selector, {@link ACCESS_OWN_PICKS} or {@link ACCESS_CHAT_ONLY}. */
 export type AccessLevel = string;
 
-function isPresetSelector(selector: string): boolean {
-  return parseSelector(selector)?.kind === 'preset';
-}
-
 /**
- * The access level a toolset shows as. One offered preset is that preset —
- * the base the picks below add to. No preset, several (combinable on the
- * model, not on a radio) or one the environment does not offer is *only the
- * tools I choose*: the presets then stay visible where the selection is
- * listed, and nothing is rewritten until the author picks a level.
+ * The access level a toolset shows as: an offered preset when the toolset is
+ * that preset alone. Anything else — no preset, a preset with more beside it
+ * (the T81 shape), several, or one the environment does not offer — is *only
+ * the tools I choose*, every selector shown and none rewritten until the
+ * person acts.
  */
 export function accessLevelOf(
   toolset: readonly string[],
@@ -45,33 +50,22 @@ export function accessLevelOf(
   if (chatOnly) {
     return ACCESS_CHAT_ONLY;
   }
-  const presets = toolset.filter(isPresetSelector);
-  return presets.length === 1 && offered.has(presets[0])
-    ? presets[0]
+  return toolset.length === 1 && offered.has(toolset[0])
+    ? toolset[0]
     : ACCESS_OWN_PICKS;
 }
 
-/**
- * The toolset after picking an access level (never *Nothing outside the
- * chat*, which clears it): the presets give way to the picked one, and the
- * picks below stay — except under *Full gateway*, which holds every tool and
- * so stands alone (`EXCLUSIVE_PRESETS`).
- */
-export function withAccessLevel(
-  toolset: readonly string[],
-  level: AccessLevel,
-): string[] {
-  const picks = toolset.filter(selector => !isPresetSelector(selector));
-  if (level === ACCESS_OWN_PICKS || level === ACCESS_CHAT_ONLY) {
-    return picks;
-  }
-  if (EXCLUSIVE_PRESETS.has(level)) {
-    return [level];
-  }
-  return [level, ...picks];
+/** Whether a level is a preset (not chat-only, not own picks). */
+export function isPresetLevel(level: AccessLevel): boolean {
+  return level !== ACCESS_CHAT_ONLY && level !== ACCESS_OWN_PICKS;
 }
 
-/** Whether the step's selection below the access level is turned off. */
+/**
+ * Whether the selection below the radio is turned off: under *Nothing
+ * outside the chat*, and under *Full gateway* — it holds every tool, and
+ * written out it would rarely fit the inline cap, so it is not a starting
+ * point to edit from.
+ */
 export function isSelectionOff(level: AccessLevel): boolean {
   return level === ACCESS_CHAT_ONLY || level === PRESET_FULL;
 }
@@ -291,4 +285,48 @@ export function needsIndividualTools(
     }
     return true;
   });
+}
+
+/**
+ * A preset's resolution written out as the selectors the grid and the
+ * catalogue would show for it: per connector its read-only tools when that is
+ * exactly what the preset covers there, `server:x` when it covers every tool
+ * the connector lists (so tools it adds later too, as a preset by label
+ * would), else the covered tools one by one; then the workflows, muster's own
+ * tools and anything no connector lists, as `workflow:` / `tool:` selectors.
+ */
+export function materialize(
+  resolved: readonly ToolSummary[],
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const covered = new Set(resolved.map(selectorForTool));
+  const accounted = new Set<string>();
+  const out: string[] = [];
+  for (const bucket of connectorsOf(groups)) {
+    const all = bucket.tools.map(selectorForTool);
+    const hits = all.filter(selector => covered.has(selector));
+    if (hits.length === 0) {
+      continue;
+    }
+    hits.forEach(selector => accounted.add(selector));
+    const readOnly = readOnlySelectors(bucket);
+    if (
+      readOnly.length === hits.length &&
+      readOnly.every(selector => covered.has(selector))
+    ) {
+      out.push(...readOnly);
+    } else if (hits.length === all.length) {
+      out.push(serverSelector(bucket.name));
+    } else {
+      out.push(...hits);
+    }
+  }
+  for (const tool of resolved) {
+    const selector = selectorForTool(tool);
+    if (!accounted.has(selector)) {
+      accounted.add(selector);
+      out.push(selector);
+    }
+  }
+  return out;
 }

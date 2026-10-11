@@ -135,7 +135,7 @@ export function GpuCapacityPage({
         {pools.dialogs}
         {pools.panel}
         <Text color="secondary">
-          The nodes served models run on, per environment.
+          Shows the nodes that served models run on, per environment.
         </Text>
         <GpuCapacityPanel
           nodes={serving.gpuNodes}

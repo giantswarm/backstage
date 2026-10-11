@@ -1,9 +1,17 @@
-import { expect, expectWizardStep, open, rosterLinkOf, test } from './fixtures';
+import {
+  expect,
+  expectWizardStep,
+  open,
+  openWizardMoreOptions,
+  rosterLinkOf,
+  searchRoster,
+  test,
+} from './fixtures';
 
 /**
- * The Agents tab as the admin reads it: the roster from the installation's
- * `Agent`s, an agent's detail page, and the first step of the New
- * agent wizard. The roster and the detail page read the worker's own agent
+ * Customize's Agents tab as the admin reads it: the roster from the
+ * installation's `Agent`s (one row per agent), an agent's detail page, and the
+ * first step of the New agent wizard. The roster and the detail page read the worker's own agent
  * (`labAgent`); the whole journey of one is `agent-lifecycle.spec.ts`.
  *
  * Deploy writes the agent's HelmRelease; the roster lists the Agent once Flux
@@ -14,25 +22,34 @@ import { expect, expectWizardStep, open, rosterLinkOf, test } from './fixtures';
  */
 const rosterWait = 2 * 60_000;
 
-test('the roster shows the agent table with its columns', async ({
+test('the roster lists the agent with its model, under Customize · Agents', async ({
   admin,
   labAgent,
 }) => {
   test.setTimeout(rosterWait + 60_000);
+  // The old address lands on Customize's Agents tab.
   await open(admin, '/agent-platform/agents');
+  await expect(admin).toHaveURL(/\/customize\/agents$/);
   await expect(
-    rosterLinkOf(admin, labAgent.name),
-    'the roster lists the fixture agent',
-  ).toBeVisible({ timeout: rosterWait });
-  await expect(
-    admin.getByRole('searchbox', { name: 'Search agents' }),
-  ).toBeVisible();
-  // The Namespace and Installation columns join only when the rows span more
-  // than one, which depends on what else the lab runs.
-  await expect(
-    admin.getByRole('grid', { name: 'Data table' }).getByRole('columnheader'),
-  ).toContainText(['Agent', 'Status', 'Model', 'Toolset', 'Skills']);
-  await expect(admin.getByRole('button', { name: 'New agent' })).toBeVisible();
+    admin.getByRole('main').getByRole('tab', { name: /^Agents/ }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await searchRoster(admin, labAgent.name);
+  const row = rosterLinkOf(admin, labAgent.name);
+  await expect(row, 'the roster lists the fixture agent').toBeVisible({
+    timeout: rosterWait,
+  });
+  // A row reads its name, its description, the model its ModelConfig
+  // serves (the lab's `aiModel`, a Claude model) and what it carries — the
+  // fixture agent has no skills and no tools.
+  await expect(row).toContainText(
+    'Throwaway agent of the Playwright suite; deleted by the same run.',
+  );
+  await expect(row).toContainText(/claude-/);
+  await expect(row).toContainText('0 skills · 0 connectors');
+  await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
+    'href',
+    '/agent-platform/agents/new',
+  );
 });
 
 test('an agent in the roster opens its detail page', async ({
@@ -40,33 +57,45 @@ test('an agent in the roster opens its detail page', async ({
   labAgent,
 }) => {
   test.setTimeout(rosterWait + 60_000);
-  await open(admin, '/agent-platform/agents');
+  await open(admin, '/customize/agents');
+  await searchRoster(admin, labAgent.name);
   const agent = rosterLinkOf(admin, labAgent.name);
   await expect(agent, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });
 
-  // The link shows the display name; the URL carries the slug — the href is
+  // The row shows the display name; the URL carries the slug — the href is
   // the contract, not the text.
   const href = await agent.getAttribute('href');
   expect(href).toBe(labAgent.detailPath);
   await agent.click();
   await expect(admin).toHaveURL(new RegExp(`${href}$`));
-  await expect(admin.getByRole('link', { name: '← Agents' })).toBeVisible();
-  // The Overview tab's cards; the toolset has its own tab since the page was
-  // split into Overview, Tools, Skills and Sessions.
-  for (const heading of ['Configuration', 'Status', 'System prompt']) {
-    await expect(
-      admin.getByRole('heading', { level: 3, name: heading }),
-    ).toBeVisible();
-  }
-  await admin.getByRole('tab', { name: 'Tools' }).click();
-  await expect(admin).toHaveURL(new RegExp(`${href}/tools$`));
   await expect(
-    admin.getByRole('heading', { level: 3, name: 'Toolset' }),
+    admin.getByRole('heading', { level: 1, name: labAgent.name }),
   ).toBeVisible();
+  // The trail leads back to the list.
   await expect(
-    admin.getByRole('button', { name: 'Start a session' }),
+    admin
+      .getByRole('navigation', { name: 'Breadcrumb' })
+      // Exact: the back arrow's "Back to Agents" also contains the name.
+      .getByRole('link', { name: 'Agents', exact: true }),
+  ).toHaveAttribute('href', '/customize/agents');
+  // The shell's tabs, Overview's sections and the facts beside them.
+  await expect(
+    admin.getByRole('main').getByRole('tablist').getByRole('tab'),
+  ).toHaveText(['Overview', 'Sessions', 'Usage']);
+  for (const section of ['What it’s for', 'Instructions']) {
+    await expect(admin.getByRole('region', { name: section })).toBeVisible();
+  }
+  await expect(
+    admin
+      .getByRole('complementary', { name: 'About this agent' })
+      .getByRole('link', { name: 'default-model-config' }),
+  ).toBeVisible();
+  await admin.getByRole('tab', { name: 'Sessions' }).click();
+  await expect(admin).toHaveURL(new RegExp(`${href}/sessions$`));
+  await expect(
+    admin.getByRole('button', { name: 'Edit', exact: true }),
   ).toBeVisible();
   await expect(
     admin.getByRole('button', { name: 'Agent actions' }),
@@ -76,8 +105,8 @@ test('an agent in the roster opens its detail page', async ({
 test('the New agent wizard opens on Details, derives the technical name and lists the ModelConfigs', async ({
   admin,
 }) => {
-  await open(admin, '/agent-platform/agents');
-  await admin.getByRole('button', { name: 'New agent' }).click();
+  await open(admin, '/customize/agents');
+  await admin.getByRole('link', { name: 'New agent' }).click();
   await expect(admin).toHaveURL(/\/agent-platform\/agents\/new$/);
   await expectWizardStep(admin, 'Details');
   await expect(
@@ -87,7 +116,7 @@ test('the New agent wizard opens on Details, derives the technical name and list
   await admin
     .getByRole('textbox', { name: 'Name', exact: true })
     .fill('E2E Probe Agent');
-  await admin.getByText('More options').click();
+  await openWizardMoreOptions(admin);
   await expect(
     admin.getByRole('textbox', { name: 'Technical name' }),
     'the technical name follows the name',
@@ -99,6 +128,7 @@ test('the New agent wizard opens on Details, derives the technical name and list
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 
+  // Cancel goes back to the list it came from.
   await admin.getByRole('link', { name: 'Cancel' }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/agents$/);
+  await expect(admin).toHaveURL(/\/customize\/agents$/);
 });

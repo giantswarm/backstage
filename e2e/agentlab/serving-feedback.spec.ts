@@ -48,10 +48,15 @@ async function openServeDialog(page: Page) {
   await page.getByRole('button', { name: 'Serve model' }).click();
   const dialog = page.getByRole('dialog', { name: 'Serve model' });
   await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole('button', { name: /Installation and backend/ })
-    .click();
-  await page.getByRole('option', { name: TARGET }).click();
+  // One serving backend on the installation is no choice: the dialog offers
+  // no picker and serves there (the KServe card, `beforeEach`).
+  const picker = dialog.getByRole('button', {
+    name: /Environment and backend/,
+  });
+  if ((await picker.count()) > 0) {
+    await picker.click();
+    await page.getByRole('option', { name: TARGET }).click();
+  }
   return dialog;
 }
 
@@ -130,7 +135,7 @@ test.describe.serial('Serve feedback on KServe', () => {
     await admin.getByRole('button', { name: 'Serve model' }).click();
     const dialog = admin.getByRole('dialog', { name: 'Serve model' });
     await dialog
-      .getByRole('button', { name: /Installation and backend/ })
+      .getByRole('button', { name: /Environment and backend/ })
       .click();
     const offered =
       (await admin.getByRole('option', { name: TARGET }).count()) > 0;

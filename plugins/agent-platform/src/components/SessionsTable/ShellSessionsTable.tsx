@@ -18,14 +18,11 @@ import {
   Flex,
   Row,
   SearchField,
-  Select,
   Skeleton,
   TableBody,
   TableHeader,
   TableRoot,
   Text,
-  ToggleButton,
-  ToggleButtonGroup,
   useTable,
   VisuallyHidden,
 } from '@backstage/ui';
@@ -33,6 +30,11 @@ import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  CatalogFilterBar,
+  catalogFilterDimensions,
+  catalogFilterKey,
+  type CatalogFilterSelection,
+  isCatalogFiltered,
   StackedRowList,
   StatusDot,
   stopRowPress,
@@ -65,15 +67,10 @@ import {
   withSessionStates,
 } from './helpers';
 import {
-  countSessionsByState,
-  filterSessions,
-  isSessionsFilterActive,
-  NO_SESSIONS_FILTER,
+  filterSessionsBySelection,
   parseSessionsListSearch,
-  SessionsFilter,
-  SessionStateFilter,
-  sessionAgentOptions,
-  SHELL_SESSION_STATE_FILTERS,
+  sessionFacets,
+  sessionSelectionOf,
 } from './filters';
 import {
   RUNTIME_LOST_LABEL,
@@ -84,13 +81,11 @@ import {
 } from './cells';
 import type { SessionsTableProps } from './SessionsTable';
 import { sessionStackedRow } from './stackedRows';
-import {
-  sessionStateDotVar,
-  STABLE_CLASS_NAMES,
-} from '../../lib/stableClassNames';
+import { sessionStateDotVar } from '../../lib/stableClassNames';
 import { SEARCH_MIN } from '../../lib/toolset';
 
-const ALL_AGENTS = '';
+/** No picks: every facet keeps everything. */
+const NO_SELECTION: CatalogFilterSelection = {};
 
 /** Sessions shown at first and added by each Load more, as the classic list pages by. */
 export const SESSIONS_PAGE_SIZE = 25;
@@ -108,8 +103,8 @@ export const MAX_RENDERED_SESSIONS = 4 * SESSIONS_PAGE_SIZE;
 const ROW_ATTRIBUTE = 'data-session-row';
 
 const STATE_UNKNOWN_TITLE =
-  'kagent could not be read for this session, so its state is unknown — not the same as finished.';
-const STATE_IDLE_TITLE = 'Started, but no turn has reported a state.';
+  'kagent could not be read for this session, so its state is unknown, which is not the same as finished.';
+const STATE_IDLE_TITLE = 'It started, but no turn has reported a state.';
 const STATE_UNEVALUATED_LABEL = 'Not loaded';
 const STATE_UNEVALUATED_TITLE = 'Open the session to see its state.';
 
@@ -546,97 +541,50 @@ function DayList({
   );
 }
 
+/**
+ * The list's search and filters: the standard search field, and under it the
+ * shared catalog dropdowns (T92) — State, Agent and, once something is
+ * pinned, Pinned — exactly as the Customize tabs draw them.
+ */
 function ShellFilterBar({
   searchField,
   rows,
   searchedRows,
-  isLoading,
-  filter,
+  selection,
   onChange,
   showStates,
 }: {
   searchField: ReactNode;
   rows: SessionTableRow[];
   searchedRows: SessionTableRow[];
-  isLoading: boolean;
-  filter: SessionsFilter;
-  onChange: (filter: SessionsFilter) => void;
+  selection: CatalogFilterSelection;
+  onChange: (selection: CatalogFilterSelection) => void;
   showStates: boolean;
 }) {
-  const counts = useMemo(
-    () => countSessionsByState(searchedRows, filter.agent),
-    [searchedRows, filter.agent],
+  const facets = useMemo(
+    () => sessionFacets(rows, { showStates }),
+    [rows, showStates],
   );
-  const agentOptions = useMemo(() => sessionAgentOptions(rows), [rows]);
-
-  // A picked agent whose sessions are gone would leave the list empty behind
-  // a picker that no longer offers it.
-  const pickedAgentGone =
-    !isLoading &&
-    filter.agent !== undefined &&
-    !agentOptions.some(option => option.id === filter.agent);
-  useEffect(() => {
-    if (pickedAgentGone) {
-      onChange({ ...filter, agent: undefined });
-    }
-  }, [pickedAgentGone, filter, onChange]);
-
-  const chips = SHELL_SESSION_STATE_FILTERS.filter(
-    ({ id, whenPresent }) =>
-      !whenPresent || counts[id] > 0 || filter.state === id,
+  // Known undercount (platform follow-up, list-scale-inventory #7): the
+  // backend evaluates states only for the newest sessions per installation
+  // (`agentPlatform.kagent.sessionStates.maxSessions`, default 20, last 7
+  // days), so the State counts, a "Waiting for you 0" included, cover those
+  // sessions and not the whole list.
+  const dimensions = useMemo(
+    () => catalogFilterDimensions(rows, searchedRows, facets, selection),
+    [rows, searchedRows, facets, selection],
   );
-
-  // "All agents" plus the one agent there is filters nothing (T39). Kept
-  // while an agent is picked, so the pick can always be undone.
-  const showAgentSelect = agentOptions.length > 1 || filter.agent !== undefined;
 
   return (
     <Flex direction="column" gap="3">
-      <Flex align="end" gap="3" style={{ flexWrap: 'wrap' }}>
-        {searchField}
-        {showAgentSelect && (
-          <Select
-            label="Agent"
-            size="small"
-            options={[{ id: ALL_AGENTS, label: 'All agents' }, ...agentOptions]}
-            selectedKey={filter.agent ?? ALL_AGENTS}
-            onSelectionChange={key => {
-              const agent = key === null ? ALL_AGENTS : String(key);
-              onChange({
-                ...filter,
-                agent: agent === ALL_AGENTS ? undefined : agent,
-              });
-            }}
-            style={{ minWidth: 200, maxWidth: 280 }}
-          />
-        )}
-      </Flex>
-      {/* Known undercount (platform follow-up, list-scale-inventory #7): the
-          backend evaluates states only for the newest sessions per
-          installation (`agentPlatform.kagent.sessionStates.maxSessions`,
-          default 20, last 7 days), so these counts, a "Waiting 0" included,
-          cover those sessions and not the whole list. */}
-      {showStates && (
-        <ToggleButtonGroup
-          className={STABLE_CLASS_NAMES.stateFilter}
-          aria-label="Filter by state"
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[filter.state]}
-          onSelectionChange={keys => {
-            const next = [...keys][0];
-            if (chips.some(({ id }) => id === next)) {
-              onChange({ ...filter, state: next as SessionStateFilter });
-            }
-          }}
-        >
-          {chips.map(({ id, label }) => (
-            <ToggleButton key={id} id={id} size="small">
-              {`${label} ${counts[id]}`}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      )}
+      {searchField}
+      <CatalogFilterBar
+        dimensions={dimensions}
+        onSelect={(facetId, values) =>
+          onChange({ ...selection, [facetId]: values })
+        }
+        onClear={() => onChange(NO_SELECTION)}
+      />
     </Flex>
   );
 }
@@ -668,8 +616,8 @@ function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
 }
 
 /**
- * The agent-platform shell's sessions list: search, an agent picker and the
- * state chips over one data set, shown as one table per day the sessions
+ * The agent-platform shell's sessions list: search and the State, Agent and
+ * Pinned dropdowns over one data set, shown as one table per day the sessions
  * started (Today, Yesterday, Earlier), newest first, a page of sessions at a
  * time.
  */
@@ -699,7 +647,7 @@ export function ShellSessionsTable({
 
   const { isPinned, togglePin } = usePinnedSessions();
 
-  // The pin joined onto the row like the state, so the Pinned chip and group
+  // The pin joined onto the row like the state, so the Pinned filter and group
   // run through the same search/filter/sort pipeline as everything else.
   const stateRows = useMemo(
     () =>
@@ -741,15 +689,15 @@ export function ShellSessionsTable({
 
   const { tableProps, search, filter } = useTable<
     SessionTableRow,
-    SessionsFilter
+    CatalogFilterSelection
   >({
     mode: 'complete',
     data: isLoading ? undefined : stateRows,
     searchFn: sessionSearchFn,
     searchDebounceMs,
     initialSearch: opening.query,
-    initialFilter: opening.filter,
-    filterFn: filterSessions,
+    initialFilter: sessionSelectionOf(opening.filter),
+    filterFn: filterSessionsBySelection,
     sortFn: sortPinnedFirst,
     initialSort: { column: 'createdAt', direction: 'descending' },
     paginationOptions: { type: 'none' },
@@ -765,7 +713,7 @@ export function ShellSessionsTable({
     seenSearch.current = locationSearch;
     const next = parseSessionsListSearch(locationSearch);
     search.onChange(next.query);
-    filter.onChange(next.filter);
+    filter.onChange(sessionSelectionOf(next.filter));
     // The handlers are fresh every render; the URL alone drives this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationSearch]);
@@ -779,8 +727,9 @@ export function ShellSessionsTable({
     [stateRows, searchTerm],
   );
 
-  const activeFilter = filter.value ?? NO_SESSIONS_FILTER;
-  const filtered = isSessionsFilterActive(activeFilter);
+  const selection = filter.value ?? NO_SELECTION;
+  const filtered = isCatalogFiltered(selection);
+  const selectionKey = catalogFilterKey(selection);
 
   // The rendered window over the matching rows, `[start, end)`: it grows a
   // page per Load more up to MAX_RENDERED_SESSIONS, then slides. A new search
@@ -788,7 +737,7 @@ export function ShellSessionsTable({
   const [range, setRange] = useState({ start: 0, end: SESSIONS_PAGE_SIZE });
   useEffect(() => {
     setRange({ start: 0, end: SESSIONS_PAGE_SIZE });
-  }, [searchTerm, activeFilter]);
+  }, [searchTerm, selectionKey]);
 
   const matching = tableProps.data;
   const total = matching?.length ?? 0;
@@ -901,7 +850,7 @@ export function ShellSessionsTable({
 
   const clearAll = () => {
     search.onChange('');
-    filter.onChange(NO_SESSIONS_FILTER);
+    filter.onChange(NO_SELECTION);
   };
 
   const loadMore = () => {
@@ -943,13 +892,12 @@ export function ShellSessionsTable({
                 placeholder="Search by title or agent"
                 value={search.value}
                 onChange={search.onChange}
-                style={{ flex: '1 1 320px', maxWidth: 420 }}
+                style={{ maxWidth: 420 }}
               />
             }
             rows={stateRows}
             searchedRows={searchedRows}
-            isLoading={Boolean(isLoading)}
-            filter={activeFilter}
+            selection={selection}
             onChange={filter.onChange}
             showStates={hasStates}
           />

@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Breadcrumbs } from './Breadcrumbs';
 
 describe('Breadcrumbs', () => {
@@ -68,5 +69,62 @@ describe('Breadcrumbs', () => {
     expect(
       screen.getByText('check_certificate_expiry_and_renew_if_needed'),
     ).toHaveStyle({ overflowWrap: 'anywhere' });
+  });
+
+  describe('the back arrow', () => {
+    it('leads to the parent, first in the trail and reachable by keyboard', async () => {
+      render(
+        <Breadcrumbs
+          items={[
+            { label: 'Connectors', href: '/connectors' },
+            { label: 'kubernetes', href: '/connectors/kubernetes' },
+            { label: 'get_pods' },
+          ]}
+        />,
+      );
+
+      const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
+      const back = within(nav).getByRole('link', {
+        name: 'Back to kubernetes',
+      });
+      expect(back).toHaveAttribute('href', '/connectors/kubernetes');
+      expect(back).not.toHaveAttribute('target');
+      expect(within(nav).getAllByRole('link')[0]).toBe(back);
+
+      await userEvent.tab();
+      expect(back).toHaveFocus();
+    });
+
+    it('skips an unlinked ancestor for the nearest linked one', () => {
+      render(
+        <Breadcrumbs
+          items={[
+            { label: 'Workflows', href: '/workflows' },
+            { label: 'Runs' },
+            { label: 'run-42' },
+          ]}
+        />,
+      );
+
+      expect(
+        screen.getByRole('link', { name: 'Back to Workflows' }),
+      ).toHaveAttribute('href', '/workflows');
+    });
+
+    it('is absent when no ancestor has a link', () => {
+      render(
+        <Breadcrumbs
+          items={[{ label: 'Workflows' }, { label: 'run-42', href: '/r' }]}
+        />,
+      );
+
+      expect(screen.queryByRole('link', { name: /^Back to/ })).toBeNull();
+    });
+
+    it('is absent on a one-item trail', () => {
+      render(<Breadcrumbs items={[{ label: 'Agents', href: '/agents' }]} />);
+
+      expect(screen.queryByRole('link')).toBeNull();
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ToolSummary } from '../../../apis';
@@ -37,7 +37,9 @@ describe('ConnectorToolsTab', () => {
 
     expect(toolRows()).toHaveLength(3);
     expect(screen.queryByRole('searchbox')).toBeNull();
-    expect(screen.queryByRole('radio')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Filter by what it does/ }),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
   });
 
@@ -49,7 +51,16 @@ describe('ConnectorToolsTab', () => {
     expect(
       screen.getByRole('searchbox', { name: 'Search tools' }),
     ).toHaveAttribute('placeholder', 'Search 300 tools');
-    expect(screen.getByRole('radio', { name: 'All 300' })).toBeInTheDocument();
+    const effect = screen.getByRole('button', {
+      name: /Filter by what it does/,
+    });
+    await userEvent.click(effect);
+    expect(
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(['Reads 100', 'Changes things 200']);
+    await userEvent.keyboard('{Escape}');
 
     await userEvent.click(
       screen.getByRole('button', { name: 'Show 20 more tools' }),
@@ -57,10 +68,28 @@ describe('ConnectorToolsTab', () => {
     expect(toolRows()).toHaveLength(40);
 
     // A filter change starts over from its first page.
-    await userEvent.click(screen.getByRole('radio', { name: 'Reads 100' }));
+    await userEvent.click(effect);
+    await userEvent.click(screen.getByRole('option', { name: 'Reads 100' }));
+    await userEvent.keyboard('{Escape}');
     expect(toolRows()).toHaveLength(20);
     expect(screen.getByText('20 tools shown, 80 more')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^tool_001/ })).toBeNull();
+  });
+
+  it('has no effect dropdown when every tool does the same', async () => {
+    await renderTab(
+      makeTools(10).map(tool => ({
+        ...tool,
+        annotations: { readOnlyHint: true },
+      })),
+    );
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Filter by what it does/ }),
+    ).toBeNull();
   });
 
   it('searches the whole list, not just the page shown', async () => {

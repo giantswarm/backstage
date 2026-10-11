@@ -163,7 +163,7 @@ export function toolsetEffect({
   if (shape === 'full') {
     return {
       line: 'Full gateway access',
-      hint: 'Every tool the gateway exposes to whoever invokes the agent, platform administration included.',
+      hint: 'The agent can call every tool the gateway exposes to whoever invokes it, platform administration included.',
       tone: 'warning',
     };
   }
@@ -276,7 +276,7 @@ export function ToolsetSummaryBar({
   const chips =
     selectors.length === 0 ? (
       <Text variant="body-small" color="secondary">
-        Nothing added yet — a preset is the usual start.
+        Nothing is added yet; a preset is the usual start.
       </Text>
     ) : (
       <div className={classes.selectors} role="list" aria-label="Toolset">

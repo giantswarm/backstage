@@ -1,4 +1,10 @@
-import { expect, open, openReadyAgent, test } from './fixtures';
+import {
+  expect,
+  open,
+  openReadyAgent,
+  startSessionButton,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import type { Page, Route } from '@playwright/test';
 
@@ -230,7 +236,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
   let failure: unknown;
   try {
     // --- The session, whose first message runs into the lost runtime ------
-    await admin.getByRole('button', { name: 'Start a session' }).click();
+    await startSessionButton(admin).click();
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
@@ -266,7 +272,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       'the notice explains in the portal’s words',
     ).toBeVisible();
     await expect(
-      admin.getByText(/nothing is missing from the transcript/),
+      admin.getByText(/The transcript above is complete\./),
     ).toBeVisible();
     await expect(
       admin.getByText(/kagent reported:/),

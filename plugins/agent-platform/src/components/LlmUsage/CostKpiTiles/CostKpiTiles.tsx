@@ -59,8 +59,8 @@ export function CostKpiTiles({
         label={converted ? 'Spend (estimated)' : 'Spend'}
         hint={
           converted
-            ? `What the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate — an estimate, not an invoice.`
-            : `The gateway's price for every model call, summed over ${windowNote}. Models missing from its catalogue add nothing.`
+            ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice.`
+            : `Sums the gateway's price for every model call over ${windowNote}. Models missing from its catalogue add nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}
         beside={deltaLabel && <KpiDelta>{deltaLabel}</KpiDelta>}
@@ -68,7 +68,7 @@ export function CostKpiTiles({
       />
       <KpiTile
         label={converted ? 'Blended cost/1M tokens' : 'Blended $/1M tokens'}
-        hint="Spend per million tokens. A blend, not a list price: cache reads count as tokens, so heavy caching pushes it below a model's headline rate."
+        hint="Shows spend per million tokens. It is a blend, not a list price: cache reads count as tokens, so heavy caching pushes it below a model's headline rate."
         value={formatMoney(totals.usdPerMillion, currency)}
         sub="across every model"
       />
@@ -77,7 +77,7 @@ export function CostKpiTiles({
           input traffic to measure it against, which is not the same as 0%. */}
       <KpiTile
         label="Cache read share"
-        hint="Cache reads as a share of all input tokens (plain, cache reads and writes). High means prompt caching pays off."
+        hint="Shows cache reads as a share of all input tokens (plain, cache reads and writes). A high share means prompt caching pays off."
         value={formatPercent(totals.cacheReadSharePct)}
         sub="of input tokens, read from cache"
       />

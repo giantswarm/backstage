@@ -111,7 +111,7 @@ export function ProfilePage() {
           <section aria-label="Environments" className={classes.section}>
             <SectionHeader
               title="Environments"
-              description="The environments this portal talks to."
+              description="These are the environments this portal talks to."
             />
             {installationsLoading ? (
               <Text variant="body-medium" color="secondary">

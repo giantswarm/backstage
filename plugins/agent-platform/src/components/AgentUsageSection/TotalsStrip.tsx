@@ -89,23 +89,23 @@ export function TotalsStrip({
         hint={
           narrowed
             ? notNarrowable('session counts')
-            : `Sessions with at least one turn ${windowNote}.`
+            : `Counts sessions with at least one turn ${windowNote}.`
         }
       />
       <Stat
         label="Turns"
         value={formatCount(totals.turns)}
-        hint={`Messages sent to an agent ${windowNote}, each counted once however many calls its answer took.`}
+        hint={`Counts messages sent to an agent ${windowNote}, once each however many calls the answer took.`}
       />
       <Stat
         label="Input tokens (billed)"
         value={formatTokens(totals.inputTokens)}
-        hint="Every token these turns sent to a model, summed over each call, delegated agents' included."
+        hint="Sums every token these turns sent to a model across each call, including delegated agents'."
       />
       <Stat
         label="Output tokens"
         value={formatTokens(totals.outputTokens)}
-        hint="Every token a model generated in these turns, delegated agents' included."
+        hint="Sums every token a model generated in these turns, including delegated agents'."
       />
       <Stat
         label="Tool calls"
@@ -113,7 +113,7 @@ export function TotalsStrip({
         hint={
           narrowed
             ? notNarrowable('tool-call counts')
-            : 'Tools called in these turns; a hand-off to another agent is not one.'
+            : 'Counts the tools called in these turns; a hand-off to another agent does not count.'
         }
       />
       {/* A skeleton, not an em dash, while the rate is in flight. The counts
@@ -141,7 +141,7 @@ export function TotalsStrip({
         <Stat
           label="Reported cost"
           value={formatUsd(spend.reportedUsd)}
-          hint="Summed from what the agents' runtimes reported per turn. Most runtimes report none, so this usually covers fewer turns than the estimate."
+          hint="Sums what the agents' runtimes reported per turn. Most runtimes report none, so it usually covers fewer turns than the estimate."
         />
       )}
     </div>

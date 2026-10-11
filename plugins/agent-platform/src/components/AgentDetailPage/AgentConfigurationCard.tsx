@@ -187,7 +187,7 @@ function ToolsValue({
       <Flex direction="column" gap="1">
         <Text variant="body-medium">No tools</Text>
         <Text variant="body-small" color="secondary">
-          Only its own reasoning.
+          It relies on its own reasoning alone.
         </Text>
       </Flex>
     );

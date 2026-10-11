@@ -99,7 +99,8 @@ export function SkillEditFiles({
       </ShowMore>
       {missing.length > 0 && (
         <Text as="p" variant="body-small" color="warning">
-          Links to files the skill does not have: {missing.join(', ')}
+          The instructions link to files the skill does not have:{' '}
+          {missing.join(', ')}
         </Text>
       )}
     </Flex>

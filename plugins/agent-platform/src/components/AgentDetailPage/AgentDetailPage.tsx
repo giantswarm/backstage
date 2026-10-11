@@ -33,7 +33,10 @@ import {
   DateComponent,
   FactsColumn,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
   type ShellPageProps,
+  ShellPageTitleSkeleton,
   StatusLabel,
   useProvidePageHeaderActions,
   useSplatBasePath,
@@ -235,12 +238,15 @@ function agentBreadcrumbs(
  */
 function AgentFrame({
   title,
+  heading,
   subPage,
   children,
   ...shellProps
 }: Omit<ShellPageProps, 'title' | 'breadcrumbs'> & {
   /** The shell header's h1, and the breadcrumbs' last entry. */
   title: string;
+  /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
+  heading?: ReactNode;
   /** A view below the agent, named in the breadcrumbs after it. */
   subPage?: { label: string; agentHref: string };
 }) {
@@ -250,7 +256,7 @@ function AgentFrame({
   }
   return (
     <ShellPage
-      title={title}
+      title={heading ?? title}
       breadcrumbs={agentBreadcrumbs(title, subPage)}
       {...shellProps}
     >
@@ -716,15 +722,46 @@ function AgentDetailPageContent() {
   );
   useShowErrors(reportableErrors);
 
-  if (isLoading || isAskingAgentManager) {
+  const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
+  const path = location.pathname.replace(/\/$/, '');
+  const onOverview = path === basePath;
+  const onTools = path === `${basePath}/tools`;
+  const subPage = onTools
+    ? { label: 'Tools', agentHref: `${basePath}${location.search}` }
+    : undefined;
+
+  // Loading only while there is no agent to show. An agent already in the
+  // query cache renders at once, even while the persisted cache restores on
+  // this provider's mount (`useResource` reports loading throughout that
+  // window): replacing it with the loading frame for that moment and back is
+  // the flash T95 removed.
+  //
+  // The loading frame is the loaded page's frame — trail, avatar (its URL is
+  // the agent's address), tabs — with skeletons in place of what the read
+  // will tell: the name, the readiness, the facts. Nothing moves when it lands.
+  if (!agent && (isLoading || isAskingAgentManager)) {
     return (
-      <AgentFrame title={name || 'Agent'}>
+      <AgentFrame
+        title={name || 'Agent'}
+        heading={<ShellPageTitleSkeleton label="Loading agent" />}
+        subPage={subPage}
+        leading={
+          <AgentAvatar
+            size="large"
+            purpose="decoration"
+            name={name}
+            src={avatarUrl ?? ''}
+          />
+        }
+        badges={<ShellPageBadgeSkeleton />}
+        tabs={SHELL_AGENT_TABS}
+        tabsSearch={location.search}
+        aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
+      >
         <Progress aria-label="Loading agent" />
       </AgentFrame>
     );
   }
-
-  const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
 
   // Every branch below is gated on there being no agent to show. With one in hand
   // the page renders, whatever the last read did.
@@ -880,20 +917,13 @@ function AgentDetailPageContent() {
   if (agentShell) {
     const displayName = agent.getDisplayName();
     const created = agent.getCreatedTimestamp();
-    const path = location.pathname.replace(/\/$/, '');
-    const onOverview = path === basePath;
-    const onTools = path === `${basePath}/tools`;
 
     return (
       <AgentFrame
         title={displayName}
         // The tools view is reached from the Overview's Connectors section
         // rather than a tab, so the breadcrumbs are its way back.
-        subPage={
-          onTools
-            ? { label: 'Tools', agentHref: `${basePath}${location.search}` }
-            : undefined
-        }
+        subPage={subPage}
         leading={
           <AgentAvatar
             size="large"

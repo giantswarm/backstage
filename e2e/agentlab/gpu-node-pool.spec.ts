@@ -83,7 +83,7 @@ test.describe('models: GPU node pools', () => {
     'needs a lab with cluster-manager registered in muster (agent-platform#316); set AGENTLAB_CLUSTER_MANAGER=1',
   );
 
-  test('the GPU capacity page lists no pools and says the Cluster API is not served', async ({
+  test('the GPU pools tab lists no pools and says the Cluster API is not served', async ({
     page,
   }) => {
     await signIn(page, lab.users.admin);
@@ -708,14 +708,14 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     // switch's own line — not the plugin's.
     const consequence = dialog.getByTestId('cache-consequence');
     await expect(consequence).toContainText(
-      'The existing cache hf-cache ($27.37/month) stays and keeps costing until it is removed on the GPU capacity page.',
+      'The existing cache hf-cache ($27.37/month) stays and keeps costing until it is removed under Model cache.',
       { timeout: 60_000 },
     );
     await toggleByLabel(
       dialog.getByRole('switch', { name: 'Keep a model cache' }),
     );
     await expect(dialog.getByTestId('cache-cost')).toContainText(
-      '$27.37/month at list prices — billed while the claim exists, after this pool is removed too, until the cache is removed on the GPU capacity page.',
+      '$27.37/month at list prices — billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.',
       { timeout: 60_000 },
     );
     await expect(consequence).toContainText(
@@ -728,7 +728,10 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
 
-    // The kept claim: on the card, with its size, cost and since when.
+    // The kept claim: on Model hosting's Model cache tab, with its size, cost
+    // and since when.
+    await page.getByRole('tab', { name: 'Model cache' }).click();
+    await expect(page).toHaveURL(/\/agent-platform\/models\/cache/);
     const card = page.getByTestId('model-cache-panel');
     await expect(card).toContainText('Standing: $27.37/month across 1 claim', {
       timeout: 60_000,

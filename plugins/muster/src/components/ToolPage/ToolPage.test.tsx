@@ -141,8 +141,13 @@ describe('ToolPage', () => {
     expect(
       within(trail)
         .getAllByRole('link')
-        .map(link => [link.textContent, link.getAttribute('href')]),
+        .map(link => [
+          // The back arrow has no text, only its label.
+          link.textContent || link.getAttribute('aria-label'),
+          link.getAttribute('href'),
+        ]),
     ).toEqual([
+      ['Back to Tools', `${BASE}/aws-root?installation=gazelle`],
       ['Connectors', `${BASE}?installation=gazelle`],
       ['aws-root', `${BASE}/aws-root?installation=gazelle`],
       ['Tools', `${BASE}/aws-root?installation=gazelle`],
@@ -237,8 +242,13 @@ describe('ToolPage in the agent-platform shell, at phone width', () => {
     expect(
       within(trail)
         .getAllByRole('link')
-        .map(link => [link.textContent, link.getAttribute('href')]),
+        .map(link => [
+          // The back arrow has no text, only its label.
+          link.textContent || link.getAttribute('aria-label'),
+          link.getAttribute('href'),
+        ]),
     ).toEqual([
+      ['Back to Tools', `${BASE}/aws-root?installation=gazelle`],
       ['Customize', '/customize'],
       ['Connectors', '/customize/connectors'],
       ['aws-root', `${BASE}/aws-root?installation=gazelle`],

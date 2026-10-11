@@ -30,6 +30,7 @@ import {
   CustomizeSkillsPanel,
   EnvironmentSelect,
   useCustomizeData,
+  WorkflowCreateAssist,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin, {
   CustomizeConnectorsPanel,
@@ -129,8 +130,19 @@ function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
     case 'models':
       return <CustomizeModelsPanel search={search} />;
     default:
-      return <CustomizeWorkflowsPanel search={search} />;
+      // Workflows are read-only here (D11): the way to a new one is the
+      // workflow agent's hand-off, which agent-platform draws.
+      return (
+        <CustomizeWorkflowsPanel
+          search={search}
+          createAssist={renderWorkflowCreateAssist}
+        />
+      );
   }
+}
+
+function renderWorkflowCreateAssist(installation: string) {
+  return <WorkflowCreateAssist installation={installation} />;
 }
 
 /**
@@ -165,7 +177,7 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   return (
     <ShellPage
       title="Customize"
-      description="The agents, skills, connectors and models behind your sessions."
+      description="Manage the agents, skills, connectors and models behind your sessions."
       actions={<EnvironmentSelect component={tab.component} />}
       tabs={tabs}
     >

@@ -1,5 +1,6 @@
 import { ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
+import { useKeyboardTapHold } from './keyboardTapHold';
 
 export const SHELL_CONTENT_ID = 'content';
 
@@ -16,9 +17,12 @@ const useStyles = makeStyles({
  * page's main landmark unless the page brings its own `<main>` (the
  * core-components `Page` does), so every page has exactly one. A role rather
  * than a `<main>` element: switching the element would remount the page.
+ * Mounted once per shell, it also holds the phone's keyboard layout while a
+ * tap is in progress (`useKeyboardTapHold`).
  */
 export function ShellMain({ children }: { children: ReactNode }) {
   const classes = useStyles();
+  useKeyboardTapHold();
   const ref = useRef<HTMLDivElement>(null);
   const [hasOwnMain, setHasOwnMain] = useState(false);
 

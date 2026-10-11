@@ -115,20 +115,20 @@ function UsageSection({
       <KpiTileGrid>
         <KpiTile
           label="Cost"
-          hint="The gateway's price for calls to this model. A model missing from its catalogue shows —."
+          hint="Shows the gateway's price for calls to this model. A model missing from its catalogue shows —."
           // No calls is zero spend; calls without a price are "—".
           value={formatMoney(slice.calls === 0 ? 0 : slice.costUsd, currency)}
           sub={sub}
         />
         <KpiTile
           label="Tokens"
-          hint="Tokens the calls to this model used, as the gateway counted them."
+          hint="Counts the tokens that calls to this model used, as the gateway counted them."
           value={formatTokens(slice.tokens)}
           sub={sub}
         />
         <KpiTile
           label="Model calls"
-          hint="How often agents called this model through the gateway."
+          hint="Counts how often agents called this model through the gateway."
           value={formatCount(slice.calls)}
           sub={sub}
         />
@@ -139,7 +139,7 @@ function UsageSection({
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
           ? `No calls to ${model} went through the gateway in the last ${MODEL_USAGE_WINDOW_DAYS} days.`
-          : `Every gateway call to ${model}, from any agent — shared with other configurations of this model on ${installation}.`}
+          : `This counts every gateway call to ${model} from any agent, including those through other configurations of this model on ${installation}.`}
       </Text>
     </Flex>
   );

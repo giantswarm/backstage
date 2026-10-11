@@ -97,9 +97,7 @@ describe('HarnessPicker', () => {
     expect(card).toHaveTextContent('Platform default');
     expect(card).toHaveTextContent('Harness kagent');
     expect(
-      screen.getByText(
-        'What runs the agent: the only Harness in kagent on gazelle.',
-      ),
+      screen.getByText('The only Harness in kagent on gazelle runs the agent.'),
     ).toBeInTheDocument();
   });
 

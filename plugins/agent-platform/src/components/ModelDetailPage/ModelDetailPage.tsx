@@ -16,6 +16,9 @@ import {
   type Fact,
   FactsColumn,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
+  ShellPageTitleSkeleton,
   StatusDot,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -71,13 +74,16 @@ const useStyles = makeStyles(theme => ({
  */
 function ModelFrame({
   title,
+  heading,
   badges,
   meta,
   aside,
   children,
 }: {
-  /** The shell header's h1. */
+  /** The shell header's h1, and the breadcrumbs' last entry. */
   title: string;
+  /** The h1 instead of `title`, e.g. its skeleton while the model is read. */
+  heading?: ReactNode;
   badges?: ReactNode;
   meta?: ReactNode;
   aside?: ReactNode;
@@ -94,7 +100,7 @@ function ModelFrame({
   }
   return (
     <ShellPage
-      title={title}
+      title={heading ?? title}
       breadcrumbs={[
         { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
         { label: 'Models', href: `${SHELL_CUSTOMIZE_PATH}/models` },
@@ -261,9 +267,18 @@ export function ModelDetailPage() {
   );
   useProvidePageHeaderActions(actions);
 
-  if (isLoading) {
+  // Loading only while there is no model to show: one already in the query
+  // cache renders at once, even while the persisted cache restores on the
+  // provider's mount. Meanwhile the loaded page's frame, with skeletons where
+  // the read will fill in (T95).
+  if (isLoading && !modelConfig) {
     return (
-      <ModelFrame title="Model">
+      <ModelFrame
+        title="Model"
+        heading={<ShellPageTitleSkeleton label="Loading model" />}
+        badges={<ShellPageBadgeSkeleton />}
+        aside={<ShellPageFactsSkeleton />}
+      >
         <Progress aria-label="Loading model" />
       </ModelFrame>
     );

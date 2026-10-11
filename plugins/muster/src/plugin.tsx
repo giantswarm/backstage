@@ -122,17 +122,37 @@ const mcpServersRedirectPage = PageBlueprint.make({
   },
 });
 
-const workflowsSubPage = SubPageBlueprint.make({
+// **The `editAction` input, a cross-plugin coupling by string:** the shell's
+// workflow page renders the element attached to `sub-page:muster/workflows`
+// (input `editAction`) beside its title, and nothing when nothing is
+// attached. The element reads its workflow with `useWorkflowPageTarget`.
+// agent-platform attaches it (its `workflowEditAssist` extension: the hand-off
+// to the workflow agent); both ends carry this comment, and changing either
+// without the other makes the action vanish.
+const workflowsSubPage = SubPageBlueprint.makeWithOverrides({
   name: 'workflows',
   attachTo: { id: 'page:agent-platform', input: 'pages' },
-  params: {
-    path: 'workflows',
-    title: 'Workflows',
-    routeRef: workflowsRouteRef,
-    loader: musterTab(
-      'The workflows of an environment are read through its Kubernetes API.',
-      () => import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
-    ),
+  inputs: {
+    editAction: createExtensionInput([coreExtensionData.reactElement], {
+      singleton: true,
+      optional: true,
+    }),
+  },
+  factory(originalFactory, { inputs }) {
+    const editAction: ReactElement | undefined = inputs.editAction?.get(
+      coreExtensionData.reactElement,
+    );
+    return originalFactory({
+      path: 'workflows',
+      title: 'Workflows',
+      routeRef: workflowsRouteRef,
+      loader: musterTab(
+        'The workflows of an environment are read through its Kubernetes API.',
+        () =>
+          import('./components/WorkflowsRouter').then(m => m.WorkflowsRouter),
+        { editAction },
+      ),
+    });
   },
 });
 

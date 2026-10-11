@@ -7,9 +7,12 @@ import {
   agentKey,
   countSessionsByState,
   filterSessions,
+  filterSessionsBySelection,
   isSessionsFilterActive,
   SESSION_STATE_FILTERS,
   sessionAgentOptions,
+  sessionFacets,
+  sessionSelectionOf,
   SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
@@ -290,5 +293,48 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       throw new Error(`no chip is named for ${state}`);
     }
     expect(filterSessions([stateRow], { state: chip.id })).toEqual([stateRow]);
+  });
+});
+
+describe('the shell list’s dropdown filters (T92)', () => {
+  it('widens within a facet and narrows across facets', () => {
+    expect(
+      ids(filterSessionsBySelection(rows, { state: ['waiting', 'running'] })),
+    ).toEqual(['a', 'b', 'f']);
+    expect(
+      ids(
+        filterSessionsBySelection(rows, {
+          state: ['waiting', 'running'],
+          agent: [agentKey(rows[0])!],
+        }),
+      ),
+    ).toEqual(['a', 'b']);
+  });
+
+  it('keeps rows whose state is not loaded only while State is unfiltered', () => {
+    expect(ids(filterSessionsBySelection(rows, {}))).toContain('e');
+    expect(
+      ids(filterSessionsBySelection(rows, { state: ['finished'] })),
+    ).not.toContain('e');
+  });
+
+  it('opens on what a narrowed-list link asks for', () => {
+    expect(sessionSelectionOf({ state: 'all' })).toEqual({});
+    expect(sessionSelectionOf({ state: 'waiting' })).toEqual({
+      state: ['waiting'],
+    });
+    expect(sessionSelectionOf({ state: 'pinned' })).toEqual({
+      pinned: ['pinned'],
+    });
+  });
+
+  it('names states in the shell words and agents as the picker did', () => {
+    const facets = sessionFacets(rows, { showStates: true });
+    expect(facets.map(facet => facet.id)).toEqual(['state', 'agent', 'pinned']);
+    expect(facets[0].optionLabel?.('waiting')).toBe('Waiting for you');
+    expect(facets[1].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
+    expect(
+      sessionFacets(rows, { showStates: false }).map(facet => facet.id),
+    ).toEqual(['agent', 'pinned']);
   });
 });

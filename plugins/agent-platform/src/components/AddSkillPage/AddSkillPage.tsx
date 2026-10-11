@@ -66,11 +66,8 @@ function SkillPullRequestOutcome({
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            Opened as you: {result.path} on {result.branch}, against{' '}
-            {result.base}. A teammate reviews and approves it —{' '}
-            {isUpdate
-              ? 'the change reaches the catalog once the pull request merges.'
-              : 'the skill appears in the catalog once the pull request merges.'}
+            Opened as you against {result.base}. A teammate has to merge it
+            before {isUpdate ? 'the change' : 'the skill'} reaches the catalog.
           </Text>
           <div>
             <ButtonLink
@@ -287,26 +284,26 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       />
       {edit ? (
         <WizardStepHeading title="Propose a change">
-          Opens a pull request that updates the skill in the repository, as you.
-          A teammate approves it; the change reaches the catalog once it merges.
+          This opens a pull request as you. The change reaches the catalog once
+          a teammate merges it.
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Propose a skill">
-          Opens a pull request that adds the skill to the repository, as you. A
-          teammate approves it; the skill appears in the catalog once it merges.
+          This opens a pull request as you. The skill reaches the catalog once a
+          teammate merges it.
         </WizardStepHeading>
       )}
 
       {repositories.length === 0 && skippedCount === 0 && (
         <EmptyStateCard
           title="No skill repositories"
-          description="Skills are proposed to the repositories a platform admin configures, and none is configured."
+          description="A platform admin has to configure a skill repository first."
         />
       )}
       {repositories.length === 0 && skippedCount > 0 && (
         <EmptyStateCard
           title="No repository to propose to"
-          description="Skills are proposed as GitHub pull requests, and none of the configured skill repositories is on github.com. Add the skill in its repository instead."
+          description="Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead."
         />
       )}
 
@@ -348,8 +345,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
           )}
           {skippedCount > 0 && (
             <Text variant="body-small" color="secondary">
-              Only github.com repositories are offered: skills are proposed as
-              GitHub pull requests.
+              Only github.com repositories are offered, because skills are
+              proposed as GitHub pull requests.
             </Text>
           )}
           {edit ? (
@@ -363,7 +360,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             <TextField
               label="Name"
               isRequired
-              description="Becomes the skill's folder: lowercase letters, digits and dashes, e.g. ticket-triage."
+              description="Becomes the skill's folder. Use lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
               {...fieldErrorProps(
@@ -376,14 +373,14 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
           <TextField
             label="Description"
             isRequired
-            description="One sentence on when an agent should reach for it."
+            description="Write one sentence on when an agent should reach for it."
             value={description}
             onChange={setDescription}
             {...fieldErrorProps(validation.errorFor(fieldErrors.description))}
           />
           <TextAreaField
             label="Instructions"
-            description="The SKILL.md body: what the agent should know and do, in Markdown."
+            description="Write what the agent should know and do, in Markdown."
             rows={10}
             value={instructions}
             onChange={setInstructions}

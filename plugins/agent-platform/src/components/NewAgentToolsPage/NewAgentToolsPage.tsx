@@ -31,11 +31,12 @@ import {
   catalogueInventory,
   countNoun,
   MAX_INLINE_SELECTORS,
+  presetNameOf,
   presetSelector,
   PRESET_FULL,
-  PRESET_READ_ONLY,
   selectorProblem,
   type ServerBucket,
+  toggleSelector,
   unsignedServerSelectors,
 } from '../../lib/toolset';
 import { useNewAgentForm } from '../NewAgentFormProvider';
@@ -55,13 +56,15 @@ import {
 import { ConnectorGrid } from './ConnectorGrid';
 import {
   ACCESS_CHAT_ONLY,
+  ACCESS_OWN_PICKS,
   type AccessLevel,
   accessLevelOf,
   type ConnectorChoice,
   connectorsOf,
+  isPresetLevel,
   isSelectionOff,
+  materialize,
   needsIndividualTools,
-  withAccessLevel,
   withConnectorChoice,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
@@ -108,17 +111,37 @@ function SectionTitle({ title }: { title: string }) {
 }
 
 /** The line under *Which apps?*: what the access level above means for it. */
-function connectorsHint(level: AccessLevel): string | undefined {
+function connectorsHint({
+  level,
+  derived,
+  resolving,
+  unsignedConnectors,
+}: {
+  level: AccessLevel;
+  derived: boolean;
+  resolving: boolean;
+  unsignedConnectors: boolean;
+}): string | undefined {
   if (level === ACCESS_CHAT_ONLY) {
     return 'Pick another option above to add tools.';
   }
   if (level === PRESET_FULL) {
-    return 'Full gateway already includes every tool.';
+    return 'Full gateway includes every tool.';
   }
-  if (level === PRESET_READ_ONLY) {
-    return 'Look things up already reads every connector; All adds its changes.';
+  if (!isPresetLevel(level)) {
+    return undefined;
   }
-  return undefined;
+  if (resolving) {
+    return 'Reading what the preset covers…';
+  }
+  if (!derived) {
+    return "This preset can't be shown per connector here.";
+  }
+  // The first change writes the preset out (T81b); what the author cannot
+  // see does not make it into that list.
+  return `Changing anything below switches to Only the tools I choose below${
+    unsignedConnectors ? ', without connectors you are not signed in to' : ''
+  }.`;
 }
 
 /**
@@ -146,14 +169,15 @@ function NarrowSelection({
 }
 
 /**
- * *What may it do?* (T81): the access level as a radio — *Nothing outside
- * the chat*, the presets, *Only the tools I choose below* — then *Which
- * apps?*, the connectors with *Read-only* / *All* each, then *Choose
+ * *What may it do?* (T81, T81b): the access level as a radio — *Nothing
+ * outside the chat*, the presets, *Only the tools I choose below* — then
+ * *Which apps?*, the connectors with *Read-only* / *All* each, then *Choose
  * individual tools instead*, which opens the catalogue and the power-user
  * paths (copy another agent's toolset, a selector by name, the resolved
- * list). The selection stays in view in the *Selected* rail. All of it is a
- * presentation of the selector list: nothing is rewritten until the author
- * picks something.
+ * list). The selection stays in view in the *Selected* rail. A preset is a
+ * macro: the grid and the catalogue show what it covers, and the first change
+ * there writes it out and switches to *Only the tools I choose below*.
+ * Nothing is rewritten until the author picks something.
  */
 export function NewAgentToolsPage() {
   const classes = useStyles();
@@ -166,7 +190,6 @@ export function NewAgentToolsPage() {
   const {
     state,
     edit,
-    toggleToolsetSelector,
     setToolset,
     setToolsChatOnly,
     isComplete,
@@ -193,7 +216,6 @@ export function NewAgentToolsPage() {
   );
   const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
-  const selected = useMemo(() => new Set(state.toolset), [state.toolset]);
   const unsigned = useMemo(
     () => unsignedServerSelectors(state.toolset, groups),
     [state.toolset, groups],
@@ -208,7 +230,35 @@ export function NewAgentToolsPage() {
     Boolean(state.toolsChatOnly),
     offered,
   );
-  const selectionOff = isSelectionOff(level);
+  // While a preset is the whole toolset, the grid and the catalogue show what
+  // it resolves to (T81b) — once the resolution and the catalogue are in, and
+  // only when the resolution is whole.
+  const presetLevel = isPresetLevel(level);
+  const derived = useMemo(
+    () =>
+      presetLevel &&
+      !isCatalogueLoading &&
+      resolution.status === 'resolved' &&
+      !resolution.truncated
+        ? materialize(resolution.tools, groups)
+        : undefined,
+    [
+      presetLevel,
+      isCatalogueLoading,
+      resolution.status,
+      resolution.truncated,
+      resolution.tools,
+      groups,
+    ],
+  );
+  // What every change below starts from: the preset written out, or the
+  // selection as it is.
+  const base = derived ?? state.toolset;
+  const selected = useMemo(() => new Set(base), [base]);
+  // A preset that cannot be shown per connector cannot be changed from there
+  // either: its selection stays off until the author picks Only the tools I
+  // choose below.
+  const selectionOff = isSelectionOff(level) || (presetLevel && !derived);
 
   // The individual tools: behind the link, or open from the start when the
   // selection holds what the level and the connectors cannot show (an edited
@@ -283,30 +333,51 @@ export function NewAgentToolsPage() {
     }
     setManualProblem(undefined);
     setManualSelector('');
-    if (!state.toolset.includes(value)) {
-      toggleToolsetSelector(value);
+    if (!base.includes(value)) {
+      setToolset(toggleSelector(base, value));
     }
-  }, [manualSelector, state.toolset, toggleToolsetSelector]);
+  }, [manualSelector, base, setToolset]);
 
+  // A preset replaces the selection; *Only the tools I choose below* keeps
+  // what a preset showed, written out (Full gateway's everything is not a
+  // starting point: it starts empty).
   const pickLevel = useCallback(
     (next: AccessLevel) => {
       if (next === ACCESS_CHAT_ONLY) {
         setToolsChatOnly();
+      } else if (next === ACCESS_OWN_PICKS) {
+        setToolset(
+          level !== PRESET_FULL && derived
+            ? derived
+            : state.toolset.filter(
+                selector => presetNameOf(selector) === undefined,
+              ),
+        );
       } else {
-        setToolset(withAccessLevel(state.toolset, next));
+        setToolset([next]);
       }
     },
-    [setToolsChatOnly, setToolset, state.toolset],
+    [setToolsChatOnly, setToolset, state.toolset, level, derived],
   );
+  // Every change below starts from `base`: under a preset, that writes the
+  // preset out, and the radio then reads Only the tools I choose below.
   const chooseConnector = useCallback(
     (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
-      setToolset(withConnectorChoice(state.toolset, bucket, choice)),
-    [setToolset, state.toolset],
+      setToolset(withConnectorChoice(base, bucket, choice)),
+    [setToolset, base],
+  );
+  const toggleSelected = useCallback(
+    (selector: string) => setToolset(toggleSelector(base, selector)),
+    [setToolset, base],
   );
   const removeSelectors = useCallback(
     (selectors: string[]) =>
-      setToolset(state.toolset.filter(entry => !selectors.includes(entry))),
-    [setToolset, state.toolset],
+      setToolset(
+        selectors.includes(level)
+          ? []
+          : base.filter(entry => !selectors.includes(entry)),
+      ),
+    [setToolset, base, level],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.
@@ -353,7 +424,8 @@ export function NewAgentToolsPage() {
   }
 
   const railProps: SelectedRailProps = {
-    selectors: state.toolset,
+    // An untouched preset is listed with what it covers.
+    selectors: derived ? [level, ...derived] : state.toolset,
     catalogue: groups,
     resolution,
     unsigned,
@@ -371,7 +443,12 @@ export function NewAgentToolsPage() {
         matches.tools + matches.platformAdministration,
         'tool',
       )} and ${countNoun(matches.workflows, 'workflow')} match`;
-  const hint = connectorsHint(level);
+  const hint = connectorsHint({
+    level,
+    derived: Boolean(derived),
+    resolving: presetLevel && resolution.status === 'loading',
+    unsignedConnectors: connectors.some(bucket => bucket.needsSignIn),
+  });
 
   return (
     <AgentWizardFrame
@@ -422,7 +499,10 @@ export function NewAgentToolsPage() {
           />
         </Flex>
 
-        <NarrowSelection {...railProps} onToggle={toggleToolsetSelector} />
+        <NarrowSelection
+          {...railProps}
+          onToggle={selector => removeSelectors([selector])}
+        />
 
         <section aria-label="Which apps?">
           <SectionTitle title="Which apps?" />
@@ -525,7 +605,7 @@ export function NewAgentToolsPage() {
                         installation={installation}
                         signInAvailable={Boolean(musterApi)}
                         selected={selected}
-                        onToggle={toggleToolsetSelector}
+                        onToggle={toggleSelected}
                       />
                     ) : (
                       <Text color="secondary">
@@ -558,11 +638,11 @@ export function NewAgentToolsPage() {
                   </summary>
                   <div className={classes.detailsBody}>
                     <Text variant="body-small" color="secondary">
-                      <span className={classes.code}>preset:</span>,{' '}
+                      Enter <span className={classes.code}>preset:</span>,{' '}
                       <span className={classes.code}>server:</span>,{' '}
                       <span className={classes.code}>workflow:</span> or{' '}
-                      <span className={classes.code}>tool:</span> and the exact
-                      name.
+                      <span className={classes.code}>tool:</span> followed by
+                      the exact name.
                     </Text>
                     <Flex align="end" gap="2" style={{ flexWrap: 'wrap' }}>
                       <Flex grow basis="240px" direction="column">

@@ -46,6 +46,9 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
+    WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
+      <p>{`Create a workflow with the agent on ${installation}`}</p>
+    ),
     EnvironmentSelect: ({ component }: { component?: string }) => (
       <p>{`Environment for ${component ?? 'everything'}`}</p>
     ),
@@ -69,7 +72,18 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
       children,
     useMusterCustomizeCounts: () => mockMusterCounts,
     CustomizeConnectorsPanel: mockPanel('Connectors'),
-    CustomizeWorkflowsPanel: mockPanel('Workflows'),
+    CustomizeWorkflowsPanel: ({
+      createAssist,
+      ...props
+    }: {
+      search: string;
+      createAssist?: (installation: string) => ReactNode;
+    }) => (
+      <>
+        {mockPanel('Workflows')(props)}
+        {createAssist?.('gazelle')}
+      </>
+    ),
   };
 });
 
@@ -245,6 +259,17 @@ describe('CustomizePage', () => {
 
       expect(
         screen.getByRole('searchbox', { name: 'Search workflows' }),
+      ).toBeInTheDocument();
+    });
+
+    it('gives the workflows panel the workflow agent’s hand-off as its way to create one', async () => {
+      await renderCustomize('/customize/workflows');
+
+      expect(
+        screen.getByText('Workflows panel, search “”'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Create a workflow with the agent on gazelle'),
       ).toBeInTheDocument();
     });
 

@@ -19,7 +19,7 @@ import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 const DESCRIPTION =
-  'The management cluster the agent runs on; it decides which models are available.';
+  'Choose the management cluster the agent runs on; it decides which models are available.';
 
 /** How many installations a note names, and links to, before the rest are a count. */
 const NAMED_INSTALLATIONS = NAMED_IN_SENTENCE;

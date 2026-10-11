@@ -28,7 +28,7 @@ function presetOption(preset: ToolsetPreset): Option {
     return {
       level,
       title: 'Look things up · recommended',
-      description: 'Read-only tools of every connector.',
+      description: 'Uses only the read-only tools of every connector.',
     };
   }
   if (level === PRESET_FULL) {
@@ -36,7 +36,7 @@ function presetOption(preset: ToolsetPreset): Option {
       level,
       title: 'Look things up and make changes',
       warning:
-        'Full gateway: every tool, platform administration included. Choose deliberately.',
+        'Full gateway includes every tool, platform administration included. Choose deliberately.',
     };
   }
   return {

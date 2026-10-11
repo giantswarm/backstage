@@ -400,12 +400,12 @@ describe('ConnectorPage', () => {
 
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
-    expect(edit).toHaveAccessibleDescription(/Managed by GitOps/);
+    expect(edit).toHaveAccessibleDescription(/managed by GitOps/);
 
     // The tooltip opens from the wrapper: a disabled button takes no hover.
     await userEvent.hover(edit.parentElement!);
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      /Managed by GitOps/,
+      /managed by GitOps/,
     );
 
     // Where it is changed instead is in the menu.
@@ -444,7 +444,7 @@ describe('ConnectorPage', () => {
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
-    expect(edit).toHaveAccessibleDescription(/Managed by GitOps/);
+    expect(edit).toHaveAccessibleDescription(/managed by GitOps/);
   });
 
   it('keeps Edit and the menu in place without a muster session, disabled with the reason', async () => {

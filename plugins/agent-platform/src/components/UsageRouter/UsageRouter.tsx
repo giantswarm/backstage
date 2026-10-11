@@ -17,7 +17,7 @@ import { UsageColumn } from '../UsageColumn';
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { UsageScopeBar } from './UsageScopeBar';
 
-// The Usage screen's views: Overview · Cost · Connectors · Your sessions.
+// The Usage screen's views: Overview · Cost · Your sessions · Connectors.
 // Each answers one question and every metric has one home among them (see
 // `design-context/implementation/usage-metrics-ia.md`): Overview is the
 // platform's health and headline trends on one screen, Cost is the only place
@@ -43,11 +43,11 @@ const SESSIONS: UsageView = { path: 'conversations', title: 'Your sessions' };
 /**
  * The views on offer. Connectors only when a plugin contributed its content —
  * without muster there is nothing to show, and a tab over an empty page reads
- * as broken. Everyone's views first, the reader's own last.
+ * as broken. The core views first, the optional Connectors last.
  */
 function usageViews(hasConnectors: boolean): UsageView[] {
   return hasConnectors
-    ? [OVERVIEW, COST, CONNECTORS, SESSIONS]
+    ? [OVERVIEW, COST, SESSIONS, CONNECTORS]
     : [OVERVIEW, COST, SESSIONS];
 }
 
@@ -57,7 +57,7 @@ function hasSectionsIn(sections: ReactNode[] | undefined): boolean {
 
 /** The screen's one line under its title, in the shell's header. */
 const USAGE_DESCRIPTION =
-  "What agents cost, how much they're used, and how healthy the platform is.";
+  'Shows what agents cost, how much they are used and how healthy the platform is.';
 
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {

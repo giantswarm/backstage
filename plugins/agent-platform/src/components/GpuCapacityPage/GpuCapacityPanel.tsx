@@ -84,7 +84,7 @@ const NO_DEVICE_PLUGIN =
 const NO_POD_DATA =
   'The pods on this node could not be read, so scheduled GPU requests are unknown.';
 const HOST_NO_GPU_FIGURES =
-  "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
+  "This is the host a serving backend runs on, not a cluster node. The backend's API does not expose the accelerator, so there is no GPU product, count or device-plugin figure for it. Its budget is the host's memory as the serving layer sees it.";
 
 /**
  * What the node name's description says for a backend host whose backend is
@@ -804,14 +804,14 @@ export function GpuCapacityPanel({
       <Flex direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
           {columns.gpu &&
-            'Product and memory from gpu-feature-discovery labels; allocatable from the device plugin; free is allocatable minus the GPUs pods request.'}
+            'Product and memory come from gpu-feature-discovery labels, allocatable from the device plugin, and free is allocatable minus the GPUs that pods request.'}
           {columns.budget &&
-            ' Memory budget: what the serving layer fit-checks against, minus what served models reserve.'}
+            ' The memory budget is what the serving layer fit-checks against, minus what served models reserve.'}
           {hasHost &&
-            ' A backend host has no GPU figures (its API hides the accelerator): its budget is host memory, and accelerated marks a loaded model on the GPU.'}
+            ' A backend host has no GPU figures because its API hides the accelerator, so its budget is host memory, and accelerated marks a loaded model on the GPU.'}
           {columns.cache && ' Cached models skip the download when served.'}
           {hasIneligible &&
-            ` Not a serving target: outside the serving layer's node selector, or unable to mount the model cache; the reason is ${
+            ` A node is not a serving target when it is outside the serving layer's node selector or cannot mount the model cache; the reason is ${
               showReason ? 'under its name' : 'on hover'
             }.`}
         </Text>

@@ -84,10 +84,10 @@ export function agentManagerAbsenceReason(
     return undefined;
   }
   if (gate.isGitOpsOwned) {
-    return 'Applied from Git: edit, update its skills or remove it in the GitOps repository.';
+    return 'It is applied from Git, so edit it, update its skills or remove it in the GitOps repository.';
   }
   if (gate.isUnavailable) {
-    return 'Editing, updating skills and deleting need agent-manager via muster; this portal has no muster plugin.';
+    return 'Editing, updating skills and deleting need agent-manager via muster, and this portal has no muster plugin.';
   }
   if (gate.presence === 'missing') {
     return `Editing, updating skills and deleting need agent-manager, which muster on ${installation} does not list.`;

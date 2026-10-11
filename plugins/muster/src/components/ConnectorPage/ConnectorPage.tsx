@@ -4,6 +4,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
 } from 'react-router-dom';
@@ -31,6 +32,8 @@ import {
   MENU_WIDTH,
   RouteTabSpec,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
@@ -666,11 +669,27 @@ function ConnectorPageBody({
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const paths = useCustomizePaths();
+  const { search } = useLocation();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
 
   if (isLoadingInstallations || isLoading) {
+    // The loaded page's frame from the first paint — trail, tile, badge row,
+    // tab strip, facts column — with skeletons where the read will fill in
+    // (T95). Tools is the one tab every connector has; the rest join it.
     return (
-      <ShellPage title={key}>
+      <ShellPage
+        title={key}
+        breadcrumbs={[
+          { label: 'Customize', href: paths.customize },
+          { label: 'Connectors', href: paths.connectors },
+          { label: key },
+        ]}
+        leading={<ConnectorTile name={key} />}
+        badges={<ShellPageBadgeSkeleton />}
+        tabs={[{ id: 'tools', path: '', title: 'Tools' }]}
+        tabsSearch={search}
+        aside={<ShellPageFactsSkeleton />}
+      >
         <LoadingIndicator label="Reading the environment's connectors…" />
       </ShellPage>
     );

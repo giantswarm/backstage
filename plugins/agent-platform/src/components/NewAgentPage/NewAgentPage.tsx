@@ -319,7 +319,7 @@ function NewAgentPageContent() {
               placeholder={
                 'https://github.com:443\nhttps://*.githubusercontent.com'
               }
-              description="Hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One http(s) origin per line; a leading * matches one host label."
+              description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
               error={egressIssue}
             />
           </div>
@@ -329,12 +329,12 @@ function NewAgentPageContent() {
       <Text as="p" color="secondary">
         {edit &&
           (hasRepositories
-            ? 'Next: its skills and what it may do, then review and save.'
-            : 'Next: what it may do, then review and save.')}
+            ? 'Next come its skills and what it may do, then review and save.'
+            : 'Next comes what it may do, then review and save.')}
         {!edit &&
           (hasRepositories
-            ? 'Next: skills and what the agent may do, then review and create.'
-            : 'Next: what the agent may do, then review and create.')}
+            ? 'Next come skills and what the agent may do, then review and create.'
+            : 'Next comes what the agent may do, then review and create.')}
       </Text>
     </AgentWizardFrame>
   );

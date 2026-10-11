@@ -64,7 +64,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
     <>
       <FieldLabel
         label="Model"
-        description="What the agent thinks with. Admins add models under Customize → Models."
+        description="This is the model the agent thinks with. Admins add models under Customize → Models."
       />
       {error && <FieldErrorText id={errorId}>{error}</FieldErrorText>}
     </>

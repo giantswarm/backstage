@@ -9,10 +9,10 @@ export type ConnectorEditBlock = {
 };
 
 export const GITOPS_EDIT_REASON =
-  'Managed by GitOps: change it in Git — a portal edit would be reverted. “Edit in Git…” in the menu shows where.';
+  'It is managed by GitOps, so change it in Git; a portal edit would be reverted. “Edit in Git…” in the menu shows where.';
 
 export const GITOPS_FAMILY_EDIT_REASON =
-  'Managed by GitOps: its instances are changed in Git, not here.';
+  'It is managed by GitOps, so its instances are changed in Git, not here.';
 
 export const INSTANCES_EDIT_REASON =
   'Each instance is configured on its own (see Instances).';

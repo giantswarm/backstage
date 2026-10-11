@@ -43,7 +43,7 @@ describe('describeActiveInstallation', () => {
 
   it('names the one muster shown under "All installations", and that it is the home', () => {
     expect(describeActiveInstallation(instance({ scope: 'all' }))).toBe(
-      'One muster at a time: showing gazelle (home). Pin another environment in the page header.',
+      'This shows one muster at a time, currently gazelle (home). Pin another environment in the page header.',
     );
   });
 
@@ -58,7 +58,7 @@ describe('describeActiveInstallation', () => {
         }),
       ),
     ).toBe(
-      'One muster at a time: showing golem. Pin another environment in the page header.',
+      'This shows one muster at a time, currently golem. Pin another environment in the page header.',
     );
   });
 
@@ -66,7 +66,7 @@ describe('describeActiveInstallation', () => {
     // snail runs no muster (or the portal does not know it): the section fell
     // back to the home muster while the header still says snail.
     expect(describeActiveInstallation(instance({ scope: 'snail' }))).toBe(
-      'No muster on snail; showing gazelle.',
+      'There is no muster on snail, so this shows gazelle.',
     );
   });
 
@@ -98,7 +98,7 @@ describe('ActiveInstallationNote', () => {
       </MusterInstanceContext.Provider>,
     );
     expect(
-      screen.getByText(/One muster at a time: showing gazelle/),
+      screen.getByText(/This shows one muster at a time, currently gazelle/),
     ).toBeInTheDocument();
 
     rerender(

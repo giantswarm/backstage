@@ -319,6 +319,9 @@ function getColumnConfig(
     {
       id: 'actions',
       label: '',
+      // Room for Remove cache: shared out equally with the other columns,
+      // the cell was narrower than the button.
+      width: 148,
       cell: row => (
         <Cell>
           <Flex justify="end">

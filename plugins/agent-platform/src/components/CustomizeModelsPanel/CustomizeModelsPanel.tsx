@@ -71,7 +71,7 @@ function ModelHostingBanner() {
               Model hosting
             </Text>
             <Text variant="body-medium" color="secondary">
-              Run models on your own GPUs and manage what is served. For admins.
+              Admins can run models on their own GPUs and manage what is served.
             </Text>
           </Flex>
           <ChevronRightIcon aria-hidden fontSize="small" />

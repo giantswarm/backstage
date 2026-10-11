@@ -74,7 +74,7 @@ const SIGN_IN_CHOICES: Array<{
     title: 'Company login',
     recommended: true,
     description:
-      'Automatic, with the company account. Forwards each person’s platform identity token, which is not scoped to this server — only for apps your platform team runs.',
+      'Signs people in automatically with the company account and forwards their platform identity token, which is not scoped to this server. Use it only for apps your platform team runs.',
   },
   {
     value: 'own-account',
@@ -85,13 +85,13 @@ const SIGN_IN_CHOICES: Array<{
   {
     value: 'none',
     title: 'No sign-in',
-    description: 'For public servers, such as web search.',
+    description: 'Use it for public servers, such as web search.',
   },
   {
     value: 'sigv4',
     title: 'AWS request signing (SigV4)',
     description:
-      'For AWS-hosted servers. Muster signs every request with one shared AWS identity, not the person’s.',
+      'Use it for AWS-hosted servers. Muster signs every request with one shared AWS identity, not the person’s.',
   },
 ];
 
@@ -355,7 +355,7 @@ export function NewConnectorSignInPage() {
                 placeholder="read write"
                 description={
                   authFields.scopes.available
-                    ? "Space-separated, as the app's documentation names them."
+                    ? "Separate them with spaces, as the app's documentation names them."
                     : authFields.scopes.reason
                 }
               />
@@ -455,7 +455,7 @@ export function NewConnectorSignInPage() {
             value={audiencesRaw}
             onChange={onAudiencesChange}
             placeholder="my-backend-audience"
-            description="Comma-separated. Only if the backend checks a specific audience."
+            description="Separate them with commas. Fill this in only if the backend checks a specific audience."
           />
           <Text as="p" variant="body-small" color="secondary">
             A new audience takes effect only after muster restarts and people

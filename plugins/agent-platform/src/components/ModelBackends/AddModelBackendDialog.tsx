@@ -439,7 +439,7 @@ export function AddModelBackendDialog({
                   <TextField
                     label="Endpoint"
                     isRequired
-                    description="The base URL as model-manager reaches it, http(s)://host:port."
+                    description="Enter the base URL as model-manager reaches it, http(s)://host:port."
                     value={form.endpoint}
                     onChange={set('endpoint')}
                     {...fieldErrorProps(errorFor('endpoint'))}
@@ -478,7 +478,7 @@ export function AddModelBackendDialog({
                         <TextField
                           label="API server"
                           isRequired
-                          description="The target apiserver URL. It must trust the environment's Dex: every call presents your own token."
+                          description="Enter the target apiserver URL. It must trust the environment's Dex, because every call presents your own token."
                           value={form.apiServer}
                           onChange={set('apiServer')}
                           {...fieldErrorProps(errorFor('apiServer'))}
@@ -486,7 +486,7 @@ export function AddModelBackendDialog({
                         <TextAreaField
                           label="CA bundle"
                           isRequired
-                          description="The target apiserver's CA, PEM. Never credentials."
+                          description="Paste the target apiserver's CA as PEM, never credentials."
                           value={form.caBundle}
                           onChange={set('caBundle')}
                           {...fieldErrorProps(errorFor('caBundle'))}
@@ -496,7 +496,7 @@ export function AddModelBackendDialog({
                     <TextField
                       label="Serving namespace"
                       isRequired
-                      description="Where the InferenceServices, download Jobs and the cache live on the target."
+                      description="Enter where the InferenceServices, download Jobs and the cache live on the target."
                       value={form.servingNamespace}
                       onChange={set('servingNamespace')}
                       {...fieldErrorProps(errorFor('servingNamespace'))}
@@ -515,7 +515,7 @@ export function AddModelBackendDialog({
                     {isHost && (
                       <TextField
                         label="Agent endpoint"
-                        description="The base URL as agent pods reach it, when it differs from the endpoint."
+                        description="Enter the base URL as agent pods reach it, if it differs from the endpoint."
                         value={form.agentEndpoint}
                         onChange={set('agentEndpoint')}
                         {...fieldErrorProps(errorFor('agentEndpoint'))}
@@ -525,7 +525,7 @@ export function AddModelBackendDialog({
                       <>
                         <TextField
                           label="Discovery ConfigMap namespace"
-                          description="Where the model-serving discovery ConfigMap lives (default: the serving namespace)."
+                          description="Enter where the model-serving discovery ConfigMap lives; the default is the serving namespace."
                           value={form.discoveryNamespace}
                           onChange={set('discoveryNamespace')}
                         />
@@ -541,8 +541,8 @@ export function AddModelBackendDialog({
                       label="Credentials Secret"
                       description={
                         kind === 'kserve'
-                          ? 'A Secret in the serving namespace holding the Hugging Face token — its name, never the token.'
-                          : 'A Secret holding a token — its name, never the token. The host kinds present no bearer yet and refuse one.'
+                          ? 'Enter the name of the Secret in the serving namespace that holds the Hugging Face token, never the token itself.'
+                          : 'Enter the name of a Secret that holds a token, never the token itself. The host kinds present no bearer yet and refuse one.'
                       }
                       value={form.credentialsSecret}
                       onChange={set('credentialsSecret')}

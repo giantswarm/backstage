@@ -103,8 +103,8 @@ function SkillCreationAssistControl({ getTarget }: SkillCreationAssistProps) {
       <MetaAgentBanner
         agent={creator}
         label={`Write complex skills with ${creator.name}`}
-        title="Use this form for simple skills."
-        description={`Use the skill creator agent, ${creator.name}, for more complex, nested skills — with reference files, scripts or data. It writes the skill with you in a session and proposes it as a pull request.`}
+        title="Rather let an agent write it?"
+        description={`This form is for simple skills; for complex, multi-file ones, work with ${creator.name}.`}
         action={
           <Button
             variant="secondary"

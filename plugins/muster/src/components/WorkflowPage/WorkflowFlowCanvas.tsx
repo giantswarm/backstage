@@ -1,9 +1,22 @@
-import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import {
+  ReactNode,
+  RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { Button, Text } from '@backstage/ui';
+import { makeStyles, Portal } from '@material-ui/core';
+import Fullscreen from '@material-ui/icons/Fullscreen';
+import FullscreenExit from '@material-ui/icons/FullscreenExit';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import {
+  useMediaQueryMatch,
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -22,6 +35,7 @@ import {
   mapRunToGraph,
   PlacedGroup,
   PlacedNode,
+  StepExpansion,
   StepRunOverlay,
   StepRunStatus,
   stepToolEffects,
@@ -36,6 +50,7 @@ import {
   toolLine,
 } from './flowLabels';
 import { useLatestRun } from './useLatestRun';
+import { useContentAreaLeft, useInertBehind } from './contentAreaLayer';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
 import { WorkflowStepList } from './WorkflowStepList';
 
@@ -46,10 +61,17 @@ const EDGE_COLOR = 'var(--bui-fg-secondary)';
 /**
  * The canvas viewport never grows past this: a workflow may hold a hundred
  * steps, and the page below it (statistics, the advanced details) must stay
- * in reach. The
- * flow scrolls inside its box instead.
+ * in reach. The flow scrolls inside its box instead — or the reader takes it
+ * full screen.
  */
 export const FLOW_VIEWPORT_MAX_HEIGHT = 560;
+
+/**
+ * The room an expanded step's details get until the renderer has measured
+ * them (the layout is pure). A browser measures before the first paint, so
+ * this is only ever seen where nothing lays out — jsdom.
+ */
+export const DEFAULT_DETAILS_HEIGHT = 180;
 
 const buttonReset = {
   font: 'inherit',
@@ -63,6 +85,12 @@ const buttonReset = {
 };
 
 const useStyles = makeStyles({
+  // First, so the animations below can refer to it. Only where the reader
+  // has not asked for reduced motion.
+  '@keyframes fadeIn': {
+    from: { opacity: 0 },
+    to: { opacity: 1 },
+  },
   figure: {
     margin: 0,
     display: 'flex',
@@ -76,11 +104,62 @@ const useStyles = makeStyles({
     justifyContent: 'space-between',
     gap: '4px 16px',
   },
+  captionEnd: {
+    display: 'inline-flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '4px 16px',
+  },
   legend: {
     display: 'inline-flex',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: 8,
+  },
+  // Full screen: the flow takes the shell's whole content area — the full
+  // viewport height beside the nav rail, which stays in view and in use (its
+  // left edge is the content area's, measured: `useContentAreaLeft`) — as a
+  // layer of its own, with the workflow's name and the way back on top. 16px
+  // gutters, so a narrow window keeps its edges.
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1300,
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    padding: 16,
+    backgroundColor: 'var(--bui-bg-app)',
+    '&:focus': { outline: 'none' },
+    '@media (prefers-reduced-motion: no-preference)': {
+      animation: '$fadeIn 120ms ease-out',
+    },
+  },
+  overlayHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    minWidth: 0,
+  },
+  overlayTitle: {
+    margin: 0,
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0, 0, 0, 0)',
+    whiteSpace: 'nowrap',
+    border: 0,
   },
   // The canvas never widens nor over-lengthens the page: a wide flow
   // (parallel siblings, the cleanup lane) scrolls sideways and a long one
@@ -95,6 +174,19 @@ const useStyles = makeStyles({
     backgroundImage:
       'radial-gradient(var(--bui-border-2) 1px, transparent 1px)',
     backgroundSize: '20px 20px',
+  },
+  // Full screen: the figure and its box take the layer's whole height. After
+  // `figure` and `scroller` on purpose — one sheet, same specificity, so the
+  // later rule wins: declared before them, the box kept its inline cap
+  // (70vh) and the bottom third of the layer stayed empty (T88c).
+  figureFull: {
+    flex: '1 1 auto',
+    minHeight: 0,
+  },
+  scrollerFull: {
+    flex: '1 1 auto',
+    minHeight: 0,
+    maxHeight: 'none',
   },
   stage: {
     position: 'relative',
@@ -150,20 +242,38 @@ const useStyles = makeStyles({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
+  // The step's box: its button (number, name, tool, last run) on top and,
+  // while expanded, its details under it — the layout gave the box the room.
   node: {
-    ...buttonReset,
     position: 'absolute',
     boxSizing: 'border-box',
     display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '0 14px',
+    flexDirection: 'column',
     background: 'var(--bui-bg-neutral-1)',
     border: '1px solid var(--bui-border-2)',
     borderRadius: 12,
     boxShadow: '0 1px 2px rgba(0, 38, 69, 0.05)',
     color: 'var(--bui-fg-primary)',
     '&:hover': { borderColor: 'var(--bui-fg-secondary)' },
+  },
+  nodeHead: {
+    ...buttonReset,
+    flex: 'none',
+    boxSizing: 'border-box',
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '0 14px',
+    border: 0,
+    borderRadius: 11,
+    background: 'transparent',
+  },
+  // The open details, as they appear in the box.
+  details: {
+    '@media (prefers-reduced-motion: no-preference)': {
+      animation: '$fadeIn 120ms ease-out',
+    },
   },
   selected: {
     borderColor: 'var(--bui-fg-primary)',
@@ -389,15 +499,26 @@ function Markers({
   );
 }
 
-interface StepProps {
+/** What a step's box needs to expand in place. */
+interface Expandable {
+  /** Whether this step's details are open in its box. */
+  expanded: boolean;
+  /** The details' id, for the step's `aria-controls`. */
+  detailsId: string;
+  /** The open details, rendered under the step's button. */
+  details?: ReactNode;
+  onToggle: (key: string) => void;
+  /** Registers the step's button, so focus can return to it. */
+  buttonRef: (key: string, element: HTMLButtonElement | null) => void;
+}
+
+interface StepProps extends Expandable {
   node: FlowStepNode;
   prefixes: ServerPrefixInfo[];
   overlay?: StepRunOverlay;
   effect?: ToolEffect;
   /** The "Only if …" gate on the edge into this step. */
   gate?: string;
-  selected: boolean;
-  onSelect: (key: string) => void;
 }
 
 function StepNode({
@@ -407,18 +528,20 @@ function StepNode({
   overlay,
   effect,
   gate,
-  selected,
-  onSelect,
+  expanded,
+  detailsId,
+  details,
+  onToggle,
+  buttonRef,
 }: StepProps & { box: PlacedNode }) {
   const classes = useStyles();
   const { glyph, line } = toolLine(node.tool, prefixes);
   let stateClass = '';
-  if (selected) stateClass = classes.selected;
+  if (expanded) stateClass = classes.selected;
   else if (overlay?.status === 'failed') stateClass = classes.nodeFailed;
   else if (quietStatus(overlay)) stateClass = classes.nodeQuiet;
   return (
-    <button
-      type="button"
+    <div
       className={`${classes.node} ${stateClass}`}
       style={{
         left: box.x,
@@ -426,58 +549,72 @@ function StepNode({
         width: box.width,
         height: box.height,
       }}
-      aria-pressed={selected}
-      aria-label={accessibleName(node, [
-        line,
-        gate,
-        effect && (effect === 'changes' ? 'changes things' : 'only reads'),
-        node.allowFailure && 'may fail',
-        overlay && runSpoken(overlay),
-      ])}
-      onClick={() => onSelect(node.key)}
-      data-step-key={node.key}
-      data-run-status={overlay?.status}
-      data-title-fit={box.titleFit}
+      data-node={node.key}
     >
       {node.number && <span className={classes.number}>{node.number}</span>}
       <Markers effect={effect} allowFailure={node.allowFailure} />
-      <span className={classes.tile}>{glyph}</span>
-      <span className={classes.text}>
-        <span
-          className={classes.title}
-          title={titleTooltip(node.title, box.titleFit)}
-        >
-          {node.title}
-        </span>
-        {(line || overlay) && (
-          <span className={classes.subRow}>
-            {line && (
-              <span className={classes.sub} title={line}>
-                {line}
-              </span>
-            )}
-            <RunBadge overlay={overlay} />
+      <button
+        type="button"
+        ref={element => buttonRef(node.key, element)}
+        className={classes.nodeHead}
+        style={{ height: box.height - box.detailsHeight - 2 }}
+        aria-expanded={expanded}
+        aria-controls={expanded ? detailsId : undefined}
+        aria-label={accessibleName(node, [
+          line,
+          gate,
+          effect && (effect === 'changes' ? 'changes things' : 'only reads'),
+          node.allowFailure && 'may fail',
+          overlay && runSpoken(overlay),
+        ])}
+        onClick={() => onToggle(node.key)}
+        data-step-key={node.key}
+        data-run-status={overlay?.status}
+        data-title-fit={box.titleFit}
+      >
+        <span className={classes.tile}>{glyph}</span>
+        <span className={classes.text}>
+          <span
+            className={classes.title}
+            title={titleTooltip(node.title, box.titleFit)}
+          >
+            {node.title}
           </span>
-        )}
-      </span>
-    </button>
+          {(line || overlay) && (
+            <span className={classes.subRow}>
+              {line && (
+                <span className={classes.sub} title={line}>
+                  {line}
+                </span>
+              )}
+              <RunBadge overlay={overlay} />
+            </span>
+          )}
+        </span>
+      </button>
+      {expanded && details}
+    </div>
   );
 }
 
-/** A forEach/parallel group (its head selects the container step), or the cleanup lane. */
+/**
+ * A forEach/parallel group (its head expands the container step's details
+ * under it), or the cleanup lane.
+ */
 function Group({
   group,
   overlay,
   gate,
-  selected,
-  onSelect,
+  expanded,
+  detailsId,
+  details,
+  onToggle,
+  buttonRef,
 }: {
   group: PlacedGroup;
   overlay?: StepRunOverlay;
   gate?: string;
-  selected: boolean;
-  onSelect: (key: string) => void;
-}) {
+} & Expandable) {
   const classes = useStyles();
   const node = group.node;
   const title = node?.title ?? 'If it fails';
@@ -507,7 +644,7 @@ function Group({
   );
   let stateClass = '';
   if (group.kind === 'onFailure') stateClass = classes.lane;
-  else if (selected) stateClass = classes.selected;
+  else if (expanded) stateClass = classes.selected;
   else if (quietStatus(overlay)) stateClass = classes.nodeQuiet;
   return (
     <div
@@ -523,24 +660,29 @@ function Group({
       data-title-fit={group.titleFit}
     >
       {node ? (
-        <button
-          type="button"
-          className={`${classes.groupHead} ${
-            group.kind === 'parallel' ? classes.headCentered : ''
-          }`}
-          style={{ height: group.headerHeight - 4 }}
-          aria-pressed={selected}
-          aria-label={accessibleName(node, [
-            group.label,
-            gate,
-            node.allowFailure && 'may fail',
-            overlay && runSpoken(overlay),
-          ])}
-          onClick={() => onSelect(node.key)}
-          data-step-key={node.key}
-        >
-          {content}
-        </button>
+        <div data-node={node.key}>
+          <button
+            type="button"
+            ref={element => buttonRef(node.key, element)}
+            className={`${classes.groupHead} ${
+              group.kind === 'parallel' ? classes.headCentered : ''
+            }`}
+            style={{ height: group.headerHeight - 4 }}
+            aria-expanded={expanded}
+            aria-controls={expanded ? detailsId : undefined}
+            aria-label={accessibleName(node, [
+              group.label,
+              gate,
+              node.allowFailure && 'may fail',
+              overlay && runSpoken(overlay),
+            ])}
+            onClick={() => onToggle(node.key)}
+            data-step-key={node.key}
+          >
+            {content}
+          </button>
+          {expanded && details}
+        </div>
       ) : (
         <div
           className={`${classes.groupHead} ${classes.laneHead}`}
@@ -563,6 +705,48 @@ export interface WorkflowFlowCanvasProps {
   hasSession: boolean;
 }
 
+/** "Step 2 · Apply the manifests", "Cleanup step · Roll back". */
+function stepHeading(node: FlowStepNode): string {
+  return node.lane === 'cleanup'
+    ? `Cleanup step · ${node.title}`
+    : `Step ${node.number} · ${node.title}`;
+}
+
+/**
+ * The open step's details: their measured height (until the first
+ * measurement, `DEFAULT_DETAILS_HEIGHT`), kept current as they change — the
+ * technical fold-out opening, a window resized. Measured in a layout effect,
+ * so the box has its room before the browser paints.
+ */
+function useDetailsHeight(
+  ref: RefObject<HTMLElement>,
+  expandedKey: string | undefined,
+  remountKey: unknown,
+): number {
+  const [measured, setMeasured] = useState<StepExpansion>();
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!expandedKey || !element) return undefined;
+    const measure = () => {
+      const height = element.offsetHeight;
+      if (height <= 0) return;
+      setMeasured(current =>
+        current?.key === expandedKey && current.height === height
+          ? current
+          : { key: expandedKey, height },
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, expandedKey, remountKey]);
+  return measured && measured.key === expandedKey
+    ? measured.height
+    : DEFAULT_DETAILS_HEIGHT;
+}
+
 /**
  * The workflow drawn as a flow, from its definition only: the steps in order
  * on one spine, forEach and parallel steps as groups, a condition as an
@@ -573,10 +757,14 @@ export interface WorkflowFlowCanvasProps {
  * skipped, not run) with durations where muster recorded them, and each
  * step's tool says whether it only reads or changes things.
  *
- * The flow is the page's only step view: every step (and group head) is a
- * button that opens its details under the canvas — plain first, technical
- * information behind the step's own fold-out. The viewport is capped, so a
- * hundred-step workflow scrolls inside its box instead of burying the page.
+ * The flow is the page's only step view. A step (or group head) expands in
+ * place: its box grows to hold its details — plain first, technical
+ * information behind the step's own fold-out — and the layout moves what
+ * follows down to make room. One step at a time; pressing it again, Escape,
+ * or a click on the canvas beside the steps folds it. The viewport is
+ * capped, so a hundred-step workflow scrolls inside its box instead of
+ * burying the page; "Full screen" gives the flow the shell's whole content
+ * area beside the nav rail (Escape or "Exit full screen" brings it back).
  *
  * At phone width the same graph, overlay and effects render as a step list
  * instead (`WorkflowStepList`): no sideways flow, no nested scroll box.
@@ -593,24 +781,130 @@ export function WorkflowFlowCanvas({
   const musterApi = useApi(musterApiRef);
   const isPhone = usePhoneLayout();
   const isTouch = useTouchInput();
-  const [selectedKey, setSelectedKey] = useState<string>();
+  const reduceMotion = useMediaQueryMatch('(prefers-reduced-motion: reduce)');
+  const idPrefix = useId();
+  const [expandedKey, setExpandedKey] = useState<string>();
+  const [fullScreenChosen, setFullScreen] = useState(false);
+  // A phone has no canvas, so nothing to take full screen.
+  const fullScreen = fullScreenChosen && !isPhone;
 
   const graph = useMemo(
     () => buildWorkflowGraph(steps, onFailure),
     [steps, onFailure],
   );
-  const layout = useMemo(() => layoutWorkflowGraph(graph), [graph]);
+  const detailsRef = useRef<HTMLDivElement>(null);
+  const detailsHeight = useDetailsHeight(detailsRef, expandedKey, fullScreen);
+  // Folded, for where the flow opens; with the open step's details, for
+  // drawing. The expansion only ever adds height, so the spine stays put.
+  const foldedLayout = useMemo(() => layoutWorkflowGraph(graph), [graph]);
+  const layout = useMemo(
+    () =>
+      expandedKey
+        ? layoutWorkflowGraph(graph, {
+            key: expandedKey,
+            height: detailsHeight,
+          })
+        : foldedLayout,
+    [graph, foldedLayout, expandedKey, detailsHeight],
+  );
+
   const viewportRef = useRef<HTMLDivElement>(null);
   // A flow wider than its box (a wide parallel group, the cleanup lane)
   // would open at its left edge, with the spine half outside the box. Open
   // it on the spine instead: the steps in order first, the siblings and the
-  // lane a sideways scroll away. Once per layout, never against the
-  // reader's own scrolling.
+  // lane a sideways scroll away. Once per definition and per box (inline or
+  // full screen), never against the reader's own scrolling — expanding a
+  // step does not move the view sideways.
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || layout.width <= viewport.clientWidth) return;
-    viewport.scrollLeft = Math.max(0, layout.spineX - viewport.clientWidth / 2);
-  }, [layout]);
+    if (!viewport || foldedLayout.width <= viewport.clientWidth) return;
+    viewport.scrollLeft = Math.max(
+      0,
+      foldedLayout.spineX - viewport.clientWidth / 2,
+    );
+  }, [foldedLayout, fullScreen]);
+
+  // The steps' buttons, so folding by Escape can put the focus back on one.
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const buttonRef = useCallback(
+    (key: string, element: HTMLButtonElement | null) => {
+      if (element) buttons.current.set(key, element);
+      else buttons.current.delete(key);
+    },
+    [],
+  );
+  const toggle = useCallback(
+    (key: string) =>
+      setExpandedKey(current => (current === key ? undefined : key)),
+    [],
+  );
+
+  // The open details come into view — the box grew under the step pressed,
+  // possibly past the viewport's edge. Smoothly, unless the reader asked for
+  // reduced motion.
+  useEffect(() => {
+    if (!expandedKey) return;
+    detailsRef.current?.scrollIntoView?.({
+      block: 'nearest',
+      inline: 'nearest',
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    });
+  }, [expandedKey, detailsHeight, fullScreen, reduceMotion]);
+
+  // A click on the canvas beside the steps folds the open one. A listener,
+  // not a handler on the stage: the stage is no control (Escape is the
+  // keyboard's way), and a click inside a step's box — its details' fold-out
+  // among them — keeps it open.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !expandedKey) return undefined;
+    const onClick = (event: MouseEvent) => {
+      if (!(event.target as Element | null)?.closest?.('[data-node]')) {
+        setExpandedKey(undefined);
+      }
+    };
+    viewport.addEventListener('click', onClick);
+    return () => viewport.removeEventListener('click', onClick);
+  }, [expandedKey, fullScreen]);
+
+  // Escape folds the open step first (focus back on it), then leaves full
+  // screen. Within the layer in full screen, within the flow inline — never
+  // on the rail beside the layer, whose own menus close on Escape.
+  const figureRef = useRef<HTMLElement>(null);
+  const [layer, setLayer] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const target: HTMLElement | null = fullScreen ? layer : figureRef.current;
+    if (!target || (!fullScreen && !expandedKey)) return undefined;
+    const onKeyDown = (event: Event) => {
+      if ((event as KeyboardEvent).key !== 'Escape') return;
+      if (expandedKey) {
+        event.stopPropagation();
+        setExpandedKey(undefined);
+        buttons.current.get(expandedKey)?.focus();
+      } else if (fullScreen) {
+        event.stopPropagation();
+        setFullScreen(false);
+      }
+    };
+    target.addEventListener('keydown', onKeyDown, true);
+    return () => target.removeEventListener('keydown', onKeyDown, true);
+  }, [expandedKey, fullScreen, layer]);
+
+  // Full screen covers the content area: the page behind it is inert, the
+  // rail beside it stays usable; focus moves into the layer, and comes back
+  // to "Full screen" when it closes.
+  useInertBehind(layer, fullScreen);
+  const contentLeft = useContentAreaLeft(fullScreen);
+  const toggleButtonRef = useRef<HTMLButtonElement>(null);
+  const wasFullScreen = useRef(false);
+  useEffect(() => {
+    if (fullScreen) {
+      layer?.focus();
+    } else if (wasFullScreen.current) {
+      toggleButtonRef.current?.focus();
+    }
+    wasFullScreen.current = fullScreen;
+  }, [fullScreen, layer]);
 
   const runs = useLatestRun(name, installation, hasSession);
   const latest = runs.latest;
@@ -637,7 +931,7 @@ export function WorkflowFlowCanvas({
   );
   const hasEffects = Object.keys(effects).length > 0;
 
-  const selected = selectedKey ? findFlowStep(graph, selectedKey) : undefined;
+  const expanded = expandedKey ? findFlowStep(graph, expandedKey) : undefined;
 
   if (graph.main.length === 0 && graph.onFailure.length === 0) {
     return (
@@ -658,28 +952,19 @@ export function WorkflowFlowCanvas({
       : `Last run ${when} · ${outcome.label} — muster recorded no per-step results for it.`;
   }
 
-  const toggle = (key: string) =>
-    setSelectedKey(current => (current === key ? undefined : key));
   const overlayOf = (key: string) => (hasOverlay ? overlay[key] : undefined);
+  const detailsId = (key: string) => `${idPrefix}-details-${key}`;
 
-  const caption = (
-    <figcaption className={classes.caption}>
+  const legend = hasEffects && (
+    <span className={classes.legend}>
       <Text as="span" variant="body-small" color="secondary">
-        {runCaption ? `${runCaption} ` : ''}
-        {isTouch ? 'Tap' : 'Select'} a step to see its details.
+        What each step's tool does:
       </Text>
-      {hasEffects && (
-        <span className={classes.legend}>
-          <Text as="span" variant="body-small" color="secondary">
-            What each step's tool does:
-          </Text>
-          <span className={classes.marker}>Reads</span>
-          <span className={`${classes.marker} ${classes.markerChanges}`}>
-            Changes things
-          </span>
-        </span>
-      )}
-    </figcaption>
+      <span className={classes.marker}>Reads</span>
+      <span className={`${classes.marker} ${classes.markerChanges}`}>
+        Changes things
+      </span>
+    </span>
   );
 
   // A phone gets the steps as a list, not the canvas: a parallel group or
@@ -690,7 +975,13 @@ export function WorkflowFlowCanvas({
   if (isPhone) {
     return (
       <figure className={classes.figure} data-testid="workflow-step-list">
-        {caption}
+        <figcaption className={classes.caption}>
+          <Text as="span" variant="body-small" color="secondary">
+            {runCaption ? `${runCaption} ` : ''}
+            {isTouch ? 'Tap' : 'Select'} a step to see its details.
+          </Text>
+          {legend}
+        </figcaption>
         <WorkflowStepList
           graph={graph}
           prefixes={prefixes}
@@ -701,6 +992,53 @@ export function WorkflowFlowCanvas({
       </figure>
     );
   }
+
+  const caption = (
+    <figcaption className={classes.caption}>
+      <Text as="span" variant="body-small" color="secondary">
+        {runCaption ? `${runCaption} ` : ''}
+        {isTouch ? 'Tap' : 'Select'} a step to see its details.
+      </Text>
+      <span className={classes.captionEnd}>
+        {legend}
+        {!fullScreen && (
+          <Button
+            ref={toggleButtonRef}
+            variant="secondary"
+            size="small"
+            iconStart={<Fullscreen fontSize="small" />}
+            onPress={() => setFullScreen(true)}
+          >
+            Full screen
+          </Button>
+        )}
+      </span>
+    </figcaption>
+  );
+
+  // The open step's details, in its box under its button. The wrapper is
+  // what the layout's room is measured from.
+  const details = expanded && (
+    <div ref={detailsRef} className={classes.details}>
+      <WorkflowStepDetails
+        variant="inline"
+        id={detailsId(expanded.node.key)}
+        context={expanded}
+        stepIds={graph.stepIds}
+        prefixes={prefixes}
+        installation={installation}
+        overlay={overlayOf(expanded.node.key)}
+        effect={effects[expanded.node.key]}
+      />
+    </div>
+  );
+  const expandable = (key: string): Expandable => ({
+    expanded: expandedKey === key,
+    detailsId: detailsId(key),
+    details: expandedKey === key ? details : undefined,
+    onToggle: toggle,
+    buttonRef,
+  });
 
   // Reading (and tab) order follows the flow: each group's head before its
   // steps, the cleanup lane last. Groups paint before their steps, so the
@@ -723,8 +1061,7 @@ export function WorkflowFlowCanvas({
         overlay={overlayOf(key)}
         effect={effects[key]}
         gate={gateByKey.get(key)}
-        selected={selectedKey === key}
-        onSelect={toggle}
+        {...expandable(key)}
       />,
     );
   };
@@ -737,8 +1074,7 @@ export function WorkflowFlowCanvas({
         group={group}
         overlay={group.node ? overlayOf(group.node.key) : undefined}
         gate={gateByKey.get(key)}
-        selected={selectedKey === key}
-        onSelect={toggle}
+        {...expandable(key)}
       />,
     );
   };
@@ -755,12 +1091,18 @@ export function WorkflowFlowCanvas({
     graph.onFailure.forEach(node => pushNode(node.key));
   }
 
-  return (
-    <figure className={classes.figure} data-testid="workflow-flow-canvas">
+  const figure = (
+    <figure
+      ref={figureRef}
+      className={`${classes.figure} ${fullScreen ? classes.figureFull : ''}`}
+      data-testid="workflow-flow-canvas"
+    >
       {caption}
       <div
         ref={viewportRef}
-        className={classes.scroller}
+        className={`${classes.scroller} ${
+          fullScreen ? classes.scrollerFull : ''
+        }`}
         role="group"
         aria-label={`Flow of the workflow's ${steps.length} step${
           steps.length === 1 ? '' : 's'
@@ -826,18 +1168,47 @@ export function WorkflowFlowCanvas({
           ))}
         </div>
       </div>
-      {selected && (
-        <WorkflowStepDetails
-          key={selected.node.key}
-          context={selected}
-          stepIds={graph.stepIds}
-          prefixes={prefixes}
-          installation={installation}
-          overlay={overlayOf(selected.node.key)}
-          effect={effects[selected.node.key]}
-          onClose={() => setSelectedKey(undefined)}
-        />
-      )}
+      {/* Says which step opened, for a screen reader; the step's button
+          also says it is expanded. */}
+      <span role="status" className={classes.srOnly}>
+        {expanded ? `${stepHeading(expanded.node)}: details shown.` : ''}
+      </span>
     </figure>
+  );
+
+  if (!fullScreen) {
+    return figure;
+  }
+  // In <body>, outside the page: a fixed layer is not caught by a
+  // transformed ancestor, and the page behind (the content area) can be made
+  // inert without the layer.
+  return (
+    <Portal>
+      <div
+        ref={setLayer}
+        className={classes.overlay}
+        style={{ left: contentLeft }}
+        // Not modal: the nav rail beside it stays in use.
+        role="dialog"
+        aria-label={`${name}: flow, full screen`}
+        tabIndex={-1}
+        data-testid="workflow-flow-full-screen"
+      >
+        <div className={classes.overlayHead}>
+          <Text as="h2" variant="title-small" className={classes.overlayTitle}>
+            {name}
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            iconStart={<FullscreenExit fontSize="small" />}
+            onPress={() => setFullScreen(false)}
+          >
+            Exit full screen
+          </Button>
+        </div>
+        {figure}
+      </div>
+    </Portal>
   );
 }

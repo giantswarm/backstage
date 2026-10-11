@@ -130,9 +130,20 @@ async function openServeDialog(page: Page) {
   await page.getByRole('button', { name: 'Serve model' }).click();
   const dialog = page.getByRole('dialog', { name: 'Serve model' });
   await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole('button', { name: /Installation and backend/ })
-    .click();
+  // One serving backend on the installation is no choice: the dialog offers
+  // no picker and serves there.
+  const picker = dialog.getByRole('button', {
+    name: /Environment and backend/,
+  });
+  if ((await picker.count()) === 0) {
+    const kserve = await page
+      .getByRole('article')
+      .filter({ has: page.getByRole('heading', { name: /^KServe/ }) })
+      .count();
+    test.skip(kserve === 0, 'the lab has no KServe backend (platform.serving)');
+    return dialog;
+  }
+  await picker.click();
   const offered =
     (await page.getByRole('option', { name: TARGET }).count()) > 0;
   if (!offered) {

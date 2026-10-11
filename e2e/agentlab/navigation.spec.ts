@@ -1,4 +1,4 @@
-import { expect, open, test } from './fixtures';
+import { expect, extensionDisabled, open, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -24,9 +24,16 @@ test('the sidebar links to every enabled page', async ({ admin }) => {
   ] as const) {
     await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
   }
-  // The ai-chat drawer is enabled (app-config `api:ai-chat/drawer`), so the
-  // classic sidebar's AI Assistant toggles it: a button, not a link.
-  await expect(nav.getByRole('button', { name: 'AI Assistant' })).toBeVisible();
+  // Where the deployment mounts the ai-chat drawer (app-config
+  // `api:ai-chat/drawer`), the classic sidebar's AI Assistant toggles it: a
+  // button, not a link. The agent-platform chart's app-config turns it off,
+  // and then the sidebar offers none.
+  const assistant = nav.getByRole('button', { name: 'AI Assistant' });
+  if (await extensionDisabled(admin, 'api:ai-chat/drawer')) {
+    await expect(assistant).toHaveCount(0);
+  } else {
+    await expect(assistant).toBeVisible();
+  }
   // The lab configures a main auth provider, so cluster access is offered.
   await expect(
     nav.getByRole('button', { name: 'Cluster access' }),

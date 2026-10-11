@@ -318,6 +318,8 @@ describe('LlmByAgentTable at phone width', () => {
     await user.click(
       screen.getByRole('button', { name: 'What Removed means' }),
     );
-    expect(await screen.findByText(/Unknown to this portal/)).toBeVisible();
+    expect(
+      await screen.findByText(/This agent is unknown to this portal/),
+    ).toBeVisible();
   });
 });

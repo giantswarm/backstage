@@ -10,7 +10,7 @@ import {
   railToolLabel,
   readOnlyFits,
   readOnlySelectors,
-  withAccessLevel,
+  materialize,
   withConnectorChoice,
 } from './connectorChoice';
 
@@ -41,10 +41,14 @@ const JIRA = bucket('jira', [
 const OFFERED = new Set(['preset:read-only', 'preset:infra', 'preset:full']);
 
 describe('the access level', () => {
-  it('reads one offered preset as that preset, and anything else as own picks', () => {
+  it('reads an offered preset alone as that preset, and anything else as own picks', () => {
+    expect(accessLevelOf(['preset:read-only'], false, OFFERED)).toBe(
+      'preset:read-only',
+    );
+    // A preset with more beside it (the T81 shape) is shown as own picks.
     expect(
       accessLevelOf(['preset:read-only', 'server:x'], false, OFFERED),
-    ).toBe('preset:read-only');
+    ).toBe(ACCESS_OWN_PICKS);
     expect(accessLevelOf(['server:x'], false, OFFERED)).toBe(ACCESS_OWN_PICKS);
     expect(accessLevelOf([], false, OFFERED)).toBe(ACCESS_OWN_PICKS);
     // Several presets, or one not offered, cannot be a radio's answer.
@@ -55,16 +59,6 @@ describe('the access level', () => {
       ACCESS_OWN_PICKS,
     );
     expect(accessLevelOf([], true, OFFERED)).toBe(ACCESS_CHAT_ONLY);
-  });
-
-  it('swaps the base and keeps the picks; Full gateway stands alone', () => {
-    const current = ['preset:read-only', 'preset:infra', 'server:jira'];
-    expect(withAccessLevel(current, 'preset:infra')).toEqual([
-      'preset:infra',
-      'server:jira',
-    ]);
-    expect(withAccessLevel(current, ACCESS_OWN_PICKS)).toEqual(['server:jira']);
-    expect(withAccessLevel(current, 'preset:full')).toEqual(['preset:full']);
   });
 });
 
@@ -187,5 +181,56 @@ describe('the Selected rail', () => {
     expect(railToolLabel('tool:core_service_list')).toBe('core_service_list');
     expect(railToolLabel('workflow:triage')).toBe('triage');
     expect(railToolLabel('server:gone')).toBe('server:gone');
+  });
+});
+
+describe('a preset written out', () => {
+  const groups: CatalogueGroup[] = [
+    {
+      key: 'registered',
+      title: 'Registered servers',
+      servers: [
+        JIRA,
+        bucket('github', [changes('x_github_merge'), changes('x_github_pr')]),
+        bucket('docs', [reads('x_docs_get'), reads('x_docs_find')]),
+      ],
+      platformAdministration: [],
+      workflows: [],
+    },
+  ];
+  const tool = (name: string) =>
+    [...JIRA.tools, ...groups[0].servers.flatMap(b => b.tools)].find(
+      t => t.name === name,
+    )!;
+
+  it('shows each connector as read-only, all or the tools it covers, then the rest', () => {
+    expect(
+      materialize(
+        [
+          tool('x_jira_get_issue'),
+          tool('x_jira_search'),
+          tool('x_github_merge'),
+          tool('x_github_pr'),
+          tool('x_docs_get'),
+          { name: 'workflow_triage', kind: 'workflow' },
+          { name: 'x_unknown_thing', kind: 'tool' },
+        ],
+        groups,
+      ),
+    ).toEqual([
+      // docs: only read-only tools, all of them covered — Read-only, not All.
+      'tool:x_docs_get',
+      'server:github',
+      'tool:x_jira_get_issue',
+      'tool:x_jira_search',
+      'workflow:triage',
+      'tool:x_unknown_thing',
+    ]);
+  });
+
+  it('covers part of a connector as those tools, which reads as partial', () => {
+    const written = materialize([tool('x_jira_create_issue')], groups);
+    expect(written).toEqual(['tool:x_jira_create_issue']);
+    expect(connectorState(JIRA, new Set(written)).choice).toBe('partial');
   });
 });

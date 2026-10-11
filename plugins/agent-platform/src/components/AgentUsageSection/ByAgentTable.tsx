@@ -333,7 +333,7 @@ export function ByAgentTable({
             {installation ?? 'this environment'}&apos;s observed cost per token
             — <strong>a blend across every model</strong>, not each agent&apos;s
             own. Session pages use each session&apos;s own model rate, so the
-            figures differ. Not a billed figure.
+            figures differ. It is not a billed figure.
             {anyReported &&
               ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
           </>

@@ -253,8 +253,8 @@ function SkillsSection({
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
-                ? 'Deployed from GitOps: adding skills opens a pull request there.'
-                : 'Deployed from GitOps: add skills there.'}
+                ? 'It is deployed from GitOps, so adding skills opens a pull request there.'
+                : 'It is deployed from GitOps, so add skills there.'}
             </Text>
           )}
           {onAddSkills && (
@@ -318,7 +318,7 @@ function ConnectorsSection({
     reach =
       direct.length > 0 || subAgents.length > 0
         ? 'Uses only what is listed below'
-        : 'No connectors — only its instructions and skills.';
+        : 'It has no connectors, only its instructions and skills.';
   } else if (isReading) {
     reach = 'Reading what it can reach…';
   } else {
@@ -397,13 +397,13 @@ function InstructionsSection({
   } else if (source) {
     body = (
       <Text variant="body-medium" color="secondary">
-        Kept in a separate configuration, named under Technical details.
+        It is kept in a separate configuration, named under Technical details.
       </Text>
     );
   } else {
     body = (
       <Text variant="body-medium" color="secondary">
-        None set — the runtime's defaults apply.
+        Nothing is set, so the runtime's defaults apply.
       </Text>
     );
   }

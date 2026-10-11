@@ -306,23 +306,23 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
         <Stat
           label="Tool calls"
           value={formatCount(totals.calls)}
-          hint={`Calls dispatched to connectors ${windowNote}, from every client.`}
+          hint={`Counts calls dispatched to connectors ${windowNote}, from every client.`}
         />
         <Stat
           label="Error ratio"
           value={errorPct !== null ? `${errorPct}%` : '—'}
           tone={errorTone}
-          hint="Share of calls that failed to dispatch or returned an error. Amber above 5%."
+          hint="Shows the share of calls that failed to dispatch or returned an error. Amber above 5%."
         />
         <Stat
           label="p95 latency"
           value={formatSeconds(totals.p95_seconds)}
-          hint={`95th-percentile connector response time ${windowNote}. Estimated from a histogram — read it as a range.`}
+          hint={`Shows the 95th-percentile connector response time ${windowNote}. It is estimated from a histogram, so read it as a range.`}
         />
         <Stat
           label="Distinct tools"
           value={totals.distinct_tools}
-          hint={`Tools called at least once ${windowNote}.`}
+          hint={`Counts the tools called at least once ${windowNote}.`}
         />
       </Box>
 
@@ -579,7 +579,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description="Every caller's tool calls, not only yours, over the last 30 days."
+        description="This covers every caller's tool calls, not only yours, over the last 30 days."
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

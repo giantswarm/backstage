@@ -47,24 +47,39 @@ test('a bare /agent-platform lands on Sessions', async ({ admin }) => {
   ).toBeVisible();
 });
 
-test('the old MCP Servers address redirects to Connectors', async ({
+test('the old MCP Servers address lands on Customize · Connectors', async ({
   admin,
 }) => {
   await open(admin, '/agent-platform/mcp-servers');
-  await expect(admin).toHaveURL(/\/agent-platform\/connectors$/);
+  await expect(admin).toHaveURL(/\/customize\/connectors$/);
+  await expect(
+    admin.getByRole('main').getByRole('tab', { name: /^Connectors/ }),
+  ).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the rail reaches the shell’s sections', async ({ admin }) => {
   await open(admin, '/agent-platform');
   const nav = rail(admin);
+  // The expanded rail: its items, Search (a button: the command palette)
+  // after New session, and the recent sessions under them with the link to
+  // them all (the phone's bar has a Sessions item instead,
+  // `mobile-navigation.spec.ts`).
   for (const [name, href] of [
     ['New session', '/'],
-    ['Sessions', '/agent-platform/sessions'],
     ['Customize', '/customize'],
     ['Usage', '/agent-platform/usage'],
+    ['All sessions', '/agent-platform/sessions'],
   ] as const) {
-    await expect(nav.getByRole('link', { name })).toHaveAttribute('href', href);
+    await expect(nav.getByRole('link', { name, exact: true })).toHaveAttribute(
+      'href',
+      href,
+    );
   }
+  await expect(nav.getByRole('button', { name: /^Search/ })).toBeVisible();
+  await expect(
+    nav.getByRole('link', { name: 'Sessions', exact: true }),
+    'no Sessions item in the desktop rail',
+  ).toHaveCount(0);
 });
 
 test('the shell and the classic portal cross-link in new tabs', async ({
@@ -82,12 +97,12 @@ test('the shell and the classic portal cross-link in new tabs', async ({
   await expect(agentPlatform).toHaveAttribute('target', '_blank');
 });
 
-test('/agent-platform/usage carries Overview · Cost · Connectors · Your sessions and each renders on click', async ({
+test('/agent-platform/usage carries Overview · Cost · Your sessions · Connectors and each renders on click', async ({
   admin,
 }) => {
-  // Connectors is offered where the muster plugin contributes it, which the
-  // lab registers.
-  const names = ['Overview', 'Cost', 'Connectors', 'Your sessions'];
+  // The PO's order (T90): Connectors last. It is offered where the muster
+  // plugin contributes it, which the lab registers.
+  const names = ['Overview', 'Cost', 'Your sessions', 'Connectors'];
   await open(admin, '/agent-platform/usage');
   const row = admin.getByRole('main').getByRole('tablist').first();
   await expect(row.getByRole('tab')).toHaveText(names);

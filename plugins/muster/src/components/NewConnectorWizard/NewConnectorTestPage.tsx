@@ -281,7 +281,7 @@ export function NewConnectorTestPage() {
         )}
         <Text variant="body-small" color="secondary">
           {applying || !serverState
-            ? 'Registered. Waiting for muster to connect it — updates automatically.'
+            ? 'Registered. This updates automatically once muster connects it.'
             : (runtime?.statusMessage ?? cr?.getStateExplanation() ?? '')}
         </Text>
       </Flex>

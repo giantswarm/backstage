@@ -171,8 +171,15 @@ describe('WorkflowDetailPage', () => {
     expect(
       within(trail)
         .getAllByRole('link')
-        .map(link => [link.textContent, link.getAttribute('href')]),
-    ).toEqual([['Workflows', `${BASE}?installation=gazelle`]]);
+        .map(link => [
+          // The back arrow has no text, only its label.
+          link.textContent || link.getAttribute('aria-label'),
+          link.getAttribute('href'),
+        ]),
+    ).toEqual([
+      ['Back to Workflows', `${BASE}?installation=gazelle`],
+      ['Workflows', `${BASE}?installation=gazelle`],
+    ]);
   });
 
   it('runs the workflow tool on the Run tab', async () => {

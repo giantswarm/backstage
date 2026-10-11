@@ -1276,7 +1276,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expect(
-        screen.getByText(/Deployed from GitOps: fix it there/),
+        screen.getByText(/deployed from GitOps, so fix it there/),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
     });
@@ -1290,7 +1290,7 @@ describe('AgentDetailPage', () => {
 
       expect(
         screen.getByText(
-          /Deployed from GitOps: a fix opens a pull request there/,
+          /deployed from GitOps, so a fix opens a pull request there/,
         ),
       ).toBeInTheDocument();
       expect(
@@ -1344,7 +1344,7 @@ describe('AgentDetailPage', () => {
 
       expect(
         screen.getByText(
-          'WorkerPool "kagent/default" not found. A platform problem, not the agent\'s: a platform admin has to fix it.',
+          'WorkerPool "kagent/default" not found. This is a platform problem, not the agent\'s, and a platform admin has to fix it.',
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
@@ -1521,7 +1521,9 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expect(screen.getByText('No tools')).toBeInTheDocument();
-      expect(screen.getByText('Only its own reasoning.')).toBeInTheDocument();
+      expect(
+        screen.getByText('It relies on its own reasoning alone.'),
+      ).toBeInTheDocument();
     });
 
     it('names a sub-agent by the template behind it', async () => {
@@ -1682,7 +1684,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText(/Only your sessions with this agent/),
+        screen.getByText(/These are only your sessions with this agent/),
       ).toBeInTheDocument();
     });
 
@@ -2477,7 +2479,7 @@ describe('AgentDetailPage inside the agent shell', () => {
       await renderShell('sessions');
 
       expect(
-        screen.getByText('Your sessions with PR reviewer.'),
+        screen.getByText('These are your sessions with PR reviewer.'),
       ).toBeInTheDocument();
       expect(screen.getByText('Review #2705')).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: 'Sessions' })).toBeNull();

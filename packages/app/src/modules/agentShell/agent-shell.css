@@ -403,8 +403,12 @@ html[data-agent-shell] [class*='Toast_container'] {
  * focus, the bar steps aside and everything docked above it — the session
  * composer, the wizard footer, the toasts — drops by the same variable. Text
  * fields only: a checkbox, a button or a read-only field raises no keyboard.
+ * `data-agent-shell-keyboard-hold` keeps that layout while a tap that blurs
+ * the field is in progress (ShellMain's `useKeyboardTapHold`): without it the
+ * docked buttons jump 56px up under the finger and the tap is lost.
  */
 @media (max-width: 599.95px) and (hover: none) and (pointer: coarse) {
+  html[data-agent-shell][data-agent-shell-keyboard-hold] body,
   html[data-agent-shell]
     body:has(
       :is(
@@ -428,6 +432,9 @@ html[data-agent-shell] [class*='Toast_container'] {
     --agent-shell-mobile-bar-height: 0px;
   }
 
+  html[data-agent-shell][data-agent-shell-keyboard-hold]
+    body
+    .agent-shell-mobile-bar,
   html[data-agent-shell]
     body:has(
       :is(

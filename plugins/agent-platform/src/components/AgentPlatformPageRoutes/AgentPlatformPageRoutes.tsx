@@ -24,12 +24,12 @@ type ShellPageHeader = {
 
 const SHELL_PAGE_HEADERS: Record<string, ShellPageHeader> = {
   sessions: {
-    description: "Every conversation you've had with an agent.",
+    description: 'Lists every conversation you have had with an agent.',
     action: { label: 'New session', href: '/' },
   },
   usage: {
     description:
-      "What agents cost, how much they're used, and how healthy the platform is.",
+      'Shows what agents cost, how much they are used and how healthy the platform is.',
   },
 };
 

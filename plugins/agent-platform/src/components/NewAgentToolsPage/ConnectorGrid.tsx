@@ -63,7 +63,7 @@ function connectorLine(
   }
   const total = countNoun(bucket.tools.length, 'tool');
   if (choice === 'all') {
-    return `${total} · also ones added later`;
+    return `${total}, including ones added later`;
   }
   if (choice === 'partial') {
     return `${picked} of ${total} selected`;

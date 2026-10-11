@@ -203,7 +203,9 @@ describe('AddSkillPage', () => {
 
     expect(screen.getByText('Pull request #7 opened')).toBeInTheDocument();
     expect(
-      screen.getByText(/A teammate reviews and approves it/),
+      screen.getByText(
+        /A teammate has to merge it before the skill reaches the catalog/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /Open the pull request/ }),
@@ -396,7 +398,9 @@ describe('AddSkillPage editing an existing skill', () => {
     expect(screen.queryByText(/does not have/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/Instructions/), ' {[}x](gone.md)');
     expect(
-      screen.getByText('Links to files the skill does not have: gone.md'),
+      screen.getByText(
+        'The instructions link to files the skill does not have: gone.md',
+      ),
     ).toBeInTheDocument();
   }, 30_000);
 
@@ -430,11 +434,8 @@ describe('AddSkillPage editing an existing skill', () => {
 
     expect(screen.getByText('Pull request #7 opened')).toBeInTheDocument();
     expect(
-      screen.getByText(/A teammate reviews and approves it/),
-    ).toBeInTheDocument();
-    expect(
       screen.getByText(
-        /the change reaches the catalog once the pull request merges/,
+        /A teammate has to merge it before the change reaches the catalog/,
       ),
     ).toBeInTheDocument();
     expect(
@@ -444,7 +445,8 @@ describe('AddSkillPage editing an existing skill', () => {
 });
 
 describe('AddSkillPage · the skill creator hand-off', () => {
-  const caveat = 'Use this form for simple skills.';
+  const caveat =
+    'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.';
 
   it('is absent while the skillCreation role is unconfigured', async () => {
     await renderPage();
@@ -471,7 +473,6 @@ describe('AddSkillPage · the skill creator hand-off', () => {
       name: 'Write complex skills with Skill Creator',
     });
     expect(strip).toHaveTextContent(caveat);
-    expect(strip).toHaveTextContent('for more complex, nested skills');
     await user.type(screen.getByLabelText(/Name/), 'notes');
     await user.click(
       screen.getByRole('button', { name: 'Let Skill Creator help' }),

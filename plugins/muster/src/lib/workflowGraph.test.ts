@@ -398,6 +398,116 @@ describe('layoutWorkflowGraph — step titles are never cut', () => {
   });
 });
 
+describe('layoutWorkflowGraph — one step expanded in place', () => {
+  const graph = buildWorkflowGraph(STEPS, CLEANUP);
+  const folded = layoutWorkflowGraph(graph);
+  const nodeOf = (
+    layout: ReturnType<typeof layoutWorkflowGraph>,
+    key: string,
+  ) => layout.nodes.find(n => n.node.key === key)!;
+  const groupOf = (
+    layout: ReturnType<typeof layoutWorkflowGraph>,
+    kind: string,
+  ) => layout.groups.find(g => g.kind === kind)!;
+  /** No two step boxes overlap, no gate sits on a box, all inside bounds. */
+  const noOverlap = (layout: ReturnType<typeof layoutWorkflowGraph>) => {
+    for (const a of layout.nodes) {
+      for (const b of layout.nodes) {
+        if (a === b) continue;
+        expect(
+          a.x < b.x + b.width &&
+            b.x < a.x + a.width &&
+            a.y < b.y + b.height &&
+            b.y < a.y + a.height,
+        ).toBe(false);
+      }
+      for (const gate of layout.gates) {
+        const onBox =
+          gate.x > a.x &&
+          gate.x < a.x + a.width &&
+          gate.y > a.y &&
+          gate.y < a.y + a.height;
+        expect(onBox).toBe(false);
+      }
+      expect(a.y + a.height).toBeLessThanOrEqual(layout.height);
+    }
+  };
+
+  it('folds every step without an expansion', () => {
+    expect(folded.nodes.every(n => n.detailsHeight === 0)).toBe(true);
+    expect(folded.groups.every(g => g.detailsHeight === 0)).toBe(true);
+  });
+
+  it('grows the expanded step by its details and moves everything after it down', () => {
+    const open = layoutWorkflowGraph(graph, { key: 's0', height: 150 });
+    const step = nodeOf(open, 's0');
+    expect(step.detailsHeight).toBe(150);
+    expect(step.height).toBe(nodeOf(folded, 's0').height + 150);
+    // Its own place and width stay; the next step keeps its edge length.
+    expect(step.y).toBe(nodeOf(folded, 's0').y);
+    expect(step.width).toBe(nodeOf(folded, 's0').width);
+    expect(nodeOf(open, 's1').y).toBe(nodeOf(folded, 's1').y + 150);
+    expect(groupOf(open, 'forEach').y).toBe(groupOf(folded, 'forEach').y + 150);
+    expect(open.height).toBe(folded.height + 150);
+    // The gate into the next step moves with its edge, clear of the details.
+    const gate = open.gates.find(g => g.key === 's1')!;
+    expect(gate.y).toBeGreaterThan(step.y + step.height);
+    noOverlap(open);
+  });
+
+  it('opens one step at a time: the others stay folded', () => {
+    const open = layoutWorkflowGraph(graph, { key: 's1', height: 90 });
+    expect(open.nodes.filter(n => n.detailsHeight > 0)).toEqual([
+      expect.objectContaining({ node: expect.objectContaining({ key: 's1' }) }),
+    ]);
+  });
+
+  it('gives a group head’s details room above the group’s steps', () => {
+    const open = layoutWorkflowGraph(graph, { key: 's2', height: 120 });
+    const loop = groupOf(open, 'forEach');
+    expect(loop.detailsHeight).toBe(120);
+    expect(loop.height).toBe(groupOf(folded, 'forEach').height + 120);
+    expect(nodeOf(open, 's2.0').y).toBeGreaterThanOrEqual(
+      loop.y + loop.headerHeight + 120,
+    );
+    noOverlap(open);
+  });
+
+  it('grows a parallel row to its expanded sibling, its neighbors in place beside it', () => {
+    const open = layoutWorkflowGraph(graph, { key: 's3.1', height: 200 });
+    const [left, middle, right] = ['s3.0', 's3.1', 's3.2'].map(key =>
+      nodeOf(open, key),
+    );
+    expect(middle.height).toBe(nodeOf(folded, 's3.1').height + 200);
+    expect(left.y).toBe(middle.y);
+    expect(right.y).toBe(middle.y);
+    expect(left.height).toBe(nodeOf(folded, 's3.0').height);
+    const parallel = groupOf(open, 'parallel');
+    expect(middle.y + middle.height).toBeLessThanOrEqual(
+      parallel.y + parallel.height,
+    );
+    noOverlap(open);
+  });
+
+  it('grows a cleanup step inside its lane', () => {
+    const open = layoutWorkflowGraph(graph, { key: 'f0', height: 80 });
+    const lane = groupOf(open, 'onFailure');
+    expect(nodeOf(open, 'f1').y).toBe(nodeOf(folded, 'f1').y + 80);
+    expect(nodeOf(open, 'f1').y + nodeOf(open, 'f1').height).toBeLessThan(
+      lane.y + lane.height,
+    );
+  });
+
+  it('ignores an unknown key and a negative height', () => {
+    expect(layoutWorkflowGraph(graph, { key: 'nope', height: 100 })).toEqual(
+      folded,
+    );
+    expect(layoutWorkflowGraph(graph, { key: 's0', height: -5 })).toEqual(
+      folded,
+    );
+  });
+});
+
 describe('mapRunToGraph', () => {
   const graph = buildWorkflowGraph(STEPS, CLEANUP);
 

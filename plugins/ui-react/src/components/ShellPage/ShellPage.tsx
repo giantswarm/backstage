@@ -3,7 +3,9 @@ import {
   Accordion,
   AccordionPanel,
   AccordionTrigger,
+  Skeleton,
   Text,
+  VisuallyHidden,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { PHONE_MEDIA, usePhoneLayout } from '../../utils/breakpoints';
@@ -176,6 +178,76 @@ export interface ShellPageProps {
   /** Below the content and the aside. */
   footer?: ReactNode;
   children?: ReactNode;
+}
+
+/**
+ * The title while the page's name is still being read: a skeleton on the
+ * h1's own line box (`1.25em` of its font is its line height), so the header
+ * is already in its final geometry and the name fills in where it will stay.
+ * Pass it as `title`; `label` is the heading's accessible name meanwhile,
+ * e.g. "Loading agent".
+ *
+ * A detail page's loading state renders the same `ShellPage` as its loaded
+ * state — breadcrumbs, `leading`, `tabs` — with this and
+ * {@link ShellPageBadgeSkeleton} in place of what is not known yet, never a
+ * bare frame the data then rearranges.
+ */
+export function ShellPageTitleSkeleton({ label }: { label: string }) {
+  return (
+    <>
+      <Skeleton
+        width={240}
+        height="1.25em"
+        style={{
+          display: 'inline-block',
+          verticalAlign: 'top',
+          maxWidth: '100%',
+        }}
+      />
+      <VisuallyHidden>{label}</VisuallyHidden>
+    </>
+  );
+}
+
+/**
+ * A state badge's skeleton for `badges`, while the page's state is still
+ * being read: one line of the badge row, so the row is there from the first
+ * paint.
+ */
+export function ShellPageBadgeSkeleton() {
+  return <Skeleton width={96} height={20} rounded />;
+}
+
+/**
+ * The `aside` while its facts are still being read: a `FactsColumn`'s
+ * caption-over-value pairs as skeletons, so the content beside it has its
+ * final width from the first paint.
+ */
+export function ShellPageFactsSkeleton() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--bui-space-4)',
+      }}
+    >
+      {[0, 1, 2].map(index => (
+        <div
+          key={index}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--bui-space-1)',
+          }}
+        >
+          <Skeleton width="40%" height={14} />
+          <Skeleton width="80%" height={20} />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /**

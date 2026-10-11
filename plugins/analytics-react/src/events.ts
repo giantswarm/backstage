@@ -44,6 +44,8 @@ export const portalEvents = defineEvents({
         'createAgentAssist',
         'searchPalette',
         'skillCreationAssist',
+        'workflowEdit',
+        'workflowCreateAssist',
       ],
     },
   },

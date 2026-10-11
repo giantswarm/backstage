@@ -33,6 +33,8 @@ export { CustomizeSkillsPanel } from './components/CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
+export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
+export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
 export { EnvironmentSelect } from './components/EnvironmentSelect';
 export type { EnvironmentSelectProps } from './components/EnvironmentSelect';
 export { useMetaAgent } from './hooks/useMetaAgent';

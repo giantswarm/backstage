@@ -9,15 +9,16 @@ import {
   Flex,
   SearchField,
   Text,
-  ToggleButton,
-  ToggleButtonGroup,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CatalogFilterBar,
+  type CatalogFacet,
   INITIAL_ROWS,
   LoadingIndicator,
   SEARCH_MIN,
   ShowMore,
+  useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
 import { toolEffect, ToolEffect } from '../../../lib/toolAnnotations';
@@ -29,10 +30,8 @@ import { ServerTools } from '../../ServerPage/useServerPageData';
 const useStyles = makeStyles({
   toolbar: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 12,
+    flexDirection: 'column',
+    gap: 8,
     marginBottom: 8,
   },
   search: {
@@ -65,13 +64,21 @@ const useStyles = makeStyles({
   },
 });
 
-type EffectFilter = 'all' | ToolEffect;
-
-const FILTER_LABELS: Record<EffectFilter, string> = {
-  all: 'All',
+const EFFECT_LABELS: Record<ToolEffect, string> = {
   reads: 'Reads',
   changes: 'Changes things',
 };
+
+/** The "What it does" dropdown, as the wizard's catalogue draws it (T81). */
+const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
+  {
+    id: 'effect',
+    label: 'What it does',
+    value: tool => toolEffect(tool),
+    optionLabel: id => EFFECT_LABELS[id as ToolEffect] ?? id,
+    order: ['reads', 'changes'],
+  },
+];
 
 export interface ConnectorToolsTabProps {
   installation: string;
@@ -155,8 +162,9 @@ function ToolRow({
 }
 
 /**
- * The connector's tools as an expandable list: a search, a filter by what a
- * tool does with a count per choice, and per tool its effect and an inline
+ * The connector's tools as an expandable list: a search, a "What it does"
+ * dropdown (only when the tools both read and change things) with a count per
+ * choice, and per tool its effect and an inline
  * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
  * fewer) is read, not searched, so it shows neither; a long one renders a
  * page of tools at a time.
@@ -171,23 +179,25 @@ export function ConnectorToolsTab({
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<EffectFilter>('all');
   const [openTool, setOpenTool] = useState<string | undefined>();
 
   const { tools: listed, shortName } = tools;
   const all = useMemo(() => listed ?? [], [listed]);
-  const counts = useMemo(() => {
-    const reads = all.filter(tool => toolEffect(tool) === 'reads').length;
-    return { all: all.length, reads, changes: all.length - reads };
-  }, [all]);
-  const shown = useMemo(
+  const searched = useMemo(
     () =>
-      all.filter(
-        tool =>
-          (filter === 'all' || toolEffect(tool) === filter) &&
-          toolMatchesQuery(tool, shortName(tool.name), query),
-      ),
-    [all, filter, query, shortName],
+      all.filter(tool => toolMatchesQuery(tool, shortName(tool.name), query)),
+    [all, query, shortName],
+  );
+  const filters = useCatalogFilters({
+    items: all,
+    searched,
+    facets: EFFECT_FACETS,
+  });
+  const shown = filters.filtered;
+  // A list of one kind has nothing to tell apart; a pick still standing stays
+  // drawn so it can be undone.
+  const effectDimensions = filters.dimensions.filter(
+    dimension => dimension.options.length > 1 || dimension.selected.length > 0,
   );
 
   if (sessionGate) {
@@ -215,8 +225,8 @@ export function ConnectorToolsTab({
     );
   }
 
-  // Three tools are read at a glance; a search and an All/Reads/Changes
-  // filter over them is volume framing.
+  // Three tools are read at a glance; a search and a filter over them is
+  // volume framing.
   const searchable = all.length > SEARCH_MIN;
 
   return (
@@ -232,24 +242,11 @@ export function ConnectorToolsTab({
               onChange={setQuery}
             />
           </Box>
-          <ToggleButtonGroup
-            aria-label="Filter by what a tool does"
-            selectionMode="single"
-            disallowEmptySelection
-            selectedKeys={[filter]}
-            onSelectionChange={keys => {
-              const next = [...keys][0];
-              if (next === 'all' || next === 'reads' || next === 'changes') {
-                setFilter(next);
-              }
-            }}
-          >
-            {(['all', 'reads', 'changes'] as const).map(id => (
-              <ToggleButton key={id} id={id} size="small">
-                {`${FILTER_LABELS[id]} ${counts[id]}`}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
+          <CatalogFilterBar
+            dimensions={effectDimensions}
+            onSelect={filters.select}
+            onClear={filters.clear}
+          />
         </div>
       )}
       {tools.truncated && (
@@ -265,7 +262,7 @@ export function ConnectorToolsTab({
         // A server can list hundreds of tools, each an accordion; a page of
         // them at a time, starting over when the search or filter changes.
         <ShowMore
-          key={`${filter}|${query}`}
+          key={`${filters.key}|${query}`}
           items={shown}
           initial={INITIAL_ROWS}
           noun="tool"

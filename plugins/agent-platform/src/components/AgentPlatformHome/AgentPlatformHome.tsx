@@ -106,9 +106,12 @@ function pickerAccessory(agent: AgentRow | undefined) {
   );
 }
 
-/** Before the picker, which heads the composer: the artboard's step label. */
-function pickerLabel(agent: AgentRow | undefined): string {
-  return agent ? 'Agent' : 'First choose an agent';
+/**
+ * Before the picker, which heads the composer: an instruction, not a noun, so
+ * it reads as a required step with and without a remembered agent selected.
+ */
+function pickerLabel(): string {
+  return 'Select agent';
 }
 
 export type AgentPlatformHomeProps = {

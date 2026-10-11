@@ -203,13 +203,13 @@ export function UsageOverviewPage() {
           <Text as="p" variant="body-medium" color="secondary">
             {installation ? (
               <>
-                Everyone's model use on <strong>{installation}</strong> over the
-                last {days} days.
+                Shows everyone's model use on <strong>{installation}</strong>{' '}
+                over the last {days} days.
                 {isResolvedFromAll &&
-                  ' One environment at a time — switch in the Environment control.'}
+                  ' It shows one environment at a time; switch it in the Environment control.'}
               </>
             ) : (
-              `Everyone's model use over the last ${days} days.`
+              `Shows everyone's model use over the last ${days} days.`
             )}
           </Text>
 
@@ -229,9 +229,10 @@ export function UsageOverviewPage() {
                 }
               />
               <Text variant="body-small" color="secondary">
-                From kagent: your own sessions only. Fleet-wide tokens, spend
-                and gateway health need the gateway's gen_ai metrics, which this
-                environment does not publish where this portal can query them.
+                These figures come from kagent and cover your own sessions only.
+                Fleet-wide tokens, spend and gateway health need the gateway's
+                gen_ai metrics, which this environment does not publish where
+                this portal can query them.
               </Text>
             </>
           )}
@@ -265,7 +266,7 @@ export function UsageOverviewPage() {
                   rows={agentRows}
                   limit={TOP_AGENTS_SHOWN}
                   emptyMessage="The gateway attributed no calls to an agent in this window."
-                  note="Share of every user's model calls. Cost ranks agents by spend."
+                  note="Shows the share of every user's model calls. Cost ranks agents by spend."
                 />
               </div>
 
@@ -275,7 +276,7 @@ export function UsageOverviewPage() {
                 // Each figure explains its own arithmetic in its hint, so the
                 // note carries only what none of them says: these are the model
                 // calls, not the turns that made them.
-                note="Model calls only — not the agent turns around them, which spend most of their time in tool calls."
+                note="This counts model calls only, not the agent turns around them, which spend most of their time in tool calls."
               >
                 <ReliabilityStrip reliability={usage.reliability} />
               </UsageCard>

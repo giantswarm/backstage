@@ -297,6 +297,29 @@ describe('CommandPalette', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('operates the type chips from the keyboard without closing the palette', async () => {
+    const input = await openPalette();
+    await userEvent.type(input, 'sso');
+
+    // Tab leaves the field for the chips: All, Sessions, then Agents.
+    await userEvent.tab();
+    await userEvent.tab();
+    await userEvent.tab();
+    const agents = screen.getByRole('button', { name: 'Agents' });
+    expect(agents).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(agents).toHaveAttribute('aria-pressed', 'true');
+    const listbox = screen.getByRole('listbox', { name: 'Results' });
+    expect(within(listbox).getByText('Support Triage')).toBeVisible();
+    expect(
+      within(listbox).queryByText(
+        'Which customers asked about SSO this month?',
+      ),
+    ).toBeNull();
+    expect(input).toBeVisible();
+  });
+
   it('walks the results with the arrow keys and opens with Enter', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'sso');

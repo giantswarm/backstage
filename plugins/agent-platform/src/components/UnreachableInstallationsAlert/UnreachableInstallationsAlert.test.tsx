@@ -1,5 +1,5 @@
 import { renderInTestApp } from '@backstage/test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { UnreachableInstallationsAlert } from './UnreachableInstallationsAlert';
 
@@ -63,7 +63,7 @@ describe('UnreachableInstallationsAlert', () => {
 
     expect(screen.getByText(/gremlin, gauss, golem\.$/)).toBeInTheDocument();
     expect(screen.queryByText(/more/)).toBeNull();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /environments/ })).toBeNull();
   });
 
   it('caps 300 installations at five names, with the rest behind a disclosure', async () => {
@@ -120,5 +120,59 @@ describe('UnreachableInstallationsAlert', () => {
       screen.getByText('inst-1 (timed out, request id req-1)'),
     ).toBeVisible();
     expect(screen.getByText('inst-300 (permission denied)')).toBeVisible();
+  });
+
+  describe('closing', () => {
+    it('announces as an alert and closes with its close button', async () => {
+      await renderInTestApp(
+        <UnreachableInstallationsAlert installations={['gremlin', 'gauss']} />,
+      );
+
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent("Couldn't read 2 environments");
+
+      await userEvent.click(
+        within(alert).getByRole('button', { name: 'Close' }),
+      );
+
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByText("Couldn't read 2 environments")).toBeNull();
+    });
+
+    it('closes the long form, with its disclosure, too', async () => {
+      const installations = Array.from(
+        { length: 300 },
+        (_, index) => `inst-${index + 1}`,
+      );
+      await renderInTestApp(
+        <UnreachableInstallationsAlert installations={installations} />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'All 300 environments' }),
+      ).toBeNull();
+    });
+
+    it('shows again when a different set of environments fails', async () => {
+      const { rerender } = await renderInTestApp(
+        <UnreachableInstallationsAlert installations={['gremlin']} />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      rerender(<UnreachableInstallationsAlert installations={['gremlin']} />);
+      expect(screen.queryByRole('alert')).toBeNull();
+
+      rerender(
+        <UnreachableInstallationsAlert installations={['gremlin', 'gauss']} />,
+      );
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        "Couldn't read 2 environments",
+      );
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
@@ -53,6 +53,12 @@ const useStyles = makeStyles({
 
 export type CustomizeWorkflowsPanelProps = {
   search: string;
+  /**
+   * The way to create a workflow, for the installation shown — the UI makes
+   * none itself (D11), so the app passes agent-platform's hand-off to the
+   * workflow agent. Under the filters, and on an empty list too.
+   */
+  createAssist?: (installation: string) => ReactNode;
 };
 
 type Row = {
@@ -249,9 +255,11 @@ function WorkflowRows({
 function WorkflowsTable({
   search,
   installation,
+  createAssist,
 }: {
   search: string;
   installation: string;
+  createAssist?: CustomizeWorkflowsPanelProps['createAssist'];
 }) {
   const { workflows, activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
@@ -312,12 +320,16 @@ function WorkflowsTable({
   const filters = useCatalogFilters({ items: sorted, searched, facets });
   const visible = filters.filtered;
 
+  const assist = createAssist?.(installation);
   if (workflows.length === 0) {
     return (
-      <EmptyStateCard
-        title="No workflows yet"
-        description="Workflows run a sequence of tool calls as one tool agents can use."
-      />
+      <Flex direction="column" gap="4">
+        {assist}
+        <EmptyStateCard
+          title="No workflows yet"
+          description="Workflows run a sequence of tool calls as one tool agents can use."
+        />
+      </Flex>
     );
   }
   const list =
@@ -361,12 +373,13 @@ function WorkflowsTable({
           context="Run counts and the read-only badge need a muster session."
         />
       )}
+      {assist}
       {list}
     </Flex>
   );
 }
 
-function Panel({ search }: CustomizeWorkflowsPanelProps) {
+function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
 
   let body;
@@ -380,7 +393,13 @@ function Panel({ search }: CustomizeWorkflowsPanelProps) {
       />
     );
   } else {
-    body = <WorkflowsTable search={search} installation={activeInstallation} />;
+    body = (
+      <WorkflowsTable
+        search={search}
+        installation={activeInstallation}
+        createAssist={createAssist}
+      />
+    );
   }
   return (
     <Flex direction="column" gap="2">

@@ -40,8 +40,30 @@ export const SHELL_SPECS = [
   'sessions-unreadable-reason.spec.ts',
   'telemetry.spec.ts',
   'usage-cost.spec.ts',
+  'wizard-tools-layout.spec.ts',
   'workflows.spec.ts',
 ] as const;
 
+/**
+ * The phone's specs (mobile overhaul wave 4, `mobile-overhaul-plan.md` §4):
+ * the Agent Platform at 375×812 with touch, in the `agentlab-mobile` project
+ * only — the bottom bar's navigation, the scrolling tab strips, sessions, one
+ * wizard pass, a workflow's step list, the hosting rows' ⋯ menus, and no
+ * sideways page scroll on the pages a person reads on a phone. Like
+ * {@link SHELL_SPECS}, they need a lab in `shell` mode.
+ */
+export const MOBILE_SPECS = [
+  'mobile-hosting.spec.ts',
+  'mobile-navigation.spec.ts',
+  'mobile-sessions.spec.ts',
+  'mobile-wizard.spec.ts',
+  'mobile-workflow.spec.ts',
+] as const;
+
+const globs = (specs: readonly string[]) => specs.map(spec => `**/${spec}`);
+
 /** {@link SHELL_SPECS} as the globs Playwright's `testMatch`/`testIgnore` take. */
-export const shellSpecGlobs = SHELL_SPECS.map(spec => `**/${spec}`);
+export const shellSpecGlobs = globs(SHELL_SPECS);
+
+/** {@link MOBILE_SPECS} as globs. */
+export const mobileSpecGlobs = globs(MOBILE_SPECS);

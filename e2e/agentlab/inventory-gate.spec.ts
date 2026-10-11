@@ -20,7 +20,7 @@ const serversPath = '/agent-platform/connectors';
 /** The sentence the gate opens with for a 401 (`inventoryFailureCopy`). */
 const rejectedToken = /rejected the portal's token/;
 
-test('with a token the API server accepts, the muster Servers view renders without the inventory gate', async ({
+test('with a token the API server accepts, Customize · Connectors renders without the inventory gate', async ({
   admin,
 }) => {
   test.skip(
@@ -29,8 +29,8 @@ test('with a token the API server accepts, the muster Servers view renders witho
   );
   await open(admin, serversPath);
   await expect(
-    admin.getByRole('link', { name: /^muster/ }),
-    'the Servers view renders its CRD-backed table',
+    admin.getByRole('row', { name: /^kubernetes( |$)/ }),
+    'Customize · Connectors renders its CRD-backed table',
   ).toBeVisible();
   await expect(admin.getByText(rejectedToken)).toHaveCount(0);
 });

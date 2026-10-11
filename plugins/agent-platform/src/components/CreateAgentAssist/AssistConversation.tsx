@@ -89,7 +89,9 @@ export function AssistConversation({
   firstMessage,
 }: AssistConversationProps) {
   const classes = useStyles();
-  const view = useSessionDetail(installation, sessionId);
+  // Mounted right after the create: loading, not an error, while kagent
+  // catches up with the new session (T86).
+  const view = useSessionDetail(installation, sessionId, { justCreated: true });
   const send = useSendMessage(installation, sessionId, agent);
   const confirmation = useAnswerConfirmation(installation, sessionId, agent);
   const { isUserScoped } = useKagentCapabilities(installation);

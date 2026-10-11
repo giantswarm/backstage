@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -13,7 +14,12 @@ jest.mock('../WorkflowDetailPage', () => ({
   WorkflowDetailPage: () => <p>Classic workflow detail</p>,
 }));
 jest.mock('../WorkflowPage', () => ({
-  WorkflowPage: () => <p>Shell workflow page</p>,
+  WorkflowPage: ({ editAction }: { editAction?: ReactElement }) => (
+    <div>
+      <p>Shell workflow page</p>
+      {editAction}
+    </div>
+  ),
 }));
 
 function Landed() {
@@ -24,11 +30,17 @@ function Landed() {
 function renderAt(
   path: string,
   flag: FeatureFlagState,
-  { withCustomize = true }: { withCustomize?: boolean } = {},
+  {
+    withCustomize = true,
+    editAction,
+  }: { withCustomize?: boolean; editAction?: ReactElement } = {},
 ) {
   return renderInTestApp(
     <Routes>
-      <Route path="/agent-platform/workflows/*" element={<WorkflowsRouter />} />
+      <Route
+        path="/agent-platform/workflows/*"
+        element={<WorkflowsRouter editAction={editAction} />}
+      />
       <Route path="/customize/*" element={<Landed />} />
     </Routes>,
     {
@@ -58,6 +70,20 @@ describe('WorkflowsRouter', () => {
   ])('routes a workflow to %s', async (_, flag, text) => {
     await renderAt('/agent-platform/workflows/deploy', flag);
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('hands the attached edit action to the shell workflow page', async () => {
+    await renderAt(
+      '/agent-platform/workflows/deploy',
+      FeatureFlagState.Active,
+      {
+        editAction: <button type="button">Edit via agent</button>,
+      },
+    );
+    expect(screen.getByText('Shell workflow page')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Edit via agent' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps the classic list on the index outside the shell', async () => {

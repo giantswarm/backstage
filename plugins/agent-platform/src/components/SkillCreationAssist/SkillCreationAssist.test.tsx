@@ -99,7 +99,7 @@ describe('SkillCreationAssist', () => {
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Use this form for simple skills.'),
+      screen.queryByText('Rather let an agent write it?'),
     ).not.toBeInTheDocument();
   });
 
@@ -125,9 +125,9 @@ describe('SkillCreationAssist', () => {
     const strip = screen.getByRole('region', {
       name: 'Write complex skills with Skill Creator',
     });
-    expect(strip).toHaveTextContent('Use this form for simple skills.');
+    expect(strip).toHaveTextContent('Rather let an agent write it?');
     expect(strip).toHaveTextContent(
-      'Use the skill creator agent, Skill Creator, for more complex, nested skills',
+      'This form is for simple skills; for complex, multi-file ones, work with Skill Creator.',
     );
     expect(
       screen.getByRole('button', { name: 'Let Skill Creator help' }),

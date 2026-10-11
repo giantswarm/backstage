@@ -491,9 +491,9 @@ export function AddGpuNodePoolDialog({
         <DialogBody>
           <Flex direction="column" gap="4" ref={fieldScope}>
             <Text variant="body-small" color="secondary">
-              GPU capacity for this environment's served models. cluster-manager
-              composes the pool — plus a GPU operator and model serving where
-              missing — and writes it as you.
+              Adds GPU capacity for this environment's served models.
+              cluster-manager composes the pool — plus a GPU operator and model
+              serving where missing — and writes it as you.
             </Text>
 
             {onForm && (
@@ -567,7 +567,7 @@ export function AddGpuNodePoolDialog({
                 <TextField
                   label="Pool name"
                   isRequired
-                  description="Five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
+                  description="Use five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
                   value={name}
                   onChange={setName}
                   {...fieldErrorProps(validation.errorFor(errors.name))}
@@ -618,7 +618,7 @@ export function AddGpuNodePoolDialog({
                   </Text>
                   <NumberField
                     label="Maximum GPUs"
-                    description="Across all nodes of the pool; the pool scales to zero."
+                    description="This limit applies across all nodes of the pool, which scales to zero."
                     minValue={1}
                     value={maxGpus}
                     onChange={value =>

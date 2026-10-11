@@ -167,15 +167,38 @@ const rowTitles = (grid: HTMLElement) =>
     .getAllByRole('rowheader')
     .map(cell => cell.textContent);
 
-const agentSelect = () =>
-  screen
-    .getAllByRole('button', { name: /Agent$/ })
-    .find(button => button.getAttribute('aria-haspopup') === 'listbox')!;
+// The shared catalog dropdowns (T92). `hidden`: readable while another
+// dropdown's list is open over the page.
+const dropdown = (field: string) =>
+  screen.getByRole('button', {
+    name: new RegExp(`Filter by ${field}`),
+    hidden: true,
+  });
+const queryDropdown = (field: string) =>
+  screen.queryByRole('button', {
+    name: new RegExp(`Filter by ${field}`),
+    hidden: true,
+  });
 
-const chipLabels = () =>
-  within(screen.getByRole('radiogroup', { name: 'Filter by state' }))
-    .getAllByRole('radio')
-    .map(chip => chip.textContent);
+/** Opens a facet's dropdown and reads its options, as "label count". */
+async function optionsOf(field: string) {
+  await userEvent.click(dropdown(field));
+  const listbox = await screen.findByRole('listbox');
+  const options = within(listbox)
+    .getAllByRole('option')
+    .map(option => option.textContent);
+  await userEvent.keyboard('{Escape}');
+  return options;
+}
+
+/** Picks options of a facet's dropdown, then closes it. */
+async function pick(field: string, ...options: Array<string | RegExp>) {
+  await userEvent.click(dropdown(field));
+  for (const option of options) {
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+  }
+  await userEvent.keyboard('{Escape}');
+}
 
 describe('SessionsTable in the shell layout', () => {
   beforeEach(() => {
@@ -239,11 +262,26 @@ describe('SessionsTable in the shell layout', () => {
     );
   });
 
-  it('counts the sessions on each state chip, in the shell words', async () => {
+  it('filters with the shared dropdowns, not chips (T92)', async () => {
     await renderShell(filterable);
 
-    expect(chipLabels()).toEqual([
-      `All ${filterable.length}`,
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Filter by state' }),
+    ).not.toBeInTheDocument();
+    const bar = screen.getByRole('group', { name: 'Filters' });
+    expect(
+      within(bar).getByRole('button', { name: /Filter by state/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(bar).getByRole('button', { name: /Filter by agent/ }),
+    ).toBeInTheDocument();
+    expect(dropdown('state')).toHaveTextContent('StateAll');
+  });
+
+  it('counts the sessions on each state option, in the shell words', async () => {
+    await renderShell(filterable);
+
+    expect(await optionsOf('state')).toEqual([
       'Waiting for you 1',
       'Working 1',
       'Finished 1',
@@ -251,7 +289,7 @@ describe('SessionsTable in the shell layout', () => {
     ]);
   });
 
-  it('shows a chip for sessions with no activity only while there are some', async () => {
+  it('offers no activity as a state only while there is some', async () => {
     await renderShell(
       [
         ...filterable,
@@ -266,26 +304,31 @@ describe('SessionsTable in the shell layout', () => {
       },
     );
 
-    expect(chipLabels()).toContain('No activity yet 1');
+    expect(await optionsOf('state')).toContain('No activity yet 1');
   });
 
   it('filters every day by state and agent at once', async () => {
-    const user = userEvent.setup();
     await renderShell(filterable);
 
-    await user.click(screen.getByRole('radio', { name: 'Working 1' }));
+    await pick('state', 'Working 1');
     expect(screen.getAllByRole('grid')).toHaveLength(1);
     expect(rowTitles(screen.getByRole('grid', { name: 'Yesterday' }))).toEqual([
       'Release notes',
     ]);
 
-    await user.click(
-      screen.getByRole('radio', { name: `All ${filterable.length}` }),
+    // A second state widens the list.
+    await pick('state', 'Failed 1');
+    expect(
+      screen.getAllByRole('rowheader').map(cell => cell.textContent),
+    ).toEqual(['Release notes', 'Untimed']);
+
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
     );
-    await user.click(agentSelect());
-    await user.click(
-      await screen.findByRole('option', { name: 'Support Triage' }),
-    );
+    await pick('agent', /^Support Triage \d+$/);
     expect(
       screen.getAllByRole('rowheader').map(cell => cell.textContent),
     ).toEqual(['Triage this week', 'Pricing research', ...archivedNewestFirst]);
@@ -324,7 +367,7 @@ describe('SessionsTable in the shell layout', () => {
     expect(screen.getAllByRole('grid')).toHaveLength(3);
   });
 
-  it('opens on the chip a link asks for, even under SEARCH_MIN', async () => {
+  it('opens on the state a link asks for, even under SEARCH_MIN', async () => {
     // The needs-input toast's "Show waiting sessions" (T39).
     await renderShell(
       rows,
@@ -333,7 +376,7 @@ describe('SessionsTable in the shell layout', () => {
       '/agent-platform/sessions?state=waiting',
     );
 
-    expect(screen.getByRole('radio', { name: /^Waiting/ })).toBeChecked();
+    expect(dropdown('state')).toHaveTextContent('Waiting for you');
     expect(
       screen.getAllByRole('rowheader').map(cell => cell.textContent),
     ).toEqual(['Triage this week']);
@@ -365,7 +408,7 @@ describe('SessionsTable in the shell layout', () => {
       '/agent-platform/sessions?state=bogus',
     );
 
-    expect(screen.getByRole('radio', { name: /^All/ })).toBeChecked();
+    expect(dropdown('state')).toHaveTextContent('StateAll');
   });
 
   it('offers no pagination and no sorting', async () => {
@@ -418,15 +461,10 @@ describe('SessionsTable in the shell layout', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('labels the agent filter visibly', async () => {
+  it('names the agent filter by its field, inside the dropdown', async () => {
     await renderShell(filterable);
 
-    expect(agentSelect()).toHaveAccessibleName('All agents Agent');
-    const label = (agentSelect().getAttribute('aria-labelledby') ?? '')
-      .split(' ')
-      .map(id => document.getElementById(id))
-      .find(element => element?.textContent === 'Agent');
-    expect(label).toBeVisible();
+    expect(dropdown('agent')).toHaveTextContent('AgentAll');
   });
 
   describe('pinned sessions', () => {
@@ -447,11 +485,10 @@ describe('SessionsTable in the shell layout', () => {
       ).toHaveTextContent(/[A-Z][a-z]{2}/);
     });
 
-    it('offers the Pinned chip once something is pinned, and filters by it', async () => {
-      const user = userEvent.setup();
+    it('offers the Pinned filter once something is pinned, and filters by it', async () => {
       await renderShell(filterable, states, await storageWithPins(['b', 'c']));
 
-      await user.click(screen.getByRole('radio', { name: 'Pinned 2' }));
+      await pick('pinned', 'Pinned 2');
 
       expect(
         screen.getAllByRole('rowheader').map(cell => cell.textContent),
@@ -466,9 +503,7 @@ describe('SessionsTable in the shell layout', () => {
       const storage = mockApis.storage();
       await renderShell(filterable, states, storage);
 
-      expect(
-        screen.queryByRole('radio', { name: /^Pinned/ }),
-      ).not.toBeInTheDocument();
+      expect(queryDropdown('pinned')).not.toBeInTheDocument();
 
       await user.click(
         screen.getByRole('button', { name: 'Pin “Triage this week”' }),
@@ -482,9 +517,7 @@ describe('SessionsTable in the shell layout', () => {
       expect(
         rowTitles(await screen.findByRole('grid', { name: 'Pinned' })),
       ).toEqual(['Triage this week']);
-      expect(
-        screen.getByRole('radio', { name: 'Pinned 1' }),
-      ).toBeInTheDocument();
+      expect(await optionsOf('pinned')).toEqual(['Pinned 1']);
       expect(mockNavigate).not.toHaveBeenCalled();
 
       await user.click(
@@ -577,27 +610,21 @@ describe('SessionsTable in the shell layout', () => {
         screen.queryByRole('searchbox', { name: 'Search sessions' }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Agent$/ }),
+        screen.queryByRole('group', { name: 'Filters' }),
       ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('radiogroup', { name: 'Filter by state' }),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText(/Waiting for you \d/)).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Load more' }),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     });
 
-    it('offers no agent picker over one agent’s sessions', async () => {
+    it('draws one agent’s sessions as an Agent dropdown of one option (T64)', async () => {
       await renderShell(fleetOf(SEARCH_MIN + 1, 1));
 
       expect(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
       ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /Agent$/ }),
-      ).not.toBeInTheDocument();
+      expect(await optionsOf('agent')).toEqual([`Agent 0 ${SEARCH_MIN + 1}`]);
     });
 
     it('keeps 300 sessions to a bounded window, with search and a way back', async () => {
@@ -608,7 +635,11 @@ describe('SessionsTable in the shell layout', () => {
       expect(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
       ).toBeInTheDocument();
-      expect(agentSelect()).toBeInTheDocument();
+      expect(await optionsOf('agent')).toEqual([
+        'Agent 0 100',
+        'Agent 1 100',
+        'Agent 2 100',
+      ]);
       expect(screen.getAllByRole('rowheader')).toHaveLength(SESSIONS_PAGE_SIZE);
 
       // Load more grows the list up to the cap…
@@ -654,7 +685,7 @@ describe('SessionsTable in the shell layout', () => {
       expect(
         screen.queryByRole('button', { name: 'Show previous' }),
       ).not.toBeInTheDocument();
-    });
+    }, 20_000);
   });
 
   describe('deleting a session from its row', () => {

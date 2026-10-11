@@ -205,7 +205,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="info"
         title="No tools"
-        description="No gateway entry: a chat-only agent with nothing beyond its own reasoning."
+        description="It has no gateway entry, so it is a chat-only agent with nothing beyond its own reasoning."
       />
     );
   } else if (isReading) {
@@ -254,7 +254,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           <Alert
             status="info"
             title="No tools"
-            description="The toolset is preset:none: a chat-only agent."
+            description="The toolset is preset:none, so this is a chat-only agent."
           />
         )}
         {unsignedServers.length > 0 && musterApi && (

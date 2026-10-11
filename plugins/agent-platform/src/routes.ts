@@ -166,6 +166,13 @@ export const gpuCapacityRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
+// The "Model cache" view (`/agent-platform/models/cache`): the cache claims
+// cluster-manager lists, where a kept claim is removed.
+export const modelCacheRouteRef = createSubRouteRef({
+  path: '/cache',
+  parent: modelsRouteRef,
+});
+
 /**
  * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,
  * with the muster session gate and a search over server and tool names.

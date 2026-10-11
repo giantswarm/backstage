@@ -161,13 +161,16 @@ const perWorkflowReads = () =>
   api.listExecutions.mock.calls.filter(([options]) => options.workflowName)
     .length;
 
-function renderPanel(search = '') {
+function renderPanel(
+  search = '',
+  createAssist?: (installation: string) => ReactNode,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
     <QueryClientProvider client={client}>
-      <CustomizeWorkflowsPanel search={search} />
+      <CustomizeWorkflowsPanel search={search} createAssist={createAssist} />
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
@@ -241,6 +244,31 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(screen.queryByRole('button', { name: /create/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /edit/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+  });
+
+  it('shows the app’s way to create a workflow under the filters, for the installation shown', async () => {
+    const createAssist = jest.fn((installation: string) => (
+      <p>{`Create on ${installation}`}</p>
+    ));
+    await renderPanel('', createAssist);
+
+    const hint = screen.getByText('Create on gazelle');
+    expect(createAssist).toHaveBeenCalledWith('gazelle');
+    // Before the list.
+    expect(
+      // eslint-disable-next-line no-bitwise
+      hint.compareDocumentPosition(
+        screen.getByRole('row', { name: /ticket-report/ }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('shows the way to create a workflow on an empty list too', async () => {
+    mockWorkflows = [];
+    await renderPanel('', installation => <p>{`Create on ${installation}`}</p>);
+
+    expect(screen.getByText('No workflows yet')).toBeInTheDocument();
+    expect(screen.getByText('Create on gazelle')).toBeInTheDocument();
   });
 
   it('asks for a muster session before reading runs and badges', async () => {

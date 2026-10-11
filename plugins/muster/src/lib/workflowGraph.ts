@@ -254,8 +254,11 @@ export interface PlacedNode {
   x: number;
   y: number;
   width: number;
+  /** The whole box: the step's own lines plus its open details. */
   height: number;
   titleFit: TitleFit;
+  /** The room for the step's details under its lines; 0 while folded. */
+  detailsHeight: number;
 }
 
 export interface PlacedGroup {
@@ -271,6 +274,19 @@ export interface PlacedGroup {
   /** The head's height: one or two lines of the container step's name. */
   headerHeight: number;
   titleFit: TitleFit;
+  /** The room for the container step's details under its head; 0 while folded. */
+  detailsHeight: number;
+}
+
+/**
+ * The one step whose details are open inside its box, and how much room they
+ * take — measured by the renderer (the layout stays pure). The box grows by
+ * that much and everything after it moves down, so it never overlaps a
+ * neighbor.
+ */
+export interface StepExpansion {
+  key: string;
+  height: number;
 }
 
 export interface PlacedEdge {
@@ -421,8 +437,16 @@ function itemWidth(item: FlowItem, nodeWidth: number): number {
  * a group head whose name wraps. Only a title too long for two lines at the
  * widest node is clamped (`titleFit: 'clamped'`), with its full text as the
  * tooltip.
+ *
+ * One step may be expanded (`expansion`): its box — or its group's head —
+ * grows by the room its details take, and the steps after it move down (a
+ * parallel row grows to its tallest sibling, so its neighbors keep their
+ * place beside it). Nothing is drawn over the open details.
  */
-export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
+export function layoutWorkflowGraph(
+  graph: WorkflowGraph,
+  expansion?: StepExpansion,
+): FlowLayout {
   const nodes: PlacedNode[] = [];
   const groups: PlacedGroup[] = [];
   const edges: PlacedEdge[] = [];
@@ -434,15 +458,23 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
 
   const gapFor = (node: FlowStepNode) => (node.condition ? M.gateGap : M.gap);
 
-  /** A node's box for its title: one line or two. */
+  /** The room for the node's open details: 0 unless it is the expanded one. */
+  const detailsOf = (node: FlowStepNode) =>
+    expansion?.key === node.key ? Math.max(0, Math.ceil(expansion.height)) : 0;
+
+  /** A node's box for its title (one line or two) and its open details. */
   const sized = (node: FlowStepNode) => {
     const titleFit = fitTitle(
       estimateTextWidth(node.title, M.titleFontSize),
       titleRoom,
     );
+    const detailsHeight = detailsOf(node);
     return {
       titleFit,
-      height: titleFit === 'oneLine' ? M.nodeHeight : M.nodeHeightTwoLines,
+      height:
+        (titleFit === 'oneLine' ? M.nodeHeight : M.nodeHeightTwoLines) +
+        detailsHeight,
+      detailsHeight,
     };
   };
 
@@ -458,6 +490,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
       titleFit,
       headerHeight:
         titleFit === 'oneLine' ? M.groupHeader : M.groupHeaderTwoLines,
+      detailsHeight: detailsOf(node),
     };
   };
 
@@ -541,7 +574,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
 
     const width = itemWidth(item, nodeWidth);
     const head = headOf(item.node, width);
-    const headerBottom = top + head.headerHeight;
+    const headerBottom = top + head.headerHeight + head.detailsHeight;
     let bottom: number;
 
     if (item.kind === 'forEach') {
@@ -652,6 +685,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
       height: bottom - top,
       headerHeight: M.groupHeader,
       titleFit: 'oneLine',
+      detailsHeight: 0,
     });
     width = laneX + laneWidth + M.margin;
     height = Math.max(height, bottom + M.margin);

@@ -659,7 +659,7 @@ export function ServingPage() {
       : undefined);
 
   let description =
-    'Models served by KServe or a model-manager (Ollama, LM Studio, Lemonade, KServe). Agents reach them through model configs.';
+    'These models are served by KServe or a model-manager (Ollama, LM Studio, Lemonade, KServe), and agents reach them through model configs.';
   if (canLoad || canPull || canImport) {
     description = `${description} Serving a model here creates its model config.`;
   }

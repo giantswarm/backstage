@@ -1,4 +1,7 @@
-import { Alert, Flex, Text } from '@backstage/ui';
+import { ReactNode, useState } from 'react';
+import { Alert, ButtonIcon, Flex, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
+import CloseIcon from '@material-ui/icons/Close';
 import {
   groupNames,
   joinNames,
@@ -6,6 +9,18 @@ import {
   SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { ReadFailure } from '../../lib/readFailure';
+
+const useStyles = makeStyles({
+  // The close button in the top-right corner, level with the title, rather
+  // than centred on a card the installation list makes tall.
+  alert: {
+    '& .bui-AlertActions': {
+      alignItems: 'flex-start',
+      marginTop: 'calc(-1 * var(--bui-space-1))',
+      marginRight: 'calc(-1 * var(--bui-space-1))',
+    },
+  },
+});
 
 export type UnreachableInstallationsAlertProps = {
   /** Installations whose kagent resources couldn't be read. */
@@ -34,6 +49,11 @@ export type UnreachableInstallationsAlertProps = {
  * and names the first few of each (`a, b, c, d, e and 40 more (timed out)`),
  * and every installation — with its request id — sits behind a disclosure: a
  * private fleet of 50 is otherwise a wall of text.
+ *
+ * It sits on most of the shell's pages, so the person can close it (the
+ * corner "X" of the dismissible banners, in bui Alert's actions slot). It
+ * stays closed for this set of installations while the page is mounted; a
+ * different set (a new failure) or the next visit shows it again.
  */
 export function UnreachableInstallationsAlert({
   installations,
@@ -49,8 +69,8 @@ export function UnreachableInstallationsAlert({
 
   if (count <= NAMED_IN_SENTENCE) {
     return (
-      <Alert
-        status="warning"
+      <ClosableWarning
+        installations={installations}
         title={title}
         description={
           failures
@@ -82,8 +102,8 @@ export function UnreachableInstallationsAlert({
       )}.`;
 
   return (
-    <Alert
-      status="warning"
+    <ClosableWarning
+      installations={installations}
       title={title}
       description={
         <Flex direction="column" gap="2">
@@ -100,6 +120,47 @@ export function UnreachableInstallationsAlert({
             </Flex>
           </SimpleAccordion>
         </Flex>
+      }
+    />
+  );
+}
+
+/**
+ * The warning card with its close button. Announced as an alert; closing it
+ * hides this set of installations' warning until the set changes.
+ */
+function ClosableWarning({
+  installations,
+  title,
+  description,
+}: {
+  installations: string[];
+  title: string;
+  description: ReactNode;
+}) {
+  const classes = useStyles();
+  const key = installations.join('\n');
+  const [closedKey, setClosedKey] = useState<string | null>(null);
+
+  if (closedKey === key) {
+    return null;
+  }
+
+  return (
+    <Alert
+      role="alert"
+      className={classes.alert}
+      status="warning"
+      title={title}
+      description={description}
+      customActions={
+        <ButtonIcon
+          variant="tertiary"
+          size="small"
+          icon={<CloseIcon fontSize="small" />}
+          aria-label="Close"
+          onPress={() => setClosedKey(key)}
+        />
       }
     />
   );

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
-import { contextOptions, lab } from './lab';
-import { shellSpecGlobs } from './portalModes';
+import { contextOptions, lab, mobileContextOptions } from './lab';
+import type { Variant } from './lab';
+import { mobileSpecGlobs, shellSpecGlobs } from './portalModes';
 
 /**
  * The Dev Portal in a real browser against a running agentlab — see
@@ -10,7 +11,7 @@ import { shellSpecGlobs } from './portalModes';
  * `agentlab platform` after a dev-image swap), and the suite only drives its
  * Backstage. `yarn test:e2e:agentlab` runs it.
  */
-export default defineConfig({
+export default defineConfig<{}, { variant: Variant }>({
   testDir: '.',
   // A page load in the lab can take a few seconds while the backend probes the
   // installation; a golden boot for a new agent takes minutes. The lifecycle
@@ -53,7 +54,7 @@ export default defineConfig({
   projects: [
     {
       name: 'agentlab',
-      testIgnore: shellSpecGlobs,
+      testIgnore: [...shellSpecGlobs, ...mobileSpecGlobs],
       use: { browserName: 'chromium' },
     },
     ...(lab.portalMode === 'shell'
@@ -62,6 +63,17 @@ export default defineConfig({
             name: 'agentlab-shell',
             testMatch: shellSpecGlobs,
             use: { browserName: 'chromium' as const },
+          },
+          // The phone (`mobileContextOptions` in lab.ts): 375×812,
+          // touch, an iPhone's user agent, on Chromium.
+          {
+            name: 'agentlab-mobile',
+            testMatch: mobileSpecGlobs,
+            use: {
+              ...mobileContextOptions,
+              browserName: 'chromium' as const,
+              variant: 'mobile' as const,
+            },
           },
         ]
       : []),

@@ -198,8 +198,8 @@ function ServerPanel({
               </Text>
             ),
             description: bucket.isFamily
-              ? 'A federated family: one tool surface across its management clusters.'
-              : 'Also tools it adds later.',
+              ? 'A federated family exposes one tool surface across its management clusters.'
+              : 'It also includes tools added later.',
             mode: {
               kind: 'select',
               role: 'checkbox',

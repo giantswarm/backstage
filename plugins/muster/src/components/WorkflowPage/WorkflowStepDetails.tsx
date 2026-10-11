@@ -73,6 +73,20 @@ const useStyles = makeStyles({
     fontSize: 12,
     color: 'var(--bui-fg-secondary)',
   },
+  // Inside the step's own box on the canvas: the box is the panel, its title
+  // the heading, and the step's button folds it — so no frame, heading or
+  // Close of its own, and one column at the box's narrow width. Last, so the
+  // rule it refers to exists.
+  inline: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '10px 14px 12px',
+    borderTop: '1px solid var(--bui-border-1)',
+    '& $grid': {
+      gridTemplateColumns: '1fr',
+    },
+  },
 });
 
 /** `?installation=<inst>`, or nothing without one. */
@@ -278,12 +292,19 @@ export interface WorkflowStepDetailsProps {
   overlay?: StepRunOverlay;
   /** What the step's tool does, from the tool catalogue, when known. */
   effect?: ToolEffect;
-  onClose: () => void;
+  /**
+   * `panel` (the phone list): its own frame, heading and Close. `inline`
+   * (inside the step's box on the canvas): the box is the frame and the
+   * step's button folds it, so neither heading nor Close.
+   */
+  variant?: 'panel' | 'inline';
+  /** Folds the details; the panel's Close calls it. */
+  onClose?: () => void;
 }
 
 /**
- * One step's details, opened from the flow canvas (under it) or the phone
- * step list (in place, under the step): the plain description
+ * One step's details, opened in place — inside the step's box on the flow
+ * canvas, under the step's card in the phone list: the plain description
  * first — what it calls, when it is skipped, whether it may fail, how the last
  * run went — then its own "Show technical information" fold-out with the
  * exact tool name, templated arguments and condition spec. Disclosure is per
@@ -297,6 +318,7 @@ export function WorkflowStepDetails({
   installation,
   overlay,
   effect,
+  variant = 'panel',
   onClose,
 }: WorkflowStepDetailsProps) {
   const classes = useStyles();
@@ -335,11 +357,11 @@ export function WorkflowStepDetails({
   if (parent) {
     facts.push(
       parent.kind === 'forEach'
-        ? `Part of step ${parent.node.number} (${parent.node.title}): ${forEachSummary(
+        ? `It belongs to step ${parent.node.number} (${parent.node.title}) and runs ${forEachSummary(
             parent.forEach,
             stepIds,
           ).replace(/^F/, 'f')}.`
-        : `Part of step ${parent.node.number} (${parent.node.title}): runs at the same time as its siblings.`,
+        : `It belongs to step ${parent.node.number} (${parent.node.title}) and runs at the same time as its siblings.`,
     );
   }
   if (node.lane === 'cleanup') {
@@ -369,21 +391,26 @@ export function WorkflowStepDetails({
     facts.push(lastRunSentence(overlay));
   }
 
+  const inline = variant === 'inline';
   return (
     <section
       id={id}
-      className={classes.panel}
+      className={inline ? classes.inline : classes.panel}
       aria-label={`Details of ${heading}`}
       data-testid="workflow-step-details"
     >
-      <div className={classes.head}>
-        <Text as="h3" variant="title-x-small">
-          {heading}
-        </Text>
-        <Button variant="tertiary" size="small" onPress={onClose}>
-          Close
-        </Button>
-      </div>
+      {!inline && (
+        <div className={classes.head}>
+          <Text as="h3" variant="title-x-small">
+            {heading}
+          </Text>
+          {onClose && (
+            <Button variant="tertiary" size="small" onPress={onClose}>
+              Close
+            </Button>
+          )}
+        </div>
+      )}
       <ul className={classes.facts}>
         {facts.map((fact, index) => (
           <li key={index}>

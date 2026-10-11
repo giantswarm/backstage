@@ -465,7 +465,7 @@ describe('GpuCapacityPanel · backend host', () => {
       expect(dash).toHaveAttribute(
         'title',
         expect.stringContaining(
-          "The host a serving backend runs on, not a cluster node: the backend's API does not expose the accelerator",
+          "This is the host a serving backend runs on, not a cluster node. The backend's API does not expose the accelerator",
         ),
       );
     }
@@ -638,7 +638,7 @@ describe('GpuCapacityPanel · serving targets', () => {
     expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /Not a serving target: outside the serving layer's node selector/,
+        /A node is not a serving target when it is outside the serving layer's node selector/,
       ),
     ).toBeInTheDocument();
   });

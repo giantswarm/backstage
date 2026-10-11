@@ -78,7 +78,7 @@ export function EditSkillPage() {
       <Alert
         status="info"
         title="Read-only in the portal"
-        description="This skill's repository is not on github.com. The portal proposes skill changes as GitHub pull requests, so it cannot edit this skill here — change it in its repository."
+        description="This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository."
       />
     );
   } else if (skill && !readable) {
@@ -86,7 +86,7 @@ export function EditSkillPage() {
       <Alert
         status="info"
         title="The portal cannot read this skill's source"
-        description="Its SKILL.md could not be read with the portal's access to the repository, so it cannot be edited here. Change it in the repository instead."
+        description="Its SKILL.md could not be read, so the skill cannot be edited here. Change it in its repository."
       />
     );
   } else if (catalog.isLoading || isLoading) {
@@ -111,7 +111,7 @@ export function EditSkillPage() {
     body = (
       <EmptyStateCard
         title="Skill not found"
-        description="No skill at this address was discovered in the configured repositories. It may have been renamed or removed — the list has what exists now."
+        description="No skill with this address exists in the configured repositories. It may have been renamed or removed."
       />
     );
   }

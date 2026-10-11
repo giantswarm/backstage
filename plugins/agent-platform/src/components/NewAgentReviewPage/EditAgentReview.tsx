@@ -247,7 +247,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
       <Flex direction="column" gap="5">
         <WizardStepHeading title="Check and save">
           {viaPullRequest
-            ? 'Applied from Git: saving opens a pull request as you with only your changes; the agent changes once it is merged.'
+            ? 'This agent is applied from Git, so saving opens a pull request as you with only your changes, and the agent changes once it is merged.'
             : "Only your changes are saved; the agent's page then shows it picking them up."}
         </WizardStepHeading>
 
@@ -404,7 +404,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               <div className={classes.section}>
                 <SectionTitle
                   title="What the tools resolve to"
-                  description="The toolset this agent declares, and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
+                  description="This is the toolset the agent declares and what it resolves to for you right now. Resolution happens per person: someone with access to more servers sees more through the same agent, never less than the toolset allows."
                 />
                 <ToolsetResolutionList
                   resolution={resolution}

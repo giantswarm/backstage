@@ -40,7 +40,7 @@ function SessionsFrame({
   return (
     <ShellPage
       title="Sessions"
-      description="Every conversation you’ve had with an agent."
+      description="Lists every conversation you have had with an agent."
       actions={
         <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
           New session

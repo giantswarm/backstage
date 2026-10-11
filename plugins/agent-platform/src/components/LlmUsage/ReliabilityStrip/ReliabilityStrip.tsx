@@ -52,7 +52,7 @@ export function ReliabilityStrip({
   }
 
   const duration = (quantile: string) =>
-    `The ${quantile} model call over the last ${WINDOW_DAYS} days, from first request byte to last response byte — so a long answer reads as slow.`;
+    `Shows the ${quantile} model call duration over the last ${WINDOW_DAYS} days, from first request byte to last response byte, so a long answer reads as slow.`;
 
   return (
     <div className={classes.strip}>
@@ -69,19 +69,19 @@ export function ReliabilityStrip({
       <Stat
         label="Tokens per second"
         value={formatTokensPerSecond(reliability.outputTokensPerSecond)}
-        hint={`Median output speed of streamed calls over the last ${WINDOW_DAYS} days, from the gateway's coarse seconds-per-token buckets — a rough rate. Unstreamed calls and idle time are not counted.`}
+        hint={`Shows the median output speed of streamed calls over the last ${WINDOW_DAYS} days, from the gateway's coarse seconds-per-token buckets, so it is a rough rate. Unstreamed calls and idle time are not counted.`}
       />
       <Stat
         label="Error rate"
         value={formatPercent(reliability.errorRatePct)}
         tone={errorTone()}
-        hint={`Share of LLM requests answered with anything but 2xx or 3xx over the last ${WINDOW_DAYS} days.`}
+        hint={`Shows the share of LLM requests answered with anything but 2xx or 3xx over the last ${WINDOW_DAYS} days.`}
       />
       <Stat
         label="Rate limited (429)"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Requests answered 429 over the last ${WINDOW_DAYS} days, by the provider or the gateway's rate limit — a quota to raise or concurrency to lower. Also part of the error rate.`}
+        hint={`Counts requests answered 429 over the last ${WINDOW_DAYS} days by the provider or the gateway's rate limit, a sign to raise the quota or lower the concurrency. They also count in the error rate.`}
       />
     </div>
   );

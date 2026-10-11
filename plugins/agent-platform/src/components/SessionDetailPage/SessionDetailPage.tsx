@@ -18,6 +18,9 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import {
   makeStyles,
+  // MUI's on purpose: bui's tooltip wires only its own focusable components,
+  // and the title's trigger is a bare <button> (see `titleButton`).
+  // eslint-disable-next-line @typescript-eslint/no-restricted-imports
   Tooltip,
   useMediaQuery,
   useTheme,
@@ -26,6 +29,8 @@ import {
   DateComponent,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageTitleSkeleton,
   useProvidePageHeaderActions,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -337,6 +342,11 @@ export function SessionDetailPage() {
   const deletion = useDeleteSession(installation, sessionId);
   const { isUserScoped } = useKagentCapabilities(installation);
 
+  // The prompt this session was started with, if the user arrived here by
+  // starting it. Read once and cleared, so returning to the session later cannot
+  // re-send it. See `useNewSessionHandoff`.
+  const handoff = useNewSessionHandoff();
+
   const {
     detail,
     timeline,
@@ -354,6 +364,10 @@ export function SessionDetailPage() {
     error,
   } = useSessionDetail(installation, sessionId, {
     enabled: !deletion.isDeleting && !deletion.isDeleted,
+    // Arriving with a handoff means the session was created a moment ago, and
+    // its first reads can miss it for a beat: the page keeps loading through
+    // that instead of flashing an error (T86).
+    justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
 
@@ -372,11 +386,6 @@ export function SessionDetailPage() {
   // query has no client there. The capabilities probe is a cached `/me` read with an
   // hour's staleTime, so asking for it on this page is free.
   const rename = useRenameSession(installation, sessionId);
-
-  // The prompt this session was started with, if the user arrived here by
-  // starting it. Read once and cleared, so returning to the session later cannot
-  // re-send it. See `useNewSessionHandoff`.
-  const handoff = useNewSessionHandoff();
 
   // Undefined when no `Agent` CR matched the session's encoded `agent_id`, which
   // is what withholds the composer: without the agent's real namespace and name
@@ -927,9 +936,16 @@ export function SessionDetailPage() {
     return () => cancelAnimationFrame(frame);
   }, [columnElement, sessionId]);
 
+  // The loaded page's header from the first paint, with skeletons where the
+  // read will fill in: the title and the badge row (T95).
   if (isLoading) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
+      <Shell
+        installation={installation}
+        sessionId={sessionId}
+        title={<ShellPageTitleSkeleton label="Loading session" />}
+        badges={<ShellPageBadgeSkeleton />}
+      >
         <Progress aria-label="Loading session" />
       </Shell>
     );

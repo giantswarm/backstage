@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { ReactElement, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
@@ -17,11 +17,18 @@ import {
   FactsColumn,
   LoadingIndicator,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
   YamlEditorFormField,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MusterWorkflow } from '../../lib/k8s';
-import { isGitOpsManaged, toManifestYaml } from '../../lib/gitops';
+import {
+  isGitOpsManaged,
+  toManifestYaml,
+  toWorkflowDefinition,
+  toYaml,
+} from '../../lib/gitops';
 import { toolEffect } from '../../lib/toolAnnotations';
 import { serverPrefixInfos } from '../../lib/toolGrouping';
 import { findReferencedBy } from '../../lib/workflowReferences';
@@ -40,8 +47,22 @@ import {
 import { WorkflowEffectBadge } from './WorkflowEffectBadge';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
 import { WorkflowStatistics } from './WorkflowStatistics';
+import {
+  WorkflowPageTarget,
+  WorkflowPageTargetProvider,
+} from './workflowPageTarget';
 
 const WORKFLOW_TOOL_PREFIX = 'workflow_';
+
+export type WorkflowPageProps = {
+  /**
+   * Another plugin's action for this workflow, beside the page's title — the
+   * `editAction` input of `sub-page:muster/workflows` (agent-platform's
+   * hand-off to the workflow agent). It reads the workflow with
+   * `useWorkflowPageTarget`.
+   */
+  editAction?: ReactElement;
+};
 
 const useStyles = makeStyles((theme: Theme) => ({
   argList: {
@@ -112,6 +133,10 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   advancedBody: {
     paddingTop: theme.spacing(1),
+  },
+  description: {
+    margin: 0,
+    overflowWrap: 'anywhere',
   },
   pillRequired: {
     backgroundColor: 'transparent',
@@ -261,10 +286,11 @@ function TechnicalDetails({
 function WorkflowPageContent({
   workflow,
   installation,
+  editAction,
 }: {
   workflow: MusterWorkflow;
   installation?: string;
-}) {
+} & WorkflowPageProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const paths = useCustomizePaths();
@@ -283,6 +309,7 @@ function WorkflowPageContent({
   const created = workflow.getCreatedTimestamp();
   const category = workflow.getCategory();
   const validationErrors = workflow.getValidationErrors();
+  const description = workflow.getDescription();
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const referencedBy = useMemo(
     () => findReferencedBy(name, workflows),
@@ -302,6 +329,17 @@ function WorkflowPageContent({
     staleTime: 30_000,
   });
   const effect = toolQuery.data ? toolEffect(toolQuery.data) : undefined;
+
+  const target = useMemo<WorkflowPageTarget>(
+    () => ({
+      name,
+      installation,
+      toolName,
+      gitOps,
+      definitionYaml: toYaml(toWorkflowDefinition(workflow)),
+    }),
+    [name, installation, toolName, gitOps, workflow],
+  );
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
@@ -338,179 +376,197 @@ function WorkflowPageContent({
   ];
 
   return (
-    <ShellPage
-      title={name}
-      breadcrumbs={breadcrumbs}
-      badges={
-        <>
-          {effect && <WorkflowEffectBadge effect={effect} />}
-          {workflow.hasValidationWarning() && (
-            <StateBadge tone="warning" label="Validation warning" />
+    <WorkflowPageTargetProvider target={target}>
+      <ShellPage
+        title={name}
+        breadcrumbs={breadcrumbs}
+        actions={editAction}
+        badges={
+          <>
+            {effect && <WorkflowEffectBadge effect={effect} />}
+            {workflow.hasValidationWarning() && (
+              <StateBadge tone="warning" label="Validation warning" />
+            )}
+          </>
+        }
+        meta={`${steps.length} step${steps.length === 1 ? '' : 's'} · ${
+          args.length
+        } input${args.length === 1 ? '' : 's'}`}
+        // No description in the header — the agent and skill pages carry none
+        // either (T53): a long one takes the title block's whole row, and the
+        // header's actions then wrap under it at the left. It opens the
+        // content instead.
+        aside={<FactsColumn facts={facts} aria-label="Workflow details" />}
+      >
+        <Flex direction="column" gap="6">
+          {description && (
+            // Plain text, not GSMarkdownContent: the definition's description
+            // is a sentence, and the page renders it as written.
+            <Text
+              as="p"
+              variant="body-medium"
+              color="secondary"
+              className={classes.description}
+            >
+              {description}
+            </Text>
           )}
-        </>
-      }
-      meta={`${steps.length} step${steps.length === 1 ? '' : 's'} · ${
-        args.length
-      } input${args.length === 1 ? '' : 's'}`}
-      // Plain text, not GSMarkdownContent: ShellPage wraps the description in
-      // a `<p>`, and a markdown block's `<div>` inside it is invalid HTML.
-      description={workflow.getDescription()}
-      aside={<FactsColumn facts={facts} aria-label="Workflow details" />}
-    >
-      <Flex direction="column" gap="6">
-        {!hasSession && (
-          <SessionGate
-            session={session}
-            installation={installation}
-            context="Statistics, the last run and the read-only badge need a muster session."
-          />
-        )}
+          {!hasSession && (
+            <SessionGate
+              session={session}
+              installation={installation}
+              context="Statistics, the last run and the read-only badge need a muster session."
+            />
+          )}
 
-        {workflow.hasValidationWarning() && (
-          <Alert
-            status="warning"
-            description={
-              <>
-                muster's validator flagged this definition. The workflow can
-                still run.
-                {validationErrors.length > 0 && (
-                  <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-                    {validationErrors.map(error => (
-                      <li key={error}>{error}</li>
-                    ))}
-                  </ul>
-                )}
-              </>
+          {workflow.hasValidationWarning() && (
+            <Alert
+              status="warning"
+              description={
+                <>
+                  muster's validator flagged this definition. The workflow can
+                  still run.
+                  {validationErrors.length > 0 && (
+                    <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+                      {validationErrors.map(error => (
+                        <li key={error}>{error}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              }
+            />
+          )}
+
+          <Box>
+            <SectionHeader
+              icon={<Tune />}
+              title="What it needs"
+              description="An agent passes these inputs when running it."
+            />
+            <ArgumentsList workflow={workflow} />
+          </Box>
+
+          <Box>
+            <SectionHeader
+              icon={<FormatListNumbered />}
+              title="How it runs"
+              description="Steps in order. A step whose condition does not hold is skipped — there is no branching."
+            />
+            <WorkflowFlowCanvas
+              name={name}
+              steps={steps}
+              onFailure={onFailure}
+              prefixes={prefixes}
+              installation={installation}
+              hasSession={hasSession}
+            />
+          </Box>
+
+          <Box>
+            <SectionHeader
+              icon={<BarChart />}
+              title="Statistics"
+              description="Every run counts, whether an agent, another workflow or a person started it."
+            />
+            <WorkflowStatistics
+              name={name}
+              installation={installation}
+              hasSession={hasSession}
+            />
+          </Box>
+
+          <DisclosureAccordion
+            summary={
+              <span className={classes.advancedSummary}>
+                <Text as="span" variant="body-large" weight="bold">
+                  Advanced
+                </Text>
+                <Text as="span" variant="body-small" color="secondary">
+                  Shows where agents use it, the raw definition and the CR's
+                  bookkeeping.
+                </Text>
+              </span>
             }
-          />
-        )}
+          >
+            <Flex direction="column" gap="6" className={classes.advancedBody}>
+              <Box>
+                <SectionHeader
+                  icon={<Share />}
+                  title="Where agents use it"
+                  description={`Agents run this workflow by calling the tool ${toolName}.`}
+                />
+                <Flex direction="column" gap="2">
+                  {connectors.length > 0 && (
+                    <Text as="p" variant="body-medium" color="secondary">
+                      Its steps use tools from: {connectors.join(', ')}.
+                    </Text>
+                  )}
+                  {referencedBy.length > 0 ? (
+                    <Text as="p" variant="body-medium" color="secondary">
+                      Called as a step by:{' '}
+                      {referencedBy.map((ref, index) => {
+                        const base = detailRoute?.({ name: ref.getName() });
+                        return (
+                          <span key={`${ref.cluster}/${ref.getName()}`}>
+                            {index > 0 && ', '}
+                            {base ? (
+                              <Link
+                                href={`${base}${installationSearch(ref.cluster)}`}
+                                variant="body-medium"
+                              >
+                                {ref.getName()}
+                              </Link>
+                            ) : (
+                              ref.getName()
+                            )}
+                          </span>
+                        );
+                      })}
+                    </Text>
+                  ) : (
+                    <Text as="p" variant="body-medium" color="secondary">
+                      No other workflow calls this one as a step.
+                    </Text>
+                  )}
+                </Flex>
+              </Box>
 
-        <Box>
-          <SectionHeader
-            icon={<Tune />}
-            title="What it needs"
-            description="Inputs an agent passes when running it."
-          />
-          <ArgumentsList workflow={workflow} />
-        </Box>
-
-        <Box>
-          <SectionHeader
-            icon={<FormatListNumbered />}
-            title="How it runs"
-            description="Steps in order. A step whose condition does not hold is skipped — there is no branching."
-          />
-          <WorkflowFlowCanvas
-            name={name}
-            steps={steps}
-            onFailure={onFailure}
-            prefixes={prefixes}
-            installation={installation}
-            hasSession={hasSession}
-          />
-        </Box>
-
-        <Box>
-          <SectionHeader
-            icon={<BarChart />}
-            title="Statistics"
-            description="Every run counts, whether an agent, another workflow or a person started it."
-          />
-          <WorkflowStatistics
-            name={name}
-            installation={installation}
-            hasSession={hasSession}
-          />
-        </Box>
-
-        <DisclosureAccordion
-          summary={
-            <span className={classes.advancedSummary}>
-              <Text as="span" variant="body-large" weight="bold">
-                Advanced
-              </Text>
-              <Text as="span" variant="body-small" color="secondary">
-                Where agents use it, the raw definition and the CR's
-                bookkeeping.
-              </Text>
-            </span>
-          }
-        >
-          <Flex direction="column" gap="6" className={classes.advancedBody}>
-            <Box>
-              <SectionHeader
-                icon={<Share />}
-                title="Where agents use it"
-                description={`Agents run this workflow by calling the tool ${toolName}.`}
-              />
-              <Flex direction="column" gap="2">
-                {connectors.length > 0 && (
-                  <Text as="p" variant="body-medium" color="secondary">
-                    Its steps use tools from: {connectors.join(', ')}.
-                  </Text>
-                )}
-                {referencedBy.length > 0 ? (
-                  <Text as="p" variant="body-medium" color="secondary">
-                    Called as a step by:{' '}
-                    {referencedBy.map((ref, index) => {
-                      const base = detailRoute?.({ name: ref.getName() });
-                      return (
-                        <span key={`${ref.cluster}/${ref.getName()}`}>
-                          {index > 0 && ', '}
-                          {base ? (
-                            <Link
-                              href={`${base}${installationSearch(ref.cluster)}`}
-                              variant="body-medium"
-                            >
-                              {ref.getName()}
-                            </Link>
-                          ) : (
-                            ref.getName()
-                          )}
-                        </span>
-                      );
-                    })}
-                  </Text>
-                ) : (
-                  <Text as="p" variant="body-medium" color="secondary">
-                    No other workflow calls this one as a step.
-                  </Text>
-                )}
-              </Flex>
-            </Box>
-
-            <Box>
-              <SectionHeader
-                icon={<Code />}
-                title="Technical details"
-                description="Bookkeeping, referenced tools and the raw definition."
-              />
-              <TechnicalDetails
-                workflow={workflow}
-                installation={installation}
-                hasSession={hasSession}
-              />
-            </Box>
-          </Flex>
-        </DisclosureAccordion>
-      </Flex>
-    </ShellPage>
+              <Box>
+                <SectionHeader
+                  icon={<Code />}
+                  title="Technical details"
+                  description="Shows the bookkeeping, referenced tools and the raw definition."
+                />
+                <TechnicalDetails
+                  workflow={workflow}
+                  installation={installation}
+                  hasSession={hasSession}
+                />
+              </Box>
+            </Flex>
+          </DisclosureAccordion>
+        </Flex>
+      </ShellPage>
+    </WorkflowPageTargetProvider>
   );
 }
 
 /**
  * A workflow's page in the agent-platform shell — read-only by decision D11:
- * no create, edit or delete affordances; changes happen through Git or agents
- * via muster. Plain level, in order: what it needs, how it runs (the flow
- * canvas, coloured by the last run — a step opens its details on click), and
- * its statistics (the last run, muster's run totals, rates and runs per day).
- * Everything else is one "Advanced" disclosure at the bottom: where agents
- * use it and the technical details (the CR's bookkeeping and the raw
- * definition). Technical detail is disclosed where it belongs, never by a
- * page-wide toggle: each step's own fold-out (exact tool, templated
+ * no create, edit or delete forms; changes happen through Git or agents via
+ * muster, and the page's one change action (`editAction`, where another
+ * plugin attaches one) hands the workflow to the workflow agent. Plain level,
+ * in order: what it needs, how it runs (the flow canvas, coloured by the last
+ * run — a step expands in place to its details, the flow can go full
+ * screen), and its statistics (the last run, muster's run totals, rates and
+ * runs per day). Everything else is one "Advanced" disclosure at the bottom:
+ * where agents use it and the technical details (the CR's bookkeeping and
+ * the raw definition). Technical detail is disclosed where it belongs, never
+ * by a page-wide toggle: each step's own fold-out (exact tool, templated
  * arguments, condition spec) and the Advanced disclosure.
  */
-export function WorkflowPage() {
+export function WorkflowPage({ editAction }: WorkflowPageProps = {}) {
   const { name = '' } = useParams<{ name: string }>();
   // Set here, above every state the page can be in, so a client-side visit
   // never keeps the previous page's title (live round 2, R5) — the same form
@@ -518,12 +574,15 @@ export function WorkflowPage() {
   return (
     <>
       <Helmet title={`${name} · Workflows · Agent Platform`} />
-      <WorkflowPageBody name={name} />
+      <WorkflowPageBody name={name} editAction={editAction} />
     </>
   );
 }
 
-function WorkflowPageBody({ name }: { name: string }) {
+function WorkflowPageBody({
+  name,
+  editAction,
+}: { name: string } & WorkflowPageProps) {
   const [searchParams] = useSearchParams();
   const installationParam = searchParams.get('installation') ?? undefined;
   const paths = useCustomizePaths();
@@ -540,8 +599,19 @@ function WorkflowPageBody({ name }: { name: string }) {
   }, [workflows, name, installationParam]);
 
   if (isLoadingInstallations || isLoading) {
+    // The loaded page's frame from the first paint — trail, badge row, facts
+    // column — with skeletons where the read will fill in (T95).
     return (
-      <ShellPage title={name}>
+      <ShellPage
+        title={name}
+        breadcrumbs={[
+          { label: 'Customize', href: paths.customize },
+          { label: 'Workflows', href: paths.workflows },
+          { label: name },
+        ]}
+        badges={<ShellPageBadgeSkeleton />}
+        aside={<ShellPageFactsSkeleton />}
+      >
         <LoadingIndicator label="Reading the workflow…" />
       </ShellPage>
     );
@@ -583,6 +653,7 @@ function WorkflowPageBody({ name }: { name: string }) {
       key={`${workflow.cluster}/${name}`}
       workflow={workflow}
       installation={workflow.cluster ?? installationParam}
+      editAction={editAction}
     />
   );
 }

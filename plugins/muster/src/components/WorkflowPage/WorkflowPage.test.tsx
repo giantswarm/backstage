@@ -1,5 +1,6 @@
+import type { ReactElement } from 'react';
 import { Route, Routes } from 'react-router-dom';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -12,7 +13,9 @@ import {
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, workflowsRouteRef } from '../../routes';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
+import { DEFAULT_DETAILS_HEIGHT } from './WorkflowFlowCanvas';
 import { WorkflowPage } from './WorkflowPage';
+import { useWorkflowPageTarget } from './workflowPageTarget';
 
 // A textarea stands in for the CodeMirror editor, so the raw-YAML assertion
 // can read the definition as the textbox's value.
@@ -257,19 +260,37 @@ function makeApi() {
   };
 }
 
-async function renderAt(path: string, api = makeApi()) {
+async function renderAt(
+  path: string,
+  api = makeApi(),
+  editAction?: ReactElement,
+  /** Inside the agent shell's frame: the nav rail beside `#content`. */
+  inShell = false,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const page = (
+    <Routes>
+      <Route
+        path="/agent-platform/workflows/:name/*"
+        element={<WorkflowPage editAction={editAction} />}
+      />
+    </Routes>
+  );
   await renderInTestApp(
     <QueryClientProvider client={queryClient}>
       <PageHeaderActionsProvider>
-        <Routes>
-          <Route
-            path="/agent-platform/workflows/:name/*"
-            element={<WorkflowPage />}
-          />
-        </Routes>
+        {inShell ? (
+          <>
+            <nav aria-label="Main">
+              <a href="/agent-platform/sessions">Sessions</a>
+            </nav>
+            <div id="content">{page}</div>
+          </>
+        ) : (
+          page
+        )}
       </PageHeaderActionsProvider>
     </QueryClientProvider>,
     {
@@ -390,18 +411,36 @@ describe('WorkflowPage', () => {
     expect(getComputedStyle(viewport).overflow).toBe('auto');
   });
 
-  it('opens a step’s plain details on click, with its own technical fold-out', async () => {
+  it('expands a step in place to its plain details, with its own technical fold-out', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const figure = within(screen.getByTestId('workflow-flow-canvas'));
     const step = screen.getByRole('button', {
       name: /^Step 2: Apply the manifests/,
     });
+    expect(step).toHaveAttribute('aria-expanded', 'false');
 
     await userEvent.click(step);
-    expect(step).toHaveAttribute('aria-pressed', 'true');
-    const details = within(screen.getByTestId('workflow-step-details'));
+    expect(step).toHaveAttribute('aria-expanded', 'true');
+    const panel = screen.getByRole('region', {
+      name: 'Details of Step 2 · Apply the manifests',
+    });
+    // Inside the step's own box in the diagram — no area under the canvas —
+    // and named as the step's control.
+    expect(step.closest('[data-node]')).toContainElement(panel);
+    expect(screen.getByTestId('workflow-flow-viewport')).toContainElement(
+      panel,
+    );
+    expect(step).toHaveAttribute('aria-controls', panel.id);
+    // The box is the frame and the step folds it: no heading or Close.
+    const details = within(panel);
     expect(
-      details.getByRole('heading', { name: 'Step 2 · Apply the manifests' }),
-    ).toBeInTheDocument();
+      details.queryByRole('heading', { name: /Apply the manifests/ }),
+    ).toBeNull();
+    expect(details.queryByRole('button', { name: 'Close' })).toBeNull();
+    // Announced.
+    expect(figure.getByRole('status')).toHaveTextContent(
+      'Step 2 · Apply the manifests: details shown.',
+    );
     expect(
       details.getByText(/on the kubernetes connector/),
     ).toBeInTheDocument();
@@ -410,42 +449,227 @@ describe('WorkflowPage', () => {
         'Only if step 1 (fetch) succeeded — otherwise this step is skipped.',
       ),
     ).toBeInTheDocument();
-    // Technical fields stay folded until this step's fold-out opens.
+    // Technical fields stay folded until this step's fold-out opens — and
+    // opening it keeps the step open.
     expect(details.queryByText('x_kubernetes_apply')).toBeNull();
     await userEvent.click(
       details.getByRole('button', { name: 'Show technical information' }),
     );
+    expect(step).toHaveAttribute('aria-expanded', 'true');
     expect(details.getByText('x_kubernetes_apply')).toBeInTheDocument();
     expect(details.getByText('fromStep: fetch')).toBeInTheDocument();
     expect(details.getByText('expect: success=true')).toBeInTheDocument();
 
-    // Another step replaces the details, folded again; Close closes them.
+    // One step at a time: another one folds this one, its own folded again.
+    const first = screen.getByRole('button', {
+      name: /^Step 1: Read the current pods/,
+    });
+    await userEvent.click(first);
+    expect(step).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByTestId('workflow-step-details')).toHaveLength(1);
+    const firstPanel = within(
+      screen.getByRole('region', {
+        name: 'Details of Step 1 · Read the current pods',
+      }),
+    );
+    expect(firstPanel.queryByText('{{ .input.app }}')).toBeNull();
+    await userEvent.click(
+      firstPanel.getByRole('button', { name: 'Show technical information' }),
+    );
+    expect(firstPanel.getByText('{{ .input.app }}')).toBeInTheDocument();
+    expect(
+      firstPanel.getByText('stores its result for later steps'),
+    ).toBeInTheDocument();
+    // Pressing it again folds it.
+    await userEvent.click(first);
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('workflow-step-details')).toBeNull();
+    expect(figure.getByRole('status')).toHaveTextContent('');
+  });
+
+  it('gives the expanded step room: its box grows and the steps after it move down', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const box = (key: string) =>
+      screen
+        .getByTestId('workflow-flow-canvas')
+        .querySelector(`[data-node="${key}"]`) as HTMLElement;
+    const loop = () =>
+      screen
+        .getByTestId('workflow-flow-canvas')
+        .querySelector('[data-group="forEach"]') as HTMLElement;
+    const px = (value: string) => parseFloat(value);
+    const before = {
+      height: px(box('s0').style.height),
+      next: px(box('s1').style.top),
+      loop: px(loop().style.top),
+    };
+
     await userEvent.click(
       screen.getByRole('button', { name: /^Step 1: Read the current pods/ }),
     );
-    const first = within(screen.getByTestId('workflow-step-details'));
-    expect(
-      first.getByRole('heading', { name: 'Step 1 · Read the current pods' }),
-    ).toBeInTheDocument();
-    expect(first.queryByText('{{ .input.app }}')).toBeNull();
-    await userEvent.click(
-      first.getByRole('button', { name: 'Show technical information' }),
+    // jsdom lays nothing out, so the details keep their default room.
+    expect(px(box('s0').style.height)).toBe(
+      before.height + DEFAULT_DETAILS_HEIGHT,
     );
-    expect(first.getByText('{{ .input.app }}')).toBeInTheDocument();
-    expect(
-      first.getByText('stores its result for later steps'),
-    ).toBeInTheDocument();
-    await userEvent.click(first.getByRole('button', { name: 'Close' }));
+    expect(px(box('s1').style.top)).toBe(before.next + DEFAULT_DETAILS_HEIGHT);
+    expect(px(loop().style.top)).toBe(before.loop + DEFAULT_DETAILS_HEIGHT);
+    // The step's own lines keep their height above the details.
+    const head = within(box('s0')).getByRole('button', {
+      name: /^Step 1: Read the current pods/,
+    });
+    expect(px(head.style.height)).toBe(before.height - 2);
+  });
+
+  it('folds the open step by keyboard, by pressing it again and by a click beside the steps', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const step = screen.getByRole('button', {
+      name: /^Step 2: Apply the manifests/,
+    });
+
+    // The step is a focusable button: Enter expands it, Escape folds it and
+    // leaves the focus on it.
+    step.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(step).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.keyboard('{Escape}');
+    expect(step).toHaveAttribute('aria-expanded', 'false');
+    expect(step).toHaveFocus();
+    await userEvent.keyboard(' ');
+    expect(step).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.keyboard(' ');
+    expect(step).toHaveAttribute('aria-expanded', 'false');
+
+    // A click on the canvas beside the steps folds it.
+    await userEvent.click(step);
+    await userEvent.click(screen.getByTestId('workflow-flow-viewport'));
+    expect(step).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('workflow-step-details')).toBeNull();
   });
 
-  it('opens a group head’s details: what the loop runs over', async () => {
+  it('takes the flow full screen over the content area, beside the rail, and back by its button or Escape', async () => {
+    await renderAt(
+      `${BASE}/deploy?installation=gazelle`,
+      makeApi(),
+      undefined,
+      true,
+    );
+    const content = document.getElementById('content')!;
+    const rail = screen.getByRole('navigation', { name: 'Main' });
+    // The content area starts where the rail ends (the layout pads it).
+    let railWidth = 240;
+    jest
+      .spyOn(content, 'getBoundingClientRect')
+      .mockImplementation(() => ({ left: railWidth }) as DOMRect);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Full screen' }));
+    const layer = screen.getByRole('dialog', {
+      name: 'deploy: flow, full screen',
+    });
+    // A layer of its own, over the content area only: from the content
+    // area's left edge to the window's right, the full viewport height.
+    expect(layer.parentElement).toBe(document.body);
+    expect(layer.style.left).toBe('240px');
+    const geometry = getComputedStyle(layer);
+    expect(geometry.position).toBe('fixed');
+    expect(geometry.top).toBe('0px');
+    expect(geometry.bottom).toBe('0px');
+    expect(geometry.right).toBe('0px');
+    // The page behind it goes inert; the rail beside it stays in use, so
+    // the layer is no modal.
+    expect(content).toHaveAttribute('inert');
+    expect(rail).not.toHaveAttribute('inert');
+    expect(rail.closest('[inert]')).toBeNull();
+    expect(layer.closest('[inert]')).toBeNull();
+    expect(layer).not.toHaveAttribute('aria-modal');
+    expect(layer).toHaveFocus();
+    expect(
+      within(layer).getByRole('heading', { name: 'deploy' }),
+    ).toBeInTheDocument();
+    const viewport = within(layer).getByTestId('workflow-flow-viewport');
+    expect(viewport.className).toMatch(/scrollerFull/);
+    // The flow takes the layer's whole height: no inline cap (min(560px,
+    // 70vh)) left on its box, and the figure stretches down the layer.
+    expect(getComputedStyle(viewport).maxHeight).toBe('none');
+    expect(getComputedStyle(viewport).flexGrow).toBe('1');
+    const fullFigure = within(layer).getByTestId('workflow-flow-canvas');
+    expect(getComputedStyle(fullFigure).flexGrow).toBe('1');
+    expect(getComputedStyle(fullFigure).minHeight).toBe('0px');
+    // No second canvas left on the page.
+    expect(screen.getAllByTestId('workflow-flow-canvas')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Full screen' })).toBeNull();
+
+    // The rail collapsing narrows it: the layer follows the content area.
+    railWidth = 72;
+    fireEvent(window, new Event('resize'));
+    expect(layer.style.left).toBe('72px');
+
+    // Steps expand in place there too; Escape folds the step first…
+    const step = within(layer).getByRole('button', {
+      name: /^Step 2: Apply the manifests/,
+    });
+    await userEvent.click(step);
+    expect(
+      within(layer).getByRole('region', {
+        name: 'Details of Step 2 · Apply the manifests',
+      }),
+    ).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(step).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // …then leaves full screen, focus back on the control that opened it.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(content).not.toHaveAttribute('inert');
+    const toggle = screen.getByRole('button', { name: 'Full screen' });
+    expect(toggle).toHaveFocus();
+    expect(screen.getByTestId('workflow-flow-viewport').className).not.toMatch(
+      /scrollerFull/,
+    );
+
+    // Escape on the rail is the rail's: full screen stays.
+    await userEvent.click(toggle);
+    screen.getByRole('link', { name: 'Sessions' }).focus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // The explicit control leaves it too.
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Exit full screen' }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(content).not.toHaveAttribute('inert');
+  });
+
+  it('covers the whole window outside the shell frame, everything else inert', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /^Step 3: Check every cluster/ }),
+    await userEvent.click(screen.getByRole('button', { name: 'Full screen' }));
+    const layer = screen.getByRole('dialog', {
+      name: 'deploy: flow, full screen',
+    });
+    expect(layer.style.left).toBe('0px');
+    expect(document.querySelectorAll('body > [inert]').length).toBeGreaterThan(
+      0,
     );
-    const details = within(screen.getByTestId('workflow-step-details'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Exit full screen' }),
+    );
+    expect(document.querySelectorAll('body > [inert]')).toHaveLength(0);
+  });
+
+  it('expands a group head’s details in place: what the loop runs over', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    const head = screen.getByRole('button', {
+      name: /^Step 3: Check every cluster/,
+    });
+    await userEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    const panel = screen.getByRole('region', {
+      name: 'Details of Step 3 · Check every cluster',
+    });
+    expect(head.closest('[data-group="forEach"]')).toContainElement(panel);
+    const details = within(panel);
     expect(
       details.getByText(
         'For each cluster in the input “clusters”, it runs its 1 step in order.',
@@ -470,6 +694,9 @@ describe('WorkflowPage', () => {
 
     const node = (key: string) =>
       figure.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
+    // The step's box: its button and the markers riding its top edge.
+    const box = (key: string) =>
+      figure.querySelector(`[data-node="${key}"]`) as HTMLElement;
     await waitFor(() =>
       expect(node('s0')).toHaveAttribute('data-run-status', 'completed'),
     );
@@ -483,9 +710,9 @@ describe('WorkflowPage', () => {
     expect(node('f0')).toHaveAttribute('data-run-status', 'notRun');
 
     // Read/write accents from the tool catalogue's annotations.
-    await waitFor(() => expect(node('s0')).toHaveTextContent('Reads'));
-    expect(node('s1')).toHaveTextContent('Changes things');
-    expect(node('f0')).not.toHaveTextContent(/Reads|Changes things/);
+    await waitFor(() => expect(box('s0')).toHaveTextContent('Reads'));
+    expect(box('s1')).toHaveTextContent('Changes things');
+    expect(box('f0')).not.toHaveTextContent(/Reads|Changes things/);
 
     // The step's details say how its last run went.
     await userEvent.click(node('s1'));
@@ -606,7 +833,7 @@ describe('WorkflowPage', () => {
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
   });
 
-  it('offers no run, create, edit or delete affordances — the page is read-only (D11)', async () => {
+  it('offers no run, create, edit or delete affordances of its own — the page is read-only (D11)', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
     // Anchored: step buttons may name a tool such as kubernetes · delete.
@@ -615,6 +842,57 @@ describe('WorkflowPage', () => {
     expect(screen.queryByRole('button', { name: /^create/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Run' })).toBeNull();
+  });
+
+  it('shows an attached edit action beside the title, with the workflow to act on', async () => {
+    // agent-platform's hand-off to the workflow agent attaches here; it reads
+    // the workflow from the page, the way this probe does.
+    function Probe() {
+      const target = useWorkflowPageTarget();
+      return (
+        <button type="button" data-definition={target?.definitionYaml}>
+          {`Edit ${target?.name} on ${target?.installation} via ${target?.toolName}${
+            target?.gitOps ? ' (GitOps)' : ''
+          }`}
+        </button>
+      );
+    }
+    await renderAt(`${BASE}/deploy?installation=gazelle`, makeApi(), <Probe />);
+
+    const action = screen.getByRole('button', {
+      name: 'Edit deploy on gazelle via workflow_deploy',
+    });
+    // The header-actions slot every shell detail page uses (ShellPage
+    // `actions`): straight in the actions row, beside the title block — not
+    // wrapped under it — and the header carries no description that would
+    // push it there (as on the agent and skill pages).
+    const title = screen.getByRole('heading', { level: 1, name: 'deploy' });
+    const actionsRow = action.parentElement!;
+    expect(actionsRow.className).toMatch(/actions/);
+    const header = actionsRow.parentElement!;
+    expect(header).toContainElement(title);
+    expect(actionsRow).not.toContainElement(title);
+    expect(header).not.toHaveTextContent('Deploys an app and tells the team.');
+    expect(
+      screen.getByText('Deploys an app and tells the team.'),
+    ).toBeInTheDocument();
+    // In the page's header, after the title.
+    expect(
+      // eslint-disable-next-line no-bitwise
+      title.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      // eslint-disable-next-line no-bitwise
+      action.compareDocumentPosition(screen.getByText('What it needs')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // The definition in the shape muster's workflow tools take.
+    const definition = action.getAttribute('data-definition') ?? '';
+    expect(definition).toMatch(/^name: deploy$/m);
+    expect(definition).toMatch(/^steps:$/m);
+    expect(definition).toMatch(/tool: x_kubernetes_apply/);
+    expect(definition).toMatch(/^onFailure:$/m);
+    expect(definition).not.toMatch(/apiVersion|metadata/);
   });
 
   it('asks for a muster session instead of claiming runs or a badge, and still draws the definition', async () => {
@@ -708,9 +986,11 @@ describe('WorkflowPage at phone width', () => {
   it('lists the steps in place of the canvas: groups indented, gates as lines, cleanup as its own section', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
-    // No canvas, so no sideways flow and no scroll box to trap the swipe.
+    // No canvas, so no sideways flow and no scroll box to trap the swipe —
+    // and nothing to take full screen.
     expect(screen.queryByTestId('workflow-flow-canvas')).toBeNull();
     expect(screen.queryByTestId('workflow-flow-viewport')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Full screen' })).toBeNull();
     const list = within(screen.getByTestId('workflow-step-list'));
     expect(list.getByText(/Tap a step to see its details\.$/)).toBeVisible();
 
@@ -898,6 +1178,8 @@ describe('WorkflowPage on a desktop', () => {
     const figure = screen.getByTestId('workflow-flow-canvas');
     const node = (key: string) =>
       figure.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
+    const box = (key: string) =>
+      figure.querySelector(`[data-node="${key}"]`) as HTMLElement;
     const title = (key: string) =>
       within(node(key)).getByText(/./, {
         selector: '[class*="title"]',
@@ -914,10 +1196,11 @@ describe('WorkflowPage on a desktop', () => {
     expect(title('s2')).toHaveTextContent(huge);
     expect(title('s2')).toHaveAttribute('title', huge);
     // A wrapped title gets the taller box, and the boxes share one width.
-    expect(parseFloat(node('s1').style.height)).toBeGreaterThan(
-      parseFloat(node('s0').style.height),
+    expect(parseFloat(box('s1').style.height)).toBeGreaterThan(
+      parseFloat(box('s0').style.height),
     );
-    expect(node('s0').style.width).toBe(node('s2').style.width);
+    expect(box('s0').style.width).not.toBe('');
+    expect(box('s0').style.width).toBe(box('s2').style.width);
     // Two lines, then the clamp — never a one-line ellipsis.
     const style = getComputedStyle(title('s1'));
     expect(style.whiteSpace).not.toBe('nowrap');

@@ -47,8 +47,11 @@ export type MetaAgentBannerProps = {
   label: string;
   /** The bold first line. */
   title: ReactNode;
-  /** What the agent does for the person, in one or two sentences. */
-  description: ReactNode;
+  /**
+   * What the agent does for the person, in one or two sentences. Left out
+   * where the title already says it all — the strip is then one line.
+   */
+  description?: ReactNode;
   /** The control that hands over to the agent. */
   action: ReactNode;
 };
@@ -87,9 +90,11 @@ export function MetaAgentBanner({
           <Text as="p" variant="body-medium" weight="bold">
             {title}
           </Text>
-          <Text as="p" variant="body-small" color="secondary">
-            {description}
-          </Text>
+          {description && (
+            <Text as="p" variant="body-small" color="secondary">
+              {description}
+            </Text>
+          )}
         </div>
       </div>
       {action}

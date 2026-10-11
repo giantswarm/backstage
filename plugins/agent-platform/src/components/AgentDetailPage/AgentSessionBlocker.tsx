@@ -43,11 +43,11 @@ export function AgentSessionBlocker({
     const sentence = reason?.replace(/\.$/, '');
     let description = reason;
     if (isPlatform) {
-      description = `${sentence}. A platform problem, not the agent's: a platform admin has to fix it.`;
+      description = `${sentence}. This is a platform problem, not the agent's, and a platform admin has to fix it.`;
     } else if (isGitOpsOwned) {
       description = onEdit
-        ? `${sentence}. Deployed from GitOps: a fix opens a pull request there.`
-        : `${sentence}. Deployed from GitOps: fix it there.`;
+        ? `${sentence}. It is deployed from GitOps, so a fix opens a pull request there.`
+        : `${sentence}. It is deployed from GitOps, so fix it there.`;
     }
     const canFix = onEdit && !isPlatform;
 

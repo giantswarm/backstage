@@ -185,7 +185,7 @@ describe('UsageRouter', () => {
     ]);
   });
 
-  it('offers a Connectors view when a section is contributed, before the reader’s own', async () => {
+  it('offers a Connectors view, last, when a section is contributed', async () => {
     // T52: the connector tool calls moved off Overview into their own view.
     renderTab('/agent-platform/usage/overview?window=7d', MCP_SECTION);
 
@@ -193,8 +193,8 @@ describe('UsageRouter', () => {
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
       'Overview',
       'Cost',
-      'Connectors',
       'Your sessions',
+      'Connectors',
     ]);
     expect(screen.getByRole('tab', { name: 'Connectors' })).toHaveAttribute(
       'href',
@@ -421,7 +421,7 @@ describe('UsageRouter', () => {
       );
       expect(
         screen.getByText(
-          "What agents cost, how much they're used, and how healthy the platform is.",
+          'Shows what agents cost, how much they are used and how healthy the platform is.',
         ),
       ).toBeInTheDocument();
     });

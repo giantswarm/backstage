@@ -30,6 +30,9 @@ import {
   MENU_WIDTH,
   SectionHeader,
   ShellPage,
+  ShellPageBadgeSkeleton,
+  ShellPageFactsSkeleton,
+  ShellPageTitleSkeleton,
   usePhoneLayout,
   type BreadcrumbItem,
   type Fact,
@@ -161,14 +164,14 @@ function OverviewTab({
         <Alert
           status="info"
           title="Read-only in the portal"
-          description="This skill's repository is not on github.com. The portal proposes skill changes as GitHub pull requests, so it cannot edit or evaluate this skill here — change it in its repository."
+          description="This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change or evaluate the skill in its repository."
         />
       )}
       {!readable && (
         <Alert
           status="info"
           title="The portal cannot read this skill's source"
-          description="Its SKILL.md could not be read with the portal's access to the repository, so this page shows only what the listing knows, and the skill cannot be edited here."
+          description="Its SKILL.md could not be read, so this page shows only what the listing knows and the skill cannot be edited here."
         />
       )}
       <Section title="What it’s for">
@@ -812,10 +815,33 @@ export function SkillDetailPage() {
     { label: 'Skill' },
   ];
 
-  let body;
   if (catalog.isLoading) {
-    body = <LoadingIndicator label="Reading the skill repositories…" />;
-  } else if (catalog.error || catalog.failedRepositories.length > 0) {
+    // The loaded page's frame from the first paint — its trail, title line,
+    // meta row, tab strip and, on the Overview, the facts column — with
+    // skeletons where the catalog will fill in (T95). Only the tabs every
+    // skill has are drawn; Instructions joins them once the skill is known
+    // to be readable.
+    const own = pathname.replace(/\/+$/, '');
+    const tab = own.match(/\/(instructions|used-by)$/)?.[1];
+    return (
+      <ShellPage
+        title={<ShellPageTitleSkeleton label="Loading skill" />}
+        breadcrumbs={breadcrumbs}
+        badges={<ShellPageBadgeSkeleton />}
+        tabs={[
+          { id: 'overview', path: '', title: 'Overview' },
+          { id: 'used-by', path: 'used-by', title: 'Used by' },
+        ]}
+        tabsBasePath={tab ? own.slice(0, own.lastIndexOf('/')) : own}
+        aside={tab ? undefined : <ShellPageFactsSkeleton />}
+      >
+        <LoadingIndicator label="Reading the skill repositories…" />
+      </ShellPage>
+    );
+  }
+
+  let body;
+  if (catalog.error || catalog.failedRepositories.length > 0) {
     body = (
       <Alert
         status="warning"
@@ -827,7 +853,7 @@ export function SkillDetailPage() {
     body = (
       <EmptyStateCard
         title="Skill not found"
-        description="No skill at this address was discovered in the configured repositories. It may have been renamed or removed — the list has what exists now."
+        description="No skill with this address exists in the configured repositories. It may have been renamed or removed."
       />
     );
   }

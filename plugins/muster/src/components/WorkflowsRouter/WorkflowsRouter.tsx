@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 import { WorkflowsListPage } from '../WorkflowsListPage';
@@ -18,8 +19,13 @@ import { useAgentShell } from '../../hooks/useAgentShell';
  * McpServersRouter/ConnectorPage pattern. The list, likewise, is the Customize
  * screen's Workflows tab inside the shell: the classic list (with its
  * NamespacePicker and "Create workflow") only renders in the classic chrome.
+ *
+ * `editAction` is the element another plugin attaches to the sub-page's
+ * `editAction` input; the shell's workflow page shows it beside its title.
  */
-export const WorkflowsRouter = () => {
+export const WorkflowsRouter = ({
+  editAction,
+}: { editAction?: ReactElement } = {}) => {
   // A workflow opened from far down the list opens at its top.
   useScrollToTopOnNavigation();
   const agentShell = useAgentShell();
@@ -39,7 +45,10 @@ export const WorkflowsRouter = () => {
         }
       />
       {agentShell ? (
-        <Route path=":name/*" element={<WorkflowPage />} />
+        <Route
+          path=":name/*"
+          element={<WorkflowPage editAction={editAction} />}
+        />
       ) : (
         <Route path=":name/*" element={<WorkflowDetailPage />} />
       )}

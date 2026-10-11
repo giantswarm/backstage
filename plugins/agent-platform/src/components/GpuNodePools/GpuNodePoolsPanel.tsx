@@ -127,6 +127,9 @@ export function describePoolCost(
   };
 }
 
+/** The actions column's width, px: the lifecycle chevron and Remove pool. */
+const ACTIONS_COLUMN_WIDTH = 176;
+
 /** The chevron that opens or closes a pool's lifecycle panel beneath the list. */
 function LifecycleToggle({
   row,
@@ -340,6 +343,11 @@ function getColumnConfig(
     {
       id: 'actions',
       label: '',
+      // Room for the chevron and Remove pool side by side: with the columns
+      // shared out equally, nine of them left this cell ~100px at desktop
+      // width, and the chevron slid under the version cell beside it, where
+      // no click reached it.
+      width: ACTIONS_COLUMN_WIDTH,
       cell: row => {
         const isOpen = row.id === openedId;
         return (

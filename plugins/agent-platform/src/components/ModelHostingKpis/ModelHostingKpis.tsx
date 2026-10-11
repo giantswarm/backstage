@@ -95,7 +95,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
     costTile = (
       <KpiTile
         label="GPU cost now"
-        hint="Hourly on-demand list price of the GPU nodes running now. A pool that may run several sizes adds a cheapest-to-dearest range."
+        hint="Shows the hourly on-demand list price of the GPU nodes running now. A pool that may run several sizes adds a cheapest-to-dearest range."
         value={describeHourlyRange(cost.minUSD, cost.maxUSD)}
         sub={
           unpricedRunning > 0
@@ -133,7 +133,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
         {scope === 'all' && (
           <KpiTile
             label="Models running"
-            hint="Served models that are loaded and answering now, on every environment in view."
+            hint="Counts served models that are loaded and answering now, on every environment in view."
             value={formatCount(running.running)}
             sub={runningSub || undefined}
           />
@@ -141,7 +141,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
         {showsGpu && gpus && (
           <KpiTile
             label="GPUs in use"
-            hint="Accelerators that scheduled pods hold, of those the nodes make schedulable."
+            hint="Counts the accelerators that scheduled pods hold, out of those the nodes make schedulable."
             value={`${formatCount(gpus.used)} of ${formatCount(gpus.total)}`}
             sub={`on ${plural(gpus.nodes, 'node')}`}
           />
@@ -149,7 +149,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
         {showsGpu && hasPools && (
           <KpiTile
             label="GPU pools"
-            hint="The GPU node pools cluster-manager runs. A pool runs nodes only while something is scheduled on them."
+            hint="Counts the GPU node pools cluster-manager runs. A pool runs nodes only while something is scheduled on them."
             value={formatCount(pools.rows.length)}
             sub={`${plural(nodesRunning, 'node')} running`}
           />
@@ -160,8 +160,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             label="Model cache"
             hint={
               cache.basis === 'claims'
-                ? 'Volumes caching model weights, as cluster-manager lists them — billed monthly while they exist.'
-                : 'What the serving backends hold in their download caches on the nodes.'
+                ? 'Counts the volumes caching model weights, as cluster-manager lists them. They are billed monthly while they exist.'
+                : 'Shows what the serving backends hold in their download caches on the nodes.'
             }
             value={cache.size}
             sub={

@@ -1,4 +1,10 @@
-import { expect, open, openReadyAgent, test } from './fixtures';
+import {
+  expect,
+  open,
+  openReadyAgent,
+  startSessionButton,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 import type { Page } from '@playwright/test';
 
@@ -47,17 +53,11 @@ async function deleteCurrentSession(page: Page): Promise<void> {
   });
 }
 
-/** The labels `describeSessionState` can render for a session that has run. */
-const STATE_LABELS = [
-  'Submitted',
-  'Working',
-  'Waiting for input',
-  'Authentication required',
-  'Completed',
-  'Failed',
-  'Canceled',
-  'Rejected',
-];
+/**
+ * The shell's four words for a session that has run (`SHELL_STATE_LABELS`,
+ * which `describeSessionState` maps every kagent task state onto).
+ */
+const STATE_LABELS = ['Waiting for you', 'Working', 'Finished', 'Failed'];
 
 test('a session started in the portal reports its state on the list', async ({
   admin,
@@ -72,7 +72,7 @@ test('a session started in the portal reports its state on the list', async ({
   let failure: unknown;
   try {
     // --- A session of its own, so the row asserted on is this test's ------
-    await admin.getByRole('button', { name: 'Start a session' }).click();
+    await startSessionButton(admin).click();
     const promptBox = admin.getByRole('textbox', { name: 'Prompt' });
     await expect(promptBox).toBeVisible();
     await promptBox.fill(prompt);
@@ -97,10 +97,11 @@ test('a session started in the portal reports its state on the list', async ({
 
     // --- The list says what it is doing -----------------------------------
     await open(admin, '/agent-platform/sessions');
-    await expect(
-      admin.getByRole('columnheader', { name: /State/ }),
-      'the list has a State column',
-    ).toBeVisible();
+    // One table per day the sessions started on, each with a State column.
+    const stateHeader = admin
+      .getByRole('grid', { name: 'Today' })
+      .getByRole('columnheader', { name: /State/ });
+    await expect(stateHeader, 'the list has a State column').toBeVisible();
 
     // Found by the id in the row's link, never by the title: kagent derives a
     // session's title from the conversation rather than from the prompt sent —
@@ -119,12 +120,14 @@ test('a session started in the portal reports its state on the list', async ({
     ).toBeVisible({ timeout: 90_000 });
     await snapshot(admin, 'state-column-live');
 
-    // --- Sorting by it ----------------------------------------------------
-    await admin.getByRole('columnheader', { name: /State/ }).click();
+    // --- Narrowing by it -------------------------------------------------
+    // The shell lists sessions per day, newest first, and brings what needs a
+    // person forward with the State dropdown (the one filter style), not a
+    // sortable column.
     await expect(
-      admin.getByRole('columnheader', { name: /State/ }),
-      'the column sorts, so what needs a person can come to the top',
-    ).toHaveAttribute('aria-sort', /ascending|descending/);
+      admin.getByRole('button', { name: /Filter by state/ }),
+      'the list offers the State filter',
+    ).toBeVisible();
   } catch (error) {
     failure = error;
   }
@@ -212,7 +215,7 @@ test('the list distinguishes the three ways a state can be missing', async ({
   await expect(
     admin.getByRole('row').filter({ hasText: 'Waiting on a human' }),
     'a state kagent reported is named',
-  ).toContainText('Waiting for input');
+  ).toContainText('Waiting for you');
 
   await expect(
     admin.getByRole('row').filter({ hasText: 'Never run' }),

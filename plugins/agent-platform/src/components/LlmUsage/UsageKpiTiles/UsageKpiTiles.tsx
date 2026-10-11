@@ -70,8 +70,8 @@ export function UsageKpiTiles({
         label={converted ? 'Spend (estimated)' : 'Spend'}
         hint={
           converted
-            ? `What the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate — an estimate, not an invoice.`
-            : `The gateway's price for every model call, summed over ${windowNote}. Models missing from its catalogue add nothing.`
+            ? `Shows what the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate. It is an estimate, not an invoice.`
+            : `Sums the gateway's price for every model call over ${windowNote}. Models missing from its catalogue add nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}
         sub={
@@ -89,14 +89,14 @@ export function UsageKpiTiles({
       />
       <KpiTile
         label="Tokens"
-        hint={`All tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
+        hint={`Counts all tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
         value={formatTokens(totals.tokens)}
         sub={`across ${formatCount(totals.calls)} model calls`}
       />
       {sessions && (
         <KpiTile
           label="Your sessions"
-          hint="Your sessions with at least one turn in the window, from kagent. Other users' sessions can't be counted here; the gateway figures beside it are everyone's."
+          hint="Counts your sessions with at least one turn in the window, from kagent. Other users' sessions can't be counted here, and the gateway figures beside it are everyone's."
           value={
             sessions.isLoading ? (
               <Skeleton width={56} height={28} rounded />
@@ -113,7 +113,7 @@ export function UsageKpiTiles({
       )}
       <KpiTile
         label="Active agents"
-        hint={`Distinct callers the gateway attributed a model call to over ${windowNote}, including any it could not name.`}
+        hint={`Counts the distinct callers the gateway attributed a model call to over ${windowNote}, including any it could not name.`}
         value={formatCount(totals.agents)}
         sub={`${formatCount(totals.models)} ${modelsNoun} answered`}
       />

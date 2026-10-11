@@ -1,5 +1,11 @@
 import { Response } from '@playwright/test';
-import { expect, expectWizardStep, open, test } from './fixtures';
+import {
+  expect,
+  expectWizardStep,
+  open,
+  openWizardMoreOptions,
+  test,
+} from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -38,7 +44,7 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   await admin
     .getByRole('textbox', { name: 'Name', exact: true })
     .fill('Avatar Probe');
-  await admin.getByText('More options').click();
+  await openWizardMoreOptions(admin);
   await expect(
     admin.getByRole('textbox', { name: 'Technical name' }),
   ).toHaveValue('avatar-probe');
@@ -73,6 +79,8 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   );
   expect(csp, 'no installation host in the policy').not.toMatch(/avatars\./);
 
+  // Cancel leaves for the agents list, which in the shell is Customize's
+  // Agents tab.
   await admin.getByRole('link', { name: 'Cancel' }).click();
-  await expect(admin).toHaveURL(/\/agent-platform\/agents$/);
+  await expect(admin).toHaveURL(/\/customize\/agents$/);
 });

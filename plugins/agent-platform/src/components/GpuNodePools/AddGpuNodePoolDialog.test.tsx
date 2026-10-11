@@ -1359,7 +1359,7 @@ describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm
     expect(cache).toBeDisabled();
     const kept = screen.getByTestId('cache-kept');
     expect(kept).toHaveTextContent(
-      'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache on the GPU capacity page.',
+      'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache.',
     );
     expect(kept).toHaveTextContent(
       'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · since',

@@ -65,7 +65,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'read-only',
     description:
-      "Every tool whose server marks it read-only, and every workflow whose steps only use such tools. Evaluated live, so it follows the servers' own annotations.",
+      "Includes every tool whose server marks it read-only and every workflow whose steps only use such tools. It is evaluated live, so it follows the servers' own annotations.",
     built_in: true,
   },
   {
@@ -77,7 +77,7 @@ export const BUILT_IN_PRESETS: ToolsetPreset[] = [
   {
     name: 'full',
     description:
-      "Everything the gateway exposes to whoever invokes the agent, including the platform administration tools. Today's unbounded behaviour, made explicit.",
+      "Includes everything the gateway exposes to whoever invokes the agent, platform administration tools included. This makes today's unbounded behaviour explicit.",
     built_in: true,
   },
 ];

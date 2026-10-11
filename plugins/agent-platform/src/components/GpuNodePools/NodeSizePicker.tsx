@@ -126,7 +126,7 @@ export function NodeSizePicker({
       >
         <CheckboxGroup
           label="Node size"
-          description="Sizes Karpenter may pick, smallest first, with what each leaves a predictor and its on-demand price. Changing them re-runs the dry run."
+          description="Karpenter may pick any of these sizes, smallest first; each shows what it leaves a predictor and its on-demand price. Changing them re-runs the dry run."
           value={sizes}
           onChange={onSizesChange}
           isDisabled={isBusy || !hasShapes}

@@ -24,8 +24,12 @@ own routes and the classic portal keeps its chrome everywhere else.
 
 The **rail** (`AgentShellNav`, `navItems.ts`) has, from the top: **New
 session** (`/`), **Search** (the command palette, also ⌘K / Ctrl+K),
-**Customize** and **Usage**; below them, when the rail is expanded, the recent
-and pinned sessions with a link to all sessions. At the bottom: **Platform
+**Customize** and **Usage**; below them, when the rail is expanded, the
+person's sessions: the pinned ones (up to eight), then the eight most recently
+active — the later of a session's start and its last state change, under Today,
+Previous 7 days and Earlier by that time — closed by an **All sessions** link
+that says how many more there are when the list is cut (`groupRailSessions`).
+At the bottom: **Platform
 Portal** (a new tab to the classic portal, only where the deployment also
 serves it) and the **profile menu** (Profile and settings, Help and feedback,
 Sign out). On a phone the rail becomes a bottom bar, which also carries
@@ -72,7 +76,8 @@ conversation with the chat bar docked at the bottom:
 **All sessions** (`/agent-platform/sessions`, with a **New session** button to
 `/`) lists the person's sessions grouped as Pinned, Today, Yesterday and
 Earlier, with their agent, state (Waiting for you, Working, Finished, Failed),
-environment and start time. State chips and an agent filter narrow it; each row
+environment and start time. State, Agent and Pinned dropdowns — the same
+filter bar as the Customize tabs — narrow it; each row
 has a pin toggle and a menu to rename or delete. Search appears once a list is
 long enough to need it (more than eight entries — the rule every list in the
 shell follows).
@@ -910,7 +915,8 @@ inventory once per page load and a tab switch is a cache read.
 `/agent-platform/sessions` lists the signed-in user's kagent chat sessions across
 the fleet. It has two shapes. **In the shell** (`ShellSessionsTable`) the header has
 a "New session" button to `/`, rows are grouped by day (Pinned, Today, Yesterday,
-Earlier) and filtered with state chips, search and an agent picker, and each row
+Earlier) and narrowed by search and the shared filter dropdowns (State, Agent,
+and Pinned once something is pinned), and each row
 has a pin toggle and a rename/delete menu. **In classic chrome** (`SessionsTable`) a
 composer above the list starts a new session (see "Starting a session"), the State
 column sorts, and the rows carry no actions. Either way a session opens into its
@@ -1484,7 +1490,7 @@ persisted" rule.
 
 The Sessions tab and an agent's own sessions card render the same summary as a
 **State** column (sortable in the classic table; the shell list groups by day and
-filters by state chips instead), through the same `describeSessionState` map the rail
+filters by its State dropdown instead), through the same `describeSessionState` map the rail
 and the session page read — so one session cannot be called two things on two
 screens.
 

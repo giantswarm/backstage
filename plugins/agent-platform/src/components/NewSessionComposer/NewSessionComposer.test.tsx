@@ -129,26 +129,24 @@ describe('NewSessionComposer', () => {
     it('puts the picker in the controls row under the text by default', () => {
       renderComposer({
         agents: [sre, issues],
-        pickerLabel: () => 'First choose an agent',
+        pickerLabel: () => 'Select agent',
       });
 
       expect(follows(field(), agentPicker())).toBe(true);
       // The label belongs to the picker-first row only.
-      expect(
-        screen.queryByText('First choose an agent'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Select agent')).not.toBeInTheDocument();
     });
 
     it('heads the box with the picker and its label when placed on top', async () => {
       renderComposer({
         agents: [sre, issues],
         pickerPlacement: 'top',
-        pickerLabel: agent => (agent ? 'Agent' : 'First choose an agent'),
+        pickerLabel: () => 'Select agent',
         renderPickerAccessory: agent =>
           agent ? null : <span>Required to start</span>,
       });
 
-      const label = screen.getByText('First choose an agent');
+      const label = screen.getByText('Select agent');
       expect(follows(label, agentPicker())).toBe(true);
       expect(follows(agentPicker(), field())).toBe(true);
       expect(
@@ -160,7 +158,7 @@ describe('NewSessionComposer', () => {
       await userEvent.click(agentPicker());
       await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
 
-      expect(screen.getByText('Agent')).toBeInTheDocument();
+      expect(screen.getByText('Select agent')).toBeInTheDocument();
       expect(screen.queryByText('Required to start')).not.toBeInTheDocument();
     });
   });
