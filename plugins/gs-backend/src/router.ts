@@ -7,7 +7,10 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
 import express from 'express';
 import Router from 'express-promise-router';
-import { fetchGitHubRawContent } from './githubRawContent';
+import {
+  DEFAULT_ALLOWED_OWNERS,
+  fetchGitHubRawContent,
+} from './githubRawContent';
 import {
   discoverAgentSkills,
   GitHubApiError,
@@ -216,7 +219,12 @@ export async function createRouter({
    * GET /github/raw-content
    *
    * Proxies a fetch to a raw.githubusercontent.com URL, adding GitHub
-   * authentication for private repository access.
+   * authentication for private repository access — but only when the
+   * repository owner is listed in `gs.githubRawContent.allowedOwners`
+   * (default: giantswarm). The URL is caller-supplied and the portal's
+   * GitHub App can read repositories the signed-in user cannot, so for
+   * any other owner the fetch goes out without credentials and only
+   * public content comes back.
    *
    * Query parameters:
    * - url: The raw.githubusercontent.com URL to fetch
@@ -240,9 +248,14 @@ export async function createRouter({
 
     const { url } = parsed.data;
 
+    const allowedOwners =
+      config.getOptionalStringArray('gs.githubRawContent.allowedOwners') ??
+      DEFAULT_ALLOWED_OWNERS;
+
     const response = await fetchGitHubRawContent(
       url,
       githubCredentialsProvider,
+      allowedOwners,
     );
     if (!response.ok) {
       res.status(response.status).json({

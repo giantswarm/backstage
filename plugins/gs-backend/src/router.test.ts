@@ -5,6 +5,14 @@ import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
 import { createRouter } from './router';
+
+// The credential/allowlist behaviour has its own suite
+// (githubRawContent.test.ts); here only what the route forwards is under test.
+jest.mock('./githubRawContent', () => ({
+  ...jest.requireActual('./githubRawContent'),
+  fetchGitHubRawContent: jest.fn(),
+}));
+import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
@@ -283,5 +291,83 @@ describe('GET /installations/versions', () => {
     const response = await request(app).get('/installations/versions');
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('GET /github/raw-content', () => {
+  const fetchGitHubRawContentMock = fetchGitHubRawContent as jest.Mock;
+
+  beforeEach(() => {
+    fetchGitHubRawContentMock.mockReset();
+    fetchGitHubRawContentMock.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/plain' },
+      text: async () => 'file content',
+    });
+  });
+
+  it('rejects URLs outside raw.githubusercontent.com', async () => {
+    const app = await buildAppWithErrors({});
+
+    const response = await request(app)
+      .get('/github/raw-content')
+      .query({ url: 'https://example.com/giantswarm/repo/main/file' });
+
+    expect(response.status).toBe(400);
+    expect(fetchGitHubRawContentMock).not.toHaveBeenCalled();
+  });
+
+  it('fetches with the default owner allowlist when none is configured', async () => {
+    const app = await buildApp(makeConfig({}));
+
+    const url =
+      'https://raw.githubusercontent.com/giantswarm/repo/main/values.yaml';
+    const response = await request(app).get('/github/raw-content').query({
+      url,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toBe('file content');
+    expect(fetchGitHubRawContentMock).toHaveBeenCalledWith(
+      url,
+      githubCredentialsProvider,
+      ['giantswarm'],
+    );
+  });
+
+  it('forwards the configured owner allowlist', async () => {
+    const app = await buildApp(
+      makeConfig({
+        gs: {
+          githubRawContent: {
+            allowedOwners: ['giantswarm', 'acme-corp'],
+          },
+        },
+      }),
+    );
+
+    const url = 'https://raw.githubusercontent.com/acme-corp/repo/main/file';
+    await request(app).get('/github/raw-content').query({ url });
+
+    expect(fetchGitHubRawContentMock).toHaveBeenCalledWith(
+      url,
+      githubCredentialsProvider,
+      ['giantswarm', 'acme-corp'],
+    );
+  });
+
+  it('passes upstream failures through as the upstream status', async () => {
+    fetchGitHubRawContentMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+    });
+    const app = await buildApp(makeConfig({}));
+
+    const response = await request(app).get('/github/raw-content').query({
+      url: 'https://raw.githubusercontent.com/giantswarm/repo/main/nope',
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toMatch(/HTTP 404/);
   });
 });
