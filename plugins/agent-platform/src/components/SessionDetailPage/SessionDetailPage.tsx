@@ -16,15 +16,7 @@ import {
 } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
-import {
-  makeStyles,
-  // MUI's on purpose: bui's tooltip wires only its own focusable components,
-  // and the title's trigger is a bare <button> (see `titleButton`).
-  // eslint-disable-next-line @typescript-eslint/no-restricted-imports
-  Tooltip,
-  useMediaQuery,
-  useTheme,
-} from '@material-ui/core';
+import { makeStyles, useMediaQuery, useTheme } from '@material-ui/core';
 import {
   DateComponent,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
@@ -1268,33 +1260,34 @@ export function SessionDetailPage() {
      inherited — in the shell from `ShellPage`'s h1, in classic chrome from the
      `Text` inside — so it still reads as the heading it replaces.
 
-     MUI's tooltip rather than bui's: bui wraps react-aria's `TooltipTrigger`,
-     which only wires up its own focusable components, and this trigger is a
-     bare <button> so it can inherit the heading's typography. */
+     A native `title` rather than a tooltip component, as `DateComponent`
+     does: bui's wraps react-aria's `TooltipTrigger`, which only wires up its
+     own focusable components (this trigger is a bare <button> so it can
+     inherit the heading's typography), and MUI's calls `findDOMNode` on its
+     child, which React 18.3 warns about. */
   const titleButton = (
-    <Tooltip title="Rename session">
-      <button
-        type="button"
-        className={classes.titleButton}
-        onClick={openRename}
-        // The accessible name has to say what pressing this does, since the
-        // visible text is the session's name and says nothing about renaming.
-        // The tooltip is the sighted equivalent of this.
-        aria-label={`Rename session "${sessionTitle}"`}
-      >
-        {agentShell ? (
-          // Bare text, so the button inherits ShellPage's h1 typography — the
-          // platform-standard title scale.
-          sessionTitle
-        ) : (
-          // `as="span"`: Text renders a <p> by default, which is not valid
-          // inside a button.
-          <Text as="span" variant="title-medium">
-            {sessionTitle}
-          </Text>
-        )}
-      </button>
-    </Tooltip>
+    <button
+      type="button"
+      className={classes.titleButton}
+      onClick={openRename}
+      // The accessible name has to say what pressing this does, since the
+      // visible text is the session's name and says nothing about renaming.
+      // The title is the sighted equivalent of this.
+      aria-label={`Rename session "${sessionTitle}"`}
+      title="Rename session"
+    >
+      {agentShell ? (
+        // Bare text, so the button inherits ShellPage's h1 typography — the
+        // platform-standard title scale.
+        sessionTitle
+      ) : (
+        // `as="span"`: Text renders a <p> by default, which is not valid
+        // inside a button.
+        <Text as="span" variant="title-medium">
+          {sessionTitle}
+        </Text>
+      )}
+    </button>
   );
 
   /* The raw A2A state is kept as the label for anything we don't recognise, so

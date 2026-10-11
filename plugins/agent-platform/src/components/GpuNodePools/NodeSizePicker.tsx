@@ -148,7 +148,7 @@ export function NodeSizePicker({
               data-testid={pending ? 'sizes-pending' : 'sizes-loading'}
             >
               {pending
-                ? `Pick a cluster — the sizes for ${accelerator}, their prices and the presets each hosts are read from cluster-manager's dry run.`
+                ? `Pick a cluster to see the sizes for ${accelerator}, their prices and the presets each hosts.`
                 : `Reading the sizes for ${accelerator} from cluster-manager…`}
             </Text>
           </>

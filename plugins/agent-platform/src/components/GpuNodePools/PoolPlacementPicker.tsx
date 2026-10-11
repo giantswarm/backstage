@@ -66,7 +66,7 @@ export const EVERY_ZONE =
   'The nodes may launch in every zone of the cluster; Karpenter picks by capacity.';
 export const PICK_A_ZONE = 'Pick at least one zone.';
 export const ZONES_PENDING =
-  'Pick a cluster — its zones are listed here, every one chosen.';
+  'Pick a cluster to see its zones; every zone is chosen by default.';
 
 /**
  * The cache's consequence, in one line each way (decisions of 2026-09-18 on
@@ -76,7 +76,7 @@ export const ZONES_PENDING =
 export const CACHE_ON_SAVES =
   'The download and the compile of every later start of the same model are saved.';
 export const CACHE_OFF_NOTE =
-  "Nothing stands: the weights land on the node's disk at every start, and a cold start costs about 90 s more.";
+  "Without a cache, the weights land on the node's disk at every start, and a cold start takes about 90 s longer.";
 export const CACHE_OFF_COST =
   'Switching it on creates a cache claim, a volume billed every month it exists; its price shows here.';
 /** The switch while the cluster keeps a cache: every pool serves from it, and the switch is not the pool's to flip. */

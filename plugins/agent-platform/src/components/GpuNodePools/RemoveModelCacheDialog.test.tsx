@@ -212,7 +212,7 @@ describe('RemoveModelCacheDialog', () => {
       'cluster-manager refused: the cache is in use',
     );
     expect(screen.getByTestId('refused-models')).toHaveTextContent(
-      'Unload this model first, on the Serving page:LLMInferenceService model-serving/qwen3-8b (Qwen/Qwen3-8B-FP8)',
+      'Unload this model first, under Running models:LLMInferenceService model-serving/qwen3-8b (Qwen/Qwen3-8B-FP8)',
     );
     expect(refused).toHaveTextContent(REFUSED.hint);
     expect(onRemoved).not.toHaveBeenCalled();

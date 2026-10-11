@@ -5,10 +5,6 @@ import {
   Button,
   Checkbox,
   CheckboxGroup,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
   Flex,
   Radio,
   RadioGroup,
@@ -18,11 +14,13 @@ import {
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
-  dialogDismissLock,
   MoreOptions,
   searchableIf,
   useFieldValidation,
+  useProvidePageHeaderActions,
   useSelectFieldError,
+  WizardFrame,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerToolsClient } from '../../hooks/useModelManagerBackends';
@@ -41,6 +39,7 @@ import {
   placementChoices,
   servedPresetRow,
   servesPresetOn,
+  type ServeSeed,
 } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
@@ -53,6 +52,7 @@ import type {
   ServingBackend,
   ServingCapabilities,
 } from '../../lib/serving';
+import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
 import { BACKEND_LABEL } from '../ServingPage/ServedModelsGroupHeader';
 
 /** Where a model can be served: an installation's backend that can `load`. */
@@ -77,26 +77,20 @@ export function describeLoadTarget(
 }
 
 /**
- * What the dialog opens on: the pool panel's link (installation, cluster and
- * pool), or a row's "Serve…" (installation, backend and the model).
+ * What the page opens on: the pool panel's link (installation, cluster and
+ * pool), or a row's "Serve…" (installation, backend and the model) — the
+ * page's query (`parseServeSeed`).
  */
-export type LoadModelSeed = {
-  installation?: string;
-  backend?: ServingBackend;
-  /** The preset name on kserve, the model reference on a host backend. */
-  model?: string;
-  cluster?: string;
-  pool?: string;
-};
+export type LoadModelSeed = ServeSeed;
 
-export type LoadModelDialogProps = {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+export type ServeModelPageProps = {
   targets: LoadTarget[];
   /** The installations' models: the cached, not yet serving ones are what a host backend can load. */
   models: ServedModel[];
   seed?: LoadModelSeed;
-  /** The load was accepted: the dialog has closed, the answer is model-manager's. */
+  /** Where Close and Cancel lead: the view the flow was opened from. */
+  closeHref: string;
+  /** The load was accepted; the answer is model-manager's. */
   onServed?: (target: LoadTarget, answer: ModelManagerLoadAnswer) => void;
 };
 
@@ -206,8 +200,10 @@ function targetForSeed(
  * on a pool) and answers with what it created, the fit it judged by and the
  * first step of the timeline — nothing is composed here.
  *
- * Controlled like the other dialogs here: confirming does not close it, so a
- * refused load has somewhere to say so.
+ * A page of its own (`/agent-platform/models/serving/serve`), the app's
+ * single-step create pattern (`WizardFrame`, like Connect a model): a
+ * refused load stays on it, saying so; an accepted one hands over to
+ * `onServed`.
  *
  * The app's standard form: one column; the placement and the nodes — whose
  * defaults (model-manager's recommendation, a node that fits) serve most
@@ -216,23 +212,21 @@ function targetForSeed(
  * moves the focus there (`useFieldValidation`); the fit verdict, an
  * already-serving preset or a missing connection hold it, each saying why.
  */
-export function LoadModelDialog({
-  isOpen,
-  onOpenChange,
+export function ServeModelPage({
   targets,
   models,
   seed,
+  closeHref,
   onServed,
-}: LoadModelDialogProps) {
+}: ServeModelPageProps) {
   const modelManagerApi = useApi(modelManagerApiRef);
   const [targetKey, setTargetKey] = useState('');
   const [model, setModel] = useState('');
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const fieldScope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(fieldScope);
-  const { reset: resetValidation } = validation;
 
-  // Opening seeds the target and the model, and so does a new seed or a
+  // The page seeds the target and the model, and so does a new seed or a
   // change in which targets exist; a refetch that returns the same targets
   // (the served list polls) keeps the person's choice. A target that went
   // away falls back to the first.
@@ -240,12 +234,10 @@ export function LoadModelDialog({
   const targetsRef = useRef(targets);
   targetsRef.current = targets;
   useEffect(() => {
-    if (isOpen) {
-      const seeded = targetForSeed(targetsRef.current, seed);
-      setTargetKey(seeded ? loadTargetKey(seeded) : '');
-      setModel(seed?.model ?? '');
-    }
-  }, [isOpen, seed, targetKeys]);
+    const seeded = targetForSeed(targetsRef.current, seed);
+    setTargetKey(seeded ? loadTargetKey(seeded) : '');
+    setModel(seed?.model ?? '');
+  }, [seed, targetKeys]);
   useEffect(() => {
     if (targetKey && !targets.some(t => loadTargetKey(t) === targetKey)) {
       setTargetKey(targets[0] ? loadTargetKey(targets[0]) : '');
@@ -266,7 +258,7 @@ export function LoadModelDialog({
     queryKey: modelManagerPresetsQueryKey(installation, backend),
     queryFn: () =>
       modelManagerApi.listPresets(installation, backend ? { backend } : {}),
-    enabled: isOpen && Boolean(target) && usesPresets,
+    enabled: Boolean(target) && usesPresets,
     staleTime: 60_000,
   });
 
@@ -295,7 +287,7 @@ export function LoadModelDialog({
 
   // The first servable choice stands in for none; a seeded name the list
   // does not carry gives way to it too. A seeded preset that serves already
-  // stays chosen, so the dialog can say where.
+  // stays chosen, so the page can say where.
   useEffect(() => {
     if (choices.length > 0 && !choices.some(choice => choice.id === model)) {
       setModel((choices.find(choice => !choice.disabled) ?? choices[0]).id);
@@ -308,7 +300,7 @@ export function LoadModelDialog({
   const fit = useQuery({
     queryKey: modelManagerFitQueryKey(installation, backend, model),
     queryFn: () => client!.checkFit({ model, ...(backend ? { backend } : {}) }),
-    enabled: isOpen && Boolean(client && choice) && !servedWhere && needsFit,
+    enabled: Boolean(client && choice) && !servedWhere && needsFit,
     staleTime: 30_000,
     retry: false,
   });
@@ -323,8 +315,7 @@ export function LoadModelDialog({
         placement: 'split',
         ...(backend ? { backend } : {}),
       }),
-    enabled:
-      isOpen && Boolean(client && choice) && !servedWhere && offersPlacement,
+    enabled: Boolean(client && choice) && !servedWhere && offersPlacement,
     staleTime: 30_000,
     retry: false,
   });
@@ -334,7 +325,7 @@ export function LoadModelDialog({
   const nodes = useQuery({
     queryKey: modelManagerNodesQueryKey(installation),
     queryFn: () => modelManagerApi.listNodes(installation),
-    enabled: isOpen && Boolean(target) && needsFit && nodeInventory,
+    enabled: Boolean(target) && needsFit && nodeInventory,
     staleTime: 30_000,
   });
   const modelImage = isModelImagePreset(
@@ -366,7 +357,6 @@ export function LoadModelDialog({
           ...(backend ? { backend } : {}),
         }),
       enabled:
-        isOpen &&
         Boolean(client && choice) &&
         !servedWhere &&
         servesPresetOn(node, modelImage),
@@ -388,7 +378,7 @@ export function LoadModelDialog({
         )
       : undefined;
   const [tickedNodes, setTickedNodes] = useState<string[]>([]);
-  useEffect(() => setTickedNodes([]), [model, targetKey, isOpen]);
+  useEffect(() => setTickedNodes([]), [model, targetKey]);
   const fittingNodes = candidates
     .filter(candidate => fitByNode[candidate.name]?.data?.fits)
     .map(candidate => candidate.name);
@@ -413,8 +403,7 @@ export function LoadModelDialog({
         nodes: copyNodes,
         ...(backend ? { backend } : {}),
       }),
-    enabled:
-      isOpen && Boolean(client && choice) && !servedWhere && severalCopies,
+    enabled: Boolean(client && choice) && !servedWhere && severalCopies,
     staleTime: 30_000,
     retry: false,
   });
@@ -424,7 +413,7 @@ export function LoadModelDialog({
   // The recommendation stands until the person picks; a new model or a
   // disabled pick falls back to it.
   const [picked, setPicked] = useState<ModelManagerPlacement | undefined>();
-  useEffect(() => setPicked(undefined), [model, targetKey, isOpen]);
+  useEffect(() => setPicked(undefined), [model, targetKey]);
   const recommendedChoice = placements?.find(
     option => option.recommended && !option.disabled,
   );
@@ -462,14 +451,6 @@ export function LoadModelDialog({
       }),
     onSuccess: () => invalidate(),
   });
-  const { reset } = load;
-  useEffect(() => {
-    if (isOpen) {
-      reset();
-      resetValidation();
-      setMoreOptionsOpen(false);
-    }
-  }, [isOpen, reset, resetValidation]);
 
   const noun = usesPresets ? 'preset' : 'model';
   const errors = {
@@ -497,7 +478,6 @@ export function LoadModelDialog({
     } catch {
       return;
     }
-    onOpenChange(false);
     onServed?.(target, answer);
   };
 
@@ -506,7 +486,7 @@ export function LoadModelDialog({
     needsFit &&
     Boolean(choice) &&
     (activeFit.isPending || activeFit.isError || verdict?.fits === false);
-  // What holds Serve, each with its own explanation on the dialog: no
+  // What holds Serve, each with its own explanation on the page: no
   // backend that can load, no connection, a preset that serves already, the
   // fit verdict. A missing choice does not: Serve says so on the field.
   const canServe =
@@ -528,248 +508,250 @@ export function LoadModelDialog({
     .filter(Boolean)
     .join(' · ');
 
+  // Serve in the frame's footer, beside its Cancel. Read through a ref, so
+  // the slot updates when what the button says or allows changes.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const actions = useMemo(
+    () => (
+      <Button
+        variant="primary"
+        isDisabled={!canServe}
+        onPress={() => submitRef.current()}
+      >
+        {isBusy ? 'Serving…' : 'Serve'}
+      </Button>
+    ),
+    [canServe, isBusy],
+  );
+  useProvidePageHeaderActions(actions);
+
   return (
-    <Dialog
-      isOpen={isOpen}
-      {...dialogDismissLock(isBusy, onOpenChange)}
-      width="min(90vw, 600px)"
+    <WizardFrame
+      title="Serve model"
+      context={HOSTING_FLOW_CONTEXT}
+      closeHref={closeHref}
+      width="medium"
     >
-      <DialogHeader>Serve model</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="4" ref={fieldScope}>
-          <Text variant="body-medium" color="secondary">
-            Serves through model-manager as you. On a GPU pool, presets are the
-            cluster's published ones; the needed node starts with the model and
-            stops when it is unloaded.
+      <WizardStepHeading title="Choose the model">
+        model-manager serves it as you. On a GPU pool, the node starts with the
+        model and stops when the model is unloaded.
+      </WizardStepHeading>
+      <Flex direction="column" gap="4" ref={fieldScope}>
+        {seed?.pool && (
+          <Text variant="body-medium" data-testid="serve-target">
+            On GPU pool <strong>{seed.pool}</strong>
+            {seed.cluster ? (
+              <>
+                {' '}
+                of cluster <strong>{seed.cluster}</strong>
+              </>
+            ) : null}
+            {seed.installation ? ` (${seed.installation})` : ''}
           </Text>
+        )}
 
-          {seed?.pool && (
-            <Text variant="body-medium" data-testid="serve-target">
-              On GPU pool <strong>{seed.pool}</strong>
-              {seed.cluster ? (
-                <>
-                  {' '}
-                  of cluster <strong>{seed.cluster}</strong>
-                </>
-              ) : null}
-              {seed.installation ? ` (${seed.installation})` : ''}
-            </Text>
-          )}
-
-          {targets.length > 1 && (
-            <Select
-              label={
-                targets.some(candidate => candidate.backend)
-                  ? 'Environment and backend'
-                  : 'Environment'
+        {targets.length > 1 && (
+          <Select
+            label={
+              targets.some(candidate => candidate.backend)
+                ? 'Environment and backend'
+                : 'Environment'
+            }
+            isRequired
+            isDisabled={isBusy}
+            searchable={searchableIf(targets)}
+            options={targets.map(candidate => ({
+              id: loadTargetKey(candidate),
+              label: describeLoadTarget(candidate),
+            }))}
+            selectedKey={targetKey}
+            onSelectionChange={key => {
+              if (key) {
+                setTargetKey(String(key));
               }
-              isRequired
-              isDisabled={isBusy}
-              searchable={searchableIf(targets)}
-              options={targets.map(candidate => ({
-                id: loadTargetKey(candidate),
-                label: describeLoadTarget(candidate),
-              }))}
-              selectedKey={targetKey}
-              onSelectionChange={key => {
-                if (key) {
-                  setTargetKey(String(key));
-                }
-              }}
-              {...targetError.selectProps}
-            />
-          )}
-          {targetError.message}
+            }}
+            {...targetError.selectProps}
+          />
+        )}
+        {targetError.message}
 
-          {!target && (
-            <Alert
-              status="warning"
-              description={
-                installation
-                  ? `No serving backend on ${installation} can load a model yet — register one, or deploy a GPU pool first.`
-                  : 'No serving backend can load a model yet.'
+        {!target && (
+          <Alert
+            status="warning"
+            description={
+              installation
+                ? `No backend on ${installation} can serve a model yet. Add a model backend or a GPU node pool first.`
+                : 'No backend can serve a model yet.'
+            }
+          />
+        )}
+
+        {target && !client && (
+          <Alert
+            status="danger"
+            description={`muster is not connected for ${installation}. Serving calls model-manager as you, through muster.`}
+          />
+        )}
+
+        {target && usesPresets && presets.isError && (
+          <Alert
+            status="danger"
+            description={`The presets of ${describeLoadTarget(target)} could not be read: ${presets.error.message}`}
+          />
+        )}
+
+        {target && (
+          <Select
+            label={usesPresets ? 'Preset' : 'Model'}
+            isRequired
+            isDisabled={isBusy || choices.length === 0}
+            placeholder={choicePlaceholder(
+              usesPresets,
+              presets.isPending,
+              choices.length === 0,
+            )}
+            searchable={searchableIf(choices)}
+            options={choices}
+            selectedKey={model || null}
+            onSelectionChange={key => {
+              if (key) {
+                setModel(String(key));
               }
-            />
-          )}
+            }}
+            {...choiceError.selectProps}
+          />
+        )}
+        {choiceError.message}
 
-          {target && !client && (
-            <Alert
-              status="danger"
-              description={`muster is not connected for ${installation}: serving calls model-manager as you, through muster.`}
-            />
-          )}
+        {choice?.description && (
+          <Text variant="body-small" color="secondary">
+            {choice.description}
+          </Text>
+        )}
 
-          {target && usesPresets && presets.isError && (
-            <Alert
-              status="danger"
-              description={`The presets of ${describeLoadTarget(target)} could not be read: ${presets.error.message}`}
-            />
-          )}
+        {(placements || showsNodes) && (
+          <MoreOptions
+            open={moreOptionsOpen}
+            onOpenChange={setMoreOptionsOpen}
+            summary={moreOptionsSummary || undefined}
+          >
+            {placements && (
+              <RadioGroup
+                label="Placement"
+                data-testid="serve-placement"
+                value={placement ?? null}
+                onChange={value => setPicked(value as ModelManagerPlacement)}
+                isDisabled={isBusy}
+              >
+                {placements.map(option => (
+                  <Radio
+                    key={option.id}
+                    value={option.id}
+                    isDisabled={option.disabled}
+                  >
+                    <Flex direction="column" gap="0">
+                      <Text variant="body-medium">
+                        {option.label}
+                        {option.recommended ? ' (recommended)' : ''}
+                      </Text>
+                      {option.description && (
+                        <Text variant="body-small" color="secondary">
+                          {option.description}
+                        </Text>
+                      )}
+                    </Flex>
+                  </Radio>
+                ))}
+              </RadioGroup>
+            )}
 
-          {target && (
-            <Select
-              label={usesPresets ? 'Preset' : 'Model'}
-              isRequired
-              isDisabled={isBusy || choices.length === 0}
-              placeholder={choicePlaceholder(
-                usesPresets,
-                presets.isPending,
-                choices.length === 0,
-              )}
-              searchable={searchableIf(choices)}
-              options={choices}
-              selectedKey={model || null}
-              onSelectionChange={key => {
-                if (key) {
-                  setModel(String(key));
-                }
-              }}
-              {...choiceError.selectProps}
-            />
-          )}
-          {choiceError.message}
-
-          {choice?.description && (
-            <Text variant="body-small" color="secondary">
-              {choice.description}
-            </Text>
-          )}
-
-          {(placements || showsNodes) && (
-            <MoreOptions
-              open={moreOptionsOpen}
-              onOpenChange={setMoreOptionsOpen}
-              summary={moreOptionsSummary || undefined}
-            >
-              {placements && (
-                <RadioGroup
-                  label="Placement"
-                  data-testid="serve-placement"
-                  value={placement ?? null}
-                  onChange={value => setPicked(value as ModelManagerPlacement)}
+            {showsNodes && nodeOptions && (
+              <Flex direction="column" gap="1" data-testid="serve-nodes">
+                <CheckboxGroup
+                  label="Nodes"
+                  description="Each ticked node runs one copy, behind one endpoint. With none ticked, one copy runs on a node that fits."
+                  value={copyNodes}
+                  onChange={setTickedNodes}
                   isDisabled={isBusy}
                 >
-                  {placements.map(option => (
-                    <Radio
+                  {nodeOptions.map(option => (
+                    <Checkbox
                       key={option.id}
                       value={option.id}
                       isDisabled={option.disabled}
                     >
                       <Flex direction="column" gap="0">
-                        <Text variant="body-medium">
-                          {option.label}
-                          {option.recommended ? ' (recommended)' : ''}
-                        </Text>
+                        <Text variant="body-medium">{option.label}</Text>
                         {option.description && (
                           <Text variant="body-small" color="secondary">
                             {option.description}
                           </Text>
                         )}
                       </Flex>
-                    </Radio>
+                    </Checkbox>
                   ))}
-                </RadioGroup>
-              )}
+                </CheckboxGroup>
+                {fittingNodes.length > 1 && (
+                  <div>
+                    <Button
+                      variant="tertiary"
+                      size="small"
+                      isDisabled={
+                        isBusy || copyNodes.length === fittingNodes.length
+                      }
+                      onPress={() => setTickedNodes(fittingNodes)}
+                    >
+                      All {fittingNodes.length} nodes that fit
+                    </Button>
+                  </div>
+                )}
+              </Flex>
+            )}
+          </MoreOptions>
+        )}
 
-              {showsNodes && nodeOptions && (
-                <Flex direction="column" gap="1" data-testid="serve-nodes">
-                  <CheckboxGroup
-                    label="Nodes"
-                    description="Each ticked node runs one copy, behind one endpoint. With none ticked, one copy runs on a node that fits."
-                    value={copyNodes}
-                    onChange={setTickedNodes}
-                    isDisabled={isBusy}
-                  >
-                    {nodeOptions.map(option => (
-                      <Checkbox
-                        key={option.id}
-                        value={option.id}
-                        isDisabled={option.disabled}
-                      >
-                        <Flex direction="column" gap="0">
-                          <Text variant="body-medium">{option.label}</Text>
-                          {option.description && (
-                            <Text variant="body-small" color="secondary">
-                              {option.description}
-                            </Text>
-                          )}
-                        </Flex>
-                      </Checkbox>
-                    ))}
-                  </CheckboxGroup>
-                  {fittingNodes.length > 1 && (
-                    <div>
-                      <Button
-                        variant="tertiary"
-                        size="small"
-                        isDisabled={
-                          isBusy || copyNodes.length === fittingNodes.length
-                        }
-                        onPress={() => setTickedNodes(fittingNodes)}
-                      >
-                        All {fittingNodes.length} nodes that fit
-                      </Button>
-                    </div>
-                  )}
-                </Flex>
-              )}
-            </MoreOptions>
-          )}
+        {servedWhere && choice && (
+          <Alert
+            status="info"
+            data-testid="serve-already-serving"
+            title={`${choice.label}: ${servedWhere}`}
+            description="model-manager serves each preset once. Stop it under Running models to serve it on another node."
+          />
+        )}
 
-          {servedWhere && choice && (
-            <Alert
-              status="info"
-              data-testid="serve-already-serving"
-              title={`${choice.label}: ${servedWhere}`}
-              description="model-manager serves each preset once. Stop it in the Serving list first to serve it on another node."
-            />
-          )}
+        {needsFit && choice && !servedWhere && (
+          <div data-testid="serve-fit-verdict">
+            {activeFit.isPending && (
+              <Text variant="body-medium" color="secondary">
+                Checking whether {choice.label} fits the pool…
+              </Text>
+            )}
+            {activeFit.isError && (
+              <Alert
+                status="danger"
+                title="Fit check failed"
+                description={activeFit.error.message}
+              />
+            )}
+            {verdict && (
+              <Alert
+                status={verdict.fits ? 'success' : 'danger'}
+                title={
+                  verdict.fits
+                    ? verdict.summary
+                    : `Cannot be served on this pool: ${verdict.summary}`
+                }
+                description={verdict.details.join(' · ') || undefined}
+              />
+            )}
+          </div>
+        )}
 
-          {needsFit && choice && !servedWhere && (
-            <div data-testid="serve-fit-verdict">
-              {activeFit.isPending && (
-                <Text variant="body-medium" color="secondary">
-                  Checking whether {choice.label} fits the pool…
-                </Text>
-              )}
-              {activeFit.isError && (
-                <Alert
-                  status="danger"
-                  title="Fit check failed"
-                  description={activeFit.error.message}
-                />
-              )}
-              {verdict && (
-                <Alert
-                  status={verdict.fits ? 'success' : 'danger'}
-                  title={
-                    verdict.fits
-                      ? verdict.summary
-                      : `Cannot be served on this pool: ${verdict.summary}`
-                  }
-                  description={verdict.details.join(' · ') || undefined}
-                />
-              )}
-            </div>
-          )}
-
-          {load.error ? (
-            <Alert status="danger" description={load.error.message} />
-          ) : null}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="secondary"
-          isDisabled={isBusy}
-          onPress={() => onOpenChange(false)}
-        >
-          Cancel
-        </Button>
-        <Button variant="primary" isDisabled={!canServe} onPress={submit}>
-          {isBusy ? 'Serving…' : 'Serve'}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+        {load.error ? (
+          <Alert status="danger" description={load.error.message} />
+        ) : null}
+      </Flex>
+    </WizardFrame>
   );
 }

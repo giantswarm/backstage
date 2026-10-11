@@ -241,7 +241,7 @@ function ReadyBlock({ row }: { row: ServedModelRow }) {
                 ? `it reaches the model on the LLM endpoint as ${row.publicName}, metered with the provider models.`
                 : 'the models Gateway checks the person’s token on every call.'
             }`
-          : 'No ModelConfig yet — model-manager wires one for the served model.'}
+          : 'This model has no model config yet; model-manager wires one once it serves.'}
       </Text>
       <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
         <Button

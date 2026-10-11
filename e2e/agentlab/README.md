@@ -1,11 +1,9 @@
 # The Dev Portal in a browser, against agentlab
 
-Playwright drives the portal the way a person does — the Dex sign-in popup,
-the tabs, the wizard, a chat turn — against a running
-[agentlab](https://github.com/giantswarm/agentlab). It is the browser-level
-complement of `agentlab backstage-test`, which proves the same portal's routes
-and tokens headlessly and renders no page. A change to a page ships with the
-spec that proves it.
+Playwright drives the portal as a person does, from the Dex sign-in popup to a
+chat turn, against a running [agentlab](https://github.com/giantswarm/agentlab).
+It complements `agentlab backstage-test`, which checks the same routes and
+tokens headlessly. A change to a page ships with the spec that proves it.
 
 ## Run
 
@@ -35,21 +33,18 @@ yarn playwright show-report e2e-test-report/agentlab
 | `AGENTLAB_KUBECONFIG`    | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts` and `deployment-auto-upgrades.spec.ts`, which also need `kubectl`; skipped without it   |
 | `AGENTLAB_SLASH_BRANCH`  | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one |
 
-The lab's certificates are signed by the lab CA; the suite ignores TLS errors
-so no `agentlab trust` is needed.
+The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
 
 ## Portal modes
 
-The Agent Platform lives in the agent shell only. A Backstage with
-`app.portals.agentPlatform` off (the chart's default) is exactly the classic
-portal: no Agent Platform sidebar item, no `/agent-platform/**` or
-`/customize` route. With it on, `/`, `/agent-platform/**` and `/customize/**`
-render the shell, every other route the classic portal, whose sidebar links
-into the shell (and the shell's **Platform Portal** item back), each in a new
-tab.
+With `app.portals.agentPlatform` off (the chart's default), Backstage is exactly
+the classic portal, without any Agent Platform route. With it on, `/`,
+`/agent-platform/**` and `/customize/**` render the shell and every other route
+the classic portal, each linking to the other in a new tab (see
+[Portals](../../docs/agent-platform-configuration.md#portals-appportals)).
 
-The switch is the deployment's, so a lab is in one mode at a time, and
-`AGENTLAB_PORTAL_MODE` tells the suite which:
+A lab is in one mode at a time, and `AGENTLAB_PORTAL_MODE` tells the suite
+which:
 
 | Project           | Specs                                                                  | Runs when                    |
 | ----------------- | ---------------------------------------------------------------------- | ---------------------------- |
@@ -66,37 +61,33 @@ AGENTLAB_PORTAL_MODE=shell yarn test:e2e:agentlab --project agentlab-shell
 AGENTLAB_PORTAL_MODE=shell yarn test:e2e:agentlab --project agentlab-mobile
 ```
 
-The chart's own app-config sets `app.rootRedirect: /agent-platform`, which a
-lab in `classic` mode must not follow (`/` would land on a route that does not
-exist there): run its Backstage with `APP_CONFIG_app_rootRedirect=/` too — `/`
-is the value the classic home page ignores. One way to switch a lab between
-the modes without editing the chart: give the Backstage pod a ConfigMap's
-variables (`backstage.backstage.extraEnvVarsCM` in a `platform.valuesFiles`
-overlay of the lab's `agentlab.yaml`, applied once with `agentlab platform`),
-then change the ConfigMap and restart the Deployment.
+The chart's app-config sets `app.rootRedirect: /agent-platform`, which leads
+nowhere in `classic` mode, so run a `classic` lab's Backstage with
+`APP_CONFIG_app_rootRedirect=/` too. To switch modes without editing the chart,
+give the Backstage pod a ConfigMap's variables
+(`backstage.backstage.extraEnvVarsCM` in a `platform.valuesFiles` overlay of the
+lab's `agentlab.yaml`, applied once with `agentlab platform`), then change the
+ConfigMap and restart the Deployment.
 
-The `agentlab-mobile` project drives Chromium as a phone (`mobileContextOptions`
-in `lab.ts`); `fixtures.ts`' `variant` option opens every context of the
-worker that way. Its specs assert what only a phone shows — the bottom bar,
-the scrolling tab strips, stacked rows, ⋯ menus — and, on every page they
-open, `expectNoHorizontalScroll` (no sideways page scroll, naming the elements
-past the edge) and `expectClearOfBottomBar` for the page's primary action. A
-new phone check joins `MOBILE_SPECS`. iOS focus zoom and the soft keyboard are
-beyond Chromium's emulation and stay a manual check.
+`agentlab-mobile` drives Chromium as a phone (`mobileContextOptions` in
+`lab.ts`; `fixtures.ts`' `variant` option applies it to every context of the
+worker). Its specs assert phone-only layout and, on every page,
+`expectNoHorizontalScroll` (naming the elements past the edge) and
+`expectClearOfBottomBar` for the primary action. A new phone check joins
+`MOBILE_SPECS`. iOS focus zoom and the soft keyboard are beyond Chromium's
+emulation and stay manual checks.
 
-The admin's sign-in checks the lab against the mode (its `/` is the shell's
-new-session screen exactly when it serves the shell) and fails at once,
-naming the fix, on a mismatch. A new spec of the Agent Platform joins
+The admin's sign-in checks that the lab serves the expected mode and fails at
+once, naming the fix, on a mismatch. A new Agent Platform spec joins
 `SHELL_SPECS`.
 
 ## The lab users are fixtures
 
 `admin@lab.local`, `dev@lab.local` and `viewer@lab.local` with the password
-`password` are the throwaway accounts of the lab's static-password Dex
-connector, listed in clear text in its `agentlab.yaml`. The suite types that
-password into the lab Dex's form because that is how the portal is signed in
-to; there is nothing else to protect. Real people's accounts and any real
-installation's sign-in are a different matter and out of this suite's reach.
+`password` are throwaway accounts of the lab's static-password Dex connector,
+listed in clear text in its `agentlab.yaml`. The suite types that password into
+the lab Dex's form. Real people's accounts and real installations' sign-in are
+out of this suite's reach.
 
 ## What it covers
 
@@ -145,25 +136,23 @@ installation's sign-in are a different matter and out of this suite's reach.
 
 ## How it signs in
 
-Each worker opens one browser context, signs in as `admin@lab.local` once
-and keeps that context for all of its tests (`fixtures.ts`). Playwright's
-usual saved `storageState` does not fit this portal: its session rests on
-Dex's refresh token, which Dex rotates on every silent re-login, so two live
-contexts holding the same cookie sign each other out and a saved state goes
-stale after one use. Tests that need another user open their own context
-(`signInAs`).
+Each worker signs in as `admin@lab.local` once and keeps that browser context
+for all its tests (`fixtures.ts`). A saved `storageState` does not work here:
+Dex rotates the refresh token on every silent re-login, so contexts sharing a
+cookie sign each other out. Tests that need another user open their own
+context (`signInAs`).
 
 ## Lab conditions that are not portal bugs
 
-- A Backstage pod roll (a dev-image swap) drops every session — the lab runs
-  an in-memory sqlite. The suite signs in fresh, so it does not notice; a
-  browser you keep open does.
-- For up to five minutes after a roll the backend's cached reachability probe
-  can call the installation unreachable: **Connect to muster** does nothing
-  and the wizard offers no installation. The specs fail with that hint; wait
-  it out or `kubectl -n agent-platform rollout restart deploy/backstage`.
-- The lab logs plenty of console errors that are expected there (a host model
-  server that is down, a `vm-manager` that is not running). The suite fails
-  only on uncaught page errors.
+- A Backstage pod roll (a dev-image swap) drops every session, because the lab
+  runs an in-memory sqlite. The suite signs in fresh; a browser you keep open
+  does not.
+- For up to five minutes after a roll, the backend's cached reachability probe
+  can call the installation unreachable, so muster cannot connect and the
+  wizard offers no installation. The specs fail with that hint; wait or run
+  `kubectl -n agent-platform rollout restart deploy/backstage`.
+- The lab logs expected console errors (a host model server that is down, a
+  `vm-manager` that is not running). The suite fails only on uncaught page
+  errors.
 - Skill discovery shares GitHub's unauthenticated 60 requests/hour with
   everything else on the machine.

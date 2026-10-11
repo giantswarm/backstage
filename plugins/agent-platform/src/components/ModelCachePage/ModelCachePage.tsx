@@ -30,7 +30,7 @@ export function ModelCachePage() {
         <EmptyState
           missing="data"
           title="No model cache"
-          description="The model cache is the volume model weights are kept on between serves. It is listed per cluster by cluster-manager, which no reachable environment runs."
+          description="The model cache keeps model weights between serves. cluster-manager lists it per cluster, and no environment in reach runs cluster-manager."
         />
       )}
     </ShellAwareContent>

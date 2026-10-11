@@ -376,6 +376,19 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
+    it.each([
+      ['/agent-platform/models/serving/serve', 'Serve model'],
+      ['/agent-platform/models/serving/import', 'Import model'],
+      ['/agent-platform/models/serving/pull', 'Pull model'],
+      ['/agent-platform/models/serving/add-backend', 'Add model backend'],
+      ['/agent-platform/models/capacity/add-pool', 'Add GPU node pool'],
+    ])('counts the hosting flow %s as its own page', (pathname, page) => {
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page,
+        path: pathname,
+      });
+    });
+
     it('names one model without naming it in page or view', () => {
       const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
 
@@ -633,6 +646,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/models/capacity',
       '/agent-platform/models/cache',
       '/agent-platform/models/hosting',
+      '/agent-platform/models/serving/serve',
+      '/agent-platform/models/serving/import',
+      '/agent-platform/models/serving/pull',
+      '/agent-platform/models/serving/add-backend',
+      '/agent-platform/models/capacity/add-pool',
       '/plans',
       '/bot-prs',
       '/plans/pr/22',

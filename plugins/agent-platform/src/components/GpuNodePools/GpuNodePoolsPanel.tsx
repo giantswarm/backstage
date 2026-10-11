@@ -456,10 +456,9 @@ export function GpuNodePoolsPanel({
       <InfoCard title="GPU node pools">
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            GPU pools cluster-manager created for the models served here, per
-            cluster. A pool runs nodes only while something is scheduled on
-            them; one still running nodes can't be removed until its models are
-            stopped.
+            cluster-manager created these pools for the models served here. A
+            pool runs nodes only while something is scheduled on them, and it
+            can be removed once its models are stopped.
             {prices &&
               " Costs are on-demand list prices for the pool's node sizes."}
           </Text>

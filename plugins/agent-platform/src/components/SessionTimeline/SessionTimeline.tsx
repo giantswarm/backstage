@@ -433,14 +433,22 @@ export function SessionTimeline({
             {/* Absolute, not relative: every turn of a session usually falls on
                 the same day, so the relative form printed "1 day ago" three times
                 and hid the progression entirely. An exact time shows how the
-                session actually unfolded. */}
+                session actually unfolded. Labelled with the turn's number: the
+                first marker sits right under the header's "Started …", where a
+                bare second time read as an unexplained timestamp (QA). */}
             <div className={classes.turnMarker}>
               <Text
                 variant="body-small"
                 color="secondary"
                 className={classes.turnTime}
               >
-                {turn.at ? <DateComponent value={turn.at} /> : '—'}
+                Turn {turnIndex + 1}
+                {turn.at && (
+                  <>
+                    {' · '}
+                    <DateComponent value={turn.at} />
+                  </>
+                )}
               </Text>
               <span className={classes.rule} />
             </div>

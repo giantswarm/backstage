@@ -298,6 +298,11 @@ export function NewAgentToolsPage() {
           ),
     [toolsetProblems, state.toolset, groups],
   );
+  // Over the cap, muster refuses the toolset with its whole selector list
+  // (QA R2-1); the cap problem already says what to reduce, so that refusal is
+  // not shown beside it. Any other resolution error still is.
+  const overCap =
+    problems.length > 0 && state.toolset.length > MAX_INLINE_SELECTORS;
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -744,7 +749,7 @@ export function NewAgentToolsPage() {
                       <Alert
                         status="danger"
                         title={
-                          state.toolset.length > MAX_INLINE_SELECTORS
+                          overCap
                             ? 'Too many selectors'
                             : 'The toolset cannot be applied as it is'
                         }
@@ -760,10 +765,12 @@ export function NewAgentToolsPage() {
                         )}: the list below is incomplete until you sign in to them.`}
                       />
                     )}
-                    <ToolsetResolutionList
-                      resolution={resolution}
-                      servers={servers}
-                    />
+                    {!(overCap && resolution.status === 'error') && (
+                      <ToolsetResolutionList
+                        resolution={resolution}
+                        servers={servers}
+                      />
+                    )}
                   </Flex>
                 </section>
               </Flex>

@@ -61,6 +61,23 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
  */
 const UPSTREAM_ACCEPT = 'image/*';
 
+/**
+ * The image types forwarded: raster only. An SVG is a document that can carry
+ * script, and it would be served same-origin; anything else is a failure and
+ * the browser shows the initials.
+ */
+const RASTER_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
+
+/** The media type of a `Content-Type` header, without its parameters. */
+function mediaType(contentType: string): string {
+  return contentType.split(';')[0].trim().toLowerCase();
+}
+
 /** What the browser should see of an avatar exactly as the upstream sent it. */
 const FORWARDED_HEADERS = ['content-type', 'cache-control', 'etag'] as const;
 
@@ -130,7 +147,15 @@ type UpstreamAnswer =
   | { kind: 'ok'; headers: Headers; body: Buffer }
   | { kind: 'not-modified'; headers: Headers }
   | { kind: 'not-found' }
-  | { kind: 'failed'; reason: string };
+  | {
+      kind: 'failed';
+      /** Fixed wording for the log message (Sentry fingerprints on it). */
+      problem: string;
+      /** The full reason, for the 502 answer. */
+      reason: string;
+      /** The varying parts, for the log's structured metadata. */
+      details?: Record<string, string | number>;
+    };
 
 /**
  * One fetch of an avatar, classified. Nothing of the browser's request goes
@@ -167,37 +192,55 @@ async function fetchAvatar(
       // all — the chart's DiceBear is off, and a catch-all route answered.
       return {
         kind: 'failed',
+        problem: 'answered an error',
         reason: contentType
           ? `answered ${upstream.status} with ${contentType}`
           : `answered ${upstream.status}`,
+        details: { status: upstream.status, contentType },
       };
     }
 
-    if (!contentType.startsWith('image/')) {
+    if (!RASTER_TYPES.has(mediaType(contentType))) {
       return {
         kind: 'failed',
-        reason: `answered ${contentType || 'no content type'} rather than an image`,
+        problem: 'answered something other than a raster image',
+        reason: `answered ${contentType || 'no content type'} rather than a raster image`,
+        details: { contentType },
       };
     }
     const declared = Number(upstream.headers.get('content-length') ?? 0);
     if (declared > MAX_BODY_BYTES) {
-      return { kind: 'failed', reason: `declared ${declared} bytes` };
+      return {
+        kind: 'failed',
+        problem: 'sent an avatar too large to forward',
+        reason: `declared ${declared} bytes`,
+        details: { bytes: declared },
+      };
     }
     const body = Buffer.from(await upstream.arrayBuffer());
     if (body.byteLength > MAX_BODY_BYTES) {
-      return { kind: 'failed', reason: `sent ${body.byteLength} bytes` };
+      return {
+        kind: 'failed',
+        problem: 'sent an avatar too large to forward',
+        reason: `sent ${body.byteLength} bytes`,
+        details: { bytes: body.byteLength },
+      };
     }
     return { kind: 'ok', headers: upstream.headers, body };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       return {
         kind: 'failed',
+        problem: 'did not answer in time',
         reason: `no answer within ${UPSTREAM_TIMEOUT_MS / 1000} s`,
       };
     }
+    const message = error instanceof Error ? error.message : String(error);
     return {
       kind: 'failed',
-      reason: error instanceof Error ? error.message : String(error),
+      problem: 'could not be reached',
+      reason: message,
+      details: { error: message },
     };
   } finally {
     clearTimeout(timer);
@@ -265,9 +308,12 @@ export function createAvatarRouter(
         // every 5xx to Sentry, and an avatar service that is down fails once
         // per avatar on every page that lists agents. One warning per image
         // names the upstream and the reason; the browser shows the initials.
-        logger.warn(`The avatar service ${answer.reason}`, {
+        // The message stays fixed per kind of problem (Sentry fingerprints on
+        // it); what varies goes into the metadata.
+        logger.warn(`The avatar service ${answer.problem}`, {
           url,
           installation,
+          ...answer.details,
         });
         res.status(502).json({
           error: {

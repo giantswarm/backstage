@@ -205,6 +205,8 @@ type Scenario = {
   extraTools?: ToolSummary[];
   /** Replaces the default five catalogue entries. */
   baseTools?: ToolSummary[];
+  /** A resolution muster refuses for another reason than the cap. */
+  resolutionFails?: string;
 };
 
 /**
@@ -221,6 +223,17 @@ function makeMusterApi(scenario: Scenario) {
   const visible = () => (scenario.signedIn ? [...base, PRO_TOOL] : base);
 
   const resolve = (selectors: string[]): FilterToolsResponse => {
+    if (scenario.resolutionFails) {
+      throw new Error(scenario.resolutionFails);
+    }
+    // Muster's own inline cap, refused with the whole selector list.
+    if (selectors.length > 32) {
+      throw new Error(
+        `toolset [${selectors.join(',')}] has ${
+          selectors.length
+        } selectors, more than the 32 allowed inline; define a preset`,
+      );
+    }
     const matched = new Set<ToolSummary>();
     const unmatched: string[] = [];
     for (const selector of selectors) {
@@ -1244,7 +1257,7 @@ describe('NewAgentToolsPage', () => {
     });
 
     it('caps inline selectors at 32 and says what to reduce', async () => {
-      const { api } = makeMusterApi({
+      const { api, filterTools } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
       });
@@ -1272,6 +1285,40 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
       expect(screen.getByText('Fix the toolset to continue.')).toBeVisible();
       expect(continueButton()).toBeDisabled();
+      // Muster's own refusal, which dumps every selector, is not shown beside it.
+      await waitFor(() =>
+        expect(filterTools).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolset: expect.arrayContaining(['tool:x_srv_t32']),
+          }),
+        ),
+      );
+      expect(
+        screen.queryByText('Could not resolve the toolset'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/allowed inline/)).not.toBeInTheDocument();
+    });
+
+    it('still shows a resolution error that is not the cap', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        resolutionFails: 'muster is unreachable',
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+      await user.type(screen.getByLabelText('Selector'), 'server:kubernetes');
+      await user.click(screen.getByRole('button', { name: 'Add selector' }));
+
+      expect(
+        await within(toolsetCard()).findByText('Could not resolve the toolset'),
+      ).toBeInTheDocument();
+      expect(
+        within(toolsetCard()).getByText('muster is unreachable'),
+      ).toBeInTheDocument();
     });
 
     it("adds a selector by name, a preset too, and surfaces muster's unknown-preset error", async () => {

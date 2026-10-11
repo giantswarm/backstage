@@ -8,6 +8,7 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   CacheSetting,
@@ -19,11 +20,11 @@ import type {
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
 import {
-  AddGpuNodePoolDialog,
+  AddGpuNodePoolPage,
   CLUSTER_PENDING,
   clusterMarks,
   SIZING_POOL_NAME,
-} from './AddGpuNodePoolDialog';
+} from './AddGpuNodePoolPage';
 import { FITS_NO_CHOSEN_SIZE } from './NodeSizePicker';
 import {
   BILLED_STANDING,
@@ -134,7 +135,7 @@ type Scenario = {
   keptCache?: boolean;
   /** `list_clusters` answers this many clusters, wc1 to wcN (the selects at scale). */
   clusterCount?: number;
-  /** The installations the dialog offers (default: inst-1 alone). */
+  /** The installations the page offers (default: inst-1 alone). */
   installations?: string[];
   /** The dry run judges this many presets: the two fixtures, then copies of the big one. */
   presetCount?: number;
@@ -512,7 +513,7 @@ const analyticsApi = mockApis.analytics.mock();
 
 beforeEach(() => jest.mocked(analyticsApi.captureEvent).mockClear());
 
-async function renderDialog(
+async function renderPage(
   scenario: Scenario = {},
   onDeployed?: (
     result: NodePoolWriteResult,
@@ -532,12 +533,13 @@ async function renderDialog(
       ]}
     >
       <QueryClientProvider client={queryClient}>
-        <AddGpuNodePoolDialog
-          installations={scenario.installations ?? ['inst-1']}
-          isOpen
-          onOpenChange={() => {}}
-          onDeployed={onDeployed}
-        />
+        <PageHeaderActionsProvider>
+          <AddGpuNodePoolPage
+            installations={scenario.installations ?? ['inst-1']}
+            closeHref="/agent-platform/models/capacity"
+            onDeployed={onDeployed}
+          />
+        </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -617,10 +619,10 @@ const sizeBox = (instanceType: string) =>
     name: new RegExp(`^${instanceType.replace('.', '\\.')} `),
   });
 
-describe('AddGpuNodePoolDialog', () => {
+describe('AddGpuNodePoolPage', () => {
   it('shows the marks of the picked cluster and renders the dry run as manifests', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     await fillAndReview(user);
 
     expect(callTool).toHaveBeenCalledWith(
@@ -649,7 +651,7 @@ describe('AddGpuNodePoolDialog', () => {
   it('Deploy calls create_node_pool with mode apply as the person', async () => {
     const user = setupUser();
     const onDeployed = jest.fn();
-    const { callTool } = await renderDialog({}, onDeployed);
+    const { callTool } = await renderPage({}, onDeployed);
     await fillAndReview(user);
     await user.click(screen.getByRole('button', { name: 'Deploy' }));
     await screen.findByText(/Pool wc1-gpu-l4 applied as you/);
@@ -680,7 +682,7 @@ describe('AddGpuNodePoolDialog', () => {
   it('Deploy hands the preset chosen under I want to serve on, with its display name and model', async () => {
     const user = setupUser();
     const onDeployed = jest.fn();
-    await renderDialog({}, onDeployed);
+    await renderPage({}, onDeployed);
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
     await user.click(screen.getByRole('button', { name: /I want to serve/ }));
@@ -701,24 +703,50 @@ describe('AddGpuNodePoolDialog', () => {
     );
   });
 
-  it('Commit is disabled with "not available yet" until cluster-manager offers it', async () => {
+  it('Commit is disabled, saying it is not available yet, until cluster-manager offers it', async () => {
     const user = setupUser();
-    await renderDialog({ commit: false });
+    await renderPage({ commit: false });
     await fillAndReview(user);
-    const commit = screen.getByRole('button', {
-      name: /Commit \(not available yet\)/,
-    });
+    const commit = screen.getByRole('button', { name: 'Commit' });
     expect(commit).toBeDisabled();
     expect(
       screen.getByText(
-        /is not available yet on this environment's cluster-manager/,
+        "Commit is not available on this environment's cluster-manager yet.",
       ),
     ).toBeInTheDocument();
   });
 
+  it('is a page of two steps, Pool and Review, with Back on the review and Cancel to where it was opened from', async () => {
+    const user = setupUser();
+    await renderPage();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Add GPU node pool' }),
+    ).toBeInTheDocument();
+    const steps = screen.getByRole('list', { name: 'Steps' });
+    expect(within(steps).getByText('Pool').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/capacity',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Back' }),
+    ).not.toBeInTheDocument();
+
+    await fillAndReview(user);
+    expect(within(steps).getByText('Review').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByLabelText(/pool name/i)).toHaveValue('gpu-l4');
+  });
+
   it('Commit calls mode commit once offered', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog({ commit: true });
+    const { callTool } = await renderPage({ commit: true });
     await fillAndReview(user);
     await user.click(screen.getByRole('button', { name: 'Commit' }));
     await waitFor(() =>
@@ -741,7 +769,7 @@ describe('AddGpuNodePoolDialog', () => {
 
   it('offers the muster connect step when the session is not connected', async () => {
     const user = setupUser();
-    await renderDialog({
+    await renderPage({
       createError: new Error(
         'tool not found: x_cluster-manager_create_node_pool',
       ),
@@ -756,7 +784,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 
   it("shows the tool's note, not an error, where the Cluster API is not served", async () => {
-    await renderDialog({ noClusterApi: true });
+    await renderPage({ noClusterApi: true });
     const note = await screen.findByTestId('cluster-api-note');
     expect(note).toHaveTextContent(NO_CLUSTER_API.note);
     expect(screen.queryByText('Clusters could not be read')).toBeNull();
@@ -779,7 +807,7 @@ describe('AddGpuNodePoolDialog', () => {
 
   it('shows a refusal verbatim on the form, and Review tries once more', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog({
+    const { callTool } = await renderPage({
       createError: new Error(
         'pool gpu-l4 would run Kubernetes 1.32 ahead of the control plane 1.31',
       ),
@@ -802,7 +830,7 @@ describe('AddGpuNodePoolDialog', () => {
   });
 });
 
-describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483)', () => {
+describe('AddGpuNodePoolPage: zones and model cache (giantswarm/backstage#2483)', () => {
   const zoneBox = (zone: string) =>
     within(screen.getByTestId('zones-picker')).getByRole('checkbox', {
       name: zone,
@@ -813,7 +841,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
   it('offers every zone of the cluster chosen and the cache off by default; two zones and the cache on travel to the dry run, the review and Deploy', async () => {
     const user = setupUser();
     const onDeployed = jest.fn();
-    const { callTool } = await renderDialog({ placement: true }, onDeployed);
+    const { callTool } = await renderPage({ placement: true }, onDeployed);
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     for (const zone of ZONES) {
@@ -889,7 +917,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
 
   it('every zone chosen, the review says so; with none chosen Review opens More options on the zones', async () => {
     const user = setupUser();
-    await renderDialog({ placement: true });
+    await renderPage({ placement: true });
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     await review(user);
@@ -920,7 +948,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
 
   it('another cluster: every zone of it is chosen anew; the cache choice stands', async () => {
     const user = setupUser();
-    await renderDialog({ placement: true });
+    await renderPage({ placement: true });
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     await user.click(zoneBox('eu-central-1b'));
@@ -940,7 +968,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
 
   it('shows neither choice where cluster-manager takes neither argument, and sends nothing of them', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
     expect(
@@ -956,7 +984,7 @@ describe('AddGpuNodePoolDialog: zones and model cache (giantswarm/backstage#2483
 
   it('renders a structured cache refusal with the claim and the ways out, and the form stays', async () => {
     const user = setupUser();
-    await renderDialog({ placement: true, cacheRefusal: true });
+    await renderPage({ placement: true, cacheRefusal: true });
     await fillForm(user);
     await screen.findByTestId('zones-picker');
     // The cache on and the claim's zone left out: refused, with the claim.
@@ -994,10 +1022,10 @@ describe('clusterMarks', () => {
   });
 });
 
-describe('AddGpuNodePoolDialog: node size and price on the form', () => {
+describe('AddGpuNodePoolPage: node size and price on the form', () => {
   it('picks the one cluster as the form opens and offers the sizes and prices before the pool is named; the name only enables Review and relabels the dry run', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     // The installation's one cluster is picked, nothing clicked: its marks
     // stand under the picker and the dry run runs.
     await waitFor(() =>
@@ -1038,7 +1066,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('offers the sizes with usable resources, GPU memory and price as soon as cluster and name are set, the cheapest as the from price', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     await fillForm(user);
 
     const picker = await screen.findByTestId('node-size-picker');
@@ -1100,7 +1128,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('marks a preset in the I want to serve list once the chosen sizes host it no more, with the size that would; the size back unmarks it; Back keeps the choice', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
 
@@ -1155,7 +1183,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('choosing a preset preselects the smallest size hosting it with its price and marks the others; an unhosted preset blocks Deploy with the reason', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog();
+    const { callTool } = await renderPage();
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
 
@@ -1221,7 +1249,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('offers the presets the chart ships on a cluster without a serving slice', async () => {
     const user = setupUser();
-    await renderDialog({ chartPresets: true });
+    await renderPage({ chartPresets: true });
     await fillForm(user);
     const picker = await screen.findByTestId('node-size-picker');
     expect(
@@ -1233,7 +1261,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('shows the note instead of a picker where nothing could be judged', async () => {
     const user = setupUser();
-    await renderDialog({ noPresets: true });
+    await renderPage({ noPresets: true });
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
     expect(screen.getByTestId('preset-fit-note')).toHaveTextContent(
@@ -1250,7 +1278,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('shows the price note where a size has no price, and prices nothing from an older cluster-manager', async () => {
     const user = setupUser();
-    await renderDialog({ unpriced: true });
+    await renderPage({ unpriced: true });
     await fillForm(user);
     const picker = await screen.findByTestId('node-size-picker');
     expect(picker).toHaveTextContent(`1 × 24 GiB GPU — ${PRICE_NOTE}`);
@@ -1261,7 +1289,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
 
   it('works without prices, display names and origin from an older cluster-manager', async () => {
     const user = setupUser();
-    await renderDialog({ legacy: true });
+    await renderPage({ legacy: true });
     await fillForm(user);
     const picker = await screen.findByTestId('node-size-picker');
     expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
@@ -1285,7 +1313,7 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   it('a Deploy cut short lists the pending objects and Continue re-runs the same call', async () => {
     const user = setupUser();
     const onDeployed = jest.fn();
-    const { callTool } = await renderDialog({ partial: true }, onDeployed);
+    const { callTool } = await renderPage({ partial: true }, onDeployed);
     await fillAndReview(user);
     await user.click(screen.getByRole('button', { name: 'Deploy' }));
 
@@ -1312,10 +1340,10 @@ describe('AddGpuNodePoolDialog: node size and price on the form', () => {
   });
 });
 
-describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm/backstage#2493)', () => {
+describe('AddGpuNodePoolPage — the model cache’s standing cost (giantswarm/backstage#2493)', () => {
   it('the switch on: the price from the dry run is its own line — the claim the slice would create, its source, billed until the cache is removed; off again, what a cold start costs', async () => {
     const user = setupUser();
-    await renderDialog({ placement: true, pricedCache: true });
+    await renderPage({ placement: true, pricedCache: true });
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
     expect(screen.queryByTestId('cache-cost')).not.toBeInTheDocument();
@@ -1348,7 +1376,7 @@ describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm
 
   it('locks the switch on where the cluster’s slice keeps the cache, names the kept claim with its cost, and sends the cache on', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog({
+    const { callTool } = await renderPage({
       placement: true,
       keptCache: true,
     });
@@ -1373,9 +1401,9 @@ describe('AddGpuNodePoolDialog — the model cache’s standing cost (giantswarm
   });
 });
 
-describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2501)', () => {
+describe('AddGpuNodePoolPage: the form stands in place (giantswarm/backstage#2501)', () => {
   it('renders every section before a cluster is picked — the sizes and zones as placeholders, the preset picker and the cache switch in place — and no Teleport field', async () => {
-    await renderDialog({ placement: true });
+    await renderPage({ placement: true });
     // Two clusters: none is picked for the person.
     await screen.findByRole('button', { name: /^Pick a cluster/ });
     expect(screen.getByTestId('cluster-marks')).toHaveTextContent(
@@ -1384,7 +1412,7 @@ describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2
     expect(screen.getByTestId('node-size-pending')).toBeInTheDocument();
     expect(screen.getByTestId('sizes-placeholder')).toBeInTheDocument();
     expect(screen.getByTestId('sizes-pending')).toHaveTextContent(
-      /Pick a cluster — the sizes for nvidia-l4/,
+      /Pick a cluster to see the sizes for nvidia-l4/,
     );
     expect(
       screen.getByRole('button', { name: /I want to serve/ }),
@@ -1403,7 +1431,7 @@ describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2
 
   it('a picked cluster fills the sections in: its marks in one line, the sizes, the zones every one chosen', async () => {
     const user = setupUser();
-    const { callTool } = await renderDialog({ placement: true });
+    const { callTool } = await renderPage({ placement: true });
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
     expect(screen.queryByTestId('sizes-placeholder')).not.toBeInTheDocument();
@@ -1421,10 +1449,10 @@ describe('AddGpuNodePoolDialog: the form stands in place (giantswarm/backstage#2
   });
 });
 
-describe('AddGpuNodePoolDialog: the selects at scale', () => {
+describe('AddGpuNodePoolPage: the selects at scale', () => {
   it('offers three environments and three clusters without a search', async () => {
     const user = setupUser();
-    await renderDialog({
+    await renderPage({
       clusterCount: 3,
       installations: ['inst-1', 'inst-2', 'inst-3'],
     });
@@ -1447,7 +1475,7 @@ describe('AddGpuNodePoolDialog: the selects at scale', () => {
 
   it('offers type-ahead over 300 clusters and 300 environments', async () => {
     const user = setupUser();
-    await renderDialog({
+    await renderPage({
       clusterCount: 300,
       installations: Array.from({ length: 300 }, (_, i) => `inst-${i + 1}`),
     });
@@ -1465,7 +1493,7 @@ describe('AddGpuNodePoolDialog: the selects at scale', () => {
 
   it('offers the two presets of I want to serve without a search', async () => {
     const user = setupUser();
-    await renderDialog();
+    await renderPage();
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
 
@@ -1478,7 +1506,7 @@ describe('AddGpuNodePoolDialog: the selects at scale', () => {
 
   it('offers type-ahead over 300 presets in I want to serve', async () => {
     const user = setupUser();
-    await renderDialog({ presetCount: 300 });
+    await renderPage({ presetCount: 300 });
     await fillForm(user);
     await screen.findByTestId('node-size-picker');
 

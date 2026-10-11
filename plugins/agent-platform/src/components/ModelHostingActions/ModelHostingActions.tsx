@@ -13,6 +13,12 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+/**
+ * The context line of Model hosting's create flows (`WizardFrame`'s
+ * `context`): where the flow sits, as the hosting page's breadcrumbs say it.
+ */
+export const HOSTING_FLOW_CONTEXT = 'Customize / Models / Model hosting';
+
 /** One action of a Model hosting view's header. */
 export type HostingAction = {
   /** Stable key, unique among the header's actions. */

@@ -28,6 +28,13 @@ import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
 import { ModelCachePage } from '../ModelCachePage';
 import {
+  AddGpuNodePoolRoute,
+  AddModelBackendRoute,
+  ImportModelRoute,
+  PullModelRoute,
+  ServeModelRoute,
+} from '../HostingFlowRoutes';
+import {
   ModelHostingKpis,
   type ModelHostingKpisScope,
 } from '../ModelHostingKpis';
@@ -205,6 +212,30 @@ const ShellModelHosting = () => {
 };
 
 /**
+ * Model hosting's create flows, each a page of its own (`WizardFrame`) under
+ * the view it adds to: Serve model, Import from Hugging Face, Pull model and
+ * Add model backend under Running models (`serving`), Add GPU node pool
+ * under GPU pools (`capacity`). Two segments, so the three-segment detail
+ * route never takes one; listed before the views, which they frame
+ * themselves instead of sitting under the hosting page's header and tabs.
+ */
+const hostingFlowRoutes = [
+  <Route key="serve" path="serving/serve" element={<ServeModelRoute />} />,
+  <Route key="import" path="serving/import" element={<ImportModelRoute />} />,
+  <Route key="pull" path="serving/pull" element={<PullModelRoute />} />,
+  <Route
+    key="add-backend"
+    path="serving/add-backend"
+    element={<AddModelBackendRoute />}
+  />,
+  <Route
+    key="add-pool"
+    path="capacity/add-pool"
+    element={<AddGpuNodePoolRoute />}
+  />,
+];
+
+/**
  * The tab's views inside the agent-platform shell. The list is the Customize
  * screen's Models tab, so the index sends there; the create and edit flows and
  * one model's page frame themselves; everything else is model hosting.
@@ -217,6 +248,7 @@ const ShellModelsViews = () => (
       path="edit/:installation/:namespace/:name"
       element={<EditModelPage />}
     />
+    {hostingFlowRoutes}
     <Route
       path=":installation/:namespace/:name"
       element={<ModelDetailPage />}
@@ -302,6 +334,7 @@ const ModelsViews = () => {
         />
         <Route path="serving" element={<ServingPage />} />
         <Route path="capacity" element={<GpuCapacityPage />} />
+        {hostingFlowRoutes}
       </Routes>
     </>
   );

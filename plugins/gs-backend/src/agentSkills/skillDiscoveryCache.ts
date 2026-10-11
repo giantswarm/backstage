@@ -61,6 +61,11 @@ export interface PinnedSkillFiles {
   contents?: Map<string, string>;
   /** Small files read on the way, by repository-relative path. */
   fileContents?: Map<string, Uint8Array>;
+  /**
+   * True when `files` may lack skills (GitHub capped the tree): a skill
+   * directory missing from it is then no proof that it has no `SKILL.md`.
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -148,7 +153,11 @@ export class SkillDiscoveryCache {
   /** File lists (and SKILL.mds) of commits read outside a listing. */
   private readonly pinned = new Map<
     string,
-    { files: Map<string, SkillFileList>; contents: Map<string, string> }
+    {
+      files: Map<string, SkillFileList>;
+      contents: Map<string, string>;
+      truncated: boolean;
+    }
   >();
   private readonly fileCache: SkillFileCache;
   private readonly now: () => number;
@@ -249,6 +258,40 @@ export class SkillDiscoveryCache {
   }
 
   /**
+   * Whether every skill's file list of `repoUrl` at `commit` is known — from
+   * a listing at that commit, or a read outside one — so that a skill or file
+   * missing from it would be missing again from a fresh read upstream (the
+   * tree at a commit never changes). `undefined` when no read covered the
+   * commit. `truncated` is true when GitHub capped the tree those lists come
+   * from: a `SKILL.md` outside it may still exist.
+   */
+  knownCommit(
+    repoUrl: string,
+    commit: string,
+  ): { truncated: boolean } | undefined {
+    const repoKey = repositoryKey(repoUrl);
+    let known: { truncated: boolean } | undefined;
+    for (const entry of this.entries.values()) {
+      const snapshot = entry.snapshot;
+      if (
+        entry.repoKey === repoKey &&
+        snapshot?.commit === commit &&
+        snapshot.files
+      ) {
+        if (!snapshot.truncated) {
+          return { truncated: false };
+        }
+        known = { truncated: true };
+      }
+    }
+    const pinned = this.pinned.get(`${repoKey}#${commit}`);
+    if (pinned && !pinned.truncated) {
+      return { truncated: false };
+    }
+    return pinned ? { truncated: true } : known;
+  }
+
+  /**
    * Remembers what a read outside a listing found at `commit`: the file
    * lists (bounded to {@link MAX_PINNED_ENTRIES} commits, least recently
    * remembered dropped first), the small `SKILL.md`s, and any file bytes —
@@ -265,6 +308,7 @@ export class SkillDiscoveryCache {
     this.pinned.set(key, {
       files: read.files,
       contents: smallContents(read.contents ?? new Map()),
+      truncated: read.truncated ?? false,
     });
     while (this.pinned.size > MAX_PINNED_ENTRIES) {
       this.pinned.delete(this.pinned.keys().next().value as string);

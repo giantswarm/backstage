@@ -1,33 +1,28 @@
 # Agent Platform configuration
 
-What a deployment can and must configure for the **Agent Platform shell** —
-the new UI on `/`, `/agent-platform/**` and `/customize/**` (see
-[agent-platform.md](agent-platform.md) for what the UI does). The classic
-Platform Portal is out of scope here.
+What a deployment configures for the **Agent Platform shell**, the UI on `/`,
+`/agent-platform/**` and `/customize/**` (see [agent-platform.md](agent-platform.md)).
+The classic Platform Portal is out of scope.
 
-Every key below is read by the code named next to it; the schemas are
-`packages/app/config.d.ts`, `plugins/agent-platform/config.d.ts`,
+The schemas are `packages/app/config.d.ts`, `plugins/agent-platform/config.d.ts`,
 `plugins/agent-platform-backend/config.d.ts` and `plugins/gs/config.d.ts`.
 
 ## How the browser gets the config
 
-Two channels, and a key works only in the one it is meant for:
+A key works only in the channel it is meant for:
 
-- **Public config** (`@visibility frontend` in a `config.d.ts`) is in the
-  unauthenticated `index.html`. Of the keys on this page only `app.portals.*`,
-  `app.rootRedirect` and `gs.github.brokerAudience` are read this way: the app
-  decides with them at start, before sign-in.
-- **Signed-in config** is `GET /api/gs/config`, served after the main sign-in
-  from an allowlist (`SIGNED_IN_CONFIG_PATHS` in
-  `plugins/gs-backend/src/signedInConfig.ts`). Every `agentPlatform.*` key the
-  frontend reads is listed there; a key missing from that list never reaches
-  the browser, whatever its schema says. The agent-platform frontend reads:
-  `agentPlatform.skills.repositories`, `agentPlatform.metaAgents`,
+- **Public config** (`@visibility frontend`) is in the unauthenticated
+  `index.html`. Only `app.portals.*`, `app.rootRedirect` and
+  `gs.github.brokerAudience` are read this way, at start, before sign-in.
+- **Signed-in config** is `GET /api/gs/config`, served after sign-in from the
+  allowlist `SIGNED_IN_CONFIG_PATHS` (`plugins/gs-backend/src/signedInConfig.ts`).
+  A key missing from it never reaches the browser, whatever its schema says. The
+  frontend reads `agentPlatform.skills.repositories`, `agentPlatform.metaAgents`,
   `agentPlatform.integrations.slack`, `agentPlatform.integrations.slackDocsUrl`,
-  `agentPlatform.models.contextWindows`,
-  and `gs.installations` (for `currency` and `mimirEnabled`).
+  `agentPlatform.models.contextWindows` and `gs.installations` (for `currency`
+  and `mimirEnabled`).
 
-`agentPlatform.kagent.*` is backend-only and is never served to the browser.
+`agentPlatform.kagent.*` is backend-only.
 
 ## Quick reference
 
@@ -46,69 +41,51 @@ Two channels, and a key works only in the one it is meant for:
 | `gs.github` or `auth.providers.github`                    | —          | Yes, for the skill pull-request flows          | Adding or editing a skill cannot get a GitHub token                      |
 | `agentPlatform.metaAgents.<role>`                         | unset      | No                                             | The feature that role lights up stays hidden                             |
 | `agentPlatform.integrations.slack`                        | `false`    | No                                             | No Slack banner on the new-session home                                  |
-| `agentPlatform.integrations.slackDocsUrl`                 | GS docs    | No                                             | The banner's "How it works" opens docs.giantswarm.io                     |
+| `agentPlatform.integrations.slackDocsUrl`                 | GS docs    | No                                             | The Slack banner links to docs.giantswarm.io                             |
 | `agentPlatform.models.contextWindows`                     | `{}`       | No                                             | The memory indicator shows raw token counts instead of a percentage      |
 | `@backstage/plugin-user-settings-backend` + persistent DB | registered | Yes, for roaming pins, favorites, dismissals   | State is lost on backend restart (in-memory SQLite) or stays per browser |
 
 ## Production requirements
 
-Three settings the shell works without in a lab but must have in production:
+A lab works without these; production needs them:
 
 - **A GitHub token for skills.** Configure `integrations.github` (a GitHub App
   or a token) that can read every github.com repository in
   `agentPlatform.skills.repositories`. Without one, gs-backend reads GitHub
-  anonymously, and the 60 requests an hour GitHub allows per IP ran out during
-  QA and took the whole Skills catalogue down. gs-backend caches listings,
-  remembers misses and bounds concurrent reads, which slows the budget's use but
-  does not remove the need for a token.
+  anonymously at 60 requests an hour per IP, which took the Skills catalogue
+  down during QA. Caching and bounded reads slow that budget's use but do not
+  replace the token.
 - **Qualified meta-agent names.** Every `agentPlatform.metaAgents.<role>` must
   be `<namespace>/<name>` or `<installation>/<namespace>/<name>`. A bare name
-  resolves to nothing, so the feature that role lights up disappears without an
-  error (see [Meta-agents](#meta-agents-agentplatformmetaagents)).
-- **The avatar service.** Agent avatars come from the chart's DiceBear service
+  resolves to nothing, and the role's feature disappears without an error (see
+  [Meta-agents](#meta-agents-agentplatformmetaagents)).
+- **The avatar service.** Avatars come from the chart's DiceBear service
   (`dicebear`, on by default) at `avatars.<baseDomain>`, through
-  `plugins/agent-platform-backend/src/avatarRouter.ts`. Where it is off or its
-  route is missing, whatever answers that host fails every avatar, the backend
-  logs a warning per image, and the UI shows initials.
+  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it every avatar
+  fails, the backend logs a warning per image, and the UI shows initials.
 
 ## Portals: `app.portals`
 
-Read by `readPortals` (`plugins/agent-platform-common/src/portals.ts`), at app
-start and before sign-in, so both keys are public.
+Read by `readPortals` (`plugins/agent-platform-common/src/portals.ts`) at app
+start, before sign-in, so both keys are public.
 
 | Key                          | Default | Required?              |
 | ---------------------------- | ------- | ---------------------- |
 | `app.portals.platformPortal` | `true`  | optional               |
 | `app.portals.agentPlatform`  | `false` | required for the shell |
 
-The three modes:
-
-- **Only `platformPortal`** (the default — neither key set, or both set to
-  `false`): exactly the classic portal, with nothing of the Agent Platform in
-  it — no sidebar item, no `/agent-platform/**` or `/customize` route, even
-  where `app.extensions` lists `page:agent-platform`: its pages are routed in
-  the shell only. The per-person `agent-platform-shell`
-  feature flag (Settings → Feature Flags) opts one browser into the shell next
-  to the classic portal; it takes effect after a reload.
-- **Both on**: the shell on `/`, `/agent-platform/**` and `/customize/**`, the
-  classic portal in its own chrome everywhere else, each cross-linking to the
-  other in a new tab: the classic sidebar's **Agent Platform** item (to
-  `/agent-platform`) and the shell's **Platform Portal** item (to
-  `/clusters`). No Agent Platform page renders in classic chrome.
-- **Only `agentPlatform`**: the shell is the whole navigation. `/` is the
-  new-session screen and the shell's rail has no "Platform Portal" item.
-  Classic pages stay reachable by URL, in classic chrome, whose "Agent
-  Platform" item leads back in the same tab.
-
-**What breaks without it.** With `agentPlatform` off, nobody sees the shell
-unless they set the feature flag themselves.
+| Mode                                                          | Result                                                                                                                                                                                                        |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Only `platformPortal` (the default; also neither or both off) | Exactly the classic portal: no Agent Platform item or route, even where `app.extensions` lists `page:agent-platform`. The `agent-platform-shell` feature flag opts one browser into the shell after a reload. |
+| Both on                                                       | The shell on `/`, `/agent-platform/**` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/agent-platform`, the shell to `/clusters`).              |
+| Only `agentPlatform`                                          | The shell is the whole navigation, without a Platform Portal item. Classic pages stay reachable by URL, and their Agent Platform item leads back in the same tab.                                             |
 
 **Also required: `page:agent-platform`.** The Sessions, Agents, Models and
-Usage screens live on the `page:agent-platform` extension
-(`plugins/agent-platform/src/plugin.tsx`), which is **disabled by default**.
-Enable it wherever the shell is on (where it is off, the page stays unmounted
-whatever `app.extensions` says; the classic sidebar's Agent Platform item
-follows `app.portals`, not `nav-item:agent-platform`):
+Usage screens live on this extension (`plugins/agent-platform/src/plugin.tsx`),
+which is **disabled by default**. Enable it wherever the shell is on. Where the
+shell is off, the page stays unmounted whatever `app.extensions` says, and the
+classic sidebar's Agent Platform item follows `app.portals`, not
+`nav-item:agent-platform`.
 
 ```yaml
 app:
@@ -120,31 +97,27 @@ app:
     - nav-item:agent-platform
 ```
 
-`app.rootRedirect` does not apply where the shell is on: there `/` is the
-shell's new-session screen (`AgentShellHomePage`, which ignores it). It only
-redirects the classic home page.
+`app.rootRedirect` applies only to the classic home page; where the shell is
+on, `/` is the shell's new-session screen (`AgentShellHomePage`).
 
 ### The `agent-platform-shell` feature flag
 
-`AGENT_SHELL_FLAG` (`plugins/agent-platform-common/src/agentShellFlag.ts`). The
-app's FeatureFlagsApi (`PortalFeatureFlags` in
-`packages/app/src/modules/agentShell/PortalFeatureFlags.ts`) reports this flag
-as **what the deployment decided**: on whenever `app.portals.agentPlatform` is
-on, and otherwise the person's own setting. Its remaining meaning is therefore
-only the per-browser opt-in on a deployment that has the shell switched off;
-while `app.portals.agentPlatform` is on the flag is not listed in the settings
-at all, because toggling it would change nothing. Internally every shell
-extension still keys on the flag, which is why the deployment's choice is fed
-through it.
+`AGENT_SHELL_FLAG` (`plugins/agent-platform-common/src/agentShellFlag.ts`).
+`PortalFeatureFlags` (`packages/app/src/modules/agentShell/PortalFeatureFlags.ts`)
+reports it as on whenever `app.portals.agentPlatform` is on, and as the
+person's own setting otherwise. It is therefore only a per-browser opt-in where
+the shell is off, and it is not listed in the settings while
+`app.portals.agentPlatform` is on. Every shell extension keys on the flag
+internally.
 
 ## Installations: `gs.installations.<name>`
 
-The shell has no installation list of its own: it uses `gs.installations`
-(backend-only; the browser gets it through the signed-in config).
+The shell uses `gs.installations` (backend-only; the browser gets it through
+the signed-in config).
 
 ### `baseDomain` — required
 
-Every per-installation endpoint the shell uses is derived from it:
+Every per-installation endpoint is derived from it:
 
 | Derived endpoint                                | Used for                                                              | Code                                                 |
 | ----------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -157,18 +130,18 @@ An installation without `baseDomain` has none of the above.
 
 ### `mimirEnabled` — the Usage metrics prerequisite
 
-Default `true`. The Usage screens' token, cost, latency and error figures come
-from the agentgateway's metrics in the installation's Mimir. gs-backend proxies
+Default `true`. Usage's token, cost, latency and error figures come from the
+agentgateway's metrics in the installation's Mimir. gs-backend proxies
 `GET /api/gs/mimir/query` and `/mimir/query_range` to
 `https://observability.<baseDomain>/prometheus/api/v1/…` with the person's OIDC
 token for that installation and `X-Scope-OrgID: giantswarm`.
 
-Set `mimirEnabled: false` on an installation that does not run the Giant Swarm
-observability stack (a standalone installation): the backend then refuses
-with 404 instead of calling a Mimir that is not there, and the metrics-backed
-UI renders "unavailable" rather than errors.
+Set `mimirEnabled: false` where the Giant Swarm observability stack does not
+run (a standalone installation): the backend answers 404 instead of calling a
+missing Mimir, and the metrics-backed UI reads "unavailable" rather than
+erroring.
 
-What has to be in Mimir (the metric registry is
+Required in Mimir (the metric registry is
 `plugins/gs/src/apis/mimir/metrics.ts`; the queries are
 `plugins/agent-platform/src/lib/llmUsageQueries.ts`):
 
@@ -181,11 +154,11 @@ What has to be in Mimir (the metric registry is
 | `agentgateway_gen_ai_server_time_per_output_token` | Generation speed (streamed calls only)                     |
 | `agentgateway_requests_total`                      | Error rate, filtered to the `llm` listener                 |
 
-Grouping labels used: `agent_namespace`, `agent`, `gen_ai_response_model`,
-`gen_ai_token_type`. So LLM traffic must go **through the agentgateway's `llm`
-listener**, which must export these metrics with the agent labels, and they
-must be scraped into the installation's Mimir. A model the gateway's catalogue
-does not price contributes tokens but no cost.
+Grouping labels: `agent_namespace`, `agent`, `gen_ai_response_model`,
+`gen_ai_token_type`. LLM traffic must therefore go **through the agentgateway's
+`llm` listener**, which exports these metrics with the agent labels, scraped
+into the installation's Mimir. A model the gateway's catalogue does not price
+contributes tokens but no cost.
 
 ### `currency` — optional
 
@@ -205,9 +178,8 @@ The gateway prices in USD; costs are converted with `usdRate`. Default USD
 
 Sessions, chat and the kagent-derived Usage figures go through
 agent-platform-backend, which speaks gRPC to each installation's kagent
-controller route and forwards the person's Dex ID token for that installation
-as `authorization: Bearer`. Schema and full comments:
-`plugins/agent-platform-backend/config.d.ts`.
+controller route with the person's Dex ID token as `authorization: Bearer`.
+Schema: `plugins/agent-platform-backend/config.d.ts`.
 
 | Key                               | Default                                                             | Meaning                                                                                               |
 | --------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -219,9 +191,9 @@ as `authorization: Bearer`. Schema and full comments:
 | `sessionUsage.windowDays`         | `30`                                                                | The kagent-derived Usage window. Check kagent's own retention before raising it.                      |
 | `sessionUsage.*` (other bounds)   | 60 sessions, 31 days, 6 parallel, 5 s task / 20 s pass, 5 min cache | Bounds of the Usage summary. `budgetMs` must stay below the ingress timeout.                          |
 
-**Without it**: nothing to set — the derived default works where the
-connectivity chart's controller route exists. An installation without kagent
-fails per request and reads as "not installed".
+**Without it**, the derived default works wherever the connectivity chart's
+controller route exists. An installation without kagent reads as "not
+installed".
 
 ```yaml
 agentPlatform:
@@ -235,27 +207,26 @@ agentPlatform:
 None of these has an `agentPlatform` key. They are calls through the
 installation's **muster**, as the signed-in person:
 
-- Agents are validated, created, edited and deleted by **agent-manager**
-  (`x_agent-manager_*` tools; `plugins/agent-platform/src/lib/agentManager.ts`).
-  The chart, its version range, the Flux settings and the platform Harness are
-  agent-manager's to report (`get_info`), not portal config.
-  Edit and Delete appear only where agent-manager reports a write mode; the
-  "Propose as pull request" variants only where it reports the `commit`
+- **Agents**: **agent-manager** (`x_agent-manager_*`;
+  `plugins/agent-platform/src/lib/agentManager.ts`). The chart, its version
+  range, the Flux settings and the platform Harness come from its `get_info`,
+  not from portal config. Edit and Delete appear only where it reports a write
+  mode, and the pull-request variants only where it reports the `commit`
   capability.
-- Model serving (Customize → Models → Model hosting) is **model-manager**
-  (`x_model-manager_*`); its views appear only where model-manager answers. The
-  ModelConfig form itself writes the kagent CR through the Kubernetes API.
-- Connectors are muster MCPServers, registered for the whole installation
-  through muster's `core_mcpserver_detect`, `_validate`, `_create` and
-  `_update` tools (`plugins/muster`, `NewConnectorWizard`). GitOps-managed
-  servers are not editable in the UI.
-- Workflows are muster workflows, read-only in the UI.
+- **Model serving** (Model hosting): **model-manager** (`x_model-manager_*`),
+  shown only where it answers. The ModelConfig form writes the kagent CR
+  through the Kubernetes API.
+- **Connectors**: muster MCPServers, registered installation-wide through
+  `core_mcpserver_detect`, `_validate`, `_create` and `_update`
+  (`plugins/muster`, `NewConnectorWizard`). GitOps-managed servers are not
+  editable.
+- **Workflows**: muster workflows, read-only.
 
 Requirement: a muster per installation, at the derived
 `https://muster.<baseDomain>/mcp` or overridden in `muster.installations`
 (`plugins/muster-backend/config.d.ts`), with `agent-manager` (and
-`model-manager` for model hosting) registered as MCPServers. An installation
-whose muster lacks agent-manager does not offer agent creation
+`model-manager` for model hosting) registered as MCPServers. Without
+agent-manager an installation offers no agent creation
 (`useAgentManagerAvailability`).
 
 ## Skills: `agentPlatform.skills.repositories`
@@ -264,14 +235,12 @@ whose muster lacks agent-manager does not offer agent creation
 | ------- | ------------------- | ------------------------------------------------------------------------------- |
 | `[]`    | required for skills | frontend (signed-in config) and gs-backend (`plugins/gs-backend/src/router.ts`) |
 
-Git repositories to discover skills from. Every `SKILL.md` in a repository is
-one skill (its directory is the skill root; frontmatter `name` and
-`description` are shown). A skill an agent uses is pinned to the commit
-discovery read.
+Git repositories to discover skills from. Every `SKILL.md` is one skill (its
+directory is the skill root; frontmatter `name` and `description` are shown).
+An agent's skill is pinned to the commit discovery read.
 
-**Without it**: the Customize → Skills tab is hidden (a link to it redirects
-away), and the agent create and edit flows skip their skills step (three steps
-instead of four: details, tools, review).
+**Without it**, the Skills tab is hidden (links redirect away), and the agent
+create and edit flows skip their skills step.
 
 The list is also an **allowlist**: gs-backend reads skill content and opens
 pull requests only for configured repositories.
@@ -283,35 +252,32 @@ pull requests only for configured repositories.
 | `https://github.com/<owner>/<repo>` | GitHub REST API (`discoverAgentSkills.ts`)                                                                                                                              | A Backstage GitHub integration (`integrations.github`, a GitHub App or token) that can read the repository. Without one: anonymous, 60 requests/hour per backend IP, public repositories only. |
 | any other `http(s)://…` URL         | Plain git protocol, depth-1 clone (`discoverAgentSkillsFromGit.ts`) — no API, no rate limit, so a self-hosted or lab-local git server (Gitea, `git http-backend`) works | gs-backend must be able to clone it without credentials.                                                                                                                                       |
 
-Either way the URL travels **unchanged** into the agent's chart values
-(`git.url`), so agents must be able to `git fetch` it at boot too.
+Either way the URL goes **unchanged** into the agent's chart values
+(`git.url`), so agents must be able to `git fetch` it at boot.
 
 Listings are cached in gs-backend's memory (`SkillDiscoveryCache`); an upstream
 failure serves the previous listing marked stale.
 
 ### The pull-request flows (add and edit a skill)
 
-**Add skill** (Customize → Skills) and **Edit** (a skill's detail page) open a
-pull request — nothing is applied until someone merges it
-(`POST /api/gs/agent-skills/pull-request`, `createSkillPullRequest.ts`).
+Adding and editing a skill open a pull request; nothing changes until it is
+merged (`POST /api/gs/agent-skills/pull-request`, `createSkillPullRequest.ts`).
 Requirements:
 
-- **github.com only.** The route refuses any other URL, so the UI offers only
-  github.com repositories: "Add skill" lists only those as targets (and is
-  hidden when none of the configured repositories is on github.com), and a
-  skill from a generic-git repository gets a read-only detail page — its
-  description and instructions, no Edit or Evaluate.
+- **github.com only.** The route refuses any other URL. Add skill offers only
+  github.com repositories and is hidden when none is configured; a skill from a
+  generic-git repository is read-only (no Edit or Evaluate).
 - **The person's own GitHub token**, scope `repo`, from `githubAuthApiRef`:
-  either the person's GitHub grant in muster (`gs.github.brokerAudience` +
-  `gs.authProvider`; a person without a grant is sent through muster's connect
-  once) or Backstage's GitHub sign-in (`auth.providers.github`). The pull
-  request is authored as that person, not a bot.
-- **Push access** for that person to the repository: the branch
-  (`add-skill/<name>`, or `update-skill/<directory as a slug>` — the repo
-  name for a skill at the repository root) is created there and the pull
-  request targets the default branch. No access → GitHub's 403/404 is shown.
+  their GitHub grant in muster (`gs.github.brokerAudience` + `gs.authProvider`;
+  a person without one connects once through muster) or Backstage's GitHub
+  sign-in (`auth.providers.github`). The pull request is authored as that
+  person, not a bot.
+- **Push access** for that person: the branch (`add-skill/<name>`, or
+  `update-skill/<directory as a slug>`, the repository name for a root-level
+  skill) is created in the repository and targets the default branch. Without
+  access, GitHub's 403 or 404 is shown.
 
-The GitHub integration token (`integrations.github`) is **not** used for pull
+The integration token (`integrations.github`) is **not** used for pull
 requests; it only reads (discovery and SKILL.md content).
 
 ```yaml
@@ -330,31 +296,32 @@ integrations:
 ## Meta-agents: `agentPlatform.metaAgents`
 
 Which agent serves each platform role. Values must be qualified:
-`<namespace>/<name>` (the Agent resource's namespace and technical name), or
-`<installation>/<namespace>/<name>` where the same agent runs on several
-installations. Read through `readMetaAgents`
+`<namespace>/<name>` (the Agent's namespace and technical name), or
+`<installation>/<namespace>/<name>`. Read through `readMetaAgents`
 (`plugins/agent-platform-common/src/metaAgents.ts`) and resolved by
-`useMetaAgent` against the agents the person can see. A feature gated on a
-role is **hidden** — no teaser, no disabled button — while the role is
-unconfigured or still loading, and when its value matches no agent or more than
-one. All roles are optional; default unset.
+`useMetaAgent` against the agents the person can see. A role's feature is
+**hidden**, not disabled, while the role is unset or loading, and when its
+value matches no agent or more than one. All roles are optional; default unset.
 
-A bare name (`swarmgeist`) resolves to nothing. Agents are listed across every
-namespace a person can read, so a bare name would let anyone who can create an
-agent in such a namespace take over the role, and with it the context the
-portal hands that agent (workflow definitions, skill drafts). Put meta-agents in
-a namespace only the platform team can write to, such as `kagent`. A
-`<namespace>/<name>` that exists on two installations is ambiguous and hides the
-feature too; name the installation then.
+A bare name (`swarmgeist`) resolves to nothing, because anyone who can create an
+agent in a readable namespace could otherwise take over the role and the
+context the portal hands it (workflow definitions, skill drafts). Put
+meta-agents in a namespace only the platform team can write to, such as
+`kagent`. A `<namespace>/<name>` that exists on two installations is ambiguous
+and hides the feature; name the installation then. On a deployment with several
+installations, prefer the three-part form for every role: the two-part form is
+matched only against the agents each viewer can currently see, so an agent with
+the same namespace and name on another installation can win for a viewer who
+sees that installation but not the intended one.
 
-| Role                 | Lights up                                                                                                                                                             | Consumer                                     |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `generalInformation` | Customize → Agents' helper banner ("Ask <agent> about agents")                                                                                                        | `AgentsHelperBanner`                         |
-| `agentManagement`    | The create flow's "Let <agent> help" button: drafts the agent's instructions with the person in a side chat; the form changes only when they accept                   | `CreateAgentAssist`                          |
-| `skillEvaluation`    | The skill detail page's **Evaluate** button, which starts a session with this agent about that skill                                                                  | `SkillDetailPage`                            |
-| `skillCreation`      | Add Skill and Edit Skill: the "use the skill creator agent for more complex, nested skills" caveat and its "Let <agent> help" hand-off into a session with this agent | `SkillCreationAssist`                        |
-| `workflowManagement` | Customize → Workflows' "Create workflows with <agent>" banner and the workflow page's **Edit via agent**, each starting a session with this agent                     | `WorkflowCreateAssist`, `WorkflowEditAssist` |
-| `platformOperations` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                                            |
+| Role                 | Lights up                                                                                | Consumer                                     |
+| -------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `generalInformation` | The Agents tab's helper banner                                                           | `AgentsHelperBanner`                         |
+| `agentManagement`    | The create flow's helper, which drafts the agent's instructions in a side chat           | `CreateAgentAssist`                          |
+| `skillEvaluation`    | A skill's **Evaluate**, a session with this agent about the skill                        | `SkillDetailPage`                            |
+| `skillCreation`      | Add and Edit skill: a hand-off into a session with this agent for complex, nested skills | `SkillCreationAssist`                        |
+| `workflowManagement` | Creating and editing workflows through a session with this agent                         | `WorkflowCreateAssist`, `WorkflowEditAssist` |
+| `platformOperations` | **Nothing yet.** No UI reads it.                                                         | —                                            |
 
 ```yaml
 agentPlatform:
@@ -365,8 +332,7 @@ agentPlatform:
     skillCreation: gazelle/kagent/skill-creator
 ```
 
-The agents themselves are ordinary agents created on the platform; the lab's
-example set is described in
+Meta-agents are ordinary agents; the lab's example set is in
 `design-context/implementation/lab-meta-agents.md` (not shipped docs).
 
 ## Slack: `agentPlatform.integrations`
@@ -376,15 +342,14 @@ example set is described in
 | `agentPlatform.integrations.slack`        | `false`                      | optional  |
 | `agentPlatform.integrations.slackDocsUrl` | `https://docs.giantswarm.io` | optional  |
 
-`slack: true` shows the "Use your agents right in Slack" banner on the
-new-session home (`SlackPromoBanner`), dismissible per person. Set it once the
-installation's Slack integration (klaus-gateway) is set up for the people using
-this portal. Without it nothing is shown.
+`slack: true` shows a Slack banner on the new-session home (`SlackPromoBanner`),
+dismissible per person. Set it once the installation's Slack integration
+(klaus-gateway) serves this portal's users.
 
-`slackDocsUrl` is where the banner's **How it works** button points (opened in
-a new tab): the installation's own guide to using agents from Slack. It must be
-an absolute http(s) URL; when it is unset or not one, the button opens Giant
-Swarm's docs (`DEFAULT_SLACK_DOCS_URL`). It has no effect while `slack` is off.
+`slackDocsUrl` is the banner's guide link, typically the installation's own
+guide to agents in Slack. It must be an absolute http(s) URL; otherwise Giant
+Swarm's docs open (`DEFAULT_SLACK_DOCS_URL`). It has no effect while `slack` is
+off.
 
 ```yaml
 agentPlatform:
@@ -395,12 +360,12 @@ agentPlatform:
 
 ## Context windows: `agentPlatform.models.contextWindows`
 
-Nothing in the platform reports a hosted model's context window, so the chat's
-memory indicator (`SessionCostPopover`) takes it from here. Keys are model-name
-patterns matched case-insensitively against the ModelConfig's `spec.model`
-(`*` matches any run of characters; the most specific pattern wins), values are
-tokens. Default `{}`: a model no pattern names shows its raw token count
-instead of a percentage.
+No platform component reports a hosted model's context window, so the memory
+indicator (`SessionCostPopover`) takes it from here. Keys are model-name
+patterns matched case-insensitively against the ModelConfig's `spec.model` (`*`
+matches any run of characters; the most specific pattern wins); values are
+tokens. Default `{}`: an unmatched model shows its raw token count instead of a
+percentage.
 
 ```yaml
 agentPlatform:
@@ -412,34 +377,32 @@ agentPlatform:
 
 ## User settings: pins, favorites, dismissals
 
-Pinned sessions, favorite agents and dismissed hints and banners are stored
-through Backstage's `storageApi`, bucket `agent-platform`
-(`usePinnedSessions`, `useFavoriteAgents`, `useDismissedHint`). The app
-overrides `storageApi` with `UserSettingsStorage`
-(`packages/app/src/modules/app/AppOverrides.tsx`), backed by
-`@backstage/plugin-user-settings-backend` (registered in
-`packages/backend/src/index.ts`), so the state **roams per user** across
-browsers and devices.
+Pinned sessions, favorite agents and dismissed hints and banners use
+Backstage's `storageApi`, bucket `agent-platform` (`usePinnedSessions`,
+`useFavoriteAgents`, `useDismissedHint`). The app overrides `storageApi` with
+`UserSettingsStorage` (`packages/app/src/modules/app/AppOverrides.tsx`), backed
+by `@backstage/plugin-user-settings-backend` (registered in
+`packages/backend/src/index.ts`), so the state **roams per user**.
 
-There is no config key. The requirement is the backend's database: with the
-default in-memory SQLite the state is lost on every backend restart, so a real
-deployment needs a persistent database (`backend.database`, PostgreSQL). While
-signed out the same code uses localStorage; if the `user-settings` route is
-unreachable, reads come back empty and writes fail visibly.
+There is no config key. The requirement is a persistent database
+(`backend.database`, PostgreSQL): the default in-memory SQLite loses the state
+on every restart. Signed out, the same code uses localStorage; with the
+`user-settings` route unreachable, reads come back empty and writes fail
+visibly.
 
-The composer's last-used agent is the one exception: it stays in the
-browser's localStorage (`useLastUsedAgent`).
+The composer's last-used agent stays in the browser's localStorage
+(`useLastUsedAgent`).
 
 ## Telemetry
 
-The shell reports through the app's existing telemetry; it has no keys of its own.
-Both blocks are public (read at app boot, before sign-in) and optional, and are
-documented in `packages/app/config.d.ts` and [telemetry.md](telemetry.md):
+The shell has no telemetry keys of its own; it uses the app's. Both blocks are
+public, optional and documented in `packages/app/config.d.ts` and
+[telemetry.md](telemetry.md):
 
-| Key                                | Effect                                                                                                                                                   |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app.telemetrydeck.appID`, `.salt` | TelemetryDeck page views and tracked actions. The shell's pages and its writes (for example `AgentPlatform.skillProposed`) report like every other page. |
-| `app.errorReporter.sentry.*`       | Frontend errors to Sentry (`dsn`, `environment`, `releaseVersion`, `tracesSampleRate`); the reporter needs the whole block when it is set.               |
+| Key                                | Effect                                                                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app.telemetrydeck.appID`, `.salt` | TelemetryDeck page views and tracked actions, including the shell's writes (for example `AgentPlatform.skillProposed`).                    |
+| `app.errorReporter.sentry.*`       | Frontend errors to Sentry (`dsn`, `environment`, `releaseVersion`, `tracesSampleRate`); the reporter needs the whole block when it is set. |
 
 ## Full example: an agent-platform-only deployment
 
@@ -494,10 +457,10 @@ agentPlatform:
 ```
 
 The portal's usual sign-in configuration (`gs.authProvider`, `auth.providers`,
-the per-installation OIDC providers) is assumed: kagent, muster and Mimir are
-all called with the person's token for the installation.
+the per-installation OIDC providers) is assumed, because kagent, muster and
+Mimir are called with the person's token for the installation.
 
-Plus, outside the portal: per installation a muster with agent-manager (and
+Outside the portal, each installation needs a muster with agent-manager (and
 model-manager) registered, the connectivity chart's kagent controller route on
 `agentgateway.<baseDomain>`, and the agentgateway's `llm` listener exporting
 its gen_ai metrics into Mimir.

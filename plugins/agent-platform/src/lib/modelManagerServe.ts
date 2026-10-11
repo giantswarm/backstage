@@ -6,13 +6,13 @@ import type {
   ModelManagerServeStep,
 } from './modelManager';
 import { formatBytes } from './formatNumbers';
-import type { ServedModel } from './serving';
+import type { ServedModel, ServingBackend } from './serving';
 
 /**
  * Serving through model-manager as the signed-in person: what the Serve
- * dialog shows of `check_fit`'s verdict before the button, what the toast
- * says of `load_model`'s answer after it, and the route the pool panel opens
- * the dialog with. Pure — the wire shapes are `lib/modelManager`'s.
+ * model page shows of `check_fit`'s verdict before the button, what the toast
+ * says of `load_model`'s answer after it, and the query the page takes its
+ * seed from. Pure — the wire shapes are `lib/modelManager`'s.
  */
 
 /** The sizes of a fit verdict in words: download, requirement, the node's budget. */
@@ -435,51 +435,71 @@ export function loadAnswerNodes(answer: ModelManagerLoadAnswer): string[] {
 }
 
 /**
- * The route the pool panel opens the Serve dialog with:
- * `?serve=1&installation=<installation>&cluster=<cluster>&pool=<pool name>`
- * — installation, cluster and pool preselected — and, when the pool carries a
- * serve intent (the preset chosen on the Add GPU node pool form),
- * `&preset=<preset name>`, so the person never picks it twice. Read once and
- * stripped, so a reload does not reopen the dialog.
+ * What Serve model opens on (`serveModelRouteRef`'s query): the pool panel's
+ * link — installation, cluster and pool, and the preset the pool was
+ * deployed to serve where it carries one (giantswarm/backstage#2415, #2437) —
+ * or a cached download's **Serve…** — installation, backend and the model.
  */
-export type ServeRoute = {
+export type ServeSeed = {
   installation?: string;
+  backend?: ServingBackend;
+  /** The preset name on kserve, the model reference on a host backend. */
+  model?: string;
   cluster?: string;
   pool?: string;
-  /** The preset name to preselect (`LoadModelSeed.model`). */
-  preset?: string;
 };
 
-export const SERVE_ROUTE_PARAMS = [
-  'serve',
-  'installation',
-  'cluster',
-  'pool',
-  'preset',
-] as const;
+const SERVING_BACKENDS: readonly ServingBackend[] = [
+  'kserve',
+  'ollama',
+  'lmstudio',
+  'lemonade',
+];
 
-export function parseServeRoute(
-  params: URLSearchParams,
-): ServeRoute | undefined {
-  if (params.get('serve') !== '1') {
-    return undefined;
-  }
+/**
+ * The seed in the page's query; `preset` is read as the model too, the name
+ * the pool panel's link has always used. Blank values are no value.
+ */
+export function parseServeSeed(params: URLSearchParams): ServeSeed {
   const value = (name: string) => params.get(name)?.trim() || undefined;
+  const backend = value('backend');
   return {
     installation: value('installation'),
+    backend: SERVING_BACKENDS.includes(backend as ServingBackend)
+      ? (backend as ServingBackend)
+      : undefined,
+    model: value('model') ?? value('preset'),
     cluster: value('cluster'),
     pool: value('pool'),
-    preset: value('preset'),
   };
 }
 
-/** The same params without the serve route, for the URL after the dialog opened. */
-export function withoutServeRoute(params: URLSearchParams): URLSearchParams {
-  const next = new URLSearchParams(params);
-  for (const name of SERVE_ROUTE_PARAMS) {
-    next.delete(name);
+/** The seed as the page's query (`?…`), its empty values left out. */
+export function serveSeedSearch(seed: ServeSeed): string {
+  const params = new URLSearchParams();
+  for (const name of [
+    'installation',
+    'backend',
+    'cluster',
+    'pool',
+    'model',
+  ] as const) {
+    const entry = seed[name];
+    if (entry) {
+      params.set(name, entry);
+    }
   }
-  return next;
+  const search = params.toString();
+  return search ? `?${search}` : '';
+}
+
+/**
+ * Whether the Serving view's URL is an older release's pool link, which
+ * opened the Serve dialog in place with `?serve=1&…`: the view forwards it
+ * to Serve model's page with the same seed.
+ */
+export function isLegacyServeLink(params: URLSearchParams): boolean {
+  return params.get('serve') === '1';
 }
 
 /**

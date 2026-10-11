@@ -5,7 +5,7 @@ import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
-import { selectorLabel } from '../../lib/toolset';
+import { countNoun, parseSelector } from '../../lib/toolset';
 
 // The pieces the create and the edit review share: the plain summary rows,
 // the technical fold-out's styles and items, and agent-manager's verdicts.
@@ -96,7 +96,20 @@ export const useReviewStyles = makeStyles(theme => ({
 // lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
 export const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
-/** The one-line Tools summary: the loud labels, or the selectors by their labels. */
+/** How a shipped preset reads in the plain summary; `none` adds nothing. */
+const PRESET_PHRASES: Record<string, string> = {
+  'read-only': 'read-only tools everywhere',
+  none: '',
+  full: 'every tool the gateway exposes',
+  infrastructure: 'the Infrastructure tools',
+  'agent-platform': 'the Agent Platform tools',
+};
+
+/**
+ * The one-line Tools summary in words (QA R2-2): the loud labels, else each
+ * preset and whole connector by name, and the rest counted, the way the Tools
+ * step's grid names them. The selectors as written are in Technical details.
+ */
 export function toolsetSummaryLabel(
   shape: 'none' | 'full' | 'composed',
   declared: string[],
@@ -107,7 +120,31 @@ export function toolsetSummaryLabel(
   if (shape === 'full') {
     return 'Full gateway access';
   }
-  return declared.map(selectorLabel).join(', ');
+  const parts: string[] = [];
+  const counts = { tool: 0, workflow: 0, other: 0 };
+  for (const selector of declared) {
+    const parsed = parseSelector(selector);
+    if (parsed?.kind === 'preset') {
+      parts.push(PRESET_PHRASES[parsed.name] ?? `the ${parsed.name} preset`);
+    } else if (parsed?.kind === 'server') {
+      parts.push(`all ${parsed.name} tools`);
+    } else if (parsed?.kind === 'tool' || parsed?.kind === 'workflow') {
+      counts[parsed.kind] += 1;
+    } else {
+      counts.other += 1;
+    }
+  }
+  if (counts.tool > 0) {
+    parts.push(countNoun(counts.tool, 'individual tool'));
+  }
+  if (counts.workflow > 0) {
+    parts.push(countNoun(counts.workflow, 'workflow'));
+  }
+  if (counts.other > 0) {
+    parts.push(countNoun(counts.other, 'other selector'));
+  }
+  const text = parts.filter(Boolean).join('; ');
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'No tools';
 }
 
 export function SummaryItem({

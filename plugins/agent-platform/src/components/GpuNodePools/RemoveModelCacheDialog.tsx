@@ -59,7 +59,7 @@ function RefusalDetails({
         <Text variant="body-small">
           {refused.models.length === 0
             ? 'A pod of the serving namespace mounts the claim: it is deleted once the pod is gone.'
-            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, on the Serving page:`}
+            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, under Running models:`}
         </Text>
         {refused.models.map(model =>
           servingPath ? (

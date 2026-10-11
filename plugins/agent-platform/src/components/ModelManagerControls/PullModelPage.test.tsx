@@ -9,11 +9,12 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
-import { PullModelDialog, type PullTarget } from './PullModelDialog';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { PullModelPage, type PullTarget } from './PullModelPage';
 
 const pullModel = jest.fn();
 const post = jest.fn();
-const onOpenChange = jest.fn();
+const onPulled = jest.fn();
 
 const modelManagerApi = { pullModel } as unknown as ModelManagerApi;
 
@@ -39,12 +40,18 @@ function render(targets: PullTarget[] = [{ name: 'lab', canWire: true }]) {
         [toastApiRef, { post }],
       ]}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>{children}</PageHeaderActionsProvider>
+      </QueryClientProvider>
     </TestApiProvider>
   );
   return renderInTestApp(
     <Wrapper>
-      <PullModelDialog isOpen onOpenChange={onOpenChange} targets={targets} />
+      <PullModelPage
+        targets={targets}
+        closeHref="/agent-platform/models/serving"
+        onPulled={onPulled}
+      />
     </Wrapper>,
   );
 }
@@ -52,20 +59,20 @@ function render(targets: PullTarget[] = [{ name: 'lab', canWire: true }]) {
 beforeEach(() => {
   pullModel.mockReset();
   post.mockReset();
-  onOpenChange.mockReset();
+  onPulled.mockReset();
 });
 
-describe('PullModelDialog', () => {
-  it('starts the pull with the reference and the wire choice, then closes with a toast', async () => {
+describe('PullModelPage', () => {
+  it('starts the pull with the reference and the wire choice, then hands over with a toast', async () => {
     pullModel.mockResolvedValue({ job, created: true });
     await render();
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       ' qwen2.5:0.5b ',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     await waitFor(() =>
       expect(pullModel).toHaveBeenCalledWith('lab', {
@@ -73,7 +80,7 @@ describe('PullModelDialog', () => {
         wire: true,
       }),
     );
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onPulled).toHaveBeenCalledTimes(1));
     expect(post).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Pulling qwen2.5:0.5b on lab',
@@ -85,14 +92,14 @@ describe('PullModelDialog', () => {
   it('passes wire=false when the switch is turned off', async () => {
     pullModel.mockResolvedValue({ job, created: true });
     await render();
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'smollm2:135m',
     );
-    await userEvent.click(within(dialog).getByRole('switch'));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('switch'));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     await waitFor(() =>
       expect(pullModel).toHaveBeenCalledWith('lab', {
@@ -105,14 +112,14 @@ describe('PullModelDialog', () => {
   it('offers no wire choice when the backend cannot wire', async () => {
     pullModel.mockResolvedValue({ job, created: true });
     await render([{ name: 'lab', canWire: false }]);
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
-    expect(within(dialog).queryByRole('switch')).not.toBeInTheDocument();
+    expect(within(page).queryByRole('switch')).not.toBeInTheDocument();
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'smollm2:135m',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     await waitFor(() =>
       expect(pullModel).toHaveBeenCalledWith('lab', { model: 'smollm2:135m' }),
@@ -122,13 +129,13 @@ describe('PullModelDialog', () => {
   it('says when an identical pull was joined rather than started', async () => {
     pullModel.mockResolvedValue({ job, created: false });
     await render();
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'qwen2.5:0.5b',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(
@@ -141,37 +148,35 @@ describe('PullModelDialog', () => {
 
   it('refuses a malformed reference before sending anything, on the field', async () => {
     await render();
-    const dialog = screen.getByRole('dialog');
-    const field = within(dialog).getByRole('textbox', {
+    const page = document.body;
+    const field = within(page).getByRole('textbox', {
       name: /Model reference/,
     });
 
     // Quiet until the first attempt; Pull stays pressable.
     expect(field).not.toHaveAttribute('aria-invalid');
-    expect(within(dialog).getByRole('button', { name: 'Pull' })).toBeEnabled();
+    expect(within(page).getByRole('button', { name: 'Pull' })).toBeEnabled();
 
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
     expect(
-      await within(dialog).findByText(/Enter a model reference/),
+      await within(page).findByText(/Enter a model reference/),
     ).toBeInTheDocument();
     expect(field).toHaveAttribute('aria-invalid', 'true');
     expect(field).toHaveFocus();
-    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
+    expect(within(page).queryByRole('alert')).not.toBeInTheDocument();
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'has space:1b',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
-    expect(await within(dialog).findByText(/no spaces/)).toBeInTheDocument();
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
+    expect(await within(page).findByText(/no spaces/)).toBeInTheDocument();
 
     expect(pullModel).not.toHaveBeenCalled();
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onPulled).not.toHaveBeenCalled();
   });
 
-  it('cannot be dismissed while the pull is on its way', async () => {
-    // The header's X routes through onOpenChange, past isDismissable; closing
-    // mid-flight would leave the outcome with nowhere to land.
+  it('is a page whose Cancel leads back, and hands over once the pull is accepted', async () => {
     let answer: (value: unknown) => void = () => {};
     pullModel.mockReturnValue(
       new Promise(resolve => {
@@ -179,41 +184,44 @@ describe('PullModelDialog', () => {
       }),
     );
     await render();
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'qwen2.5:0.5b',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
-    await within(dialog).findByRole('button', { name: /Starting/ });
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Close' }),
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
+    await within(page).findByRole('button', { name: /Starting/ });
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Pull model' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
     );
-    await userEvent.keyboard('{Escape}');
 
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onPulled).not.toHaveBeenCalled();
     answer({ job, created: true });
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onPulled).toHaveBeenCalledTimes(1));
   });
 
-  it('stays open and shows the failure when the backend refuses', async () => {
+  it('stays and shows the failure when the backend refuses', async () => {
     pullModel.mockRejectedValue(
       new Error('backend_error: registry unreachable'),
     );
     await render();
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'qwen2.5:0.5b',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     expect(
-      await within(dialog).findByText('backend_error: registry unreachable'),
+      await within(page).findByText('backend_error: registry unreachable'),
     ).toBeInTheDocument();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(onPulled).not.toHaveBeenCalled();
   });
 
   it('lets the user pick the installation when several can pull', async () => {
@@ -222,14 +230,14 @@ describe('PullModelDialog', () => {
       { name: 'lab', canWire: true },
       { name: 'gpu', canWire: true },
     ]);
-    const dialog = screen.getByRole('dialog');
+    const page = document.body;
 
-    expect(within(dialog).getByText('Environment')).toBeInTheDocument();
+    expect(within(page).getByText('Environment')).toBeInTheDocument();
     await userEvent.type(
-      within(dialog).getByLabelText(/Model reference/),
+      within(page).getByLabelText(/Model reference/),
       'qwen2.5:0.5b',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Pull' }));
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
 
     // The first target is preselected.
     await waitFor(() =>
@@ -238,7 +246,7 @@ describe('PullModelDialog', () => {
   });
 });
 
-describe('PullModelDialog · an installation running several backends', () => {
+describe('PullModelPage · an installation running several backends', () => {
   it('lists each backend as its own target and pulls on the chosen one', async () => {
     pullModel.mockResolvedValue({ job, created: true });
     await render([
@@ -276,7 +284,7 @@ describe('PullModelDialog · an installation running several backends', () => {
   });
 });
 
-describe('PullModelDialog · the environment select at scale', () => {
+describe('PullModelPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 

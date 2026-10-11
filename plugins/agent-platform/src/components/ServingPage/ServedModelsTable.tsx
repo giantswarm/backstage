@@ -194,7 +194,7 @@ export type ServedModelGroup = {
 
 /** What the card of a backend without models says, while it is healthy. */
 export const NO_MODELS_ON_BACKEND =
-  'No models served yet — serve or pull one, or remove the backend.';
+  'This backend serves no model yet. Serve or pull one, or remove the backend.';
 
 /**
  * A backend registered with a model-manager that serves nothing yet — a
@@ -1364,7 +1364,7 @@ function matchesServedModel(query: string, row: ServedModelRow): boolean {
 
 /** What the Serving page says when no serving layer in view lists a model. */
 export const NO_SERVED_MODELS =
-  'No models yet — none running, downloaded or being pulled.';
+  'No model is running, downloaded or being pulled.';
 
 export type ServedModelsTableProps = {
   rows: ServedModelRow[];

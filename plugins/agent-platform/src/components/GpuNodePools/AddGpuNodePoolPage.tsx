@@ -1,11 +1,7 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
   Flex,
   NumberField,
   Select,
@@ -13,12 +9,14 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
-  dialogDismissLock,
   fieldErrorProps,
   MoreOptions,
   searchableIf,
   useFieldValidation,
+  useProvidePageHeaderActions,
   useSelectFieldError,
+  WizardFrame,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -48,7 +46,7 @@ import {
 import type { ServeChoice } from '../../lib/serveIntent';
 import { ClusterManagerCommitOutcome } from '../ClusterManagerCommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { DIALOG_FOOTER_WRAP_STYLE, DIALOG_FORM_STYLE } from '../dialogForm';
+import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
 import { ManifestList } from '../ManifestList';
 import { NodeSizePicker } from './NodeSizePicker';
 import { PartialWriteOutcome } from './PartialWriteOutcome';
@@ -61,11 +59,11 @@ import {
   everyZone,
 } from './PoolPlacementPicker';
 
-export type AddGpuNodePoolDialogProps = {
+export type AddGpuNodePoolPageProps = {
   /** The installations whose muster lists cluster-manager. */
   installations: string[];
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+  /** Where Close and Cancel lead: the view the flow was opened from. */
+  closeHref: string;
   /**
    * After a complete Deploy: the pool was applied as the person on
    * `installation` — with the preset chosen under **I want to serve**, the
@@ -77,6 +75,12 @@ export type AddGpuNodePoolDialogProps = {
     serve?: ServeChoice,
   ) => void;
 };
+
+/** The flow's two steps: the form, then the dry run's review. */
+const POOL_STEPS = [
+  { id: 'form', label: 'Pool' },
+  { id: 'review', label: 'Review' },
+];
 
 /** How long the form waits after the last change before it asks cluster-manager. */
 export const DRY_RUN_DEBOUNCE_MS = 400;
@@ -113,9 +117,11 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
 }
 
 /**
- * Add GPU node pool — from the Models pages, the agent-creation pattern:
- * a form, `create_node_pool` with `dryRun` through muster as the signed-in
- * person, the composed releases as manifests in one review, and **Deploy**
+ * Add GPU node pool (`/agent-platform/models/capacity/add-pool`) — the app's
+ * multi-step create pattern, `WizardFrame` with its step strip like agent
+ * creation: a **Pool** step (the form), then `create_node_pool` with `dryRun`
+ * through muster as the signed-in person, the composed releases as manifests
+ * on a **Review** step, and **Deploy**
  * (`mode: apply`) or **Commit** (`mode: commit`, once cluster-manager offers
  * it). The decision that sets the pool's price and the models it can serve —
  * the **node size** — is made on the form: as soon as the cluster is picked
@@ -142,12 +148,11 @@ export function clusterMarks(cluster: ManagedCluster): string[] {
  * marks each field that is wrong, under it, opens More options where one is
  * in there, and moves the focus to the first (`useFieldValidation`).
  */
-export function AddGpuNodePoolDialog({
+export function AddGpuNodePoolPage({
   installations,
-  isOpen,
-  onOpenChange,
+  closeHref,
   onDeployed,
-}: AddGpuNodePoolDialogProps) {
+}: AddGpuNodePoolPageProps) {
   const [installation, setInstallation] = useState<string | undefined>(
     installations[0],
   );
@@ -231,23 +236,6 @@ export function AddGpuNodePoolDialog({
     // `pickCluster` closes over the same `clusters`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clusters, clusterName]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      rerun.current += 1;
-      setStep('form');
-      resetChoice();
-      setReview(undefined);
-      setJudging(false);
-      setApplied(undefined);
-      setCommitted(undefined);
-      setMoreOptionsOpen(false);
-      validation.reset();
-      write.reset();
-    }
-    // `write` changes identity every render; reset once per close.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen]);
 
   const cluster = useMemo(
     () => clusters.find(candidate => candidate.name === clusterName),
@@ -345,7 +333,7 @@ export function AddGpuNodePoolDialog({
   // debounced: the answer is the review, kept current while the person types.
   useEffect(() => {
     rerun.current += 1;
-    if (!isOpen || !sizingInput) {
+    if (!sizingInput) {
       setReview(undefined);
       setJudging(false);
       return undefined;
@@ -356,7 +344,7 @@ export function AddGpuNodePoolDialog({
     return () => clearTimeout(timer);
     // `judge` closes over the same inputs; another installation is asked anew.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sizingInput, sizes, installation]);
+  }, [sizingInput, sizes, installation]);
 
   const canCommit = info?.modes.commit === true;
   const notConnected = write.failure?.kind === 'not-connected';
@@ -405,8 +393,7 @@ export function AddGpuNodePoolDialog({
     chosen?.length !== 0;
 
   /** Review: the current dry run's manifests, or one more try where the last was refused. */
-  const onReview = async (event: FormEvent) => {
-    event.preventDefault();
+  const onReview = async () => {
     if (isBusy || judging) {
       return;
     }
@@ -476,329 +463,346 @@ export function AddGpuNodePoolDialog({
   const groups = review ? groupManifestsByRelease(review) : [];
   const shapeList = shapes?.sizes ?? [];
   const hasShapes = shapeList.length > 0;
+  const isCommitted = Boolean(committed?.commit);
+
+  // The step's buttons, in the frame's footer beside its Cancel and Back.
+  // The handlers are read through a ref, so the slot updates when what the
+  // buttons say or allow changes, not on every keystroke.
+  const handlers = useRef({ onReview, onDeploy, onCommit });
+  handlers.current = { onReview, onDeploy, onCommit };
+  let deployLabel = isBusy ? 'Deploying…' : 'Deploy';
+  if (blocker) {
+    deployLabel = `Deploy (blocked: ${presetLabel(blocker)} fits no size of this pool)`;
+  }
+  const actions = useMemo(() => {
+    if (onForm) {
+      return (
+        <Button
+          variant="primary"
+          isDisabled={isBusy || judging}
+          onPress={() => handlers.current.onReview()}
+        >
+          {judging ? 'Checking…' : 'Review'}
+        </Button>
+      );
+    }
+    if (isCommitted) {
+      return (
+        <Button variant="primary" isDisabled>
+          Committed
+        </Button>
+      );
+    }
+    if (done) {
+      return null;
+    }
+    return (
+      <>
+        <Button
+          variant="secondary"
+          onPress={() => handlers.current.onCommit()}
+          isDisabled={!canCommit || !canWrite}
+        >
+          Commit
+        </Button>
+        <Button
+          variant="primary"
+          onPress={() => handlers.current.onDeploy()}
+          isDisabled={!canWrite}
+          aria-label={blocker ? deployLabel : undefined}
+        >
+          {isBusy ? 'Deploying…' : 'Deploy'}
+        </Button>
+      </>
+    );
+  }, [
+    onForm,
+    isBusy,
+    judging,
+    isCommitted,
+    done,
+    canCommit,
+    canWrite,
+    blocker,
+    deployLabel,
+  ]);
+  useProvidePageHeaderActions(actions);
 
   return (
-    <Dialog
-      isOpen={isOpen}
-      {...dialogDismissLock(write.isWriting, onOpenChange)}
-      width="min(90vw, 860px)"
+    <WizardFrame
+      title="Add GPU node pool"
+      context={HOSTING_FLOW_CONTEXT}
+      steps={POOL_STEPS}
+      currentStep={step}
+      closeHref={closeHref}
+      onBack={
+        onForm || done
+          ? undefined
+          : () => {
+              if (!isBusy) {
+                setStep('form');
+              }
+            }
+      }
+      width="medium"
     >
-      {/* `noValidate`: the fields are checked by this form (`useFieldValidation`),
-          not by the browser, whose own check would block the submit and try
-          to focus a field folded under More options. */}
-      <form onSubmit={onReview} style={DIALOG_FORM_STYLE} noValidate>
-        <DialogHeader>Add GPU node pool</DialogHeader>
-        <DialogBody>
-          <Flex direction="column" gap="4" ref={fieldScope}>
-            <Text variant="body-small" color="secondary">
-              Adds GPU capacity for this environment's served models.
-              cluster-manager composes the pool — plus a GPU operator and model
-              serving where missing — and writes it as you.
-            </Text>
-
-            {onForm && (
-              <Flex direction="column" gap="3">
-                {installations.length > 1 && (
-                  <Select
-                    label="Environment"
-                    isRequired
-                    searchable={searchableIf(installations)}
-                    options={installations.map(id => ({ id, label: id }))}
-                    selectedKey={installation ?? null}
-                    onSelectionChange={key => {
-                      if (key) {
-                        setInstallation(String(key));
-                        setClusterName(undefined);
-                        resetChoice();
-                        setZones([]);
-                      }
-                    }}
-                    {...installationError.selectProps}
-                  />
-                )}
-                {installationError.message}
-                <Flex direction="column" gap="1">
-                  <Select
-                    label="Cluster"
-                    isRequired
-                    placeholder={clusterPlaceholder(
-                      clustersLoading,
-                      clusters.length,
-                    )}
-                    searchable={searchableIf(clusters)}
-                    options={clusters.map(candidate => ({
-                      id: candidate.name,
-                      label: `${candidate.name} (${candidate.organization}${
-                        candidate.ownCluster ? ', own cluster' : ''
-                      })`,
-                    }))}
-                    selectedKey={clusterName ?? null}
-                    onSelectionChange={key =>
-                      pickCluster(key ? String(key) : undefined)
-                    }
-                    {...clusterError.selectProps}
-                  />
-                  {clusterError.message}
-                  <Text
-                    variant="body-small"
-                    color="secondary"
-                    data-testid="cluster-marks"
-                  >
-                    {cluster
-                      ? clusterMarks(cluster).join(' · ')
-                      : CLUSTER_PENDING}
-                  </Text>
-                </Flex>
-                {!clustersLoading && clusters.length === 0 && noClusterApi && (
-                  <Alert
-                    status="info"
-                    title="No clusters on this environment"
-                    description={noClusterApi}
-                    data-testid="cluster-api-note"
-                  />
-                )}
-                {clustersError && (
-                  <Alert
-                    status="warning"
-                    title="Clusters could not be read"
-                    description={clustersError.message}
-                  />
-                )}
-                <TextField
-                  label="Pool name"
-                  isRequired
-                  description="Use five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
-                  value={name}
-                  onChange={setName}
-                  {...fieldErrorProps(validation.errorFor(errors.name))}
-                />
-                <Select
-                  label="Accelerator"
-                  isRequired
-                  options={accelerators.map(id => ({ id, label: id }))}
-                  selectedKey={accelerator}
-                  onSelectionChange={key => {
-                    if (key) {
-                      setAccelerator(String(key));
-                      resetChoice();
-                    }
-                  }}
-                />
-                <NodeSizePicker
-                  shapes={shapeList}
-                  presetFit={shapes?.presetFit}
-                  review={review}
-                  sizes={chosen ?? []}
-                  onSizesChange={setSizes}
-                  preset={preset}
-                  onPresetChange={onPresetChange}
-                  isBusy={isBusy}
-                  judging={judging}
-                  accelerator={accelerator}
-                  pending={!sizingInput}
-                />
-                <PoolPlacementPicker
-                  part="cache"
-                  cluster={cluster}
-                  offers={offers}
-                  zones={zones}
-                  onZonesChange={setZones}
-                  cache={cacheChoice}
-                  onCacheChange={setCache}
-                  isBusy={isBusy}
-                  review={review}
-                />
-                <MoreOptions
-                  open={moreOptionsOpen}
-                  onOpenChange={setMoreOptionsOpen}
-                  summary={moreOptionsSummary}
-                >
-                  <Text variant="body-small" color="secondary">
-                    The defaults work for most pools.
-                  </Text>
-                  <NumberField
-                    label="Maximum GPUs"
-                    description="This limit applies across all nodes of the pool, which scales to zero."
-                    minValue={1}
-                    value={maxGpus}
-                    onChange={value =>
-                      setMaxGpus(Number.isFinite(value) ? value : 1)
-                    }
-                  />
-                  <PoolPlacementPicker
-                    part="zones"
-                    cluster={cluster}
-                    offers={offers}
-                    zones={zones}
-                    onZonesChange={setZones}
-                    cache={cacheChoice}
-                    onCacheChange={setCache}
-                    isBusy={isBusy}
-                    review={review}
-                  />
-                </MoreOptions>
-              </Flex>
+      {onForm ? (
+        <WizardStepHeading title="Configure the pool">
+          cluster-manager composes the pool, adds a GPU operator and model
+          serving where the cluster lacks them, and writes it as you.
+        </WizardStepHeading>
+      ) : (
+        <WizardStepHeading title="Review the pool">
+          This is exactly what cluster-manager writes. Deploy applies it now;
+          Commit opens a pull request in the repository that owns the cluster.
+        </WizardStepHeading>
+      )}
+      <Flex direction="column" gap="4" ref={fieldScope}>
+        {onForm && (
+          <Flex direction="column" gap="3">
+            {installations.length > 1 && (
+              <Select
+                label="Environment"
+                isRequired
+                searchable={searchableIf(installations)}
+                options={installations.map(id => ({ id, label: id }))}
+                selectedKey={installation ?? null}
+                onSelectionChange={key => {
+                  if (key) {
+                    setInstallation(String(key));
+                    setClusterName(undefined);
+                    resetChoice();
+                    setZones([]);
+                  }
+                }}
+                {...installationError.selectProps}
+              />
             )}
-
-            {!onForm && review && (
-              <Flex direction="column" gap="3" data-testid="node-pool-review">
-                <Text variant="body-medium">
-                  {review.cluster}-{review.pool}: gpu-node-pool chart{' '}
-                  {review.chartVersion ?? '?'}, Kubernetes{' '}
-                  {review.kubernetesVersion ?? '?'} (control plane{' '}
-                  {review.controlPlaneVersion ?? '?'}).
-                  {review.machineImage ? ` Image ${review.machineImage}.` : ''}
-                </Text>
-                <Text variant="body-small" color="secondary">
-                  {review.objects
-                    .map(
-                      object =>
-                        `${object.kind} ${object.namespace}/${object.name}: ${object.action}`,
-                    )
-                    .join(' · ')}
-                </Text>
-                {review.backend && (
-                  <Text variant="body-small" color="secondary">
-                    Serving backend registered with model-manager:{' '}
-                    {review.backend.name} → {review.backend.target}
-                  </Text>
+            {installationError.message}
+            <Flex direction="column" gap="1">
+              <Select
+                label="Cluster"
+                isRequired
+                placeholder={clusterPlaceholder(
+                  clustersLoading,
+                  clusters.length,
                 )}
-                {hasShapes && chosen && (
-                  <PoolFitReview
-                    shapes={shapeList}
-                    presetFit={shapes?.presetFit}
-                    review={review}
-                    sizes={chosen}
-                    preset={preset}
-                  />
-                )}
-                <PoolPlacementReview
-                  offers={offers}
-                  zones={zones}
-                  clusterZones={clusterZones}
-                  cache={cacheChoice}
-                  review={review}
-                />
-                {groups.map(group => (
-                  <Flex key={group.name} direction="column" gap="2">
-                    <Text variant="body-medium">
-                      {describeReleaseGroup(group)}
-                    </Text>
-                    <ManifestList manifests={group.manifests} />
-                  </Flex>
-                ))}
-                {!canCommit && (
-                  <Text variant="body-small" color="secondary">
-                    Commit — a pull request in the repository owning the cluster
-                    — is not available yet on this environment's
-                    cluster-manager.
-                  </Text>
-                )}
-              </Flex>
-            )}
-
-            {write.failure && !notConnected && (
+                searchable={searchableIf(clusters)}
+                options={clusters.map(candidate => ({
+                  id: candidate.name,
+                  label: `${candidate.name} (${candidate.organization}${
+                    candidate.ownCluster ? ', own cluster' : ''
+                  })`,
+                }))}
+                selectedKey={clusterName ?? null}
+                onSelectionChange={key =>
+                  pickCluster(key ? String(key) : undefined)
+                }
+                {...clusterError.selectProps}
+              />
+              {clusterError.message}
+              <Text
+                variant="body-small"
+                color="secondary"
+                data-testid="cluster-marks"
+              >
+                {cluster ? clusterMarks(cluster).join(' · ') : CLUSTER_PENDING}
+              </Text>
+            </Flex>
+            {!clustersLoading && clusters.length === 0 && noClusterApi && (
               <Alert
-                status="danger"
-                title="cluster-manager refused"
-                description={
-                  cacheRefusalDetails(write.failure.refused) ? (
-                    <Flex direction="column" gap="2">
-                      <Text variant="body-small">{write.failure.message}</Text>
-                      <CacheRefusalDetails refused={write.failure.refused!} />
-                    </Flex>
-                  ) : (
-                    write.failure.message
-                  )
+                status="info"
+                title="No clusters on this environment"
+                description={noClusterApi}
+                data-testid="cluster-api-note"
+              />
+            )}
+            {clustersError && (
+              <Alert
+                status="warning"
+                title="Clusters could not be read"
+                description={clustersError.message}
+              />
+            )}
+            <TextField
+              label="Pool name"
+              isRequired
+              description="Use five to twenty lowercase letters, digits and dashes (gpu00, gpu-l4). The MachinePool is named <cluster>-<name>."
+              value={name}
+              onChange={setName}
+              {...fieldErrorProps(validation.errorFor(errors.name))}
+            />
+            <Select
+              label="Accelerator"
+              isRequired
+              options={accelerators.map(id => ({ id, label: id }))}
+              selectedKey={accelerator}
+              onSelectionChange={key => {
+                if (key) {
+                  setAccelerator(String(key));
+                  resetChoice();
+                }
+              }}
+            />
+            <NodeSizePicker
+              shapes={shapeList}
+              presetFit={shapes?.presetFit}
+              review={review}
+              sizes={chosen ?? []}
+              onSizesChange={setSizes}
+              preset={preset}
+              onPresetChange={onPresetChange}
+              isBusy={isBusy}
+              judging={judging}
+              accelerator={accelerator}
+              pending={!sizingInput}
+            />
+            <PoolPlacementPicker
+              part="cache"
+              cluster={cluster}
+              offers={offers}
+              zones={zones}
+              onZonesChange={setZones}
+              cache={cacheChoice}
+              onCacheChange={setCache}
+              isBusy={isBusy}
+              review={review}
+            />
+            <MoreOptions
+              open={moreOptionsOpen}
+              onOpenChange={setMoreOptionsOpen}
+              summary={moreOptionsSummary}
+            >
+              <Text variant="body-small" color="secondary">
+                The defaults work for most pools.
+              </Text>
+              <NumberField
+                label="Maximum GPUs"
+                description="This limit applies across all nodes of the pool, which scales to zero."
+                minValue={1}
+                value={maxGpus}
+                onChange={value =>
+                  setMaxGpus(Number.isFinite(value) ? value : 1)
                 }
               />
-            )}
-            {notConnected && installation && (
-              <ConnectAgentManagerAlert
-                installation={installation}
-                message={write.failure!.message}
-                action="GPU node pools are created"
-                server={CLUSTER_MANAGER_SERVER}
-              />
-            )}
-            {applied && applied.partial && (
-              <PartialWriteOutcome
-                result={applied}
-                action="Deploy"
-                onContinue={onDeploy}
+              <PoolPlacementPicker
+                part="zones"
+                cluster={cluster}
+                offers={offers}
+                zones={zones}
+                onZonesChange={setZones}
+                cache={cacheChoice}
+                onCacheChange={setCache}
                 isBusy={isBusy}
+                review={review}
+              />
+            </MoreOptions>
+          </Flex>
+        )}
+
+        {!onForm && review && (
+          <Flex direction="column" gap="3" data-testid="node-pool-review">
+            <Text variant="body-medium">
+              {review.cluster}-{review.pool}: gpu-node-pool chart{' '}
+              {review.chartVersion ?? '?'}, Kubernetes{' '}
+              {review.kubernetesVersion ?? '?'} (control plane{' '}
+              {review.controlPlaneVersion ?? '?'}).
+              {review.machineImage ? ` Image ${review.machineImage}.` : ''}
+            </Text>
+            <Text variant="body-small" color="secondary">
+              {review.objects
+                .map(
+                  object =>
+                    `${object.kind} ${object.namespace}/${object.name}: ${object.action}`,
+                )
+                .join(' · ')}
+            </Text>
+            {review.backend && (
+              <Text variant="body-small" color="secondary">
+                Serving backend registered with model-manager:{' '}
+                {review.backend.name} → {review.backend.target}
+              </Text>
+            )}
+            {hasShapes && chosen && (
+              <PoolFitReview
+                shapes={shapeList}
+                presetFit={shapes?.presetFit}
+                review={review}
+                sizes={chosen}
+                preset={preset}
               />
             )}
-            {applied && !applied.partial && (
-              <Alert
-                status="success"
-                title={`Pool ${applied.cluster}-${applied.pool} applied as you`}
-                description={applied.objects
-                  .map(
-                    object => `${object.kind} ${object.name}: ${object.action}`,
-                  )
-                  .join(' · ')}
-              />
-            )}
-            {committed?.commit && (
-              <ClusterManagerCommitOutcome
-                commit={committed.commit}
-                placeNoun="environment"
-              />
+            <PoolPlacementReview
+              offers={offers}
+              zones={zones}
+              clusterZones={clusterZones}
+              cache={cacheChoice}
+              review={review}
+            />
+            {groups.map(group => (
+              <Flex key={group.name} direction="column" gap="2">
+                <Text variant="body-medium">{describeReleaseGroup(group)}</Text>
+                <ManifestList manifests={group.manifests} />
+              </Flex>
+            ))}
+            {!canCommit && (
+              <Text variant="body-small" color="secondary">
+                Commit is not available on this environment's cluster-manager
+                yet.
+              </Text>
             )}
           </Flex>
-        </DialogBody>
-        <DialogFooter style={DIALOG_FOOTER_WRAP_STYLE}>
-          <Button
-            variant="secondary"
-            onPress={() => onOpenChange(false)}
-            isDisabled={write.isWriting}
-          >
-            {done ? 'Close' : 'Cancel'}
-          </Button>
-          {onForm && (
-            <Button
-              type="submit"
-              variant="primary"
-              isDisabled={isBusy || judging}
-            >
-              {judging ? 'Judging…' : 'Review'}
-            </Button>
-          )}
-          {!onForm && !done && (
-            <>
-              <Button
-                variant="secondary"
-                onPress={() => setStep('form')}
-                isDisabled={isBusy}
-              >
-                Back
-              </Button>
-              <Button
-                variant="secondary"
-                onPress={onCommit}
-                isDisabled={!canCommit || !canWrite}
-                aria-label={canCommit ? 'Commit' : 'Commit (not available yet)'}
-              >
-                {canCommit ? 'Commit' : 'Commit (not available yet)'}
-              </Button>
-              <Button
-                variant="primary"
-                onPress={onDeploy}
-                isDisabled={!canWrite}
-                aria-label={
-                  blocker
-                    ? `Deploy (blocked: ${presetLabel(blocker)} fits no size of this pool)`
-                    : 'Deploy'
-                }
-              >
-                {isBusy ? 'Deploying…' : 'Deploy'}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </form>
-    </Dialog>
+        )}
+
+        {write.failure && !notConnected && (
+          <Alert
+            status="danger"
+            title="cluster-manager refused"
+            description={
+              cacheRefusalDetails(write.failure.refused) ? (
+                <Flex direction="column" gap="2">
+                  <Text variant="body-small">{write.failure.message}</Text>
+                  <CacheRefusalDetails refused={write.failure.refused!} />
+                </Flex>
+              ) : (
+                write.failure.message
+              )
+            }
+          />
+        )}
+        {notConnected && installation && (
+          <ConnectAgentManagerAlert
+            installation={installation}
+            message={write.failure!.message}
+            action="GPU node pools are created"
+            server={CLUSTER_MANAGER_SERVER}
+          />
+        )}
+        {applied && applied.partial && (
+          <PartialWriteOutcome
+            result={applied}
+            action="Deploy"
+            onContinue={onDeploy}
+            isBusy={isBusy}
+          />
+        )}
+        {applied && !applied.partial && (
+          <Alert
+            status="success"
+            title={`Pool ${applied.cluster}-${applied.pool} applied as you`}
+            description={applied.objects
+              .map(object => `${object.kind} ${object.name}: ${object.action}`)
+              .join(' · ')}
+          />
+        )}
+        {committed?.commit && (
+          <ClusterManagerCommitOutcome
+            commit={committed.commit}
+            placeNoun="environment"
+          />
+        )}
+      </Flex>
+    </WizardFrame>
   );
 }
 

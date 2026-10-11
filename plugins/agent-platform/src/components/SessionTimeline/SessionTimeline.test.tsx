@@ -480,6 +480,12 @@ describe('SessionTimeline', () => {
       '23 Jul 2026, 16:05 UTC',
       '23 Jul 2026, 16:09 UTC',
     ]);
+    // Labelled, so the first one under the header's "Started …" does not read
+    // as an unexplained second timestamp.
+    expect(markers.map(m => m.parentElement?.textContent)).toEqual([
+      'Turn 1 · 23 Jul 2026, 16:05 UTC',
+      'Turn 2 · 23 Jul 2026, 16:09 UTC',
+    ]);
   });
 
   describe('a stalled turn', () => {

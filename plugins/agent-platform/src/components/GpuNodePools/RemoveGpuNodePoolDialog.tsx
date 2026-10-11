@@ -91,7 +91,7 @@ function RefusalDetails({
         <Text variant="body-small">
           {refused.models.length === 0
             ? 'No model is served on this cluster: something else keeps the nodes busy.'
-            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, on the Serving page:`}
+            : `Unload ${refused.models.length === 1 ? 'this model' : 'these models'} first, under Running models:`}
         </Text>
         {refused.models.map(model =>
           servingPath ? (

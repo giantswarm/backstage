@@ -1,15 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { errorApiRef } from '@backstage/core-plugin-api';
 import { TestApiProvider } from '@backstage/test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { BackendWriteState } from '../../hooks/useModelManagerBackends';
 import type { AddBackendResult } from '../../lib/modelManagerBackends';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
-import {
-  AddModelBackendDialog,
-  toAddBackendInput,
-} from './AddModelBackendDialog';
+import { AddModelBackendPage, toAddBackendInput } from './AddModelBackendPage';
 
 const write: jest.Mocked<BackendWriteState> = {
   dryRunAdd: jest.fn(),
@@ -24,7 +23,7 @@ const write: jest.Mocked<BackendWriteState> = {
 
 jest.mock('../../hooks/useModelManagerBackends', () => ({
   // The real hook re-renders its caller when a write fails (`setFailure`);
-  // the mock re-renders too, so the dialog reads the failure set on `write`.
+  // the mock re-renders too, so the page reads the failure set on `write`.
   useBackendWrite: () => {
     const [, rerender] = jest.requireActual('react').useState(0);
     const rerendering =
@@ -98,20 +97,23 @@ const review: AddBackendResult = {
 
 const onDeployed = jest.fn();
 
-function renderDialog(
+function renderPage(
   registered: Array<'ollama' | 'kserve'> = [],
   installations: string[] = ['inst-1'],
 ) {
   // The review's copy button reports a failed copy through the errorApi.
   return render(
     <TestApiProvider apis={[[errorApiRef, { post: jest.fn() }]]}>
-      <AddModelBackendDialog
-        installations={installations}
-        registeredKinds={() => registered}
-        isOpen
-        onOpenChange={jest.fn()}
-        onDeployed={onDeployed}
-      />
+      <MemoryRouter>
+        <PageHeaderActionsProvider>
+          <AddModelBackendPage
+            installations={installations}
+            registeredKinds={() => registered}
+            closeHref="/agent-platform/models/serving"
+            onDeployed={onDeployed}
+          />
+        </PageHeaderActionsProvider>
+      </MemoryRouter>
     </TestApiProvider>,
   );
 }
@@ -195,9 +197,9 @@ describe('toAddBackendInput', () => {
   });
 });
 
-describe('AddModelBackendDialog', () => {
+describe('AddModelBackendPage', () => {
   it('offers only the kinds not registered yet', async () => {
-    renderDialog(['ollama', 'kserve']);
+    renderPage(['ollama', 'kserve']);
     await userEvent.click(screen.getByRole('button', { name: /Kind/ }));
     const options = await screen.findAllByRole('option');
     expect(options.map(option => option.textContent)).toEqual([
@@ -214,7 +216,7 @@ describe('AddModelBackendDialog', () => {
       created: true,
       registered: true,
     });
-    renderDialog();
+    renderPage();
 
     await pickKind('Ollama');
     const reviewButton = screen.getByRole('button', { name: 'Review' });
@@ -261,17 +263,17 @@ describe('AddModelBackendDialog', () => {
       'inst-1',
       expect.objectContaining({ created: true }),
     );
-    // Done: the footer offers Close only (the success Alert has a Close of its own).
-    expect(
-      screen.queryByRole('button', { name: 'Cancel' }),
-    ).not.toBeInTheDocument();
+    // Done: nothing left to press but the way out.
     expect(
       screen.queryByRole('button', { name: 'Deploy' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Back' }),
     ).not.toBeInTheDocument();
   });
 
   it('says on the Kind field that one is needed when Review is pressed without', async () => {
-    renderDialog();
+    renderPage();
 
     await userEvent.click(screen.getByRole('button', { name: 'Review' }));
 
@@ -284,7 +286,7 @@ describe('AddModelBackendDialog', () => {
   });
 
   it('keeps the knobs whose defaults fit under More options, and opens it on a field inside that blocks Review', async () => {
-    renderDialog();
+    renderPage();
     await pickKind('Ollama');
 
     const more = screen.getByText('More options').closest('details')!;
@@ -311,7 +313,7 @@ describe('AddModelBackendDialog', () => {
   });
 
   it('keeps the discovery ConfigMap of a KServe backend under More options', async () => {
-    renderDialog();
+    renderPage();
     await pickKind('KServe');
 
     const more = screen.getByText('More options').closest('details')!;
@@ -334,9 +336,9 @@ describe('AddModelBackendDialog', () => {
     ).toBeInTheDocument();
   });
 
-  it('orders the review footer Cancel, Back, Commit, then Deploy last', async () => {
+  it('is a page of two steps whose review footer reads Cancel, Back, Commit, then Deploy last', async () => {
     write.dryRunAdd.mockResolvedValue(review);
-    renderDialog();
+    renderPage();
     await pickKind('Lemonade');
     await userEvent.type(
       screen.getByLabelText(/^Endpoint/),
@@ -345,14 +347,30 @@ describe('AddModelBackendDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByTestId('backend-review');
 
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Add model backend' }),
+    ).toBeInTheDocument();
+    const steps = screen.getByRole('list', { name: 'Steps' });
+    expect(within(steps).getByText('Review').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    );
     const footer = screen
       .getByRole('button', { name: 'Deploy' })
-      .closest('.bui-DialogFooter') as HTMLElement;
+      .closest('footer') as HTMLElement;
     expect(
-      within(footer)
-        .getAllByRole('button')
-        .map(button => button.textContent),
+      Array.from(footer.querySelectorAll('a, button')).map(
+        control => control.textContent,
+      ),
     ).toEqual(['Cancel', 'Back', 'Commit', 'Deploy']);
+    expect(
+      within(footer).getByRole('link', { name: 'Cancel' }),
+    ).toHaveAttribute('href', '/agent-platform/models/serving');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByLabelText(/^Endpoint/)).toHaveValue(
+      'http://lemonade.lab:8000',
+    );
   });
 
   it('commits with mode commit and links the pull request', async () => {
@@ -361,7 +379,7 @@ describe('AddModelBackendDialog', () => {
       ...review,
       ...committedTo('https://github.com/giantswarm/agents/pull/12'),
     });
-    renderDialog();
+    renderPage();
     await pickKind('Lemonade');
     await userEvent.type(
       screen.getByLabelText(/^Endpoint/),
@@ -389,7 +407,7 @@ describe('AddModelBackendDialog', () => {
       };
       throw new Error(write.failure.message);
     });
-    renderDialog();
+    renderPage();
     await pickKind('Ollama');
     await userEvent.type(
       screen.getByLabelText(/^Endpoint/),
@@ -414,7 +432,7 @@ describe('AddModelBackendDialog', () => {
       };
       throw new Error(write.failure.message);
     });
-    renderDialog();
+    renderPage();
     await pickKind('Ollama');
     await userEvent.type(
       screen.getByLabelText(/^Endpoint/),
@@ -428,12 +446,12 @@ describe('AddModelBackendDialog', () => {
   });
 });
 
-describe('AddModelBackendDialog · the environment select at scale', () => {
+describe('AddModelBackendPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 
   it('offers three environments without a search', async () => {
-    renderDialog([], ['inst-1', 'inst-2', 'inst-3']);
+    renderPage([], ['inst-1', 'inst-2', 'inst-3']);
 
     await openEnvironments();
     expect(
@@ -443,7 +461,7 @@ describe('AddModelBackendDialog · the environment select at scale', () => {
   });
 
   it('offers type-ahead over 300 environments', async () => {
-    renderDialog(
+    renderPage(
       [],
       Array.from({ length: 300 }, (_, i) => `inst-${i + 1}`),
     );

@@ -14,8 +14,9 @@ import {
   nodeCandidates,
   nodeChoices,
   placementChoices,
-  parseServeRoute,
-  withoutServeRoute,
+  isLegacyServeLink,
+  parseServeSeed,
+  serveSeedSearch,
   tryModelIdOf,
   servedPresetRow,
 } from './modelManagerServe';
@@ -190,37 +191,69 @@ describe('describeLoadAnswer', () => {
   });
 });
 
-describe('parseServeRoute', () => {
-  it('reads the pool link and strips it from the params', () => {
-    const params = new URLSearchParams(
-      'serve=1&installation=gazelle&cluster=gazelle&pool=gpu-l4&tab=x',
-    );
-    expect(parseServeRoute(params)).toEqual({
+describe('parseServeSeed', () => {
+  it('reads the pool link: installation, cluster, pool and the preset as the model', () => {
+    expect(
+      parseServeSeed(
+        new URLSearchParams(
+          'installation=gazelle&cluster=gazelle&pool=gpu-l4&preset=qwen3-8b-fp8',
+        ),
+      ),
+    ).toEqual({
       installation: 'gazelle',
+      backend: undefined,
+      model: 'qwen3-8b-fp8',
       cluster: 'gazelle',
       pool: 'gpu-l4',
     });
-    expect(withoutServeRoute(params).toString()).toBe('tab=x');
   });
 
-  it('is no route without serve=1, and leaves out blank values', () => {
-    expect(parseServeRoute(new URLSearchParams('pool=gpu-l4'))).toBeUndefined();
+  it("reads a download's Serve…: installation, backend and model; an unknown backend is none", () => {
     expect(
-      parseServeRoute(new URLSearchParams('serve=1&installation=&pool= ')),
-    ).toEqual({
-      installation: undefined,
-      cluster: undefined,
-      pool: undefined,
-      preset: undefined,
+      parseServeSeed(
+        new URLSearchParams('installation=lab&backend=ollama&model=qwen2.5'),
+      ),
+    ).toMatchObject({
+      installation: 'lab',
+      backend: 'ollama',
+      model: 'qwen2.5',
     });
+    expect(
+      parseServeSeed(new URLSearchParams('backend=vllm')).backend,
+    ).toBeUndefined();
   });
 
-  it('carries the preset the pool was deployed to serve, and strips it too', () => {
-    const params = new URLSearchParams(
-      'serve=1&installation=gazelle&cluster=gazelle&pool=gpu-l4&preset=qwen3-8b-fp8',
+  it('leaves out blank values', () => {
+    expect(parseServeSeed(new URLSearchParams('installation=&pool= '))).toEqual(
+      {
+        installation: undefined,
+        backend: undefined,
+        model: undefined,
+        cluster: undefined,
+        pool: undefined,
+      },
     );
-    expect(parseServeRoute(params)?.preset).toBe('qwen3-8b-fp8');
-    expect(withoutServeRoute(params).toString()).toBe('');
+  });
+});
+
+describe('serveSeedSearch', () => {
+  it('writes the seed parseServeSeed reads back, without empty values', () => {
+    const seed = {
+      installation: 'gazelle',
+      cluster: 'gazelle',
+      pool: 'gpu-l4',
+    };
+    const search = serveSeedSearch(seed);
+    expect(search).toBe('?installation=gazelle&cluster=gazelle&pool=gpu-l4');
+    expect(parseServeSeed(new URLSearchParams(search))).toMatchObject(seed);
+    expect(serveSeedSearch({})).toBe('');
+  });
+});
+
+describe('isLegacyServeLink', () => {
+  it('is the serve=1 link an older release opened the dialog with', () => {
+    expect(isLegacyServeLink(new URLSearchParams('serve=1&pool=x'))).toBe(true);
+    expect(isLegacyServeLink(new URLSearchParams('pool=x'))).toBe(false);
   });
 });
 

@@ -3,7 +3,7 @@ import { useQueries } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { ClusterManagerClient } from '../apis/ClusterManagerClient';
-import { SIZING_POOL_NAME } from '../components/GpuNodePools/AddGpuNodePoolDialog';
+import { SIZING_POOL_NAME } from '../components/GpuNodePools/AddGpuNodePoolPage';
 import { cacheKeptByCluster, type InstanceShape } from '../lib/clusterManager';
 import { poolPriceOf, type PoolPrice } from '../lib/poolPricing';
 import type { GpuNodePoolRow } from './useClusterManager';

@@ -1,29 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import { Alert, Button, Flex, Select, Switch, TextField } from '@backstage/ui';
 import {
-  Alert,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  Flex,
-  Select,
-  Switch,
-  Text,
-  TextField,
-} from '@backstage/ui';
-import {
-  dialogDismissLock,
   fieldErrorProps,
   searchableIf,
   useFieldValidation,
+  useProvidePageHeaderActions,
   useSelectFieldError,
+  WizardFrame,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { usePullModel } from '../../hooks/usePullJobs';
 import { validateModelRef } from '../../lib/modelManagerServing';
 import type { ServingBackend } from '../../lib/serving';
+import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
 import { BACKEND_LABEL } from '../ServingPage/ServedModelsGroupHeader';
 
 /** Long enough to read two lines, short enough not to follow you around. */
@@ -62,33 +53,36 @@ export function describePullTarget(
     : target.name;
 }
 
-export type PullModelDialogProps = {
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
+export type PullModelPageProps = {
   /** Installations whose backend reports the `pull` capability. */
   targets: PullTarget[];
+  /** Where Close and Cancel lead: the view the flow was opened from. */
+  closeHref: string;
+  /** The pull was accepted (a toast says where to follow it). */
+  onPulled?: () => void;
 };
 
 /**
  * Asks for a model reference and starts its import.
  *
  * Nothing here waits for the download: model-manager answers with a job at
- * once and the downloads panel follows its progress, so the dialog closes on
- * acceptance and says where to look. A reference that the backend proxy would
+ * once and the served-model list follows its progress, so the page hands
+ * over on acceptance (`onPulled`) and a toast says where to look. A reference that the backend proxy would
  * refuse is caught before it is sent (same rule, kinder message), and a pull
  * of a reference that is already downloading is joined by model-manager, not
  * duplicated — the panel shows one job either way.
  *
- * Controlled like `ConfirmDialog`: confirming does not close it, so a failed
- * request has somewhere to say so. The app's standard form: Pull stays
+ * A page of its own (`/agent-platform/models/serving/pull`), the app's
+ * single-step create pattern (`WizardFrame`): a failed request stays on it,
+ * saying so. The app's standard form: Pull stays
  * pressable, and a blocked Pull marks the field that is wrong, under it, and
  * moves the focus there (`useFieldValidation`).
  */
-export function PullModelDialog({
-  isOpen,
-  onOpenChange,
+export function PullModelPage({
   targets,
-}: PullModelDialogProps) {
+  closeHref,
+  onPulled,
+}: PullModelPageProps) {
   const toastApi = useApi(toastApiRef);
   const [targetKey, setTargetKey] = useState(
     targets[0] ? pullTargetKey(targets[0]) : '',
@@ -97,9 +91,8 @@ export function PullModelDialog({
   const [wire, setWire] = useState(true);
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope);
-  const { reset: resetValidation } = validation;
 
-  // A target list that changes under an open dialog (an installation became
+  // A target list that changes under the open page (an installation became
   // unreachable) must not leave the select pointing at nothing.
   useEffect(() => {
     if (!targets.some(target => pullTargetKey(target) === targetKey)) {
@@ -107,27 +100,12 @@ export function PullModelDialog({
     }
   }, [targets, targetKey]);
 
-  // Start clean every time it opens, including a previous attempt's error.
-  useEffect(() => {
-    if (isOpen) {
-      setModel('');
-      setWire(true);
-      resetValidation();
-    }
-  }, [isOpen, resetValidation]);
-
   const target = useMemo(
     () => targets.find(candidate => pullTargetKey(candidate) === targetKey),
     [targets, targetKey],
   );
   const installation = target?.name ?? '';
   const pull = usePullModel(installation);
-  const { reset } = pull;
-  useEffect(() => {
-    if (isOpen) {
-      reset();
-    }
-  }, [isOpen, reset]);
 
   const errors = {
     target: target ? undefined : 'Pick where the model is pulled.',
@@ -150,102 +128,104 @@ export function PullModelDialog({
         ...(target?.canWire ? { wire } : {}),
       });
     } catch {
-      // Left to the dialog, which stays open and renders `pull.error`.
+      // Left to the page, which renders `pull.error`.
       return;
     }
 
     const where = target ? describePullTarget(target) : installation;
-    onOpenChange(false);
     toastApi.post({
       title: result.created
         ? `Pulling ${reference} on ${where}`
         : `${reference} is already being pulled on ${where}`,
-      description:
-        'Progress shows in the downloads list below the served models.',
+      description: 'Its progress shows in its row among the served models.',
       status: 'info',
       timeout: TOAST_TIMEOUT_MS,
     });
+    onPulled?.();
   };
 
   const isBusy = pull.isPending;
 
+  // Pull in the frame's footer, beside its Cancel. Read through a ref, so the
+  // slot updates when what the button says changes, not on every keystroke.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const actions = useMemo(
+    () => (
+      <Button
+        variant="primary"
+        isPending={isBusy}
+        onPress={() => submitRef.current()}
+      >
+        {isBusy ? 'Starting…' : 'Pull'}
+      </Button>
+    ),
+    [isBusy],
+  );
+  useProvidePageHeaderActions(actions);
+
   return (
-    <Dialog
-      isOpen={isOpen}
-      {...dialogDismissLock(isBusy, onOpenChange)}
-      width="min(90vw, 560px)"
+    <WizardFrame
+      title="Pull model"
+      context={HOSTING_FLOW_CONTEXT}
+      closeHref={closeHref}
+      width="medium"
     >
-      <DialogHeader>Pull a model</DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="4" ref={scope}>
-          <Text variant="body-medium" color="secondary">
-            Downloads the model onto the environment's serving backend. Give a
-            registry tag such as <code>qwen2.5:0.5b</code>, or a Hugging Face
-            GGUF reference such as <code>hf.co/org/repo:Q4_K_M</code>.
-          </Text>
-
-          {targets.length > 1 && (
-            <Select
-              label={
-                targets.some(candidate => candidate.backend)
-                  ? 'Environment and backend'
-                  : 'Environment'
-              }
-              isRequired
-              isDisabled={isBusy}
-              searchable={searchableIf(targets)}
-              options={targets.map(candidate => ({
-                id: pullTargetKey(candidate),
-                label: describePullTarget(candidate),
-              }))}
-              selectedKey={targetKey}
-              onSelectionChange={key => {
-                if (key) {
-                  setTargetKey(String(key));
-                }
-              }}
-              {...targetError.selectProps}
-            />
-          )}
-          {targets.length > 1 && targetError.message}
-
-          <TextField
-            label="Model reference"
+      <WizardStepHeading title="Name the model">
+        The model downloads onto the environment's serving backend. Give a
+        registry tag such as <code>qwen2.5:0.5b</code> or a Hugging Face GGUF
+        reference such as <code>hf.co/org/repo:Q4_K_M</code>.
+      </WizardStepHeading>
+      <Flex direction="column" gap="4" ref={scope}>
+        {targets.length > 1 && (
+          <Select
+            label={
+              targets.some(candidate => candidate.backend)
+                ? 'Environment and backend'
+                : 'Environment'
+            }
             isRequired
             isDisabled={isBusy}
-            value={model}
-            onChange={setModel}
-            placeholder="e.g. qwen2.5:0.5b"
-            description="Agents need a model with tool calling; the inventory shows each model's features once it is downloaded."
-            {...fieldErrorProps(validation.errorFor(errors.model))}
+            searchable={searchableIf(targets)}
+            options={targets.map(candidate => ({
+              id: pullTargetKey(candidate),
+              label: describePullTarget(candidate),
+            }))}
+            selectedKey={targetKey}
+            onSelectionChange={key => {
+              if (key) {
+                setTargetKey(String(key));
+              }
+            }}
+            {...targetError.selectProps}
           />
+        )}
+        {targets.length > 1 && targetError.message}
 
-          {target?.canWire && (
-            <Switch
-              label="Create a kagent ModelConfig when the download finishes, so agents can use the model"
-              isDisabled={isBusy}
-              isSelected={wire}
-              onChange={setWire}
-            />
-          )}
-
-          {pull.error ? (
-            <Alert status="danger" description={pull.error.message} />
-          ) : null}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        <Button
-          variant="secondary"
+        <TextField
+          label="Model reference"
+          isRequired
           isDisabled={isBusy}
-          onClick={() => onOpenChange(false)}
-        >
-          Cancel
-        </Button>
-        <Button variant="primary" isPending={isBusy} onClick={submit}>
-          {isBusy ? 'Starting…' : 'Pull'}
-        </Button>
-      </DialogFooter>
-    </Dialog>
+          value={model}
+          onChange={setModel}
+          placeholder="e.g. qwen2.5:0.5b"
+          description="Agents need a model with tool calling; the list shows each model's features once it is downloaded."
+          {...fieldErrorProps(validation.errorFor(errors.model))}
+        />
+
+        {target?.canWire && (
+          <Switch
+            label="Create a model config when the download finishes, so agents can use the model"
+            isDisabled={isBusy}
+            isSelected={wire}
+            onChange={setWire}
+          />
+        )}
+
+        {pull.error ? (
+          <Alert status="danger" description={pull.error.message} />
+        ) : null}
+      </Flex>
+    </WizardFrame>
   );
 }

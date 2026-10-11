@@ -1,13 +1,13 @@
 import type { Page } from '@playwright/test';
 
 /**
- * cluster-manager's answers for the Add GPU node pool dialog (0.8.1's shapes,
+ * cluster-manager's answers for the Add GPU node pool page (0.8.1's shapes,
  * with the prices per size and the preset display names, models and origin
  * of giantswarm/cluster-manager#44), stubbed at the browser: the lab has no
  * cluster-manager (no Cluster API on a kind cluster), so the muster calls the
- * dialog makes are answered here in the
+ * page makes are answered here in the
  * shapes `internal/tools/nodepool_write.go` produces, and the lab's muster
- * server list gains a `cluster-manager` entry so the page offers the dialog.
+ * server list gains a `cluster-manager` entry so the portal offers the flow.
  *
  * The `sizes[]` shape of g6.xlarge and the "no serving preset is published"
  * note are a real dry run on gazelle (2026-09-17, `create_node_pool
@@ -858,7 +858,7 @@ export type RecordedCall = { name: string; arguments: Record<string, unknown> };
 
 /**
  * Make the lab's muster appear to list cluster-manager and answer its tools
- * at the browser; everything else goes through. Returns the calls the dialog
+ * at the browser; everything else goes through. Returns the calls the page
  * made, in order, for assertions on what Deploy and Continue sent.
  */
 export async function stubClusterManager(
@@ -881,7 +881,7 @@ export async function stubClusterManager(
   let keptCache = options.keptCache;
   const mode: LifecycleMode = options.lifecycle ?? 'phases';
 
-  // The page offers the dialog where the installation's muster lists
+  // The portal offers the flow where the installation's muster lists
   // cluster-manager (`GET /api/muster/servers`, muster's core_mcpserver_list):
   // the lab's real list, plus that one entry.
   await page.route('**/api/muster/servers**', async route => {

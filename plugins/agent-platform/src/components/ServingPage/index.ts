@@ -1,4 +1,5 @@
-export { ServingPage } from './ServingPage';
+export { OPENED_SERVED_MODEL_KEY, ServingPage } from './ServingPage';
+export { useServingTargets, type ServingTargets } from './useServingTargets';
 export {
   columnsForRows,
   describeRow,

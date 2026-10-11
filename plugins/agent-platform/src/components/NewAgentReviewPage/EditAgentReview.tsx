@@ -9,6 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
@@ -26,7 +27,7 @@ import {
 } from '../../lib/agentEdit';
 import type { CommitAgentResult } from '../../lib/agentManager';
 import { parseEgressText } from '../../lib/egress';
-import { harnessTitle } from '../../lib/harnesses';
+import { DEFAULT_PLATFORM_HARNESS, harnessTitle } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { shortPin } from '../AgentDetailPage/helpers';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
@@ -91,6 +92,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
   const { hasRepositories } = useSkillCatalog();
   const { agent, installation, writeMode, detailHref } = edit;
+  const { info } = useAgentManagerInfo(installation);
   const viaPullRequest = writeMode === 'commit';
 
   const editState = useMemo(
@@ -229,12 +231,16 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     return <Navigate to={toolsLink ? toolsLink() : '..'} replace />;
   }
 
-  let runtime = 'Standard (platform default)';
-  if (state.harness) {
+  // In words only (QA R2-2): a Harness known by its name alone (the agent's
+  // own, unchanged) has no title to show, so its row is left to Technical
+  // details' Harness.
+  const platformHarness = info?.harness?.name || DEFAULT_PLATFORM_HARNESS;
+  let runtime: string | undefined = 'Standard (platform default)';
+  if (state.harness && state.harness.name !== platformHarness) {
     runtime =
       state.harness.displayName || state.harness.runtime
         ? harnessTitle(state.harness)
-        : state.harness.name;
+        : undefined;
   }
   const egressOrigins = parseEgressText(state.egressText);
   const valuesYaml = dryRun.result
@@ -259,7 +265,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
-          <PlainRow label="Runtime">{runtime}</PlainRow>
+          {runtime && <PlainRow label="Runtime">{runtime}</PlainRow>}
           {(hasRepositories || skillNames.length > 0) && (
             <PlainRow label="Skills">
               {skillNames.length === 0 ? 'None' : skillNames.join(', ')}

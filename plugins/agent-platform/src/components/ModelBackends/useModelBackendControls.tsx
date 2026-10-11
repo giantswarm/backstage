@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { JSX } from 'react';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import { Button, Flex, Text } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
@@ -9,6 +13,7 @@ import {
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 
+import { useOpenHostingFlow } from '../../hooks/useHostingFlow';
 import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useReachableInstallations } from '../../hooks/useReachableInstallations';
@@ -20,11 +25,11 @@ import {
   type BackendKind,
 } from '../../lib/modelManagerBackends';
 import type { ServedModel, ServingBackend } from '../../lib/serving';
+import { addModelBackendRouteRef } from '../../routes';
 import {
   groupOfBackend,
   type ServedModelGroup,
 } from '../ServingPage/ServedModelsTable';
-import { AddModelBackendDialog } from './AddModelBackendDialog';
 import { RemoveModelBackendDialog } from './RemoveModelBackendDialog';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -36,11 +41,11 @@ export type ModelBackendControls = {
   /** The empty-state button, or `undefined` when nothing offers it. */
   addButton: JSX.Element | undefined;
   /**
-   * Opens Add model backend — for a page header's action — or `undefined`
-   * when nothing offers it.
+   * Opens Add model backend's page — for a page header's action — or
+   * `undefined` when nothing offers it.
    */
   openAdd: (() => void) | undefined;
-  /** The dialogs; render once on the page. */
+  /** The Remove backend dialog; render once on the page. */
   dialogs: ReactNode;
   /**
    * The trailing part of a Serving group's header: the backend's source and
@@ -65,17 +70,30 @@ export type ModelBackendControls = {
   ) => ServedModelGroup[];
 };
 
+export type ModelBackendTargets = {
+  /** Some reachable installation has a model-manager the person can write to. */
+  available: boolean;
+  /** The installations in scope whose muster lists model-manager. */
+  installations: string[];
+  /** Some installation's server list is still being read. */
+  isLoading: boolean;
+  /** The registered backends of those installations. */
+  registered: ReturnType<typeof useRegisteredBackends>;
+  /** The kinds already registered (or static) on an installation. */
+  registeredKinds: (installation: string) => BackendKind[];
+};
+
 /**
- * Add model backend and Remove backend for the Serving page, over every
- * reachable installation in scope whose muster lists model-manager
- * (`useModelManagerInstallations`, the serving source's own gate — so an
- * installation without one never offers the dialog, and one whose
- * model-manager has no backend yet is offered although it has no group);
- * the muster plugin is how the tools are reached as the person. Reads the
- * registered backends once for the source labels, the kinds still free and
- * the Remove confirm.
+ * Where a model backend can be added: every reachable installation in scope
+ * whose muster lists model-manager (`useModelManagerInstallations`, the
+ * serving source's own gate — so an installation without one is never
+ * offered, and one whose model-manager has no backend yet is offered
+ * although it has no group); the muster plugin is how the tools are reached
+ * as the person. Reads the registered backends once for the source labels,
+ * the kinds still free and the Remove confirm. Shared by the Serving view
+ * and Add model backend's page.
  */
-export function useModelBackendControls(): ModelBackendControls {
+export function useModelBackendTargets(): ModelBackendTargets {
   const musterApi = useMusterPluginApi();
   const { installations: configured } = useInstallations();
   const { scope } = useInstallationScope();
@@ -83,18 +101,10 @@ export function useModelBackendControls(): ModelBackendControls {
     configured.map(installation => installation.name),
   );
   const reachableInstallations = applyInstallationScope(reachable, scope);
-  const { installations } = useModelManagerInstallations(
+  const { installations, isLoading } = useModelManagerInstallations(
     reachableInstallations,
   );
   const registered = useRegisteredBackends(installations);
-  const toastApi = useApi(toastApiRef);
-  const [isAddOpen, setAddOpen] = useState(false);
-  const [removing, setRemoving] = useState<{
-    installation: string;
-    kind: BackendKind;
-    servedModels: string[];
-  }>();
-
   const available = Boolean(musterApi) && installations.length > 0;
 
   const registeredKinds = useCallback(
@@ -105,63 +115,68 @@ export function useModelBackendControls(): ModelBackendControls {
     [registered.backends],
   );
 
-  const openAddDialog = useCallback(() => setAddOpen(true), []);
-  const openAdd = available ? openAddDialog : undefined;
+  return { available, installations, isLoading, registered, registeredKinds };
+}
+
+/**
+ * Add model backend and Remove backend for the Serving page, over the
+ * installations {@link useModelBackendTargets} offers. Add opens the flow's
+ * own page (`AddModelBackendPage`); Remove is a confirm dialog here.
+ */
+export function useModelBackendControls(): ModelBackendControls {
+  const { available, registered } = useModelBackendTargets();
+  const toastApi = useApi(toastApiRef);
+  const [removing, setRemoving] = useState<{
+    installation: string;
+    kind: BackendKind;
+    servedModels: string[];
+  }>();
+
+  const openFlow = useOpenHostingFlow();
+  const addBackendRoute = useRouteRef(addModelBackendRouteRef);
+  const openAddPage = useCallback(() => {
+    if (addBackendRoute) {
+      openFlow(addBackendRoute());
+    }
+  }, [openFlow, addBackendRoute]);
+  const openAdd = available ? openAddPage : undefined;
   const addButton = useMemo(
     () =>
       available ? (
         <Button
           variant="secondary"
           iconStart={<AddIcon />}
-          onPress={openAddDialog}
+          onPress={openAddPage}
         >
           Add model backend
         </Button>
       ) : undefined,
-    [available, openAddDialog],
+    [available, openAddPage],
   );
 
-  const dialogs = available ? (
-    <>
-      <AddModelBackendDialog
-        installations={installations}
-        registeredKinds={registeredKinds}
-        isOpen={isAddOpen}
-        onOpenChange={setAddOpen}
-        onDeployed={(installation, result) =>
+  const dialogs =
+    available && removing ? (
+      <RemoveModelBackendDialog
+        installation={removing.installation}
+        kind={removing.kind}
+        servedModels={removing.servedModels}
+        isOpen
+        onOpenChange={open => {
+          if (!open) {
+            setRemoving(undefined);
+          }
+        }}
+        onRemoved={() =>
           toastApi.post({
-            title: `Registered ${result.configMap.name} on ${installation}`,
+            title: `Removed the ${removing.kind} backend from ${removing.installation}`,
             description:
-              'model-manager reads the backend document; its models appear here as the inventory answers.',
+              'Its model configs are unwired and its group leaves this page; the backend itself keeps running where it is.',
             status: 'success',
             timeout: TOAST_TIMEOUT_MS,
           })
         }
       />
-      {removing && (
-        <RemoveModelBackendDialog
-          installation={removing.installation}
-          kind={removing.kind}
-          servedModels={removing.servedModels}
-          isOpen
-          onOpenChange={open => {
-            if (!open) {
-              setRemoving(undefined);
-            }
-          }}
-          onRemoved={() =>
-            toastApi.post({
-              title: `Removed the ${removing.kind} backend from ${removing.installation}`,
-              description:
-                'Its model configs are unwired and its group leaves this page; the backend itself keeps running where it is.',
-              status: 'success',
-              timeout: TOAST_TIMEOUT_MS,
-            })
-          }
-        />
-      )}
-    </>
-  ) : null;
+    ) : null;
 
   const renderGroupActions = useCallback<
     ModelBackendControls['renderGroupActions']

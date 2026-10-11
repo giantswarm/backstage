@@ -173,6 +173,44 @@ export const modelCacheRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
+// Model hosting's create flows, each a page of its own under the view it
+// adds to (the app's one create pattern, `WizardFrame`, instead of a dialog
+// over the list). Two segments, so none is ever read as a model's
+// three-segment detail path. Cancel returns to the view the flow was opened
+// from; the outcome lands on the view that shows it.
+//
+// Serve model (`…/serving/serve`): takes its seed from the query —
+// `installation`, `backend`, `cluster`, `pool`, `preset` or `model` — so a
+// pool's "Serve your first model" and a download's "Serve…" deep-link it.
+export const serveModelRouteRef = createSubRouteRef({
+  path: '/serving/serve',
+  parent: modelsRouteRef,
+});
+
+// Import from Hugging Face (`…/serving/import`).
+export const importModelRouteRef = createSubRouteRef({
+  path: '/serving/import',
+  parent: modelsRouteRef,
+});
+
+// Pull model (`…/serving/pull`).
+export const pullModelRouteRef = createSubRouteRef({
+  path: '/serving/pull',
+  parent: modelsRouteRef,
+});
+
+// Add model backend (`…/serving/add-backend`).
+export const addModelBackendRouteRef = createSubRouteRef({
+  path: '/serving/add-backend',
+  parent: modelsRouteRef,
+});
+
+// Add GPU node pool (`…/capacity/add-pool`).
+export const addGpuNodePoolRouteRef = createSubRouteRef({
+  path: '/capacity/add-pool',
+  parent: modelsRouteRef,
+});
+
 /**
  * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,
  * with the muster session gate and a search over server and tool names.

@@ -696,13 +696,12 @@ describe('SessionDetailPage', () => {
       // findable by clicking a heading on the off chance.
       await render();
 
-      await userEvent.hover(
+      // A native title, as DateComponent's: no MUI tooltip and its findDOMNode.
+      expect(
         screen.getByRole('button', {
           name: 'Rename session "Which GitHub issues..."',
         }),
-      );
-
-      expect(await screen.findByText('Rename session')).toBeInTheDocument();
+      ).toHaveAttribute('title', 'Rename session');
     });
 
     it('submits the new name and closes', async () => {

@@ -390,6 +390,35 @@ describe('EditAgentPage', () => {
     expect(underlying).toHaveTextContent('opus-4-7-model · Anthropic');
   });
 
+  it('summarises the review in words, the Harness and selectors only under Technical details', async () => {
+    await renderEdit(`${BASE}/review`);
+    await screen.findByText('Nothing changed yet.');
+    const summary = screen.getByLabelText('Summary');
+    const row = (label: string) =>
+      within(summary).queryByText(label, { selector: 'dt' })
+        ?.nextElementSibling;
+
+    expect(row('Tools')).toHaveTextContent('Read-only tools everywhere');
+    expect(summary).not.toHaveTextContent('preset:');
+    // A Harness known by its name alone has no title: no raw name outside.
+    expect(row('Runtime')).toBeUndefined();
+    expect(summary).not.toHaveTextContent('claude-code');
+    const harness = screen.getByText('Harness').parentElement;
+    expect(harness).toHaveTextContent('claude-code');
+    expect(harness?.closest('details')).not.toBeNull();
+  });
+
+  it('calls the platform Harness the standard runtime', async () => {
+    await renderEdit(`${BASE}/review`, {
+      agent: { ...AGENT, harness: 'kagent' },
+    });
+    await screen.findByText('Nothing changed yet.');
+
+    expect(
+      screen.getByText('Runtime', { selector: 'dt' }).nextElementSibling,
+    ).toHaveTextContent('Standard (platform default)');
+  });
+
   it('saves only what changed through update_agent and hands over to the agent’s page', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderEdit(BASE);

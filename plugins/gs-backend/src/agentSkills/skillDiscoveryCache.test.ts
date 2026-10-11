@@ -341,6 +341,29 @@ describe('SkillDiscoveryCache', () => {
       });
     });
 
+    it('knows which commits have complete file lists, and whether the tree was capped', async () => {
+      expect(cache.knownCommit(REPO, HEAD)).toBeUndefined();
+      // A listing made before files were listed knows no file lists.
+      await cache.discover(REPO, 'old', async () => snapshot());
+      expect(cache.knownCommit(REPO, HEAD)).toBeUndefined();
+
+      await cache.discover(REPO, 'capped', async () =>
+        snapshot({ files: new Map([['notes', list]]), truncated: true }),
+      );
+      expect(cache.knownCommit(REPO, HEAD)).toEqual({ truncated: true });
+      await cache.discover(REPO, undefined, async () =>
+        snapshot({ files: new Map([['notes', list]]) }),
+      );
+      expect(cache.knownCommit(`${REPO}.git`, HEAD)).toEqual({
+        truncated: false,
+      });
+
+      cache.rememberPinned(REPO, NEXT, { files: new Map(), truncated: true });
+      expect(cache.knownCommit(REPO, NEXT)).toEqual({ truncated: true });
+      cache.rememberPinned(REPO, NEXT, { files: new Map() });
+      expect(cache.knownCommit(REPO, NEXT)).toEqual({ truncated: false });
+    });
+
     it(`remembers at most ${MAX_PINNED_ENTRIES} commits read outside a listing`, () => {
       for (let i = 0; i <= MAX_PINNED_ENTRIES; i++) {
         cache.rememberPinned(REPO, String(i).padStart(40, '0'), {

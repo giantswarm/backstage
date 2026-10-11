@@ -17,13 +17,13 @@ import {
   type ServedModel,
   type ServingCapabilities,
 } from '../../lib/serving';
-import { LoadModelDialog, type LoadTarget } from './LoadModelDialog';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { ServeModelPage, type LoadTarget } from './ServeModelPage';
 
 const checkFit = jest.fn();
 const loadModel = jest.fn();
 const listPresets = jest.fn();
 const listNodes = jest.fn();
-const onOpenChange = jest.fn();
 const onServed = jest.fn();
 let musterConnected = true;
 
@@ -145,21 +145,22 @@ const cachedOnHost: ServedModel = {
 };
 
 function render(
-  props: Partial<React.ComponentProps<typeof LoadModelDialog>> = {},
+  props: Partial<React.ComponentProps<typeof ServeModelPage>> = {},
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const Wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>{children}</PageHeaderActionsProvider>
+      </QueryClientProvider>
     </TestApiProvider>
   );
   return renderInTestApp(
     <Wrapper>
-      <LoadModelDialog
-        isOpen
-        onOpenChange={onOpenChange}
+      <ServeModelPage
+        closeHref="/agent-platform/models/serving"
         targets={[pool]}
         models={[]}
         onServed={onServed}
@@ -171,7 +172,7 @@ function render(
 
 const serveButton = () => screen.getByRole('button', { name: /^Serve/ });
 
-describe('LoadModelDialog', () => {
+describe('ServeModelPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     musterConnected = true;
@@ -211,8 +212,7 @@ describe('LoadModelDialog', () => {
       }),
     );
     expect(loadModel).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-    expect(onServed).toHaveBeenCalledWith(pool, loaded);
+    await waitFor(() => expect(onServed).toHaveBeenCalledWith(pool, loaded));
   });
 
   it('cannot serve a preset no size of the pool hosts, and says why', async () => {
@@ -542,12 +542,13 @@ describe('LoadModelDialog', () => {
       return (
         <TestApiProvider apis={[[modelManagerApiRef, modelManagerApi]]}>
           <QueryClientProvider client={queryClient}>
-            <LoadModelDialog
-              isOpen
-              onOpenChange={onOpenChange}
-              targets={targets}
-              models={[]}
-            />
+            <PageHeaderActionsProvider>
+              <ServeModelPage
+                closeHref="/agent-platform/models/serving"
+                targets={targets}
+                models={[]}
+              />
+            </PageHeaderActionsProvider>
           </QueryClientProvider>
         </TestApiProvider>
       );
@@ -644,7 +645,7 @@ describe('LoadModelDialog', () => {
 
     const note = await screen.findByTestId('serve-already-serving');
     expect(note).toHaveTextContent('Qwen3 4B Instruct: Serving on gpu-a');
-    expect(note).toHaveTextContent('Stop it in the Serving list first');
+    expect(note).toHaveTextContent('Stop it under Running models');
     expect(serveButton()).toBeDisabled();
     expect(checkFit).not.toHaveBeenCalledWith(
       expect.objectContaining({ model: 'qwen3-4b-instruct' }),
@@ -674,7 +675,7 @@ describe('LoadModelDialog', () => {
     expect(screen.queryByTestId('serve-already-serving')).toBeNull();
   });
 
-  it('cannot be dismissed while the load is on its way, and closes once it lands', async () => {
+  it('is a page with Serve in its footer and Cancel back to where it was opened from; it hands over once the load lands', async () => {
     let land: (answer: ModelManagerLoadAnswer) => void = () => {};
     loadModel.mockReturnValue(
       new Promise(resolve => {
@@ -682,23 +683,37 @@ describe('LoadModelDialog', () => {
       }),
     );
     await render();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Serve model' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent('Fits'),
+    );
     await waitFor(() => expect(serveButton()).toBeEnabled());
 
     await userEvent.click(serveButton());
-    await screen.findByRole('button', { name: /Serving…/ });
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await userEvent.keyboard('{Escape}');
-
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole('button', { name: /Serving…/ }),
+    ).toBeDisabled();
+    expect(onServed).not.toHaveBeenCalled();
     land(loaded);
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onServed).toHaveBeenCalledWith(pool, loaded));
   });
 
-  it('keeps a refused load in the dialog', async () => {
+  it('keeps a refused load on the page', async () => {
     loadModel.mockRejectedValue(
       new Error('does_not_fit: no size of the pool hosts the preset'),
     );
     await render();
+    // Enabled before the presets are read too (Serve then points at the
+    // empty field); the verdict is what a person serves on.
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent('Fits'),
+    );
     await waitFor(() => expect(serveButton()).toBeEnabled());
 
     await userEvent.click(serveButton());
@@ -708,7 +723,6 @@ describe('LoadModelDialog', () => {
         'does_not_fit: no size of the pool hosts the preset',
       ),
     ).toBeInTheDocument();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
     expect(onServed).not.toHaveBeenCalled();
   });
 
@@ -723,7 +737,7 @@ describe('LoadModelDialog', () => {
   });
 });
 
-describe('LoadModelDialog · the selects at scale', () => {
+describe('ServeModelPage · the selects at scale', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     musterConnected = true;

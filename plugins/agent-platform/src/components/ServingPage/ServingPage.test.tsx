@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -70,9 +71,9 @@ jest.mock('../ModelConfigsProvider', () => ({
 
 // The write side: the stop mutation and the permission probe are mocked —
 // their own tests cover them; here it is about what the section offers and
-// what it does with the outcome. The Serve dialog is model-manager's
-// (LoadModelDialog, reduced to a marker below): what matters here is when it
-// is offered and what it is opened on.
+// what it does with the outcome. Serve model is a page of its own
+// (ServeModelPage, a route marker below): what matters here is when it is
+// offered and what it is opened on.
 const mockStop = jest.fn();
 const mockUseSelfSubjectAccessReview = jest.fn();
 const mockToastPost = jest.fn();
@@ -120,25 +121,6 @@ jest.mock('@backstage/frontend-plugin-api', () => {
 // gate deciding which rows get a menu at all is the real one.
 jest.mock('../ModelManagerControls', () => ({
   hasRowActions: jest.requireActual('../ModelManagerControls').hasRowActions,
-  PullModelDialog: () => null,
-  LoadModelDialog: ({
-    isOpen,
-    targets,
-    seed,
-  }: {
-    isOpen: boolean;
-    targets: { name: string }[];
-    seed?: { installation?: string; model?: string };
-  }) =>
-    isOpen ? (
-      <div data-testid="load-dialog">
-        {targets.map(target => target.name).join(',')}
-        {seed?.model ? ` seeded ${seed.installation}/${seed.model}` : ''}
-      </div>
-    ) : null,
-  describeLoadTarget: (target: { name: string }) => target.name,
-  ImportModelDialog: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="import-dialog" /> : null,
   DownloadRowActions: ({
     row,
     onDismiss,
@@ -314,10 +296,40 @@ const Section = () => {
   );
 };
 
-const renderSection = () =>
-  renderInTestApp(<Section />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
-  });
+// Where a create flow opened from the view lands: its own page, here a
+// marker with the URL and where its Cancel would return.
+const FlowPage = () => {
+  const { pathname, search, state } = useLocation();
+  return (
+    <div data-testid="flow-page">
+      {pathname}
+      {search} from {(state as { hostingReturnTo?: string })?.hostingReturnTo}
+    </div>
+  );
+};
+
+const renderSection = (initialRouteEntries?: string[]) =>
+  renderInTestApp(
+    <Routes>
+      <Route path="/agent-platform/models/serving/*" element={<FlowPage />} />
+      <Route
+        path="/handoff"
+        element={
+          <Navigate
+            to="/"
+            state={{
+              openedServedModel: { installation: 'inst-1', name: 'qwen3-14b' },
+            }}
+          />
+        }
+      />
+      <Route path="*" element={<Section />} />
+    </Routes>,
+    {
+      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      initialRouteEntries,
+    },
+  );
 
 describe('ServingPage', () => {
   beforeEach(() => {
@@ -352,7 +364,7 @@ describe('ServingPage', () => {
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/agents reach them through model configs/),
+      screen.getByText(/Agents reach these models through their model configs/),
     ).toBeInTheDocument();
     // Nothing is composed in the browser: no permission probe for a create.
     expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
@@ -377,12 +389,46 @@ describe('ServingPage', () => {
     });
 
     await renderSection();
-    await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
-
-    expect(screen.getByTestId('load-dialog')).toHaveTextContent('inst-1');
     expect(
       screen.getByText(/Serving a model here creates its model config/),
     ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Serve model/ }));
+
+    expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+      '/agent-platform/models/serving/serve from /',
+    );
+  });
+
+  it('forwards an older release’s ?serve=1 pool link to Serve model’s page, seed and all', async () => {
+    mockUseMusterPluginApi.mockReturnValue({});
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      capabilities: {
+        'inst-1': { ...KSERVE_CR_CAPABILITIES, load: true, presets: true },
+      },
+    });
+
+    await renderSection([
+      '/?serve=1&installation=inst-1&cluster=wc1&pool=gpu-l4&preset=qwen3-8b-fp8',
+    ]);
+
+    expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+      '/agent-platform/models/serving/serve?installation=inst-1&cluster=wc1&pool=gpu-l4&model=qwen3-8b-fp8',
+    );
+  });
+
+  it('opens the steps of the model Serve model handed over', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [{ ...qwen, readiness: 'pending', phase: 'starting' }],
+    });
+
+    await renderSection(['/handoff']);
+
+    const panel = await screen.findByTestId('served-model-lifecycle');
+    expect(
+      screen.getByTestId('served-models-group-inst-1/kserve'),
+    ).toContainElement(panel);
   });
 
   it('withholds Serve where a backend can load but muster is not connected', async () => {
@@ -490,7 +536,9 @@ describe('ServingPage', () => {
           name: 'Import from Hugging Face',
         }),
       );
-      expect(screen.getByTestId('import-dialog')).toBeInTheDocument();
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/import',
+      );
     });
 
     it('offers the plain pull beside Serve where nothing imports', async () => {
@@ -613,7 +661,7 @@ describe('ServingPage', () => {
 
     beforeEach(() => {
       // muster connected: the installation's model-manager can load, so the
-      // Serve is its dialog.
+      // Serve is its page.
       mockUseMusterPluginApi.mockReturnValue({});
       mockUseServing.mockReturnValue(mixedServing);
     });
@@ -674,7 +722,9 @@ describe('ServingPage', () => {
       await userEvent.click(
         screen.getByRole('button', { name: /Import from Hugging Face/ }),
       );
-      expect(screen.getByTestId('import-dialog')).toBeInTheDocument();
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/import',
+      );
     });
 
     it('stops a row model-manager operates through model-manager, without asking the cluster', async () => {
@@ -712,7 +762,7 @@ describe('ServingPage', () => {
       );
     });
 
-    it('opens the Serve dialog on a cached download’s installation and preset', async () => {
+    it('opens Serve model on a cached download’s installation and preset', async () => {
       await renderSection();
 
       await userEvent.click(
@@ -721,11 +771,11 @@ describe('ServingPage', () => {
         }),
       );
 
-      // model-manager's dialog, seeded with the preset the cached weights
-      // belong to: it composes the LLMInferenceService; nothing is composed
-      // here.
-      expect(screen.getByTestId('load-dialog')).toHaveTextContent(
-        'inst-1 seeded inst-1/devstral-small-2',
+      // Serve model's page, seeded with the preset the cached weights belong
+      // to: model-manager composes the LLMInferenceService; nothing is
+      // composed here.
+      expect(await screen.findByTestId('flow-page')).toHaveTextContent(
+        '/agent-platform/models/serving/serve?installation=inst-1&backend=kserve&model=devstral-small-2',
       );
     });
   });
@@ -812,7 +862,7 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText(/These models are served by KServe or a model-manager/),
+      screen.getByText(/Agents reach these models through their model configs/),
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();

@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, open, signIn, test } from './fixtures';
+import { expect, expectWizardStep, open, signIn, test } from './fixtures';
 import {
   KEPT_CLAIM,
   PRESET_SOURCE,
@@ -42,7 +42,7 @@ const CLUSTER_API_NOTE =
 
 /**
  * Answer the portal's `list_clusters` with one cluster the lab does not have,
- * so the dialog lets the person reach Review — every other tool call goes
+ * so the form lets the person reach Review — every other tool call goes
  * through to muster and cluster-manager untouched.
  */
 async function offerAbsentCluster(page: Page, name: string): Promise<void> {
@@ -75,6 +75,38 @@ async function offerAbsentCluster(page: Page, name: string): Promise<void> {
       },
     });
   });
+}
+
+/** GPU pools, where Add GPU node pool returns to — with the pool's lifecycle panel open after a complete Deploy. */
+const CAPACITY_VIEW = /\/agent-platform\/models\/capacity\/?$/;
+
+/** Add GPU node pool is a page of its own: its h1, its URL, its first step. */
+async function expectAddPoolPage(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/agent-platform\/models\/capacity\/add-pool/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Add GPU node pool' }),
+  ).toBeVisible();
+  await expectWizardStep(page, 'Pool');
+}
+
+/** Serve model is a page of its own too, reached from the lifecycle panel's links with the pool in its query. */
+async function expectServePage(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve\?/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Serve model' }),
+  ).toBeVisible({ timeout: 30_000 });
+}
+
+/** Serve model's Cancel: a lifecycle panel link carries no view to return to, so it lands on Running models. */
+async function cancelServe(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/?$/);
+}
+
+/** Cancel — a link in the page's footer — returns to GPU pools, where the flow was opened. */
+async function cancelAddPool(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(CAPACITY_VIEW);
 }
 
 test.describe('models: GPU node pools', () => {
@@ -112,23 +144,25 @@ test.describe('models: GPU node pools', () => {
     await signIn(page, lab.users.admin);
     await open(page, '/agent-platform/models/capacity');
 
-    await page.getByRole('button', { name: 'Add GPU node pool' }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Add GPU node pool')).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Add GPU node pool' })
+      .first()
+      .click();
+    await expectAddPoolPage(page);
 
     await expect(
-      dialog.getByRole('button', { name: /^No clusters/ }),
+      page.getByRole('button', { name: /^No clusters/ }),
     ).toBeVisible({ timeout: 60_000 });
-    await expect(dialog.getByTestId('cluster-api-note')).toContainText(
+    await expect(page.getByTestId('cluster-api-note')).toContainText(
       CLUSTER_API_NOTE,
     );
-    await expect(dialog.getByText('Clusters could not be read')).toHaveCount(0);
+    await expect(page.getByText('Clusters could not be read')).toHaveCount(0);
     // Review says why it cannot go on, on the cluster field (T67).
-    await dialog.getByRole('button', { name: 'Review' }).click();
+    await page.getByRole('button', { name: 'Review' }).click();
     await expect(
-      dialog.getByText('This environment lists no cluster a pool can join.'),
+      page.getByText('This environment lists no cluster a pool can join.'),
     ).toBeVisible();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelAddPool(page);
   });
 
   test('Review is refused by cluster-manager naming the cluster and the Cluster API', async ({
@@ -138,28 +172,31 @@ test.describe('models: GPU node pools', () => {
     await offerAbsentCluster(page, 'nosuchcluster');
     await open(page, '/agent-platform/models/capacity');
 
-    await page.getByRole('button', { name: 'Add GPU node pool' }).click();
-    const dialog = page.getByRole('dialog');
+    await page
+      .getByRole('button', { name: 'Add GPU node pool' })
+      .first()
+      .click();
+    await expectAddPoolPage(page);
     // The one cluster offered is picked as the form opens.
-    await expect(dialog.getByTestId('cluster-marks')).toContainText(
+    await expect(page.getByTestId('cluster-marks')).toContainText(
       'Commit target: none',
       { timeout: 60_000 },
     );
-    await dialog.getByLabel(/Pool name/).fill('gpu-e2e');
+    await page.getByLabel(/Pool name/).fill('gpu-e2e');
 
     // The form's own dry run — for the sizes and prices — meets the refusal; no Review needed.
-    await expect(dialog.getByText('cluster-manager refused')).toBeVisible({
+    await expect(page.getByText('cluster-manager refused')).toBeVisible({
       timeout: 60_000,
     });
     await expect(
-      dialog.getByText(
+      page.getByText(
         `cluster org-lab/nosuchcluster not found: ${CLUSTER_API_NOTE}`,
       ),
     ).toBeVisible();
-    await expect(dialog.getByTestId('node-size-picker')).toHaveCount(0);
-    await expect(dialog.getByTestId('node-pool-review')).toHaveCount(0);
-    await expect(dialog.getByRole('button', { name: /Commit/ })).toHaveCount(0);
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('node-size-picker')).toHaveCount(0);
+    await expect(page.getByTestId('node-pool-review')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Commit/ })).toHaveCount(0);
+    await cancelAddPool(page);
   });
 });
 
@@ -168,11 +205,11 @@ test.describe('models: GPU node pools', () => {
  * after #2413's review): cluster-manager's `sizes` with their prices,
  * `presetFit` with display names, models and origin, and `warnings`, read by
  * the form's own dry run before Review; the review showing the same choice;
- * and a Deploy cut short (`partial`) continued from the dialog.
+ * and a Deploy cut short (`partial`) continued on the page.
  *
  * **cluster-manager's answers are stubbed at the browser** (`gpu-node-pool.fixture.ts`):
  * the lab has no cluster-manager — no Cluster API on a kind cluster — so the
- * lab's MCPServer list gains a `cluster-manager` entry and the dialog's muster
+ * lab's MCPServer list gains a `cluster-manager` entry and the page's muster
  * calls are answered in cluster-manager's shapes. Everything else — the
  * sign-in, the page, the muster session — is real; nothing is written.
  */
@@ -209,7 +246,7 @@ async function toggleSize(picker: Locator, size: RegExp): Promise<void> {
 }
 
 /**
- * Sign in, stub cluster-manager, open the dialog, pick wc1 — the form's own
+ * Sign in, stub cluster-manager, open Add GPU node pool, pick wc1 — the form's own
  * dry run answers with the sizes to pick from before the pool is named — and
  * name the pool `gpu-e2e`.
  */
@@ -225,35 +262,36 @@ async function reachForm(page: Page, options: StubOptions = {}) {
     .getByRole('button', { name: 'Add GPU node pool' })
     .first()
     .click({ timeout: 60_000 });
-  const dialog = page.getByRole('dialog');
+  await expectAddPoolPage(page);
   // The installation's one cluster is picked as the form opens; the sizes,
   // their prices and the presets are there before the pool is named: the
   // decision is made on the form, the name only labels the pool.
-  await expect(dialog.getByRole('button', { name: /^wc1 \(/ })).toBeVisible({
+  await expect(page.getByRole('button', { name: /^wc1 \(/ })).toBeVisible({
     timeout: 60_000,
   });
-  await expect(dialog.getByTestId('node-size-picker')).toBeVisible({
+  await expect(page.getByTestId('node-size-picker')).toBeVisible({
     timeout: 60_000,
   });
   // Unnamed, Review says so on the name field (T67).
-  await dialog.getByRole('button', { name: 'Review' }).click({
+  await page.getByRole('button', { name: 'Review' }).click({
     timeout: 60_000,
   });
-  await expect(dialog.getByText('Name the pool.')).toBeVisible();
-  await dialog.getByLabel(/Pool name/).fill('gpu-e2e');
-  await expect(dialog.getByRole('button', { name: 'Review' })).toBeEnabled({
+  await expect(page.getByText('Name the pool.')).toBeVisible();
+  await page.getByLabel(/Pool name/).fill('gpu-e2e');
+  await expect(page.getByRole('button', { name: 'Review' })).toBeEnabled({
     timeout: 60_000,
   });
-  return { dialog, calls };
+  return { calls };
 }
 
 /** …and Review, with the chart's default sizes as chosen. */
 async function reachReview(page: Page, options: StubOptions = {}) {
   const reached = await reachForm(page, options);
-  await reached.dialog.getByRole('button', { name: 'Review' }).click();
-  await expect(reached.dialog.getByTestId('pool-fit-review')).toBeVisible({
+  await page.getByRole('button', { name: 'Review' }).click();
+  await expect(page.getByTestId('pool-fit-review')).toBeVisible({
     timeout: 60_000,
   });
+  await expectWizardStep(page, 'Review');
   return reached;
 }
 
@@ -274,8 +312,8 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('the form offers the g6 sizes with usable resources, GPU memory and price, the cheapest as the from price; a change re-judges; the review shows the same choice and Deploy sends it', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachForm(page);
-    const picker = dialog.getByTestId('sizes-picker');
+    const { calls } = await reachForm(page);
+    const picker = page.getByTestId('sizes-picker');
 
     // The first dry run, with the chart's defaults: every size, priced, every one preselected.
     expect(dryRuns(calls)[0].arguments).not.toHaveProperty('sizes');
@@ -291,16 +329,16 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     for (const size of [/g6\.xlarge/, /g6\.2xlarge/, /g6\.4xlarge/]) {
       await expect(picker.getByRole('checkbox', { name: size })).toBeChecked();
     }
-    await expect(dialog.getByTestId('price-summary')).toContainText(
+    await expect(page.getByTestId('price-summary')).toContainText(
       'from $1.01/h per node (g6.xlarge) — the pool scales to zero',
     );
     await expect(picker).toContainText(
       `Prices: ${PRICE_SOURCE}, as of ${PRICE_AS_OF}.`,
     );
     await expect(
-      dialog.getByRole('button', { name: /I want to serve/ }),
+      page.getByRole('button', { name: /I want to serve/ }),
     ).toBeVisible();
-    await expect(dialog.getByTestId('node-pool-review')).toHaveCount(0);
+    await expect(page.getByTestId('node-pool-review')).toHaveCount(0);
     await snapshot(page, 'gpu-pool-form-sizes-prices');
 
     // Sizes [xlarge]: the two L4 presets fit no chosen size — said in the
@@ -310,8 +348,8 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect
       .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
       .toEqual(['xlarge']);
-    await expect(dialog.getByTestId('fit-warnings')).toHaveCount(0);
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await expect(page.getByTestId('fit-warnings')).toHaveCount(0);
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     const marked = page.getByRole('option', {
       name: /Qwen3 4B Instruct — fits no chosen size/,
     });
@@ -333,7 +371,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect
       .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
       .toEqual(['xlarge', '2xlarge']);
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     await expect(
       page.getByRole('option', { name: / — fits no chosen size/ }),
     ).toHaveCount(0, { timeout: 30_000 });
@@ -341,7 +379,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       page.getByRole('option', { name: /Qwen3 4B Instruct/ }),
     ).toContainText('from g6.2xlarge');
     await page.getByRole('option', { name: /Any preset/ }).click();
-    await expect(dialog.getByTestId('price-summary')).toContainText(
+    await expect(page.getByTestId('price-summary')).toContainText(
       'from $1.01/h',
     );
 
@@ -350,17 +388,17 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect
       .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
       .toEqual(['2xlarge']);
-    await expect(dialog.getByTestId('price-summary')).toContainText(
+    await expect(page.getByTestId('price-summary')).toContainText(
       'from $1.22/h per node (g6.2xlarge)',
     );
 
     // The review shows the same choice — the size with its price, no picker —
     // and the presets each size hosts by display name and model.
-    await dialog.getByRole('button', { name: 'Review' }).click();
-    await expect(dialog.getByTestId('pool-fit-review')).toBeVisible({
+    await page.getByRole('button', { name: 'Review' }).click();
+    await expect(page.getByTestId('pool-fit-review')).toBeVisible({
       timeout: 30_000,
     });
-    const chosen = dialog.getByTestId('chosen-sizes');
+    const chosen = page.getByTestId('chosen-sizes');
     await expect(chosen).toContainText(
       'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
     );
@@ -368,7 +406,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect(chosen).toContainText(
       'I want to serve: any preset — no preference',
     );
-    const fit = dialog.getByTestId('preset-fit');
+    const fit = page.getByTestId('preset-fit');
     await expect(fit).toContainText('Qwen3 4B Instruct');
     await expect(fit).toContainText('Qwen/Qwen3-4B-Instruct-2507');
     await expect(fit).toContainText(
@@ -382,12 +420,12 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       '✘ needs 57.6 GiB of GPU memory across 1 GPU(s); a g6 GPU has 24 GiB',
     );
     await expect(fit.getByText(/✘ needs .* GiB of GPU memory/)).toHaveCount(7);
-    await expect(dialog.getByTestId('sizes-picker')).toHaveCount(0);
+    await expect(page.getByTestId('sizes-picker')).toHaveCount(0);
     await snapshot(page, 'gpu-pool-review-same-choice');
 
-    // Deploy sends the sizes as chosen, and closes into the lifecycle panel.
-    await dialog.getByRole('button', { name: /^Deploy/ }).click();
-    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    // Deploy sends the sizes as chosen, and returns to GPU pools on the lifecycle panel.
+    await page.getByRole('button', { name: /^Deploy/ }).click();
+    await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });
     await expect(page.getByTestId('pool-lifecycle')).toContainText(
       'Pool wc1-gpu-e2e',
     );
@@ -403,10 +441,10 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
   test('choosing a preset on the form preselects the smallest size hosting it with its price and marks the others; a preset no chosen size hosts blocks Deploy with the reason, Add the size unblocks', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachForm(page);
-    const picker = dialog.getByTestId('sizes-picker');
+    const { calls } = await reachForm(page);
+    const picker = page.getByTestId('sizes-picker');
 
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     const option = page.getByRole('option', { name: /Qwen3 4B Instruct/ });
     await expect(option).toContainText('Qwen/Qwen3-4B-Instruct-2507');
     await option.click();
@@ -433,17 +471,17 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect(
       picker.getByRole('checkbox', { name: /g6\.4xlarge/ }),
     ).toHaveAccessibleName(/ · hosts Qwen3 4B Instruct/);
-    await expect(dialog.getByTestId('price-summary')).toContainText(
+    await expect(page.getByTestId('price-summary')).toContainText(
       'from $1.22/h per node (g6.2xlarge)',
     );
-    await expect(dialog.getByTestId('deploy-blocked')).toHaveCount(0);
+    await expect(page.getByTestId('deploy-blocked')).toHaveCount(0);
     await snapshot(page, 'gpu-pool-form-preset-picked');
 
     // Only xlarge: the preset fits no chosen size — Deploy is blocked with the
     // reason naming 2xlarge; the other L4 preset's warning stands out and does not block.
     await toggleSize(picker, /g6\.xlarge/);
     await toggleSize(picker, /g6\.2xlarge/);
-    const blocked = dialog.getByTestId('deploy-blocked');
+    const blocked = page.getByTestId('deploy-blocked');
     await expect(blocked).toBeVisible({ timeout: 30_000 });
     await expect(blocked).toContainText(
       'Deploy is blocked: Qwen3 4B Instruct fits no size of this pool',
@@ -452,7 +490,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       '2xlarge (8 vCPU / 32 GiB) would host it',
     );
     // The other L4 preset is marked in the list, not in an alert.
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     await expect(
       page.getByRole('option', { name: /Qwen3 8B FP8 — fits no chosen size/ }),
     ).toBeVisible();
@@ -460,127 +498,123 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       page.getByRole('option', { name: / — fits no chosen size/ }),
     ).toHaveCount(2);
     await page.keyboard.press('Escape');
-    await expect(dialog.getByTestId('fit-warnings')).toHaveCount(0);
+    await expect(page.getByTestId('fit-warnings')).toHaveCount(0);
     await snapshot(page, 'gpu-pool-form-blocked');
 
     await blocked.getByRole('button', { name: 'Add 2xlarge' }).click();
-    await expect(dialog.getByTestId('deploy-blocked')).toHaveCount(0, {
+    await expect(page.getByTestId('deploy-blocked')).toHaveCount(0, {
       timeout: 30_000,
     });
 
     // A 128 GB preset: the GPU-memory reason blocks and no size would help;
     // the review says so and Deploy is disabled. Back keeps the choice.
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     await page.getByRole('option', { name: /Qwen3 Coder Next/ }).click();
     await expect(blocked).toContainText(
       'needs 96 GiB of GPU memory across 1 GPU(s); a g6 GPU has 24 GiB',
     );
     await expect(blocked.getByRole('button', { name: /^Add/ })).toHaveCount(0);
-    await dialog.getByRole('button', { name: 'Review' }).click();
-    await expect(dialog.getByTestId('pool-fit-review')).toBeVisible({
+    await page.getByRole('button', { name: 'Review' }).click();
+    await expect(page.getByTestId('pool-fit-review')).toBeVisible({
       timeout: 30_000,
     });
-    await expect(dialog.getByTestId('chosen-sizes')).toContainText(
+    await expect(page.getByTestId('chosen-sizes')).toContainText(
       'I want to serve: Qwen3 Coder Next (Qwen/Qwen3-Coder-Next-FP8)',
     );
-    await expect(dialog.getByTestId('deploy-blocked')).toContainText(
+    await expect(page.getByTestId('deploy-blocked')).toContainText(
       'needs 96 GiB of GPU memory',
     );
-    await expect(
-      dialog.getByRole('button', { name: /^Deploy/ }),
-    ).toBeDisabled();
+    await expect(page.getByRole('button', { name: /^Deploy/ })).toBeDisabled();
     await snapshot(page, 'gpu-pool-review-blocked');
-    await dialog.getByRole('button', { name: 'Back' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
     await expect(
       picker.getByRole('checkbox', { name: /g6\.2xlarge/ }),
     ).toBeChecked();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelAddPool(page);
   });
 
   test('a cluster without a serving slice still offers the presets — the ones the chart ships', async ({
     page,
   }) => {
-    const { dialog } = await reachForm(page, { presetOrigin: 'chart' });
+    await reachForm(page, { presetOrigin: 'chart' });
     await expect(
-      dialog.getByRole('button', { name: /I want to serve/ }),
+      page.getByRole('button', { name: /I want to serve/ }),
     ).toBeVisible();
-    await expect(dialog.getByTestId('node-size-picker')).toContainText(
+    await expect(page.getByTestId('node-size-picker')).toContainText(
       `Presets: ${PRESET_SOURCE.chart}.`,
     );
-    await expect(dialog.getByTestId('preset-fit-note')).toHaveCount(0);
+    await expect(page.getByTestId('preset-fit-note')).toHaveCount(0);
 
-    await dialog.getByRole('button', { name: /I want to serve/ }).click();
+    await page.getByRole('button', { name: /I want to serve/ }).click();
     const option = page.getByRole('option', { name: /Qwen3 8B FP8/ });
     await expect(option).toContainText('Qwen/Qwen3-8B-FP8');
     await option.click();
     await expect(
-      dialog
+      page
         .getByTestId('sizes-picker')
         .getByRole('checkbox', { name: /g6\.2xlarge/ }),
     ).toBeChecked();
-    await expect(dialog.getByTestId('price-summary')).toContainText(
+    await expect(page.getByTestId('price-summary')).toContainText(
       'from $1.22/h per node (g6.2xlarge)',
     );
     await snapshot(page, 'gpu-pool-form-chart-presets');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelAddPool(page);
   });
 
   test('where nothing could be judged the form shows the note under a preset picker with nothing to pick', async ({
     page,
   }) => {
-    const { dialog } = await reachForm(page, { presets: false });
-    const note = dialog.getByTestId('preset-fit-note');
+    await reachForm(page, { presets: false });
+    const note = page.getByTestId('preset-fit-note');
     await expect(note).toContainText('No presets to judge yet');
     await expect(note).toContainText(
       "no serving preset is published on wc1 yet — the slice release publishes them once it is ready; a dryRun re-run then says which of the pool's sizes host each",
     );
     // The picker stands in place, disabled: the form never moves for an answer.
     await expect(
-      dialog.getByRole('button', { name: /I want to serve/ }),
+      page.getByRole('button', { name: /I want to serve/ }),
     ).toBeDisabled();
-    await expect(dialog.getByTestId('sizes-picker')).toContainText(
+    await expect(page.getByTestId('sizes-picker')).toContainText(
       'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
     await snapshot(page, 'gpu-pool-form-no-presets');
 
-    await dialog.getByRole('button', { name: 'Review' }).click();
-    await expect(dialog.getByTestId('pool-fit-review')).toBeVisible({
+    await page.getByRole('button', { name: 'Review' }).click();
+    await expect(page.getByTestId('pool-fit-review')).toBeVisible({
       timeout: 30_000,
     });
-    await expect(dialog.getByTestId('preset-fit')).toHaveCount(0);
-    await expect(dialog.getByTestId('preset-fit-note')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /^Deploy/ })).toBeEnabled();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('preset-fit')).toHaveCount(0);
+    await expect(page.getByTestId('preset-fit-note')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Deploy/ })).toBeEnabled();
+    await cancelAddPool(page);
   });
 
   test('a Deploy cut short lists the pending objects and Continue re-runs the same call', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachReview(page, { partialApplies: 1 });
-    await dialog.getByRole('button', { name: /^Deploy/ }).click();
+    const { calls } = await reachReview(page, { partialApplies: 1 });
+    await page.getByRole('button', { name: /^Deploy/ }).click();
 
-    const partial = dialog.getByTestId('partial-write');
+    const partial = page.getByTestId('partial-write');
     await expect(partial).toContainText(
       'Deploy was cut short: 3 of 7 objects are pending',
     );
     await expect(partial).toContainText(
       're-run with the same arguments, the pending objects are written first',
     );
-    const pending = dialog.getByTestId('pending-objects');
+    const pending = page.getByTestId('pending-objects');
     await expect(pending).toContainText(
       'ConfigMap agent-platform/model-backend-kserve: pending',
     );
     await expect(pending).toContainText(
       'HelmRelease org-lab/wc1-gpu-operator: pending',
     );
-    await expect(dialog.getByRole('button', { name: /^Deploy/ })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole('button', { name: /^Deploy/ })).toHaveCount(0);
     await snapshot(page, 'gpu-pool-deploy-partial');
 
     await partial.getByRole('button', { name: 'Continue' }).click();
-    // The completed Deploy closes into the pool's lifecycle panel.
-    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    // The completed Deploy returns to GPU pools on the pool's lifecycle panel.
+    await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });
     await expect(page.getByTestId('pool-lifecycle')).toContainText(
       'Pool wc1-gpu-e2e',
     );
@@ -606,27 +640,27 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
   test('the form offers every zone of the cluster chosen and the cache off; two zones and the cache on travel to the dry run, the review, Deploy and the lifecycle panel', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachForm(page);
+    const { calls } = await reachForm(page);
     // The zones are under More options, their default every zone (T67).
-    await dialog.getByText('More options').click();
-    const zones = dialog.getByTestId('zones-picker');
+    await page.getByText('More options').click();
+    const zones = page.getByTestId('zones-picker');
     await expect(zones).toBeVisible();
     for (const zone of ZONES) {
       await expect(zones.getByRole('checkbox', { name: zone })).toBeChecked();
     }
-    await expect(dialog.getByTestId('zones-choice')).toContainText(
+    await expect(page.getByTestId('zones-choice')).toContainText(
       'The nodes may launch in every zone of the cluster',
     );
-    const cache = dialog.getByRole('switch', { name: 'Keep a model cache' });
+    const cache = page.getByRole('switch', { name: 'Keep a model cache' });
     await expect(cache).not.toBeChecked();
     // Off by default: what a cold start costs, and that switching on creates a billed claim.
-    await expect(dialog.getByTestId('cache-consequence')).toContainText(
+    await expect(page.getByTestId('cache-consequence')).toContainText(
       'about 90 s more',
     );
-    await expect(dialog.getByTestId('cache-consequence')).toContainText(
+    await expect(page.getByTestId('cache-consequence')).toContainText(
       'Switching it on creates a cache claim, a volume billed every month it exists',
     );
-    await expect(dialog.getByTestId('cache-cost')).toHaveCount(0);
+    await expect(page.getByTestId('cache-cost')).toHaveCount(0);
     // The defaults travel as such: every zone named, the cache off, no Teleport.
     expect(dryRuns(calls)[0].arguments).toMatchObject({
       zones: ZONES,
@@ -642,16 +676,16 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
       zones.getByRole('checkbox', { name: 'eu-central-1b' }),
     ).not.toBeChecked();
     await expect(cache).toBeChecked();
-    await expect(dialog.getByTestId('zones-choice')).toContainText(
+    await expect(page.getByTestId('zones-choice')).toContainText(
       'The nodes launch in eu-central-1a, eu-central-1c only.',
     );
     // The switch on: the figure is cluster-manager's (the dry run's cache
     // block), the switch's own line, saying the cost stands after the pool.
-    await expect(dialog.getByTestId('cache-cost')).toContainText(
+    await expect(page.getByTestId('cache-cost')).toContainText(
       '$27.37/month at list prices — billed while the claim exists, after this pool is removed too',
       { timeout: 60_000 },
     );
-    await expect(dialog.getByTestId('cache-consequence')).toContainText(
+    await expect(page.getByTestId('cache-consequence')).toContainText(
       'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS).',
     );
     await expect
@@ -665,23 +699,23 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
       )
       .toBe(true);
 
-    await dialog.getByRole('button', { name: 'Review' }).click();
-    const placement = dialog.getByTestId('placement-review');
+    await page.getByRole('button', { name: 'Review' }).click();
+    const placement = page.getByTestId('placement-review');
     await expect(placement).toBeVisible({ timeout: 60_000 });
     await expect(placement).toContainText(
       'Zones: eu-central-1a, eu-central-1c.',
     );
     await expect(placement).toContainText('Model cache: on');
-    await expect(dialog.getByTestId('review-zones-note')).toContainText(
+    await expect(page.getByTestId('review-zones-note')).toContainText(
       'nodes pinned to eu-central-1a, eu-central-1c, the zones named on create; the slice mounts the model cache claim model-serving/hf-cache',
     );
-    await expect(dialog.getByTestId('review-cache-note')).toContainText(
+    await expect(page.getByTestId('review-cache-note')).toContainText(
       'the predictors mount the model cache claim model-serving/hf-cache',
     );
     await snapshot(page, 'gpu-pool-zones-cache-review');
 
-    await dialog.getByRole('button', { name: /^Deploy/ }).click();
-    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await page.getByRole('button', { name: /^Deploy/ }).click();
+    await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });
     expect(applies(calls)[0].arguments).toMatchObject({
       mode: 'apply',
       zones: ['eu-central-1a', 'eu-central-1c'],
@@ -702,31 +736,30 @@ test.describe('models: the model cache is the cluster’s and billed while it st
   test('the form’s cache line carries cluster-manager’s price and the standing-cost words; a kept claim shows on the Model cache card with its cost and goes with Remove cache', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachForm(page, { keptCache: 'kept' });
+    const { calls } = await reachForm(page, { keptCache: 'kept' });
     // Off by default, the kept claim is named as standing and costing;
     // switched on, the price is cluster-manager's, from the dry run — the
     // switch's own line — not the plugin's.
-    const consequence = dialog.getByTestId('cache-consequence');
+    const consequence = page.getByTestId('cache-consequence');
     await expect(consequence).toContainText(
       'The existing cache hf-cache ($27.37/month) stays and keeps costing until it is removed under Model cache.',
       { timeout: 60_000 },
     );
     await toggleByLabel(
-      dialog.getByRole('switch', { name: 'Keep a model cache' }),
+      page.getByRole('switch', { name: 'Keep a model cache' }),
     );
-    await expect(dialog.getByTestId('cache-cost')).toContainText(
+    await expect(page.getByTestId('cache-cost')).toContainText(
       '$27.37/month at list prices — billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.',
       { timeout: 60_000 },
     );
     await expect(consequence).toContainText(
       'Creates a cache claim (100Gi gp3, 500 MiB/s, 3000 IOPS).',
     );
-    await expect(dialog.getByTestId('cache-price-source')).toContainText(
+    await expect(page.getByTestId('cache-price-source')).toContainText(
       'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1), as of 2026-09-19',
     );
     await snapshot(page, 'gpu-pool-cache-cost-line');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
+    await cancelAddPool(page);
 
     // The kept claim: on Model hosting's Model cache tab, with its size, cost
     // and since when.
@@ -775,7 +808,7 @@ test.describe('models: the model cache is the cluster’s and billed while it st
       claim: KEPT_CLAIM.name,
       mode: 'apply',
     });
-    await expect(card).toContainText('No model cache stands', {
+    await expect(card).toContainText('No cluster keeps a model cache', {
       timeout: 60_000,
     });
     await snapshot(page, 'gpu-pool-cache-removed');
@@ -784,14 +817,14 @@ test.describe('models: the model cache is the cluster’s and billed while it st
   test('where the cluster’s slice keeps the cache the switch is on and locked, the kept claim named with its cost, and the dry run carries the cache on', async ({
     page,
   }) => {
-    const { dialog, calls } = await reachForm(page, { keptCache: 'mounted' });
-    const cache = dialog.getByRole('switch', { name: 'Keep a model cache' });
+    const { calls } = await reachForm(page, { keptCache: 'mounted' });
+    const cache = page.getByRole('switch', { name: 'Keep a model cache' });
     await expect(cache).toBeChecked();
     await expect(cache).toBeDisabled();
-    await expect(dialog.getByTestId('cache-kept')).toContainText(
+    await expect(page.getByTestId('cache-kept')).toContainText(
       'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off.',
     );
-    await expect(dialog.getByTestId('cache-kept')).toContainText(
+    await expect(page.getByTestId('cache-kept')).toContainText(
       'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month',
     );
     expect(dryRuns(calls)[0].arguments).toMatchObject({ cache: true });
@@ -800,13 +833,13 @@ test.describe('models: the model cache is the cluster’s and billed while it st
 });
 
 test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stubbed)', () => {
-  test('Deploy closes into the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model, whose link opens the Serve dialog on the pool with model-manager’s presets and fit verdict', async ({
+  test('Deploy returns to GPU pools on the lifecycle panel: the row reads creating, then ready · 0 nodes; the steps turn done and end in Serve your first model, whose link opens Serve model on the pool with model-manager’s presets and fit verdict', async ({
     page,
   }) => {
     // The backend the pool registers with model-manager, as the lab lacks it:
     // the kserve backend, its presets and the fit verdict, over muster like
-    // everything else the Serve dialog asks — so the hand-off lands on a
-    // dialog that can serve, not on "no serving backend can load a model".
+    // everything else Serve model asks — so the hand-off lands on a page
+    // that can serve, not on "no backend can serve a model yet".
     const modelManager = await stubModelManagerTools(page, {
       list_backends: { backends: [KSERVE_POOL_BACKEND] },
       list_presets: { presets: L4_POOL_PRESETS },
@@ -816,11 +849,11 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       check_fit: poolFitAnswer,
       load_model: new ToolRefusal('unexpected: nothing was to be served'),
     });
-    const { dialog, calls } = await reachReview(page, {
+    const { calls } = await reachReview(page, {
       servers: ['model-manager'],
     });
-    await dialog.getByRole('button', { name: /^Deploy/ }).click();
-    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await page.getByRole('button', { name: /^Deploy/ }).click();
+    await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });
 
     const panel = page.getByTestId('pool-lifecycle');
     await expect(panel).toContainText('Pool wc1-gpu-e2e');
@@ -863,8 +896,10 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       );
     }
     const href = (await serve.getAttribute('href')) ?? '';
-    expect(href).toContain('/agent-platform/models/serving?');
-    expect(href).toContain('serve=1');
+    expect(href).toContain('/agent-platform/models/serving/serve?');
+    // The page's own query, not the dialog-era `?serve=1` link.
+    expect(href).not.toContain('serve=1');
+    expect(href).toContain(`installation=${lab.installation}`);
     expect(href).toContain('cluster=wc1');
     expect(href).toContain('pool=gpu-e2e');
     await snapshot(page, 'gpu-pool-lifecycle-ready');
@@ -888,7 +923,7 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       'ready · 0 nodes',
     );
 
-    // The hand-off: Serve your first model opens the Serving page's dialog on
+    // The hand-off: Serve your first model opens Serve model on
     // this pool, the presets model-manager publishes for the cluster offered
     // and check_fit's verdict before the button — all through muster as the
     // person, nothing composed in the browser.
@@ -896,18 +931,16 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       .getByTestId('pool-lifecycle')
       .getByRole('link', { name: 'Serve your first model' })
       .click();
-    await expect(page).toHaveURL(/\/agent-platform\/models\/serving/);
-    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
-    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
-    await expect(serveDialog.getByTestId('serve-target')).toHaveText(
+    await expectServePage(page);
+    await expect(page.getByTestId('serve-target')).toHaveText(
       `On GPU pool gpu-e2e of cluster wc1 (${lab.installation})`,
     );
     await expect(
-      serveDialog.getByRole('button', { name: /Preset/ }),
+      page.getByRole('button', { name: /Preset/ }),
       'the first preset model-manager publishes is chosen',
     ).toHaveText(/Qwen3 4B Instruct/);
     await expect(
-      serveDialog.getByTestId('serve-fit-verdict'),
+      page.getByTestId('serve-fit-verdict'),
       'check_fit judged the preset against the pool',
     ).toContainText('Fits — the node comes as g6.xlarge');
     expect(modelManager.callsOf('check_fit')).toEqual([
@@ -917,7 +950,7 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
       },
     ]);
     await snapshot(page, 'gpu-pool-serve-first-model');
-    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelServe(page);
     // Without a preset on the form there is no serve intent: nothing was loaded.
     expect(modelManager.callsOf('load_model')).toEqual([]);
     await modelManager.unroute();
@@ -926,8 +959,8 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
   test('an installation on an older cluster-manager gets the panel with fewer steps from poolReleases and the components status, never an error', async ({
     page,
   }) => {
-    const { dialog } = await reachReview(page, { lifecycle: 'legacy' });
-    await dialog.getByRole('button', { name: /^Deploy/ }).click();
+    await reachReview(page, { lifecycle: 'legacy' });
+    await page.getByRole('button', { name: /^Deploy/ }).click();
 
     const panel = page.getByTestId('pool-lifecycle');
     await expect(panel).toContainText('Pool wc1-gpu-e2e', { timeout: 30_000 });
@@ -952,7 +985,7 @@ test.describe('models: GPU node pool lifecycle after Deploy (cluster-manager stu
  * show beneath until it answers; a reload keeps the step and its state; Remove
  * clears the intent; a refused fit shows model-manager's reason with **Serve
  * another model**; a load model-manager threw on offers **Try serving again**
- * and the dialog with the preset preselected. cluster-manager and model-manager
+ * and Serve model with the preset preselected. cluster-manager and model-manager
  * stubbed at the browser as above; the lab's muster appears to list
  * model-manager too (`servers`), and the stubbed inventory advances one stage per
  * read once the load was accepted (the shapes of model-manager 0.24.0).
@@ -1165,23 +1198,23 @@ async function stageServeIntent(page: Page, options: IntentStubOptions = {}) {
 
 /** Reach the form with model-manager listed, choose the 8B preset (2xlarge is its size), Review and Deploy. */
 async function deployWithPreset(page: Page) {
-  const { dialog, calls } = await reachForm(page, {
+  const { calls } = await reachForm(page, {
     servers: ['model-manager'],
   });
-  await dialog.getByRole('button', { name: /I want to serve/ }).click();
+  await page.getByRole('button', { name: /I want to serve/ }).click();
   await page.getByRole('option', { name: /Qwen3 8B FP8/ }).click();
   await expect
     .poll(() => dryRuns(calls).at(-1)?.arguments.sizes)
     .toEqual(['2xlarge']);
-  await dialog.getByRole('button', { name: 'Review' }).click();
-  await expect(dialog.getByTestId('pool-fit-review')).toBeVisible({
+  await page.getByRole('button', { name: 'Review' }).click();
+  await expect(page.getByTestId('pool-fit-review')).toBeVisible({
     timeout: 30_000,
   });
-  await expect(dialog.getByTestId('chosen-sizes')).toContainText(
+  await expect(page.getByTestId('chosen-sizes')).toContainText(
     'I want to serve: Qwen3 8B FP8 (Qwen/Qwen3-8B-FP8)',
   );
-  await dialog.getByRole('button', { name: /^Deploy/ }).click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await page.getByRole('button', { name: /^Deploy/ }).click();
+  await expect(page).toHaveURL(CAPACITY_VIEW, { timeout: 30_000 });
   const panel = page.getByTestId('pool-lifecycle');
   await expect(panel).toContainText('Pool wc1-gpu-e2e');
   return { panel, calls };
@@ -1373,7 +1406,7 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
     await modelManager.unroute();
   });
 
-  test('a preset the pool as deployed cannot host: check_fit’s reason verbatim as the dialog words it, load_model never called, Serve another model opens the dialog on the pool', async ({
+  test('a preset the pool as deployed cannot host: check_fit’s reason verbatim as Serve model words it, load_model never called, Serve another model opens Serve model on the pool', async ({
     page,
   }) => {
     const modelManager = await stageServeIntent(page);
@@ -1394,21 +1427,19 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
     await snapshot(page, 'gpu-pool-serve-intent-refused');
 
     await serve.getByRole('link', { name: 'Serve another model' }).click();
-    await expect(page).toHaveURL(/\/agent-platform\/models\/serving/);
-    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
-    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
-    await expect(serveDialog.getByTestId('serve-target')).toHaveText(
+    await expectServePage(page);
+    await expect(page.getByTestId('serve-target')).toHaveText(
       `On GPU pool gpu-e2e of cluster wc1 (${lab.installation})`,
     );
     await expect(
-      serveDialog.getByRole('button', { name: /Preset/ }),
-      'another model: the dialog starts from the first preset',
+      page.getByRole('button', { name: /Preset/ }),
+      'another model: Serve model starts from the first preset',
     ).toHaveText(/Qwen3 4B Instruct/);
-    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelServe(page);
     await modelManager.unroute();
   });
 
-  test('a load model-manager threw on: the message, the dialog with the preset preselected, Try serving again loads once more', async ({
+  test('a load model-manager threw on: the message, Serve model with the preset preselected, Try serving again loads once more', async ({
     page,
   }) => {
     const modelManager = await stageServeIntent(page, {
@@ -1427,23 +1458,24 @@ test.describe('models: GPU node pool serve intent — the preset chosen on the f
     expect(modelManager.callsOf('load_model')).toHaveLength(1);
     await snapshot(page, 'gpu-pool-serve-intent-failed');
 
-    // The way out carries the preset: the Serve dialog on the pool preselects it.
+    // The way out carries the preset: Serve model on the pool preselects it.
     const link = serve.getByRole('link', {
-      name: 'Serve Qwen3 8B FP8 in the dialog',
+      name: 'Serve Qwen3 8B FP8 manually',
     });
-    expect(await link.getAttribute('href')).toContain('preset=qwen3-8b-fp8');
+    const href = (await link.getAttribute('href')) ?? '';
+    expect(href).toContain('/agent-platform/models/serving/serve?');
+    expect(href).toContain('model=qwen3-8b-fp8');
     await link.click();
-    const serveDialog = page.getByRole('dialog', { name: 'Serve model' });
-    await expect(serveDialog).toBeVisible({ timeout: 30_000 });
+    await expectServePage(page);
     await expect(
-      serveDialog.getByRole('button', { name: /Preset/ }),
+      page.getByRole('button', { name: /Preset/ }),
       'the preset the pool was deployed to serve is preselected',
     ).toHaveText(/Qwen3 8B FP8/);
-    await expect(serveDialog.getByTestId('serve-fit-verdict')).toContainText(
+    await expect(page.getByTestId('serve-fit-verdict')).toContainText(
       'Fits — the node comes as g6.2xlarge',
     );
-    await snapshot(page, 'gpu-pool-serve-dialog-preselected');
-    await serveDialog.getByRole('button', { name: 'Cancel' }).click();
+    await snapshot(page, 'gpu-pool-serve-page-preselected');
+    await cancelServe(page);
 
     // Back on the pool: Try serving again asks model-manager once more, and
     // the second load is accepted.

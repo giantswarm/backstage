@@ -39,7 +39,7 @@ function emptyStateDescription(
   if (noBackendYet) {
     return `model-manager on ${installations.join(
       ', ',
-    )} has no backend registered, so no node reports GPU capacity. Add a GPU node pool, or register a backend on the Serving view.`;
+    )} has no backend registered, so no node reports GPU capacity. Add a GPU node pool, or register a backend under Running models.`;
   }
   return 'The visible serving layers do not report their nodes. KServe-backed layers do, and Ollama-backed model-manager from 0.7 on.';
 }
@@ -135,7 +135,7 @@ export function GpuCapacityPage({
         {pools.dialogs}
         {pools.panel}
         <Text color="secondary">
-          Shows the nodes that served models run on, per environment.
+          Served models run on these nodes, listed per environment.
         </Text>
         <GpuCapacityPanel
           nodes={serving.gpuNodes}

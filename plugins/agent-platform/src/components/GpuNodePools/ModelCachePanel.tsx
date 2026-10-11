@@ -53,7 +53,7 @@ export type ModelCachePanelProps = {
 
 /** The empty state: no claim stands, nothing is billed. */
 export const NO_MODEL_CACHE =
-  'No model cache stands on the clusters cluster-manager lists: nothing is billed for cached weights.';
+  'No cluster keeps a model cache, so nothing is billed for cached weights.';
 
 /** `18 Sept 2026` — since when a claim stands. */
 export function describeSince(created: string | undefined): string {
@@ -428,10 +428,11 @@ export function ModelCachePanel({
       <InfoCard title="Model cache">
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            Keeps the weights and compiled graphs of a cluster's served models,
-            so a model starts about 90 s faster the second time. Every pool of
-            the cluster serves from it. The volume outlives the pools and is
-            billed every month, filled or not, until removed here.
+            The cache keeps the weights and compiled graphs of a cluster's
+            served models, so a model starts about 90 s faster the second time.
+            Every pool of the cluster serves from it. The volume outlives the
+            pools and is billed every month, filled or not, until you remove it
+            here.
             {total ? ` Standing: ${total}.` : ''}
           </Text>
           {body}

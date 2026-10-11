@@ -17,19 +17,20 @@ import {
   parseModelManagerList,
 } from '../../lib/modelManager';
 import type { GpuNode } from '../../lib/serving';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeSearchResult,
-  ImportModelDialog,
+  ImportModelPage,
   SEARCH_LIMIT,
   type ImportTarget,
-} from './ImportModelDialog';
+} from './ImportModelPage';
 import { describeFit } from '../../lib/modelManagerServe';
 
 const searchModels = jest.fn();
 const fitCheck = jest.fn();
 const pullModel = jest.fn();
 const post = jest.fn();
-const onOpenChange = jest.fn();
+const onImported = jest.fn();
 
 const modelManagerApi = {
   searchModels,
@@ -66,12 +67,18 @@ function render(targets: ImportTarget[] = [target]) {
         [toastApiRef, { post }],
       ]}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>{children}</PageHeaderActionsProvider>
+      </QueryClientProvider>
     </TestApiProvider>
   );
   return renderInTestApp(
     <Wrapper>
-      <ImportModelDialog isOpen onOpenChange={onOpenChange} targets={targets} />
+      <ImportModelPage
+        targets={targets}
+        closeHref="/agent-platform/models/serving"
+        onImported={onImported}
+      />
     </Wrapper>,
   );
 }
@@ -86,7 +93,7 @@ const downloadButton = () =>
   screen.getByRole('button', { name: /Download|Starting/ });
 
 beforeEach(() => {
-  [searchModels, fitCheck, pullModel, post, onOpenChange].forEach(fn =>
+  [searchModels, fitCheck, pullModel, post, onImported].forEach(fn =>
     fn.mockReset(),
   );
   searchModels.mockResolvedValue(results);
@@ -106,7 +113,7 @@ describe('describeSearchResult / describeFit', () => {
   });
 });
 
-describe('ImportModelDialog', () => {
+describe('ImportModelPage', () => {
   it('searches the hub, checks the fit of the chosen hit on the node, and starts the download', async () => {
     await render();
     // Pressable before a model is picked: pressed, the search field says what
@@ -155,11 +162,13 @@ describe('ImportModelDialog', () => {
     );
     // Never `wire`: on kserve models are wired when served.
     expect(pullModel.mock.calls[0][1]).not.toHaveProperty('wire');
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
     expect(post).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Downloading Qwen/Qwen3-14B on gpu',
-        description: expect.stringContaining('Into the cache on gpu-node-1'),
+        description: expect.stringContaining(
+          'It goes into the cache on gpu-node-1.',
+        ),
       }),
     );
   });
@@ -272,7 +281,7 @@ describe('ImportModelDialog', () => {
     );
   });
 
-  it('cannot be dismissed while the download is starting, and closes once it started', async () => {
+  it('is a page whose Cancel leads back, and hands over once the download started', async () => {
     let land: (answer: unknown) => void = () => {};
     pullModel.mockReturnValue(
       new Promise(resolve => {
@@ -288,15 +297,23 @@ describe('ImportModelDialog', () => {
 
     await userEvent.click(downloadButton());
     await screen.findByRole('button', { name: /Starting…/ });
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await userEvent.keyboard('{Escape}');
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Import from Hugging Face',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
 
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
     land({ job: { id: 'j1' }, created: true });
-    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
   });
 
-  it('stays open with the refusal when model-manager rejects the download', async () => {
+  it('stays with the refusal when model-manager rejects the download', async () => {
     const refused = new Error(
       'model does not fit: 104.8 GiB exceed the 86.1 GiB available',
     );
@@ -315,7 +332,7 @@ describe('ImportModelDialog', () => {
       await screen.findByText('The download could not be started'),
     ).toBeInTheDocument();
     expect(screen.getByText(/104\.8 GiB exceed/)).toBeInTheDocument();
-    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
   });
 
   it('reports a hub that cannot be searched and an empty result', async () => {
@@ -336,7 +353,7 @@ describe('ImportModelDialog', () => {
   });
 });
 
-describe('ImportModelDialog · the selects at scale', () => {
+describe('ImportModelPage · the selects at scale', () => {
   const nodesOf = (count: number): GpuNode[] =>
     Array.from({ length: count }, (_, i) => ({
       ...node,

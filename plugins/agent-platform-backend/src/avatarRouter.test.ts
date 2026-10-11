@@ -30,8 +30,12 @@ function upstream(
   return jest.fn(async (_url: string, _init: RequestInit) => answer());
 }
 
-function app(fetchFn: jest.Mock) {
-  const logger = mockServices.logger.mock();
+function app(
+  fetchFn: jest.Mock,
+  logger: ReturnType<
+    typeof mockServices.logger.mock
+  > = mockServices.logger.mock(),
+) {
   const router = createAvatarRouter({
     config,
     logger,
@@ -189,7 +193,17 @@ describe('GET /avatars/:installation/v1/...', () => {
           status: 200,
           headers: { 'Content-Type': 'text/html' },
         }),
-      /text\/html rather than an image/,
+      /text\/html rather than a raster image/,
+    ],
+    [
+      // An SVG can carry script and would be served same-origin.
+      'answers an SVG',
+      () =>
+        new Response('<svg/>', {
+          status: 200,
+          headers: { 'Content-Type': 'image/svg+xml' },
+        }),
+      /image\/svg\+xml rather than a raster image/,
     ],
     [
       'declares more bytes than an avatar has',
@@ -221,6 +235,49 @@ describe('GET /avatars/:installation/v1/...', () => {
       expect(response.body.error.message).toMatch(reason);
     },
   );
+
+  it.each(['image/jpeg', 'image/gif', 'image/webp', 'IMAGE/PNG; charset=x'])(
+    'forwards a raster image sent as %s',
+    async contentType => {
+      const fetchFn = upstream(
+        () =>
+          new Response(png, {
+            status: 200,
+            headers: { 'Content-Type': contentType },
+          }),
+      );
+
+      const response = await request(app(fetchFn)).get(
+        '/avatars/gazelle/v1/go-developer.png',
+      );
+
+      expect(response.status).toBe(200);
+    },
+  );
+
+  it('logs a failure under a fixed message, the content type as metadata', async () => {
+    const logger = mockServices.logger.mock();
+    const fetchFn = upstream(
+      () =>
+        new Response('<svg/>', {
+          status: 200,
+          headers: { 'Content-Type': 'image/svg+xml' },
+        }),
+    );
+
+    await request(app(fetchFn, logger)).get(
+      '/avatars/gazelle/v1/go-developer.png',
+    );
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'The avatar service answered something other than a raster image',
+      {
+        url: 'https://avatars.gazelle.example/v1/go-developer.png',
+        installation: 'gazelle',
+        contentType: 'image/svg+xml',
+      },
+    );
+  });
 
   it('exposes the endpoint size allowlist, the same as the frontend’s', () => {
     expect(AVATAR_SIZES).toEqual([48, 96, 128, 512]);

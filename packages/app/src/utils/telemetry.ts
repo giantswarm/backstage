@@ -4,6 +4,15 @@ import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 
+/** Model hosting's create flows by their last path segment, as page names. */
+const HOSTING_FLOW_PAGES: Record<string, string> = {
+  serve: 'Serve model',
+  import: 'Import model',
+  pull: 'Pull model',
+  'add-backend': 'Add model backend',
+  'add-pool': 'Add GPU node pool',
+};
+
 export function getTelemetryPageViewPayload(pathname: string): {
   [key: string]: string;
 } {
@@ -235,6 +244,19 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // must stay above the views case, which would report `view: 'edit'`.
     case /^\/agent-platform\/models\/edit\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
       payload = { page: 'Model edit' };
+      break;
+
+    // Model hosting's create flows, each a page of its own under the view it
+    // adds to: `…/models/serving/{serve,import,pull,add-backend}` and
+    // `…/models/capacity/add-pool`. One page each, so a flow is counted apart
+    // from the view it was opened on; must stay above the views case, which
+    // would report it as that view.
+    case /^\/agent-platform\/models\/(serving\/(serve|import|pull|add-backend)|capacity\/add-pool)\/?$/.test(
+      pathname,
+    ):
+      payload = {
+        page: HOSTING_FLOW_PAGES[pathname.replace(/\/$/, '').split('/')[4]],
+      };
       break;
 
     // What hangs off the Models tab: the serving views (`serving`, `capacity`,
