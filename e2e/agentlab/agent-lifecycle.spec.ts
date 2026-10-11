@@ -63,8 +63,10 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
   let failure: unknown;
   try {
     await startSessionOnReadyAgent(admin, prompt, async dialog => {
-      await admin.keyboard.press('Escape');
+      // The X first: Escape starts a transition on the X, and a click that
+      // follows at once finds it unstable, then detached, until it times out.
       await dialog.getByRole('button', { name: 'Close' }).click();
+      await admin.keyboard.press('Escape');
       await expect(
         dialog,
         'neither Escape nor the header’s X closes the dialog while the create is on its way',
@@ -74,8 +76,10 @@ test('agent lifecycle: create in the wizard, become ready, chat, delete', async 
       admin.getByTestId('timeline-user-message').getByText(prompt),
       "the person's message is on the timeline",
     ).toBeVisible();
+    // The agent's own entry, never any PONG on the page: the prompt carries
+    // the word too (the user's bubble, the session title, the sidebar).
     await expect(
-      admin.getByText(/PONG/).nth(1),
+      admin.getByTestId('timeline-agent-message').filter({ hasText: 'PONG' }),
       "the agent's answer arrives on the timeline",
     ).toBeVisible({ timeout: 3 * 60_000 });
     await expect(
