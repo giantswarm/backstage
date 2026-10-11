@@ -1,16 +1,18 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import {
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { WorkflowExecutionSummary } from '../../apis/types';
-import { formatDuration } from '../../lib/formatDuration';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { WorkflowStep, WorkflowSubStep } from '../../lib/k8s';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
-import { executionOutcome, toolDisplay } from '../../lib/workflowDisplay';
+import { executionOutcome } from '../../lib/workflowDisplay';
 import {
   buildWorkflowGraph,
   findFlowStep,
@@ -23,16 +25,28 @@ import {
   StepRunOverlay,
   StepRunStatus,
   stepToolEffects,
+  TitleFit,
 } from '../../lib/workflowGraph';
 import { useToolCatalogue } from '../shared';
-import { useRecentRuns } from './useRecentRuns';
+import {
+  accessibleName,
+  quietStatus,
+  runBadgeLabel,
+  runSpoken,
+  toolLine,
+} from './flowLabels';
+import { useLatestRun } from './useLatestRun';
 import { WorkflowStepDetails } from './WorkflowStepDetails';
+import { WorkflowStepList } from './WorkflowStepList';
+
+export { runBadgeLabel } from './flowLabels';
 
 const EDGE_COLOR = 'var(--bui-fg-secondary)';
 
 /**
  * The canvas viewport never grows past this: a workflow may hold a hundred
- * steps, and the page below it (runs, statistics) must stay in reach. The
+ * steps, and the page below it (statistics, the advanced details) must stay
+ * in reach. The
  * flow scrolls inside its box instead.
  */
 export const FLOW_VIEWPORT_MAX_HEIGHT = 560;
@@ -108,7 +122,6 @@ const useStyles = makeStyles({
     display: 'block',
     boxSizing: 'border-box',
     width: '100%',
-    height: FLOW_METRICS.groupHeader - 4,
     padding: '8px 14px 0',
     border: 0,
     borderRadius: 14,
@@ -117,16 +130,21 @@ const useStyles = makeStyles({
   laneHead: {
     cursor: 'default',
   },
+  groupTitleText: {
+    flex: '1 1 auto',
+  },
   groupTitleRow: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     minWidth: 0,
   },
   groupLabel: {
     display: 'block',
-    marginTop: 2,
+    flex: '1 1 auto',
+    minWidth: 0,
     fontSize: 12,
+    lineHeight: '16px',
     color: 'var(--bui-fg-secondary)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -178,17 +196,34 @@ const useStyles = makeStyles({
     minWidth: 0,
     display: 'flex',
     flexDirection: 'column',
-    gap: 2,
   },
+  // The title is the information: it wraps onto a second line (the layout
+  // sized the box for it), and only a title longer than that is clamped —
+  // with the full title as its tooltip.
   title: {
-    fontSize: 13.5,
+    fontSize: FLOW_METRICS.titleFontSize,
+    lineHeight: `${FLOW_METRICS.titleLineHeight}px`,
     fontWeight: 500,
-    whiteSpace: 'nowrap',
+    overflowWrap: 'anywhere',
+    display: '-webkit-box',
+    WebkitBoxOrient: 'vertical',
+    WebkitLineClamp: 2,
     overflow: 'hidden',
-    textOverflow: 'ellipsis',
+  },
+  // The second line: the tool (cut first — the title is the information)
+  // and the last-run badge at its end, so the badge never narrows the title.
+  subRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    minWidth: 0,
+    marginTop: 2,
   },
   sub: {
+    flex: '1 1 auto',
+    minWidth: 0,
     fontSize: 12,
+    lineHeight: '16px',
     color: 'var(--bui-fg-secondary)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -196,6 +231,7 @@ const useStyles = makeStyles({
   },
   run: {
     flex: 'none',
+    marginLeft: 'auto',
     fontSize: 11.5,
     whiteSpace: 'nowrap',
     fontVariantNumeric: 'tabular-nums',
@@ -277,75 +313,24 @@ const useStyles = makeStyles({
     transform: 'rotate(45deg)',
     border: '1.5px solid currentColor',
   },
+  // Last, so the rules it refers to exist.
+  // A parallel group spans its siblings and is often wider than the box,
+  // which opens on the spine: its head is centered over the spine, so its
+  // name is in view where the reader is.
+  headCentered: {
+    textAlign: 'center',
+    '& $groupTitleRow, & $subRow': { justifyContent: 'center' },
+    '& $groupTitleText, & $groupLabel': { flex: '0 1 auto' },
+  },
 });
 
-/** The plain line under a step's name: connector · tool, and its tile glyph. */
-function toolLine(
-  tool: string | undefined,
-  prefixes: ServerPrefixInfo[],
-): { glyph: string; line: string } {
-  if (!tool) {
-    return { glyph: '·', line: '' };
-  }
-  const display = toolDisplay(tool, prefixes);
-  switch (display.kind) {
-    case 'connector':
-      return {
-        glyph: display.connector.charAt(0).toUpperCase(),
-        line: `${display.connector} · ${display.tool}`,
-      };
-    case 'core':
-      return { glyph: 'M', line: `muster · ${display.tool}` };
-    case 'workflow':
-      return { glyph: 'W', line: `Runs the workflow ${display.workflow}` };
-    default:
-      return {
-        glyph: display.tool.charAt(0).toUpperCase(),
-        line: display.tool,
-      };
-  }
-}
-
-/** A node's last-run badge text: "✓ ×3 1.2s", "✕ Failed", "Skipped"… */
-export function runBadgeLabel(overlay: StepRunOverlay): string {
-  switch (overlay.status) {
-    case 'completed': {
-      const parts = ['✓'];
-      if (overlay.runs > 1) parts.push(`×${overlay.runs}`);
-      if (overlay.durationMs !== undefined) {
-        parts.push(formatDuration(overlay.durationMs));
-      }
-      return parts.join(' ');
-    }
-    case 'failed':
-      return '✕ Failed';
-    case 'running':
-      return 'Running';
-    case 'skipped':
-      return 'Skipped';
-    case 'notRun':
-    default:
-      return 'Not run';
-  }
-}
-
-/** The badge in words, for a node's accessible name. */
-function runSpoken(overlay: StepRunOverlay): string {
-  switch (overlay.status) {
-    case 'completed':
-      return overlay.runs > 1
-        ? `last run succeeded ${overlay.runs} times`
-        : 'last run succeeded';
-    case 'failed':
-      return 'last run failed';
-    case 'running':
-      return 'running';
-    case 'skipped':
-      return 'skipped in the last run';
-    case 'notRun':
-    default:
-      return 'did not run in the last run';
-  }
+/**
+ * A title's tooltip: only where the box may not show all of it — a wrapped
+ * title (the layout's width is an estimate) or a clamped one. A title on one
+ * line shows itself; a tooltip there would only repeat it.
+ */
+function titleTooltip(title: string, fit: TitleFit): string | undefined {
+  return fit === 'oneLine' ? undefined : title;
 }
 
 function useRunClass(status: StepRunStatus | undefined): string | undefined {
@@ -404,19 +389,6 @@ function Markers({
   );
 }
 
-function quietStatus(overlay?: StepRunOverlay): boolean {
-  return overlay?.status === 'skipped' || overlay?.status === 'notRun';
-}
-
-/** "Step 2: Apply the manifests, kubernetes · apply, last run failed". */
-function accessibleName(
-  node: FlowStepNode,
-  parts: (string | undefined | false)[],
-): string {
-  const head = node.lane === 'cleanup' ? 'Cleanup step' : `Step ${node.number}`;
-  return [`${head}: ${node.title}`, ...parts].filter(Boolean).join(', ');
-}
-
 interface StepProps {
   node: FlowStepNode;
   prefixes: ServerPrefixInfo[];
@@ -465,21 +437,29 @@ function StepNode({
       onClick={() => onSelect(node.key)}
       data-step-key={node.key}
       data-run-status={overlay?.status}
+      data-title-fit={box.titleFit}
     >
       {node.number && <span className={classes.number}>{node.number}</span>}
       <Markers effect={effect} allowFailure={node.allowFailure} />
       <span className={classes.tile}>{glyph}</span>
       <span className={classes.text}>
-        <span className={classes.title} title={node.title}>
+        <span
+          className={classes.title}
+          title={titleTooltip(node.title, box.titleFit)}
+        >
           {node.title}
         </span>
-        {line && (
-          <span className={classes.sub} title={line}>
-            {line}
+        {(line || overlay) && (
+          <span className={classes.subRow}>
+            {line && (
+              <span className={classes.sub} title={line}>
+                {line}
+              </span>
+            )}
+            <RunBadge overlay={overlay} />
           </span>
         )}
       </span>
-      <RunBadge overlay={overlay} />
     </button>
   );
 }
@@ -509,14 +489,19 @@ function Group({
             {node.number}
           </span>
         )}
-        <span className={classes.title} title={title} style={{ flex: 1 }}>
+        <span
+          className={`${classes.title} ${classes.groupTitleText}`}
+          title={titleTooltip(title, group.titleFit)}
+        >
           {title}
         </span>
         {node?.allowFailure && <span className={classes.marker}>May fail</span>}
-        <RunBadge overlay={overlay} />
       </span>
-      <span className={classes.groupLabel} title={group.label}>
-        {group.label}
+      <span className={classes.subRow}>
+        <span className={classes.groupLabel} title={group.label}>
+          {group.label}
+        </span>
+        <RunBadge overlay={overlay} />
       </span>
     </>
   );
@@ -535,11 +520,15 @@ function Group({
       }}
       data-group={group.kind}
       data-run-status={overlay?.status}
+      data-title-fit={group.titleFit}
     >
       {node ? (
         <button
           type="button"
-          className={classes.groupHead}
+          className={`${classes.groupHead} ${
+            group.kind === 'parallel' ? classes.headCentered : ''
+          }`}
+          style={{ height: group.headerHeight - 4 }}
           aria-pressed={selected}
           aria-label={accessibleName(node, [
             group.label,
@@ -553,23 +542,14 @@ function Group({
           {content}
         </button>
       ) : (
-        <div className={`${classes.groupHead} ${classes.laneHead}`}>
+        <div
+          className={`${classes.groupHead} ${classes.laneHead}`}
+          style={{ height: group.headerHeight - 4 }}
+        >
           {content}
         </div>
       )}
     </div>
-  );
-}
-
-/** The newest run of a page of summaries (they arrive newest first). */
-function newestRun(
-  runs: WorkflowExecutionSummary[] | null | undefined,
-): WorkflowExecutionSummary | undefined {
-  if (!runs || runs.length === 0) {
-    return undefined;
-  }
-  return runs.reduce((newest, run) =>
-    run.started_at > newest.started_at ? run : newest,
   );
 }
 
@@ -597,6 +577,9 @@ export interface WorkflowFlowCanvasProps {
  * button that opens its details under the canvas — plain first, technical
  * information behind the step's own fold-out. The viewport is capped, so a
  * hundred-step workflow scrolls inside its box instead of burying the page.
+ *
+ * At phone width the same graph, overlay and effects render as a step list
+ * instead (`WorkflowStepList`): no sideways flow, no nested scroll box.
  */
 export function WorkflowFlowCanvas({
   name,
@@ -608,6 +591,8 @@ export function WorkflowFlowCanvas({
 }: WorkflowFlowCanvasProps) {
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
+  const isPhone = usePhoneLayout();
+  const isTouch = useTouchInput();
   const [selectedKey, setSelectedKey] = useState<string>();
 
   const graph = useMemo(
@@ -615,11 +600,20 @@ export function WorkflowFlowCanvas({
     [steps, onFailure],
   );
   const layout = useMemo(() => layoutWorkflowGraph(graph), [graph]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  // A flow wider than its box (a wide parallel group, the cleanup lane)
+  // would open at its left edge, with the spine half outside the box. Open
+  // it on the spine instead: the steps in order first, the siblings and the
+  // lane a sideways scroll away. Once per layout, never against the
+  // reader's own scrolling.
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || layout.width <= viewport.clientWidth) return;
+    viewport.scrollLeft = Math.max(0, layout.spineX - viewport.clientWidth / 2);
+  }, [layout]);
 
-  const runs = useRecentRuns(name, installation, hasSession);
-  const latest = newestRun(runs.data?.executions);
-  // Same key as the runs section's per-run trace, so expanding the newest run
-  // there reads from this cache.
+  const runs = useLatestRun(name, installation, hasSession);
+  const latest = runs.latest;
   const execution = useQuery({
     queryKey: [
       'muster',
@@ -667,6 +661,46 @@ export function WorkflowFlowCanvas({
   const toggle = (key: string) =>
     setSelectedKey(current => (current === key ? undefined : key));
   const overlayOf = (key: string) => (hasOverlay ? overlay[key] : undefined);
+
+  const caption = (
+    <figcaption className={classes.caption}>
+      <Text as="span" variant="body-small" color="secondary">
+        {runCaption ? `${runCaption} ` : ''}
+        {isTouch ? 'Tap' : 'Select'} a step to see its details.
+      </Text>
+      {hasEffects && (
+        <span className={classes.legend}>
+          <Text as="span" variant="body-small" color="secondary">
+            What each step's tool does:
+          </Text>
+          <span className={classes.marker}>Reads</span>
+          <span className={`${classes.marker} ${classes.markerChanges}`}>
+            Changes things
+          </span>
+        </span>
+      )}
+    </figcaption>
+  );
+
+  // A phone gets the steps as a list, not the canvas: a parallel group or
+  // the cleanup lane makes the flow wider than the screen (the lane was a
+  // sliver at its edge), and the capped scroll box trapped the swipe that
+  // should scroll the page. The list reads top to bottom with the page, and
+  // a step's details open in place under it.
+  if (isPhone) {
+    return (
+      <figure className={classes.figure} data-testid="workflow-step-list">
+        {caption}
+        <WorkflowStepList
+          graph={graph}
+          prefixes={prefixes}
+          installation={installation}
+          overlayOf={overlayOf}
+          effects={effects}
+        />
+      </figure>
+    );
+  }
 
   // Reading (and tab) order follows the flow: each group's head before its
   // steps, the cleanup lane last. Groups paint before their steps, so the
@@ -723,23 +757,9 @@ export function WorkflowFlowCanvas({
 
   return (
     <figure className={classes.figure} data-testid="workflow-flow-canvas">
-      <figcaption className={classes.caption}>
-        <Text as="span" variant="body-small" color="secondary">
-          {runCaption ? `${runCaption} ` : ''}Select a step to see its details.
-        </Text>
-        {hasEffects && (
-          <span className={classes.legend}>
-            <Text as="span" variant="body-small" color="secondary">
-              What each step's tool does:
-            </Text>
-            <span className={classes.marker}>Reads</span>
-            <span className={`${classes.marker} ${classes.markerChanges}`}>
-              Changes things
-            </span>
-          </span>
-        )}
-      </figcaption>
+      {caption}
       <div
+        ref={viewportRef}
         className={classes.scroller}
         role="group"
         aria-label={`Flow of the workflow's ${steps.length} step${

@@ -53,6 +53,9 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
     minWidth: 0,
+    // A tool's label is one snake_case token: it breaks rather than run
+    // under the effect badge on a phone.
+    overflowWrap: 'anywhere',
   },
   tryIt: {
     margin: '4px 0 12px',
@@ -251,8 +254,7 @@ export function ConnectorToolsTab({
       )}
       {tools.truncated && (
         <Text as="p" variant="body-small" color="secondary">
-          muster listed only part of the installation's tools, so this list may
-          be incomplete.
+          This list may be incomplete: muster returned only part of the tools.
         </Text>
       )}
       {shown.length === 0 ? (

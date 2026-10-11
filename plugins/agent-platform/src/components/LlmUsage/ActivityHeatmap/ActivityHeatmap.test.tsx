@@ -1,4 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { ActivityHeatmap } from './ActivityHeatmap';
 import {
   formatHeatmapDay,
@@ -176,7 +182,7 @@ describe('ActivityHeatmap', () => {
       />,
     );
 
-    const grid = screen.getByRole('img', { name: /^Model calls per day:/ });
+    const grid = screen.getByRole('group', { name: /^Model calls per day:/ });
     expect(cells(container)).toHaveLength(90);
     // 28px of weekday labels, then 13 columns of 15px, less the last gap.
     expect(grid).toHaveAttribute('width', String(28 + 13 * 15 - 3));
@@ -206,7 +212,7 @@ describe('ActivityHeatmap', () => {
     );
 
     expect(
-      screen.getByRole('img', {
+      screen.getByRole('group', {
         name: 'Model calls per day: no model calls in these 3 days.',
       }),
     ).toBeInTheDocument();
@@ -225,5 +231,92 @@ describe('ActivityHeatmap', () => {
     );
 
     expect(screen.getByText('0.5 model calls')).toBeInTheDocument();
+  });
+});
+
+// T22 C22: a phone never hovers, so a day's figure has to be selectable.
+describe('ActivityHeatmap · selecting a day', () => {
+  let layout: MockedLayout | undefined;
+  afterEach(() => layout?.restore());
+
+  const caption = () =>
+    document.querySelector('p[aria-live="polite"]') as HTMLElement;
+
+  it('says a pressed day’s figure under the legend, and clears it on a second press', async () => {
+    layout = mockDesktopLayout();
+    const user = userEvent.setup();
+    render(<ActivityHeatmap title="Model calls per day" days={THREE_DAYS} />);
+
+    const friday = screen.getByRole('button', {
+      name: `${formatHeatmapDay('2026-10-09')}: 40 model calls`,
+    });
+    expect(friday).toHaveAttribute('aria-pressed', 'false');
+    // No hint on a desktop: the cells' hover titles say the same.
+    expect(caption()).toHaveTextContent('');
+
+    await user.click(friday);
+    expect(friday).toHaveAttribute('aria-pressed', 'true');
+    expect(caption()).toHaveTextContent(
+      `${formatHeatmapDay('2026-10-09')}: 40 model calls`,
+    );
+
+    await user.click(friday);
+    expect(friday).toHaveAttribute('aria-pressed', 'false');
+    expect(caption()).toHaveTextContent('');
+  });
+
+  it('is one tab stop, and the arrow keys step through the days', async () => {
+    layout = mockDesktopLayout();
+    const user = userEvent.setup();
+    render(
+      <ActivityHeatmap
+        title="Model calls per day"
+        days={NINETY_DAYS}
+        partialLast
+      />,
+    );
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(90);
+    // Only the latest day is in the tab order until another is selected.
+    expect(
+      buttons.filter(cell => cell.getAttribute('tabindex') === '0'),
+    ).toEqual([buttons[89]]);
+
+    await user.tab();
+    expect(buttons[89]).toHaveFocus();
+    // A column left is the same weekday a week earlier.
+    await user.keyboard('{ArrowLeft}');
+    expect(buttons[82]).toHaveFocus();
+    expect(buttons[82]).toHaveAttribute('aria-pressed', 'true');
+    expect(caption()).toHaveTextContent(
+      `${formatHeatmapDay('2026-10-04')}: 83 model calls`,
+    );
+    await user.keyboard('{ArrowUp}');
+    expect(buttons[81]).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(buttons[0]).toHaveFocus();
+    expect(buttons[0]).toHaveAttribute('tabindex', '0');
+    // Enter on the selected day clears it.
+    await user.keyboard('{Enter}');
+    expect(buttons[0]).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('draws bigger cells at phone width, still inside a phone-width card, and says a day can be tapped', () => {
+    layout = mockPhoneLayout();
+    const { container } = render(
+      <ActivityHeatmap title="Model calls per day" days={NINETY_DAYS} />,
+    );
+
+    const grid = screen.getByRole('group', { name: /^Model calls per day:/ });
+    // 28px of labels, then 13 columns of 16px cells and 3px gaps.
+    expect(grid).toHaveAttribute('width', String(28 + 13 * 19 - 3));
+    expect(Number(grid.getAttribute('width'))).toBeLessThanOrEqual(311);
+    expect(cells(container)[0]).toHaveAttribute('width', '16');
+    expect(caption()).toHaveTextContent('Tap a day for its figure.');
+
+    // Back on a desktop the cells are 12px again.
+    act(() => layout!.setWidth(1280));
+    expect(cells(container)[0]).toHaveAttribute('width', '12');
   });
 });

@@ -66,15 +66,22 @@ const useStyles = makeStyles({
     borderBottom: '1px solid var(--bui-border-1)',
     fontSize: 14,
   },
+  // An unbroken snake_case tool name wraps inside its column at 375px
+  // rather than running under the effect badge.
   toolText: {
     flex: '1 1 auto',
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
     minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
+  toolEffect: {
+    flex: 'none',
   },
   code: {
     fontFamily: 'monospace',
+    overflowWrap: 'anywhere',
   },
 });
 
@@ -256,7 +263,7 @@ export function NewConnectorTestPage() {
           <strong style={{ fontWeight: 500 }}>Connected.</strong>{' '}
           {toolsQuery.isFetching
             ? 'Asking the connector what it can do…'
-            : `${displayName} reports no tools yet — discovery can take a moment.`}
+            : 'No tools reported yet — discovery can take a moment.'}
         </span>
       </div>
     );
@@ -274,7 +281,7 @@ export function NewConnectorTestPage() {
         )}
         <Text variant="body-small" color="secondary">
           {applying || !serverState
-            ? 'The connector is registered; waiting for muster to connect it — this refreshes automatically.'
+            ? 'Registered. Waiting for muster to connect it — updates automatically.'
             : (runtime?.statusMessage ?? cr?.getStateExplanation() ?? '')}
         </Text>
       </Flex>
@@ -285,9 +292,8 @@ export function NewConnectorTestPage() {
     <ConnectorWizardFrame step="test" onBack={onBack}>
       <WizardStepHeading title="Test the connection">
         The connector <span className={classes.code}>{serverName}</span> is
-        registered on <strong>{installation}</strong>. We connect to it as you
-        and ask what it can do. You can leave at any time — finish sign-in or
-        check status later from the connector&apos;s page.
+        registered on <strong>{installation}</strong>, tested as you. You can
+        leave any time and finish later on the connector&apos;s page.
       </WizardStepHeading>
 
       {status}
@@ -297,7 +303,7 @@ export function NewConnectorTestPage() {
           <Alert
             status="info"
             title="This connector needs your sign-in — that's normal"
-            description="People sign in with their own account, so each person completes a one-time sign-in before its tools appear. Sign in now to test it as you, or later from the connector's page."
+            description="Each person signs in once before its tools appear. Sign in now to test it, or later on the connector's page."
           />
           <ServerSignIn
             noun="connector"
@@ -313,7 +319,7 @@ export function NewConnectorTestPage() {
           title="This connector connects per session — that's normal"
           description={
             cr?.getStateExplanation() ??
-            'It is used with each person’s own identity: muster holds no connection of its own, and its tools appear in your session once muster has connected it for you.'
+            'It connects with each person’s own identity; its tools appear once muster has connected it for your session.'
           }
         />
       )}
@@ -330,9 +336,8 @@ export function NewConnectorTestPage() {
             }
           />
           <Text variant="body-small" color="secondary">
-            Muster keeps retrying. A wrong address or sign-in answer is fixable
-            right here — Back keeps everything you entered and saves your fix as
-            an update to this same connector.
+            Muster keeps retrying. To fix the address or sign-in, go Back — your
+            entries are kept and saved as an update to this connector.
           </Text>
         </Flex>
       )}
@@ -360,7 +365,9 @@ export function NewConnectorTestPage() {
                         </Text>
                       )}
                     </span>
-                    <EffectBadge effect={toolEffect(tool)} />
+                    <span className={classes.toolEffect}>
+                      <EffectBadge effect={toolEffect(tool)} />
+                    </span>
                   </div>
                 ))}
               </div>
@@ -368,8 +375,7 @@ export function NewConnectorTestPage() {
           </ShowMore>
           {partial && (
             <Text as="p" variant="body-small" color="secondary">
-              Only the first {tools.length} of its {toolsTotal} tools are listed
-              here.
+              Only the first {tools.length} of {toolsTotal} tools are listed.
             </Text>
           )}
           <Text as="p" variant="body-small" color="secondary">

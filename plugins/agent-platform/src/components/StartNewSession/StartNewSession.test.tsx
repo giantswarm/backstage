@@ -155,7 +155,7 @@ describe('StartNewSession', () => {
 
       expect(
         screen.getByText(
-          'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.',
+          'The only agent is not ready for a session. The Agents tab says why.',
         ),
       ).toHaveAttribute('data-variant', 'body-small');
     });
@@ -175,9 +175,7 @@ describe('StartNewSession', () => {
       );
 
       expect(
-        screen.getByText(
-          'The only agent on the fleet is not ready, so there is none to start a session with.',
-        ),
+        screen.getByText('The only agent is not ready for a session.'),
       ).toHaveAttribute('data-variant', 'body-medium');
       expect(screen.queryByRole('link')).not.toBeInTheDocument();
       expect(screen.queryByText(/Agents tab/)).not.toBeInTheDocument();

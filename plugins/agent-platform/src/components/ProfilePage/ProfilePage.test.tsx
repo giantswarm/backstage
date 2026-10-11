@@ -138,4 +138,14 @@ describe('ProfilePage', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
+
+  it('wraps a long address beside the avatar instead of widening the page (T22 C6)', async () => {
+    const email =
+      'jane.doe.with.a.very.long.address@platform-engineering.example.com';
+    await renderPage({ displayName: 'Jane Doe', email });
+
+    const identity = screen.getByTestId('profile-identity');
+    expect(identity).toHaveTextContent(email);
+    expect(identity).toHaveStyle({ minWidth: '0', overflowWrap: 'anywhere' });
+  });
 });

@@ -18,12 +18,43 @@ export interface LabUser {
 /** The lab's kind cluster: `clusterName` in its `agentlab.yaml`. */
 const cluster = process.env.AGENTLAB_CLUSTER ?? 'agentlab';
 
+/**
+ * Which portals the lab's Backstage serves, as `AGENTLAB_PORTAL_MODE` says:
+ *
+ * - `classic` (the default): `app.portals.agentPlatform` off, the chart's
+ *   default. Exactly the classic Platform Portal, with nothing of the Agent
+ *   Platform in it — no sidebar item, no `/agent-platform/**` route.
+ * - `shell`: the lab's Backstage runs with
+ *   `APP_CONFIG_app_portals_agentPlatform=true` (both portals on). The Agent
+ *   Platform is the agent shell on `/`, `/agent-platform/**` and
+ *   `/customize/**`; the classic portal everywhere else, its sidebar linking
+ *   into the shell.
+ *
+ * The switch is the deployment's, so one lab is in one mode at a time: the
+ * `agentlab` project (the classic portal's specs) runs in either, the
+ * `agentlab-shell` project (the Agent Platform's) only in `shell` — see
+ * `playwright.config.ts` and `portalModes.ts`.
+ */
+export type PortalMode = 'classic' | 'shell';
+
+function portalModeFromEnv(): PortalMode {
+  const mode = process.env.AGENTLAB_PORTAL_MODE ?? 'classic';
+  if (mode !== 'classic' && mode !== 'shell') {
+    throw new Error(
+      `AGENTLAB_PORTAL_MODE must be "classic" or "shell", not "${mode}"`,
+    );
+  }
+  return mode;
+}
+
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
     process.env.AGENTLAB_BACKSTAGE_URL ?? 'https://backstage.127.0.0.1.nip.io',
   /** The fixture password, the same for every lab user. */
   password: process.env.AGENTLAB_PASSWORD ?? 'password',
+  /** Which portals the lab serves (`AGENTLAB_PORTAL_MODE`, see {@link PortalMode}). */
+  portalMode: portalModeFromEnv(),
   /**
    * The installation name the portal's plugins address — the Helm release
    * name of the platform chart in the lab, not the kind cluster's name.

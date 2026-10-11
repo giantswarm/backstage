@@ -469,6 +469,7 @@ agentPlatform:
   #   workflowManagement: swarm-operator
   #   platformOperations: platform-manager
   #   skillEvaluation: skill-evaluator
+  #   skillCreation: skill-creator
   # Integrations living outside the portal that it points people at. `slack`
   # shows the dismissible "Use your agents right in Slack" banner on the
   # new-session home; leave it off until the installation's Slack integration

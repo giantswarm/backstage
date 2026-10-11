@@ -20,6 +20,11 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { SessionDetailPage } from './SessionDetailPage';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   sessionDetailV099 as detailV099,
@@ -272,7 +277,7 @@ const emptyTimeline = {
 async function render({
   agentShell = FeatureFlagState.None,
 }: { agentShell?: FeatureFlagState } = {}) {
-  await renderInTestApp(<SessionDetailPage />, {
+  return renderInTestApp(<SessionDetailPage />, {
     apis: [
       mockApis.featureFlags({
         initialStates: { [AGENT_SHELL_FLAG]: agentShell },
@@ -928,9 +933,7 @@ describe('SessionDetailPage', () => {
       expect(composer()).toBeDisabled();
       // The prototype's waiting caption, naming who waits on what.
       expect(
-        screen.getByText(
-          'Issue tracker is waiting for your answer. Answer the question above to continue.',
-        ),
+        screen.getByText('Issue tracker is waiting for your answer above.'),
       ).toBeInTheDocument();
     });
 
@@ -1012,9 +1015,7 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.getByText(
-          'Issue tracker is waiting for your decision. Allow or decline above to continue.',
-        ),
+        screen.getByText('Issue tracker is waiting for your decision above.'),
       ).toBeInTheDocument();
       expect(
         screen.getByText('Nothing is sent until you allow it.'),
@@ -1417,7 +1418,7 @@ describe('SessionDetailPage', () => {
         expect(screen.getByText('Stop failed')).toBeInTheDocument();
         expect(
           screen.getByText(
-            /Failed user token verification\. Your sign-in expired while this page was open — reload the page and stop the turn again\./,
+            /Failed user token verification\. Your sign-in expired — reload the page and stop the turn again\./,
           ),
         ).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
@@ -1950,7 +1951,7 @@ describe('SessionDetailPage', () => {
         screen.getByText('The agent’s runtime could not be brought back'),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(/nothing is missing from the transcript/),
+        screen.getByText(/The transcript above is complete/),
       ).toBeInTheDocument();
       // The runtime's words are the evidence under the explanation — and
       // nowhere the whole text of anything.
@@ -2321,6 +2322,103 @@ describe('SessionDetailPage', () => {
         within(screen.getByTestId('composer-card')).getByRole('button', {
           name: /Session cost and memory/,
         }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('on a phone (T22)', () => {
+    let layout: MockedLayout;
+    afterEach(() => layout?.restore());
+
+    const waitingView = {
+      ...loadedView,
+      isAgentWorking: false,
+      state: awaitingInput,
+      pendingConfirmation: {
+        taskId: 'task-1',
+        asks: 'input' as const,
+        toolName: 'ask_user',
+        questions: [{ question: 'Which cluster?', multiple: false }],
+      },
+    };
+
+    it('publishes the dock’s height on the document for the toasts, and takes it away with the dock (B4)', async () => {
+      const root = document.documentElement;
+      const { unmount } = await render();
+
+      expect(root.style.getPropertyValue('--session-dock-height')).toMatch(
+        /^\d+px$/,
+      );
+
+      unmount();
+      expect(root.style.getPropertyValue('--session-dock-height')).toBe('');
+    });
+
+    it('publishes no dock height where the composer is withheld', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: { ...loadedView.detail!, readOnly: true },
+      });
+      await render();
+
+      expect(screen.queryByTestId('session-dock')).not.toBeInTheDocument();
+      expect(
+        document.documentElement.style.getPropertyValue(
+          '--session-dock-height',
+        ),
+      ).toBe('');
+    });
+
+    it('folds the disabled composer to its caption under an open question (B21)', async () => {
+      layout = mockPhoneLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      await render();
+
+      const dock = screen.getByTestId('session-dock');
+      expect(
+        within(dock).getByRole('form', { name: 'Question from the agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('textbox', { name: 'Message' }),
+      ).not.toBeInTheDocument();
+      expect(within(dock).getByTestId('composer-folded')).toHaveTextContent(
+        'Issue tracker is waiting for your answer above.',
+      );
+      // The cost chip stays reachable beside the caption.
+      expect(
+        within(dock).getByRole('button', { name: /Session cost and memory/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the disabled composer under the question on a desktop', async () => {
+      layout = mockDesktopLayout();
+      mockUseSessionDetail.mockReturnValue(waitingView);
+      await render();
+
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
+    });
+
+    it('says the button starts the new session on touch, not Enter', async () => {
+      layout = mockPhoneLayout();
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: {
+          raw: 'failed',
+          key: 'failed',
+          label: 'Failed',
+          shellLabel: 'Failed',
+          tone: 'danger' as const,
+          isActive: false,
+        },
+        runtimeLoss: { reported: true, cause: 'gone', attempts: 1 },
+      });
+      await render();
+
+      expect(
+        screen.getByText(
+          'This session cannot continue; your message starts a new one with the same agent. Tap the button below to start it.',
+        ),
       ).toBeInTheDocument();
     });
   });

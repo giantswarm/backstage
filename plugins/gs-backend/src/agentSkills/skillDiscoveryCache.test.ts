@@ -7,6 +7,7 @@ import {
   isTransientDiscoveryError,
   MAX_ENTRIES,
   MAX_KEPT_CONTENT_BYTES,
+  MAX_PINNED_ENTRIES,
   MAX_STALE_MS,
   repositoryKey,
   SkillDiscoveryCache,
@@ -263,6 +264,100 @@ describe('SkillDiscoveryCache', () => {
       now += DISCOVERY_TTL_MS;
       const again = await cache.discover(REPO, undefined, load);
       expect(again.result.skills[0].contentReadable).toBe(true);
+    });
+  });
+
+  describe('skill files', () => {
+    const list = {
+      files: [
+        { path: 'SKILL.md', size: 30, sha: 's1' },
+        { path: 'references/x.md', size: 4, sha: 's2' },
+      ],
+      truncated: false,
+      total: 2,
+    };
+
+    it('answers a skill’s file list from the listing at that commit, never in the listing itself', async () => {
+      const first = await cache.discover(REPO, undefined, async () =>
+        snapshot({ files: new Map([['notes', list]]) }),
+      );
+
+      expect(cache.readSkillFiles(`${REPO}.git`, 'notes', HEAD)).toEqual(list);
+      expect(cache.readSkillFiles(REPO, 'notes', NEXT)).toBeUndefined();
+      expect(cache.readSkillFiles(REPO, 'other', HEAD)).toBeUndefined();
+      expect(first.result).not.toHaveProperty('files');
+      expect(first.result).not.toHaveProperty('fileContents');
+    });
+
+    it('moves the file bytes a checkout scan read into the file cache, out of the snapshot', async () => {
+      let handedBack: SkillDiscoverySnapshot | undefined;
+      const load = jest.fn(async (previous?: SkillDiscoverySnapshot) => {
+        handedBack = previous;
+        return snapshot({
+          files: new Map([['notes', list]]),
+          fileContents: new Map([
+            ['notes/references/x.md', Buffer.from('text')],
+          ]),
+        });
+      });
+      await cache.discover(REPO, undefined, load);
+      now += DISCOVERY_TTL_MS;
+      await cache.discover(REPO, undefined, load);
+
+      expect(cache.readFile(REPO, HEAD, 'notes/references/x.md')).toEqual({
+        binary: false,
+        bytes: Buffer.from('text'),
+      });
+      expect(cache.readFile(REPO, NEXT, 'notes/references/x.md')).toBe(
+        undefined,
+      );
+      // The snapshot a revalidation is handed keeps the lists, not the bytes.
+      expect(handedBack?.files).toEqual(new Map([['notes', list]]));
+      expect(handedBack).not.toHaveProperty('fileContents');
+    });
+
+    it('remembers a file read on a view', () => {
+      expect(
+        cache.rememberFile(REPO, HEAD, 'notes/a.md', Buffer.from('a')),
+      ).toEqual({ binary: false, bytes: Buffer.from('a') });
+      expect(cache.readFile(`${REPO}/`, HEAD, 'notes/a.md')).toBeDefined();
+    });
+
+    it('remembers what a read outside a listing found at a commit', () => {
+      cache.rememberPinned(REPO, NEXT, {
+        files: new Map([['notes', list]]),
+        contents: new Map([['notes', '---\nname: notes\n---\nOld.']]),
+        fileContents: new Map([['notes/references/x.md', Buffer.from('x')]]),
+      });
+
+      expect(cache.readSkillFiles(REPO, 'notes', NEXT)).toEqual(list);
+      expect(cache.readContent(REPO, 'notes', NEXT)).toEqual({
+        raw: '---\nname: notes\n---\nOld.',
+        repoUrl: REPO,
+      });
+      expect(cache.readFile(REPO, NEXT, 'notes/references/x.md')).toEqual({
+        binary: false,
+        bytes: Buffer.from('x'),
+      });
+    });
+
+    it(`remembers at most ${MAX_PINNED_ENTRIES} commits read outside a listing`, () => {
+      for (let i = 0; i <= MAX_PINNED_ENTRIES; i++) {
+        cache.rememberPinned(REPO, String(i).padStart(40, '0'), {
+          files: new Map([['notes', list]]),
+        });
+      }
+
+      expect(
+        cache.readSkillFiles(REPO, 'notes', '0'.repeat(40)),
+      ).toBeUndefined();
+      expect(
+        cache.readSkillFiles(
+          REPO,
+          'notes',
+          String(MAX_PINNED_ENTRIES).padStart(40, '0'),
+        ),
+      ).toEqual(list);
     });
   });
 

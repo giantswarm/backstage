@@ -1,4 +1,5 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { analyticsApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
@@ -9,6 +10,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { useUpdateAgent } from '../../hooks/useUpdateAgent';
+import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
 import type {
   AgentManagerAgent,
   AgentSkillEntry,
@@ -43,6 +45,8 @@ type Scenario = {
   refreshed?: AgentSkillEntry[];
   validateError?: Error;
   updateError?: Error;
+  /** The dialog is open in commit mode: an agent applied from git. */
+  commit?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -65,6 +69,7 @@ function makeMusterApi(scenario: Scenario = {}) {
             name: 'pr-reviewer',
             refreshSkills: true,
             update: true,
+            ...(scenario.commit ? { mode: 'commit' } : {}),
           });
           return {
             valid: true,
@@ -80,6 +85,9 @@ function makeMusterApi(scenario: Scenario = {}) {
         case 'x_agent-manager_update_agent':
           if (scenario.updateError) {
             throw scenario.updateError;
+          }
+          if (args.mode === 'commit') {
+            return committedTo('https://github.com/giantswarm/agents/pull/7');
           }
           return {
             agent: { ...AGENT, skills: refreshed },
@@ -97,10 +105,11 @@ function makeMusterApi(scenario: Scenario = {}) {
   return { api: { callTool } as unknown as MusterApi, callTool };
 }
 
+const analyticsApi = mockApis.analytics.mock();
 const onUpdated = jest.fn();
 const onOpenChange = jest.fn();
 
-function Host() {
+function Host({ mode }: { mode?: 'apply' | 'commit' }) {
   const updating = useUpdateAgent('gazelle');
   return (
     <AgentUpdateSkillsDialog
@@ -109,6 +118,7 @@ function Host() {
       name="pr-reviewer"
       displayName="PR reviewer"
       isOpen
+      mode={mode}
       onOpenChange={onOpenChange}
       updating={updating}
       onUpdated={onUpdated}
@@ -122,9 +132,14 @@ async function renderDialog(scenario: Scenario = {}) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
-        <Host />
+        <Host mode={scenario.commit ? 'commit' : 'apply'} />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -134,6 +149,7 @@ async function renderDialog(scenario: Scenario = {}) {
 beforeEach(() => {
   onUpdated.mockReset();
   onOpenChange.mockReset();
+  jest.mocked(analyticsApi.captureEvent).mockClear();
 });
 
 describe('AgentUpdateSkillsDialog', () => {
@@ -187,6 +203,92 @@ describe('AgentUpdateSkillsDialog', () => {
     });
     expect(write?.[1]).not.toHaveProperty('force');
     expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.agentUpdated',
+        attributes: { mode: 'apply', change: 'skillsRefreshed' },
+      }),
+    );
+  });
+
+  describe('for an agent applied from git (commit mode)', () => {
+    it('asks the dry run in commit mode, lists old → new commits and says it is a pull request', async () => {
+      const { callTool } = await renderDialog({ commit: true });
+
+      const moving = await screen.findByTestId('skill-refresh-pr-review');
+      expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
+      expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
+      expect(moving).toHaveTextContent('Moves to the head');
+      expect(
+        screen.getByText(/opens a pull request as you with the new pins/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Update skills' }),
+      ).not.toBeInTheDocument();
+      expect(
+        callTool.mock.calls.some(
+          ([tool]) => tool === 'x_agent-manager_update_agent',
+        ),
+      ).toBe(false);
+    });
+
+    it('opens the pull request with update_agent mode: commit, shows it, and reports the commit event', async () => {
+      const { callTool } = await renderDialog({ commit: true });
+      await screen.findByTestId('skill-refresh-pr-review');
+
+      const confirm = screen.getByRole('button', { name: 'Open pull request' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      expect(
+        await screen.findByRole('link', { name: /Open the pull request/ }),
+      ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
+      const write = callTool.mock.calls.find(
+        ([tool]) => tool === 'x_agent-manager_update_agent',
+      );
+      expect(write?.[1]).toEqual({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        refreshSkills: true,
+        mode: 'commit',
+      });
+      // Nothing to watch converge: the agent moves once the PR is merged.
+      expect(onUpdated).not.toHaveBeenCalled();
+      expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.agentUpdated',
+          attributes: { mode: 'commit', change: 'skillsRefreshed' },
+        }),
+      );
+      // Done: only Close is left.
+      expect(
+        screen.queryByRole('button', { name: 'Open pull request' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getAllByRole('button', { name: 'Close' }).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("shows agent-manager's refusal when the person's GitHub authorization is missing", async () => {
+      await renderDialog({
+        commit: true,
+        updateError: new Error(
+          'auth_required: connect your GitHub account to open pull requests',
+        ),
+      });
+      await screen.findByTestId('skill-refresh-pr-review');
+      const confirm = screen.getByRole('button', { name: 'Open pull request' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      expect(
+        await screen.findByText(/connect your GitHub account/),
+      ).toBeInTheDocument();
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
   });
 
   it('locks the confirm when every git skill is already at its head', async () => {

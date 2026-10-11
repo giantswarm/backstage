@@ -14,6 +14,11 @@ import {
   skillsRouteRef,
   usageRouteRef,
 } from '../../routes';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
@@ -157,20 +162,25 @@ jest.mock('../../hooks/useAgentStatus', () => ({
 const UPDATED_FROM_GENERATION = 4;
 jest.mock('./AgentUpdateSkillsDialog', () => ({
   AgentUpdateSkillsDialog: ({
+    mode,
     onUpdated,
   }: {
+    mode?: string;
     onUpdated: (
       skills: unknown,
       requestedBy?: string,
       fromGeneration?: number,
     ) => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => onUpdated(undefined, 'marian', UPDATED_FROM_GENERATION)}
-    >
-      stub: Update skills landed
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => onUpdated(undefined, 'marian', UPDATED_FROM_GENERATION)}
+      >
+        stub: Update skills landed
+      </button>
+      <output aria-label="stub: Update skills mode">{mode}</output>
+    </>
   ),
 }));
 
@@ -890,7 +900,7 @@ describe('AgentDetailPage', () => {
       expect(updateSkills()).toBeInTheDocument();
     });
 
-    it('withholds Update skills for an agent applied from git', async () => {
+    it('withholds Update skills for an agent applied from git that agent-manager cannot commit to', async () => {
       // agent-manager refuses every live write to it: its desired state lives in
       // the GitOps repository, so pressing the button could only ever end in the
       // refusal the dialog used to show after the fact.
@@ -902,15 +912,32 @@ describe('AgentDetailPage', () => {
       expect(updateSkills()).not.toBeInTheDocument();
     });
 
-    it('withholds Update skills for an agent applied from git even when agent-manager can commit', async () => {
-      // Update skills has no commit mode.
+    it('offers Update skills for an agent applied from git when agent-manager can commit, and opens the dialog in commit mode', async () => {
+      // A pull request in the GitOps repository, as Edit and Delete do.
       withAgentManager('gitops');
       canCommit = true;
       stubResources({ resource: makeAgent() });
 
       await renderPage('skills');
 
-      expect(updateSkills()).not.toBeInTheDocument();
+      expect(updateSkills()).toBeInTheDocument();
+      await userEvent.click(updateSkills()!);
+      expect(
+        screen.getByLabelText('stub: Update skills mode'),
+      ).toHaveTextContent('commit');
+    });
+
+    it('opens the dialog live for an agent agent-manager writes live', async () => {
+      withAgentManager('helmrelease');
+      canCommit = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderPage('skills');
+
+      await userEvent.click(updateSkills()!);
+      expect(
+        screen.getByLabelText('stub: Update skills mode'),
+      ).toHaveTextContent('apply');
     });
 
     it("withholds Update skills while agent-manager's verdict is in flight", async () => {
@@ -1249,9 +1276,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expect(
-        screen.getByText(
-          /deployed from a GitOps repository, so it is fixed there/,
-        ),
+        screen.getByText(/Deployed from GitOps: fix it there/),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
     });
@@ -1265,7 +1290,7 @@ describe('AgentDetailPage', () => {
 
       expect(
         screen.getByText(
-          /deployed from a GitOps repository, so a fix opens a pull request there/,
+          /Deployed from GitOps: a fix opens a pull request there/,
         ),
       ).toBeInTheDocument();
       expect(
@@ -1319,7 +1344,7 @@ describe('AgentDetailPage', () => {
 
       expect(
         screen.getByText(
-          'WorkerPool "kagent/default" not found. This is a problem with the platform, not with the agent: a platform admin has to fix it.',
+          'WorkerPool "kagent/default" not found. A platform problem, not the agent\'s: a platform admin has to fix it.',
         ),
       ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
@@ -1496,9 +1521,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expect(screen.getByText('No tools')).toBeInTheDocument();
-      expect(
-        screen.getByText('The agent has nothing beyond its own reasoning.'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Only its own reasoning.')).toBeInTheDocument();
     });
 
     it('names a sub-agent by the template behind it', async () => {
@@ -1659,7 +1682,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText(/Your own sessions with this agent/),
+        screen.getByText(/Only your sessions with this agent/),
       ).toBeInTheDocument();
     });
 
@@ -1675,7 +1698,7 @@ describe('AgentDetailPage', () => {
       await renderPage('sessions');
 
       expect(
-        screen.getByText(/does not scope sessions to a user/),
+        screen.getByText(/does not scope sessions to users/),
       ).toBeInTheDocument();
     });
 
@@ -2542,6 +2565,80 @@ describe('AgentDetailPage inside the agent shell', () => {
       expect(screen.getByText('Your sessions')).toBeInTheDocument();
       // No runtime reported a cost, so none is shown — not "$0.00".
       expect(screen.queryByText('Reported cost')).toBeNull();
+    });
+  });
+
+  describe('at phone width', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('puts the facts first, folded under Details, under a header that fits', async () => {
+      withAgentManager();
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+
+      // Edit, the primary action and the ⋯: no fourth button to wrap.
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('tab')).toHaveLength(3);
+
+      const details = screen.getByRole('button', { name: 'Details' });
+      expect(details).toHaveAttribute('aria-expanded', 'false');
+      expect(
+        details.compareDocumentPosition(
+          screen.getByRole('button', { name: 'Technical details' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('complementary', { name: 'About this agent' }),
+      ).toBeNull();
+      await userEvent.click(details);
+      expect(
+        screen.getByRole('complementary', { name: 'About this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('writes a skill’s pinned commit out whole, where no hover can show it', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+
+      const pin = await screen.findByText(COMMIT);
+      expect(pin).not.toHaveAttribute('title');
+    });
+  });
+
+  describe('on a desktop', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockDesktopLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('shortens a skill’s pinned commit, the whole of it on hover', async () => {
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Technical details' }),
+      );
+
+      expect(await screen.findByText(COMMIT.slice(0, 12))).toHaveAttribute(
+        'title',
+        COMMIT,
+      );
     });
   });
 });

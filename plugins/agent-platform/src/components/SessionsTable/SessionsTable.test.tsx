@@ -7,6 +7,11 @@ import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import { sessionsRouteRef } from '../../routes';
 import { SessionsTable } from './SessionsTable';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockBuildAvatarUrl = jest.fn(
   (installation: string, name: string) =>
@@ -624,5 +629,95 @@ describe('SessionsTable — filters', () => {
     expect(
       screen.getByText('No sessions match the filters.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('SessionsTable at phone width (T22 C14)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const many: SessionRow[] = Array.from({ length: 30 }, (_, index) => ({
+    id: `gazelle/s${index}`,
+    sessionId: `s${index}`,
+    installation: 'gazelle',
+    title: `Session ${index + 1}`,
+    agentName: 'Issue tracker',
+    agentTechnicalName: 'issue-tracker',
+    createdAt: new Date(Date.UTC(2026, 6, 1 + index)).toISOString(),
+  }));
+
+  it('lists the sessions as stacked rows, newest first, with the hidden columns left out', async () => {
+    layout = mockPhoneLayout();
+    await renderInTestApp(
+      <SessionsTable rows={rows} hideColumns={['agentName', 'installation']} />,
+      { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Sessions' });
+    const items = within(list).getAllByRole('listitem');
+    expect(
+      items.map(item => within(item).getByRole('link').textContent),
+    ).toEqual(['What issues are assi...', 'Chat']);
+    expect(within(items[0]).getByRole('link')).toHaveAttribute(
+      'href',
+      '/agent-platform/sessions/gazelle/abc',
+    );
+    // The page names the agent and the environment already.
+    expect(within(list).queryByText('Issue tracker')).not.toBeInTheDocument();
+    expect(within(list).queryByText('gazelle')).not.toBeInTheDocument();
+  });
+
+  it('shows a page of rows and the rest on request, instead of the table’s paging', async () => {
+    layout = mockPhoneLayout();
+    const user = userEvent.setup();
+    await renderInTestApp(<SessionsTable rows={many} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    const list = screen.getByRole('list', { name: 'Sessions' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(20);
+    expect(within(list).getAllByRole('link')[0]).toHaveTextContent(
+      'Session 30',
+    );
+
+    await user.click(screen.getByRole('button', { name: /Show 10 more/ }));
+    expect(
+      within(screen.getByRole('list', { name: 'Sessions' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(30);
+  });
+
+  it('searches the stacked rows too', async () => {
+    layout = mockPhoneLayout();
+    const user = userEvent.setup();
+    await renderInTestApp(<SessionsTable rows={many} searchDebounceMs={0} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search sessions' }),
+      'Session 7',
+    );
+
+    const list = await screen.findByRole('list', { name: 'Sessions' });
+    expect(
+      within(list)
+        .getAllByRole('link')
+        .map(link => link.textContent),
+    ).toEqual(['Session 7']);
+  });
+
+  it('keeps the table on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderInTestApp(<SessionsTable rows={rows} />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('list', { name: 'Sessions' }),
+    ).not.toBeInTheDocument();
   });
 });

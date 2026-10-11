@@ -22,7 +22,7 @@ export function describeSessionDeleteFailure(
   if (!loss) {
     return error.message;
   }
-  return `kagent could not delete this session because it suspends a session’s runtime before removing it, and this runtime cannot be reached — it was lost with the platform node it lived on. A kagent update that skips that step for a lost runtime is on its way; until it lands the session stays listed. Nothing else is affected. (${error.message})`;
+  return `kagent could not delete this session: it suspends the runtime first, and this runtime was lost with its platform node. A kagent fix is coming; until then the session stays listed. Nothing else is affected. (${error.message})`;
 }
 
 export type SessionDeleteDialogProps = {
@@ -84,15 +84,14 @@ export function SessionDeleteDialog({
       onConfirm={onConfirm}
     >
       <Text variant="body-medium">
-        The session’s runtime is shut down, and the session and its conversation
-        stop being listed and cannot be opened again. kagent keeps the record
-        and the conversation in its database, but there is no way to restore it
-        from here.
+        The runtime shuts down, and the session can no longer be listed or
+        opened. kagent keeps it in its database, but it can't be restored from
+        here.
       </Text>
       {isUserScoped === false && (
         <Text variant="body-medium">
-          This kagent deployment does not scope sessions to individual users, so
-          this session may have been started by somebody else.
+          This kagent does not scope sessions to users, so someone else may have
+          started this session.
         </Text>
       )}
     </ConfirmDialog>

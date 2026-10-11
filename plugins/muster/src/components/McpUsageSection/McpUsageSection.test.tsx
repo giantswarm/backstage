@@ -2,6 +2,11 @@ import { ReactNode } from 'react';
 import { act, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { McpUsage, MusterApi, musterApiRef } from '../../apis';
 import {
   MusterInstance,
@@ -91,9 +96,7 @@ describe('McpUsageSection on an installation the portal cannot reach', () => {
     render(<McpUsageSection />, { wrapper });
 
     expect(
-      screen.getByText(
-        `Usage metrics are read through a live muster session. ${NOTE}`,
-      ),
+      screen.getByText(`Usage metrics need a muster session. ${NOTE}`),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /connect|retry|sign in/i }),
@@ -295,5 +298,98 @@ describe('McpUsageSection connectors table', () => {
       screen.getByRole('button', { name: 'Show all 30 connectors' }).click();
     });
     expect(renderedConnectors()).toHaveLength(30);
+  });
+});
+
+// T22 C19: ~40px of padding per cell, and the tool names wrapped to four to
+// six lines in the room four columns left them.
+describe('McpUsageSection tables at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const usage: McpUsage = {
+    available: true,
+    range_hours: 720,
+    step_hours: 24,
+    buckets: [],
+    totals: {
+      calls: 1_000,
+      errors: 3,
+      error_ratio: 0.003,
+      p95_seconds: 0.4,
+      distinct_tools: 2,
+    },
+    top_tools: [
+      {
+        tool: 'x_kubernetes_gazelle_list_resources',
+        calls: 800,
+        errors: 3,
+        p95_seconds: 1.2,
+      },
+    ],
+    servers: [{ server: 'kubernetes', calls: 1_000, errors: 3 }],
+  };
+
+  async function renderSection() {
+    const api = {
+      getMcpUsage: jest.fn().mockResolvedValue(usage),
+      filterTools: jest.fn().mockResolvedValue({ tools: [] }),
+      signIn: jest.fn(),
+    };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const reachable = {
+      ...instance(),
+      activeInstallation: 'gazelle',
+      scope: 'gazelle',
+      activeInstallationInfo: instance().installationInfos[0],
+    };
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <TestApiProvider apis={[[musterApiRef, api as unknown as MusterApi]]}>
+        <QueryClientProvider client={queryClient}>
+          <MusterInstanceContext.Provider value={reachable}>
+            {children}
+          </MusterInstanceContext.Provider>
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    render(<McpUsageSection />, { wrapper });
+    await screen.findByText('x_kubernetes_gazelle_list_resources');
+  }
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent);
+
+  it('keeps the name and Calls, with errors and p95 in words under the name', async () => {
+    layout = mockPhoneLayout();
+    await renderSection();
+
+    expect(headers()).toEqual(['Top tools', 'Calls', 'Connector', 'Calls']);
+    const tool = screen
+      .getByText('x_kubernetes_gazelle_list_resources')
+      .closest('td') as HTMLElement;
+    expect(tool).toHaveTextContent('3 errors · p95 1.2 s');
+    const connector = screen
+      .getByText('kubernetes')
+      .closest('td') as HTMLElement;
+    expect(connector).toHaveTextContent('3 errors');
+    expect(connector).not.toHaveTextContent('p95');
+  });
+
+  it('keeps every column on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderSection();
+
+    expect(headers()).toEqual([
+      'Top tools',
+      'Calls',
+      'Errors',
+      'p95',
+      'Connector',
+      'Calls',
+      'Errors',
+    ]);
+    expect(screen.queryByText(/errors · p95/)).toBeNull();
   });
 });

@@ -279,10 +279,9 @@ export function RemoveGpuNodePoolDialog({
                 </div>
                 {refused && (
                   <Checkbox isSelected={force} onChange={setForce}>
-                    Remove anyway — the nodes go with the pool, the workloads on
-                    them are evicted, and with the cluster's last pool the
-                    models the platform serves on it are removed, their weights
-                    kept in the cache.
+                    Remove anyway — nodes go with the pool and their workloads
+                    are evicted; with the cluster's last pool, its served models
+                    are removed too (weights stay cached).
                   </Checkbox>
                 )}
               </Flex>
@@ -315,10 +314,9 @@ export function RemoveGpuNodePoolDialog({
         {canCommit && (
           <Flex direction="column" gap="2">
             <Text variant="body-small" color="secondary">
-              Or remove it from the repository owning the cluster instead:
-              cluster-manager opens a pull request as you. Where the owning
-              Kustomization runs without pruning, the pull request alone deletes
-              nothing — the tool says so in its answer.
+              Or remove it from the cluster's repository: cluster-manager opens
+              a pull request as you. If the owning Kustomization does not prune,
+              the merge alone deletes nothing — the answer says so.
             </Text>
             <div>
               <Button

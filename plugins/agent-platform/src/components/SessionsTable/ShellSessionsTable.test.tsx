@@ -13,6 +13,11 @@ import {
   SESSIONS_PAGE_SIZE,
 } from './ShellSessionsTable';
 import { SEARCH_MIN } from '../../lib/toolset';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
@@ -729,5 +734,107 @@ describe('SessionsTable in the shell layout', () => {
     expect(mockNavigate).toHaveBeenCalledWith(
       '/agent-platform/sessions/gazelle/b',
     );
+  });
+
+  describe('at phone width (T22 B1)', () => {
+    let layout: MockedLayout;
+    afterEach(() => layout.restore());
+
+    /** The stacked list named by a day's heading. */
+    const dayList = (name: string) => screen.getByRole('list', { name });
+    const listTitles = (list: HTMLElement) =>
+      within(list)
+        .getAllByRole('listitem')
+        .map(item => within(item).getAllByRole('link')[0].textContent);
+
+    it('lists each day as stacked rows instead of a table', async () => {
+      layout = mockPhoneLayout();
+      await renderShell();
+
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(listTitles(dayList('Today'))).toEqual(['Triage this week']);
+      expect(listTitles(dayList('Yesterday'))).toEqual(['Release notes']);
+      expect(listTitles(dayList('Earlier'))).toEqual([
+        'Pricing research',
+        'Untimed',
+      ]);
+    });
+
+    it('links the title to the session and puts agent, state, environment and start under it', async () => {
+      layout = mockPhoneLayout();
+      await renderShell();
+
+      const today = dayList('Today');
+      expect(
+        within(today).getByRole('link', { name: 'Triage this week' }),
+      ).toHaveAttribute('href', '/agent-platform/sessions/gazelle/a');
+      const row = within(today).getByRole('listitem');
+      expect(within(row).getByText('Support Triage')).toBeInTheDocument();
+      expect(within(row).getByText('Waiting for you')).toBeInTheDocument();
+      expect(within(row).getByText('gazelle')).toBeInTheDocument();
+      expect(row.querySelector('time')).toHaveAttribute(
+        'dateTime',
+        rows[0].createdAt,
+      );
+    });
+
+    it('keeps the pin and the ⋯ menu on the row, pressable without opening it', async () => {
+      layout = mockPhoneLayout();
+      const user = userEvent.setup();
+      const storage = mockApis.storage();
+      await renderShell(rows, states, storage);
+
+      const row = within(dayList('Yesterday')).getByRole('listitem');
+      await user.click(
+        within(row).getByRole('button', { name: 'Pin “Release notes”' }),
+      );
+      await waitFor(() =>
+        expect(listTitles(dayList('Pinned'))).toEqual(['Release notes']),
+      );
+
+      await user.click(
+        screen.getByRole('button', {
+          name: 'More actions for “Release notes”',
+        }),
+      );
+      expect(
+        await screen.findByRole('menuitem', { name: 'Delete session…' }),
+      ).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('says a missing state in words that stand without a column', async () => {
+      layout = mockPhoneLayout();
+      await renderShell(
+        [session('x', 'Never read', 'Support Triage', daysAgo(2, 9))],
+        { ...states, states: new Map() },
+      );
+
+      expect(
+        within(dayList('Earlier')).getByText('State not loaded'),
+      ).toBeInTheDocument();
+    });
+
+    it('goes back to the tables when the window widens', async () => {
+      layout = mockPhoneLayout();
+      await renderShell();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+      act(() => layout.setWidth(1280));
+
+      expect(
+        await screen.findByRole('grid', { name: 'Today' }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the tables on a desktop', async () => {
+      layout = mockDesktopLayout();
+      await renderShell();
+
+      expect(screen.getByRole('grid', { name: 'Today' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Today' }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

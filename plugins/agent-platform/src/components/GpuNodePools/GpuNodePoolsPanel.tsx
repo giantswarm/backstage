@@ -7,20 +7,29 @@ import {
   CellText,
   ColumnConfig,
   Flex,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
+import DeleteIcon from '@material-ui/icons/Delete';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   groupNames,
   InfoCard,
   joinNames,
   LoadingIndicator,
+  MENU_WIDTH,
   NAMED_IN_SENTENCE,
   SimpleAccordion,
+  StackedRowList,
+  usePhoneLayout,
   useVisibleSort,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
@@ -93,6 +102,140 @@ export function PoolCostCell({
       )} per node · ${price.nodes} running`}
     />
   );
+}
+
+/**
+ * A phone row's cost: what the running nodes cost now, then a node's rate —
+ * the two lines of {@link PoolCostCell}, as words.
+ */
+export function describePoolCost(
+  row: GpuNodePoolRow,
+  prices: NodeSizePrices,
+): { now: string; perNode?: string } {
+  const price = prices.priceOf(row);
+  if (!price) {
+    return {
+      now: prices.isReading(row) ? 'reading its price…' : 'no price listed',
+    };
+  }
+  return {
+    now: `${describeHourlyRange(price.nowMinUSD, price.nowMaxUSD)} now`,
+    perNode: `${describeHourlyRange(
+      price.perNodeMinUSD,
+      price.perNodeMaxUSD,
+    )} per node · ${price.nodes} running`,
+  };
+}
+
+/** The chevron that opens or closes a pool's lifecycle panel beneath the list. */
+function LifecycleToggle({
+  row,
+  isOpen,
+  onToggle,
+}: {
+  row: GpuNodePoolRow;
+  isOpen: boolean;
+  onToggle: (row: GpuNodePoolRow) => void;
+}) {
+  return (
+    <ButtonIcon
+      size="small"
+      variant="tertiary"
+      icon={isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+      aria-label={`${isOpen ? 'Hide' : 'Show'} lifecycle of pool ${row.pool.name}`}
+      aria-expanded={isOpen}
+      onPress={() => onToggle(row)}
+    />
+  );
+}
+
+/**
+ * One pool as a phone row (T22 B14): the table's nine columns clipped
+ * **Remove pool** and the lifecycle chevron off the row.
+ *
+ * - Line 1: the pool, its phase, the chevron and a ⋯ menu holding Remove pool
+ *   (destructive, so in the menu, never a bare button on a phone row).
+ * - Line 2: accelerator · cluster · environment · what it costs now.
+ * - Under them: the node sizes, the two Kubernetes versions, a node's rate.
+ */
+export function gpuNodePoolStackedRow(
+  row: GpuNodePoolRow,
+  {
+    isOpen,
+    onToggleLifecycle,
+    onRemove,
+    prices,
+    showInstallation,
+  }: {
+    isOpen: boolean;
+    onToggleLifecycle: (row: GpuNodePoolRow) => void;
+    onRemove: (row: GpuNodePoolRow) => void;
+    prices?: NodeSizePrices;
+    showInstallation: boolean;
+  },
+): StackedRowItem {
+  const cost = prices ? describePoolCost(row, prices) : undefined;
+  const sizes = row.pool.instanceTypes.join(', ');
+  return {
+    id: row.id,
+    title: row.pool.name,
+    status: (
+      <Text as="span" variant="body-small" color="secondary">
+        {poolPhaseLabel(row.pool, row.cluster)}
+      </Text>
+    ),
+    facts: [
+      row.pool.accelerator,
+      row.cluster.name,
+      showInstallation ? row.installation : undefined,
+      cost?.now,
+    ],
+    details: (
+      <Flex direction="column" gap="1">
+        {row.poolName && (
+          <Text as="p" variant="body-small" color="secondary">
+            {row.poolName}
+          </Text>
+        )}
+        {sizes && (
+          <Text as="p" variant="body-small" color="secondary">
+            Node sizes: {sizes}
+          </Text>
+        )}
+        <Text as="p" variant="body-small" color="secondary">
+          Kubernetes {row.pool.version || '—'} · control plane{' '}
+          {row.pool.controlPlaneVersion || '—'}
+        </Text>
+        {cost?.perNode && (
+          <Text as="p" variant="body-small" color="secondary">
+            {cost.perNode}
+          </Text>
+        )}
+      </Flex>
+    ),
+    actions: (
+      <>
+        <LifecycleToggle
+          row={row}
+          isOpen={isOpen}
+          onToggle={onToggleLifecycle}
+        />
+        <MenuTrigger>
+          <ButtonIcon
+            size="small"
+            variant="tertiary"
+            icon={<MoreVertIcon />}
+            aria-label={`Actions for pool ${row.pool.name}`}
+          />
+          <Menu maxWidth={MENU_WIDTH}>
+            <MenuItem iconStart={<DeleteIcon />} onAction={() => onRemove(row)}>
+              Remove pool
+            </MenuItem>
+          </Menu>
+        </MenuTrigger>
+      </>
+    ),
+  };
 }
 
 export function sortGpuNodePoolsBy(
@@ -202,13 +345,10 @@ function getColumnConfig(
         return (
           <Cell>
             <Flex gap="1" align="center" justify="end">
-              <ButtonIcon
-                size="small"
-                variant="tertiary"
-                icon={isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                aria-label={`${isOpen ? 'Hide' : 'Show'} lifecycle of pool ${row.pool.name}`}
-                aria-expanded={isOpen}
-                onPress={() => onToggleLifecycle(row)}
+              <LifecycleToggle
+                row={row}
+                isOpen={isOpen}
+                onToggle={onToggleLifecycle}
               />
               <Button
                 size="small"
@@ -249,6 +389,7 @@ export function GpuNodePoolsPanel({
   hideColumns,
   prices,
 }: GpuNodePoolsPanelProps) {
+  const isPhone = usePhoneLayout();
   const columnConfig = useMemo(
     () =>
       getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices).filter(
@@ -272,7 +413,23 @@ export function GpuNodePoolsPanel({
   const openedRow = opened ? rows.find(row => row.id === opened.id) : undefined;
 
   let body: ReactNode;
-  if (rows.length > 0) {
+  if (rows.length > 0 && isPhone) {
+    // At phone width each pool is a stacked row, in the table's order.
+    body = (
+      <StackedRowList
+        aria-label="GPU node pools"
+        rows={(tableProps.data ?? []).map(row =>
+          gpuNodePoolStackedRow(row, {
+            isOpen: row.id === opened?.id,
+            onToggleLifecycle,
+            onRemove,
+            prices,
+            showInstallation: !hideColumns?.includes('installation'),
+          }),
+        )}
+      />
+    );
+  } else if (rows.length > 0) {
     body = (
       <Table<GpuNodePoolRow> {...tableProps} columnConfig={columnConfig} />
     );
@@ -291,12 +448,12 @@ export function GpuNodePoolsPanel({
       <InfoCard title="GPU node pools">
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            The GPU pools cluster-manager created for the models served here,
-            per cluster. A pool runs nodes exactly while something is scheduled
-            on them; removing a pool that still runs nodes is refused until the
-            models on it are stopped.
+            GPU pools cluster-manager created for the models served here, per
+            cluster. A pool runs nodes only while something is scheduled on
+            them; one still running nodes can't be removed until its models are
+            stopped.
             {prices &&
-              " Costs are the cloud's on-demand list prices for the pool's node sizes, as cluster-manager reads them."}
+              " Costs are on-demand list prices for the pool's node sizes."}
           </Text>
           {body}
           {opened && (

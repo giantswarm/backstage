@@ -336,7 +336,8 @@ test.describe('Hive', () => {
   });
 
   test('one sidebar entry, the tabs in order', async ({ admin }) => {
-    await open(admin, '/');
+    // A classic page: on a lab serving the shell, `/` is the shell's.
+    await open(admin, '/catalog');
     const nav = admin.getByRole('navigation').first();
     await expect(nav.getByRole('link', { name: 'Hive' })).toBeVisible();
     for (const gone of ['Plans', 'Roadmap', 'Magazine']) {

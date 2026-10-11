@@ -395,9 +395,7 @@ describe('AgentUsageSection', () => {
       // since this suite mocks the rates away).
       expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
       // And the tables below keep the full window, said plainly.
-      expect(
-        screen.getByText(/cannot be re-cut to 7 days/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/window, not 7\s+days/i)).toBeInTheDocument();
     });
 
     it('says a wider selection shows the same backend window', () => {

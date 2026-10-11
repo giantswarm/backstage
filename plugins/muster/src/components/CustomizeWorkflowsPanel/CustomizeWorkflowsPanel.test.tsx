@@ -3,6 +3,11 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { workflowsRouteRef } from '../../routes';
 import { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from '../../lib/k8s';
@@ -245,7 +250,7 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(screen.getByText('4 steps')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Workflow runs and the read-only badge are read through your muster session/,
+        /Run counts and the read-only badge need a muster session/,
       ),
     ).toBeInTheDocument();
     expect(api.listExecutions).not.toHaveBeenCalled();
@@ -326,6 +331,131 @@ describe('CustomizeWorkflowsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No workflows yet')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
+  let layout: MockedLayout;
+  const list = () => screen.getByRole('list', { name: 'Workflows' });
+  const items = () => within(list()).getAllByRole('listitem');
+  const itemOf = (name: string) =>
+    within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
+
+  beforeEach(() => {
+    mockAuthenticated = true;
+    mockWorkflows = [
+      makeWorkflow('ticket-report', 4, {
+        description: 'Summarises the week’s tickets',
+        category: 'support',
+        gitops: true,
+      }),
+      makeWorkflow('upgrade-check', 1),
+    ];
+    mockLastRuns = { executions: [], has_more: false };
+    api.listExecutions.mockClear();
+    api.filterTools.mockClear();
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('stacks a row per workflow: name and access, then category · steps · runs · source', async () => {
+    await renderPanel();
+
+    // No six-column table squeezing the name to ~51px.
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(items()).toHaveLength(2);
+
+    const report = itemOf('ticket-report');
+    expect(
+      within(report).getByRole('link', { name: 'ticket-report' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/workflows/ticket-report?installation=gazelle',
+    );
+    expect(await within(report).findByText('Only reads')).toBeInTheDocument();
+    expect(within(report).getByText('support')).toBeInTheDocument();
+    expect(within(report).getByText('4 steps')).toBeInTheDocument();
+    expect(
+      await within(report).findByText('12 runs · 1 day ago'),
+    ).toBeInTheDocument();
+    expect(within(report).getByText('GitOps')).toBeInTheDocument();
+    expect(
+      within(report).getByText('Summarises the week’s tickets'),
+    ).toBeInTheDocument();
+
+    const check = itemOf('upgrade-check');
+    expect(
+      await within(check).findByText('Can change things'),
+    ).toBeInTheDocument();
+    expect(await within(check).findByText('No runs yet')).toBeInTheDocument();
+    expect(within(check).getByText('Manually added')).toBeInTheDocument();
+  });
+
+  it('keeps the table on a wide viewport', async () => {
+    layout.restore();
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('list', { name: 'Workflows' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('row', { name: /ticket-report/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows three workflows plainly: no reveal control', async () => {
+    mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
+      makeWorkflow(name, 2),
+    );
+    await renderPanel();
+
+    expect(items()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+    await waitFor(() => expect(perWorkflowReads()).toBe(3));
+  });
+
+  it('windows 300 workflows and reads runs only for the rows shown', async () => {
+    mockWorkflows = Array.from({ length: 300 }, (_, i) =>
+      makeWorkflow(`wf-${String(i).padStart(3, '0')}`, 1),
+    ).reverse();
+    await renderPanel();
+
+    expect(items()).toHaveLength(20);
+    expect(within(items()[0]).getByText('wf-000')).toBeInTheDocument();
+    expect(
+      screen.getByText('20 workflows shown, 280 more'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(perWorkflowReads()).toBe(20));
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more workflows' }),
+    );
+    expect(items()).toHaveLength(40);
+    await waitFor(() => expect(perWorkflowReads()).toBe(40));
+  });
+
+  it('narrows the stacked rows with the last-run filter', async () => {
+    mockLastRuns = {
+      executions: [run('ticket-report', 'failed')],
+      has_more: false,
+    };
+    await renderPanel();
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: /Filter by last run/,
+        hidden: true,
+      }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: /^Failed/ }),
+    );
+    await userEvent.keyboard('{Escape}');
+
+    expect(items()).toHaveLength(1);
+    expect(itemOf('ticket-report')).toBeInTheDocument();
   });
 });
 

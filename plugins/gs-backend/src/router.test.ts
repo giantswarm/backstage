@@ -27,15 +27,20 @@ jest.mock('./agentSkills/readSkillContent', () => ({
   ...jest.requireActual('./agentSkills/readSkillContent'),
   readSkillContentFromGitHub: jest.fn(),
   readSkillContentFromGit: jest.fn(),
+  listSkillFilesFromGitHub: jest.fn(),
+  readSkillFileFromGitHub: jest.fn(),
 }));
 import {
   discoverAgentSkills,
   GitHubApiError,
 } from './agentSkills/discoverAgentSkills';
 import {
+  listSkillFilesFromGitHub,
   readSkillContentFromGit,
   readSkillContentFromGitHub,
+  readSkillFileFromGitHub,
 } from './agentSkills/readSkillContent';
+import { MAX_INLINE_FILE_BYTES } from './agentSkills/skillFiles';
 import {
   discoverAgentSkillsFromGit,
   GitFetchError,
@@ -574,12 +579,52 @@ describe('GET /agent-skills/content', () => {
     return app;
   }
 
+  const notesFiles = {
+    files: [
+      { path: 'SKILL.md', size: 60, sha: 's1' },
+      { path: 'references/x.md', size: 4, sha: 's2' },
+    ],
+    truncated: false,
+    total: 2,
+  };
+  /** A generic-git read of GIT_REPO at COMMIT with one root skill. */
+  const gitSnapshot = {
+    skills: [
+      {
+        name: 'skills',
+        description: 'Root skill.',
+        repoUrl: GIT_REPO,
+        path: '',
+        ref: 'main',
+        commit: COMMIT,
+        contentReadable: true,
+        fileCount: 2,
+      },
+    ],
+    ref: 'main',
+    commit: COMMIT,
+    truncated: false,
+    contents: new Map([
+      ['', '---\nname: skills\ndescription: Root skill.\n---\nDo it.'],
+    ]),
+    files: new Map([['', notesFiles]]),
+    fileContents: new Map([['references/x.md', Buffer.from('text')]]),
+  };
+
   beforeEach(() => {
     jest
       .mocked(readSkillContentFromGitHub)
       .mockReset()
       .mockResolvedValue(content);
     jest.mocked(readSkillContentFromGit).mockReset().mockResolvedValue(content);
+    jest
+      .mocked(listSkillFilesFromGitHub)
+      .mockReset()
+      .mockResolvedValue(new Map([['notes', notesFiles]]));
+    jest
+      .mocked(discoverAgentSkillsFromGit)
+      .mockReset()
+      .mockResolvedValue(gitSnapshot);
   });
 
   it('reads a configured github.com skill through the GitHub provider', async () => {
@@ -592,17 +637,49 @@ describe('GET /agent-skills/content', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(content);
+    expect(response.body).toEqual({
+      ...content,
+      files: notesFiles.files,
+      filesTruncated: false,
+    });
     expect(readSkillContentFromGitHub).toHaveBeenCalledWith({
       repoUrl: 'https://github.com/GiantSwarm/skills.git',
       path: 'notes',
       commit: COMMIT,
       githubCredentialsProvider,
     });
-    expect(readSkillContentFromGit).not.toHaveBeenCalled();
+    // The files of a commit no listing covers: one tree read, remembered.
+    expect(listSkillFilesFromGitHub).toHaveBeenCalledWith({
+      repoUrl: 'https://github.com/giantswarm/skills',
+      commit: COMMIT,
+      githubCredentialsProvider,
+    });
+    await request(app).get('/agent-skills/content').query({
+      repoUrl: 'https://github.com/giantswarm/skills',
+      path: 'notes',
+      commit: COMMIT,
+    });
+    expect(listSkillFilesFromGitHub).toHaveBeenCalledTimes(1);
+    expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
   });
 
-  it('reads a configured non-GitHub skill through the git provider, root path by default', async () => {
+  it('still answers the content when the file list cannot be read', async () => {
+    jest
+      .mocked(listSkillFilesFromGitHub)
+      .mockRejectedValue(new GitHubApiError(429, 'rate limit'));
+    const app = await buildContentApp();
+
+    const response = await request(app).get('/agent-skills/content').query({
+      repoUrl: 'https://github.com/giantswarm/skills',
+      path: 'notes',
+      commit: COMMIT,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(content);
+  });
+
+  it('reads a configured non-GitHub skill with its files from one clone at the commit, root path by default', async () => {
     const app = await buildContentApp();
 
     const response = await request(app)
@@ -610,12 +687,45 @@ describe('GET /agent-skills/content', () => {
       .query({ repoUrl: GIT_REPO, commit: COMMIT, ref: 'main' });
 
     expect(response.status).toBe(200);
-    expect(readSkillContentFromGit).toHaveBeenCalledWith({
+    expect(response.body).toEqual({
       repoUrl: GIT_REPO,
       path: '',
       commit: COMMIT,
-      ref: 'main',
+      name: 'skills',
+      description: 'Root skill.',
+      instructions: 'Do it.',
+      files: notesFiles.files,
+      filesTruncated: false,
     });
+    expect(discoverAgentSkillsFromGit).toHaveBeenCalledWith({
+      repoUrl: GIT_REPO,
+      ref: 'main',
+      commit: COMMIT,
+    });
+    expect(readSkillContentFromGit).not.toHaveBeenCalled();
+
+    // Remembered: neither the content nor a file clones again.
+    await request(app)
+      .get('/agent-skills/content')
+      .query({ repoUrl: GIT_REPO, commit: COMMIT, ref: 'main' });
+    const file = await request(app)
+      .get('/agent-skills/content/file')
+      .query({ repoUrl: GIT_REPO, commit: COMMIT, file: 'references/x.md' });
+    expect(file.body.content).toBe('text');
+    expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 404 for a generic-git directory without a SKILL.md at the commit', async () => {
+    const app = await buildContentApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content')
+      .query({ repoUrl: GIT_REPO, path: 'nothing-here', commit: COMMIT });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toContain(
+      'nothing-here/SKILL.md was not found',
+    );
   });
 
   it.each([
@@ -676,6 +786,7 @@ describe('GET /agent-skills/content', () => {
             '---\nname: notes\ndescription: How to take notes.\n---\n\nWrite things down.\n',
           ],
         ]),
+        files: new Map([['notes', { ...notesFiles, truncated: true }]]),
       });
     const app = await buildContentApp();
     await request(app)
@@ -689,13 +800,18 @@ describe('GET /agent-skills/content', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual(content);
+    expect(response.body).toEqual({
+      ...content,
+      files: notesFiles.files,
+      filesTruncated: true,
+    });
     expect(readSkillContentFromGitHub).not.toHaveBeenCalled();
+    expect(listSkillFilesFromGitHub).not.toHaveBeenCalled();
   });
 
   it("forwards a provider's refusal with its upstream status", async () => {
     jest
-      .mocked(readSkillContentFromGit)
+      .mocked(discoverAgentSkillsFromGit)
       .mockRejectedValue(
         new GitFetchError(409, 'main has moved on; reload the skill.'),
       );
@@ -709,6 +825,379 @@ describe('GET /agent-skills/content', () => {
     expect(response.body.error.message).toBe(
       'Failed to read the skill: main has moved on; reload the skill.',
     );
+  });
+});
+
+describe('GET /agent-skills/content/file', () => {
+  const COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
+  const REPO = 'https://github.com/giantswarm/skills';
+  const GIT_REPO =
+    'http://gitserver.agent-platform.svc.cluster.local/skills.git';
+  const opsFiles = {
+    files: [
+      { path: 'SKILL.md', size: 40, sha: 's1' },
+      { path: 'assets/logo.png', size: 900, sha: 's2' },
+      { path: 'data/huge.csv', size: MAX_INLINE_FILE_BYTES + 1, sha: 's3' },
+      { path: 'data/packed.dat', size: 3, sha: 's4' },
+      { path: 'references/runbook.md', size: 10, sha: 's5' },
+    ],
+    truncated: false,
+    total: 5,
+  };
+  const triageFiles = {
+    files: [{ path: 'SKILL.md', size: 20, sha: 't1' }],
+    truncated: false,
+    total: 1,
+  };
+  const skill = (repoUrl: string, path: string) => ({
+    name: path,
+    description: '',
+    repoUrl,
+    path,
+    ref: 'main',
+    commit: COMMIT,
+    contentReadable: true,
+  });
+  const listing = (repoUrl: string) => ({
+    skills: [skill(repoUrl, 'ops'), skill(repoUrl, 'ops/triage')],
+    ref: 'main',
+    commit: COMMIT,
+    truncated: false,
+    contents: new Map([
+      ['ops', '---\nname: ops\n---\n'],
+      ['ops/triage', '---\nname: triage\n---\n'],
+    ]),
+    files: new Map([
+      ['ops', opsFiles],
+      ['ops/triage', triageFiles],
+    ]),
+  });
+
+  async function buildFileApp() {
+    const router = await createRouter({
+      config: makeConfig({
+        agentPlatform: { skills: { repositories: [REPO, GIT_REPO] } },
+      }),
+      containerRegistry,
+      mimir,
+      githubCredentialsProvider,
+      httpAuth: mockServices.httpAuth(),
+      managementClusterVersions,
+    });
+    const app = express();
+    app.use(router);
+    app.use(
+      (
+        err: Error,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(err.name === 'InputError' ? 400 : 500).json({
+          error: { name: err.name, message: err.message },
+        });
+      },
+    );
+    return app;
+  }
+
+  /** An app whose discovery cache holds the GitHub listing at COMMIT. */
+  async function listedApp() {
+    const app = await buildFileApp();
+    await request(app).get('/agent-skills').query({ repoUrl: REPO });
+    return app;
+  }
+
+  const fileQuery = (file: string, extra: Record<string, string> = {}) => ({
+    repoUrl: REPO,
+    path: 'ops',
+    commit: COMMIT,
+    file,
+    ...extra,
+  });
+
+  beforeEach(() => {
+    jest
+      .mocked(discoverAgentSkills)
+      .mockReset()
+      .mockResolvedValue(listing(REPO));
+    jest
+      .mocked(discoverAgentSkillsFromGit)
+      .mockReset()
+      .mockResolvedValue(listing(GIT_REPO));
+    jest
+      .mocked(readSkillFileFromGitHub)
+      .mockReset()
+      .mockResolvedValue(Buffer.from('# Runbook\n'));
+    jest
+      .mocked(listSkillFilesFromGitHub)
+      .mockReset()
+      .mockResolvedValue(
+        new Map([
+          ['ops', opsFiles],
+          ['ops/triage', triageFiles],
+        ]),
+      );
+  });
+
+  it('answers a listed text file inline, immutably cached, and reads it upstream once', async () => {
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('references/runbook.md'));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      path: 'references/runbook.md',
+      size: 10,
+      sha: 's5',
+      binary: false,
+      truncated: false,
+      content: '# Runbook\n',
+    });
+    expect(response.headers['cache-control']).toBe(
+      'private, max-age=86400, immutable',
+    );
+    expect(readSkillFileFromGitHub).toHaveBeenCalledWith({
+      repoUrl: REPO,
+      filePath: 'ops/references/runbook.md',
+      commit: COMMIT,
+      githubCredentialsProvider,
+    });
+
+    const again = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('references/runbook.md'));
+    expect(again.body.content).toBe('# Runbook\n');
+    expect(readSkillFileFromGitHub).toHaveBeenCalledTimes(1);
+    expect(listSkillFilesFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a file the skill does not have', 'references/missing.md'],
+    // A nested skill's file is that skill's, not its parent's.
+    ['a file of a nested skill', 'triage/SKILL.md'],
+  ])('answers 404 for %s, without reading anything', async (_, file) => {
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery(file));
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toContain(
+      `${file} is not a file of the skill at ops`,
+    );
+    expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a parent segment', '../README.md'],
+    ['a parent segment further in', 'references/../../other/SKILL.md'],
+    ['an absolute path', '/etc/passwd'],
+    ['a current-directory segment', './SKILL.md'],
+    ['an empty segment', 'references//runbook.md'],
+    ['a backslash', '..\\secrets'],
+    ['an empty file', ''],
+  ])('refuses %s as invalid input', async (_, file) => {
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery(file));
+
+    expect(response.status).toBe(400);
+    expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an unconfigured repository', { repoUrl: 'https://github.com/evil/repo' }],
+    ['a skill path leaving the repository', { path: '../etc' }],
+    ['a ref instead of a commit', { commit: 'main' }],
+  ])('refuses %s, like /content', async (_, extra) => {
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('SKILL.md', extra));
+
+    expect(response.status).toBe(400);
+    expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it('answers a binary-named file and an oversize one from the listing, without reading them', async () => {
+    const app = await listedApp();
+
+    const image = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('assets/logo.png'));
+    const huge = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('data/huge.csv'));
+
+    expect(image.status).toBe(200);
+    expect(image.body).toEqual({
+      path: 'assets/logo.png',
+      size: 900,
+      sha: 's2',
+      binary: true,
+      truncated: false,
+    });
+    expect(huge.status).toBe(200);
+    expect(huge.body).toEqual({
+      path: 'data/huge.csv',
+      size: MAX_INLINE_FILE_BYTES + 1,
+      sha: 's3',
+      binary: false,
+      truncated: true,
+    });
+    expect(huge.headers['cache-control']).toContain('immutable');
+    expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it('answers a file whose bytes look binary without content', async () => {
+    jest
+      .mocked(readSkillFileFromGitHub)
+      .mockResolvedValue(Buffer.from([0x50, 0x00, 0x01]));
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('data/packed.dat'));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      path: 'data/packed.dat',
+      size: 3,
+      sha: 's4',
+      binary: true,
+      truncated: false,
+    });
+  });
+
+  it('lists the files of a commit no listing covers with one tree read', async () => {
+    const app = await buildFileApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('references/runbook.md'));
+
+    expect(response.status).toBe(200);
+    expect(listSkillFilesFromGitHub).toHaveBeenCalledWith({
+      repoUrl: REPO,
+      commit: COMMIT,
+      githubCredentialsProvider,
+    });
+    // Remembered for the next file.
+    await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('SKILL.md'));
+    expect(listSkillFilesFromGitHub).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 404 for a directory that is no skill at the commit', async () => {
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('SKILL.md', { path: 'docs' }));
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toContain('There is no skill at docs');
+  });
+
+  it("forwards GitHub's refusal with its upstream status", async () => {
+    jest
+      .mocked(readSkillFileFromGitHub)
+      .mockRejectedValue(new GitHubApiError(429, 'rate limit used up'));
+    const app = await listedApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content/file')
+      .query(fileQuery('references/runbook.md'));
+
+    expect(response.status).toBe(429);
+    expect(response.body.error.message).toBe(
+      'Failed to read the skill file: rate limit used up',
+    );
+    expect(response.headers['cache-control']).toBeUndefined();
+  });
+
+  describe('generic git', () => {
+    const gitQuery = (file: string) => ({
+      repoUrl: GIT_REPO,
+      path: 'ops',
+      commit: COMMIT,
+      ref: 'main',
+      file,
+    });
+
+    it('answers from what the listing’s checkout scan kept, without another clone', async () => {
+      jest.mocked(discoverAgentSkillsFromGit).mockResolvedValue({
+        ...listing(GIT_REPO),
+        fileContents: new Map([
+          ['ops/references/runbook.md', Buffer.from('from the scan')],
+        ]),
+      });
+      const app = await buildFileApp();
+      await request(app).get('/agent-skills').query({ repoUrl: GIT_REPO });
+
+      const response = await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('references/runbook.md'));
+
+      expect(response.status).toBe(200);
+      expect(response.body.content).toBe('from the scan');
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
+    });
+
+    it('clones once at the commit on a miss, keeping the asked-for file, and answers from memory after', async () => {
+      jest.mocked(discoverAgentSkillsFromGit).mockResolvedValue({
+        ...listing(GIT_REPO),
+        fileContents: new Map([
+          ['ops/references/runbook.md', Buffer.from('cloned')],
+          ['ops/data/packed.dat', Buffer.from('abc')],
+        ]),
+      });
+      const app = await buildFileApp();
+
+      const first = await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('references/runbook.md'));
+      const second = await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('data/packed.dat'));
+
+      expect(first.body.content).toBe('cloned');
+      expect(second.body.content).toBe('abc');
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledWith({
+        repoUrl: GIT_REPO,
+        ref: 'main',
+        commit: COMMIT,
+        mustRead: 'ops/references/runbook.md',
+      });
+      expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
+    });
+
+    it('forwards a branch that moved on as 409', async () => {
+      jest
+        .mocked(discoverAgentSkillsFromGit)
+        .mockRejectedValue(
+          new GitFetchError(409, 'main has moved on; reload the skill.'),
+        );
+      const app = await buildFileApp();
+
+      const response = await request(app)
+        .get('/agent-skills/content/file')
+        .query(gitQuery('SKILL.md'));
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toBe(
+        'Failed to read the skill file: main has moved on; reload the skill.',
+      );
+    });
   });
 });
 

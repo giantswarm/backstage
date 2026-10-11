@@ -100,12 +100,11 @@ export function AgentSessionsCard({
     // `unsecure` mode the list is everyone's, so calling it "yours" would be
     // a lie in the other direction.
     caption =
-      "This environment's kagent does not scope sessions to a user, so these are everyone's sessions with this agent.";
+      "Everyone's sessions with this agent: kagent here does not scope sessions to users.";
   } else if (plain) {
     caption = `Your sessions with ${agentName || 'this agent'}.`;
   } else {
-    caption =
-      'Your own sessions with this agent. kagent only lets you read sessions you started, so this is not a usage total.';
+    caption = 'Only your sessions with this agent — not a usage total.';
   }
 
   return (

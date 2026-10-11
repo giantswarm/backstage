@@ -472,13 +472,10 @@ html[data-agent-shell] [class*='Toast_container'] {
  * label and its count — "Agents (6)" — stay on one line (live round L8: at
  * 375px each label broke after its title). At phone width the tabs pad by
  * half bui's space-2, with the active underline inset to match, so the usual
- * four tabs fit. A strip of five or more (Customize: Agents, Skills,
- * Connectors, Models, Workflows — live round 2, R4) goes a step tighter:
- * labels at bui's font-size-2, tabs padded by space-0_5, and the strip
- * reaching space-1 into the page gutter on each side — 340px of tabs in
- * 351px, measured at 375px with the lab's counts. When even that doesn't fit
- * (longer counts), whole tabs move to a second row instead of breaking a
- * label or widening the page — the last resort.
+ * three or four tabs fit without scrolling. A longer strip (Customize's six)
+ * scrolls sideways: RouteTabs owns that at phone width (T72) — one row of
+ * 44px tabs, the selected one scrolled into view, edge fades — which retired
+ * R4's five-tab squeeze and the wrap to a second row.
  * Inside bui's components layer, so a component's unlayered overrides win.
  */
 @layer components {
@@ -487,10 +484,6 @@ html[data-agent-shell] [class*='Toast_container'] {
   }
 
   @media (max-width: 599.95px) {
-    html[data-agent-shell] .bui-TabList {
-      flex-wrap: wrap;
-    }
-
     html[data-agent-shell] .bui-Tab {
       padding-inline: var(--bui-space-1);
     }
@@ -498,23 +491,6 @@ html[data-agent-shell] [class*='Toast_container'] {
     html[data-agent-shell] .bui-TabActive {
       left: calc(var(--active-tab-left) + var(--bui-space-1));
       width: calc(var(--active-tab-width) - var(--bui-space-2));
-    }
-
-    /* The Tabs root, not the wrapper: bui measures the active tab against
-       the root and draws the underline in the wrapper, so the two must move
-       together. */
-    html[data-agent-shell] .bui-Tabs:has(.bui-Tab:nth-child(5)) {
-      margin-inline: calc(-1 * var(--bui-space-1));
-    }
-
-    html[data-agent-shell] .bui-TabList:has(.bui-Tab:nth-child(5)) .bui-Tab {
-      font-size: var(--bui-font-size-2);
-      padding-inline: var(--bui-space-0_5);
-    }
-
-    html[data-agent-shell] .bui-Tabs:has(.bui-Tab:nth-child(5)) .bui-TabActive {
-      left: calc(var(--active-tab-left) + var(--bui-space-0_5));
-      width: calc(var(--active-tab-width) - var(--bui-space-1));
     }
   }
 }

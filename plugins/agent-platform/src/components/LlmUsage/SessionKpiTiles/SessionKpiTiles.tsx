@@ -35,19 +35,19 @@ export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
     <KpiTileGrid>
       <KpiTile
         label="Your sessions"
-        hint={`Sessions you started with at least one turn over ${windowNote}, from kagent's stored conversations. Other users' sessions are not countable from here.`}
+        hint={`Your sessions with at least one turn over ${windowNote}, from kagent. Other users' sessions can't be counted here.`}
         value={formatCount(totals.sessions)}
         sub="yours — see Your sessions for the breakdown"
       />
       <KpiTile
         label="Your tokens"
-        hint={`kagent's reported token total for your turns over ${windowNote}. It can exceed input + output — a model billing thinking tokens counts them in the total and in neither part.`}
+        hint={`kagent's token total for your turns over ${windowNote}. It can exceed input + output: thinking tokens count only in the total.`}
         value={formatTokens(totals.totalTokens)}
         sub={`across ${formatCount(totals.turns)} turns`}
       />
       <KpiTile
         label="Your agents"
-        hint={`Distinct agents kagent recorded for your sessions over ${windowNote}. Agents other users ran do not appear — counting them needs the gateway metrics.`}
+        hint={`Distinct agents in your sessions over ${windowNote}. Other users' agents need the gateway metrics.`}
         value={formatCount(agents)}
         sub="agents your sessions used"
       />

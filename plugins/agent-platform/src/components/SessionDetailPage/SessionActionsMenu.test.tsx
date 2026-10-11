@@ -168,9 +168,11 @@ describe('SessionActionsMenu', () => {
     });
     // Both halves of the truth: gone as far as anyone here is concerned, and not
     // restorable from this UI, but not erased from kagent either.
-    expect(screen.getByText(/cannot be opened again/)).toBeInTheDocument();
     expect(
-      screen.getByText(/no way to restore it from here/),
+      screen.getByText(/can no longer be listed or opened/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/can't be restored\s+from here/),
     ).toBeInTheDocument();
     // Opening the dialog does not delete anything.
     expect(deleteSession).not.toHaveBeenCalled();
@@ -185,7 +187,7 @@ describe('SessionActionsMenu', () => {
     await openDeleteDialog();
 
     expect(
-      await screen.findByText(/may have been started by somebody else/),
+      await screen.findByText(/someone else may\s+have started this session/),
     ).toBeInTheDocument();
   });
 
@@ -197,10 +199,12 @@ describe('SessionActionsMenu', () => {
     await openDeleteDialog();
 
     await waitFor(() => {
-      expect(screen.getByText(/cannot be opened again/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/can no longer be listed or opened/),
+      ).toBeInTheDocument();
     });
     expect(
-      screen.queryByText(/may have been started by somebody else/),
+      screen.queryByText(/someone else may\s+have started this session/),
     ).not.toBeInTheDocument();
   });
 
@@ -353,9 +357,9 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent(
-      /suspends a session’s runtime before removing it, and this runtime cannot be reached/,
+      /it suspends the runtime first, and this runtime was lost/,
     );
-    expect(dialog).toHaveTextContent(/A kagent update that skips that step/);
+    expect(dialog).toHaveTextContent(/A kagent fix is coming/);
     expect(dialog).toHaveTextContent(unavailable.message);
   });
 

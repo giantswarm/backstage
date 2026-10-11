@@ -150,9 +150,7 @@ export function ServerConfig({ server }: { server: MCPServer }) {
   if (server.getSuspended()) {
     facts.push({
       label: DEACTIVATED_LABEL,
-      value: `yes — muster keeps it disconnected until it is activated.${activateHint(
-        server,
-      )}`,
+      value: `yes — disconnected until activated.${activateHint(server)}`,
     });
   }
   facts.push({ label: 'Type', value: server.getType() ?? '—' });
@@ -314,9 +312,9 @@ export function AuthChain({ server }: { server: MCPServer }) {
           answer. */}
       {sigv4 && (
         <Note>
-          Requests are signed with muster's own AWS machine identity, not the
-          calling user's. All users share this identity, and CloudTrail
-          attributes their actions to muster. There is no user sign-in.
+          Requests are signed with muster's own AWS identity: all users share
+          it, CloudTrail attributes their actions to muster, and there is no
+          user sign-in.
         </Note>
       )}
       <FactList facts={facts} maxWidth={null} />
@@ -543,12 +541,12 @@ export function noToolsExplanation(server: MCPServer): string {
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this connector connects per session with your own identity; its tools appear here once your muster session has connected to it.';
+    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once muster has connected it for you.';
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — your muster session is not authenticated to this connector. Use “Sign in” in the connector’s actions.';
+    return 'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.';
   }
   const explanation = server.getStateExplanation();
   if (state === 'Failed' && explanation) {

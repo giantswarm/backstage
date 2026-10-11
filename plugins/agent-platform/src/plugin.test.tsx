@@ -103,26 +103,29 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
 
 describe('the Agent Platform page', () => {
   describe('while the agent shell flag is off', () => {
-    it('renders its tabs in the row order, other plugins’ included', async () => {
+    it('is not mounted: no route, no header, no tabs, whatever app.extensions lists', async () => {
       renderPage(FeatureFlagState.None, '/agent-platform/agents');
 
-      expect(await screen.findByText('Agents content')).toBeInTheDocument();
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Agents content')).not.toBeInTheDocument();
       expect(
-        screen.getByRole('heading', { level: 1, name: 'Agent Platform' }),
-      ).toBeInTheDocument();
-      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
-        'Sessions',
-        'Agents',
-        'Models',
-        'MCP Servers',
-        'Usage',
-      ]);
+        screen.queryByRole('heading', { name: 'Agent Platform' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
     });
 
-    it('lands a bare path on the first tab in row order', async () => {
+    it('routes no bare path either', async () => {
       renderPage(FeatureFlagState.None, '/agent-platform');
 
-      expect(await screen.findByText('Sessions content')).toBeInTheDocument();
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
+    });
+
+    it('does not route another plugin’s sub-page', async () => {
+      renderPage(FeatureFlagState.None, '/agent-platform/mcp-servers');
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('MCP Servers content')).not.toBeInTheDocument();
     });
   });
 
@@ -201,5 +204,64 @@ describe('the Agent Platform page', () => {
         expect(document.title).toBe('Agents · Agent Platform'),
       );
     });
+  });
+});
+
+describe('the Agent Platform pages outside the section', () => {
+  // The pages' own loaders, stubbed: what is under test is whether the app
+  // routes them at all.
+  const skillsPage = agentPlatformPlugin
+    .getExtension('page:agent-platform/skills')
+    .override({
+      params: {
+        path: '/agent-platform/skills',
+        noHeader: true,
+        loader: async () => <div>Skills content</div>,
+      },
+    });
+  const profilePage = agentPlatformPlugin
+    .getExtension('page:agent-platform/profile')
+    .override({
+      params: {
+        path: '/agent-platform/profile',
+        noHeader: true,
+        loader: async () => <div>Profile content</div>,
+      },
+    });
+
+  function renderPages(agentShell: FeatureFlagState, path: string) {
+    return renderTestApp({
+      features: [
+        createFrontendPlugin({
+          pluginId: 'agent-platform',
+          extensions: [skillsPage, profilePage],
+        }),
+      ],
+      initialRouteEntries: [path],
+      apis: [
+        mockApis.featureFlags({
+          initialStates: { [AGENT_SHELL_FLAG]: agentShell },
+        }),
+      ],
+    });
+  }
+
+  it.each([
+    ['/agent-platform/skills', 'Skills content'],
+    ['/agent-platform/profile', 'Profile content'],
+  ])('routes %s in the shell', async (path, content) => {
+    renderPages(FeatureFlagState.Active, path);
+
+    expect(await screen.findByText(content)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/agent-platform/skills', 'Skills content'],
+    ['/agent-platform/profile', 'Profile content'],
+  ])('does not route %s without the shell', async (path, content) => {
+    renderPages(FeatureFlagState.None, path);
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+    expect(screen.queryByText(content)).not.toBeInTheDocument();
   });
 });

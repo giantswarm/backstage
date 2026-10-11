@@ -20,6 +20,7 @@ import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
   ShellPage,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   agentPlatformPlugin,
@@ -96,15 +97,22 @@ const DEFAULT_TAB: CustomizeTabId = 'agents';
 
 function CreateAction({
   create,
+  fullWidth,
 }: {
   create: NonNullable<CustomizeTab['create']>;
+  fullWidth: boolean;
 }) {
   const link = useRouteRef(create.routeRef);
   if (!link) {
     return null;
   }
   return (
-    <ButtonLink href={link()} variant="primary" iconStart={<AddIcon />}>
+    <ButtonLink
+      href={link()}
+      variant="primary"
+      iconStart={<AddIcon />}
+      style={fullWidth ? { width: '100%' } : undefined}
+    >
       {create.label}
     </ButtonLink>
   );
@@ -139,6 +147,7 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const { counts, hasSkillRepositories } = useCustomizeData();
   const musterCounts = useMusterCustomizeCounts();
   const location = useLocation();
+  const isPhone = usePhoneLayout();
   // Seeded once from `?q=`, so a link (the command palette's "+N more") can
   // open the tab already searched. Not written back.
   const [search, setSearch] = useState(
@@ -171,7 +180,15 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
           gap="4"
           style={{ flexWrap: 'wrap' }}
         >
-          <div style={{ flex: '0 1 360px', minWidth: 0 }}>
+          {/* The search's 360px is wider than a phone's 343px content, so
+              there the create action always wrapped under it, left-aligned
+              (T22 P1). On a phone both take the full width, one per line. */}
+          <div
+            style={{
+              flex: isPhone ? '1 1 100%' : '0 1 360px',
+              minWidth: 0,
+            }}
+          >
             <SearchField
               aria-label={tab.searchLabel}
               placeholder={tab.searchLabel}
@@ -179,7 +196,9 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
               onChange={setSearch}
             />
           </div>
-          {tab.create && <CreateAction create={tab.create} />}
+          {tab.create && (
+            <CreateAction create={tab.create} fullWidth={isPhone} />
+          )}
         </Flex>
         <TabPanel tab={tab.id} search={search} />
       </Flex>

@@ -201,7 +201,7 @@ describe('SessionRenameDialog', () => {
     await renderDialog({ isUserScoped: false });
 
     expect(
-      screen.getByText(/may have been started by somebody else/),
+      screen.getByText(/someone else may\s+have started this session/),
     ).toBeInTheDocument();
   });
 
@@ -212,7 +212,7 @@ describe('SessionRenameDialog', () => {
     await renderDialog({ isUserScoped });
 
     expect(
-      screen.queryByText(/may have been started by somebody else/),
+      screen.queryByText(/someone else may\s+have started this session/),
     ).not.toBeInTheDocument();
   });
 

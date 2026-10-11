@@ -71,6 +71,13 @@ export type NewAgentFormState = {
    * (`declaredToolset`), so `preset:none` itself never sits in this list.
    */
   toolset: string[];
+  /**
+   * The Tools step's *Nothing outside the chat*: the toolset is empty and the
+   * step's selection below is turned off until another access level is
+   * picked. Declared like any empty selection (`preset:none`); while editing,
+   * it also counts as a change for an agent that declares no toolset.
+   */
+  toolsChatOnly?: boolean;
 };
 
 /**
@@ -120,6 +127,12 @@ export type NewAgentFormContextValue = {
    */
   setToolset: (selectors: string[]) => void;
   /**
+   * *Nothing outside the chat*: clears the toolset and turns the step's
+   * selection off (`toolsChatOnly`). Any other toolset change turns it on
+   * again.
+   */
+  setToolsChatOnly: () => void;
+  /**
    * True when the toolset can be applied: none of the selectors malformed and
    * no more than the inline cap. The empty selection is valid — it is no tools.
    * What the Tools step's Continue and the review page's deploy gate on.
@@ -165,6 +178,9 @@ const initialState: NewAgentFormState = {
   selectedSkills: [],
   keptSkills: [],
   toolset: [],
+  // A new agent starts at the Tools step's *Nothing outside the chat* (T81):
+  // nothing the author did not consciously add.
+  toolsChatOnly: true,
 };
 
 // RFC1123 DNS label: the slug becomes the Agent name and the
@@ -301,9 +317,16 @@ export function NewAgentFormProvider({
         setState(prev => ({
           ...prev,
           toolset: toggleSelector(prev.toolset, selector),
+          toolsChatOnly: false,
         })),
       setToolset: selectors =>
-        setState(prev => ({ ...prev, toolset: normalizeSelection(selectors) })),
+        setState(prev => ({
+          ...prev,
+          toolset: normalizeSelection(selectors),
+          toolsChatOnly: false,
+        })),
+      setToolsChatOnly: () =>
+        setState(prev => ({ ...prev, toolset: [], toolsChatOnly: true })),
       isToolsetValid,
       toolsetProblems: problems,
       toggleSkill: skill =>

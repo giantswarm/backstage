@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
@@ -6,13 +6,19 @@ import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { useValidateAgentUpdate } from '../../hooks/useValidateAgentUpdate';
 import type { UpdateAgentState } from '../../hooks/useUpdateAgent';
-import type { AgentSkillEntry, AgentUpdate } from '../../lib/agentManager';
+import type {
+  AgentSkillEntry,
+  AgentUpdate,
+  CommitAgentResult,
+  WriteMode,
+} from '../../lib/agentManager';
 import { repoSlug } from '../../lib/skills';
 import {
   refreshChangesAnything,
   skillRefreshPlan,
   type SkillRefreshEntry,
 } from '../../lib/skillRefresh';
+import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { shortPin } from './helpers';
 
@@ -99,6 +105,9 @@ function PlanRow({ entry }: { entry: SkillRefreshEntry }) {
   );
 }
 
+const ALREADY_AT_HEAD =
+  "Every git skill is already at its repository's default-branch head.";
+
 export type AgentUpdateSkillsDialogProps = {
   installation: string;
   namespace: string;
@@ -106,6 +115,13 @@ export type AgentUpdateSkillsDialogProps = {
   displayName: string;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  /**
+   * `apply` re-pins live. `commit` is for an agent applied from git, which
+   * agent-manager refuses to write live: the only action is then a pull request
+   * in the owning GitOps repository (`mode: commit`,
+   * giantswarm/agent-manager#24). Fixed by the page when it opens the dialog.
+   */
+  mode?: WriteMode;
   /** The page's `useUpdateAgent`, shared with the edit flow's Save. */
   updating: UpdateAgentState;
   /**
@@ -132,6 +148,11 @@ export type AgentUpdateSkillsDialogProps = {
  * cannot reach comes back as its refusal and nothing can be confirmed;
  * confirming calls `update_agent` with `refreshSkills` and nothing else, so no
  * other value of the release moves.
+ *
+ * For an agent applied from git (`mode: commit`) the same dry run is asked in
+ * commit mode and confirming opens a pull request as the person instead; the
+ * dialog then shows the pull request (`CommitOutcome`) and only closes, and the
+ * page has no revision to watch — the agent moves once it is merged.
  */
 export function AgentUpdateSkillsDialog({
   installation,
@@ -140,6 +161,7 @@ export function AgentUpdateSkillsDialog({
   displayName,
   isOpen,
   onOpenChange,
+  mode = 'apply',
   updating,
   onUpdated,
 }: AgentUpdateSkillsDialogProps) {
@@ -154,7 +176,12 @@ export function AgentUpdateSkillsDialog({
     () => (isOpen ? { namespace, name, refreshSkills: true } : undefined),
     [isOpen, namespace, name],
   );
-  const dryRun = useValidateAgentUpdate(installation, refresh);
+  const dryRun = useValidateAgentUpdate(installation, refresh, mode);
+  const viaPullRequest = mode === 'commit';
+  // What `mode: commit` answered: the pull request. Cleared on close, so the
+  // next open starts from the dry run again.
+  const [commitResult, setCommitResult] = useState<CommitAgentResult>();
+  const isCommitted = commitResult?.commit !== undefined;
 
   const current = useMemo(() => agent?.skills ?? [], [agent]);
   const refreshed = dryRun.result?.manifests.values.skills as
@@ -172,7 +199,12 @@ export function AgentUpdateSkillsDialog({
   const isLoading = isLoadingAgent || dryRun.isLoading;
   const changesAnything = refreshChangesAnything(plan);
 
+  const confirmNote = viaPullRequest
+    ? 'Confirming opens a pull request re-pinning the skills marked above; once merged, the Harness compiles a new revision.'
+    : 'Confirming re-pins the skills marked above; its Harness then compiles a new revision.';
+
   const canConfirm =
+    !isCommitted &&
     !isLoading &&
     !failure &&
     violations.length === 0 &&
@@ -181,6 +213,17 @@ export function AgentUpdateSkillsDialog({
 
   const onConfirm = async () => {
     if (!canConfirm) {
+      return;
+    }
+    if (viaPullRequest) {
+      updating.reset();
+      try {
+        setCommitResult(
+          await updating.commit({ namespace, name, refreshSkills: true }),
+        );
+      } catch {
+        // Left to the dialog, which stays open and shows agent-manager's message.
+      }
       return;
     }
     let result;
@@ -200,13 +243,15 @@ export function AgentUpdateSkillsDialog({
       onOpenChange={isOpenNow => {
         if (!isOpenNow) {
           updating.reset();
+          setCommitResult(undefined);
         }
         onOpenChange(isOpenNow);
       }}
       title={`Update the skills of "${displayName}"?`}
-      confirmLabel="Update skills"
-      busyLabel="Updating…"
-      isBusy={updating.isUpdating}
+      confirmLabel={viaPullRequest ? 'Open pull request' : 'Update skills'}
+      busyLabel={viaPullRequest ? 'Opening pull request…' : 'Updating…'}
+      isBusy={updating.isUpdating || updating.isCommitting}
+      isDone={isCommitted}
       isConfirmDisabled={!canConfirm}
       error={
         updating.failure && !notConnected ? updating.failure.message : undefined
@@ -216,10 +261,15 @@ export function AgentUpdateSkillsDialog({
     >
       <Flex direction="column" gap="3">
         <Text variant="body-medium">
-          Every git skill is re-pinned to the head of its repository's default
-          branch — the agent then runs the skills as they are today. Nothing
-          else about the agent changes.
+          Re-pins every git skill to its repository's default-branch head.
+          Nothing else about the agent changes.
         </Text>
+        {viaPullRequest && (
+          <Text variant="body-medium">
+            Applied from GitOps: agent-manager opens a pull request as you with
+            the new pins. The skills move once it is merged.
+          </Text>
+        )}
 
         {isLoading && !dryRun.result && (
           <Text color="secondary">
@@ -288,13 +338,16 @@ export function AgentUpdateSkillsDialog({
           </table>
         )}
 
-        {dryRun.result && !failure && violations.length === 0 && (
-          <Text variant="body-small" color="secondary">
-            {changesAnything
-              ? 'Confirming re-pins the skills marked above; its Harness then compiles a new revision.'
-              : "Every git skill is already at its repository's default-branch head."}
-          </Text>
-        )}
+        {dryRun.result &&
+          !failure &&
+          violations.length === 0 &&
+          !isCommitted && (
+            <Text variant="body-small" color="secondary">
+              {changesAnything ? confirmNote : ALREADY_AT_HEAD}
+            </Text>
+          )}
+
+        {commitResult && <CommitOutcome result={commitResult} />}
       </Flex>
     </ConfirmDialog>
   );

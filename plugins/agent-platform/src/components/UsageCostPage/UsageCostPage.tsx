@@ -104,15 +104,14 @@ export function UsageCostPage() {
               <div className={classes.row}>
                 <KpiTile
                   label="Reported cost"
-                  hint="What the agents' runtimes themselves reported for your turns, summed over kagent's window. Only some runtimes report a cost, and only your own sessions are countable from here — never a fleet total."
+                  hint="What your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost; never a fleet total."
                   value={formatUsd(reportedCostUsd)}
                   sub={`your sessions, over the last ${sessionWindowDays} days`}
                 />
               </div>
               <Text variant="body-small" color="secondary">
-                The one cost figure this environment can answer without the
-                gateway's gen_ai metrics: what your agents' runtimes reported
-                through kagent. The Your sessions tab breaks it down.
+                The only cost figure available without the gateway's gen_ai
+                metrics. The Your sessions tab breaks it down.
               </Text>
             </>
           )}
@@ -139,33 +138,30 @@ export function UsageCostPage() {
                 rows={usage.byAgent}
                 currency={currency}
                 emptyMessage="The gateway attributed no calls to an agent in this window."
-                note="Each model call names its agent: the runtime sends the agent's name and namespace and the person on the call, the gateway records them for a call arriving through the Substrate egress and attributes any other call to the ServiceAccount of the pod that made it. A row covers everyone's traffic through that agent. An agent marked as removed matches none this portal knows — it has been removed since, or runs outside this portal's view — and its spend stays in the totals. Unattributed is traffic the gateway could match to no caller."
+                note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed: an agent this portal no longer knows; its spend stays in the totals. Unattributed: traffic matched to no caller."
               />
               <LlmByModelTable
                 rows={usage.byModel}
                 currency={currency}
                 emptyMessage="No model answered a call in this window."
-                note="Cost/1M is a blend, not a list price: cache reads and writes count as tokens, so heavy caching pushes it below a model's headline rate. Average tokens per call is the one to watch for context creep — it rising is the usual reason a bill rises without more traffic."
+                note="Cost/1M is a blend, not a list price: cached tokens count, so heavy caching pushes it below a model's headline rate. Watch average tokens per call for context creep — the usual reason a bill rises without more traffic."
               />
               <PricingCoverageNote rows={usage.unpricedModels} />
               <Text variant="body-small" color="secondary">
                 {converted ? (
                   <>
-                    Costs are measured in USD — the gateway prices each call
-                    from its model catalogue as the call happens — and shown
-                    here converted at this environment's configured rate, which
-                    makes the displayed amounts estimates. Still not a provider
-                    invoice: the catalogue is our own price list, and a model it
-                    cannot price contributes nothing rather than raising an
-                    error.
+                    Measured in USD per call from the gateway's model catalogue
+                    and converted at this environment's configured rate, so
+                    these are estimates. Not a provider invoice: the catalogue
+                    is our own price list, and a model it cannot price adds
+                    nothing.
                   </>
                 ) : (
                   <>
-                    Costs are measured, not estimated: the gateway prices each
-                    call from its model catalogue as the call happens. They are
-                    still not a provider invoice — the catalogue is our own
-                    price list — and a model it cannot price contributes nothing
-                    rather than raising an error.
+                    Measured, not estimated: the gateway prices each call from
+                    its model catalogue. Still not a provider invoice — the
+                    catalogue is our own price list, and a model it cannot price
+                    adds nothing.
                   </>
                 )}
               </Text>

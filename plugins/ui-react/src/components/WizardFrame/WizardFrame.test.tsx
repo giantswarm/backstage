@@ -1,12 +1,22 @@
 import { useMemo } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
 } from '../PageHeaderActions';
-import { WizardFrame } from './WizardFrame';
+import { TWO_COLUMN_MEDIA } from '../../utils/breakpoints';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '../../utils/mockPhoneLayout';
+import {
+  useWizardFrameAside,
+  useWizardFrameRail,
+  WizardFrame,
+} from './WizardFrame';
 import { WizardStepHeading } from './WizardStepHeading';
 
 const steps = [
@@ -174,5 +184,185 @@ describe('WizardFrame', () => {
     expect(
       screen.queryByRole('button', { name: 'Back' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('keeps the scroll clearance in step with the footer’s measured height', () => {
+    renderFrame();
+
+    // Until measured, the clearance assumes the one-row footer's 64px.
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(styles).toContain(
+      'scroll-margin-bottom: calc(var(--wizard-footer-height, 64px) + 32px + var(--agent-shell-mobile-bar-height, 0px))',
+    );
+  });
+
+  it('widens its padding at the two-column tier, not at a breakpoint of its own', () => {
+    renderFrame();
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent)
+      .join('\n');
+    expect(styles).toContain(TWO_COLUMN_MEDIA);
+    expect(styles).not.toMatch(/max-width: 720px/);
+  });
+
+  describe('at phone width', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('says which step of how many, and keeps the labelled list for assistive technology', () => {
+      renderFrame();
+
+      expect(screen.getByText('Step 3 of 4 · Connectors')).toBeInTheDocument();
+      // The list the e2e helper and screen readers read is still there, with
+      // the current step marked — visually hidden, and without links no one
+      // can see.
+      const strip = screen.getByRole('list', { name: 'Steps' });
+      const items = within(strip).getAllByRole('listitem');
+      expect(items).toHaveLength(4);
+      expect(items[2]).toHaveAttribute('aria-current', 'step');
+      expect(within(strip).queryByRole('link')).not.toBeInTheDocument();
+    });
+
+    it('turns Back into an icon so the footer keeps to one row', async () => {
+      const onBack = jest.fn();
+      renderFrame({ onBack });
+
+      const footer = screen.getByRole('contentinfo');
+      const back = within(footer).getByRole('button', { name: 'Back' });
+      expect(back).not.toHaveTextContent('Back');
+      await userEvent.click(back);
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
+
+    it('goes back to the full step strip on a wider screen', () => {
+      renderFrame();
+
+      act(() => layout.setWidth(1280));
+      expect(
+        screen.queryByText('Step 3 of 4 · Connectors'),
+      ).not.toBeInTheDocument();
+      expect(
+        within(screen.getByRole('list', { name: 'Steps' })).getByRole('link', {
+          name: 'Basics',
+        }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('a docked side panel', () => {
+    function Aside({ width, active }: { width: number; active: boolean }) {
+      const { docked } = useWizardFrameAside(width, active);
+      return <p>{docked ? 'docked' : 'covering'}</p>;
+    }
+
+    it('is docked outside a measured frame, and reserves nothing while inactive', () => {
+      const { container } = render(
+        <MemoryRouter>
+          <PageHeaderActionsProvider>
+            <WizardFrame title="New agent" closeHref="/customize/agents">
+              <Aside width={420} active={false} />
+            </WizardFrame>
+          </PageHeaderActionsProvider>
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText('docked')).toBeInTheDocument();
+      const frame = container.querySelector(
+        '[data-field-validation-scope]',
+      ) as HTMLElement;
+      expect(frame.style.paddingRight).toBe('');
+    });
+
+    it('reserves its width on the frame while active, and releases it', () => {
+      const { container, rerender } = render(
+        <MemoryRouter>
+          <PageHeaderActionsProvider>
+            <WizardFrame title="New agent" closeHref="/customize/agents">
+              <Aside width={420} active />
+            </WizardFrame>
+          </PageHeaderActionsProvider>
+        </MemoryRouter>,
+      );
+      const frame = container.querySelector(
+        '[data-field-validation-scope]',
+      ) as HTMLElement;
+      expect(frame.style.paddingRight).toBe('420px');
+
+      rerender(
+        <MemoryRouter>
+          <PageHeaderActionsProvider>
+            <WizardFrame title="New agent" closeHref="/customize/agents">
+              <Aside width={420} active={false} />
+            </WizardFrame>
+          </PageHeaderActionsProvider>
+        </MemoryRouter>,
+      );
+      expect(frame.style.paddingRight).toBe('');
+    });
+  });
+
+  describe('a rail', () => {
+    function Step() {
+      const { docked } = useWizardFrameRail();
+      return <p>{docked ? 'rail docked' : 'narrow fallback'}</p>;
+    }
+
+    function renderWithRail() {
+      return render(
+        <MemoryRouter>
+          <PageHeaderActionsProvider>
+            <WizardFrame
+              title="New agent"
+              closeHref="/customize/agents"
+              rail={<aside aria-label="Selected">3 tools</aside>}
+            >
+              <Step />
+            </WizardFrame>
+          </PageHeaderActionsProvider>
+        </MemoryRouter>,
+      );
+    }
+
+    let layout: MockedLayout | undefined;
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+    });
+
+    it('docks beside the step at the two-column tier', () => {
+      layout = mockDesktopLayout();
+      renderWithRail();
+
+      expect(
+        screen.getByRole('complementary', { name: 'Selected' }),
+      ).toHaveTextContent('3 tools');
+      expect(screen.getByText('rail docked')).toBeInTheDocument();
+    });
+
+    it('is left to the step’s fallback below it, and comes back on a wider screen', () => {
+      layout = mockPhoneLayout();
+      renderWithRail();
+
+      expect(
+        screen.queryByRole('complementary', { name: 'Selected' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('narrow fallback')).toBeInTheDocument();
+
+      act(() => layout!.setWidth(1280));
+      expect(
+        screen.getByRole('complementary', { name: 'Selected' }),
+      ).toBeInTheDocument();
+    });
+
+    it('answers no rail outside a frame', () => {
+      render(<Step />);
+      expect(screen.getByText('narrow fallback')).toBeInTheDocument();
+    });
   });
 });

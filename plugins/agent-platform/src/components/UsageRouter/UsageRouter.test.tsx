@@ -5,6 +5,11 @@ import userEvent from '@testing-library/user-event';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { usageRouteRef } from '../../routes';
 import { UsageRouter } from './UsageRouter';
 
@@ -451,5 +456,47 @@ describe('UsageRouter', () => {
       ).toBeInTheDocument();
       expect(within(header).getByTestId('environment-select')).toBeVisible();
     });
+  });
+});
+
+// T22 C23: a phone never shows the greyed buttons' `title=`.
+describe('UsageScopeBar · the window limit on a phone', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    mockAgentShell = false;
+    scopeState.isSingleInstallation = false;
+    scopeState.isLoading = false;
+    sessionUsageState.usage = { windowDays: 30 };
+  });
+  afterEach(() => layout.restore());
+
+  const REASON =
+    'kagent keeps 30 days of session usage, so the longer ranges are unavailable.';
+
+  it('says why the longer windows are off beside the control', async () => {
+    layout = mockPhoneLayout();
+    renderTab('/agent-platform/usage/conversations');
+
+    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '90 days' })).toBeDisabled();
+    expect(screen.getByText(REASON)).toBeVisible();
+  });
+
+  it('leaves it to the button’s tooltip on a desktop with a mouse', async () => {
+    layout = mockDesktopLayout();
+    renderTab('/agent-platform/usage/conversations');
+
+    expect(await screen.findByText('conversations-view')).toBeInTheDocument();
+    expect(screen.queryByText(REASON)).toBeNull();
+  });
+
+  it('says nothing where no window is off', async () => {
+    layout = mockPhoneLayout();
+    renderTab('/agent-platform/usage/overview');
+
+    expect(await screen.findByText('overview-view')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/so the longer ranges are unavailable/),
+    ).toBeNull();
   });
 });

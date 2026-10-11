@@ -207,8 +207,8 @@ function NewAgentPageContent() {
     <AgentWizardFrame step="details">
       {edit ? (
         <WizardStepHeading title="Describe your agent">
-          Change what the agent is called, what it is for and how it works.
-          Nothing changes until you save on the last step.
+          Change its name, purpose and instructions. Nothing changes until you
+          save on the last step.
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Describe your agent">
@@ -232,7 +232,6 @@ function NewAgentPageContent() {
               value={state.name}
               onChange={setName}
               placeholder="e.g. Support triage"
-              description="What people call the agent."
               {...fieldErrorProps(validation.errorFor(fieldErrors.name))}
             />
           </div>
@@ -252,7 +251,7 @@ function NewAgentPageContent() {
           onChange={setSystemMessage}
           rows={6}
           placeholder="Tell the agent how to work. For example: Always group tickets by topic. Write in short, friendly sentences. Never close a ticket yourself."
-          description="Leave empty to use the standard instructions. Put long reference material in a skill; instructions are limited in length."
+          description="Leave empty for the standard instructions. Put long reference material in a skill."
           maxLength={MAX_SYSTEM_MESSAGE_LENGTH}
           error={systemMessageProblem(state.systemMessage)}
         />
@@ -296,7 +295,7 @@ function NewAgentPageContent() {
                 secondaryLabel="fixed"
                 isReadOnly
                 value={state.slug}
-                description={`Used in links and in the agent's resource names, on ${edit.installation}. It can't be changed.`}
+                description={`Used in links and resource names on ${edit.installation}.`}
               />
             ) : (
               <TextField
@@ -306,7 +305,7 @@ function NewAgentPageContent() {
                 value={state.slug}
                 onChange={setSlug}
                 placeholder="support-triage"
-                description="Used in links and in the agent's resource names. It can't be changed later."
+                description="Used in links and resource names. Can't be changed later."
                 {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
               />
             )}
@@ -320,7 +319,7 @@ function NewAgentPageContent() {
               placeholder={
                 'https://github.com:443\nhttps://*.githubusercontent.com'
               }
-              description="Hosts the agent may reach beyond what it already has: its model, its connectors, its skill and plugin sources and telemetry need no entry. One http(s) origin per line; a leading * matches one host label."
+              description="Hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. One http(s) origin per line; a leading * matches one host label."
               error={egressIssue}
             />
           </div>
@@ -330,12 +329,12 @@ function NewAgentPageContent() {
       <Text as="p" color="secondary">
         {edit &&
           (hasRepositories
-            ? 'Next you change its skills and what it may do, then check what changes and save it.'
-            : 'Next you change what it may do, then check what changes and save it.')}
+            ? 'Next: its skills and what it may do, then review and save.'
+            : 'Next: what it may do, then review and save.')}
         {!edit &&
           (hasRepositories
-            ? 'Next you add skills and choose what the agent may do, then check everything and create it.'
-            : 'Next you choose what the agent may do, then check everything and create it.')}
+            ? 'Next: skills and what the agent may do, then review and create.'
+            : 'Next: what the agent may do, then review and create.')}
       </Text>
     </AgentWizardFrame>
   );

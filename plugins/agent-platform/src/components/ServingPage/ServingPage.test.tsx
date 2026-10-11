@@ -351,7 +351,9 @@ describe('ServingPage', () => {
     expect(
       screen.queryByRole('button', { name: /Serve model/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/are how agents reach them/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Agents reach them through model configs/),
+    ).toBeInTheDocument();
     // Nothing is composed in the browser: no permission probe for a create.
     expect(mockUseSelfSubjectAccessReview).not.toHaveBeenCalledWith(
       'inst-1',
@@ -379,7 +381,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByTestId('load-dialog')).toHaveTextContent('inst-1');
     expect(
-      screen.getByText(/Serve a model from a curated preset or stop one/),
+      screen.getByText(/Serving a model here creates its model config/),
     ).toBeInTheDocument();
   });
 
@@ -780,9 +782,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByText('No model backend yet')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /model-manager on inst-1 is running with no backend registered/,
-      ),
+      screen.getByText(/model-manager on inst-1 has no backend registered/),
     ).toBeInTheDocument();
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(container.querySelector('table')).toBeNull();
@@ -812,7 +812,7 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      screen.getByText(/Models served on the environments/),
+      screen.getByText(/Models served by KServe or a model-manager/),
     ).toBeInTheDocument();
     expect(screen.getByText('qwen3-14b')).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
@@ -983,7 +983,7 @@ describe('ServingPage', () => {
       await renderSection();
 
       expect(
-        screen.getByText(/pull a model onto a backend/),
+        screen.getByText(/Serving a model here creates its model config/),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: /Pull model/ }),

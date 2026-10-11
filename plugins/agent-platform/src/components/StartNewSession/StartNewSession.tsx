@@ -164,17 +164,15 @@ export function StartNewSession({
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
-      reason =
-        'No agents could be read, so there is none to start a session with.';
+      reason = 'No agents could be read to start a session with.';
       pointer = 'warning';
     } else if (agents.length === 0) {
-      reason =
-        'No agents are deployed on the reachable environments, so there is none to start a session with.';
+      reason = 'No agents are deployed on the reachable environments.';
     } else {
       reason =
         agents.length === 1
-          ? 'The only agent on the fleet is not ready, so there is none to start a session with.'
-          : `None of the ${agents.length} agents on the fleet are ready, so there is none to start a session with.`;
+          ? 'The only agent is not ready for a session.'
+          : `None of the ${agents.length} agents is ready for a session.`;
       pointer = 'agentsTab';
     }
 
@@ -238,7 +236,7 @@ export function StartNewSession({
     return (
       <EmptyStateCard
         title="Start your first session"
-        description="Pick an agent, say what you need, and the conversation opens as soon as it starts."
+        description="Pick an agent and say what you need."
       >
         {composer}
       </EmptyStateCard>

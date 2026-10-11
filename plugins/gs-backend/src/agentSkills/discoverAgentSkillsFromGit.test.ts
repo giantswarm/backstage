@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
   scanSkillsTree,
   toGitFetchError,
 } from './discoverAgentSkillsFromGit';
+import { gitBlobSha, MAX_INLINE_FILE_BYTES } from './skillFiles';
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
 
@@ -33,6 +34,24 @@ function fakeClone(
       }
       // What a real clone also leaves behind, and the scan must skip.
       await mkdir(path.join(dir, '.git', 'objects'), { recursive: true });
+      await writeFile(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/main');
+      return result;
+    },
+  };
+}
+
+/** A GitClient that "clones" by writing the given files (repo-relative). */
+function fakeCloneFiles(
+  files: Record<string, string | Buffer>,
+  result = { commit: HEAD, ref: 'main' },
+): GitClient {
+  return {
+    async clone(dir) {
+      for (const [file, content] of Object.entries(files)) {
+        await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
+        await writeFile(path.join(dir, file), content);
+      }
+      await mkdir(path.join(dir, '.git'), { recursive: true });
       await writeFile(path.join(dir, '.git', 'HEAD'), 'ref: refs/heads/main');
       return result;
     },
@@ -114,6 +133,7 @@ describe('discoverAgentSkillsFromGit', () => {
           ref: 'main',
           commit: HEAD,
           contentReadable: true,
+          fileCount: 1,
         },
         {
           name: 'beta',
@@ -123,13 +143,163 @@ describe('discoverAgentSkillsFromGit', () => {
           ref: 'main',
           commit: HEAD,
           contentReadable: true,
+          fileCount: 1,
         },
       ],
       contents: new Map([
         ['a-skill', 'no frontmatter'],
         ['b-skill', '---\nname: beta\ndescription: Second.\n---\n'],
       ]),
+      files: expect.any(Map),
+      fileContents: expect.any(Map),
     });
+  });
+
+  describe('file lists', () => {
+    it('lists every skill’s regular files with git blob ids, nested files to the deepest skill, keeping the small ones', async () => {
+      const result = await discoverAgentSkillsFromGit({
+        repoUrl: 'http://gitserver.lab.local/skills.git',
+        gitClient: {
+          async clone(dir) {
+            await fakeCloneFiles({
+              'README.md': 'not a skill file',
+              'ops/SKILL.md': '---\nname: ops\n---\n',
+              'ops/references/runbook.md': '# Runbook\n',
+              'ops/data/blob.bin': Buffer.from([1, 0, 2]),
+              'ops/triage/SKILL.md': '---\nname: triage\n---\n',
+              'ops/triage/notes.md': 'notes\n',
+            }).clone(dir, '');
+            // A symlink pointing out of the skill is not one of its files.
+            await symlink('/etc/hosts', path.join(dir, 'ops', 'hosts'));
+            return { commit: HEAD, ref: 'main' };
+          },
+        },
+      });
+
+      const sha = (text: string | Buffer) =>
+        gitBlobSha(typeof text === 'string' ? Buffer.from(text) : text);
+      expect(result.files).toEqual(
+        new Map([
+          [
+            'ops',
+            {
+              files: [
+                {
+                  path: 'SKILL.md',
+                  size: 18,
+                  sha: sha('---\nname: ops\n---\n'),
+                },
+                {
+                  path: 'data/blob.bin',
+                  size: 3,
+                  sha: sha(Buffer.from([1, 0, 2])),
+                },
+                {
+                  path: 'references/runbook.md',
+                  size: 10,
+                  sha: sha('# Runbook\n'),
+                },
+              ],
+              truncated: false,
+              total: 3,
+            },
+          ],
+          [
+            'ops/triage',
+            {
+              files: [
+                {
+                  path: 'SKILL.md',
+                  size: 21,
+                  sha: sha('---\nname: triage\n---\n'),
+                },
+                { path: 'notes.md', size: 6, sha: sha('notes\n') },
+              ],
+              truncated: false,
+              total: 2,
+            },
+          ],
+        ]),
+      );
+      expect(result.skills.map(s => [s.path, s.fileCount])).toEqual([
+        ['ops', 3],
+        ['ops/triage', 2],
+      ]);
+      // Bytes by repository path, for the file viewer; nothing outside a skill.
+      expect([...result.fileContents!.keys()].sort()).toEqual([
+        'ops/SKILL.md',
+        'ops/data/blob.bin',
+        'ops/references/runbook.md',
+        'ops/triage/SKILL.md',
+        'ops/triage/notes.md',
+      ]);
+      expect(
+        Buffer.from(result.fileContents!.get('ops/references/runbook.md')!),
+      ).toEqual(Buffer.from('# Runbook\n'));
+    });
+
+    it('hashes a file over the inline cap without keeping it', async () => {
+      const large = Buffer.alloc(MAX_INLINE_FILE_BYTES + 1, 'a');
+      const result = await discoverAgentSkillsFromGit({
+        repoUrl: 'http://gitserver.lab.local/skills.git',
+        gitClient: fakeCloneFiles({
+          'data-skill/SKILL.md': 'body',
+          'data-skill/data/huge.csv': large,
+        }),
+      });
+
+      expect(result.files!.get('data-skill')!.files[1]).toEqual({
+        path: 'data/huge.csv',
+        size: large.length,
+        sha: gitBlobSha(large),
+      });
+      expect(result.fileContents!.has('data-skill/data/huge.csv')).toBe(false);
+    });
+
+    it('caps a skill’s list at 200 files and says so', async () => {
+      const files: Record<string, string> = { 'big/SKILL.md': 'body' };
+      for (let i = 0; i < 205; i++) {
+        files[`big/refs/r-${String(i).padStart(3, '0')}.md`] = `${i}`;
+      }
+      const result = await discoverAgentSkillsFromGit({
+        repoUrl: 'http://gitserver.lab.local/skills.git',
+        gitClient: fakeCloneFiles(files),
+      });
+
+      const list = result.files!.get('big')!;
+      expect(list.files).toHaveLength(200);
+      expect(list.files[0].path).toBe('SKILL.md');
+      expect(list.truncated).toBe(true);
+      expect(list.total).toBe(206);
+      expect(result.skills[0].fileCount).toBe(206);
+      // Past the cap nothing is read either.
+      expect(result.fileContents!.has('big/refs/r-204.md')).toBe(false);
+    });
+  });
+
+  it('refuses with 409 when the branch head is no longer the commit asked for', async () => {
+    const promise = discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/skills.git',
+      ref: 'main',
+      commit: 'a'.repeat(40),
+      gitClient: fakeClone({ x: 'body' }),
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(GitFetchError);
+    await expect(promise).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('has moved on from aaaaaaa'),
+    });
+  });
+
+  it('reads at the commit asked for when it is still the head', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/skills.git',
+      commit: HEAD,
+      gitClient: fakeClone({ x: 'body' }),
+    });
+
+    expect(result.commit).toBe(HEAD);
   });
 
   it('falls back to the repository basename for a root skill without a name', async () => {

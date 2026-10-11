@@ -9,6 +9,11 @@ import { agentsRouteRef, sessionsRouteRef } from '../../routes';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { AgentPlatformHome } from './AgentPlatformHome';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -333,9 +338,7 @@ describe('AgentPlatformHome', () => {
       expect(chips[0]).toHaveAccessibleName('Research Agent');
       expect(chips[1]).toHaveAccessibleName('SRE Agent');
       expect(
-        screen.getByText(
-          'Choose an agent to work with, then tell it what you need.',
-        ),
+        screen.getByText('Choose an agent, then say what you need.'),
       ).toBeInTheDocument();
       expect(screen.getByText('Required to start')).toBeInTheDocument();
     });
@@ -491,5 +494,51 @@ describe('AgentPlatformHome', () => {
         screen.queryByRole('link', { name: 'Manage agents' }),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('AgentPlatformHome on a phone (T22)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  /** bui's Container around the page. */
+  const container = () =>
+    screen
+      .getByRole('heading', { level: 1 })
+      .closest<HTMLElement>('.bui-Container')!;
+
+  it('drops the Container’s own bottom margin, so the centred page fits the view (P6)', async () => {
+    layout = mockPhoneLayout();
+    await render();
+
+    // bui's `mb` utility: the class reads its value from `--mb`.
+    expect(container()).toHaveClass('bui-mb');
+    expect(container().style.getPropertyValue('--mb')).toBe('0');
+  });
+
+  it('tells a touch user to tap the arrow, not to press Enter (B2)', async () => {
+    layout = mockPhoneLayout();
+    // Preselected, as a "New session" link from elsewhere does it.
+    await render({ url: `/?agent=${encodeURIComponent(sre.id)}` });
+
+    expect(
+      screen.getByText('Tap the arrow to start the session with this message.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveAttribute(
+      'enterkeyhint',
+      'enter',
+    );
+  });
+
+  it('keeps the keyboard caption on a desktop', async () => {
+    layout = mockDesktopLayout();
+    // Preselected, as a "New session" link from elsewhere does it.
+    await render({ url: `/?agent=${encodeURIComponent(sre.id)}` });
+
+    expect(
+      screen.getByText(
+        'Enter starts the session with this message, Shift+Enter for a new line.',
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -37,10 +37,48 @@ jest.mock('../../hooks/useSkillContent', () => ({
   },
 }));
 
+let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
-    config: { getOptionalStringArray: () => [REPO] },
+    config: {
+      getOptionalStringArray: () => [REPO],
+      getOptionalString: (key: string) =>
+        mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
+    },
     isLoading: false,
+  }),
+}));
+
+// The skill creator hand-off (T78) above the form.
+jest.mock('../AgentsDataProvider', () => ({
+  AgentsDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useAgents: () => ({
+    rows: [
+      {
+        id: 'gazelle/kagent/skill-creator',
+        installation: 'gazelle',
+        namespace: 'kagent',
+        name: 'Skill Creator',
+        technicalName: 'skill-creator',
+        description: '',
+        skillCount: 0,
+        readiness: 'ready',
+      },
+    ],
+    isLoading: false,
+  }),
+}));
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => undefined,
+}));
+jest.mock('../../hooks/useCreateSession', () => ({
+  useCreateSession: () => ({
+    createSession: jest.fn(),
+    isCreating: false,
+    error: null,
+    reset: jest.fn(),
   }),
 }));
 
@@ -84,6 +122,7 @@ beforeEach(() => {
   mockCatalog = loaded;
   mockContent = { isLoading: false, error: null };
   mockUseSkillContent.mockReset();
+  mockMetaAgents = {};
 });
 
 describe('EditSkillPage', () => {
@@ -113,6 +152,35 @@ describe('EditSkillPage', () => {
       'href',
       '/agent-platform/skills/giantswarm/skills/support/ticket-triage',
     );
+  });
+
+  it('shows the skill creator caveat above the form where the role resolves, and none where it is unconfigured', async () => {
+    mockContent = {
+      isLoading: false,
+      error: null,
+      content: {
+        repoUrl: REPO,
+        path: skill.path,
+        commit: COMMIT,
+        name: 'ticket-triage',
+        description: 'How to triage.',
+        instructions: 'Classify, prioritise, route.',
+      },
+    };
+    const { unmount } = await renderPage();
+    expect(
+      screen.queryByText('Use this form for simple skills.'),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    await renderPage();
+    expect(
+      screen.getByText('Use this form for simple skills.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+    ).toBeInTheDocument();
   });
 
   it('waits for the skill while it is being read', async () => {

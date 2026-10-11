@@ -15,7 +15,7 @@ describe('UsageConnectorsPage', () => {
     ).toBeInTheDocument();
     // muster's metrics do not follow the screen's time-range control.
     expect(
-      screen.getByText(/cover the last 30 days whatever time range/),
+      screen.getByText(/ignore the selected time range/),
     ).toBeInTheDocument();
   });
 });

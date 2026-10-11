@@ -53,8 +53,8 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       return (
         <Text variant="body-medium" color="secondary">
           {installation} has no observability stack this portal can query, so
-          there are no fleet-wide token or cost figures for it. Your sessions
-          still have their own counts.
+          there are no fleet-wide token or cost figures. Your sessions still
+          have their own counts.
         </Text>
       );
 

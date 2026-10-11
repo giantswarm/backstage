@@ -1,3 +1,8 @@
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ByAgentTable } from './ByAgentTable';
@@ -203,5 +208,51 @@ describe('ByAgentTable', () => {
       expect(order).toHaveLength(15);
       expect(order[0]).toBe('Agent 299');
     });
+  });
+});
+
+// T22 B11: six or seven columns in 343px clipped every figure.
+describe('ByAgentTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+  const RATES = { input: 0.000001, output: 0.000002 };
+
+  it('keeps the agent, its sessions and the estimate, and names a reported cost under the agent', () => {
+    layout = mockPhoneLayout();
+    render(
+      <ByAgentTable
+        rows={[{ ...ROWS[0], reportedCostUsd: 3.25 }, ROWS[1]]}
+        rates={RATES}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(headers()).toEqual(['Agent', 'Sessions', 'Est. cost']);
+    expect(screen.getByText('$3.25 reported by its runtime')).toBeVisible();
+  });
+
+  it('keeps every column, the reported one too, on a desktop', () => {
+    layout = mockDesktopLayout();
+    render(
+      <ByAgentTable
+        rows={[{ ...ROWS[0], reportedCostUsd: 3.25 }, ROWS[1]]}
+        rates={RATES}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(headers()).toEqual([
+      'Agent',
+      'Sessions',
+      'Turns',
+      'Input tokens',
+      'Output tokens',
+      'Est. cost',
+      'Reported cost',
+    ]);
+    expect(screen.queryByText(/reported by its runtime/)).toBeNull();
   });
 });

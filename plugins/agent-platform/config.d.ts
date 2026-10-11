@@ -73,6 +73,12 @@ export interface Config {
       platformOperations?: string;
       /** Reviews a skill: the skill detail page's Evaluate button. */
       skillEvaluation?: string;
+      /**
+       * Writes complex, nested (multi-file) skills in conversation: the Add
+       * Skill and Edit Skill forms' hand-off ("use the skill creator agent for
+       * more complex, nested skills"), which starts a session with it.
+       */
+      skillCreation?: string;
     };
     /**
      * Integrations of the platform that live outside the portal, which the

@@ -28,8 +28,19 @@ import { detectTable } from '../../lib/resultShape';
 type ViewMode = 'parsed' | 'raw' | 'table';
 
 // Fills the viewport below the toolbar once the result is scrolled into view,
-// with a usable minimum on short windows.
-const RESULT_MAX_HEIGHT = 'max(240px, calc(100vh - 200px))';
+// with a usable minimum on short windows. The dynamic viewport and the
+// shell's phone bar (0 elsewhere) count, so on a phone the box ends above the
+// bar instead of under it, and a swipe past its end reaches the page.
+const RESULT_MAX_HEIGHT =
+  'max(240px, calc(100dvh - var(--agent-shell-mobile-bar-height, 0px) - 200px))';
+
+/**
+ * Every result column's least width. A result's shape is unknown — a k8s list
+ * has eight columns — and bui squeezes columns without widths into the table's
+ * width (~37px each at 375px, values clipped). With a minimum it switches to
+ * its resizable container, which scrolls sideways inside itself instead.
+ */
+export const RESULT_COLUMN_MIN_WIDTH = 120;
 
 /**
  * How many table rows render before *Show N more rows*, and the row count above
@@ -102,6 +113,7 @@ export function ToolResultViewer({
         label: col,
         // The leading column (`name` when the rows have one) names the row.
         isRowHeader: index === 0,
+        minWidth: RESULT_COLUMN_MIN_WIDTH,
         cell: row => <CellText title={cellText(row.values[col])} />,
       })),
     [table],

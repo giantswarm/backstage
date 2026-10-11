@@ -303,8 +303,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     >
       {edit ? (
         <WizardStepHeading title="Change the model">
-          Agents that run on it pick up the change once you save it. Nothing
-          changes before.
+          Agents on it pick up the change when you save.
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Describe the model">

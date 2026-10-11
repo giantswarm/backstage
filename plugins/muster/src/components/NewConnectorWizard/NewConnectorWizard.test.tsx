@@ -178,7 +178,7 @@ describe('shell connector wizard', () => {
       );
       // Every problem has a field to show it, so no summary box.
       expect(
-        screen.queryByText(/Please fix the following/),
+        screen.queryByText(/Fix before continuing/),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByText('How do people sign in?'),
@@ -245,7 +245,7 @@ describe('shell connector wizard', () => {
       );
 
       expect(
-        await screen.findByText(/No answer from this address/),
+        await screen.findByText(/Muster could not reach this address/),
       ).toBeInTheDocument();
       expect(screen.queryByText('Server found')).not.toBeInTheDocument();
     });

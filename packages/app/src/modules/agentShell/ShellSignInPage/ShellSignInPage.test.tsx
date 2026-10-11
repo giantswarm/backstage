@@ -1,12 +1,15 @@
 import { createApiRef } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { GiantSwarmMark } from '../../../assets/logo';
 import { ShellSignInPage } from './ShellSignInPage';
 import { PROVIDER_STORAGE_KEY } from './useProviderSignIn';
 
+const stubLogo = () => <span data-testid="logo" />;
+const mockLogoIcon = jest.fn(stubLogo);
 jest.mock('../../nav/LogoIcon', () => ({
-  LogoIcon: () => <span data-testid="logo" />,
+  LogoIcon: () => mockLogoIcon(),
 }));
 
 const identity = {
@@ -81,6 +84,32 @@ describe('ShellSignInPage', () => {
   afterEach(() => {
     localStorage.clear();
     delete document.documentElement.dataset.agentShell;
+    mockLogoIcon.mockImplementation(stubLogo);
+  });
+
+  it('puts the logo mark in the title, beside "Agent Platform" (T71)', async () => {
+    renderPage();
+
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Agent Platform',
+    });
+    const logo = within(heading).getByTestId('logo');
+    expect(heading.firstElementChild).toBe(logo);
+    expect(heading).toHaveTextContent(/^Agent Platform$/);
+  });
+
+  it('reads as the Giant Swarm Agent Platform with the Giant Swarm ant (T71)', async () => {
+    mockLogoIcon.mockImplementation(() => <GiantSwarmMark />);
+    renderPage();
+
+    const heading = await screen.findByRole('heading', {
+      level: 1,
+      name: 'Giant Swarm Agent Platform',
+    });
+    expect(
+      within(heading).getByRole('img', { name: 'Giant Swarm' }),
+    ).toBeInTheDocument();
   });
 
   it('shows one card with a button and message per sign-in option', async () => {
@@ -240,5 +269,18 @@ describe('ShellSignInPage', () => {
 
     result.unmount();
     expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
+  });
+
+  it('fills the dynamic viewport, so a phone does not scroll the card page (T22 P5)', async () => {
+    renderPage();
+    await screen.findByRole('heading', { name: 'Agent Platform' });
+
+    const css = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent ?? '')
+      .join('\n');
+    // vh first, as the fallback a browser without dvh keeps.
+    expect(css).toMatch(
+      /\.[\w-]*page[\w-]* \{[^}]*min-height: 100vh;[^}]*min-height: 100dvh;/,
+    );
   });
 });

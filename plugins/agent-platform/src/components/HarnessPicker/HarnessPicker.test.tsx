@@ -155,7 +155,7 @@ describe('HarnessPicker', () => {
 
     expect(formHarness).toBeUndefined();
     expect(screen.getByRole('status')).toHaveTextContent(
-      "The Harness claude you picked doesn't serve this model's namespace",
+      "The Harness claude doesn't serve this model's namespace",
     );
   });
 

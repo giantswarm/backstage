@@ -13,7 +13,13 @@ import {
 
 const useStyles = makeStyles({
   page: {
-    minHeight: '100vh',
+    // The dynamic viewport: iOS Safari's 100vh is the view with its toolbars
+    // hidden, so the card page scrolled a little for nothing (T22 P5). JSS
+    // puts the fallback first, for browsers without dvh.
+    minHeight: '100dvh',
+    fallbacks: {
+      minHeight: '100vh',
+    },
     boxSizing: 'border-box',
     display: 'flex',
     alignItems: 'center',
@@ -30,6 +36,13 @@ const useStyles = makeStyles({
     border: '1px solid var(--bui-border-1)',
     borderRadius: 12,
     boxShadow: agentShellLightColors.composerShadow,
+  },
+  title: {
+    margin: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 'var(--bui-space-2)',
   },
   fullWidth: {
     width: '100%',
@@ -67,7 +80,8 @@ export interface ShellSignInPageProps {
 /**
  * The sign-in window of a deployment that serves the Agent Platform
  * (`app.portals.agentPlatform`): one centered card in the shell's look — the
- * rail's logo and name, then a button per sign-in option with its message
+ * rail's logo beside the name, as one title, then a button per sign-in option
+ * with its message
  * beneath. The first option is the primary action. Behaves like upstream's
  * `SignInPage` (see {@link useProviderSignIn}); classic-only deployments keep
  * that page unchanged.
@@ -91,16 +105,22 @@ export function ShellSignInPage({
     <main className={classes.page}>
       <section className={classes.card} aria-labelledby="shell-sign-in-title">
         <Flex direction="column" gap="6">
-          <Flex direction="column" align="center" gap="3">
-            <LogoIcon />
-            <Flex direction="column" align="center" gap="1">
-              <Text as="h1" id="shell-sign-in-title" variant="title-small">
+          <Flex direction="column" align="center" gap="1">
+            {/* The mark joins the title, beside it as in the rail, so the
+                card reads as the Giant Swarm Agent Platform (T71): the ant's
+                label is "Giant Swarm", which makes the heading's name too.
+                Beside, not above — the brand allows the horizontal form only.
+                The space keeps the two words apart in that name; the flex row
+                does not draw it. */}
+            <h1 id="shell-sign-in-title" className={classes.title}>
+              <LogoIcon />{' '}
+              <Text as="span" variant="title-small">
                 Agent Platform
               </Text>
-              <Text variant="body-medium" color="secondary">
-                Sign in to continue.
-              </Text>
-            </Flex>
+            </h1>
+            <Text variant="body-medium" color="secondary">
+              Sign in to continue.
+            </Text>
           </Flex>
           {error && error.name !== 'PopupRejectedError' && (
             <Alert

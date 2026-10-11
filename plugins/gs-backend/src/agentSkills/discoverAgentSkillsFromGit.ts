@@ -12,8 +12,16 @@ import path from 'node:path';
 import git from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { InputError } from '@backstage/errors';
+import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
 import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
+import {
+  assignSkillFiles,
+  gitBlobSha,
+  MAX_INLINE_FILE_BYTES,
+  repositoryFilePath,
+  SkillFileList,
+} from './skillFiles';
 
 /**
  * Discovery over the plain git protocol (smart HTTP), for skill repositories
@@ -142,33 +150,136 @@ export interface ScannedSkill {
   content: string;
 }
 
+/** A regular file found in a checkout. */
+interface ScannedFile {
+  /** Relative to the repository root. */
+  path: string;
+  size: number;
+}
+
+/**
+ * Walks a checkout: every `SKILL.md` (any depth, frontmatter parsed) and
+ * every regular file. `.git` directories and symlinks are not descended into
+ * or listed — the checkout is untrusted content, and a symlink must not walk
+ * out of it.
+ */
+async function walkCheckout(
+  rootDir: string,
+): Promise<{ skills: ScannedSkill[]; files: ScannedFile[] }> {
+  const skills: ScannedSkill[] = [];
+  const files: ScannedFile[] = [];
+
+  async function walk(dir: string, rel: string): Promise<void> {
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === '.git') {
+          continue;
+        }
+        await walk(entryPath, entryRel);
+      } else if (entry.isFile()) {
+        const { size } = await lstat(entryPath);
+        files.push({ path: entryRel, size });
+        if (entry.name === SKILL_FILE) {
+          const content = await readFile(entryPath, 'utf8');
+          const { name, description } = parseFrontmatter(content);
+          skills.push({ path: rel, name, description, content });
+        }
+      }
+    }
+  }
+
+  await walk(rootDir, '');
+  return { skills, files };
+}
+
 /**
  * Finds every `SKILL.md` under `rootDir` (any depth) and parses its
  * frontmatter. `.git` directories and symlinks are not descended into — the
  * checkout is untrusted content, and a symlink must not walk out of it.
  */
 export async function scanSkillsTree(rootDir: string): Promise<ScannedSkill[]> {
-  const found: ScannedSkill[] = [];
+  return (await walkCheckout(rootDir)).skills;
+}
 
-  async function walk(dir: string, rel: string): Promise<void> {
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        if (entry.name === '.git') {
-          continue;
-        }
-        await walk(path.join(dir, entry.name), entryRel);
-      } else if (entry.isFile() && entry.name === SKILL_FILE) {
-        const content = await readFile(path.join(dir, entry.name), 'utf8');
-        const { name, description } = parseFrontmatter(content);
-        found.push({ path: rel, name, description, content });
+/**
+ * The small listed files a checkout scan keeps the bytes of, at most: the
+ * discovery cache holds them for the file viewer (whose own cap bounds the
+ * whole), so a large repository cannot make one scan hold more than this.
+ */
+export const SCAN_KEPT_FILE_BYTES = 16 * 1024 * 1024;
+
+/** The git blob id of a file too large to hold, hashed as a stream. */
+async function streamGitBlobSha(file: string, size: number): Promise<string> {
+  const hash = createHash('sha1').update(`blob ${size}\0`);
+  for await (const chunk of fs.createReadStream(file)) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Every skill's files in a checkout (see `assignSkillFiles`), with their git
+ * blob ids, and the bytes of the small ones, up to
+ * {@link SCAN_KEPT_FILE_BYTES} — plus `mustRead` (a repository-relative path)
+ * whatever the budget, for a caller about to answer that very file. Only the
+ * listed files (at most the per-skill cap) are read or hashed.
+ */
+async function listCheckoutFiles(
+  root: string,
+  skillDirs: string[],
+  scanned: ScannedFile[],
+  mustRead: string | undefined,
+): Promise<{
+  files: Map<string, SkillFileList>;
+  fileContents: Map<string, Uint8Array>;
+}> {
+  const lists = assignSkillFiles(
+    skillDirs,
+    scanned.map(f => ({ path: f.path, size: f.size, sha: '' })),
+  );
+  const fileContents = new Map<string, Uint8Array>();
+  let kept = 0;
+  const files = new Map<string, SkillFileList>();
+  for (const [dir, list] of lists) {
+    const hashed = [];
+    for (const file of list.files) {
+      const repoPath = repositoryFilePath(dir, file.path);
+      const absolute = path.join(root, ...repoPath.split('/'));
+      if (file.size > MAX_INLINE_FILE_BYTES) {
+        hashed.push({
+          ...file,
+          sha: await streamGitBlobSha(absolute, file.size),
+        });
+        continue;
+      }
+      const bytes = new Uint8Array(await readFile(absolute));
+      hashed.push({ ...file, size: bytes.length, sha: gitBlobSha(bytes) });
+      if (
+        repoPath === mustRead ||
+        kept + bytes.length <= SCAN_KEPT_FILE_BYTES
+      ) {
+        fileContents.set(repoPath, bytes);
+        kept += bytes.length;
       }
     }
+    files.set(dir, { ...list, files: hashed });
   }
+  return { files, fileContents };
+}
 
-  await walk(rootDir, '');
-  return found;
+/** The 409 for a branch whose head is no longer the commit asked for. */
+function movedOn(
+  cloned: GitCloneResult,
+  repoUrl: string,
+  commit: string,
+): GitFetchError {
+  return new GitFetchError(
+    409,
+    `${cloned.ref} of ${repoUrl} has moved on from ${commit.slice(0, 7)} to ${cloned.commit.slice(0, 7)}; reload the skill to read its current version.`,
+  );
 }
 
 /** The URL as the chart will carry it: trimmed, no trailing slashes. */
@@ -191,15 +302,29 @@ function repoBasename(repoUrl: string): string {
  * commit the branch resolved to, so a picked skill pins to the commit that
  * was read. The clone is anonymous; a private repository refuses it (the
  * error says so).
+ *
+ * The same scan lists every skill's files (`files`) and keeps the bytes of
+ * the small ones (`fileContents`) — the checkout is at hand, so the file
+ * viewer is answered from memory rather than a clone per file.
+ *
+ * With `commit` the caller holds a pin and wants exactly it: the branch's
+ * head must still be that commit (a 409 saying so otherwise; re-reading the
+ * catalog picks up the new head) — how `/content` and `/content/file` read
+ * a generic-git skill the cache does not hold. `mustRead` keeps that one
+ * file's bytes whatever the scan's budget.
  */
 export async function discoverAgentSkillsFromGit(options: {
   repoUrl: string;
   /** Branch (or tag) to read; defaults to the remote's default branch. */
   ref?: string;
+  /** The commit the head must be; any head when absent. */
+  commit?: string;
+  /** A repository-relative file whose bytes to keep whatever the budget. */
+  mustRead?: string;
   /** Test seam; the real isomorphic-git client when absent. */
   gitClient?: GitClient;
 }): Promise<SkillDiscoverySnapshot> {
-  const { ref, gitClient = isomorphicGitClient } = options;
+  const { ref, commit, mustRead, gitClient = isomorphicGitClient } = options;
   const repoUrl = canonicalGitUrl(options.repoUrl);
   if (!/^https?:\/\//.test(repoUrl)) {
     throw new InputError(
@@ -215,8 +340,18 @@ export async function discoverAgentSkillsFromGit(options: {
     } catch (error) {
       throw toGitFetchError(error, repoUrl, ref);
     }
+    if (commit !== undefined && cloned.commit !== commit) {
+      throw movedOn(cloned, repoUrl, commit);
+    }
 
-    const scanned = await scanSkillsTree(dir);
+    const walked = await walkCheckout(dir);
+    const scanned = walked.skills;
+    const { files, fileContents } = await listCheckoutFiles(
+      await realpath(dir),
+      scanned.map(s => s.path),
+      walked.files,
+      mustRead,
+    );
     const skills: DiscoveredSkill[] = scanned
       .map(s => ({
         name:
@@ -231,6 +366,7 @@ export async function discoverAgentSkillsFromGit(options: {
         commit: cloned.commit,
         // Read from the checkout just now.
         contentReadable: true,
+        fileCount: files.get(s.path)?.total ?? 0,
       }))
       // Same stable order as the GitHub provider.
       .sort(
@@ -244,6 +380,8 @@ export async function discoverAgentSkillsFromGit(options: {
       // A full checkout was scanned; nothing can be missing.
       truncated: false,
       contents: new Map(scanned.map(s => [s.path, s.content])),
+      files,
+      fileContents,
     };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -289,10 +427,7 @@ export async function readFileFromGit(options: {
       throw toGitFetchError(error, repoUrl, ref);
     }
     if (cloned.commit !== commit) {
-      throw new GitFetchError(
-        409,
-        `${cloned.ref} of ${repoUrl} has moved on from ${commit.slice(0, 7)} to ${cloned.commit.slice(0, 7)}; reload the skill to read its current version.`,
-      );
+      throw movedOn(cloned, repoUrl, commit);
     }
 
     const root = await realpath(dir);

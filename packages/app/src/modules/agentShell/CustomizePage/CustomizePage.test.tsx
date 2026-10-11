@@ -1,5 +1,10 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -280,6 +285,39 @@ describe('CustomizePage', () => {
         expect(screen.getByRole('searchbox')).toBeInTheDocument();
       },
     );
+  });
+
+  describe('at phone width (T22 P1)', () => {
+    let layout: MockedLayout;
+    afterEach(() => layout.restore());
+    /** The box the search field sits in, which sets its share of the row. */
+    const searchBox = (name: string) =>
+      screen
+        .getByRole('searchbox', { name })
+        .closest('div[style]') as HTMLElement;
+
+    it('gives the search and the create action a full-width line each', async () => {
+      layout = mockPhoneLayout();
+      await renderCustomize('/customize/agents');
+
+      // The search's 360px basis is wider than a phone's 343px content: the
+      // action used to wrap under it, left-aligned.
+      expect(searchBox('Search agents').style.flex).toBe('1 1 100%');
+      expect(screen.getByRole('link', { name: 'New agent' })).toHaveStyle({
+        width: '100%',
+      });
+      expect(screen.getByText('Agents panel, search “”')).toBeInTheDocument();
+    });
+
+    it('keeps the search at 360px beside the action on a wide viewport', async () => {
+      layout = mockDesktopLayout();
+      await renderCustomize('/customize/agents');
+
+      expect(searchBox('Search agents').style.flex).toBe('0 1 360px');
+      expect(screen.getByRole('link', { name: 'New agent' }).style.width).toBe(
+        '',
+      );
+    });
   });
 
   describe('a search in the address', () => {

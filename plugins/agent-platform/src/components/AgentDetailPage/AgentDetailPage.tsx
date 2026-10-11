@@ -373,7 +373,8 @@ function AgentDetailPageContent() {
 
   // The write actions — Delete, Edit, Update skills — go through agent-manager
   // over muster as the signed-in person, and are offered when the installation's
-  // muster lists agent-manager and the agent is not applied from git
+  // muster lists agent-manager and the agent is written live — or, for one
+  // applied from git, through a pull request when agent-manager can commit
   // (authorization stays the apiserver's, reached through agent-manager).
   // Called here rather than inside the menu: the menu is rendered in the shared
   // plugin header, outside this plugin's `QueryClientProvider`, so react-query
@@ -430,11 +431,10 @@ function AgentDetailPageContent() {
   );
 
   const writeMode = agentWriteMode(agentManagerGate);
-  /** Every live write the page offers is gated on this. */
-  const canWriteAgent = writeMode === 'apply';
   /**
-   * Edit is also offered for an agent applied from git when agent-manager can
-   * commit: the Edit agent page then opens a pull request instead of saving.
+   * Edit and Update skills are also offered for an agent applied from git when
+   * agent-manager can commit: the Edit agent page and the Update skills dialog
+   * then open a pull request instead of writing live.
    */
   const canEditAgent = writeMode !== undefined;
 
@@ -443,6 +443,9 @@ function AgentDetailPageContent() {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<'apply' | 'commit'>('apply');
   const [isUpdateSkillsOpen, setUpdateSkillsOpen] = useState(false);
+  const [updateSkillsMode, setUpdateSkillsMode] = useState<'apply' | 'commit'>(
+    'apply',
+  );
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const toastApi = useApi(toastApiRef);
   const agentsRoute = useRouteRef(agentsRouteRef);
@@ -469,9 +472,16 @@ function AgentDetailPageContent() {
   }, [agentManagerGate, resetDeletion]);
   const { reset: resetUpdating } = updating;
   const openUpdateSkills = useCallback(() => {
+    // Fixed while the dialog is open, like Delete's: a re-read of the verdict
+    // cannot swap a live write for a pull request (or back) under the cursor.
+    const mode = agentWriteMode(agentManagerGate);
+    if (!mode) {
+      return;
+    }
     resetUpdating();
+    setUpdateSkillsMode(mode);
     setUpdateSkillsOpen(true);
-  }, [resetUpdating]);
+  }, [agentManagerGate, resetUpdating]);
 
   // Starting a session from this page. The dialog itself is rendered in the page
   // body, not in the header: the header slot lives outside this plugin's
@@ -530,7 +540,7 @@ function AgentDetailPageContent() {
       // the list for a few seconds.
       title: `Deleting agent "${agent?.getDisplayName() ?? name}"`,
       description:
-        'Flux is uninstalling it, so it may take a moment to disappear from the list.',
+        'Flux is uninstalling it; it may take a moment to leave the list.',
       status: 'success',
       // A ToastApi toast without a timeout is permanent, and this is an
       // acknowledgement, not something to dismiss by hand.
@@ -760,7 +770,7 @@ function AgentDetailPageContent() {
               }
               description={
                 release.status?.summary ??
-                'agent-manager applied the Helm release; Flux and kagent have not rendered the Agent object yet.'
+                'agent-manager applied the Helm release.'
               }
             />
           </Flex>
@@ -795,7 +805,7 @@ function AgentDetailPageContent() {
             title="Could not load this agent"
             description={
               (error as Error | null)?.message ??
-              'The environment returned a response we could not read. The agent may still exist.'
+              'The environment sent an unreadable response. The agent may still exist.'
             }
           />
           <BackToAgents>Back to agents</BackToAgents>
@@ -860,6 +870,7 @@ function AgentDetailPageContent() {
         displayName={agent.getDisplayName()}
         isOpen={isUpdateSkillsOpen}
         onOpenChange={setUpdateSkillsOpen}
+        mode={updateSkillsMode}
         updating={updating}
         onUpdated={onSkillsUpdated}
       />
@@ -941,7 +952,7 @@ function AgentDetailPageContent() {
                   modelConfig={modelConfig}
                   modelServing={agentRow?.modelServing}
                   toolsHref={toolsHref}
-                  onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
+                  onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
                   onAddSkills={canEditAgent ? openEdit : undefined}
                   isGitOpsOwned={agentManagerGate.isGitOpsOwned}
                 />
@@ -1023,7 +1034,7 @@ function AgentDetailPageContent() {
             element={
               <AgentSkillsCard
                 agent={agent}
-                onUpdateSkills={canWriteAgent ? openUpdateSkills : undefined}
+                onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
                 onAddSkills={canEditAgent ? openEdit : undefined}
                 isGitOpsOwned={agentManagerGate.isGitOpsOwned}
               />

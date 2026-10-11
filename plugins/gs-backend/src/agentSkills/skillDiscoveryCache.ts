@@ -5,6 +5,8 @@ import {
   SkillDiscoverySnapshot,
 } from './discoverAgentSkills';
 import { GitFetchError } from './discoverAgentSkillsFromGit';
+import { CachedSkillFile, SkillFileCache } from './skillFileCache';
+import { SkillFileList } from './skillFiles';
 
 /**
  * How long a discovered listing is served without asking upstream again.
@@ -42,6 +44,23 @@ export const MAX_ENTRIES = 100;
 
 /** A `SKILL.md` larger than this is not kept (its content is read live). */
 export const MAX_KEPT_CONTENT_BYTES = 256 * 1024;
+
+/**
+ * Commits read outside a listing (an agent's older pin, a generic-git skill
+ * read on a cache miss) whose file lists are remembered, per repository ×
+ * commit.
+ */
+export const MAX_PINNED_ENTRIES = 20;
+
+/** What a read outside a listing leaves to remember for a commit. */
+export interface PinnedSkillFiles {
+  /** Every skill's files at the commit, by skill path. */
+  files: Map<string, SkillFileList>;
+  /** Raw `SKILL.md`s read on the way, by skill path. */
+  contents?: Map<string, string>;
+  /** Small files read on the way, by repository-relative path. */
+  fileContents?: Map<string, Uint8Array>;
+}
 
 /**
  * The repository part of a cache key: trimmed, no trailing slash or `.git`,
@@ -113,6 +132,9 @@ export interface CachedDiscovery {
  *   drops the listing and is forwarded.
  * - Keeps every `SKILL.md` discovery read, so `GET /agent-skills/content`
  *   answers a skill at the commit listed without another request.
+ * - Keeps every skill's file list, and — in a size-capped LRU of small files
+ *   (`SkillFileCache`) — file bytes a checkout scan read or a view fetched,
+ *   so `GET /agent-skills/content/file` is mostly answered from memory.
  *
  * The listing is read with the portal's own credentials (the GitHub
  * integration's token, or an anonymous clone), never a person's, so one
@@ -122,12 +144,25 @@ export interface CachedDiscovery {
 export class SkillDiscoveryCache {
   private readonly entries = new Map<string, Entry>();
   private readonly inflight = new Map<string, Promise<CachedDiscovery>>();
+  /** File lists (and SKILL.mds) of commits read outside a listing. */
+  private readonly pinned = new Map<
+    string,
+    { files: Map<string, SkillFileList>; contents: Map<string, string> }
+  >();
+  private readonly fileCache: SkillFileCache;
   private readonly now: () => number;
   private readonly logger?: LoggerService;
 
-  constructor(options: { now?: () => number; logger?: LoggerService } = {}) {
+  constructor(
+    options: {
+      now?: () => number;
+      logger?: LoggerService;
+      fileCache?: SkillFileCache;
+    } = {},
+  ) {
     this.now = options.now ?? Date.now;
     this.logger = options.logger;
+    this.fileCache = options.fileCache ?? new SkillFileCache();
   }
 
   /**
@@ -184,7 +219,93 @@ export class SkillDiscoveryCache {
         return { raw, repoUrl: skill.repoUrl };
       }
     }
-    return undefined;
+    const raw = this.pinned.get(`${repoKey}#${commit}`)?.contents.get(path);
+    return raw === undefined ? undefined : { raw, repoUrl };
+  }
+
+  /**
+   * The files of the skill at `path` of `repoUrl` at `commit`, when a listing
+   * at that commit (or a read outside one, see {@link rememberPinned}) has
+   * them — a file list at a commit never changes either.
+   */
+  readSkillFiles(
+    repoUrl: string,
+    path: string,
+    commit: string,
+  ): SkillFileList | undefined {
+    const repoKey = repositoryKey(repoUrl);
+    for (const entry of this.entries.values()) {
+      const snapshot = entry.snapshot;
+      if (entry.repoKey !== repoKey || snapshot?.commit !== commit) {
+        continue;
+      }
+      const list = snapshot.files?.get(path);
+      if (list) {
+        return list;
+      }
+    }
+    return this.pinned.get(`${repoKey}#${commit}`)?.files.get(path);
+  }
+
+  /**
+   * Remembers what a read outside a listing found at `commit`: the file
+   * lists (bounded to {@link MAX_PINNED_ENTRIES} commits, least recently
+   * remembered dropped first), the small `SKILL.md`s, and any file bytes —
+   * those go to the size-capped file cache.
+   */
+  rememberPinned(
+    repoUrl: string,
+    commit: string,
+    read: PinnedSkillFiles,
+  ): void {
+    const repoKey = repositoryKey(repoUrl);
+    const key = `${repoKey}#${commit}`;
+    this.pinned.delete(key);
+    this.pinned.set(key, {
+      files: read.files,
+      contents: smallContents(read.contents ?? new Map()),
+    });
+    while (this.pinned.size > MAX_PINNED_ENTRIES) {
+      this.pinned.delete(this.pinned.keys().next().value as string);
+    }
+    this.keepFileContents(repoKey, commit, read.fileContents);
+  }
+
+  /**
+   * A file of `repoUrl` at `commit` (`filePath` repository-relative) the
+   * file cache holds — read by a listing's checkout scan or an earlier view.
+   */
+  readFile(
+    repoUrl: string,
+    commit: string,
+    filePath: string,
+  ): CachedSkillFile | undefined {
+    return this.fileCache.get(
+      fileKey(repositoryKey(repoUrl), commit, filePath),
+    );
+  }
+
+  /** Keeps a file read upstream; returns what the cache made of it. */
+  rememberFile(
+    repoUrl: string,
+    commit: string,
+    filePath: string,
+    bytes: Uint8Array,
+  ): CachedSkillFile {
+    return this.fileCache.put(
+      fileKey(repositoryKey(repoUrl), commit, filePath),
+      bytes,
+    );
+  }
+
+  private keepFileContents(
+    repoKey: string,
+    commit: string,
+    fileContents: Map<string, Uint8Array> | undefined,
+  ): void {
+    for (const [filePath, bytes] of fileContents ?? []) {
+      this.fileCache.put(fileKey(repoKey, commit, filePath), bytes);
+    }
   }
 
   private async refresh(
@@ -196,7 +317,9 @@ export class SkillDiscoveryCache {
     ) => Promise<SkillDiscoverySnapshot>,
   ): Promise<CachedDiscovery> {
     try {
-      const snapshot = keepSmallContents(await load(previous?.snapshot));
+      const loaded = await load(previous?.snapshot);
+      this.keepFileContents(repoKey, loaded.commit, loaded.fileContents);
+      const snapshot = keepSmallContents(loaded);
       const readAt = this.now();
       const retrySoon = snapshot.skills.some(s => !s.contentReadable);
       const entry: Entry = {
@@ -236,7 +359,12 @@ export class SkillDiscoveryCache {
   }
 
   private answer(entry: Entry): CachedDiscovery {
-    const { contents: _contents, ...result } = entry.snapshot!;
+    const {
+      contents: _contents,
+      files: _files,
+      fileContents: _fileContents,
+      ...result
+    } = entry.snapshot!;
     return {
       result,
       readAt: entry.readAt,
@@ -256,17 +384,31 @@ export class SkillDiscoveryCache {
   }
 }
 
-/** Drops the files too large to keep; their content is then read live. */
+/** The file cache's key for a repository-relative path at a commit. */
+function fileKey(repoKey: string, commit: string, filePath: string): string {
+  return `${repoKey}#${commit}#${filePath}`;
+}
+
+/** The `SKILL.md`s small enough to keep. */
+function smallContents(contents: Map<string, string>): Map<string, string> {
+  const kept = new Map<string, string>();
+  for (const [path, raw] of contents) {
+    if (Buffer.byteLength(raw, 'utf8') <= MAX_KEPT_CONTENT_BYTES) {
+      kept.set(path, raw);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Drops the `SKILL.md`s too large to keep (their content is then read live)
+ * and the file bytes, which live in the file cache instead.
+ */
 function keepSmallContents(
   snapshot: SkillDiscoverySnapshot,
 ): SkillDiscoverySnapshot {
-  const contents = new Map<string, string>();
-  for (const [path, raw] of snapshot.contents) {
-    if (Buffer.byteLength(raw, 'utf8') <= MAX_KEPT_CONTENT_BYTES) {
-      contents.set(path, raw);
-    }
-  }
-  return { ...snapshot, contents };
+  const { fileContents: _fileContents, ...rest } = snapshot;
+  return { ...rest, contents: smallContents(snapshot.contents) };
 }
 
 /** When to ask upstream again after `error`. */

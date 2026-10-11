@@ -1,5 +1,10 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import userEvent from '@testing-library/user-event';
 import { modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
@@ -12,6 +17,8 @@ import {
   memoryLine,
   memoryLineTitle,
   NO_SERVED_MODELS,
+  describePlacement,
+  phoneStatusLines,
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
@@ -1290,5 +1297,145 @@ describe('ServedModelsTable · at scale', () => {
       screen.getByText('No models match “nothing-like-it”.'),
     ).toBeVisible();
     expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+});
+
+// T22 B13: up to ten columns squeezed every cell to a sliver and clipped the
+// row's actions menu; the readiness explanation lived only in `title=`.
+describe('ServedModelsTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const actions = (row: ServedModelRow) => (
+    <button type="button">Actions for {row.name}</button>
+  );
+
+  it('lists each model as a stacked row: name and status, its facts, the actions at the end', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    expect(screen.queryByRole('grid')).toBeNull();
+    const list = screen.getByRole('list', {
+      name: 'Models on inst-1, KServe · kserve-vllm',
+    });
+    const items = within(list).getAllByRole('listitem');
+    // The table's order: the running model first.
+    expect(items).toHaveLength(2);
+    const qwen = items[0];
+    expect(within(qwen).getByText('qwen3-14b')).toBeVisible();
+    expect(within(qwen).getByText('hf://Qwen/Qwen3-14B')).toBeVisible();
+    expect(within(qwen).getByText('on gpu-node-1')).toBeVisible();
+    expect(within(qwen).getByText('1 GPU')).toBeVisible();
+    // The actions never leave the row.
+    expect(
+      within(qwen).getByRole('button', { name: 'Actions for qwen3-14b' }),
+    ).toBeVisible();
+    // What uses it, with the link onward.
+    expect(
+      within(qwen).getByRole('link', { name: 'Qwen3 14B (lab vLLM)' }),
+    ).toBeVisible();
+
+    const devstral = items[1];
+    // The explanation inline, not only on hover; the pin said as one.
+    expect(
+      within(devstral).getByText(
+        'Deployment does not have minimum availability.',
+      ),
+    ).toBeVisible();
+    expect(
+      within(devstral).getByText('pinned to gpu-node-1, no pod yet'),
+    ).toBeVisible();
+    expect(
+      within(devstral).getByRole('button', { name: 'Actions for devstral' }),
+    ).toBeVisible();
+  });
+
+  it('says in words what the table kept in tooltips: no tool calling, the APIs', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          ollamaRows[0],
+          {
+            ...ollamaRows[1],
+            interfaces: [{ type: 'Completions', path: '/v1/chat/completions' }],
+          },
+        ]}
+      />,
+    );
+
+    const gemma = screen
+      .getAllByRole('listitem')
+      .find(item => within(item).queryByText('gemma3:270m'))!;
+    expect(
+      within(gemma).getByText(
+        'Agents cannot use this model: it does not support tool calling.',
+      ),
+    ).toBeVisible();
+    expect(
+      within(gemma).getByText('API: Chat completions (/v1/chat/completions)'),
+    ).toBeVisible();
+  });
+
+  it('keeps a pull’s progress bar on its row', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable rows={[...ollamaRows, downloading]} />,
+    );
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Downloading qwen2.5:0.5b' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/pulling 6f7f… · 30 %/)).toBeVisible();
+  });
+
+  it('keeps the table on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    expect(screen.getAllByRole('grid')).toHaveLength(2);
+    expect(screen.queryByRole('list', { name: /^Models on/ })).toBeNull();
+  });
+
+  it('lets a long shared endpoint truncate in the group header instead of widening the card (C21)', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(<ServedModelsTable rows={ollamaRows} />);
+
+    const endpoint = screen.getByTestId('served-models-group-endpoint');
+    expect(endpoint).toHaveStyle({ minWidth: '0', maxWidth: '100%' });
+    expect(within(endpoint).getByText('http://172.21.0.1:11434')).toHaveStyle({
+      minWidth: '0',
+    });
+  });
+});
+
+describe('phoneStatusLines and describePlacement', () => {
+  it('brings an explanation without a reason inline, once', () => {
+    expect(phoneStatusLines(rows[1])).toEqual([
+      'Deployment does not have minimum availability.',
+    ]);
+    // A row with a reason already lists its explanation; no second copy.
+    const withReason = {
+      ...rows[1],
+      readinessReason: 'Unschedulable',
+      readinessMessage: '0/3 nodes are available.',
+    };
+    expect(phoneStatusLines(withReason)).toEqual(['0/3 nodes are available.']);
+  });
+
+  it('says where a model runs', () => {
+    expect(describePlacement(rows[0])).toBe('on gpu-node-1');
+    expect(describePlacement(rows[1])).toBe('pinned to gpu-node-1, no pod yet');
+    expect(describePlacement({ ...rows[0], splitNodes: ['a', 'b'] })).toBe(
+      'split over a, b',
+    );
+    expect(describePlacement({ ...rows[0], copyNodes: ['a', 'b'] })).toBe(
+      '2 copies on a, b',
+    );
+    expect(describePlacement(rows[2])).toBeUndefined();
   });
 });

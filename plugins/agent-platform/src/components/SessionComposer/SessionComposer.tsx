@@ -16,8 +16,12 @@ import {
 } from '@backstage/ui';
 import ArrowUpwardIcon from '@material-ui/icons/ArrowUpward';
 import StopIcon from '@material-ui/icons/Stop';
-import { ComposerFrame } from '@giantswarm/backstage-plugin-ui-react';
-import { isSendKey } from '../../lib/sendKey';
+import {
+  ComposerFrame,
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /**
@@ -97,6 +101,12 @@ export type SessionComposerProps = {
    * input. Pair it with {@link disabledReason}: while it stands, the box cannot
    * answer it. Rendered inside the composer, under its notices and on top of the
    * box, so the two dock as one control.
+   *
+   * At phone width the disabled box under the card folds to its one-line
+   * caption (and the {@link details} chip) while the card stands (T22 B21):
+   * card, box, caption and the bottom bar together left ~100px of
+   * conversation on a 667px phone, and the box cannot be typed into anyway.
+   * It comes back, with whatever was drafted in it, when the card goes.
    */
   attachment?: ReactNode;
   /** Why the last send failed, shown as "Message not sent". */
@@ -181,7 +191,9 @@ export type SessionComposerProps = {
  * **Enter sends; Shift+Enter inserts a newline** — see {@link isSendKey} for why,
  * and for the IME case. Enter never inserts a newline, even when nothing can be sent:
  * a key that sometimes sends and sometimes breaks the line is worse than one that
- * sometimes does nothing.
+ * sometimes does nothing. **On touch input Enter breaks the line** and only the
+ * Send button sends — a soft keyboard has no Shift — and the keyboard's Enter key
+ * is labelled for that (`enterKeyHint`).
  *
  * **Focus stays in the box.** Only `disabledReason` disables the field; the agent's
  * turn withholds Send and Enter but leaves the box editable, because disabling it
@@ -207,6 +219,8 @@ export function SessionComposer({
   newSession,
 }: SessionComposerProps) {
   const [value, setValue] = useState('');
+  const isPhone = usePhoneLayout();
+  const touch = useTouchInput();
   // bui's field forwards its ref to the wrapper, not the textarea.
   const fieldRef = useRef<HTMLDivElement>(null);
   const focusInput = () => fieldRef.current?.querySelector('textarea')?.focus();
@@ -296,7 +310,7 @@ export function SessionComposer({
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (isSendKey(event)) {
+    if (isSendKey(event, touch)) {
       event.preventDefault();
       submit();
     }
@@ -336,6 +350,10 @@ export function SessionComposer({
     caption = COMPOSER_DISCLAIMER;
   }
 
+  // The card is the control while it stands; at phone width the box it
+  // disables would only cost the conversation its room (see `attachment`).
+  const isFolded = isPhone && Boolean(attachment) && isDisabled;
+
   return (
     // The notices and the attachment sit outside the box's <form>: the
     // attachment is a form of its own (the question card), and forms do not
@@ -350,82 +368,100 @@ export function SessionComposer({
 
       {attachment}
 
-      <form onSubmit={handleSubmit}>
-        <Flex direction="column" gap="2">
-          <ComposerFrame
-            className={STABLE_CLASS_NAMES.composer}
-            minRows={MIN_ROWS}
-            maxRows={MAX_ROWS}
-            isDisabled={isDisabled}
-            data-testid="composer-card"
-            input={
-              <TextAreaField
-                ref={fieldRef}
-                aria-label="Message"
-                placeholder={placeholder}
-                value={value}
-                onChange={setValue}
-                onKeyDown={handleKeyDown}
-                isDisabled={isDisabled}
-              />
-            }
-            trailing={
-              <>
-                {/* Before the action, like the prototype: the chip reads as
-                  context for the box, not as something that submits. */}
-                {details}
-                {showStop ? (
-                  // Secondary rather than primary: stopping is not the action
-                  // this box invites.
-                  <ButtonIcon
-                    type="button"
-                    aria-label="Stop"
-                    variant="secondary"
-                    icon={<StopIcon />}
-                    isPending={isStopping}
-                    onPress={onStop}
-                  />
-                ) : (
-                  !newSessionReplacesSend && (
-                    <ButtonIcon
-                      type="submit"
-                      aria-label="Send"
-                      icon={<ArrowUpwardIcon />}
-                      isDisabled={!canSubmit}
-                    />
-                  )
-                )}
-              </>
-            }
-          />
-
-          <Text variant="body-small" color={isTooLong ? 'danger' : 'secondary'}>
-            {isTooLong
-              ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-              : caption}
+      {isFolded ? (
+        <Flex
+          align="center"
+          justify="between"
+          gap="2"
+          data-testid="composer-folded"
+        >
+          <Text variant="body-small" color="secondary">
+            {caption}
           </Text>
-
-          {newSession && (
-            // Under the box, not in it: it is a way out of this session, not one
-            // of the box's own controls. Worded rather than an icon — an icon
-            // could not say where the person lands. `type="button"`: only the
-            // primary control submits the form, and while Send is still there,
-            // Enter must keep sending.
-            <Flex justify="end">
-              <Button
-                type={newSessionReplacesSend ? 'submit' : 'button'}
-                size="small"
-                variant={newSessionReplacesSend ? 'primary' : 'secondary'}
-                isDisabled={!canStartNewSession}
-                isPending={newSession.isStarting}
-                onPress={newSessionReplacesSend ? undefined : startNewSession}
-              >
-                {newSession.label}
-              </Button>
-            </Flex>
-          )}
+          {details}
         </Flex>
-      </form>
+      ) : (
+        <form onSubmit={handleSubmit}>
+          <Flex direction="column" gap="2">
+            <ComposerFrame
+              className={STABLE_CLASS_NAMES.composer}
+              minRows={MIN_ROWS}
+              maxRows={MAX_ROWS}
+              isDisabled={isDisabled}
+              data-testid="composer-card"
+              input={
+                <TextAreaField
+                  ref={fieldRef}
+                  aria-label="Message"
+                  placeholder={placeholder}
+                  value={value}
+                  onChange={setValue}
+                  onKeyDown={handleKeyDown}
+                  enterKeyHint={sendEnterKeyHint(touch)}
+                  isDisabled={isDisabled}
+                />
+              }
+              trailing={
+                <>
+                  {/* Before the action, like the prototype: the chip reads as
+                  context for the box, not as something that submits. */}
+                  {details}
+                  {showStop ? (
+                    // Secondary rather than primary: stopping is not the action
+                    // this box invites.
+                    <ButtonIcon
+                      type="button"
+                      aria-label="Stop"
+                      variant="secondary"
+                      icon={<StopIcon />}
+                      isPending={isStopping}
+                      onPress={onStop}
+                    />
+                  ) : (
+                    !newSessionReplacesSend && (
+                      <ButtonIcon
+                        type="submit"
+                        aria-label="Send"
+                        icon={<ArrowUpwardIcon />}
+                        isDisabled={!canSubmit}
+                      />
+                    )
+                  )}
+                </>
+              }
+            />
+
+            <Text
+              variant="body-small"
+              color={isTooLong ? 'danger' : 'secondary'}
+            >
+              {isTooLong
+                ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
+                : caption}
+            </Text>
+
+            {newSession && (
+              // Under the box, not in it: it is a way out of this session, not one
+              // of the box's own controls. Worded rather than an icon — an icon
+              // could not say where the person lands. `type="button"`: only the
+              // primary control submits the form, and while Send is still there,
+              // Enter must keep sending.
+              <Flex justify="end">
+                <Button
+                  type={newSessionReplacesSend ? 'submit' : 'button'}
+                  size="small"
+                  variant={newSessionReplacesSend ? 'primary' : 'secondary'}
+                  isDisabled={!canStartNewSession}
+                  isPending={newSession.isStarting}
+                  onPress={newSessionReplacesSend ? undefined : startNewSession}
+                >
+                  {newSession.label}
+                </Button>
+              </Flex>
+            )}
+          </Flex>
+        </form>
+      )}
     </Flex>
   );
 }

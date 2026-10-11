@@ -187,7 +187,7 @@ function ToolsValue({
       <Flex direction="column" gap="1">
         <Text variant="body-medium">No tools</Text>
         <Text variant="body-small" color="secondary">
-          The agent has nothing beyond its own reasoning.
+          Only its own reasoning.
         </Text>
       </Flex>
     );

@@ -92,7 +92,7 @@ export const SIZING_POOL_NAME = 'gpu-sizing';
 
 /** Under the cluster picker until a cluster is picked: what the line says once one is. */
 export const CLUSTER_PENDING =
-  'Pick the cluster the pool joins: whether it has a GPU operator and model serving, and which repository owns it, are read from cluster-manager.';
+  'Pick the cluster the pool joins; cluster-manager reports its GPU operator, model serving and owning repository.';
 
 /** The marks `list_clusters` reports for one cluster, as one line each. */
 export function clusterMarks(cluster: ManagedCluster): string[] {
@@ -491,10 +491,9 @@ export function AddGpuNodePoolDialog({
         <DialogBody>
           <Flex direction="column" gap="4" ref={fieldScope}>
             <Text variant="body-small" color="secondary">
-              GPU capacity for the models served on this environment. The pool,
-              the GPU operator where the cluster has none and model serving
-              where it has none are composed by cluster-manager and written as
-              you.
+              GPU capacity for this environment's served models. cluster-manager
+              composes the pool — plus a GPU operator and model serving where
+              missing — and writes it as you.
             </Text>
 
             {onForm && (

@@ -1,6 +1,7 @@
 import { InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { parseFrontmatter } from './frontmatter';
+import { assignSkillFiles, SkillFile, SkillFileList } from './skillFiles';
 
 /**
  * A skill discovered in a GitHub repository. Each `SKILL.md` file defines one
@@ -32,6 +33,13 @@ export interface DiscoveredSkill {
    * is still listed (it exists in the tree) with the metadata at hand.
    */
   contentReadable: boolean;
+  /**
+   * How many files the skill directory holds, `SKILL.md` included (files of
+   * a nested skill below it count for that one) — the "· N more files"
+   * caption. The list itself is on `GET /agent-skills/content`. Set by both
+   * providers; absent only from a snapshot made before files were listed.
+   */
+  fileCount?: number;
 }
 
 /**
@@ -53,6 +61,19 @@ export interface DiscoverAgentSkillsResult {
  */
 export interface SkillDiscoverySnapshot extends DiscoverAgentSkillsResult {
   contents: Map<string, string>;
+  /**
+   * Every skill's files at `commit`, by skill path (see `assignSkillFiles`):
+   * what `GET /agent-skills/content` lists and `/content/file` checks a
+   * requested file against.
+   */
+  files?: Map<string, SkillFileList>;
+  /**
+   * Small files read on the way, by repository-relative path — a checkout
+   * scan (the generic-git provider) has them at hand. The discovery cache
+   * moves them into its size-capped file cache, so the file viewer needs no
+   * clone per file.
+   */
+  fileContents?: Map<string, Uint8Array>;
 }
 
 /**
@@ -85,10 +106,17 @@ const SKILL_FILE = 'SKILL.md';
 // GitHub's secondary (abuse) rate limits or exhaust the anonymous quota.
 const CONTENT_FETCH_CONCURRENCY = 5;
 
-interface TreeEntry {
+/** An entry of a recursive git tree as GitHub answers it. */
+export interface TreeEntry {
   path: string;
   type: string;
+  mode?: string;
+  sha?: string;
+  size?: number;
 }
+
+/** A git tree entry's mode for a symbolic link. */
+const SYMLINK_MODE = '120000';
 
 /** Runs `fn` over `items` with at most `limit` in flight, collecting settled
  * results so one rejection doesn't fail the whole batch. */
@@ -123,6 +151,42 @@ function isSkillFile(path: string): boolean {
 /** The skill root directory for a `SKILL.md` path ('' when at repo root). */
 function skillDir(path: string): string {
   return path === SKILL_FILE ? '' : path.slice(0, -(SKILL_FILE.length + 1)); // drop trailing "/SKILL.md"
+}
+
+/**
+ * The skills of a recursive git tree and each one's files. Only regular files
+ * are listed: a symbolic link could point out of its skill (the portal reads
+ * with its own token), and a submodule is not a file of this repository.
+ * `treeTruncated` (GitHub capped the tree) marks every list truncated: any
+ * of them may be missing files.
+ */
+export function skillFilesFromTree(
+  entries: TreeEntry[],
+  treeTruncated = false,
+): {
+  skillDirs: string[];
+  files: Map<string, SkillFileList>;
+} {
+  const blobs = entries.filter(entry => entry.type === 'blob');
+  const skillDirs = blobs
+    .filter(entry => isSkillFile(entry.path))
+    .map(entry => skillDir(entry.path));
+  const files = assignSkillFiles(
+    skillDirs,
+    blobs
+      .filter(entry => entry.mode !== SYMLINK_MODE)
+      .map((entry): SkillFile => ({
+        path: entry.path,
+        size: entry.size ?? 0,
+        sha: entry.sha ?? '',
+      })),
+  );
+  if (treeTruncated) {
+    for (const list of files.values()) {
+      list.truncated = true;
+    }
+  }
+  return { skillDirs, files };
 }
 
 async function githubApiFetch(
@@ -228,6 +292,49 @@ async function resolveHeadCommit(
   return sha;
 }
 
+/**
+ * The whole recursive git tree at a commit, one request. `truncated` is
+ * GitHub capping it (~100k entries / 7 MB): then some entries are missing.
+ */
+export async function readGitHubTree(
+  owner: string,
+  repo: string,
+  commit: string,
+  token: string | undefined,
+): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+  const response = await githubApiFetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
+    token,
+  );
+  const tree = (await response.json()) as {
+    tree?: TreeEntry[];
+    truncated?: boolean;
+  };
+  return { entries: tree.tree ?? [], truncated: Boolean(tree.truncated) };
+}
+
+/**
+ * A file's raw bytes at a ref (or commit) through the contents API — for a
+ * file that may not be text.
+ */
+export async function fetchRawBytes(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  token: string | undefined,
+): Promise<Uint8Array> {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  const response = await githubApiFetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(
+      ref,
+    )}`,
+    token,
+    'application/vnd.github.raw+json',
+  );
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 /** A file's raw content at a ref (or commit) through the contents API. */
 export async function fetchRawContent(
   owner: string,
@@ -281,9 +388,13 @@ export async function integrationToken(
  * `contentReadable: false` and the metadata at hand — the previous snapshot's
  * name and description for the same directory, else the directory name.
  *
+ * The same tree read lists every skill's other files (`files`, see
+ * `skillFilesFromTree`) at no extra request.
+ *
  * `previous` is the last snapshot of the same repository and ref (the
  * discovery cache passes it): when the ref still points at its commit, the
- * tree and the files already read are not fetched again — a revalidation then
+ * tree (with the file lists it gave) and the files already read are not
+ * fetched again — a revalidation then
  * costs two requests (default branch, head commit) instead of 3 + one per
  * skill — and only the skills that were unreadable are retried.
  */
@@ -314,24 +425,18 @@ export async function discoverAgentSkills(options: {
     !previous.truncated;
 
   let skillDirs: string[];
+  let files: Map<string, SkillFileList>;
   let treeTruncated = false;
-  if (unchanged) {
+  if (unchanged && previous.files) {
+    // The same commit: the same tree, so the same skills and files.
     skillDirs = previous.skills.map(s => s.path);
+    files = previous.files;
   } else {
-    const treeResponse = await githubApiFetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
-      token,
-    );
-    const tree = (await treeResponse.json()) as {
-      tree?: TreeEntry[];
-      truncated?: boolean;
-    };
-    skillDirs = (tree.tree ?? [])
-      .filter(entry => entry.type === 'blob' && isSkillFile(entry.path))
-      .map(entry => skillDir(entry.path));
+    const tree = await readGitHubTree(owner, repo, commit, token);
+    ({ skillDirs, files } = skillFilesFromTree(tree.entries, tree.truncated));
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.
-    treeTruncated = Boolean(tree.truncated);
+    treeTruncated = tree.truncated;
   }
 
   const previousByDir = new Map(
@@ -377,6 +482,7 @@ export async function discoverAgentSkills(options: {
         path: dir,
         ref: branch,
         commit,
+        fileCount: files.get(dir)?.total ?? 0,
       };
       const fallbackName = dir.split('/').pop() || repo;
       const read = fresh.get(dir);
@@ -413,5 +519,6 @@ export async function discoverAgentSkills(options: {
     commit,
     truncated: treeTruncated,
     contents,
+    files,
   };
 }

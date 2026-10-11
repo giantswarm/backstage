@@ -1,12 +1,16 @@
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { skillFilePath } from './createSkillPullRequest';
 import {
+  fetchRawBytes,
   fetchRawContent,
   integrationToken,
   parseRepoUrl,
+  readGitHubTree,
+  skillFilesFromTree,
 } from './discoverAgentSkills';
 import { GitClient, readFileFromGit } from './discoverAgentSkillsFromGit';
 import { splitSkillMarkdown } from './frontmatter';
+import { SkillFileList } from './skillFiles';
 
 /**
  * One skill's SKILL.md at a commit, split the way the add-skill form edits it:
@@ -121,4 +125,44 @@ export async function readSkillContentFromGit(options: {
     gitClient,
   });
   return toSkillContent(raw, { repoUrl, path, commit }, repoBasename(repoUrl));
+}
+
+/**
+ * Every skill's files in a github.com repository at a commit, from one
+ * recursive tree read (the integration's token, like discovery) — for a
+ * commit no cached listing covers, such as an agent's older pin.
+ */
+export async function listSkillFilesFromGitHub(options: {
+  repoUrl: string;
+  commit: string;
+  githubCredentialsProvider: GithubCredentialsProvider;
+}): Promise<Map<string, SkillFileList>> {
+  const { commit, githubCredentialsProvider } = options;
+  const { owner, repo } = parseRepoUrl(options.repoUrl);
+  const token = await integrationToken(
+    githubCredentialsProvider,
+    `https://github.com/${owner}/${repo}`,
+  );
+  const tree = await readGitHubTree(owner, repo, commit, token);
+  return skillFilesFromTree(tree.entries, tree.truncated).files;
+}
+
+/**
+ * One file of a github.com repository at a commit, as bytes, through the
+ * contents API with the integration's token. `filePath` is relative to the
+ * repository root; the caller has checked it against a skill's file list.
+ */
+export async function readSkillFileFromGitHub(options: {
+  repoUrl: string;
+  filePath: string;
+  commit: string;
+  githubCredentialsProvider: GithubCredentialsProvider;
+}): Promise<Uint8Array> {
+  const { filePath, commit, githubCredentialsProvider } = options;
+  const { owner, repo } = parseRepoUrl(options.repoUrl);
+  const token = await integrationToken(
+    githubCredentialsProvider,
+    `https://github.com/${owner}/${repo}`,
+  );
+  return fetchRawBytes(owner, repo, filePath, commit, token);
 }

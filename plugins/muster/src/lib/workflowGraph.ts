@@ -198,8 +198,26 @@ export function forEachSummary(
 
 /** Layout metrics, in CSS pixels. Exported so the renderer draws to them. */
 export const FLOW_METRICS = {
+  /** The narrowest node; every node of a flow shares one width. */
   nodeWidth: 240,
+  /**
+   * The widest a node grows so its title fits in two lines. Past it the
+   * title is clamped (the full title is its tooltip) — the capped viewport
+   * scrolls, but a parallel row of very wide nodes would stop being a flow.
+   */
+  maxNodeWidth: 360,
+  /** A node whose title is one line. */
   nodeHeight: 64,
+  /** A node whose title wraps onto a second line. */
+  nodeHeightTwoLines: 82,
+  /** A step title's font size and line height (the renderer draws to them). */
+  titleFontSize: 13.5,
+  titleLineHeight: 18,
+  /**
+   * A node's width that is not title: side padding, the glyph tile, a gap.
+   * The last-run badge rides the second line, so it takes none of it.
+   */
+  nodeChrome: 14 + 34 + 12 + 14,
   /** Edge length between two plain steps. */
   gap: 32,
   /** Edge length into a gated step: room for the gate marker on the edge. */
@@ -208,6 +226,12 @@ export const FLOW_METRICS = {
   groupPadding: 16,
   /** A group's head: the container step's name and what it does. */
   groupHeader: 52,
+  /** A group's head whose name wraps onto a second line. */
+  groupHeaderTwoLines: 70,
+  /** A group head's width that is not title: padding, number, a gap. */
+  groupHeadChrome: 14 + 30 + 8 + 14,
+  /** The "May fail" marker beside a group head's title. */
+  mayFailMarker: 72,
   /** Horizontal gap between parallel siblings. */
   parallelGap: 16,
   /** Edge length from parallel siblings back to the group's exit. */
@@ -218,12 +242,20 @@ export const FLOW_METRICS = {
   gateHeight: 24,
 } as const;
 
+/**
+ * How a title sits in its box: one line, two lines, or longer than two lines
+ * even at the widest node — then the renderer clamps it to two lines and the
+ * full title is its tooltip.
+ */
+export type TitleFit = 'oneLine' | 'twoLines' | 'clamped';
+
 export interface PlacedNode {
   node: FlowStepNode;
   x: number;
   y: number;
   width: number;
   height: number;
+  titleFit: TitleFit;
 }
 
 export interface PlacedGroup {
@@ -236,6 +268,9 @@ export interface PlacedGroup {
   y: number;
   width: number;
   height: number;
+  /** The head's height: one or two lines of the container step's name. */
+  headerHeight: number;
+  titleFit: TitleFit;
 }
 
 export interface PlacedEdge {
@@ -264,6 +299,12 @@ export interface PlacedGate {
 export interface FlowLayout {
   width: number;
   height: number;
+  /**
+   * The x of the spine's center line. A flow wider than its viewport (a
+   * wide parallel group, the cleanup lane) opens scrolled to it, so the
+   * steps in order are what the reader sees first.
+   */
+  spineX: number;
   nodes: PlacedNode[];
   groups: PlacedGroup[];
   edges: PlacedEdge[];
@@ -278,19 +319,91 @@ function line(x1: number, y1: number, x2: number, y2: number): string {
   return `M ${x1} ${y1} L ${x2} ${y2}`;
 }
 
-function itemWidth(item: FlowItem): number {
+/**
+ * A title's width in CSS pixels at `fontSize`, estimated from per-glyph
+ * classes of a proportional sans at medium weight. The layout is pure (it
+ * runs in tests and before the fonts load), so it cannot measure; the
+ * estimate errs wide, and the renderer's two-line clamp plus tooltip covers
+ * what it still gets wrong.
+ */
+export function estimateTextWidth(text: string, fontSize: number): number {
+  let em = 0;
+  for (const ch of text) {
+    if (/[iljtfrI.,:;'!|()[\] ]/.test(ch)) em += 0.32;
+    else if (/[mwMW@%]/.test(ch)) em += 0.86;
+    else if (/[A-Z]/.test(ch)) em += 0.68;
+    else if (/[0-9]/.test(ch)) em += 0.58;
+    else em += 0.56;
+  }
+  return em * fontSize;
+}
+
+/**
+ * Word wrapping never fills a line: a second line starts at a word that did
+ * not fit. A two-line budget counts this share of both lines.
+ */
+const WRAP_FILL = 0.85;
+/** The safety margin on a single line (the estimate is only an estimate). */
+const LINE_FILL = 0.96;
+
+function fitTitle(textWidth: number, available: number): TitleFit {
+  if (textWidth <= available * LINE_FILL) return 'oneLine';
+  if (textWidth <= 2 * available * WRAP_FILL) return 'twoLines';
+  return 'clamped';
+}
+
+/** The width at which a title fits in two lines, chrome included. */
+function widthForTwoLines(textWidth: number, chrome: number): number {
+  return Math.ceil(textWidth / (2 * WRAP_FILL) + chrome);
+}
+
+/** Every step a node draws for, group heads aside. */
+function stepNodes(graph: WorkflowGraph): FlowStepNode[] {
+  return [
+    ...graph.main.flatMap(item =>
+      item.kind === 'step' ? [item.node] : item.children,
+    ),
+    ...graph.onFailure,
+  ];
+}
+
+/**
+ * The one node width of a flow: the narrowest that fits every title in two
+ * lines (a forEach head's too — it is a node wide plus its padding), within
+ * [nodeWidth, maxNodeWidth]. Rounded to 4px so widths stay crisp.
+ */
+function flowNodeWidth(graph: WorkflowGraph): number {
+  let needed: number = M.nodeWidth;
+  for (const node of stepNodes(graph)) {
+    const text = estimateTextWidth(node.title, M.titleFontSize);
+    needed = Math.max(needed, widthForTwoLines(text, M.nodeChrome));
+  }
+  for (const item of graph.main) {
+    if (item.kind !== 'forEach') continue;
+    const text = estimateTextWidth(item.node.title, M.titleFontSize);
+    const headChrome =
+      M.groupHeadChrome + (item.node.allowFailure ? M.mayFailMarker : 0);
+    needed = Math.max(
+      needed,
+      widthForTwoLines(text, headChrome) - 2 * M.groupPadding,
+    );
+  }
+  return Math.min(M.maxNodeWidth, Math.ceil(needed / 4) * 4);
+}
+
+function itemWidth(item: FlowItem, nodeWidth: number): number {
   switch (item.kind) {
     case 'step':
-      return M.nodeWidth;
+      return nodeWidth;
     case 'forEach':
-      return M.nodeWidth + 2 * M.groupPadding;
+      return nodeWidth + 2 * M.groupPadding;
     case 'parallel': {
       const n = item.children.length;
-      const row = n * M.nodeWidth + Math.max(0, n - 1) * M.parallelGap;
-      return Math.max(M.nodeWidth, row) + 2 * M.groupPadding;
+      const row = n * nodeWidth + Math.max(0, n - 1) * M.parallelGap;
+      return Math.max(nodeWidth, row) + 2 * M.groupPadding;
     }
     default:
-      return M.nodeWidth;
+      return nodeWidth;
   }
 }
 
@@ -301,6 +414,13 @@ function itemWidth(item: FlowItem): number {
  * the spine), and the cleanup lane stands to the right as its own dashed
  * strand. No measuring, no randomness: the same definition always lays out
  * the same way, so the renderer is a plain projection of this.
+ *
+ * Step titles are the information, so the boxes are sized to them: every
+ * node shares the narrowest width at which each title fits in two lines
+ * (capped at `maxNodeWidth`), a node whose title wraps is taller, and so is
+ * a group head whose name wraps. Only a title too long for two lines at the
+ * widest node is clamped (`titleFit: 'clamped'`), with its full text as the
+ * tooltip.
  */
 export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
   const nodes: PlacedNode[] = [];
@@ -309,7 +429,37 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
   const gates: PlacedGate[] = [];
   const starts: FlowLayout['starts'] = [];
 
+  const nodeWidth = flowNodeWidth(graph);
+  const titleRoom = nodeWidth - M.nodeChrome;
+
   const gapFor = (node: FlowStepNode) => (node.condition ? M.gateGap : M.gap);
+
+  /** A node's box for its title: one line or two. */
+  const sized = (node: FlowStepNode) => {
+    const titleFit = fitTitle(
+      estimateTextWidth(node.title, M.titleFontSize),
+      titleRoom,
+    );
+    return {
+      titleFit,
+      height: titleFit === 'oneLine' ? M.nodeHeight : M.nodeHeightTwoLines,
+    };
+  };
+
+  /** A group head's height for the container step's name, at `width`. */
+  const headOf = (node: FlowStepNode, width: number) => {
+    const room =
+      width - M.groupHeadChrome - (node.allowFailure ? M.mayFailMarker : 0);
+    const titleFit = fitTitle(
+      estimateTextWidth(node.title, M.titleFontSize),
+      room,
+    );
+    return {
+      titleFit,
+      headerHeight:
+        titleFit === 'oneLine' ? M.groupHeader : M.groupHeaderTwoLines,
+    };
+  };
 
   /** A straight edge on a column, with the gate of the step it enters. */
   const connect = (
@@ -332,7 +482,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
         label: conditionSummary(target.condition, graph.stepIds),
         x,
         y: (fromY + toY) / 2,
-        maxWidth: M.nodeWidth,
+        maxWidth: nodeWidth,
       });
     }
   };
@@ -348,19 +498,23 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
     for (const child of children) {
       const top = y + gapFor(child);
       connect(`${child.key}:in`, x, y, top, child, dashed);
+      const box = sized(child);
       nodes.push({
         node: child,
-        x: x - M.nodeWidth / 2,
+        x: x - nodeWidth / 2,
         y: top,
-        width: M.nodeWidth,
-        height: M.nodeHeight,
+        width: nodeWidth,
+        ...box,
       });
-      y = top + M.nodeHeight;
+      y = top + box.height;
     }
     return y;
   };
 
-  const mainWidth = Math.max(M.nodeWidth, ...graph.main.map(itemWidth));
+  const mainWidth = Math.max(
+    nodeWidth,
+    ...graph.main.map(item => itemWidth(item, nodeWidth)),
+  );
   const spineX = M.margin + mainWidth / 2;
 
   let exitY: number = M.margin;
@@ -373,19 +527,21 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
     connect(`${item.node.key}:in`, spineX, exitY, top, item.node, false);
 
     if (item.kind === 'step') {
+      const box = sized(item.node);
       nodes.push({
         node: item.node,
-        x: spineX - M.nodeWidth / 2,
+        x: spineX - nodeWidth / 2,
         y: top,
-        width: M.nodeWidth,
-        height: M.nodeHeight,
+        width: nodeWidth,
+        ...box,
       });
-      exitY = top + M.nodeHeight;
+      exitY = top + box.height;
       continue;
     }
 
-    const width = itemWidth(item);
-    const headerBottom = top + M.groupHeader;
+    const width = itemWidth(item, nodeWidth);
+    const head = headOf(item.node, width);
+    const headerBottom = top + head.headerHeight;
     let bottom: number;
 
     if (item.kind === 'forEach') {
@@ -407,6 +563,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
         y: top,
         width,
         height: bottom - top,
+        ...head,
       });
     } else {
       const n = item.children.length;
@@ -417,12 +574,16 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
           ? M.gateGap
           : M.gap + 8;
         const childTop = headerBottom + fan;
-        const row = n * M.nodeWidth + (n - 1) * M.parallelGap;
+        const row = n * nodeWidth + (n - 1) * M.parallelGap;
         const bend = headerBottom + 20;
-        bottom = childTop + M.nodeHeight + M.fanIn;
+        // Siblings share a row: the row is as tall as its tallest title,
+        // and each sibling keeps its own height inside it.
+        const boxes = item.children.map(sized);
+        const rowHeight = Math.max(...boxes.map(box => box.height));
+        bottom = childTop + rowHeight + M.fanIn;
         item.children.forEach((child, j) => {
-          const left = spineX - row / 2 + j * (M.nodeWidth + M.parallelGap);
-          const cx = left + M.nodeWidth / 2;
+          const left = spineX - row / 2 + j * (nodeWidth + M.parallelGap);
+          const cx = left + nodeWidth / 2;
           // Fan out: a curve off the spine that lands in a straight stretch
           // above the sibling — the stretch a gate marker sits on.
           edges.push({
@@ -437,10 +598,10 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
               label: conditionSummary(child.condition, graph.stepIds),
               x: cx,
               y: (bend + childTop) / 2,
-              maxWidth: M.nodeWidth,
+              maxWidth: nodeWidth,
             });
           }
-          const childBottom = childTop + M.nodeHeight;
+          const childBottom = childTop + boxes[j].height;
           const join = (childBottom + bottom) / 2;
           edges.push({
             key: `${child.key}:out`,
@@ -452,8 +613,8 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
             node: child,
             x: left,
             y: childTop,
-            width: M.nodeWidth,
-            height: M.nodeHeight,
+            width: nodeWidth,
+            ...boxes[j],
           });
         });
       }
@@ -465,6 +626,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
         y: top,
         width,
         height: bottom - top,
+        ...head,
       });
     }
     exitY = bottom;
@@ -474,7 +636,7 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
   let width = M.margin * 2 + mainWidth;
 
   if (graph.onFailure.length > 0) {
-    const laneWidth = M.nodeWidth + 2 * M.groupPadding;
+    const laneWidth = nodeWidth + 2 * M.groupPadding;
     const laneX =
       graph.main.length > 0 ? width - M.margin + M.laneGap : M.margin;
     const laneCenter = laneX + laneWidth / 2;
@@ -488,12 +650,14 @@ export function layoutWorkflowGraph(graph: WorkflowGraph): FlowLayout {
       y: top,
       width: laneWidth,
       height: bottom - top,
+      headerHeight: M.groupHeader,
+      titleFit: 'oneLine',
     });
     width = laneX + laneWidth + M.margin;
     height = Math.max(height, bottom + M.margin);
   }
 
-  return { width, height, nodes, groups, edges, gates, starts };
+  return { width, height, spineX, nodes, groups, edges, gates, starts };
 }
 
 // ---------------------------------------------------------------------------

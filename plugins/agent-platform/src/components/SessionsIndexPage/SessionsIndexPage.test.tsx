@@ -320,7 +320,7 @@ describe('SessionsIndexPage', () => {
 
       expect(
         screen.getByText(
-          'No agents could be read, so there is none to start a session with. See the warning below.',
+          'No agents could be read to start a session with. See the warning below.',
         ),
       ).toBeInTheDocument();
     });
@@ -343,7 +343,7 @@ describe('SessionsIndexPage', () => {
 
       expect(
         screen.getByText(
-          'None of the 2 agents on the fleet are ready, so there is none to start a session with. The Agents tab says why.',
+          'None of the 2 agents is ready for a session. The Agents tab says why.',
         ),
       ).toBeInTheDocument();
       expect(
@@ -360,7 +360,7 @@ describe('SessionsIndexPage', () => {
 
       expect(
         screen.getByText(
-          'The only agent on the fleet is not ready, so there is none to start a session with. The Agents tab says why.',
+          'The only agent is not ready for a session. The Agents tab says why.',
         ),
       ).toBeInTheDocument();
     });

@@ -268,7 +268,7 @@ test('agent edit: every entry point opens the commit-mode Edit page for an agent
   // The Skills tab's Add skills: the lab agent has none.
   await open(admin, `${labAgent.detailPath}/skills`);
   await expect(
-    admin.getByText(/so adding skills opens a pull request there/),
+    admin.getByText(/adding skills opens a pull request there/),
   ).toBeVisible({ timeout: 60_000 });
   await admin.getByRole('button', { name: 'Add skills' }).click();
   await expectCommitModeEditPage(admin, labAgent);

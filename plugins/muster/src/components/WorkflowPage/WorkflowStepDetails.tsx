@@ -2,6 +2,7 @@ import { Fragment, ReactNode } from 'react';
 import { Box, Button, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowCondition, WorkflowSubStep } from '../../lib/k8s';
 import type { ToolEffect } from '../../lib/toolAnnotations';
 import { ServerPrefixInfo } from '../../lib/toolGrouping';
@@ -61,9 +62,9 @@ const useStyles = makeStyles({
     gridTemplateColumns: 'max-content 1fr',
     columnGap: 24,
     rowGap: 4,
-    // Templated values can be long: below ~420px the grid folds to one
-    // column instead of overflowing the phone.
-    '@media (max-width: 420px)': {
+    // Templated values can be long: at phone width the grid folds to one
+    // column instead of overflowing the screen.
+    [PHONE_MEDIA]: {
       gridTemplateColumns: '1fr',
     },
   },
@@ -266,6 +267,8 @@ function TechnicalFields({ context }: { context: FlowStepContext }) {
 }
 
 export interface WorkflowStepDetailsProps {
+  /** The panel's id, for the control that opens it (`aria-controls`). */
+  id?: string;
   context: FlowStepContext;
   /** Top-level step ids, to name a `fromStep` reference by number. */
   stepIds: string[];
@@ -279,13 +282,15 @@ export interface WorkflowStepDetailsProps {
 }
 
 /**
- * One step's details, opened from the flow canvas: the plain description
+ * One step's details, opened from the flow canvas (under it) or the phone
+ * step list (in place, under the step): the plain description
  * first — what it calls, when it is skipped, whether it may fail, how the last
  * run went — then its own "Show technical information" fold-out with the
  * exact tool name, templated arguments and condition spec. Disclosure is per
  * step: nothing technical shows until a reader asks for it on this step.
  */
 export function WorkflowStepDetails({
+  id,
   context,
   stepIds,
   prefixes,
@@ -366,6 +371,7 @@ export function WorkflowStepDetails({
 
   return (
     <section
+      id={id}
       className={classes.panel}
       aria-label={`Details of ${heading}`}
       data-testid="workflow-step-details"

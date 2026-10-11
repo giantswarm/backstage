@@ -173,7 +173,10 @@ function AgentPlatformHomeContent({
   );
 
   return (
-    <Container py="6" className={classes.centered}>
+    // `mb="0"`: bui's Container adds a bottom margin of its own, which made
+    // the page ~32px taller than the view it centres in — a scroll for
+    // nothing, on every phone (T22 P6).
+    <Container py="6" mb="0" className={classes.centered}>
       <Box maxWidth="720px" mx="auto" width="100%">
         <Flex direction="column" gap="6">
           <Flex direction="column" align="center" gap="2">
@@ -183,7 +186,7 @@ function AgentPlatformHomeContent({
             <Text as="p" variant="body-medium" color="secondary">
               {selectedAgent
                 ? `You're starting a session with ${selectedAgent.name}.`
-                : 'Choose an agent to work with, then tell it what you need.'}
+                : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>
           {isLoading ? (
@@ -253,7 +256,7 @@ export function AgentPlatformHome({
       <EmptyState
         missing="info"
         title="Agent Platform is not enabled"
-        description="Sessions are started from the Agent Platform, which is not enabled on this portal."
+        description="Sessions need it enabled on this portal."
       />
     );
   }

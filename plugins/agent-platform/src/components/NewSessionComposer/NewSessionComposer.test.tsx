@@ -1,6 +1,11 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import {
@@ -899,7 +904,7 @@ describe('the model behind the agent', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Ollama model qwen2\.5:0\.5b: .* You can still start the session/,
+        /Ollama model qwen2\.5:0\.5b: .* Its first turn fails until the model serves again/,
       ),
     ).toBeInTheDocument();
 
@@ -976,11 +981,7 @@ describe('NewSessionComposer agent-first', () => {
 
     expect(field()).toBeDisabled();
     expect(startButton()).toBeDisabled();
-    expect(
-      screen.getByText(
-        'Choosing an agent is the first step; the message follows.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Choose an agent first.')).toBeInTheDocument();
 
     await userEvent.click(agentPicker());
     await userEvent.click(screen.getByRole('option', { name: /SRE Agent/ }));
@@ -1041,5 +1042,38 @@ describe('NewSessionComposer agent-first', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Choose an agent to start.',
     );
+  });
+});
+
+describe('NewSessionComposer with touch input (T22 B2)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  it('breaks the line on Enter, starts from the arrow, and says so', async () => {
+    layout = mockPhoneLayout();
+    renderComposer({ defaultAgent: sre });
+
+    await userEvent.type(field(), 'line one{Enter}line two');
+    expect(onStart).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('line one\nline two');
+    expect(field()).toHaveAttribute('enterkeyhint', 'enter');
+    expect(
+      screen.getByText('Tap the arrow to start the session with this message.'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(onStart).toHaveBeenCalledWith(sre, 'line one\nline two');
+  });
+
+  it('names Enter and Shift+Enter with a keyboard', () => {
+    layout = mockDesktopLayout();
+    renderComposer({ defaultAgent: sre });
+
+    expect(
+      screen.getByText(
+        'Enter starts the session with this message, Shift+Enter for a new line.',
+      ),
+    ).toBeInTheDocument();
+    expect(field()).toHaveAttribute('enterkeyhint', 'send');
   });
 });

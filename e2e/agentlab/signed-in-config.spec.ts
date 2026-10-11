@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, portalChrome, test } from './fixtures';
 import { lab } from './lab';
 
 /**
@@ -101,7 +101,7 @@ test('the signed-in config needs a session and carries the installations', async
   ).not.toMatch(/clientSecret|clientId|"url"|"headers"/);
 
   await expect(
-    admin.getByRole('navigation', { name: 'sidebar nav' }),
+    portalChrome(admin),
     'the portal renders with the hydrated config',
   ).toBeAttached();
 });

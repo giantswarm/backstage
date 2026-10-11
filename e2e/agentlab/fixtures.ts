@@ -8,7 +8,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
-import { contextOptions, lab, type LabUser } from './lab';
+import { contextOptions, lab, type LabUser, type PortalMode } from './lab';
 
 export { expect };
 
@@ -54,6 +54,35 @@ export async function completeDexLogin(
 }
 
 /**
+ * The portal's chrome on whatever page is open: the classic sidebar
+ * (`sidebar nav`) or, on the agent shell's routes of a lab in `shell` mode,
+ * the shell's rail or phone bar (`Main`). In the DOM only for a signed-in app.
+ */
+export function portalChrome(page: Page): Locator {
+  return page
+    .getByRole('navigation', { name: 'sidebar nav' })
+    .or(page.getByRole('navigation', { name: 'Main', exact: true }))
+    .first();
+}
+
+/**
+ * Fails at once, with what to change, when the lab serves other portals than
+ * `AGENTLAB_PORTAL_MODE` says — rather than letting every spec fail on a
+ * missing route or the other chrome. `page` is signed in and on `/`, which is
+ * the shell's new-session screen exactly when the lab serves the shell.
+ */
+async function expectLabPortalMode(page: Page): Promise<void> {
+  const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+  const served: PortalMode = (await rail.count()) > 0 ? 'shell' : 'classic';
+  expect(
+    served,
+    lab.portalMode === 'shell'
+      ? 'AGENTLAB_PORTAL_MODE=shell, but the lab serves the classic portal only: run its Backstage with APP_CONFIG_app_portals_agentPlatform=true (see e2e/agentlab/README.md)'
+      : 'the lab serves the agent shell: set AGENTLAB_PORTAL_MODE=shell (the Agent Platform specs need it), or switch the lab back to the classic portal',
+  ).toBe(lab.portalMode);
+}
+
+/**
  * Signs `page` in as a lab user the way a person does: the Dex card's
  * **Sign In** opens the popup, the lab Dex asks for the fixture account, and
  * the portal renders signed in. Fails with the page's state when the card is
@@ -62,13 +91,15 @@ export async function completeDexLogin(
  */
 export async function signIn(page: Page, user: LabUser): Promise<void> {
   await page.goto('/');
+  // The classic card's "Sign In" and the shell card's "Sign in with …" alike
+  // (a case-insensitive substring).
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(card, 'the sign-in page offers the Dex card').toBeVisible();
   const popup = page.waitForEvent('popup');
   await card.click();
   await completeDexLogin(await popup, user);
   await expect(
-    page.getByRole('navigation', { name: 'sidebar nav' }),
+    portalChrome(page),
     `the portal renders signed in as ${user.email}`,
   ).toBeAttached({ timeout: 60_000 });
 }
@@ -166,6 +197,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
       );
       await signIn(page, lab.users.admin);
+      await expectLabPortalMode(page);
       await use(page);
       await context.close();
     },
@@ -243,21 +275,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
 });
 
-/** The Agent Platform section's top-level tabs, in the order the portal shows them. */
-export const agentPlatformTabs = [
-  'Sessions',
-  'Agents',
-  'Models',
-  'Connectors',
-  'Workflows',
-  'Usage',
-] as const;
-
 /**
- * Opens `path` on a signed-in page and waits for the portal's chrome, so
- * assertions see a rendered app. The sidebar is in the DOM only for a
- * signed-in app; Playwright counts its collapsed `nav` as not visible, hence
- * attached rather than visible.
+ * Opens `path` on a signed-in page and waits for the portal's chrome (the
+ * classic sidebar or the shell's rail, {@link portalChrome}), so assertions
+ * see a rendered app. The chrome is in the DOM only for a signed-in app;
+ * Playwright counts the classic sidebar's collapsed `nav` as not visible,
+ * hence attached rather than visible.
  *
  * When the sign-in card shows instead — a Backstage pod roll in the shared lab
  * drops every session — the page signs in again as `user` and retries once,
@@ -269,7 +292,7 @@ export async function open(
   user: LabUser = lab.users.admin,
 ): Promise<void> {
   await page.goto(path);
-  const chrome = page.getByRole('navigation', { name: 'sidebar nav' });
+  const chrome = portalChrome(page);
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
   if (await card.isVisible()) {

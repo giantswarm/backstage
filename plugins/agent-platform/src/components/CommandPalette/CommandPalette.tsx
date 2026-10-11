@@ -9,9 +9,16 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Dialog, DialogHeader, Link, Text } from '@backstage/ui';
+import { ButtonIcon, Dialog, DialogHeader, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
+import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
+import {
+  PHONE_MEDIA,
+  stopRowPress,
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
@@ -27,7 +34,10 @@ import {
 } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useAgents, type AgentRow } from '../AgentsDataProvider';
-import { NewSessionDialog } from '../NewSessionDialog';
+import {
+  NewSessionDialog,
+  PHONE_FULL_SCREEN_DIALOG,
+} from '../NewSessionDialog';
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
@@ -47,17 +57,7 @@ import { usePaletteConnectors } from './usePaletteConnectors';
 const useStyles = makeStyles({
   // The Modal container. On a phone the palette is the screen: a floating
   // card at 375px leaves no room for results under the keyboard.
-  dialog: {
-    '@media (max-width: 599.95px)': {
-      width: '100vw !important',
-      minWidth: '100vw !important',
-      maxWidth: '100vw !important',
-      height: '100dvh',
-      maxHeight: '100dvh !important',
-      borderRadius: 0,
-      margin: 0,
-    },
-  },
+  dialog: PHONE_FULL_SCREEN_DIALOG,
   body: {
     display: 'flex',
     flexDirection: 'column',
@@ -116,7 +116,7 @@ const useStyles = makeStyles({
     padding: 'var(--bui-space-1) var(--bui-space-2) var(--bui-space-2)',
     listStyle: 'none',
     margin: 0,
-    '@media (max-width: 599.95px)': {
+    [PHONE_MEDIA]: {
       maxHeight: 'none',
     },
   },
@@ -156,6 +156,18 @@ const useStyles = makeStyles({
   },
   meta: {
     whiteSpace: 'nowrap',
+  },
+  // The touch path to an agent's second action (T22 B20): a tap on the row
+  // opens the agent, ⌘↵ has no key to press. Centred on the row, and a 44px
+  // target — it is not the full-width row.
+  startSession: {
+    flex: 'none',
+    alignSelf: 'center',
+    display: 'inline-flex',
+    '& button': {
+      minWidth: 44,
+      minHeight: 44,
+    },
   },
   empty: {
     padding: 'var(--bui-space-5) var(--bui-space-4)',
@@ -370,6 +382,11 @@ function PaletteDialog({
   const classes = useStyles();
   const navigate = useNavigate();
   const baseId = useId();
+  const touch = useTouchInput();
+  const isPhone = usePhoneLayout();
+  // ⌘↵ has no key on a phone; a button on the agent's row stands in for it.
+  // A desktop keeps the key, and its hint in the footer.
+  const offersStartButton = touch || isPhone;
 
   const agents = useAgents();
   const sessions = useSessions();
@@ -573,8 +590,7 @@ function PaletteDialog({
     } else if (isLoadingAny) {
       emptyText = 'Loading your sessions, agents, skills and connectors…';
     } else {
-      emptyText =
-        'Nothing to search yet. Sessions, agents, skills and connectors show up here as they exist.';
+      emptyText = 'Nothing to search yet.';
     }
   }
 
@@ -667,20 +683,28 @@ function PaletteDialog({
                   )}
                 </div>
                 <ul role="presentation" className={classes.groupList}>
-                  {group.entries.map(entry => (
-                    <PaletteOption
-                      key={entry.id}
-                      entry={entry}
-                      id={optionId(entry)}
-                      isActive={activeEntry?.id === entry.id}
-                      onActivate={() =>
-                        setActiveIndex(
-                          flatEntries.findIndex(each => each.id === entry.id),
-                        )
-                      }
-                      onOpen={() => openEntry(entry)}
-                    />
-                  ))}
+                  {group.entries.map(entry => {
+                    const agent = entry.agent;
+                    return (
+                      <PaletteOption
+                        key={entry.id}
+                        entry={entry}
+                        id={optionId(entry)}
+                        isActive={activeEntry?.id === entry.id}
+                        onActivate={() =>
+                          setActiveIndex(
+                            flatEntries.findIndex(each => each.id === entry.id),
+                          )
+                        }
+                        onOpen={() => openEntry(entry)}
+                        onStartSession={
+                          offersStartButton && agent
+                            ? () => onStartWithAgent(agent)
+                            : undefined
+                        }
+                      />
+                    );
+                  })}
                 </ul>
               </li>
             ))}
@@ -711,27 +735,36 @@ function PaletteDialog({
             )}
           </ul>
         )}
-        <div className={classes.footer}>
-          <Text variant="body-x-small" color="secondary">
-            <kbd className={classes.kbd}>↑</kbd>{' '}
-            <kbd className={classes.kbd}>↓</kbd> move
-          </Text>
-          <Text variant="body-x-small" color="secondary">
-            <kbd className={classes.kbd}>↵</kbd> open
-          </Text>
-          {activeEntry?.agent && (
-            <Text variant="body-x-small" color="secondary">
-              <kbd className={classes.kbd}>{mod}</kbd>{' '}
-              <kbd className={classes.kbd}>↵</kbd> start a session with this
-              agent
-            </Text>
-          )}
-          {isLoadingAny && (
-            <Text variant="body-x-small" color="secondary">
-              Some results are still loading…
-            </Text>
-          )}
-        </div>
+        {/* Key hints only where there are keys (T22 P7): on touch input the
+            rows are tapped and an agent's row carries its own button. What
+            is still loading is said either way. */}
+        {(!touch || isLoadingAny) && (
+          <div className={classes.footer}>
+            {!touch && (
+              <>
+                <Text variant="body-x-small" color="secondary">
+                  <kbd className={classes.kbd}>↑</kbd>{' '}
+                  <kbd className={classes.kbd}>↓</kbd> move
+                </Text>
+                <Text variant="body-x-small" color="secondary">
+                  <kbd className={classes.kbd}>↵</kbd> open
+                </Text>
+                {activeEntry?.agent && (
+                  <Text variant="body-x-small" color="secondary">
+                    <kbd className={classes.kbd}>{mod}</kbd>{' '}
+                    <kbd className={classes.kbd}>↵</kbd> start a session with
+                    this agent
+                  </Text>
+                )}
+              </>
+            )}
+            {isLoadingAny && (
+              <Text variant="body-x-small" color="secondary">
+                Some results are still loading…
+              </Text>
+            )}
+          </div>
+        )}
       </div>
     </Dialog>
   );
@@ -777,12 +810,15 @@ function PaletteOption({
   isActive,
   onActivate,
   onOpen,
+  onStartSession,
 }: {
   entry: PaletteEntry;
   id: string;
   isActive: boolean;
   onActivate: () => void;
   onOpen: () => void;
+  /** Offered on an agent's row on touch input: start a session with it. */
+  onStartSession?: () => void;
 }) {
   const classes = useStyles();
   return (
@@ -820,6 +856,24 @@ function PaletteOption({
         <Text variant="body-x-small" color="secondary" className={classes.meta}>
           {entry.meta}
         </Text>
+      )}
+      {onStartSession && (
+        // Its presses are kept from the row, which would open the agent.
+        <span
+          role="presentation"
+          className={classes.startSession}
+          onPointerDown={stopRowPress}
+          onPointerUp={stopRowPress}
+          onClick={stopRowPress}
+        >
+          <ButtonIcon
+            variant="tertiary"
+            size="small"
+            icon={<AddCircleOutlineIcon fontSize="small" />}
+            aria-label={`Start a session with ${entry.title}`}
+            onPress={onStartSession}
+          />
+        </span>
       )}
     </li>
   );

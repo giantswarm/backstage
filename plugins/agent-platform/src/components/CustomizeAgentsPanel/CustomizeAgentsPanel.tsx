@@ -10,8 +10,10 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   LoadingIndicator,
+  PHONE_MEDIA,
   StatusDot,
   useCatalogFilters,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -37,8 +39,14 @@ const ROW_AVATAR_SIZE: AvatarSize = 96;
  */
 export const AGENTS_PAGE_SIZE = 25;
 
-/** Below this width the facts wrap under the name instead of in columns. */
-const NARROW = '@media (max-width: 599px)';
+/** Two lines, then an ellipsis: what a phone row shows of a long text. */
+const TWO_LINES = {
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
+} as const;
 
 const useStyles = makeStyles({
   // The prototype's agent list: one rounded, bordered surface, an avatar row
@@ -82,6 +90,11 @@ const useStyles = makeStyles({
   },
   star: {
     flex: 'none',
+    // A thumb's target at phone width (T22 §2.5), not the mouse's 32px.
+    [PHONE_MEDIA]: {
+      width: 44,
+      height: 44,
+    },
   },
   // The prototype's favorite star (#e8a400); the outline when not a favorite
   // stays quiet.
@@ -134,7 +147,7 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     columnGap: 'var(--bui-space-4)',
     rowGap: 2,
-    [NARROW]: {
+    [PHONE_MEDIA]: {
       flexBasis: '100%',
     },
   },
@@ -142,10 +155,15 @@ const useStyles = makeStyles({
   fact: {
     flex: '0 0 150px',
     minWidth: 0,
-    [NARROW]: {
+    [PHONE_MEDIA]: {
       flex: '0 1 auto',
+      overflowWrap: 'anywhere',
     },
   },
+  // At phone width a name, a description and a readiness reason wrap to two
+  // lines instead of being cut to one (T22 P2): a phone has no hover to read
+  // the rest in a tooltip.
+  twoLines: TWO_LINES,
 });
 
 export type CustomizeAgentsPanelProps = {
@@ -185,17 +203,23 @@ function AgentListItem({
   showInstallation,
   isFavorite,
   onToggleFavorite,
+  isPhone,
 }: {
   row: AgentRow;
   href?: string;
   avatarUrl?: string;
   showInstallation: boolean;
+  /** The phone layout: texts wrap rather than truncate behind a `title`. */
+  isPhone: boolean;
   isFavorite: boolean;
   onToggleFavorite: () => void;
 }) {
   const classes = useStyles();
   const status = agentStatus(row);
   const parts = agentParts(row);
+  // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
+  // `data-truncate="false"`, which its stylesheet still truncates.
+  const truncate = isPhone ? undefined : true;
   const facts: { key: string; text: string; label: string }[] = [
     { key: 'model', text: row.model ?? '', label: 'Model' },
     { key: 'parts', text: parts, label: 'Skills and connectors' },
@@ -215,7 +239,13 @@ function AgentListItem({
       <div className={classes.body}>
         <div className={classes.main}>
           <div className={classes.nameLine}>
-            <Text as="span" variant="body-medium" weight="bold" truncate>
+            <Text
+              as="span"
+              variant="body-medium"
+              weight="bold"
+              truncate={truncate}
+              className={isPhone ? classes.twoLines : undefined}
+            >
               {row.name}
             </Text>
             {/* The state shows only when it needs a look, as in the
@@ -229,13 +259,26 @@ function AgentListItem({
               </span>
             )}
           </div>
+          {/* On a phone the reason a not-Ready agent needs a look is said in
+              the row; elsewhere it is the state's tooltip. */}
+          {isPhone && status.tone !== 'success' && row.readinessMessage && (
+            <Text
+              as="span"
+              variant="body-small"
+              color="secondary"
+              className={classes.twoLines}
+            >
+              {row.readinessMessage}
+            </Text>
+          )}
           {row.description && (
             <Text
               as="span"
               variant="body-small"
               color="secondary"
-              truncate
-              title={row.description}
+              truncate={truncate}
+              className={isPhone ? classes.twoLines : undefined}
+              title={isPhone ? undefined : row.description}
             >
               {row.description}
             </Text>
@@ -248,7 +291,7 @@ function AgentListItem({
               as="span"
               variant="body-small"
               color="secondary"
-              truncate
+              truncate={truncate}
               className={classes.fact}
               title={fact.text ? `${fact.label}: ${fact.text}` : undefined}
             >
@@ -355,6 +398,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     useAgents();
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
+  const isPhone = usePhoneLayout();
   const { isPinned: isFavorite, togglePin: toggleFavorite } =
     useFavoriteAgents();
 
@@ -388,6 +432,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
         size: ROW_AVATAR_SIZE,
       })}
       showInstallation={showInstallation}
+      isPhone={isPhone}
       isFavorite={isFavorite(row.id)}
       onToggleFavorite={() => {
         // A preference, like a pinned session: the StorageApi write is the

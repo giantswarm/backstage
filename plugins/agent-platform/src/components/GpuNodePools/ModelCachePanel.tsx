@@ -2,18 +2,28 @@ import { type ReactNode, useMemo } from 'react';
 import {
   Alert,
   Button,
+  ButtonIcon,
   Cell,
   CellText,
   ColumnConfig,
   Flex,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Table,
   Text,
   useTable,
 } from '@backstage/ui';
+import DeleteIcon from '@material-ui/icons/Delete';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   InfoCard,
   LoadingIndicator,
+  MENU_WIDTH,
+  StackedRowList,
+  usePhoneLayout,
   useVisibleSort,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
@@ -126,6 +136,98 @@ export function sortModelCacheRowsBy(
   return sort.direction === 'descending' ? sorted.reverse() : sorted;
 }
 
+/** Why a claim cannot be removed here: the installation's cluster-manager is too old. */
+export const CACHE_READ_ONLY_REASON =
+  "This environment's cluster-manager does not offer remove_model_cache yet (cluster-manager 0.17+).";
+
+/**
+ * One claim as a phone row (T22 B16): the table's nine columns clipped
+ * **Remove cache** off the row, and its read-only reason lived only in
+ * `title=`.
+ *
+ * - Line 1: the claim, its size, and a ⋯ menu holding Remove cache
+ *   (destructive, so in the menu).
+ * - Line 2: cluster · zone · environment · what it costs a month · since when.
+ * - Under them: what uses it, the volume, the size's tier, and — where the
+ *   claim cannot be removed here — why, in words.
+ */
+export function modelCacheStackedRow(
+  row: ModelCacheRow,
+  {
+    removable,
+    onRemove,
+    showInstallation,
+  }: {
+    removable: boolean;
+    onRemove: (row: ModelCacheRow) => void;
+    showInstallation: boolean;
+  },
+): StackedRowItem {
+  const { claim } = row;
+  const size = describeClaimSize(claim);
+  const price = describeMonthlyPrice(claim.price);
+  const tier = claim.tierNote ?? claim.storageClass;
+  const priceSource = describePriceSource(claim);
+  return {
+    id: `${row.installation}/${row.cluster.name}/${claim.namespace}/${claim.name}`,
+    title: claim.name,
+    status: size ? (
+      <Text as="span" variant="body-small" color="secondary">
+        {size}
+      </Text>
+    ) : undefined,
+    facts: [
+      row.cluster.name,
+      describeWhere(row),
+      showInstallation ? row.installation : undefined,
+      price ?? 'no price',
+      claim.created ? `since ${describeSince(claim.created)}` : undefined,
+    ],
+    details: (
+      <Flex direction="column" gap="1">
+        <Text as="p" variant="body-small" color="secondary">
+          {describeUse(row)}
+        </Text>
+        {claim.volume && (
+          <Text as="p" variant="body-small" color="secondary">
+            Volume {claim.volume}
+          </Text>
+        )}
+        {tier && (
+          <Text as="p" variant="body-small" color="secondary">
+            {tier}
+          </Text>
+        )}
+        {priceSource && priceSource !== tier && (
+          <Text as="p" variant="body-small" color="secondary">
+            {claim.price ? `Price: ${priceSource}` : priceSource}
+          </Text>
+        )}
+        {!removable && (
+          <Text as="p" variant="body-small" color="secondary">
+            Read-only: {CACHE_READ_ONLY_REASON}
+          </Text>
+        )}
+      </Flex>
+    ),
+    actions: removable ? (
+      <MenuTrigger>
+        <ButtonIcon
+          size="small"
+          variant="tertiary"
+          icon={<MoreVertIcon />}
+          aria-label={`Actions for cache ${claim.name} on ${row.cluster.name}`}
+        />
+        <Menu maxWidth={MENU_WIDTH}>
+          <MenuItem iconStart={<DeleteIcon />} onAction={() => onRemove(row)}>
+            Remove cache
+          </MenuItem>
+        </Menu>
+      </MenuTrigger>
+    ) : undefined,
+  };
+}
+
 function getColumnConfig(
   removable: string[],
   onRemove: (row: ModelCacheRow) => void,
@@ -233,7 +335,7 @@ function getColumnConfig(
               <Text
                 variant="body-small"
                 color="secondary"
-                title="This environment's cluster-manager does not offer remove_model_cache yet (cluster-manager 0.17+)."
+                title={CACHE_READ_ONLY_REASON}
               >
                 read-only
               </Text>
@@ -261,6 +363,7 @@ export function ModelCachePanel({
   onRemove,
   hideColumns,
 }: ModelCachePanelProps) {
+  const isPhone = usePhoneLayout();
   const columnConfig = useMemo(
     () =>
       getColumnConfig(removable, onRemove).filter(
@@ -291,7 +394,21 @@ export function ModelCachePanel({
   );
 
   let body: ReactNode;
-  if (rows.length > 0) {
+  if (rows.length > 0 && isPhone) {
+    // At phone width each claim is a stacked row, in the table's order.
+    body = (
+      <StackedRowList
+        aria-label="Model cache claims"
+        rows={(tableProps.data ?? []).map(row =>
+          modelCacheStackedRow(row, {
+            removable: removable.includes(row.installation),
+            onRemove,
+            showInstallation: !hideColumns?.includes('installation'),
+          }),
+        )}
+      />
+    );
+  } else if (rows.length > 0) {
     body = <Table<ModelCacheRow> {...tableProps} columnConfig={columnConfig} />;
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading model caches…" />;
@@ -308,11 +425,10 @@ export function ModelCachePanel({
       <InfoCard title="Model cache">
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            A model cache keeps the weights and compiled graphs of the models
-            served on a cluster, so a model starts about 90 s faster the second
-            time. It is a volume that stays after the pools are removed and is
-            billed every month it exists, filled or not — until it is removed
-            here. Every pool of a cluster serves from the cluster's cache.
+            Keeps the weights and compiled graphs of a cluster's served models,
+            so a model starts about 90 s faster the second time. Every pool of
+            the cluster serves from it. The volume outlives the pools and is
+            billed every month, filled or not, until removed here.
             {total ? ` Standing: ${total}.` : ''}
           </Text>
           {body}

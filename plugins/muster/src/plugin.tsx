@@ -14,6 +14,7 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   musterApiRef,
@@ -56,13 +57,15 @@ function musterTab<P extends object>(
   };
 }
 
-// muster contributes two of the Agent Platform page's level-1 tabs:
+// muster contributes two of the Agent Platform page's sections:
 // "Connectors" (`/agent-platform/connectors`; MCP servers, renamed for people
 // — the extension id and the code keep `mcp-servers`) and "Workflows"
 // (`/agent-platform/workflows`). Each carries its own root route ref, so
 // muster's links resolve under the tab they belong to. Their place among the
 // Agent Platform's tabs is the page's own (agent-platform's
-// `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids.
+// `AGENT_PLATFORM_TAB_ORDER`), keyed by these extensions' ids. They exist only
+// where that page does: in the agent shell (agent-platform's
+// `AGENT_SHELL_ON`), never in classic chrome.
 //
 // **The `usedBy` input, a cross-plugin coupling by string:** the shell's
 // connector page renders the element attached to `sub-page:muster/mcp-servers`
@@ -101,10 +104,12 @@ const mcpServersSubPage = SubPageBlueprint.makeWithOverrides({
 // resolves: `/agent-platform/mcp-servers…` → `/agent-platform/connectors…`.
 // Enabled by default on purpose: deployments replace `app.extensions`
 // wholesale (the chart does), so an opt-in entry would silently drop the
-// redirect there. Where the Agent Platform page is disabled, the target
-// resolves to the same not-found it does today.
+// redirect there. Shell only, like the Agent Platform page it redirects into:
+// without the shell nothing of the Agent Platform is routed, the old address
+// included.
 const mcpServersRedirectPage = PageBlueprint.make({
   name: 'mcp-servers-redirect',
+  if: AGENT_SHELL_ON,
   params: {
     path: '/agent-platform/mcp-servers',
     routeRef: legacyMcpServersRouteRef,

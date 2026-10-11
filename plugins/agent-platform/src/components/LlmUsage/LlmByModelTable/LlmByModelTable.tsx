@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
-import { Cell, CellText, Table, Text, useTable } from '@backstage/ui';
+import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
   columnMax,
   DataBar,
   ShowMore,
+  usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
@@ -17,6 +18,7 @@ import {
 } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
+import { NameCell } from '../NameCell';
 import { useMeasureColor } from '../../../lib/measures';
 
 /**
@@ -83,7 +85,8 @@ export function LlmByModelTable({
       label: 'Model',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.model} />,
+      // Two lines at phone width: a model id cut to one line read as "a…".
+      cell: row => <NameCell title={row.model} />,
     },
     {
       id: 'calls',
@@ -165,6 +168,14 @@ export function LlmByModelTable({
       ),
     },
   ];
+  // At phone width the model, what it cost and its context creep (T22 B10):
+  // six columns in 343px clipped every figure. The volume is in the tab's
+  // KPI tiles and the cost-per-day chart; the blended rate is cost ÷ tokens.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'model',
+    'costUsd',
+    'avgTokensPerCall',
+  ]);
 
   const { tableProps } = useTable<LlmModelRow>({
     mode: 'complete',
@@ -182,8 +193,6 @@ export function LlmByModelTable({
           `ShowMore` hands the table its first page of them. Passing the raw
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. */}
-      {/* The table scrolls inside the card at phone width rather than pushing
-          the page wide — the 375px requirement. */}
       <ShowMore
         items={tableProps.data ?? []}
         initial={BY_MODEL_ROWS}
@@ -191,18 +200,16 @@ export function LlmByModelTable({
         revealAll
       >
         {visible => (
-          <div style={{ overflowX: 'auto' }}>
-            <Table<LlmModelRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={columnConfig}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  {emptyMessage}
-                </Text>
-              }
-            />
-          </div>
+          <Table<LlmModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            }
+          />
         )}
       </ShowMore>
     </UsageCard>

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
+import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -10,7 +11,10 @@ import {
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
+  StackedRowList,
+  type StackedRowItem,
   useCatalogFilters,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type {
@@ -35,6 +39,17 @@ import {
   type LastRunState,
   lastRunStates,
 } from './lastRuns';
+
+const useStyles = makeStyles({
+  // A phone row's description: two lines, then the workflow's page.
+  description: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+  },
+});
 
 export type CustomizeWorkflowsPanelProps = {
   search: string;
@@ -86,8 +101,14 @@ function WorkflowRows({
   hasSession: boolean;
   tools: ToolSummary[] | undefined;
 }) {
+  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const detailRoute = useRouteRef(workflowDetailRouteRef);
+  const isPhone = usePhoneLayout();
+  const hrefOf = (row: Row) =>
+    detailRoute
+      ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
+      : undefined;
 
   // muster lists executions newest first, so one per workflow gives the
   // latest run, and `total` counts them all.
@@ -175,9 +196,43 @@ function WorkflowRows({
     },
   ];
 
+  if (isPhone) {
+    // The phone layout (T22 B9): six columns in 343px froze the five
+    // secondary ones at bui's 75px minimum and left the name ~51px of text,
+    // with "Can change things" clipped. A stacked row per workflow instead:
+    // the name (the row's link) and its access badge, then category · steps ·
+    // runs · source, then two lines of what it does.
+    const items = rows.map<StackedRowItem>(row => {
+      const href = hrefOf(row);
+      return {
+        id: row.id,
+        title: row.name,
+        ...(href ? { href } : {}),
+        ...(row.effect
+          ? { status: <WorkflowEffectBadge effect={row.effect} /> }
+          : {}),
+        facts: [row.category, row.steps, row.runs, row.source],
+        ...(row.description
+          ? {
+              details: (
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  className={classes.description}
+                >
+                  {row.description}
+                </Text>
+              ),
+            }
+          : {}),
+      };
+    });
+    return <StackedRowList rows={items} aria-label="Workflows" />;
+  }
+
   return (
-    // The table keeps its column grid at phone width; the wrapper lets it
-    // scroll sideways instead of breaking the page's 375px layout.
+    // Wider than a tablet's content column, the table keeps its column grid
+    // and scrolls sideways inside this wrapper instead of breaking the page.
     <div style={{ overflowX: 'auto' }}>
       <Table<Row>
         columnConfig={columns}
@@ -185,12 +240,7 @@ function WorkflowRows({
         // Never bui's page mode: it draws its pagination footer even at three
         // rows. ShowMore above windows the sorted list instead.
         pagination={{ type: 'none' }}
-        rowConfig={{
-          getHref: row =>
-            detailRoute
-              ? `${detailRoute({ name: row.name })}?installation=${encodeURIComponent(installation)}`
-              : undefined,
-        }}
+        rowConfig={{ getHref: hrefOf }}
       />
     </div>
   );
@@ -308,7 +358,7 @@ function WorkflowsTable({
         <SessionGate
           session={session}
           installation={installation}
-          context="Workflow runs and the read-only badge are read through your muster session."
+          context="Run counts and the read-only badge need a muster session."
         />
       )}
       {list}

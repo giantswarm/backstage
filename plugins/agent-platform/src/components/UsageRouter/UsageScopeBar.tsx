@@ -1,6 +1,10 @@
 import { useLocation } from 'react-router-dom';
-import { Flex, ToggleButton, ToggleButtonGroup } from '@backstage/ui';
+import { Flex, Text, ToggleButton, ToggleButtonGroup } from '@backstage/ui';
 import { useInstallationScope } from '@giantswarm/backstage-plugin-gs';
+import {
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { EnvironmentSelect } from '../EnvironmentSelect';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
@@ -40,6 +44,10 @@ import {
 export function UsageScopeBar() {
   const { isSingleInstallation, isLoading } = useInstallationScope();
   const { days, setDays } = useUsageWindow();
+  // A phone, or any touch screen, never shows the greyed buttons' `title=`:
+  // the reason is said beside the control there instead (T22 C23).
+  const isPhone = usePhoneLayout();
+  const isTouch = useTouchInput();
 
   // Only the sessions view has a backend-fixed window; the gateway views
   // query any window directly, so everything stays selectable there.
@@ -62,6 +70,11 @@ export function UsageScopeBar() {
       : undefined;
 
   const showEnvironment = !isLoading && !isSingleInstallation;
+  const windowReason =
+    backendWindowDays !== undefined &&
+    USAGE_WINDOW_OPTIONS.some(option => option > backendWindowDays)
+      ? `kagent keeps ${backendWindowDays} days of session usage`
+      : undefined;
 
   return (
     <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
@@ -98,10 +111,7 @@ export function UsageScopeBar() {
                   return;
                 }
                 if (isBeyondWindow) {
-                  node.setAttribute(
-                    'title',
-                    `kagent keeps ${backendWindowDays} days of session usage`,
-                  );
+                  node.setAttribute('title', windowReason ?? '');
                 } else {
                   node.removeAttribute('title');
                 }
@@ -112,6 +122,11 @@ export function UsageScopeBar() {
           );
         })}
       </ToggleButtonGroup>
+      {windowReason && (isPhone || isTouch) && (
+        <Text as="p" variant="body-small" color="secondary">
+          {windowReason}, so the longer ranges are unavailable.
+        </Text>
+      )}
     </Flex>
   );
 }

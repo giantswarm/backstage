@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { PendingConfirmationPanel } from './PendingConfirmationPanel';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const onAnswer = jest.fn();
 
@@ -891,7 +896,88 @@ describe('PendingConfirmationPanel', () => {
     renderPanel(singleChoice, { isUserScoped: false });
 
     expect(
-      screen.getByText(/may have been put to somebody else/),
+      screen.getByText(/may be\s+meant for someone else/),
     ).toBeInTheDocument();
+  });
+});
+
+describe('PendingConfirmationPanel on a phone (T22 B2, B21)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const injectedCss = () =>
+    Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent ?? '')
+      .join('\n');
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  /** The declarations of `element`'s class whose name contains `name`, under the phone query. */
+  const phoneRule = (element: Element, name: string) => {
+    const className = [...element.classList].find(each => each.includes(name))!;
+    return new RegExp(
+      `@media \\(max-width: 599\\.95px\\) \\{\\s*\\.${escape(
+        className,
+      )} \\{([^}]*)\\}`,
+    ).exec(injectedCss())?.[1];
+  };
+
+  it('breaks the line on Enter with touch input, and sends from the button', async () => {
+    layout = mockPhoneLayout();
+    renderPanel(freeText);
+
+    const box = screen.getByRole('textbox', { name: 'Answer' });
+    await userEvent.type(box, 'line one{Enter}line two');
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(box).toHaveValue('line one\nline two');
+    expect(box).toHaveAttribute('enterkeyhint', 'enter');
+    expect(
+      screen.getByText(
+        'Answering resumes the agent where it stopped. Tap Send answer to send it.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(sendButton());
+    expect(onAnswer).toHaveBeenCalledWith(
+      expect.objectContaining({ answers: [['line one\nline two']] }),
+    );
+  });
+
+  it('names Next, not Enter, between paged questions on touch', () => {
+    layout = mockPhoneLayout();
+    renderPanel({
+      ...freeText,
+      questions: [
+        { question: 'Which cluster?', multiple: false },
+        { question: 'Which namespace?', multiple: false },
+      ],
+    });
+
+    expect(screen.getByText('Tap Next to go on.')).toBeInTheDocument();
+  });
+
+  it('keeps the keyboard captions on a desktop', () => {
+    layout = mockDesktopLayout();
+    renderPanel(freeText);
+
+    expect(
+      screen.getByText(
+        'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveAttribute(
+      'enterkeyhint',
+      'send',
+    );
+  });
+
+  it('gives the card one scroller at phone width: arguments flow in its body', () => {
+    layout = mockPhoneLayout();
+    renderPanel({ ...approval, args: { path: '/etc/hosts' } });
+
+    const card = screen.getByTestId('hitl-card');
+    expect(phoneRule(card, 'card')).toMatch(
+      /max-height: min\(50dvh, calc\(100dvh - var\(--agent-shell-mobile-bar-height, 0px\) - 200px\)\);/,
+    );
+    const args = card.querySelector('pre')!;
+    expect(phoneRule(args, 'proposedArgs')).toMatch(/max-height: none;/);
   });
 });

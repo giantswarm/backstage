@@ -72,8 +72,8 @@ function DetectionStatus({
   if (!detection.reachable) {
     return (
       <Text variant="body-small" color="secondary">
-        No answer from this address — muster could not reach it. Check the
-        address; you can still continue and test at the end.
+        Muster could not reach this address. Check it, or continue and test at
+        the end.
       </Text>
     );
   }
@@ -95,8 +95,8 @@ function DetectionStatus({
             }`,
           transport,
           detection.requiresAuth
-            ? 'asks for a sign-in — choose how people sign in on the next step'
-            : 'answered without asking for a sign-in',
+            ? 'asks for a sign-in — set up on the next step'
+            : 'no sign-in needed',
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -204,8 +204,8 @@ export function NewConnectorConnectPage() {
         title={registeredName ? 'Connection' : 'Connect an app'}
       >
         {registeredName
-          ? 'Where the connector is reached. Saving updates the registered connector in place.'
-          : 'A connector gives agents access to another app through its MCP server. Paste the server address you got from the app or your admin.'}
+          ? 'Saving updates the registered connector in place.'
+          : 'Gives agents access to an app through its MCP server. Paste the address from the app or your admin.'}
       </WizardStepHeading>
 
       <ActiveInstallationNote />
@@ -234,8 +234,8 @@ export function NewConnectorConnectPage() {
         placeholder="e.g. Jira"
         description={
           registeredName
-            ? 'The connector is registered under this name; changes are saved as an update to it.'
-            : 'People see this name when they give an agent access.'
+            ? "Can't be changed after registration."
+            : 'Shown when giving an agent access.'
         }
         {...fieldErrorProps(
           validation.errorFor(fieldErrors.name ?? fieldErrors.slug),
@@ -243,8 +243,7 @@ export function NewConnectorConnectPage() {
       />
       {!registeredName && state.slug && (
         <Text variant="body-small" color="secondary">
-          Registered as <code>{state.slug}</code> — the technical name agents
-          see in tool names.
+          Registered as <code>{state.slug}</code> — used in its tool names.
         </Text>
       )}
 
@@ -255,14 +254,13 @@ export function NewConnectorConnectPage() {
         onChange={setDescription}
         rows={2}
         placeholder="e.g. Search, read and update tickets"
-        description="Shown wherever the connector is offered, so people know what it's for."
         error={validation.errorFor(fieldErrors.description)}
       />
 
       {validation.shown && unanchoredErrors.length > 0 && (
         <Alert
           status="danger"
-          title="Please fix the following before continuing"
+          title="Fix before continuing"
           description={unanchoredErrors.join('. ')}
         />
       )}

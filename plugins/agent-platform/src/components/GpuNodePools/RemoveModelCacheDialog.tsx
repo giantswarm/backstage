@@ -195,8 +195,8 @@ export function RemoveModelCacheDialog({
         </Text>
         <Text variant="body-small" color="secondary">
           {claim.mounted
-            ? "The cluster's serving slice mounts this claim: it switches to serve from the node's disk — every pool of the cluster — and every model served on the cluster downloads and compiles again at its next start. A later pool with the cache on creates the claim anew."
-            : 'Nothing mounts this claim: the serving slice is not changed. A later pool with the cache on creates the claim anew.'}
+            ? "The cluster's serving slice mounts this claim: every pool switches to serving from the node's disk, and every model downloads and compiles again at its next start. A later pool with the cache on creates a new claim."
+            : 'Nothing mounts this claim. A later pool with the cache on creates a new claim.'}
         </Text>
         <Flex direction="column" gap="1" data-testid="served-models">
           <Text variant="body-small" color="secondary">

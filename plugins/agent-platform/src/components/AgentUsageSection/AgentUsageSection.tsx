@@ -49,20 +49,19 @@ const PERSONAL_COPY = {
   title: 'Your sessions',
   description: (days: number, installation: string) => (
     <>
-      Your own agent sessions on <strong>{installation}</strong> over the last{' '}
-      {days} days, derived from kagent's stored conversations — including
-      sessions you started from Slack. The Overview and Cost tabs cover every
-      user's model calls; these are yours.
+      Your agent sessions on <strong>{installation}</strong> over the last{' '}
+      {days} days, from kagent's stored conversations — Slack included. Overview
+      and Cost cover every user's model calls.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Your own agent sessions over the last ${days} days, derived from kagent's stored conversations — including sessions you started from Slack. The Overview and Cost tabs cover every user's model calls; these are yours.`,
+    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included. Overview and Cost cover every user's model calls.`,
   topTools: 'Your top tools',
   topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
     `You have no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
-    `None of your sessions on ${installation} could be read, so there is nothing to total yet.`,
+    `None of your sessions on ${installation} could be read.`,
 };
 
 const SHARED_COPY = {
@@ -70,17 +69,17 @@ const SHARED_COPY = {
   description: (days: number, installation: string) => (
     <>
       Every user's agent sessions on <strong>{installation}</strong> over the
-      last {days} days, derived from kagent's stored conversations.
+      last {days} days, from kagent's stored conversations.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Agent sessions over the last ${days} days, derived from kagent's stored conversations.`,
+    `Agent sessions over the last ${days} days, from kagent's stored conversations.`,
   topTools: 'Top tools',
   topServers: 'Top connectors',
   empty: (days: number, installation: string) =>
     `There are no agent sessions on ${installation} in the last ${days} days.`,
   unreadable: (installation: string) =>
-    `No sessions on ${installation} could be read, so there is nothing to total yet.`,
+    `No sessions on ${installation} could be read.`,
 };
 
 /**
@@ -350,9 +349,7 @@ export function AgentUsageSection() {
         {narrowed && (
           <Text variant="body-small" color="secondary">
             The by-agent table and the top tools and connectors below always
-            cover kagent's full {windowDays}-day window — the backend computes
-            them over that fixed window, so they cannot be re-cut to{' '}
-            {appliedDays} days here.
+            cover kagent's full {windowDays}-day window, not {appliedDays} days.
           </Text>
         )}
         <ByAgentTable
@@ -404,8 +401,8 @@ export function AgentUsageSection() {
       {header}
       {isResolvedFromAll && installation && (
         <Text variant="body-small" color="secondary">
-          Showing {installation}. Usage is read one environment at a time — pick
-          another in the Environment control to switch.
+          Showing {installation} — one environment at a time; switch in the
+          Environment control.
         </Text>
       )}
       {usage && selectedDays > windowDays && (
@@ -418,7 +415,7 @@ export function AgentUsageSection() {
         <Alert
           status="warning"
           title="These numbers are not scoped to you"
-          description={`kagent on ${installation} is not configured to identify individual users, so this covers everyone's sessions on that environment, not only yours.`}
+          description={`kagent on ${installation} does not identify individual users, so this covers everyone's sessions there.`}
         />
       )}
       {body}

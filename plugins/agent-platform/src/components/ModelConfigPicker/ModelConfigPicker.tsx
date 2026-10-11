@@ -114,7 +114,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         <Alert
           status="info"
           title="Select an environment first"
-          description="Models are provisioned per environment. Choose one above to load its ModelConfigs."
+          description="Models are provisioned per environment."
         />
       </Flex>
     );
@@ -140,7 +140,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
         <Alert
           status="warning"
           title="Couldn't read models"
-          description={`The kagent resources on ${installation} couldn't be read. It may be unreachable, or you may not have permission to list ModelConfigs there.`}
+          description={`The kagent resources on ${installation} couldn't be read — unreachable, or you may not list ModelConfigs there.`}
         />
       )}
 
@@ -149,7 +149,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
           <Alert
             status="info"
             title="No models found"
-            description={`No ModelConfigs are provisioned on ${installation}. A platform admin needs to add one before you can create an agent here.`}
+            description={`No ModelConfigs on ${installation}. A platform admin must add one before agents can be created here.`}
           />
           {/* Leaving the create flow here loses this form's state, which is
               fine: without a model, nothing on it can proceed anyway. */}

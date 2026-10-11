@@ -9,20 +9,20 @@ export type ConnectorEditBlock = {
 };
 
 export const GITOPS_EDIT_REASON =
-  'Managed by GitOps: this connector is applied from a Git repository, so it is changed there — an edit made in the portal would be reverted. “Edit in Git…” in the menu shows where.';
+  'Managed by GitOps: change it in Git — a portal edit would be reverted. “Edit in Git…” in the menu shows where.';
 
 export const GITOPS_FAMILY_EDIT_REASON =
-  'Managed by GitOps: the instances of this connector are applied from a Git repository, so they are changed there, not in the portal.';
+  'Managed by GitOps: its instances are changed in Git, not here.';
 
 export const INSTANCES_EDIT_REASON =
-  'A connector with several instances is not edited from this page: each instance is configured on its own (see Instances).';
+  'Each instance is configured on its own (see Instances).';
 
 export const SESSION_EDIT_REASON =
-  'Editing runs through your muster session, which is not connected.';
+  'Editing needs your muster session, which is not connected.';
 
 /** Why the connector page's menu is empty: its every action is a live write. */
 export const SESSION_ACTIONS_REASON =
-  'Reconnecting, turning off or removing the connector runs through your muster session, which is not connected.';
+  'Reconnecting, turning off or removing needs your muster session, which is not connected.';
 
 /**
  * Why the connector page's Edit cannot open the connector wizard for `row`,

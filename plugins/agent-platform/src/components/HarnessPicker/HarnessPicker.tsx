@@ -99,7 +99,7 @@ export function HarnessPicker() {
         <FieldLabel
           label="Runtime"
           secondaryLabel="Harness"
-          description="What runs the agent. It can't be changed once the agent exists."
+          description="What runs the agent. Fixed once the agent exists."
         />
         <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
           <StaticCard>{content(current)}</StaticCard>
@@ -116,7 +116,7 @@ export function HarnessPicker() {
       <Alert
         status="info"
         title="Runtime reset to the platform default"
-        description={`The Harness ${droppedHarness} you picked doesn't serve this model's namespace, so the agent runs on the platform Harness${
+        description={`The Harness ${droppedHarness} doesn't serve this model's namespace, so the agent runs on the platform Harness${
           hasChoice ? '. Pick another runtime below to change that' : ''
         }.`}
       />
@@ -148,7 +148,7 @@ export function HarnessPicker() {
           <Alert
             status="warning"
             title="Couldn't read the runtimes"
-            description={`The Harnesses in ${namespace} on ${installation} couldn't be read, so the agent will run on the platform Harness. You may not have permission to list Harnesses there.`}
+            description={`The Harnesses in ${namespace} on ${installation} couldn't be read — you may lack permission — so the agent runs on the platform Harness.`}
           />
         )}
       </Flex>
@@ -168,7 +168,7 @@ export function HarnessPicker() {
         secondaryLabel="Harness"
         description={
           hasChoice
-            ? "What runs the agent. It can't be changed once the agent exists."
+            ? 'What runs the agent. Fixed once the agent exists.'
             : `What runs the agent: the only Harness in ${namespace} on ${installation}.`
         }
       />

@@ -73,3 +73,46 @@ describe('SkillInstructions', () => {
     );
   });
 });
+
+describe('SkillInstructions with the skill’s files', () => {
+  const fileLinks = {
+    paths: new Set(['SKILL.md', 'references/a.md', 'img/flow.png']),
+    hrefFor: (path: string) => `/skill?file=${path}`,
+  };
+
+  it('opens listed files in place: links, images and backticked paths, never nesting a link', async () => {
+    await renderInTestApp(
+      <SkillInstructions
+        sourceUrl={SOURCE}
+        fileLinks={fileLinks}
+        markdown={[
+          'See [`references/a.md`](references/a.md), `references/a.md` and `img/missing.png`.',
+          '',
+          '![flow](img/flow.png)',
+          '',
+          '[unlisted](references/b.md)',
+        ].join('\n')}
+      />,
+    );
+
+    const root = screen.getByTestId('skill-instructions');
+    expect(root.querySelector('a a')).toBeNull();
+    const links = screen.getAllByRole('link', { name: 'references/a.md' });
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link).toHaveAttribute('href', '/skill?file=references/a.md');
+    }
+    expect(
+      screen.queryByRole('link', { name: 'img/missing.png' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Image: flow' })).toHaveAttribute(
+      'href',
+      '/skill?file=img/flow.png',
+    );
+    // Not in the listing: the repository, as without file links.
+    expect(screen.getByRole('link', { name: /unlisted/ })).toHaveAttribute(
+      'href',
+      `${SOURCE}/references/b.md`,
+    );
+  });
+});

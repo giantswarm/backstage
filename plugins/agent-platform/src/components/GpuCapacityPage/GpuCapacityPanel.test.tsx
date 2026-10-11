@@ -1,5 +1,11 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  mockViewport,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { GpuNode } from '../../lib/serving';
 import {
   columnsForNodes,
@@ -10,6 +16,7 @@ import {
   MODEL_IMAGE_TARGET_DESCRIPTION,
   NO_CACHE_ON_NODE_HINT,
   NOT_SERVING_TARGET_DESCRIPTION,
+  phoneCapacityColumns,
 } from './GpuCapacityPanel';
 
 const withPlugin: GpuNode = {
@@ -386,7 +393,7 @@ describe('GpuCapacityPanel · backend host', () => {
       screen.getByText(/A backend host has no GPU figures/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/gpu-feature-discovery node labels/),
+      screen.queryByText(/gpu-feature-discovery labels/),
     ).not.toBeInTheDocument();
   });
 
@@ -469,7 +476,7 @@ describe('GpuCapacityPanel · backend host', () => {
     ).toBeInTheDocument();
     // Both sentences of the intro, since both kinds of node are listed.
     expect(
-      screen.getByText(/gpu-feature-discovery node labels/),
+      screen.getByText(/gpu-feature-discovery labels/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/A backend host has no GPU figures/),
@@ -631,7 +638,7 @@ describe('GpuCapacityPanel · serving targets', () => {
     expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /A node marked not a serving target is one the serving layer will not place a model on/,
+        /Not a serving target: outside the serving layer's node selector/,
       ),
     ).toBeInTheDocument();
   });
@@ -786,5 +793,108 @@ describe('describeNode / lacksInstallationCache', () => {
       lacksInstallationCache({ ...unjudged, eligible: true }, [holder]),
     ).toBe(false);
     expect(lacksInstallationCache(ollamaHost, [holder])).toBe(false);
+  });
+});
+
+// T22 B15: up to ten columns squashed in 343px, and a node's ineligibility
+// reason only on hover.
+describe('GpuCapacityPanel at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const ineligible: GpuNode = {
+    ...withPlugin,
+    id: 'inst-1/cpu-pool-node',
+    name: 'cpu-pool-node',
+    eligible: false,
+    eligibilityReason: 'outside the serving node selector',
+  };
+  const NODES = [withPlugin, labelsOnly, ineligible];
+
+  const renderPanel = () =>
+    renderInTestApp(
+      <GpuCapacityPanel
+        nodes={NODES}
+        installations={['inst-1', 'inst-2']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+  const nodeRow = (name: string) =>
+    screen.getByText(name).closest('[role="row"]') as HTMLElement;
+
+  it('keeps the node and the free GPUs, the rest said under the node', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    expect(headers()).toEqual(['Node', 'Free']);
+    const node = nodeRow('gpu-node-1');
+    expect(within(node).getByText('inst-1')).toBeVisible();
+    expect(
+      within(node).getByText('NVIDIA-GB10 · 120 GiB · 1 GPU · 1 requested'),
+    ).toBeVisible();
+    // The total rides under the free count.
+    expect(within(node).getByText('0')).toBeVisible();
+    expect(within(node).getByText('of 1')).toBeVisible();
+    // Why a figure is unknown, in words.
+    expect(
+      within(nodeRow('lab-node')).getByText(
+        /^Free GPUs unknown: The node advertises no accelerator resource/,
+      ),
+    ).toBeVisible();
+  });
+
+  it('says why a node is not a serving target under its name, and the card says where to look', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    expect(
+      within(nodeRow('cpu-pool-node')).getByTestId('gpu-node-reason'),
+    ).toHaveTextContent(
+      `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
+    );
+    expect(screen.getByText(/the reason is under its name\./)).toBeVisible();
+  });
+
+  it('says the reason under the name on a touch screen of any width', async () => {
+    layout = mockViewport({ width: 1024, touch: true });
+    await renderPanel();
+
+    expect(headers()).toContain('GPUs');
+    expect(screen.getByTestId('gpu-node-reason')).toBeVisible();
+  });
+
+  it('keeps every column, and the reason on hover, on a desktop with a mouse', async () => {
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(headers()).toEqual([
+      'Node',
+      'Environment',
+      'GPU',
+      'Memory',
+      'GPUs',
+      'Allocatable',
+      'Requested',
+      'Free',
+    ]);
+    expect(screen.queryByTestId('gpu-node-reason')).toBeNull();
+    expect(screen.getByText(/the reason is on hover\./)).toBeVisible();
+    expect(screen.queryByText('of 1')).toBeNull();
+  });
+
+  it('keeps the budget instead of GPU columns on a fleet of backend hosts', () => {
+    expect(
+      phoneCapacityColumns({ gpu: true, budget: true, cache: true }),
+    ).toEqual(['name', 'free']);
+    expect(
+      phoneCapacityColumns({ gpu: false, budget: true, cache: false }),
+    ).toEqual(['name', 'budget']);
+    expect(
+      phoneCapacityColumns({ gpu: false, budget: false, cache: true }),
+    ).toEqual(['name']);
   });
 });

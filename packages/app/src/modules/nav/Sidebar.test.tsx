@@ -63,17 +63,37 @@ const navItems = {
   withComponent: () => ({ take: () => null, rest: () => [] }),
 } as unknown as NavContentNavItems;
 
+/**
+ * Nav items with the Agent Platform page's own item offered, the way the app
+ * hands it over wherever `page:agent-platform` is mounted; drawn, it would
+ * read "Classic Agent Platform".
+ */
+const withAgentPlatformItem = {
+  ...navItems,
+  withComponent: () => ({
+    take: (id: string) =>
+      id === 'page:agent-platform' ? (
+        <a key="classic-agent-platform" href="/agent-platform">
+          Classic Agent Platform
+        </a>
+      ) : null,
+    rest: () => [],
+  }),
+} as unknown as NavContentNavItems;
+
 async function renderSidebar({
   isMobile = false,
   flag = FeatureFlagState.None,
   path = '/clusters',
   portals,
+  navItems: items = navItems,
 }: {
   isMobile?: boolean;
   flag?: FeatureFlagState;
   path?: string;
   /** The deployment's `app.portals`; unset is the classic-only default. */
   portals?: { platformPortal?: boolean; agentPlatform?: boolean };
+  navItems?: NavContentNavItems;
 } = {}) {
   const Content = createExtensionTester(SidebarContent).get(
     NavContentBlueprint.dataRefs.component,
@@ -82,7 +102,7 @@ async function renderSidebar({
     <SidebarPinStateProvider
       value={{ isPinned: true, toggleSidebarPinState: () => {}, isMobile }}
     >
-      <Content navItems={navItems} items={[]} />
+      <Content navItems={items} items={[]} />
     </SidebarPinStateProvider>,
     {
       initialRouteEntries: [path],
@@ -182,11 +202,42 @@ describe('SidebarContent', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('draws nothing of the Agent Platform while the flag is off, even with its page item offered', async () => {
+    // As if `app.extensions` listed `page:agent-platform` (the base
+    // app-config does): the classic portal still shows no trace of it.
+    await renderSidebar({
+      flag: FeatureFlagState.None,
+      navItems: withAgentPlatformItem,
+    });
+
+    expect(screen.queryByText('Agent Platform')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Classic Agent Platform'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Agent Platform/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('carries only the cross-link while the flag is on, never the page’s own item', async () => {
+    await renderSidebar({
+      flag: FeatureFlagState.Active,
+      navItems: withAgentPlatformItem,
+    });
+
+    expect(
+      screen.queryByText('Classic Agent Platform'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole('link', { name: /Agent Platform/ }),
+    ).toHaveLength(1);
+  });
+
   it('cross-links to the agent shell in a new tab while the flag is on', async () => {
     await renderSidebar({ flag: FeatureFlagState.Active, path: '/clusters' });
 
     const link = screen.getByRole('link', { name: /Agent Platform/ });
-    expect(link).toHaveAttribute('href', '/');
+    expect(link).toHaveAttribute('href', '/agent-platform');
     expect(link).toHaveAttribute('target', '_blank');
   });
 
@@ -218,7 +269,7 @@ describe('SidebarContent', () => {
       });
 
       const link = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(link).toHaveAttribute('href', '/');
+      expect(link).toHaveAttribute('href', '/agent-platform');
       expect(link).toHaveAttribute('target', '_blank');
     });
 
@@ -257,7 +308,7 @@ describe('SidebarContent', () => {
       });
 
       const link = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(link).toHaveAttribute('href', '/');
+      expect(link).toHaveAttribute('href', '/agent-platform');
       expect(link).not.toHaveAttribute('target');
     });
 

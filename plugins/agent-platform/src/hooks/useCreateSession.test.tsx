@@ -162,6 +162,21 @@ describe('useCreateSession', () => {
     );
   });
 
+  it("reports a session started from the skill forms' skill-creator hand-off as such", async () => {
+    const { result } = renderWith('skillCreationAssist');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Write a skill' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'skillCreationAssist' },
+      }),
+    );
+  });
+
   it('reports a session started from the ⌘K search palette as such', async () => {
     const { result } = renderWith('searchPalette');
 

@@ -4,7 +4,11 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
@@ -493,9 +497,7 @@ describe('ConnectorPage', () => {
     });
     await renderAt(`${BASE}/jira`, { api: signedOut });
     expect(
-      await screen.findByText(
-        'You are not signed in to this connector, so its tools are hidden.',
-      ),
+      await screen.findByText('Sign in to this connector to see its tools.'),
     ).toBeInTheDocument();
     const signedOutHeader = headerButtons();
     cleanup();
@@ -538,6 +540,39 @@ describe('ConnectorPage', () => {
 
     expect(
       screen.getByText('No connector “nope” on gazelle'),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorPage at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('puts the facts first, folded, and keeps Edit and the menu in the header', async () => {
+    await renderAt(`${BASE}/jira`);
+
+    // The header holds one button and the menu: nothing to overflow.
+    expect(headerButtons()).toEqual(['Edit', 'More actions']);
+    // The facts are a "Details" fold-out above the tools, not a column
+    // after hundreds of them.
+    const details = screen.getByRole('button', { name: 'Details' });
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    const tool = await screen.findByRole('button', { name: /search_issues/ });
+    expect(
+      details.compareDocumentPosition(tool) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('complementary', { name: 'Connector details' }),
+    ).toBeNull();
+
+    await userEvent.click(details);
+    expect(
+      within(
+        screen.getByRole('complementary', { name: 'Connector details' }),
+      ).getByText('https://jira.example.test/mcp'),
     ).toBeInTheDocument();
   });
 });

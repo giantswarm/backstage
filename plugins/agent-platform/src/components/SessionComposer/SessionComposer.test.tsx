@@ -1,6 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
 
 const onSubmit = jest.fn();
@@ -658,5 +663,91 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     expect(
       screen.queryByRole('button', { name: /Start a new session/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('SessionComposer on a phone (T22)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const waiting = {
+    attachment: <div data-testid="attached-card">Which cluster?</div>,
+    disabledReason:
+      'Issue tracker is waiting for your answer. Answer the question above to continue.',
+    details: <button type="button">Session cost</button>,
+  };
+
+  it('folds the disabled box to its caption while a card is attached', () => {
+    layout = mockPhoneLayout();
+    renderComposer(waiting);
+
+    expect(screen.getByTestId('attached-card')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Message' }),
+    ).not.toBeInTheDocument();
+    const folded = screen.getByTestId('composer-folded');
+    expect(folded).toHaveTextContent(waiting.disabledReason);
+    // The cost chip stays in reach while the box is folded.
+    expect(
+      screen.getByRole('button', { name: 'Session cost' }),
+    ).toBeInTheDocument();
+  });
+
+  it('brings the box back, with its draft and the focus, when the card goes', async () => {
+    layout = mockPhoneLayout();
+    const { rerender } = renderComposer();
+    await userEvent.type(field(), 'half a thought');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        {...waiting}
+      />,
+    );
+    expect(
+      screen.queryByRole('textbox', { name: 'Message' }),
+    ).not.toBeInTheDocument();
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(field()).toHaveValue('half a thought');
+    expect(field()).toHaveFocus();
+  });
+
+  it('keeps the disabled box under the card on a desktop', () => {
+    layout = mockDesktopLayout();
+    renderComposer(waiting);
+
+    expect(field()).toBeDisabled();
+    expect(screen.queryByTestId('composer-folded')).not.toBeInTheDocument();
+  });
+
+  it('breaks the line on Enter with touch input, and sends from the button', async () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    await userEvent.type(field(), 'first line{Enter}second line');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('first line\nsecond line');
+    // The soft keyboard's Enter key says it breaks the line.
+    expect(field()).toHaveAttribute('enterkeyhint', 'enter');
+
+    await userEvent.click(sendButton());
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+  });
+
+  it('labels the Enter key "send" with a keyboard', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    expect(field()).toHaveAttribute('enterkeyhint', 'send');
   });
 });

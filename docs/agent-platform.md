@@ -114,9 +114,11 @@ The **agent page** shows the agent's overview, tools, skills and the person's
 sessions with it. **Edit** reopens the same wizard prefilled and saves through
 an agent-manager dry run; an agent that comes from git is changed by a pull
 request ("Propose changes as pull request"). **Update skills** moves the
-agent's skills to their repositories' newest commits. **Delete** removes the
-agent (or proposes its removal as a pull request). Edit and Delete appear only
-where agent-manager allows writes.
+agent's skills to their repositories' newest commits (an agent that comes from
+git gets a pull request instead, the same dry run listing old → new commits).
+**Delete** removes the
+agent (or proposes its removal as a pull request). Edit, Update skills and Delete appear
+only where agent-manager allows writes.
 
 ### Skills
 
@@ -134,6 +136,13 @@ agents mounting it).
   skill then appears in the catalog. Pull requests work for github.com
   repositories only: Add skill offers only those, and a skill from another git
   repository has a read-only page (no Edit, no Evaluate) that says why.
+  Both forms write the SKILL.md only. Where a `skillCreation` meta-agent is
+  configured, they say so above the form ("use this form for simple skills")
+  and offer **Let <agent> help**, which starts a session with the skill
+  creator agent about the new skill (repository, what was typed so far) or the
+  one being edited (repository, path, commit) and opens it; the agent writes
+  complex, nested skills — reference files, scripts, data — with the person
+  and proposes them as a pull request itself.
 - **Evaluate** (where a `skillEvaluation` meta-agent is configured) starts a
   session with that agent about the skill — repository, path, commit — and
   opens it; the evaluator reports on the skill and may propose improvements.
@@ -2968,9 +2977,14 @@ are absent; while the server list is still being read they are withheld rather t
 dialog use, so opening either is a cache hit) for one field: `managed`. An agent
 whose `HelmRelease` is applied by a Flux Kustomization comes back as
 `managed: 'gitops'` and agent-manager refuses every live write to it. Where
-agent-manager reports the `commit` capability, Edit and Delete are then offered in
-commit mode — the change becomes a pull request (`agentWriteMode`) — and only
-`Update skills…` stays withheld; without it all three are withheld. Before
+agent-manager reports the `commit` capability, Edit, Update skills and Delete are then
+offered in commit mode — the change becomes a pull request (`agentWriteMode`).
+The Update skills dialog runs the same dry run with `mode: commit` (old → new
+pins per skill), confirms as **Open pull request** (`update_agent` with
+`refreshSkills` and `mode: commit`, reported as `agentUpdated` with
+`mode: commit`, `change: skillsRefreshed`), shows the pull request and then only
+closes — no revision to watch, the agent moves once it is merged. Without the
+capability all three are withheld. Before
 this, the refusal only arrived after the dialog was opened and its dry run had
 run.
 

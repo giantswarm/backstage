@@ -20,7 +20,10 @@ import {
   INITIAL_ROWS,
   matchesQuery,
   ShowMore,
+  StackedRowList,
   stopRowPress,
+  usePhoneLayout,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
@@ -41,7 +44,7 @@ import type { ModelManagerJobPhase } from '../../lib/modelManager';
 import { describeCopies, describeSplit } from '../../lib/modelManagerServe';
 import { interfaceLabel, sortInterfaces } from '../../lib/servedModelApi';
 import { ServedReadinessLabel } from '../ModelServingStatus';
-import { CopyEndpointButton } from './ServedModelsGroupHeader';
+import { CopyEndpointButton, describeGroup } from './ServedModelsGroupHeader';
 import { ServedModelsGroupCard } from './ServedModelsGroupCard';
 
 /** A kagent ModelConfig that fronts a served model. */
@@ -1046,6 +1049,237 @@ function getColumnConfig(
   return config;
 }
 
+/** Where a row runs, in words: a split's nodes, its copies', or its one node. */
+export function describePlacement(row: ServedModelRow): string | undefined {
+  if (row.splitNodes) {
+    return `split over ${row.splitNodes.join(', ')}`;
+  }
+  if (row.copyNodes) {
+    return `${row.copyNodes.length} copies on ${row.copyNodes.join(', ')}`;
+  }
+  if (!row.node) {
+    return undefined;
+  }
+  // The pin is intent, the pod is fact; say which the row shows.
+  return row.nodeSource === 'spec'
+    ? `pinned to ${row.node}, no pod yet`
+    : `on ${row.node}`;
+}
+
+/**
+ * The status lines of a phone row: {@link servedModelStatusLines}, plus the
+ * backend's explanation where it named no reason — on a table that one lives
+ * in the label's `title=`, which a phone never shows (T22 B13).
+ */
+export function phoneStatusLines(row: ServedModelRow): string[] {
+  const lines = servedModelStatusLines(row);
+  if (
+    !isDownloadRow(row) &&
+    !row.readinessReason &&
+    row.readinessMessage &&
+    !lines.includes(row.readinessMessage)
+  ) {
+    return [row.readinessMessage, ...lines];
+  }
+  return lines;
+}
+
+/** A phone row's line of features and APIs, in words where a table had a tooltip. */
+function PhoneCapabilities({ row }: { row: ServedModelRow }) {
+  const chips = (row.capabilities ?? []).filter(capability =>
+    FEATURE_CHIPS.includes(capability),
+  );
+  const interfaces = sortInterfaces(row.interfaces ?? []);
+  const hasFeatures = row.engine !== undefined || chips.length > 0;
+  return (
+    <>
+      {hasFeatures && (
+        <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+          {row.engine && <Badge size="small">{row.engine}</Badge>}
+          {chips.map(capability => (
+            <Badge key={capability} size="small">
+              {capability}
+            </Badge>
+          ))}
+        </Flex>
+      )}
+      {row.engine && (
+        <Text as="p" variant="body-small" color="secondary">
+          {engineTitle(row.engine)}
+        </Text>
+      )}
+      {lacksToolCalling(row) && (
+        <Flex align="center" gap="1">
+          <span
+            aria-hidden
+            style={{ display: 'inline-flex', color: 'var(--bui-fg-warning)' }}
+          >
+            <ReportProblemIcon fontSize="small" />
+          </span>
+          <Text as="p" variant="body-small">
+            {NO_TOOLS_TITLE}
+          </Text>
+        </Flex>
+      )}
+      {interfaces.length > 0 && (
+        <Text as="p" variant="body-small" color="secondary">
+          API:{' '}
+          {interfaces
+            .map(api => `${interfaceLabel(api.type)} (${api.path})`)
+            .join(' · ')}
+        </Text>
+      )}
+      {interfaces.length === 0 && row.interfaces && row.interfacesReason && (
+        <Text as="p" variant="body-small" color="secondary">
+          No API reported: {row.interfacesReason}
+        </Text>
+      )}
+    </>
+  );
+}
+
+/** A phone row's "Used by": the ModelConfigs as links, each with what its tooltip said. */
+function PhoneUsedBy({
+  row,
+  hrefFor,
+}: {
+  row: ServedModelRow;
+  hrefFor: (consumer: ServedModelConsumer) => string | undefined;
+}) {
+  const entries = usedByEntries(row);
+  if (entries.length === 0) {
+    return isDownloadRow(row) ? null : (
+      <Text as="p" variant="body-small" color="secondary">
+        Used by no model config
+      </Text>
+    );
+  }
+  return (
+    <Flex direction="column" gap="1">
+      {entries.map(consumer => {
+        const href = hrefFor(consumer);
+        const key = `${consumer.namespace}/${consumer.name}`;
+        return (
+          <Text key={key} as="p" variant="body-small" color="secondary">
+            Used by{' '}
+            {href ? (
+              <Link to={href}>{consumer.displayName}</Link>
+            ) : (
+              consumer.displayName
+            )}
+            <span style={{ overflowWrap: 'anywhere' }}>
+              {' '}
+              — {describeUsedBy(consumer)}
+            </span>
+          </Text>
+        );
+      })}
+    </Flex>
+  );
+}
+
+/**
+ * One served model as a phone row (T22 B13): a table of up to ten columns
+ * squeezed every cell to a sliver and clipped the row's actions menu.
+ *
+ * - Line 1: the served name, its readiness, the row's actions (the menu, the
+ *   steps toggle) at the end — always reachable.
+ * - Line 2: where the weights come from, the runtime (where the group's rows
+ *   differ), where it runs and on how many GPUs.
+ * - Under them: the status lines (the explanation inline, not on hover), the
+ *   download's progress, the description, a per-row endpoint with its copy
+ *   action, the features and APIs in words, and what uses it.
+ */
+export function servedModelStackedRow(
+  row: ServedModelRow,
+  {
+    columns,
+    sharedEndpoint,
+    hrefFor,
+    renderActions,
+  }: {
+    columns: ServedModelColumns;
+    sharedEndpoint: string | undefined;
+    hrefFor: (consumer: ServedModelConsumer) => string | undefined;
+    renderActions?: (row: ServedModelRow) => ReactNode;
+  },
+): StackedRowItem {
+  const lines = phoneStatusLines(row);
+  const download = isDownloadRow(row) ? row.download : undefined;
+  const percent = download ? downloadPercent(download) : undefined;
+  const description = describeRow(row);
+  const endpoint = endpointOf(row);
+  const ownEndpoint =
+    endpoint && endpoint !== sharedEndpoint ? endpoint : undefined;
+  const source =
+    row.modelSource && row.modelSource !== row.name
+      ? row.modelSource
+      : undefined;
+
+  return {
+    id: row.id,
+    title: row.name,
+    status: (
+      <ServedReadinessLabel
+        readiness={row.readiness}
+        reason={row.readinessReason}
+      />
+    ),
+    facts: [
+      source,
+      row.publicName ? `model name ${row.publicName}` : undefined,
+      columns.runtime ? row.runtime : undefined,
+      describePlacement(row),
+      row.gpuCount !== undefined
+        ? `${row.gpuCount} GPU${row.gpuCount === 1 ? '' : 's'}`
+        : undefined,
+    ],
+    details: (
+      <Flex direction="column" gap="1">
+        {lines.map(line => (
+          <Text
+            key={line}
+            as="p"
+            variant="body-small"
+            color={download?.phase === 'failed' ? 'danger' : 'secondary'}
+          >
+            {line}
+          </Text>
+        ))}
+        {isActiveDownload(row) && (
+          <LinearProgress
+            aria-label={`Downloading ${row.name}`}
+            variant={percent === undefined ? 'indeterminate' : 'determinate'}
+            value={percent}
+          />
+        )}
+        {description && (
+          <Text as="p" variant="body-small" color="secondary">
+            {description}
+          </Text>
+        )}
+        {ownEndpoint && (
+          <Flex align="center" gap="1" style={{ minWidth: 0 }}>
+            <Text
+              as="span"
+              variant="body-small"
+              color="secondary"
+              truncate
+              style={{ minWidth: 0 }}
+            >
+              {ownEndpoint}
+            </Text>
+            <CopyEndpointButton url={ownEndpoint} />
+          </Flex>
+        )}
+        <PhoneCapabilities row={row} />
+        <PhoneUsedBy row={row} hrefFor={hrefFor} />
+      </Flex>
+    ),
+    actions: renderActions?.(row) ?? undefined,
+  };
+}
+
 /**
  * One group's rows as a table, its columns derived from those rows alone.
  * A backend with dozens of pulled models shows its first {@link INITIAL_ROWS}
@@ -1064,6 +1298,7 @@ function ServedModelsGroupTable({
   /** The search in force; a new one starts the group over at its first page. */
   query: string;
 }) {
+  const isPhone = usePhoneLayout();
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
     () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
@@ -1085,13 +1320,29 @@ function ServedModelsGroupTable({
       initial={INITIAL_ROWS}
       noun="model"
     >
-      {visible => (
-        <Table<ServedModelRow>
-          {...tableProps}
-          data={visible}
-          columnConfig={columnConfig}
-        />
-      )}
+      {visible =>
+        isPhone ? (
+          // At phone width each model is a stacked row (T22 B13), in the
+          // table's order — the running ones first.
+          <StackedRowList
+            aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}
+            rows={visible.map(row =>
+              servedModelStackedRow(row, {
+                columns,
+                sharedEndpoint: group.endpoint,
+                hrefFor,
+                renderActions,
+              }),
+            )}
+          />
+        ) : (
+          <Table<ServedModelRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={columnConfig}
+          />
+        )
+      }
     </ShowMore>
   );
 }

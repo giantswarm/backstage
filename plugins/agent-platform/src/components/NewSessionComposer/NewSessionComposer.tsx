@@ -19,7 +19,10 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
-import { ComposerFrame } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ComposerFrame,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { AvatarSize } from '../../lib/agentAvatar';
 import {
@@ -30,7 +33,7 @@ import {
 } from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey } from '../../lib/sendKey';
+import { isSendKey, sendEnterKeyHint, sendKeyCaption } from '../../lib/sendKey';
 import { AgentAvatar } from '../AgentAvatar';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
@@ -342,6 +345,7 @@ export function NewSessionComposer({
   onStart,
 }: NewSessionComposerProps) {
   const classes = useStyles();
+  const touch = useTouchInput();
   const buildAvatarUrl = useAgentAvatarUrl();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
   const [searchText, setSearchText] = useState('');
@@ -562,9 +566,10 @@ export function NewSessionComposer({
 
   // On the field rather than the form: jsx-a11y forbids key handlers on a
   // <form>, and `TextAreaField` forwards this one to its textarea. Enter sends and
-  // Shift+Enter breaks the line — see `isSendKey`.
+  // Shift+Enter breaks the line — on touch input Enter breaks it and the button
+  // starts the session; see `isSendKey`.
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (isSendKey(event)) {
+    if (isSendKey(event, touch)) {
       event.preventDefault();
       submit();
     }
@@ -572,14 +577,19 @@ export function NewSessionComposer({
 
   let caption: string;
   if (awaitingAgent) {
-    caption = 'Choosing an agent is the first step; the message follows.';
+    caption = 'Choose an agent first.';
   } else if (isTooLong) {
     caption = `That prompt is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining environments for agents…';
   } else {
-    caption =
-      'Enter starts a session and sends this as the first message. Shift+Enter for a new line.';
+    caption = sendKeyCaption(
+      {
+        key: 'Enter starts the session with this message',
+        tap: 'Tap the arrow to start the session with this message',
+      },
+      touch,
+    );
   }
 
   // A preselected agent whose model is gone is exactly what to know before
@@ -598,6 +608,7 @@ export function NewSessionComposer({
       onChange={setPrompt}
       onFocus={() => setExpanded(true)}
       onKeyDown={handleKeyDown}
+      enterKeyHint={sendEnterKeyHint(touch)}
       // Disabled, not just refused on submit: agent-first surfaces say
       // "this is step two" by the field itself. react-aria announces
       // the disabled state, and the caption under the box says why.
@@ -696,7 +707,7 @@ export function NewSessionComposer({
               modelWarning.namespace ? `${modelWarning.namespace}/` : ''
             }${modelWarning.name}: ${
               modelWarning.message
-            } You can still start the session; its first turn fails until the model serves again. The Serving view on the Models tab has the fix.`}
+            } Its first turn fails until the model serves again — see Serving on the Models tab.`}
           />
         )}
 

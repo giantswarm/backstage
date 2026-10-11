@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
-import { InfoHint } from '@giantswarm/backstage-plugin-ui-react';
+import { InfoHint, PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * One headline tile and the grid that lays a row of them out — the shape of
@@ -12,10 +12,17 @@ import { InfoHint } from '@giantswarm/backstage-plugin-ui-react';
 const useStyles = makeStyles((theme: Theme) => ({
   grid: {
     display: 'grid',
-    // Four across where there is room, stacking all the way down to one
-    // column at phone width — the 375px requirement, with no media query.
+    // Four across where there is room, fewer as the row narrows.
     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: theme.spacing(2),
+    // Two across at phone width, not one (T22 P8): one tile per row put
+    // 420–520px of tiles above the content they summarise. A tile is ~163px
+    // wide at 375, so the value steps down (`value` below) to keep "$1,234.56"
+    // on one line.
+    [PHONE_MEDIA]: {
+      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+      gap: theme.spacing(1.5),
+    },
   },
   // The same outlined-card look `UsageCard` gets from its Paper, drawn
   // directly so the tile needs no MUI component.
@@ -45,6 +52,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     lineHeight: 1.15,
     fontVariantNumeric: 'tabular-nums',
     letterSpacing: '-0.02em',
+    overflowWrap: 'anywhere',
+    [PHONE_MEDIA]: {
+      fontSize: '1.375rem',
+    },
   },
   valueRow: {
     display: 'flex',
@@ -57,6 +68,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontVariantNumeric: 'tabular-nums',
     color: theme.palette.text.secondary,
     whiteSpace: 'nowrap',
+    // Half a phone's width has no room for a long comparison on one line.
+    [PHONE_MEDIA]: {
+      whiteSpace: 'normal',
+    },
   },
   sub: {
     fontSize: 12,

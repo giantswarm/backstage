@@ -389,10 +389,9 @@ export function AddModelBackendDialog({
         <DialogBody>
           <Flex direction="column" gap="4" ref={scope}>
             <Text variant="body-small" color="secondary">
-              A backend you already run — an Ollama, LM Studio or Lemonade host,
-              or a KServe cluster — registered with the environment's
-              model-manager as you. Its models appear on this page and their
-              model configs are wired for agents. One backend per kind.
+              Register a backend you already run — Ollama, LM Studio, Lemonade
+              or KServe — with the environment's model-manager, as you. Its
+              models appear here, wired for agents. One backend per kind.
             </Text>
 
             {!review && (

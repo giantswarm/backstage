@@ -27,6 +27,7 @@ import {
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   useProvidePageHeaderActions,
+  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { isConflictError, isUnauthorizedError } from '../../apis';
@@ -83,6 +84,7 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
+import { sendKeyCaption } from '../../lib/sendKey';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -294,7 +296,7 @@ function describeStopFailure(error: Error | null): string | undefined {
     return undefined;
   }
   if (isUnauthorizedError(error)) {
-    return `${error.message}. Your sign-in expired while this page was open — reload the page and stop the turn again.`;
+    return `${error.message}. Your sign-in expired — reload the page and stop the turn again.`;
   }
   return error.message;
 }
@@ -326,6 +328,7 @@ export function SessionDetailPage() {
   // header's parts live in the `ShellPage` header inside the shell and in the
   // conversation column in classic chrome.
   const agentShell = useAgentShell();
+  const touch = useTouchInput();
 
   // Before the reads, because it gates them: a delete is in flight from this very
   // page, and an interval landing between "kagent accepted the delete" and the
@@ -938,9 +941,9 @@ export function SessionDetailPage() {
         <EmptyState
           missing="data"
           title="Session not found"
-          description={`No session with this id exists on ${
+          description={`No session with this id on ${
             installation || 'that environment'
-          }. It may have been deleted, or belong to another user — kagent only lets you read your own sessions.`}
+          }. It may have been deleted, or be someone else's — kagent shows only your own.`}
           action={<BackToSessions>Back to sessions</BackToSessions>}
         />
       </Shell>
@@ -968,7 +971,7 @@ export function SessionDetailPage() {
             title="Could not load this session"
             description={
               error?.message ??
-              'kagent returned a response we could not read. The session may still exist.'
+              'kagent sent an unreadable response. The session may still exist.'
             }
           />
           <BackToSessions>Back to sessions</BackToSessions>
@@ -1013,8 +1016,8 @@ export function SessionDetailPage() {
       'This session was shared read-only, so you cannot add to it.';
   } else if (!agent) {
     composerWithheldReason = row.agentName
-      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message. It may have been deleted.`
-      : 'This session records no agent, so there is nowhere to send a message.';
+      ? `The agent “${row.agentName}” could not be found on ${installation}, so there is nowhere to send a message.`
+      : 'This session records no agent to send a message to.';
   } else if (
     state &&
     AWAITING_INPUT_STATES.has(state.key) &&
@@ -1031,7 +1034,7 @@ export function SessionDetailPage() {
     // would be guessing at what the agent asked.
     composerWithheldReason = pendingConfirmation
       ? undefined
-      : 'This session is waiting for input, but the request could not be read — use the kagent UI to reply.';
+      : 'Waiting for input, but the request could not be read — reply in the kagent UI.';
   }
 
   /**
@@ -1105,7 +1108,7 @@ export function SessionDetailPage() {
           <Alert
             status="warning"
             title="This session is still working on the previous turn"
-            description="kagent takes one message per session at a time. Wait for that turn to finish, or cancel it and send your message again."
+            description="kagent takes one message per session at a time. Wait for the turn to finish, or cancel it and send again."
             customActions={
               cancelConflictingTurn ? (
                 <Button
@@ -1153,8 +1156,8 @@ export function SessionDetailPage() {
             isConfirming
               ? `${row.agentName || 'The agent'} is waiting for your ${
                   pendingConfirmation?.asks === 'input'
-                    ? 'answer. Answer the question above to continue.'
-                    : 'decision. Allow or decline above to continue.'
+                    ? 'answer above.'
+                    : 'decision above.'
                 }`
               : undefined
           }
@@ -1184,8 +1187,14 @@ export function SessionDetailPage() {
                   isStarting: creation.isCreating,
                   replacesSend: runtimeLoss!.reported,
                   caption: runtimeLoss!.reported
-                    ? 'This session cannot continue. Your message starts a new session with the same agent. Enter starts it, Shift+Enter for a new line.'
-                    : 'Sending again retries the runtime. If it fails the same way, start a new session with the same agent — your message goes with it.',
+                    ? `This session cannot continue; your message starts a new one with the same agent. ${sendKeyCaption(
+                        {
+                          key: 'Enter starts it',
+                          tap: 'Tap the button below to start it',
+                        },
+                        touch,
+                      )}`
+                    : 'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.',
                 }
               : undefined
           }

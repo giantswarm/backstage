@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -180,11 +181,15 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   }, [updating, update, signature]);
 
   const isBusy = updating.isUpdating || updating.isCommitting;
+  const isPhone = usePhoneLayout();
   let writeLabel = updating.isUpdating ? 'Saving…' : 'Save changes';
   if (viaPullRequest) {
-    writeLabel = updating.isCommitting
-      ? 'Proposing…'
+    // Shorter at phone width, so the footer keeps to one row beside Cancel
+    // and Back (C11).
+    const proposeLabel = isPhone
+      ? 'Propose as pull request'
       : 'Propose changes as pull request';
+    writeLabel = updating.isCommitting ? 'Proposing…' : proposeLabel;
     if (isCommitted) {
       writeLabel = 'Proposed';
     }
@@ -242,8 +247,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
       <Flex direction="column" gap="5">
         <WizardStepHeading title="Check and save">
           {viaPullRequest
-            ? 'This agent is applied from git: saving opens a pull request as you with only what you changed, and the agent changes once it is merged.'
-            : "Only what you changed is saved. The agent's page then shows it picking up the change."}
+            ? 'Applied from Git: saving opens a pull request as you with only your changes; the agent changes once it is merged.'
+            : "Only your changes are saved; the agent's page then shows it picking them up."}
         </WizardStepHeading>
 
         <dl className={classes.plain} aria-label="Summary">
@@ -281,9 +286,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             </ul>
           </Flex>
         ) : (
-          <Text color="secondary">
-            Nothing changed yet. Go back to a step to change something.
-          </Text>
+          <Text color="secondary">Nothing changed yet.</Text>
         )}
 
         {shape === 'full' && !keepsImplicitAccess && (

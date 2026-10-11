@@ -248,14 +248,13 @@ function SkillsSection({
       {skills.length === 0 ? (
         <Flex direction="column" gap="2" align="start">
           <Text variant="body-medium" color="secondary">
-            No skills yet. A skill adds know-how and procedures the agent can
-            draw on.
+            No skills yet. Skills add know-how and procedures.
           </Text>
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
-                ? 'This agent is deployed from a GitOps repository, so adding skills opens a pull request there.'
-                : 'This agent is deployed from a GitOps repository, so its skills are added there.'}
+                ? 'Deployed from GitOps: adding skills opens a pull request there.'
+                : 'Deployed from GitOps: add skills there.'}
             </Text>
           )}
           {onAddSkills && (
@@ -319,7 +318,7 @@ function ConnectorsSection({
     reach =
       direct.length > 0 || subAgents.length > 0
         ? 'Uses only what is listed below'
-        : 'Has no connectors. It works from its instructions and skills alone.';
+        : 'No connectors — only its instructions and skills.';
   } else if (isReading) {
     reach = 'Reading what it can reach…';
   } else {
@@ -398,14 +397,13 @@ function InstructionsSection({
   } else if (source) {
     body = (
       <Text variant="body-medium" color="secondary">
-        Kept in a separate configuration, so they are not shown here. Technical
-        details below name it.
+        Kept in a separate configuration, named under Technical details.
       </Text>
     );
   } else {
     body = (
       <Text variant="body-medium" color="secondary">
-        None set. The agent works with the defaults of its runtime.
+        None set — the runtime's defaults apply.
       </Text>
     );
   }

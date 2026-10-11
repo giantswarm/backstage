@@ -75,6 +75,62 @@ describe('ProfileMenu', () => {
     expect(help).toHaveAttribute('target', '_blank');
   });
 
+  describe('the pinned rail trigger (T73)', () => {
+    async function renderTrigger(profile: {
+      displayName?: string;
+      email?: string;
+    }) {
+      await renderInTestApp(<ProfileMenu item={item} layout="expanded" />, {
+        apis: [
+          [
+            identityApiRef,
+            mockApis.identity.mock({ getProfileInfo: async () => profile }),
+          ],
+        ],
+      });
+      return screen.getByRole('button', { name: 'Profile and settings' });
+    }
+
+    it('shows the name with "Profile and settings" beneath it', async () => {
+      const trigger = await renderTrigger({
+        displayName: 'Jane Doe',
+        email: 'jane@example.com',
+      });
+
+      await within(trigger).findByText('Jane Doe');
+      expect(
+        within(trigger).getByText('Profile and settings'),
+      ).toBeInTheDocument();
+    });
+
+    it('lines up left like the other rail items, not centered as a bui Button', async () => {
+      const trigger = await renderTrigger({ displayName: 'Jane Doe' });
+      await within(trigger).findByText('Jane Doe');
+
+      // bui's Button centers its content box whatever the root says.
+      expect(trigger.className).not.toMatch(/bui-Button/);
+      expect(trigger.querySelector('[class*="ButtonContent"]')).toBeNull();
+
+      // jsdom's computed style keeps its own button default, so read the rule.
+      const [triggerClass] = trigger.className.split(' ');
+      const css = Array.from(document.querySelectorAll('style'))
+        .map(style => style.textContent ?? '')
+        .join('\n');
+      const rule = css.match(new RegExp(`\\.${triggerClass} \\{([^}]*)\\}`));
+      expect(rule?.[1]).toMatch(/text-align: left;/);
+      expect(rule?.[1]).toMatch(/width: 100%;/);
+      expect(rule?.[1]).not.toMatch(/justify-content: center/);
+    });
+
+    it('shows the title once while there is no name to show', async () => {
+      const trigger = await renderTrigger({});
+
+      expect(
+        await within(trigger).findAllByText('Profile and settings'),
+      ).toHaveLength(1);
+    });
+  });
+
   it('signs out through the identity API', async () => {
     const menu = await renderMenu();
 

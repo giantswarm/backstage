@@ -36,6 +36,11 @@ import {
   type DiscoveredSkill,
 } from '../../lib/skills';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { SkillEditFiles } from '../SkillEditFiles';
+import {
+  SkillCreationAssist,
+  type SkillCreationTarget,
+} from '../SkillCreationAssist';
 
 /** An existing skill to edit, and the SKILL.md it currently reads. */
 export type SkillEdit = {
@@ -99,6 +104,10 @@ function SkillPullRequestOutcome({
  * `update-skill/<directory as a slug>` (the repository name for a skill at
  * the root). Submitting waits for an actual change; a skill that changed
  * since the edit started is refused (409) with the backend's reason shown.
+ *
+ * The form writes a SKILL.md only. Above it, where the
+ * `metaAgents.skillCreation` role resolves, `SkillCreationAssist` says so and
+ * hands complex, nested skills over to the skill creator agent in a session.
  *
  * The same single-step in-content wizard frame as Connect a model, so the Customize
  * screen's create flows all read the same. A person without a GitHub grant in
@@ -215,6 +224,30 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     navigate(closeHref);
   }, [navigate, closeHref]);
 
+  // What the skill creator hand-off is about, read when it is pressed: the
+  // skill being changed, or the new skill as typed so far.
+  const getCreationTarget = useCallback(
+    (): SkillCreationTarget =>
+      edit
+        ? {
+            kind: 'update',
+            skill: edit.skill,
+            // Only what the person changed: the rest is in the repository.
+            instructions:
+              instructions.trim() !== edit.content.instructions.trim()
+                ? instructions
+                : undefined,
+          }
+        : {
+            kind: 'create',
+            repoUrl: repoUrl ?? repositories[0] ?? '',
+            name: skillName,
+            description,
+            instructions,
+          },
+    [edit, repoUrl, repositories, skillName, description, instructions],
+  );
+
   // Memoized so the frame's footer slot only updates when the handlers change,
   // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
   // to the frame's footer, so only the primary lives here.
@@ -277,6 +310,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         />
       )}
 
+      {repositories.length > 0 && !result && (
+        <SkillCreationAssist getTarget={getCreationTarget} />
+      )}
       {repositories.length > 0 && !result && (
         <Flex direction="column" gap="3">
           {edit && (
@@ -353,6 +389,15 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             onChange={setInstructions}
             error={validation.errorFor(fieldErrors.instructions)}
           />
+          {edit && (
+            <SkillEditFiles
+              skill={edit.skill}
+              skillHref={edit.skillHref}
+              instructions={instructions}
+              files={edit.content.files}
+              filesTruncated={edit.content.filesTruncated}
+            />
+          )}
         </Flex>
       )}
       {error && !result && (

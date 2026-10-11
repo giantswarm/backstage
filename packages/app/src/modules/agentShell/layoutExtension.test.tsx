@@ -2,6 +2,7 @@ import {
   createFrontendPlugin,
   FeatureFlagState,
   PageBlueprint,
+  SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
@@ -163,7 +164,7 @@ describe('the app layout', () => {
 
     await screen.findByTestId('stub-page');
     const crossLink = screen.getByRole('link', { name: /Agent Platform/ });
-    expect(crossLink).toHaveAttribute('href', '/');
+    expect(crossLink).toHaveAttribute('href', '/agent-platform');
     expect(crossLink).toHaveAttribute('target', '_blank');
   });
 
@@ -240,7 +241,7 @@ describe('the app layout', () => {
       expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
       expect(screen.queryByRole('main')).not.toBeInTheDocument();
       const home = screen.getByRole('link', { name: /Agent Platform/ });
-      expect(home).toHaveAttribute('href', '/');
+      expect(home).toHaveAttribute('href', '/agent-platform');
       expect(home).not.toHaveAttribute('target');
     });
 
@@ -260,6 +261,123 @@ describe('the app layout', () => {
         screen.queryByRole('link', { name: /Agent Platform/ }),
       ).not.toBeInTheDocument();
       expect(document.documentElement).not.toHaveAttribute('data-agent-shell');
+    });
+  });
+});
+
+describe('the Agent Platform per portal mode', () => {
+  // The real `page:agent-platform` (the module mock above stands in for the
+  // package everywhere else), with one stubbed section, enabled as the base
+  // app-config enables it. No mocked FeatureFlagsApi: the deployment's
+  // `app.portals` decides, through the shell module's own one.
+  const { agentPlatformPlugin: realAgentPlatformPlugin } = jest.requireActual(
+    '@giantswarm/backstage-plugin-agent-platform',
+  );
+  const agentPlatform = createFrontendPlugin({
+    pluginId: 'agent-platform',
+    extensions: [
+      realAgentPlatformPlugin.getExtension('page:agent-platform'),
+      SubPageBlueprint.make({
+        name: 'sessions',
+        params: {
+          path: 'sessions',
+          title: 'Sessions',
+          loader: async () => <div>Sessions content</div>,
+        },
+      }),
+    ],
+  });
+
+  // Only the classic route: the agent-area stub above would answer
+  // `/agent-platform/**` itself.
+  const classicPagePlugin = createFrontendPlugin({
+    pluginId: 'stub',
+    extensions: [
+      PageBlueprint.make({
+        params: {
+          path: '/stub',
+          noHeader: true,
+          loader: async () => <div data-testid="stub-page">Stub</div>,
+        },
+      }),
+    ],
+  });
+
+  function renderPortal(
+    portals: { platformPortal?: boolean; agentPlatform?: boolean },
+    route: string,
+  ) {
+    return renderTestApp({
+      features: [navModule, agentShellModule, classicPagePlugin, agentPlatform],
+      initialRouteEntries: [route],
+      config: {
+        app: {
+          baseUrl: 'http://localhost:3000',
+          portals,
+          extensions: ['page:agent-platform'],
+        },
+        backend: { baseUrl: 'http://localhost:7007' },
+      },
+    });
+  }
+
+  describe('with the Agent Platform off (unset or false)', () => {
+    it.each([{}, { agentPlatform: false }])(
+      'draws nothing of it in the classic portal (%j)',
+      async portals => {
+        renderPortal(portals, '/stub');
+
+        expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
+        expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+        expect(screen.queryByText(/Agent Platform/)).not.toBeInTheDocument();
+      },
+    );
+
+    it('routes none of its pages, in classic chrome or any other', async () => {
+      renderPortal({}, '/agent-platform/sessions');
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Agent Platform/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('with the Agent Platform on', () => {
+    it('gives the classic portal one sidebar link to the new UI and nothing else', async () => {
+      renderPortal({ platformPortal: true, agentPlatform: true }, '/stub');
+
+      expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
+      const links = screen.getAllByRole('link', { name: /Agent Platform/ });
+      expect(links).toHaveLength(1);
+      expect(links[0]).toHaveAttribute('href', '/agent-platform');
+      expect(links[0]).toHaveAttribute('target', '_blank');
+    });
+
+    it('renders its pages in the shell only, never in classic chrome', async () => {
+      renderPortal(
+        { platformPortal: true, agentPlatform: true },
+        '/agent-platform/sessions',
+      );
+
+      const content = await screen.findByText('Sessions content');
+      expect(screen.getByRole('main')).toContainElement(content);
+      expect(
+        screen.getByRole('navigation', { name: 'Main' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('cluster-access-item'),
+      ).not.toBeInTheDocument();
+      // No classic page header or tab strip.
+      expect(
+        screen.queryByRole('heading', { level: 1, name: 'Agent Platform' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      // The way back to the classic portal.
+      expect(
+        screen.getByRole('link', { name: 'Platform Portal' }),
+      ).toHaveAttribute('href', '/clusters');
     });
   });
 });

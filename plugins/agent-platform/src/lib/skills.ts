@@ -25,6 +25,51 @@ export interface DiscoveredSkill {
    * can neither show nor edit it. Absent (older backends) reads as readable.
    */
   contentReadable?: boolean;
+  /**
+   * How many files the skill directory holds, SKILL.md included (a nested
+   * skill's files count for that one) — the detail page's "· N more files"
+   * caption is `fileCount - 1`. The list itself comes with the skill's
+   * content (`GET /agent-skills/content`). Absent from older backends.
+   */
+  fileCount?: number;
+}
+
+/**
+ * One file of a skill at its commit. Mirrors `SkillFile` in
+ * plugins/gs-backend/src/agentSkills/skillFiles.ts.
+ */
+export interface SkillFile {
+  /** Relative to the skill directory (`SKILL.md`, `references/x.md`). */
+  path: string;
+  /** Size in bytes. */
+  size: number;
+  /** The git blob id. */
+  sha: string;
+}
+
+/**
+ * The file list `GET /agent-skills/content` answers next to the SKILL.md:
+ * SKILL.md first, the rest by path, at most 200. Both fields are absent when
+ * the backend could not list the files (or predates file lists).
+ */
+export interface SkillFileListing {
+  files?: SkillFile[];
+  /** True when the skill has more files than were listed. */
+  filesTruncated?: boolean;
+}
+
+/**
+ * One file of a skill, as `GET /agent-skills/content/file` answers it.
+ * Mirrors `SkillFileContent` in
+ * plugins/gs-backend/src/agentSkills/skillFiles.ts.
+ */
+export interface SkillFileContent extends SkillFile {
+  /** Binary (by extension or content): no `content`, link to the source. */
+  binary: boolean;
+  /** Over the 512 KB inline cap: no `content`, link to the source. */
+  truncated: boolean;
+  /** The file as UTF-8 text, for a text file within the cap. */
+  content?: string;
 }
 
 /**
@@ -277,6 +322,29 @@ export function skillSourceUrl(
   return dir
     ? `${base}/${dir.split('/').map(encodeURIComponent).join('/')}`
     : base;
+}
+
+/**
+ * One file of the skill on github.com at the pinned commit (`blob/…`), where
+ * the Instructions tab's viewer sends a file it does not show inline (binary,
+ * or over the 512 KB cap). `file` is relative to the skill directory.
+ * Undefined outside github.com.
+ */
+export function skillFileUrl(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
+  file: string,
+): string | undefined {
+  const parts = githubRepoParts(skill.repoUrl);
+  if (!parts) {
+    return undefined;
+  }
+  const segments = [
+    ...cleanSkillPath(skill.path).split('/'),
+    ...file.split('/'),
+  ].filter(Boolean);
+  return `https://github.com/${parts.owner}/${parts.repo}/blob/${
+    skill.commit
+  }/${segments.map(encodeURIComponent).join('/')}`;
 }
 
 /** The pinned commit on github.com, for the facts column. */

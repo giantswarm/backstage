@@ -67,10 +67,12 @@ const app = createApp({
     fluxPluginOverrides,
     aiChatPlugin,
     aiChatPluginOverrides,
-    // The Agent Platform page's level-1 tabs come from both plugins: muster
-    // attaches "MCP Servers" and "Workflows" (`attachTo: page:agent-platform`).
-    // The page sorts them into its row itself (agent-platform's
-    // `AGENT_PLATFORM_TAB_ORDER`), so the order here does not matter for them.
+    // The Agent Platform page's sections come from both plugins: muster
+    // attaches "Connectors" and "Workflows" (`attachTo: page:agent-platform`).
+    // The page sorts them itself (agent-platform's `AGENT_PLATFORM_TAB_ORDER`),
+    // so the order here does not matter for them. Both plugins' pages are
+    // mounted only where the agent shell is available (`AGENT_SHELL_ON`): the
+    // classic portal has none of them.
     agentPlatformPlugin,
     musterPlugin,
     musterPluginOverrides,

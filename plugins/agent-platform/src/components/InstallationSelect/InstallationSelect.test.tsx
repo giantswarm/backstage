@@ -87,7 +87,7 @@ describe('InstallationSelect', () => {
       expect(queryByText('beta')).not.toBeInTheDocument();
       expect(getByText('No agent-manager on beta')).toBeInTheDocument();
       expect(
-        getByText(/muster on beta lists no agent-manager MCPServer/),
+        getByText(/muster on beta lists no agent-manager,/),
       ).toBeInTheDocument();
     });
 

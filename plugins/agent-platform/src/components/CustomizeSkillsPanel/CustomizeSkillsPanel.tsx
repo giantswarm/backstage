@@ -7,6 +7,7 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   LoadingIndicator,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
@@ -71,8 +72,15 @@ const useStyles = makeStyles({
       borderColor: 'var(--bui-border-2)',
     },
   },
+  // A long kebab- or snake-case name breaks inside the card rather than
+  // running past it at phone width (T22 P3).
+  name: {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+  },
   description: {
     flex: '1 1 auto',
+    overflowWrap: 'anywhere',
     display: '-webkit-box',
     WebkitLineClamp: 3,
     WebkitBoxOrient: 'vertical',
@@ -158,7 +166,12 @@ function SkillCard({ card }: { card: Row }) {
   const classes = useStyles();
   const content = (
     <>
-      <Text as="h2" variant="body-medium" weight="bold">
+      <Text
+        as="h2"
+        variant="body-medium"
+        weight="bold"
+        className={classes.name}
+      >
         {card.name}
       </Text>
       {card.description && (
@@ -203,6 +216,7 @@ function SkillCard({ card }: { card: Row }) {
  */
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillsRoute = useRouteRef(skillsRouteRef);
@@ -295,7 +309,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     body = (
       <EmptyStateCard
         title="No skill repositories"
-        description="Skills are read from the repositories a platform admin configures, and none is configured."
+        description="A platform admin configures them."
       />
     );
   } else if (!anyListed) {
@@ -380,6 +394,9 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
               href={newSkillRoute()}
               variant="primary"
               iconStart={<AddIcon />}
+              // On a phone the filters take the row and the action its own
+              // full-width line under them, as the page's create action does.
+              style={isPhone ? { width: '100%' } : undefined}
             >
               Add skill
             </ButtonLink>
@@ -388,9 +405,8 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
       )}
       {cannotAddHere && (
         <Text as="p" variant="body-small" color="secondary">
-          Skills are added from here as GitHub pull requests, and none of the
-          configured skill repositories is on github.com — add skills in their
-          repository instead.
+          Adding skills here needs a github.com skill repository; add them in
+          their own repository instead.
         </Text>
       )}
       {notes}

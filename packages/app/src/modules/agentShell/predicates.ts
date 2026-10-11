@@ -1,5 +1,8 @@
 import type { FilterPredicate } from '@backstage/filter-predicates';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  AGENT_SHELL_FLAG,
+  AGENT_SHELL_ON,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 export { AGENT_SHELL_FLAG };
 
@@ -9,10 +12,9 @@ export { AGENT_SHELL_FLAG };
  * `agent-platform-shell` flag — which the app's FeatureFlagsApi
  * (`PortalFeatureFlags`) reports from the deployment's `app.portals` config,
  * with the person's own flag as the opt-in while the deployment has the Agent
- * Platform off. Evaluated once, at app start.
+ * Platform off. Evaluated once, at app start. The same predicate the Agent
+ * Platform's own pages carry (`AGENT_SHELL_ON`).
  */
-export const agentShellOn: FilterPredicate = {
-  featureFlags: { $contains: AGENT_SHELL_FLAG },
-};
+export const agentShellOn: FilterPredicate = AGENT_SHELL_ON;
 
 export const agentShellOff: FilterPredicate = { $not: agentShellOn };

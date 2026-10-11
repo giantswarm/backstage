@@ -29,6 +29,16 @@ describe('ToolResultViewer', () => {
     expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
+  it('gives every column a least width, so a wide result scrolls inside its table instead of squeezing', async () => {
+    // bui squeezes columns without widths into the table's width: an
+    // eight-column list had ~37px a column at 375px. With a minimum it
+    // renders its resizable container, which scrolls sideways itself.
+    await renderInTestApp(<ToolResultViewer result={listResult} />);
+
+    const table = screen.getByRole('grid');
+    expect(table.closest('.bui-TableResizableContainer')).not.toBeNull();
+  });
+
   it('switches to the Raw view', async () => {
     await renderInTestApp(<ToolResultViewer result={listResult} />);
 

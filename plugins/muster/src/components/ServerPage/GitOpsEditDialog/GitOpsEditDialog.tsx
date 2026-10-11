@@ -224,8 +224,7 @@ export function GitOpsEditDialog({
       <DialogBody>
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-medium">
-            This server is managed through GitOps. Flux would revert a change
-            made here, so make it in Git.
+            Managed through GitOps: make the change in Git, or Flux reverts it.
           </Text>
           <Text as="div" variant="body-medium">
             {steps}

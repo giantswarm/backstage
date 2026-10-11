@@ -80,7 +80,7 @@ export function TotalsStrip({
   const spend = sessionSpend(totals, rates);
   const narrowed = narrowedFromDays !== undefined;
   const notNarrowable = (figure: string) =>
-    `kagent reports ${figure} only over its full ${narrowedFromDays}-day window; they cannot be re-cut to ${windowDays} days here. Select ${narrowedFromDays} days to see them.`;
+    `kagent reports ${figure} only over its full ${narrowedFromDays}-day window. Select ${narrowedFromDays} days to see them.`;
   return (
     <div className={classes.strip}>
       <Stat
@@ -95,7 +95,7 @@ export function TotalsStrip({
       <Stat
         label="Turns"
         value={formatCount(totals.turns)}
-        hint={`Messages sent to an agent ${windowNote}. A turn counts once however many model and tool calls the answer took.`}
+        hint={`Messages sent to an agent ${windowNote}, each counted once however many calls its answer took.`}
       />
       <Stat
         label="Input tokens (billed)"
@@ -113,7 +113,7 @@ export function TotalsStrip({
         hint={
           narrowed
             ? notNarrowable('tool-call counts')
-            : 'Tools the agents called in these turns. A hand-off to another agent is not counted as one.'
+            : 'Tools called in these turns; a hand-off to another agent is not one.'
         }
       />
       {/* A skeleton, not an em dash, while the rate is in flight. The counts
@@ -141,7 +141,7 @@ export function TotalsStrip({
         <Stat
           label="Reported cost"
           value={formatUsd(spend.reportedUsd)}
-          hint="Reported by the agents' runtimes for each turn and summed here. A turn that reported no cost — most runtimes report none — is not in it, so this usually covers a subset of the turns the estimate covers."
+          hint="Summed from what the agents' runtimes reported per turn. Most runtimes report none, so this usually covers fewer turns than the estimate."
         />
       )}
     </div>

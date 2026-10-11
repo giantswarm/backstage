@@ -335,14 +335,14 @@ function ConnectorPageContent({
     <SessionGate
       session={session}
       installation={installation}
-      context="A connector's tools are read through your muster session."
+      context="Tools need a muster session."
     />
   );
   const signInGate: ReactNode =
     singular && canSignIn && signIn.needsLogin ? (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
-          You are not signed in to this connector, so its tools are hidden.
+          Sign in to this connector to see its tools.
         </Text>
         <ServerAuthActions
           noun="connector"
@@ -360,7 +360,7 @@ function ConnectorPageContent({
 
   const emptyExplanation = singular
     ? noToolsExplanation(singular)
-    : 'No instance of this connector offers tools right now.';
+    : 'No instance offers tools right now.';
 
   const capabilities = (
     [
@@ -681,7 +681,7 @@ function ConnectorPageBody({
         <EmptyState
           missing="data"
           title="No muster environment"
-          description="None of the environments this portal knows runs muster, so there are no connectors to show."
+          description="None of this portal's environments runs muster."
         />
       </ShellPage>
     );
@@ -699,7 +699,7 @@ function ConnectorPageBody({
         <EmptyState
           missing="data"
           title={`No connector “${key}” on ${activeInstallation}`}
-          description="It may run on another environment, or it may have been removed."
+          description="It may be on another environment, or removed."
           action={
             paths.connectors ? (
               <Link href={paths.connectors}>Back to the connectors</Link>

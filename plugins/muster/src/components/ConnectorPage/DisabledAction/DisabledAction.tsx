@@ -1,4 +1,4 @@
-import { ReactNode, useId, useRef, useState } from 'react';
+import { ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Tooltip, TooltipTrigger, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 
@@ -32,8 +32,9 @@ export interface DisabledActionProps {
 }
 
 /**
- * A disabled header action that still says why it is disabled, on hover and
- * on keyboard focus.
+ * A disabled header action that still says why it is disabled, on hover, on
+ * keyboard focus and on a press — a phone has no hover, and a tap on a
+ * disabled button does nothing else. A press outside closes it again.
  *
  * bui's `TooltipTrigger` cannot do this on its own: react-aria withholds a
  * trigger's hover and focus handlers from a disabled button (and a disabled
@@ -48,6 +49,22 @@ export function DisabledAction({ reason, children }: DisabledActionProps) {
   const wrapper = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
   const descriptionId = useId();
+
+  // Opened by a press, the reason stays until a press elsewhere: no
+  // mouseleave or blur reliably follows a tap on a touch screen.
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+    const closeOutside = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [open]);
+
   return (
     // Controlled: the wrapper opens and closes it. The trigger only provides
     // the open state the tooltip reads from context; the tooltip is anchored
@@ -68,6 +85,9 @@ export function DisabledAction({ reason, children }: DisabledActionProps) {
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
+        // Opens, never toggles: a tap also fires the emulated mouseenter
+        // and the focus first, which have opened it already.
+        onClick={() => setOpen(true)}
         onKeyDown={event => {
           if (event.key === 'Escape') {
             setOpen(false);

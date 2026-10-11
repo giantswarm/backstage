@@ -85,8 +85,8 @@ function UsageSection({
   if (!model) {
     return (
       <Text as="p" variant="body-small" color="secondary">
-        This model names no model ID, so its usage cannot be matched to the
-        gateway's figures.
+        No model ID set, so its usage cannot be matched to the gateway's
+        figures.
       </Text>
     );
   }
@@ -115,20 +115,20 @@ function UsageSection({
       <KpiTileGrid>
         <KpiTile
           label="Cost"
-          hint="What the gateway priced the calls to this model at, from its own model catalogue. A model missing from the catalogue adds nothing, which shows as —."
+          hint="The gateway's price for calls to this model. A model missing from its catalogue shows —."
           // No calls is zero spend; calls without a price are "—".
           value={formatMoney(slice.calls === 0 ? 0 : slice.costUsd, currency)}
           sub={sub}
         />
         <KpiTile
           label="Tokens"
-          hint="Every token the calls to this model used, as the gateway counted them."
+          hint="Tokens the calls to this model used, as the gateway counted them."
           value={formatTokens(slice.tokens)}
           sub={sub}
         />
         <KpiTile
           label="Model calls"
-          hint="How often agents asked this model, through the gateway."
+          hint="How often agents called this model through the gateway."
           value={formatCount(slice.calls)}
           sub={sub}
         />
@@ -139,7 +139,7 @@ function UsageSection({
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
           ? `No calls to ${model} went through the gateway in the last ${MODEL_USAGE_WINDOW_DAYS} days.`
-          : `Every call to ${model} through the gateway, from any agent. Another model configuration of the same model on ${installation} shares these figures.`}
+          : `Every gateway call to ${model}, from any agent — shared with other configurations of this model on ${installation}.`}
       </Text>
     </Flex>
   );
@@ -171,7 +171,7 @@ function UsedBySection({
     body = (
       <Text as="p" variant="body-medium" color="secondary">
         {unreachableInstallations.includes(installation)
-          ? `The agents on ${installation} could not be read, so it is not known which run on this model.`
+          ? `The agents on ${installation} could not be read.`
           : 'No agent runs on this model yet.'}
       </Text>
     );

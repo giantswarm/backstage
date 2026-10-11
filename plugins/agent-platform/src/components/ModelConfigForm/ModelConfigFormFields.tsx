@@ -71,7 +71,7 @@ function apiKeyCopy({
     return {
       placeholder: '',
       description:
-        'The provider API key agents on this model authenticate with. Leave it empty if the endpoint needs none.',
+        'The key agents on this model authenticate with. Leave empty if the endpoint needs none.',
     };
   }
   if (originalProvider === provider) {
@@ -86,8 +86,8 @@ function apiKeyCopy({
   return {
     placeholder: '',
     description: hadKey
-      ? `The stored key is for ${providerLabel(originalProvider!)}, which ${providerLabel(provider)} does not use. Enter its key, or leave it empty if the endpoint needs none.`
-      : 'The provider API key agents on this model authenticate with. Leave it empty if the endpoint needs none.',
+      ? `The stored key is for ${providerLabel(originalProvider!)}, not ${providerLabel(provider)}. Enter a new one, or leave empty if the endpoint needs none.`
+      : 'The key agents on this model authenticate with. Leave empty if the endpoint needs none.',
   };
 }
 
@@ -146,7 +146,6 @@ export function ModelConfigFormFields({
             value={values.displayName}
             onChange={displayName => onChange({ displayName })}
             placeholder="e.g. Sonnet 4.5"
-            description="What people see when they choose a model."
             {...fieldErrorProps(errors.displayName)}
           />
         </CardBody>
@@ -206,7 +205,7 @@ export function ModelConfigFormFields({
                 description={
                   isOllama
                     ? 'The Ollama server to talk to.'
-                    : 'Leave empty for the provider’s own endpoint. Set it for a compatible endpoint like vLLM, llama.cpp or OpenRouter.'
+                    : 'Leave empty for the provider’s own endpoint, or set a compatible one like vLLM, llama.cpp or OpenRouter.'
                 }
                 {...fieldErrorProps(errors.endpoint)}
               />
@@ -220,7 +219,7 @@ export function ModelConfigFormFields({
           <CardBody>
             <SectionHeader
               title="API key"
-              description="Stored as a Kubernetes Secret next to the model config and never shown again — this form only ever writes it."
+              description="Stored as a Kubernetes Secret next to the model config; never shown again."
             />
             <SecretTextField
               label="API key"

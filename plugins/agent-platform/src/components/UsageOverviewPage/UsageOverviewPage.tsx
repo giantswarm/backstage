@@ -206,7 +206,7 @@ export function UsageOverviewPage() {
                 Everyone's model use on <strong>{installation}</strong> over the
                 last {days} days.
                 {isResolvedFromAll &&
-                  ' Metrics are read one environment at a time — pick another in the Environment control to switch.'}
+                  ' One environment at a time — switch in the Environment control.'}
               </>
             ) : (
               `Everyone's model use over the last ${days} days.`
@@ -229,10 +229,9 @@ export function UsageOverviewPage() {
                 }
               />
               <Text variant="body-small" color="secondary">
-                These figures come from kagent and cover your own sessions only.
-                Fleet-wide tokens, spend and gateway health need the gateway's
-                gen_ai metrics, which this environment does not publish to a
-                metrics store this portal can query.
+                From kagent: your own sessions only. Fleet-wide tokens, spend
+                and gateway health need the gateway's gen_ai metrics, which this
+                environment does not publish where this portal can query them.
               </Text>
             </>
           )}
@@ -276,7 +275,7 @@ export function UsageOverviewPage() {
                 // Each figure explains its own arithmetic in its hint, so the
                 // note carries only what none of them says: these are the model
                 // calls, not the turns that made them.
-                note="All of these describe the model calls themselves — not the agent turns around them, which spend most of their time in tool calls."
+                note="Model calls only — not the agent turns around them, which spend most of their time in tool calls."
               >
                 <ReliabilityStrip reliability={usage.reliability} />
               </UsageCard>

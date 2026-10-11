@@ -1,9 +1,16 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { poolPriceOf } from '../../lib/poolPricing';
+import { poolPhaseLabel } from '../../lib/poolLifecycle';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
 
 const renderPanel = (isLoading: boolean) =>
@@ -199,5 +206,115 @@ describe('GpuNodePoolsPanel', () => {
         screen.getAllByRole('button', { name: 'All 300 environments' }),
       ).toHaveLength(2);
     });
+  });
+});
+
+// T22 B14: nine columns clipped Remove pool and the lifecycle chevron.
+describe('GpuNodePoolsPanel at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const POOL = {
+    id: 'inst-1/wc1/l4',
+    installation: 'inst-1',
+    poolName: 'l4',
+    cluster: { name: 'wc1', organization: 'org-a', poolReleases: [] },
+    pool: {
+      name: 'wc1-l4',
+      accelerator: 'nvidia-l4',
+      instanceTypes: ['g6.xlarge', 'g6.2xlarge'],
+      readyReplicas: 2,
+      replicas: 2,
+      version: '1.33.4',
+      controlPlaneVersion: '1.33.5',
+      ownerRelease: null,
+      phase: 'ready',
+      steps: [],
+    },
+  } as unknown as GpuNodePoolRow;
+
+  const renderPools = (
+    handlers: {
+      onRemove?: jest.Mock;
+      onToggleLifecycle?: jest.Mock;
+    } = {},
+    hideColumns?: ReadonlyArray<'installation'>,
+  ) =>
+    renderInTestApp(
+      <GpuNodePoolsPanel
+        rows={[POOL]}
+        isLoading={false}
+        notes={[]}
+        errors={[]}
+        onRemove={handlers.onRemove ?? jest.fn()}
+        opened={undefined}
+        onToggleLifecycle={handlers.onToggleLifecycle ?? jest.fn()}
+        onCloseLifecycle={jest.fn()}
+        hideColumns={hideColumns}
+      />,
+    );
+
+  it('lists each pool as a stacked row, Remove pool in its menu and the chevron beside it', async () => {
+    layout = mockPhoneLayout();
+    const onRemove = jest.fn();
+    const onToggleLifecycle = jest.fn();
+    const user = userEvent.setup();
+    await renderPools({ onRemove, onToggleLifecycle });
+
+    expect(screen.queryByRole('grid')).toBeNull();
+    const item = within(
+      screen.getByRole('list', { name: 'GPU node pools' }),
+    ).getByRole('listitem');
+    expect(within(item).getByText('wc1-l4')).toBeVisible();
+    expect(
+      within(item).getByText(poolPhaseLabel(POOL.pool, POOL.cluster)),
+    ).toBeVisible();
+    for (const fact of ['nvidia-l4', 'wc1', 'inst-1']) {
+      expect(within(item).getByText(fact)).toBeVisible();
+    }
+    expect(
+      within(item).getByText('Node sizes: g6.xlarge, g6.2xlarge'),
+    ).toBeVisible();
+    expect(
+      within(item).getByText('Kubernetes 1.33.4 · control plane 1.33.5'),
+    ).toBeVisible();
+    // No bare destructive button on the row.
+    expect(
+      within(item).queryByRole('button', { name: 'Remove pool wc1-l4' }),
+    ).toBeNull();
+
+    await user.click(
+      within(item).getByRole('button', {
+        name: 'Show lifecycle of pool wc1-l4',
+      }),
+    );
+    expect(onToggleLifecycle).toHaveBeenCalledWith(POOL);
+
+    await user.click(
+      within(item).getByRole('button', { name: 'Actions for pool wc1-l4' }),
+    );
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Remove pool' }),
+    );
+    expect(onRemove).toHaveBeenCalledWith(POOL);
+  });
+
+  it('leaves the environment out where the page drops its column', async () => {
+    layout = mockPhoneLayout();
+    await renderPools({}, ['installation']);
+
+    expect(screen.getByText('wc1-l4')).toBeVisible();
+    expect(screen.queryByText('inst-1')).toBeNull();
+  });
+
+  it('keeps the table, with its Remove pool button, on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderPools();
+
+    expect(screen.getByRole('grid')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove pool wc1-l4' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'GPU node pools' })).toBeNull();
   });
 });

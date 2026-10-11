@@ -28,9 +28,7 @@ export function UsageConnectorsPage({ sections }: { sections: ReactNode[] }) {
       <UsageColumn>
         <Flex direction="column" gap="6">
           <Text as="p" variant="body-medium" color="secondary">
-            Every caller's tool calls to the connectors behind this environment.
-            These figures cover the last 30 days whatever time range is
-            selected.
+            These figures ignore the selected time range.
           </Text>
           {sections}
         </Flex>

@@ -16,6 +16,11 @@ export const META_AGENT_ROLES = [
   'platformOperations',
   /** Reviews a skill and reports on its quality (SkillDetail's Evaluate). */
   'skillEvaluation',
+  /**
+   * Writes complex, multi-file skills in conversation (the Add/Edit Skill
+   * forms' hand-off; the forms themselves stay SKILL.md-only).
+   */
+  'skillCreation',
 ] as const;
 
 export type MetaAgentRole = (typeof META_AGENT_ROLES)[number];

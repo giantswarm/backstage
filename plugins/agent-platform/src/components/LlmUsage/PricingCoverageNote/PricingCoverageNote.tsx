@@ -1,10 +1,15 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Alert, Cell, CellText, Link, Table, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
+import {
+  usePhoneColumns,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { UnpricedModelRow } from '../../../lib/llmUsage';
 import { formatCount } from '../../../lib/formatNumbers';
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
+import { NameCell } from '../NameCell';
 
 const useStyles = makeStyles((_theme: Theme) => ({
   number: {
@@ -78,6 +83,7 @@ export function PricingCoverageAlert({
  */
 export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
 
   const columnConfig: ColumnConfig<UnpricedModelRow>[] = [
     {
@@ -85,7 +91,20 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       label: 'Answered model',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.responseModel} />,
+      // At phone width the Requested model column is hidden and named here
+      // instead, so the alias a client sent stays on the row.
+      cell: row => (
+        <NameCell
+          title={row.responseModel}
+          description={
+            isPhone &&
+            row.requestModel !== '—' &&
+            row.requestModel !== row.responseModel
+              ? `Requested as ${row.requestModel}`
+              : undefined
+          }
+        />
+      ),
     },
     {
       id: 'requestModel',
@@ -97,8 +116,9 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       id: 'status',
       label: 'Why',
       isSortable: true,
+      // The meaning wraps at phone width rather than being cut to a line.
       cell: row => (
-        <CellText
+        <NameCell
           title={row.status}
           description={STATUS_MEANING[row.status] ?? undefined}
         />
@@ -115,6 +135,12 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
       ),
     },
   ];
+  // At phone width the model and why it is unpriced (T22 B10); the lookup
+  // count is a ranking aid, and the table opens sorted by it.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'responseModel',
+    'status',
+  ]);
 
   const { tableProps } = useTable<UnpricedModelRow>({
     mode: 'complete',
@@ -132,9 +158,9 @@ export function PricingCoverageNote({ rows }: { rows: UnpricedModelRow[] }) {
     <UsageCard
       title="Models with no usable price"
       wide
-      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values. The cost figures above then start counting them."
+      note="Upgrade agentgateway to a release whose built-in catalogue prices them, or add them to llmRouting.modelCatalog in the platform's Helm values."
     >
-      <Table<UnpricedModelRow> {...tableProps} columnConfig={columnConfig} />
+      <Table<UnpricedModelRow> {...tableProps} columnConfig={shownColumns} />
     </UsageCard>
   );
 }

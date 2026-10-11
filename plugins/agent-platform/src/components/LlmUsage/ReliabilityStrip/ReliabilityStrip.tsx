@@ -52,7 +52,7 @@ export function ReliabilityStrip({
   }
 
   const duration = (quantile: string) =>
-    `The ${quantile} model call over the last ${WINDOW_DAYS} days, measured whole — first byte of the request to last byte of the response. A long answer therefore reads as a slow one.`;
+    `The ${quantile} model call over the last ${WINDOW_DAYS} days, from first request byte to last response byte — so a long answer reads as slow.`;
 
   return (
     <div className={classes.strip}>
@@ -69,19 +69,19 @@ export function ReliabilityStrip({
       <Stat
         label="Tokens per second"
         value={formatTokensPerSecond(reliability.outputTokensPerSecond)}
-        hint={`The median streamed call's generation speed: the middle value of the gateway's seconds-per-output-token measurements over the last ${WINDOW_DAYS} days, inverted. Those measurements are bucketed coarsely, so read it as a rough rate. Calls answered in one piece are not measured, and idle time is not counted.`}
+        hint={`Median output speed of streamed calls over the last ${WINDOW_DAYS} days, from the gateway's coarse seconds-per-token buckets — a rough rate. Unstreamed calls and idle time are not counted.`}
       />
       <Stat
         label="Error rate"
         value={formatPercent(reliability.errorRatePct)}
         tone={errorTone()}
-        hint={`Requests on the gateway's LLM listener answered with anything but a 2xx or 3xx, as a share of all of them, over the last ${WINDOW_DAYS} days.`}
+        hint={`Share of LLM requests answered with anything but 2xx or 3xx over the last ${WINDOW_DAYS} days.`}
       />
       <Stat
         label="Rate limited (429)"
         value={formatCount(reliability.rateLimited)}
         tone={reliability.rateLimited > 0 ? 'warning' : undefined}
-        hint={`Requests answered with 429 over the last ${WINDOW_DAYS} days, by the provider or by the gateway's own rate limit — a quota to raise or a concurrency to lower, counted separately from the error rate it is part of.`}
+        hint={`Requests answered 429 over the last ${WINDOW_DAYS} days, by the provider or the gateway's rate limit — a quota to raise or concurrency to lower. Also part of the error rate.`}
       />
     </div>
   );

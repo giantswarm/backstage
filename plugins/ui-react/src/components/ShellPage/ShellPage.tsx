@@ -24,6 +24,9 @@ import { useSimpleAccordionStyles } from '../SimpleAccordion';
  */
 export const SHELL_PAGE_PADDING_BOTTOM_VAR = '--shell-page-padding-bottom';
 
+/** The page's side gutter at phone width, in px. */
+const PHONE_GUTTER = 16;
+
 const useStyles = makeStyles({
   root: {
     boxSizing: 'border-box',
@@ -35,7 +38,7 @@ const useStyles = makeStyles({
     // bottom bar: phone gutters and the desktop rail never meet.
     [PHONE_MEDIA]: {
       [SHELL_PAGE_PADDING_BOTTOM_VAR]: '32px',
-      padding: `20px 16px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
+      padding: `20px ${PHONE_GUTTER}px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     },
   },
   header: {
@@ -87,6 +90,15 @@ const useStyles = makeStyles({
   tabs: {
     marginTop: 24,
     borderBottom: '1px solid var(--bui-border-1)',
+  },
+  // At phone width the strip scrolls (see `RouteTabs`): it reaches through
+  // the gutter to the screen's edges, so tabs scroll out of sight there rather
+  // than at the content's edge, and rests aligned with the content.
+  tabStrip: {
+    [PHONE_MEDIA]: {
+      marginInline: -PHONE_GUTTER,
+      paddingInline: PHONE_GUTTER,
+    },
   },
   body: {
     display: 'flex',
@@ -144,7 +156,10 @@ export interface ShellPageProps {
   actions?: ReactNode;
   /** The overflow menu, last in the header, e.g. a "More actions" button. */
   menu?: ReactNode;
-  /** Routed tabs under the header, drawn as an underlined strip. */
+  /**
+   * Routed tabs under the header, drawn as an underlined strip; at phone
+   * width one row that scrolls sideways, edge to edge (see `RouteTabs`).
+   */
   tabs?: RouteTabSpec[];
   /** The query string every tab link keeps, e.g. `?installation=gazelle`. */
   tabsSearch?: string;
@@ -270,7 +285,12 @@ export function ShellPage({
       </div>
       {tabs && tabs.length > 0 && (
         <div className={classes.tabs}>
-          <RouteTabs tabs={tabs} search={tabsSearch} basePath={tabsBasePath} />
+          <RouteTabs
+            tabs={tabs}
+            search={tabsSearch}
+            basePath={tabsBasePath}
+            className={classes.tabStrip}
+          />
         </div>
       )}
       <div className={classes.body}>

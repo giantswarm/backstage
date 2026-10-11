@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test';
-import { contextOptions } from './lab';
+import { contextOptions, lab } from './lab';
+import { shellSpecGlobs } from './portalModes';
 
 /**
  * The Dev Portal in a real browser against a running agentlab — see
@@ -45,5 +46,24 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
 
-  projects: [{ name: 'agentlab', use: { browserName: 'chromium' } }],
+  // The classic portal's specs run against a lab in either portal mode; the
+  // Agent Platform's only against one serving the shell
+  // (`AGENTLAB_PORTAL_MODE=shell`, see `lab.ts` and `portalModes.ts`) — a
+  // classic lab routes none of its pages.
+  projects: [
+    {
+      name: 'agentlab',
+      testIgnore: shellSpecGlobs,
+      use: { browserName: 'chromium' },
+    },
+    ...(lab.portalMode === 'shell'
+      ? [
+          {
+            name: 'agentlab-shell',
+            testMatch: shellSpecGlobs,
+            use: { browserName: 'chromium' as const },
+          },
+        ]
+      : []),
+  ],
 });

@@ -110,23 +110,24 @@ function ClassicSidebar({
     />
   ));
 
-  // With the shell available, the agent platform lives in its own shell: the
-  // in-place entry becomes a cross-link to the shell's home, in a new tab so
-  // the classic portal stays where it is. On an agent-only deployment the
-  // classic pages are reachable by URL alone, and this entry is the way back
-  // home — in the same tab, as there is no portal to keep open.
-  const agentPlatformItem = nav.take('page:agent-platform');
+  // The Agent Platform lives in its own shell only (its pages carry
+  // `AGENT_SHELL_ON`). With the shell available, the classic portal's one
+  // trace of it is this cross-link into the shell, in a new tab so the
+  // classic portal stays where it is; on an agent-only deployment the classic
+  // pages are reachable by URL alone, and this entry is the way back — in the
+  // same tab, as there is no portal to keep open. Without the shell there is
+  // no entry at all, whatever `app.extensions` lists: the page's own nav item
+  // is never drawn here.
+  nav.take('page:agent-platform');
   const agentPlatformEntry = portals.agentPlatform ? (
     <SidebarItem
       key="agent-platform"
       icon={AndroidIcon}
-      to="/"
+      to="/agent-platform"
       target={portals.platformPortal ? '_blank' : undefined}
       text="Agent Platform"
     />
-  ) : (
-    agentPlatformItem
-  );
+  ) : null;
 
   const group1 = [
     nav.take('page:home'),

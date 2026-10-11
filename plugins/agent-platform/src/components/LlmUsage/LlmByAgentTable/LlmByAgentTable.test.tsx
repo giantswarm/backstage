@@ -1,3 +1,8 @@
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
@@ -254,5 +259,65 @@ describe('LlmByAgentTable', () => {
       expect(order).toHaveLength(20);
       expect(order[0]).toBe('Agent 299');
     });
+  });
+});
+
+// T22 B10: five columns in 343px clipped every figure.
+describe('LlmByAgentTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  it('keeps the agent and its cost', () => {
+    layout = mockPhoneLayout();
+    render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toEqual(['Agent', 'Cost']);
+    expect(screen.getByRole('link', { name: 'Big spender' })).toBeVisible();
+    expect(screen.getByText('$42.50')).toBeVisible();
+    expect(screen.queryByText('Model calls')).toBeNull();
+  });
+
+  it('keeps every column on a desktop', () => {
+    layout = mockDesktopLayout();
+    render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toEqual([
+      'Agent',
+      'Model calls',
+      'Tokens',
+      'Cost',
+      'Share of spend',
+    ]);
+  });
+
+  it('opens what Removed means on a press, not only on hover (C23)', async () => {
+    layout = mockPhoneLayout();
+    const user = userEvent.setup();
+    render(
+      <LlmByAgentTable
+        rows={[
+          {
+            id: 'kagent|gone',
+            namespace: 'kagent',
+            agent: 'gone',
+            kind: 'removed',
+            label: 'kagent/gone',
+            tokens: 1,
+            calls: 1,
+            costUsd: 1,
+            sharePct: 100,
+          },
+        ]}
+        emptyMessage="none"
+      />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'What Removed means' }),
+    );
+    expect(await screen.findByText(/Unknown to this portal/)).toBeVisible();
   });
 });

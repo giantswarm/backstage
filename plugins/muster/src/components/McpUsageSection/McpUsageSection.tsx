@@ -19,9 +19,11 @@ import {
   columnMax,
   DataBar,
   SectionHeader,
+  PHONE_MEDIA,
   ShowMore,
   StackedBarChart,
   isAwaitingData,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
@@ -102,7 +104,29 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   tableCard: {
     borderRadius: theme.shape.borderRadius * 2,
-    overflow: 'hidden',
+    // Scrolls inside the card if a row still does not fit, rather than being
+    // clipped by it (T22 C19); the radius clips the same either way.
+    overflowX: 'auto',
+    overflowY: 'hidden',
+  },
+  /**
+   * MUI's small cells pad 16px left and 24px right, ~40px of every column —
+   * at phone width that is a third of a tool name's room.
+   */
+  table: {
+    [PHONE_MEDIA]: {
+      '& th, & td': {
+        padding: theme.spacing(0.75, 1),
+      },
+    },
+  },
+  /** The figures a phone's table has no column for, under the name. */
+  phoneFacts: {
+    display: 'block',
+    marginTop: 2,
+    fontSize: 12,
+    color: theme.palette.text.secondary,
+    fontVariantNumeric: 'tabular-nums',
   },
   toolName: {
     // The body font, matching the personal section's tables directly above on
@@ -184,9 +208,38 @@ function formatBucketTooltip(start: string, stepHours: number): string {
   });
 }
 
+/**
+ * At phone width, a row's errors and p95 in words under its name: the table
+ * keeps the name and Calls there (T22 C19), and a hidden column's value still
+ * has to be on the row.
+ */
+function PhoneFacts({
+  errors,
+  p95Seconds,
+  className,
+  errorClassName,
+}: {
+  errors: number;
+  p95Seconds?: number | null;
+  className: string;
+  errorClassName: string;
+}) {
+  return (
+    <span className={className}>
+      <span className={errors > 0 ? errorClassName : undefined}>
+        {formatCount(errors)} {errors === 1 ? 'error' : 'errors'}
+      </span>
+      {p95Seconds !== undefined && <> · p95 {formatSeconds(p95Seconds)}</>}
+    </span>
+  );
+}
+
 function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
   const classes = useStyles();
   const theme = useTheme();
+  // At phone width each table keeps the name and Calls; Errors and p95 move
+  // under the name, as words.
+  const isPhone = usePhoneLayout();
 
   if (!data.available) {
     return (
@@ -253,18 +306,18 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
         <Stat
           label="Tool calls"
           value={formatCount(totals.calls)}
-          hint={`Calls muster dispatched to its connectors ${windowNote}, from every client, not only yours.`}
+          hint={`Calls dispatched to connectors ${windowNote}, from every client.`}
         />
         <Stat
           label="Error ratio"
           value={errorPct !== null ? `${errorPct}%` : '—'}
           tone={errorTone}
-          hint="Calls that could not be dispatched or came back as an error result, as a share of all of them. Amber above 5%."
+          hint="Share of calls that failed to dispatch or returned an error. Amber above 5%."
         />
         <Stat
           label="p95 latency"
           value={formatSeconds(totals.p95_seconds)}
-          hint={`How long a connector took to answer, at the 95th percentile of every call ${windowNote}. Estimated from muster's latency histogram, so read it as a range rather than an exact figure.`}
+          hint={`95th-percentile connector response time ${windowNote}. Estimated from a histogram — read it as a range.`}
         />
         <Stat
           label="Distinct tools"
@@ -276,8 +329,8 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
       {totals.calls === 0 ? (
         <Typography variant="body2" color="textSecondary">
           No tool calls were dispatched to connectors in the last {rangeLabel}.
-          If usage on this environment is expected, its muster release may not
-          export downstream dispatch metrics yet.
+          If usage is expected, this environment's muster may not export
+          dispatch metrics yet.
         </Typography>
       ) : (
         <>
@@ -313,13 +366,13 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
 
           <Box className={classes.tables}>
             <Paper variant="outlined" className={classes.tableCard}>
-              <Table size="small">
+              <Table size="small" className={classes.table}>
                 <TableHead>
                   <TableRow>
                     <TableCell>Top tools</TableCell>
                     <TableCell>Calls</TableCell>
-                    <TableCell>Errors</TableCell>
-                    <TableCell>p95</TableCell>
+                    {!isPhone && <TableCell>Errors</TableCell>}
+                    {!isPhone && <TableCell>p95</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -327,6 +380,14 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                     <TableRow key={row.tool}>
                       <TableCell className={classes.toolName}>
                         {row.tool}
+                        {isPhone && (
+                          <PhoneFacts
+                            errors={row.errors}
+                            p95Seconds={row.p95_seconds}
+                            className={classes.phoneFacts}
+                            errorClassName={classes.errorValue}
+                          />
+                        )}
                       </TableCell>
                       <TableCell className={classes.numeric}>
                         <DataBar
@@ -336,26 +397,30 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                           color={barColors.calls}
                         />
                       </TableCell>
-                      <TableCell
-                        className={`${classes.numeric} ${
-                          row.errors > 0 ? classes.errorValue : ''
-                        }`}
-                      >
-                        <DataBar
-                          label={formatCount(row.errors)}
-                          value={row.errors}
-                          max={max.toolErrors}
-                          color={barColors.errors}
-                        />
-                      </TableCell>
-                      <TableCell className={classes.numeric}>
-                        <DataBar
-                          label={formatSeconds(row.p95_seconds)}
-                          value={row.p95_seconds ?? undefined}
-                          max={max.toolP95}
-                          color={barColors.latency}
-                        />
-                      </TableCell>
+                      {!isPhone && (
+                        <TableCell
+                          className={`${classes.numeric} ${
+                            row.errors > 0 ? classes.errorValue : ''
+                          }`}
+                        >
+                          <DataBar
+                            label={formatCount(row.errors)}
+                            value={row.errors}
+                            max={max.toolErrors}
+                            color={barColors.errors}
+                          />
+                        </TableCell>
+                      )}
+                      {!isPhone && (
+                        <TableCell className={classes.numeric}>
+                          <DataBar
+                            label={formatSeconds(row.p95_seconds)}
+                            value={row.p95_seconds ?? undefined}
+                            max={max.toolP95}
+                            color={barColors.latency}
+                          />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -371,12 +436,12 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
             >
               {visible => (
                 <Paper variant="outlined" className={classes.tableCard}>
-                  <Table size="small">
+                  <Table size="small" className={classes.table}>
                     <TableHead>
                       <TableRow>
                         <TableCell>Connector</TableCell>
                         <TableCell>Calls</TableCell>
-                        <TableCell>Errors</TableCell>
+                        {!isPhone && <TableCell>Errors</TableCell>}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -384,6 +449,13 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                         <TableRow key={row.server}>
                           <TableCell className={classes.toolName}>
                             {row.server}
+                            {isPhone && (
+                              <PhoneFacts
+                                errors={row.errors}
+                                className={classes.phoneFacts}
+                                errorClassName={classes.errorValue}
+                              />
+                            )}
                           </TableCell>
                           <TableCell className={classes.numeric}>
                             <DataBar
@@ -393,18 +465,20 @@ function UsageBody({ data, hours }: { data: McpUsage; hours: number }) {
                               color={barColors.calls}
                             />
                           </TableCell>
-                          <TableCell
-                            className={`${classes.numeric} ${
-                              row.errors > 0 ? classes.errorValue : ''
-                            }`}
-                          >
-                            <DataBar
-                              label={formatCount(row.errors)}
-                              value={row.errors}
-                              max={max.serverErrors}
-                              color={barColors.errors}
-                            />
-                          </TableCell>
+                          {!isPhone && (
+                            <TableCell
+                              className={`${classes.numeric} ${
+                                row.errors > 0 ? classes.errorValue : ''
+                              }`}
+                            >
+                              <DataBar
+                                label={formatCount(row.errors)}
+                                value={row.errors}
+                                max={max.serverErrors}
+                                color={barColors.errors}
+                              />
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -475,7 +549,7 @@ function McpUsageBody() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="Usage metrics are read through a live muster session."
+        context="Usage metrics need a muster session."
       />
     );
   } else if (!activeInstallation || isLoading) {
@@ -505,7 +579,7 @@ function McpUsageBody() {
         as="h3"
         variant="title-x-small"
         title="Connector tool calls on this environment"
-        description="Every tool call dispatched to the connectors behind this environment's muster, from all callers — not only yours. From muster's own metrics, over the last 30 days."
+        description="Every caller's tool calls, not only yours, over the last 30 days."
       />
       {/* Below the heading rather than above it, unlike muster's own views:
           there this note is page-level, here it explains which muster *this

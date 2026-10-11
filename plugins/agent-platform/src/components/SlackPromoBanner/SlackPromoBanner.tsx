@@ -1,5 +1,9 @@
 import { ButtonIcon, ButtonLink, Text } from '@backstage/ui';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import {
+  PHONE_MEDIA,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
 
@@ -52,7 +56,7 @@ const useStyles = makeStyles({
     border: '1px solid var(--agent-shell-rail-item-active-border, #dfe7ec)',
     borderRadius: 16,
     background: 'var(--agent-shell-rail-bg, #f0f7f9)',
-    '@media (max-width: 599px)': {
+    [PHONE_MEDIA]: {
       padding: 16,
       gap: 16,
     },
@@ -61,6 +65,14 @@ const useStyles = makeStyles({
     position: 'absolute',
     top: 8,
     right: 8,
+    // A 44px target on a phone, where it is the banner's only small control;
+    // tertiary, so the box is invisible and the cross stays where it was.
+    [PHONE_MEDIA]: {
+      top: 0,
+      right: 0,
+      minWidth: 44,
+      minHeight: 44,
+    },
   },
   // The illustration: a Slack thread in miniature. Decorative only — the copy
   // beside it says everything it shows.
@@ -271,6 +283,7 @@ function ThreadPreview() {
  */
 function SlackPromoBannerContent({ docsUrl }: { docsUrl: string }) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
   const { dismissed, isKnown, dismiss } = useDismissedHint(HINT_ID);
 
   // Held back until the stored dismissal is known, so a banner the person
@@ -291,7 +304,10 @@ function SlackPromoBannerContent({ docsUrl }: { docsUrl: string }) {
           dismiss().catch(() => {});
         }}
       />
-      <ThreadPreview />
+      {/* Decorative, and at phone width it wrapped above the copy as a
+          ~200px block under the dismiss button (T22 C5): the copy says what
+          it shows. */}
+      {!isPhone && <ThreadPreview />}
       <div className={classes.copy}>
         <Text as="h2" variant="title-x-small">
           Use your agents right in Slack

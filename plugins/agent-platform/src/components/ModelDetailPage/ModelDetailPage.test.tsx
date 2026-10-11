@@ -7,7 +7,10 @@ import {
   ModelConfig,
   type ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import type { LlmUsageView } from '../../hooks/useLlmUsage';
 import type { LlmUsage } from '../../lib/llmUsage';
@@ -391,5 +394,32 @@ describe('ModelDetailPage', () => {
       screen.getByText('Provider Bedrock is not editable here'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+
+  it('at phone width puts the facts first, folded under Details, and keeps Edit and the menu', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      await renderPage();
+
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+      const details = screen.getByRole('button', { name: 'Details' });
+      expect(details).toHaveAttribute('aria-expanded', 'false');
+      expect(
+        details.compareDocumentPosition(
+          screen.getByRole('list', { name: 'Agents using this model' }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('complementary', { name: 'About this model' }),
+      ).toBeNull();
+      await userEvent.click(details);
+      expect(
+        within(
+          screen.getByRole('complementary', { name: 'About this model' }),
+        ).getByText('claude-sonnet-4-5'),
+      ).toBeInTheDocument();
+    } finally {
+      layout.restore();
+    }
   });
 });

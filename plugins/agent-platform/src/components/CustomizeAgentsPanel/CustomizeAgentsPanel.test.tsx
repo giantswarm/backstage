@@ -3,6 +3,11 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { agentsRouteRef } from '../../routes';
@@ -475,6 +480,114 @@ describe('CustomizeAgentsPanel', () => {
         screen.queryByText(/Not sure which agent/),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
+  let layout: MockedLayout;
+  const longName =
+    'Quarterly_infrastructure_cost_reconciliation_and_reporting_assistant';
+  const failing = row({
+    name: longName,
+    technicalName: 'costs',
+    description: 'Reconciles the cloud bills against the budget every quarter',
+    model: 'Sonnet 4.5',
+    readiness: 'failed',
+    readinessMessage: 'Model config sonnet not found',
+  });
+  const items = () =>
+    within(screen.getByRole('list', { name: 'Agents' })).getAllByRole(
+      'listitem',
+    );
+
+  beforeEach(() => {
+    mockAgents = {
+      rows: [triage, failing],
+      isLoading: false,
+      hasInstallations: true,
+      unreachableInstallations: [],
+    };
+    mockSessions = [];
+    mockMetaAgent = undefined;
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('wraps the name, the description and the facts instead of cutting them', async () => {
+    await renderPanel();
+
+    const name = screen.getByText(longName);
+    // bui truncates on the attribute's presence, whatever its value.
+    expect(name).not.toHaveAttribute('data-truncate');
+    expect(
+      screen.getByText(
+        'Reconciles the cloud bills against the budget every quarter',
+      ),
+    ).not.toHaveAttribute('data-truncate');
+    expect(within(items()[0]).getByText('Sonnet 4.5')).not.toHaveAttribute(
+      'data-truncate',
+    );
+  });
+
+  it('says why a not-Ready agent needs a look in the row, not a tooltip', async () => {
+    await renderPanel();
+
+    const costs = items().find(item => within(item).queryByText(longName))!;
+    expect(within(costs).getByText('Failed')).toBeInTheDocument();
+    expect(
+      within(costs).getByText('Model config sonnet not found'),
+    ).toBeInTheDocument();
+    // A Ready agent says nothing extra.
+    expect(items()[0]).toHaveTextContent(/Support triageSorts tickets/);
+  });
+
+  it('keeps the one-line rows and the tooltip on a wide viewport', async () => {
+    layout.restore();
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(screen.getByText(longName)).toHaveAttribute('data-truncate', 'true');
+    // The reason stays the state's tooltip there.
+    expect(
+      screen.queryByText('Model config sonnet not found'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('Failed').parentElement).toHaveAttribute(
+      'title',
+      'Model config sonnet not found',
+    );
+  });
+
+  it('stars an agent from the row on a phone', async () => {
+    await renderPanel();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: `Add ${longName} to favorites` }),
+    );
+    const favorites = await screen.findByRole('list', {
+      name: 'Favorite agents',
+    });
+    expect(within(favorites).getByText(longName)).toBeInTheDocument();
+  });
+
+  it('shows three agents with no paging chrome', async () => {
+    mockAgents = { ...mockAgents, rows: manyAgents(3) };
+    await renderPanel();
+
+    expect(items()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('windows 300 agents, 25 at a time', async () => {
+    mockAgents = { ...mockAgents, rows: manyAgents(300) };
+    await renderPanel();
+
+    expect(items()).toHaveLength(25);
+    expect(screen.getByText('25 agents shown, 275 more')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 25 more agents' }),
+    );
+    expect(items()).toHaveLength(50);
   });
 });
 

@@ -6,7 +6,6 @@ import {
   createFrontendPlugin,
   ExtensionBoundary,
   discoveryApiRef,
-  featureFlagsApiRef,
   fetchApiRef,
   PageBlueprint,
   PluginHeaderActionBlueprint,
@@ -19,8 +18,8 @@ import {
 import AndroidIcon from '@material-ui/icons/Android';
 import { orderTabs } from './lib/tabOrder';
 import { AgentPlatformPageRoutes } from './components/AgentPlatformPageRoutes';
-import { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
@@ -53,45 +52,44 @@ import {
   usageRouteRef,
 } from './routes';
 
-// The Agent Platform section is a tabbed page: with no loader of its own,
-// PageBlueprint renders the attached sub-pages as tabs in the bui PluginHeader
-// (the same pattern as the flux section). The "MCP Servers" and "Workflows"
-// tabs are contributed by the muster plugin (SubPageBlueprints attached to this
-// page).
+// The Agent Platform section: the sub-pages attached here (agent-platform's
+// own and the muster plugin's "Connectors" and "Workflows") routed inside the
+// agent shell, which draws the navigation between them (its rail), so the page
+// has no header and no tab strip of its own; each sub-page titles itself.
 //
-// Disabled by default and enabled per-installation via app-config
-// (`app.extensions: [page:agent-platform, nav-item:agent-platform]`) while the
-// agent platform is still internal-only.
+// Shell only (`if: AGENT_SHELL_ON`): the Agent Platform exists in the agent
+// shell and nowhere else. Where the shell is not available
+// (`app.portals.agentPlatform` off and no personal opt-in) the page is not
+// mounted at all — no route, no classic sidebar item, no classic-chrome
+// rendering — so the classic portal carries nothing of the Agent Platform.
+// Where it is, `/agent-platform/**` always renders in the shell (the app's
+// layout picks the shell for the agent area) and the classic sidebar only
+// links here. The predicate is evaluated once, at app start, like the shell's
+// own extensions.
 //
-// The page sorts its tabs by `AGENT_PLATFORM_TAB_ORDER` (lib/tabOrder.ts):
-// Sessions · Agents · Models · MCP Servers · Workflows · Usage. Attach order
-// alone cannot interleave two plugins' tabs, and an extension a deployment
-// names in its own `app.extensions` attaches first. The first tab is also
-// where a bare `/agent-platform` lands.
+// Disabled by default and enabled per installation via app-config
+// (`app.extensions: [page:agent-platform]`) as well.
 //
-// Inside the agent-platform shell the page drops its header and tab strip:
-// the shell's rail navigates between the tabs, and each tab titles itself. The
-// flag is read when the app tree is built, as the shell's own extensions are,
-// so turning it on or off takes effect on the next load.
+// The page sorts its sub-pages by `AGENT_PLATFORM_TAB_ORDER`
+// (lib/tabOrder.ts): Sessions · Agents · Models · Connectors · Workflows ·
+// Usage. Attach order alone cannot interleave two plugins' sub-pages, and an
+// extension a deployment names in its own `app.extensions` attaches first. The
+// first one is where a bare `/agent-platform` lands.
 const agentPlatformPage = PageBlueprint.makeWithOverrides({
   disabled: true,
-  factory(originalFactory, { apis, inputs }) {
-    const params = {
-      title: 'Agent Platform',
+  if: AGENT_SHELL_ON,
+  factory(originalFactory, { inputs }) {
+    const title = 'Agent Platform';
+    const pages = orderTabs(inputs.pages, page => page.node.spec.id);
+    return originalFactory({
+      title,
       icon: <AndroidIcon />,
       path: '/agent-platform',
       routeRef: rootRouteRef,
-    };
-    const pages = orderTabs(inputs.pages, page => page.node.spec.id);
-    if (!apis.get(featureFlagsApiRef)?.isActive(AGENT_SHELL_FLAG)) {
-      return originalFactory(params, { inputs: { pages } });
-    }
-    return originalFactory({
-      ...params,
       noHeader: true,
       loader: async () => (
         <AgentPlatformPageRoutes
-          pageTitle={params.title}
+          pageTitle={title}
           pages={pages.map(page => ({
             path: page.get(coreExtensionData.routePath),
             title: page.get(coreExtensionData.title),
@@ -225,10 +223,11 @@ const modelsSubPage = SubPageBlueprint.make({
 //
 // Enabled by default on purpose, like muster's mcp-servers redirect page:
 // deployments replace `app.extensions` wholesale, so an opt-in entry would
-// silently drop the page. Where the shell (and so the Customize screen) is off,
-// nothing links here, and a deep link still renders the skill read-only.
+// silently drop the page. Shell only, like the section itself (see
+// `agentPlatformPage`): without the shell it is not routed.
 const skillsPage = PageBlueprint.make({
   name: 'skills',
+  if: AGENT_SHELL_ON,
   params: {
     path: '/agent-platform/skills',
     routeRef: skillsRouteRef,
@@ -248,9 +247,10 @@ const skillsPage = PageBlueprint.make({
 //
 // Enabled by default for the same reason as `skillsPage` above: deployments
 // replace `app.extensions` wholesale, and an opt-in entry would silently drop
-// the page the shell's profile menu links to.
+// the page the shell's profile menu links to. Shell only, like `skillsPage`.
 const profilePage = PageBlueprint.make({
   name: 'profile',
+  if: AGENT_SHELL_ON,
   params: {
     path: '/agent-platform/profile',
     routeRef: profileRouteRef,

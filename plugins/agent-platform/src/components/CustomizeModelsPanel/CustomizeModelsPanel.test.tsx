@@ -1,6 +1,11 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ModelRow } from '../ModelsTable';
 import { modelsRouteRef } from '../../routes';
@@ -178,6 +183,87 @@ describe('CustomizeModelsPanel', () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
+  let layout: MockedLayout;
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(header => header.textContent);
+  const bodyRows = () => screen.getAllByRole('row').slice(1);
+  function manyModels(count: number): ModelRow[] {
+    return Array.from({ length: count }, (_, i) => {
+      const name = `model-${String(i).padStart(3, '0')}`;
+      return {
+        ...sonnet,
+        id: `golem/support/${name}`,
+        name,
+        displayName: `Model ${String(i).padStart(3, '0')}`,
+      };
+    });
+  }
+
+  beforeEach(() => {
+    mockModelRows = [sonnet, qwen];
+    mockModelsLoading = false;
+    mockServingInstallations = [];
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it("keeps the model and its status, the usage joining the name's line", async () => {
+    await renderPanel();
+
+    expect(headers()).toEqual(['Model', 'Status']);
+    const [sonnetRow, qwenRow] = bodyRows();
+    expect(
+      within(sonnetRow).getByText(
+        'Anthropic · claude-sonnet-4-5 · Used by 2 agents',
+      ),
+    ).toBeInTheDocument();
+    expect(within(sonnetRow).getByText('Available')).toBeInTheDocument();
+    expect(
+      within(qwenRow).getByText('Ollama · qwen2.5:32b · Not used yet'),
+    ).toBeInTheDocument();
+    expect(within(qwenRow).getByText('Not running')).toBeInTheDocument();
+  });
+
+  it('brings the Used by column back on a wide viewport', async () => {
+    layout.restore();
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(headers()).toEqual(['Model', 'Used by', 'Status']);
+    const [sonnetRow] = bodyRows();
+    expect(
+      within(sonnetRow).getByText('Anthropic · claude-sonnet-4-5'),
+    ).toBeInTheDocument();
+    expect(within(sonnetRow).getByText('Used by 2 agents')).toBeInTheDocument();
+  });
+
+  it('draws three models with no paging chrome', async () => {
+    mockModelRows = manyModels(3);
+    await renderPanel();
+
+    expect(bodyRows()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('windows 300 models and keeps the provider filter', async () => {
+    mockModelRows = manyModels(300);
+    await renderPanel();
+
+    expect(headers()).toEqual(['Model', 'Status']);
+    expect(bodyRows()).toHaveLength(20);
+    expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more models' }),
+    );
+    expect(bodyRows()).toHaveLength(40);
+    expect(
+      screen.getByRole('button', { name: /Filter by provider/, hidden: true }),
+    ).toBeInTheDocument();
   });
 });
 

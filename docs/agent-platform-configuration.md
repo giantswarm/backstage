@@ -63,12 +63,17 @@ start and before sign-in, so both keys are public.
 The three modes:
 
 - **Only `platformPortal`** (the default — neither key set, or both set to
-  `false`): exactly the classic portal. The per-person `agent-platform-shell`
+  `false`): exactly the classic portal, with nothing of the Agent Platform in
+  it — no sidebar item, no `/agent-platform/**` or `/customize` route, even
+  where `app.extensions` lists `page:agent-platform`: its pages are routed in
+  the shell only. The per-person `agent-platform-shell`
   feature flag (Settings → Feature Flags) opts one browser into the shell next
   to the classic portal; it takes effect after a reload.
 - **Both on**: the shell on `/`, `/agent-platform/**` and `/customize/**`, the
   classic portal in its own chrome everywhere else, each cross-linking to the
-  other in a new tab.
+  other in a new tab: the classic sidebar's **Agent Platform** item (to
+  `/agent-platform`) and the shell's **Platform Portal** item (to
+  `/clusters`). No Agent Platform page renders in classic chrome.
 - **Only `agentPlatform`**: the shell is the whole navigation. `/` is the
   new-session screen and the shell's rail has no "Platform Portal" item.
   Classic pages stay reachable by URL, in classic chrome, whose "Agent
@@ -80,8 +85,9 @@ unless they set the feature flag themselves.
 **Also required: `page:agent-platform`.** The Sessions, Agents, Models and
 Usage screens live on the `page:agent-platform` extension
 (`plugins/agent-platform/src/plugin.tsx`), which is **disabled by default**.
-Enable it (and `nav-item:agent-platform` for the classic sidebar entry)
-wherever the shell is on:
+Enable it wherever the shell is on (where it is off, the page stays unmounted
+whatever `app.extensions` says; the classic sidebar's Agent Platform item
+follows `app.portals`, not `nav-item:agent-platform`):
 
 ```yaml
 app:
@@ -310,13 +316,14 @@ gated on a role is **hidden** — no teaser, no disabled button — while the ro
 is unconfigured, still loading, or names an agent that does not exist. All
 roles are optional; default unset.
 
-| Role                 | Lights up                                                                                                                                           | Consumer             |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `generalInformation` | Customize → Agents' helper banner ("Ask <agent> about agents")                                                                                      | `AgentsHelperBanner` |
-| `agentManagement`    | The create flow's "Let <agent> help" button: drafts the agent's instructions with the person in a side chat; the form changes only when they accept | `CreateAgentAssist`  |
-| `skillEvaluation`    | The skill detail page's **Evaluate** button, which starts a session with this agent about that skill                                                | `SkillDetailPage`    |
-| `workflowManagement` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                            | —                    |
-| `platformOperations` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                            | —                    |
+| Role                 | Lights up                                                                                                                                                             | Consumer              |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `generalInformation` | Customize → Agents' helper banner ("Ask <agent> about agents")                                                                                                        | `AgentsHelperBanner`  |
+| `agentManagement`    | The create flow's "Let <agent> help" button: drafts the agent's instructions with the person in a side chat; the form changes only when they accept                   | `CreateAgentAssist`   |
+| `skillEvaluation`    | The skill detail page's **Evaluate** button, which starts a session with this agent about that skill                                                                  | `SkillDetailPage`     |
+| `skillCreation`      | Add Skill and Edit Skill: the "use the skill creator agent for more complex, nested skills" caveat and its "Let <agent> help" hand-off into a session with this agent | `SkillCreationAssist` |
+| `workflowManagement` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                     |
+| `platformOperations` | **Nothing yet.** Configurable, but no UI reads it today.                                                                                                              | —                     |
 
 ```yaml
 agentPlatform:
@@ -324,6 +331,7 @@ agentPlatform:
     generalInformation: swarmgeist
     agentManagement: swarm-operator
     skillEvaluation: kagent/skill-evaluator
+    skillCreation: skill-creator
 ```
 
 The agents themselves are ordinary agents created on the platform; the lab's

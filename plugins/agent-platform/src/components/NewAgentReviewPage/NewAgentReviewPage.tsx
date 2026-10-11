@@ -4,6 +4,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -205,6 +206,14 @@ function CreateAgentReview() {
   }, [creation, spec]);
 
   const createLabel = creation.isDeploying ? 'Creating…' : 'Create agent';
+  const proposeLabel = creation.isCommitting
+    ? 'Proposing…'
+    : 'Propose as pull request instead';
+  // At phone width the alternative leaves the footer for the page (C11):
+  // beside Cancel, Back and Create it wrapped the footer to three rows, with
+  // the primary button ending up bottom-left.
+  const isPhone = usePhoneLayout();
+  const proposeInFooter = canCommit && !isPhone;
 
   // "Back" (in the frame's footer) goes to the immediately preceding step,
   // which is always the Tools step.
@@ -218,15 +227,13 @@ function CreateAgentReview() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
-        {canCommit && (
+        {proposeInFooter && (
           <Button
             variant="tertiary"
             isDisabled={isBusy || !canWrite}
             onPress={onCommit}
           >
-            {creation.isCommitting
-              ? 'Proposing…'
-              : 'Propose as pull request instead'}
+            {proposeLabel}
           </Button>
         )}
         <Button
@@ -241,11 +248,11 @@ function CreateAgentReview() {
     [
       isBusy,
       canWrite,
-      canCommit,
+      proposeInFooter,
       onCommit,
       onDeploy,
       createLabel,
-      creation.isCommitting,
+      proposeLabel,
     ],
   );
 
@@ -363,6 +370,21 @@ function CreateAgentReview() {
         )}
         {commitResult && <CommitOutcome result={commitResult} />}
 
+        {canCommit && isPhone && (
+          <Flex direction="column" align="start" gap="1">
+            <Text variant="body-small" color="secondary">
+              Rather have the change reviewed before it is applied?
+            </Text>
+            <Button
+              variant="secondary"
+              isDisabled={isBusy || !canWrite}
+              onPress={onCommit}
+            >
+              {proposeLabel}
+            </Button>
+          </Flex>
+        )}
+
         {/* Everything Kubernetes-shaped, collapsed: the release, where it
             lands, what the toolset resolves to and agent-manager's dry run. */}
         <details className={classes.technical}>
@@ -391,7 +413,7 @@ function CreateAgentReview() {
                   <span className={classes.code}>{harnessName}</span>
                 </>
               ) : null}
-              . What you see below is agent-manager's dry run of exactly that.
+              . Below is agent-manager's dry run of it.
             </Text>
 
             <div className={classes.summary}>
@@ -546,10 +568,9 @@ function CreateAgentReview() {
                 </summary>
                 <div className={classes.detailsBody}>
                   <Text variant="body-small" color="secondary">
-                    Prefer to keep this in your own GitOps repo, or apply it
-                    yourself? Copy the resources above, or save the values
-                    agent-manager composed and run the command once against the
-                    cluster.
+                    To keep it in your own GitOps repo or apply it yourself,
+                    copy the resources above, or save the composed values and
+                    run the command once against the cluster.
                   </Text>
                   <CodeBlock
                     filename={`${spec.name}-values.yaml`}

@@ -42,6 +42,12 @@ const useStyles = makeStyles(theme => ({
     padding: theme.spacing(0.25, 1),
     borderRadius: 999,
     border: `1px solid ${theme.palette.divider}`,
+    // A selector written out is one long token (a server prefix, a tool
+    // name): it breaks inside its chip rather than run past the card.
+    minWidth: 0,
+    maxWidth: '100%',
+    boxSizing: 'border-box',
+    overflowWrap: 'anywhere',
   },
   selectorCode: {
     fontFamily: 'monospace',
@@ -199,7 +205,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="info"
         title="No tools"
-        description="This agent has no gateway entry, so it has no tools beyond its own reasoning — what a toolset of preset:none renders to, and what a chat-only agent looks like."
+        description="No gateway entry: a chat-only agent with nothing beyond its own reasoning."
       />
     );
   } else if (isReading) {
@@ -213,13 +219,13 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="info"
         title="Toolset not readable"
-        description={`The RemoteMCPServers of namespace ${namespace} on ${installation} could not be read — they may be unreachable, or your account is not allowed to list them there. The toolset is declared on ${declared.carrier}, the server this agent binds the gateway through, so nothing can be said about it here.`}
+        description={`The RemoteMCPServers in ${namespace} on ${installation} could not be read — unreachable, or your account may not list them. The toolset is declared on ${declared.carrier}, so it cannot be shown.`}
       />
     ) : (
       <Alert
         status="warning"
         title="Gateway server missing"
-        description={`This agent binds the gateway through the RemoteMCPServer ${declared.carrier}, but no server of that name exists in namespace ${namespace}. The binding reaches nothing, and the toolset — declared on that server — cannot be read.`}
+        description={`This agent binds the gateway through RemoteMCPServer ${declared.carrier}, which does not exist in ${namespace}. It reaches nothing, and its toolset cannot be read.`}
       />
     );
   } else if (declared.state === 'implicit-full') {
@@ -227,7 +233,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
       <Alert
         status="warning"
         title="Implicit full access"
-        description={`This agent declares no toolset: its gateway server ${declared.carrier} carries no X-Muster-Toolset header, so it can discover and call every tool the gateway exposes to whoever invokes it — platform administration included. A hand-written template looks like this until someone assigns a toolset (agent-manager's update_agent, or the chart's toolset value).`}
+        description={`No toolset declared: gateway server ${declared.carrier} carries no X-Muster-Toolset header, so this agent can call every tool the gateway exposes to whoever invokes it — platform administration included. Assign one with agent-manager's update_agent or the chart's toolset value.`}
       />
     );
   } else {
@@ -241,7 +247,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
           <Alert
             status="warning"
             title="Full gateway access"
-            description="The toolset is the full preset: this agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
+            description="The full preset: this agent can call every tool the gateway exposes to whoever invokes it — platform administration included."
           />
         )}
         {shape === 'none' && (
@@ -258,7 +264,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
               title="Sign in to see these servers' tools"
               description={`${unsignedServers.join(
                 ', ',
-              )} — part of the toolset, but your session is not signed in to them, so their tools are not in the list below. Through you, the agent would not reach them either until you sign in.`}
+              )} — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.`}
             />
             {unsignedServers.map(selector => {
               const name = parseSelector(selector)?.name ?? selector;

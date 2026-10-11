@@ -3,15 +3,54 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillPullRequest } from '../../hooks/useProposeSkill';
+import { sessionsRouteRef } from '../../routes';
+import type { AgentRow } from '../AgentsDataProvider';
+import { skillCreationPrompt } from '../SkillCreationAssist';
 import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
 let mockRepositories: string[] = [];
+let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
-    config: { getOptionalStringArray: () => mockRepositories },
+    config: {
+      getOptionalStringArray: () => mockRepositories,
+      getOptionalString: (key: string) =>
+        mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
+    },
     isLoading: false,
+  }),
+}));
+
+// The skill creator hand-off (T78): the agents it resolves the role against,
+// and the session it starts.
+const mockSkillCreator = {
+  id: 'gazelle/kagent/skill-creator',
+  installation: 'gazelle',
+  namespace: 'kagent',
+  name: 'Skill Creator',
+  technicalName: 'skill-creator',
+  description: '',
+  skillCount: 0,
+  readiness: 'ready',
+} as AgentRow;
+jest.mock('../AgentsDataProvider', () => ({
+  AgentsDataProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  useAgents: () => ({ rows: [mockSkillCreator], isLoading: false }),
+}));
+jest.mock('../../hooks/useAgentAvatarUrl', () => ({
+  useAgentAvatarUrl: () => () => undefined,
+}));
+const createSession = jest.fn();
+jest.mock('../../hooks/useCreateSession', () => ({
+  useCreateSession: () => ({
+    createSession,
+    isCreating: false,
+    error: null,
+    reset: jest.fn(),
   }),
 }));
 
@@ -45,6 +84,7 @@ function renderPage(edit?: SkillEdit) {
     <PageHeaderActionsProvider>
       <AddSkillPage edit={edit} />
     </PageHeaderActionsProvider>,
+    { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
   );
 }
 
@@ -74,6 +114,8 @@ beforeEach(() => {
   proposeSkill.mockResolvedValue(opened);
   mockState = { isProposing: false, error: null };
   mockRepositories = [REPO];
+  mockMetaAgents = {};
+  createSession.mockReset();
 });
 
 describe('AddSkillPage', () => {
@@ -311,6 +353,69 @@ describe('AddSkillPage editing an existing skill', () => {
     });
   }, 30_000);
 
+  it('lists the files that stay as they are, linking the viewer and GitHub, for a multi-file skill', async () => {
+    await renderPage({
+      ...edit,
+      content: {
+        ...edit.content,
+        files: [
+          { path: 'SKILL.md', size: 10, sha: 'a' },
+          { path: 'references/setup.md', size: 20, sha: 'b' },
+        ],
+      },
+    });
+
+    expect(screen.getByText('This file stays as it is')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'references/setup.md' }),
+    ).toHaveAttribute(
+      'href',
+      `${edit.skillHref}/instructions?file=references/setup.md`,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/tree/${COMMIT}/support/ticket-triage`,
+    );
+  });
+
+  it('warns while typing a link to a file the skill does not have', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: {
+        ...edit.content,
+        files: [
+          { path: 'SKILL.md', size: 10, sha: 'a' },
+          { path: 'references/setup.md', size: 20, sha: 'b' },
+        ],
+      },
+    });
+
+    expect(screen.queryByText(/does not have/)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Instructions/), ' {[}x](gone.md)');
+    expect(
+      screen.getByText('Links to files the skill does not have: gone.md'),
+    ).toBeInTheDocument();
+  }, 30_000);
+
+  it('shows no file list for a single-file skill or an unlisted one', async () => {
+    const { unmount } = await renderPage(edit);
+    expect(screen.queryByText(/stay as/)).not.toBeInTheDocument();
+    unmount();
+
+    await renderPage({
+      ...edit,
+      content: {
+        ...edit.content,
+        files: [{ path: 'SKILL.md', size: 10, sha: 'a' }],
+      },
+    });
+    expect(screen.queryByText(/stay as/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Edit on GitHub/)).not.toBeInTheDocument();
+  });
+
   it('ends on the opened pull request, like adding one', async () => {
     mockState = {
       isProposing: false,
@@ -335,5 +440,108 @@ describe('AddSkillPage editing an existing skill', () => {
     expect(
       screen.getByRole('link', { name: /Open the pull request/ }),
     ).toHaveAttribute('href', opened.pullRequestUrl);
+  });
+});
+
+describe('AddSkillPage · the skill creator hand-off', () => {
+  const caveat = 'Use this form for simple skills.';
+
+  it('is absent while the skillCreation role is unconfigured', async () => {
+    await renderPage();
+
+    expect(screen.queryByText(caveat)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Let Skill Creator help' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('is absent from an edit while the role is unconfigured', async () => {
+    await renderPage(edit);
+
+    expect(screen.queryByText(caveat)).not.toBeInTheDocument();
+  });
+
+  it('shows the caveat above the add form and hands the typed skill over', async () => {
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const strip = screen.getByRole('region', {
+      name: 'Write complex skills with Skill Creator',
+    });
+    expect(strip).toHaveTextContent(caveat);
+    expect(strip).toHaveTextContent('for more complex, nested skills');
+    await user.type(screen.getByLabelText(/Name/), 'notes');
+    await user.click(
+      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+    );
+
+    expect(createSession).toHaveBeenCalledWith({
+      agent: mockSkillCreator,
+      prompt: skillCreationPrompt({
+        kind: 'create',
+        repoUrl: REPO,
+        name: 'notes',
+        description: '',
+        instructions: '',
+      }),
+    });
+  }, 30_000);
+
+  it('carries the typed instructions of a new skill into the first message', async () => {
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(screen.getByLabelText(/Instructions/), 'Take notes.');
+    await user.click(
+      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      '```markdown\nTake notes.\n```',
+    );
+  }, 30_000);
+
+  it('carries instructions rewritten on an edit, but not the unchanged ones', async () => {
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage(edit);
+
+    await user.type(screen.getByLabelText(/Instructions/), ' Then close.');
+    await user.click(
+      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      '```markdown\nClassify, prioritise, route. Then close.\n```',
+    );
+  }, 30_000);
+
+  it('shows the caveat on an edit and hands the skill being changed over', async () => {
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    await renderPage(edit);
+
+    expect(screen.getByText(caveat)).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Let Skill Creator help' }),
+    );
+
+    expect(createSession).toHaveBeenCalledWith({
+      agent: mockSkillCreator,
+      prompt: skillCreationPrompt({ kind: 'update', skill: edit.skill }),
+    });
+  }, 30_000);
+
+  it('is gone once the pull request is open', async () => {
+    mockMetaAgents = { skillCreation: 'skill-creator' };
+    mockState = { isProposing: false, error: null, result: opened };
+    await renderPage();
+
+    expect(screen.queryByText(caveat)).not.toBeInTheDocument();
   });
 });

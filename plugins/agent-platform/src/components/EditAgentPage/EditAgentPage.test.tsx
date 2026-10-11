@@ -9,7 +9,10 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -351,9 +354,7 @@ describe('EditAgentPage', () => {
     expect(runtime).toHaveTextContent('Harness claude-code');
     expect(within(runtime).queryByRole('radio')).not.toBeInTheDocument();
     expect(
-      screen.getByText(
-        "What runs the agent. It can't be changed once the agent exists.",
-      ),
+      screen.getByText('What runs the agent. Fixed once the agent exists.'),
     ).toBeInTheDocument();
   });
 
@@ -378,11 +379,7 @@ describe('EditAgentPage', () => {
   it('reviews an untouched agent as no change, with Save changes locked', async () => {
     const { callTool } = await renderEdit(`${BASE}/review`);
 
-    expect(
-      await screen.findByText(
-        'Nothing changed yet. Go back to a step to change something.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nothing changed yet.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
     expect(callsOf(callTool, 'x_agent-manager_validate_agent')).toHaveLength(0);
     // Reached without step 1: the fold-out still names the model the agent's
@@ -475,11 +472,7 @@ describe('EditAgentPage', () => {
     await screen.findByRole('checkbox', { name: 'Skill PR review' });
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'To review' }));
-    expect(
-      await screen.findByText(
-        'Nothing changed yet. Go back to a step to change something.',
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nothing changed yet.')).toBeInTheDocument();
   });
 
   it('shows agent-manager’s refusal and keeps Save changes locked', async () => {
@@ -516,6 +509,37 @@ describe('EditAgentPage', () => {
       mode: 'commit',
       description: 'Reviews every pull request.',
     });
+  });
+
+  it('keeps the pull-request footer to one row at phone width', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      const user = userEvent.setup();
+      await renderEdit(BASE, {
+        agent: GITOPS_AGENT,
+        info: { ...INFO, capabilities: { commit: true } },
+      });
+
+      // The title over its context, the step strip one line.
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Edit agent' }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText(/^Step 1 of \d · Details$/),
+      ).toBeInTheDocument();
+
+      await changeDescriptionAndReview(user);
+      const footer = screen.getByRole('contentinfo');
+      const propose = await within(footer).findByRole('button', {
+        name: 'Propose as pull request',
+      });
+      expect(
+        within(footer).getByRole('button', { name: 'Back' }),
+      ).not.toHaveTextContent('Back');
+      await waitFor(() => expect(propose).toBeEnabled());
+    } finally {
+      layout.restore();
+    }
   });
 
   it('has no form for an agent applied from git without the commit capability', async () => {

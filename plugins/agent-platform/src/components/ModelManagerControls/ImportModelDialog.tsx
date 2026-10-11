@@ -359,10 +359,9 @@ export function ImportModelDialog({
       <DialogBody>
         <Flex direction="column" gap="4" ref={fieldScope}>
           <Text variant="body-medium" color="secondary">
-            Search the Hugging Face Hub and pre-warm a model into the node's
-            model cache, so serving it later skips the download. model-manager
-            resolves the size and checks the fit against the node before
-            anything is fetched.
+            Pre-warm a Hugging Face model into a node's cache so serving it
+            skips the download. model-manager checks size and fit before
+            fetching.
           </Text>
 
           {targets.length > 1 && (

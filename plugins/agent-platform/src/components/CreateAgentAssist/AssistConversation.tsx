@@ -27,15 +27,21 @@ const useStyles = makeStyles(theme => ({
   },
   // The conversation scrolls; the composer below stays reachable however long
   // it gets — the panel's version of the detail page's docked composer.
+  // `contain`: a swipe that reaches the end of the chat does not go on to
+  // scroll the page behind the panel.
   scroll: {
     flex: 1,
     minHeight: 0,
     overflowY: 'auto',
+    overscrollBehavior: 'contain',
     padding: theme.spacing(2),
   },
   dock: {
     borderTop: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(2),
+    // The panel reaches the screen's bottom edge: clear of a phone's home
+    // indicator (0 everywhere else).
+    paddingBottom: `calc(${theme.spacing(2)}px + env(safe-area-inset-bottom, 0px))`,
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(2),

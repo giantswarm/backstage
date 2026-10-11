@@ -42,9 +42,12 @@ export interface Config {
      *   "Agent Platform" item leads back in the same tab) but nothing in the
      *   shell links to them.
      * - Only `platformPortal` (the default): exactly the classic portal, no
-     *   agent shell and no cross-link. The person's `agent-platform-shell`
-     *   feature flag then opts one browser into the shell, as an override
-     *   for trying it out; it is not offered while `agentPlatform` is on.
+     *   agent shell, no cross-link and nothing of the Agent Platform (its
+     *   pages are routed in the shell only, so no `/agent-platform/**` route
+     *   and no sidebar item, whatever `app.extensions` lists). The person's
+     *   `agent-platform-shell` feature flag then opts one browser into the
+     *   shell, as an override for trying it out; it is not offered while
+     *   `agentPlatform` is on.
      *
      * The shell's Sessions, Agents, Models and Usage screens live on the
      * `page:agent-platform` extension, which is disabled by default: enable it

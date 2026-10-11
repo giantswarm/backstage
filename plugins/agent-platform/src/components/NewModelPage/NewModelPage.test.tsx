@@ -126,7 +126,7 @@ describe('NewModelPage', () => {
     expect(screen.queryByText(/requires no API key/)).toBeNull();
     const apiKey = screen.getByLabelText(/^API key/);
     expect(apiKey).toHaveAccessibleDescription(
-      expect.stringContaining('Leave it empty if the endpoint needs none'),
+      expect.stringContaining('Leave empty if the endpoint needs none'),
     );
 
     await userEvent.type(screen.getByLabelText(/^Display name/), 'Local vLLM');
@@ -329,7 +329,7 @@ describe('NewModelPage · editing a model', () => {
     expect(apiKey).toHaveAttribute('placeholder', '');
     expect(apiKey).toHaveAccessibleDescription(
       expect.stringContaining(
-        'The stored key is for Anthropic, which OpenAI (or compatible) does not use',
+        'The stored key is for Anthropic, not OpenAI (or compatible)',
       ),
     );
   });

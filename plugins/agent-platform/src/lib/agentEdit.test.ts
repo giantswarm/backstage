@@ -320,4 +320,31 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
 
     expect(update.skills).toEqual([]);
   });
+
+  it('round-trips the Tools step’s Nothing outside the chat (T81)', () => {
+    // An agent declaring no tools opens as Nothing outside the chat…
+    const chatOnly = agent({ toolset: ['preset:none'] });
+    const state = seed(chatOnly);
+    expect(state.toolset).toEqual([]);
+    expect(state.toolsChatOnly).toBe(true);
+    expect(
+      hasChanges(updateOf(chatOnly, editStateOfForm(chatOnly, state))),
+    ).toBe(false);
+
+    // …one declaring no toolset at all does not, and stays untouched…
+    const implicit = agent({ toolset: undefined, implicitFullAccess: true });
+    const implicitState = seed(implicit);
+    expect(implicitState.toolsChatOnly).toBe(false);
+    expect(
+      hasChanges(updateOf(implicit, editStateOfForm(implicit, implicitState))),
+    ).toBe(false);
+
+    // …until Nothing outside the chat is picked for it: then it declares none.
+    expect(
+      updateOf(
+        implicit,
+        editStateOfForm(implicit, { ...implicitState, toolsChatOnly: true }),
+      ).toolset,
+    ).toEqual(['preset:none']);
+  });
 });

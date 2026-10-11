@@ -1,11 +1,16 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Content, EmptyState } from '@backstage/core-components';
 import { Alert, Flex, Link, Text } from '@backstage/ui';
 import {
+  BreadcrumbItem,
   Breadcrumbs,
   LoadingIndicator,
+  ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useAgentShell } from '../../hooks/useAgentShell';
+import { customizeExternalRouteRef } from '../../routes';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
 import {
   serverPageResolver,
@@ -24,6 +29,12 @@ import { ToolDetailPanel } from '../ToolDetail';
 import { useServersListHref } from '../ServerPage';
 import { useServerTools } from '../ServerPage/useServerPageData';
 
+/** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
+const TOOL_NAME_STYLE = {
+  fontFamily: 'monospace',
+  overflowWrap: 'anywhere',
+} as const;
+
 /**
  * One tool's page, beneath the server offering it: its short and full name,
  * markers, description and input schema, and the typed argument form that runs
@@ -33,6 +44,8 @@ import { useServerTools } from '../ServerPage/useServerPageData';
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
+  const agentShell = useAgentShell();
+  const customizeRoute = useRouteRef(customizeExternalRouteRef);
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const session = useMusterSession();
@@ -69,19 +82,13 @@ export function ToolPage() {
   });
   const annotations = described.data?.annotations ?? listed?.annotations;
 
-  const trail = (
-    <Breadcrumbs
-      items={[
-        { label: 'Connectors', href: listHref },
-        { label: serverKey, href: links.server(serverKey, activeInstallation) },
-        {
-          label: 'Tools',
-          href: links.server(serverKey, activeInstallation),
-        },
-        { label: shortName },
-      ]}
-    />
-  );
+  const toolsHref = links.server(serverKey, activeInstallation);
+  const crumbs: BreadcrumbItem[] = [
+    { label: 'Connectors', href: listHref },
+    { label: serverKey, href: toolsHref },
+    { label: 'Tools', href: toolsHref },
+    { label: shortName },
+  ];
 
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
@@ -91,7 +98,7 @@ export function ToolPage() {
       <EmptyState
         missing="data"
         title="No muster environment"
-        description="None of the environments this portal knows runs muster, so there are no aggregated tools to show."
+        description="None of this portal's environments runs muster."
       />
     );
   } else if (row && !session.authenticated) {
@@ -99,7 +106,7 @@ export function ToolPage() {
       <SessionGate
         session={session}
         installation={activeInstallation}
-        context="A tool is described and run through the muster session."
+        context="Tools need a muster session."
       />
     );
   } else if (row && serverTools.isLoading) {
@@ -122,8 +129,8 @@ export function ToolPage() {
         title={`No tool “${tool}” on ${activeInstallation}`}
         description={
           row
-            ? `${serverKey} on ${activeInstallation} does not offer a tool named “${tool}”. It may have been removed, or run on another environment — pick it in the page header.`
-            : `The environment ${activeInstallation} has no connector or connector family named “${key}”. It may run on another environment — pick it in the page header.`
+            ? 'It may have been removed, or run on another environment — pick it in the page header.'
+            : `There is no connector “${key}” on ${activeInstallation}. It may run on another environment — pick it in the page header.`
         }
         action={
           serverHref ? (
@@ -149,19 +156,51 @@ export function ToolPage() {
     );
   }
 
+  const exposedAs = (
+    <>
+      Exposed by muster as: <span style={TOOL_NAME_STYLE}>{tool}</span>
+    </>
+  );
+
+  // In the shell, the platform's page frame like the connector's own page:
+  // its phone gutters, an h1 that wraps, and the trail under Customize.
+  if (agentShell) {
+    const customize = customizeRoute?.();
+    return (
+      <ShellPage
+        title={shortName}
+        breadcrumbs={[
+          { label: 'Customize', href: customize },
+          {
+            label: 'Connectors',
+            href: customize ? `${customize}/connectors` : listHref,
+          },
+          ...crumbs.slice(1),
+        ]}
+        badges={<ToolMarkers annotations={annotations} />}
+        meta={exposedAs}
+      >
+        {body}
+      </ShellPage>
+    );
+  }
+
   return (
     <Content>
       <ActiveInstallationNote />
       <Flex direction="column" gap="4" style={{ maxWidth: 1024 }}>
         <Flex direction="column" gap="2">
-          {trail}
-          <Text as="h2" variant="title-medium">
+          <Breadcrumbs items={crumbs} />
+          <Text
+            as="h2"
+            variant="title-medium"
+            style={{ overflowWrap: 'anywhere' }}
+          >
             {shortName}
           </Text>
           <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
             <Text variant="body-small" color="secondary">
-              Exposed by muster as:{' '}
-              <span style={{ fontFamily: 'monospace' }}>{tool}</span>
+              {exposedAs}
             </Text>
             <ToolMarkers annotations={annotations} />
           </Flex>

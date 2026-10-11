@@ -3,6 +3,11 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { SlackPromoBanner, slackDocsUrl } from './SlackPromoBanner';
 
 let configured: Record<string, boolean | string | undefined> = {};
@@ -138,5 +143,38 @@ describe('slackDocsUrl', () => {
     ['http://wiki.internal/slack', 'http://wiki.internal/slack'],
   ])('reads %p as %p', (configuredUrl, expected) => {
     expect(slackDocsUrl(configuredUrl)).toBe(expected);
+  });
+});
+
+describe('SlackPromoBanner at phone width (T22 C5)', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    configured = { 'agentPlatform.integrations.slack': true };
+  });
+  afterEach(() => layout.restore());
+
+  // The miniature thread is decorative (aria-hidden); its "Thread" label is
+  // how a test finds it.
+  const threadPreview = () => screen.queryByText('Thread');
+
+  it('leaves the decorative thread out, keeping the copy and its action', async () => {
+    layout = mockPhoneLayout();
+    await render();
+
+    expect(banner()).toBeInTheDocument();
+    expect(threadPreview()).not.toBeInTheDocument();
+    expect(howItWorks()).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: "Dismiss, and don't show this again",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the thread beside the copy on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await render();
+
+    expect(threadPreview()).toBeInTheDocument();
   });
 });

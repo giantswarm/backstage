@@ -126,7 +126,7 @@ export function NodeSizePicker({
       >
         <CheckboxGroup
           label="Node size"
-          description="The instance sizes Karpenter may pick, smallest first, with what each leaves a predictor after the node's kubelet reservations and daemonsets, and its on-demand price. Changing them re-runs the dry run."
+          description="Sizes Karpenter may pick, smallest first, with what each leaves a predictor and its on-demand price. Changing them re-runs the dry run."
           value={sizes}
           onChange={onSizesChange}
           isDisabled={isBusy || !hasShapes}
@@ -183,7 +183,7 @@ export function NodeSizePicker({
       <Flex direction="column" gap="1">
         <Select
           label="I want to serve"
-          description="Preselects the smallest size that hosts the preset and marks the others. Each preset says how it fits the sizes as chosen; the one chosen here blocks Deploy while no size hosts it."
+          description="Preselects the smallest size that hosts the preset. Deploy stays blocked while no chosen size hosts it."
           searchable={searchableIf(presetOptions)}
           options={presetOptions}
           selectedKey={preset ?? ANY_PRESET}

@@ -193,9 +193,7 @@ describe('GpuCapacityPage', () => {
 
     expect(screen.getByText('No GPU node pools yet')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /model-manager on inst-2 is running with no backend registered/,
-      ),
+      screen.getByText(/model-manager on inst-2 has no backend registered/),
     ).toBeInTheDocument();
     expect(screen.queryByText('No GPU inventory')).not.toBeInTheDocument();
   });
@@ -250,7 +248,7 @@ describe('GpuCapacityPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('accelerated')).toBeInTheDocument();
     expect(
-      screen.getByText(/for the host a backend runs on/),
+      screen.getByText(/A backend host has no GPU figures/),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('columnheader', { name: 'GPUs' }),

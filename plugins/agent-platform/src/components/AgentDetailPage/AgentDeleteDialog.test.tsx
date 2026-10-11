@@ -62,7 +62,9 @@ describe('AgentDeleteDialog', () => {
     await renderDialog('commit');
 
     expect(
-      screen.getByText(/applied from its GitOps repository/),
+      screen.getByText(
+        /Applied from GitOps: agent-manager opens a pull request/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Delete agent' }),

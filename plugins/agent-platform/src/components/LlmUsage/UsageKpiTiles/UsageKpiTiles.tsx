@@ -71,7 +71,7 @@ export function UsageKpiTiles({
         hint={
           converted
             ? `What the gateway priced every model call at over ${windowNote}, converted from USD at this environment's configured rate — an estimate, not an invoice.`
-            : `What the gateway priced every model call at as it happened, summed over ${windowNote}. A model missing from its price catalogue contributes nothing.`
+            : `The gateway's price for every model call, summed over ${windowNote}. Models missing from its catalogue add nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}
         sub={
@@ -89,14 +89,14 @@ export function UsageKpiTiles({
       />
       <KpiTile
         label="Tokens"
-        hint={`Every token the gateway proxied over ${windowNote} — input, output and both cache types added together.`}
+        hint={`All tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
         value={formatTokens(totals.tokens)}
         sub={`across ${formatCount(totals.calls)} model calls`}
       />
       {sessions && (
         <KpiTile
           label="Your sessions"
-          hint="Sessions you started with at least one turn in the window, from kagent's stored conversations. Other users' sessions are not countable from here — the gateway figures beside this are everyone's."
+          hint="Your sessions with at least one turn in the window, from kagent. Other users' sessions can't be counted here; the gateway figures beside it are everyone's."
           value={
             sessions.isLoading ? (
               <Skeleton width={56} height={28} rounded />

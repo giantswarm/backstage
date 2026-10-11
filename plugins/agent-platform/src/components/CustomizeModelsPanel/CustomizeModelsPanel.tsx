@@ -21,6 +21,8 @@ import {
   ShowMore,
   StatusDot,
   useCatalogFilters,
+  usePhoneColumns,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -114,6 +116,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   );
   const showInstallation =
     new Set(modelRows.map(row => row.installation)).size > 1;
+  const isPhone = usePhoneLayout();
 
   const columns: ColumnConfig<Row>[] = [
     {
@@ -128,6 +131,9 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
             row.provider,
             row.model,
             ...(showInstallation ? [row.installation] : []),
+            // At phone width the Used by column is hidden: its count joins
+            // the name's line, "OpenAI · gpt-4o · 3 agents".
+            ...(isPhone ? [row.usedBy] : []),
           ]
             .filter(Boolean)
             .join(' · ')}
@@ -144,6 +150,9 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       id: 'status',
       label: 'Status',
       defaultWidth: '1fr',
+      // Room for the longest label, "Not accepted", beside its dot and the
+      // cell's padding: bui's 75px default minimum clipped it at phone width.
+      minWidth: 128,
       cell: row => {
         const status = modelStatus(row);
         return (
@@ -154,6 +163,9 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       },
     },
   ];
+  // T22 C7: three columns in 343px left Used by and Status ~51px each, and
+  // the status label was clipped. On a phone: the model and its status.
+  const shownColumns = usePhoneColumns(columns, ['name', 'status']);
 
   let body;
   if (isLoading && modelRows.length === 0) {
@@ -196,7 +208,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       >
         {page => (
           <Table<Row>
-            columnConfig={columns}
+            columnConfig={shownColumns}
             data={page}
             pagination={{ type: 'none' }}
             rowConfig={{

@@ -59,7 +59,13 @@ describe('discoverAgentSkills', () => {
   } as unknown as GithubCredentialsProvider;
 
   function mockGitHub(
-    tree: Array<{ path: string; type: string }>,
+    tree: Array<{
+      path: string;
+      type: string;
+      mode?: string;
+      sha?: string;
+      size?: number;
+    }>,
     contents: Record<string, string>,
     opts: { truncated?: boolean; failContentFor?: string } = {},
   ) {
@@ -130,6 +136,7 @@ describe('discoverAgentSkills', () => {
         ref: 'main',
         commit: HEAD,
         contentReadable: true,
+        fileCount: 1,
       },
       {
         name: 'Incident responder',
@@ -139,6 +146,7 @@ describe('discoverAgentSkills', () => {
         ref: 'main',
         commit: HEAD,
         contentReadable: true,
+        fileCount: 1,
       },
     ]);
   });
@@ -358,6 +366,7 @@ describe('discoverAgentSkills', () => {
           commit: 'a'.repeat(40),
           truncated: false,
           contents: new Map(),
+          files: new Map(),
         },
       });
 
@@ -369,6 +378,195 @@ describe('discoverAgentSkills', () => {
           contentReadable: false,
         }),
       );
+    });
+  });
+
+  describe('file lists', () => {
+    const blob = (path: string, size = 10) => ({
+      path,
+      type: 'blob',
+      mode: '100644',
+      sha: `sha-${path}`,
+      size,
+    });
+
+    it('lists every skill’s files from the tree it already reads, nested files to the deepest skill', async () => {
+      const fetchMock = mockGitHub(
+        [
+          blob('README.md'),
+          { path: 'ops', type: 'tree' },
+          blob('ops/SKILL.md', 120),
+          blob('ops/references/runbook.md', 2048),
+          blob('ops/scripts/query.py'),
+          blob('ops/triage/SKILL.md'),
+          blob('ops/triage/references/severity.md'),
+          // Neither a symlink nor a submodule is a file of the skill.
+          { ...blob('ops/link-out'), mode: '120000' },
+          { path: 'ops/vendored', type: 'commit', sha: 'sub' },
+        ],
+        {
+          'ops/SKILL.md': '---\nname: Ops\n---',
+          'ops/triage/SKILL.md': '---\nname: Triage\n---',
+        },
+      );
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const { skills, files } = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+      });
+
+      // Zero extra requests: repo, head, tree and the two SKILL.md reads.
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+      expect(files).toEqual(
+        new Map([
+          [
+            'ops',
+            {
+              files: [
+                { path: 'SKILL.md', size: 120, sha: 'sha-ops/SKILL.md' },
+                {
+                  path: 'references/runbook.md',
+                  size: 2048,
+                  sha: 'sha-ops/references/runbook.md',
+                },
+                {
+                  path: 'scripts/query.py',
+                  size: 10,
+                  sha: 'sha-ops/scripts/query.py',
+                },
+              ],
+              truncated: false,
+              total: 3,
+            },
+          ],
+          [
+            'ops/triage',
+            {
+              files: [
+                {
+                  path: 'SKILL.md',
+                  size: 10,
+                  sha: 'sha-ops/triage/SKILL.md',
+                },
+                {
+                  path: 'references/severity.md',
+                  size: 10,
+                  sha: 'sha-ops/triage/references/severity.md',
+                },
+              ],
+              truncated: false,
+              total: 2,
+            },
+          ],
+        ]),
+      );
+      expect(skills.map(s => [s.path, s.fileCount])).toEqual([
+        ['ops', 3],
+        ['ops/triage', 2],
+      ]);
+    });
+
+    it('caps a skill’s list at 200 files, SKILL.md first, and says so', async () => {
+      const many = Array.from({ length: 250 }, (_, i) =>
+        blob(`big/data/part-${String(i).padStart(3, '0')}.csv`),
+      );
+      global.fetch = mockGitHub([...many, blob('big/SKILL.md')], {
+        'big/SKILL.md': '---\nname: Big\n---',
+      }) as unknown as typeof fetch;
+
+      const { skills, files } = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+      });
+
+      const list = files!.get('big')!;
+      expect(list.files).toHaveLength(200);
+      expect(list.files[0].path).toBe('SKILL.md');
+      expect(list.files[1].path).toBe('data/part-000.csv');
+      expect(list.truncated).toBe(true);
+      expect(list.total).toBe(251);
+      expect(skills[0].fileCount).toBe(251);
+    });
+
+    it('marks every list truncated when GitHub truncated the tree', async () => {
+      global.fetch = mockGitHub(
+        [blob('demo/SKILL.md')],
+        { 'demo/SKILL.md': '---\nname: Demo\n---' },
+        { truncated: true },
+      ) as unknown as typeof fetch;
+
+      const { files } = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+      });
+
+      expect(files!.get('demo')!.truncated).toBe(true);
+    });
+
+    it('carries the file lists over from the previous snapshot while the ref has not moved', async () => {
+      const tree = [blob('demo/SKILL.md'), blob('demo/references/a.md')];
+      global.fetch = mockGitHub(tree, {
+        'demo/SKILL.md': '---\nname: Demo\n---',
+      }) as unknown as typeof fetch;
+      const previous = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+      });
+
+      const fetchMock = mockGitHub(tree, {
+        'demo/SKILL.md': '---\nname: Demo\n---',
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      const again = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+        previous,
+      });
+
+      // Neither the tree nor SKILL.md read again: default branch, head only.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(again.files).toEqual(previous.files);
+      expect(again.files!.get('demo')!.files.map(f => f.path)).toEqual([
+        'SKILL.md',
+        'references/a.md',
+      ]);
+      expect(again.skills[0].fileCount).toBe(2);
+    });
+
+    it('reads the tree again for a previous snapshot without file lists', async () => {
+      const tree = [blob('demo/SKILL.md'), blob('demo/references/a.md')];
+      const fetchMock = mockGitHub(tree, {
+        'demo/SKILL.md': '---\nname: Demo\n---',
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const { files } = await discoverAgentSkills({
+        repoUrl: 'https://github.com/giantswarm/agent-skills',
+        githubCredentialsProvider: credentialsProvider,
+        previous: {
+          skills: [
+            {
+              name: 'Demo',
+              description: '',
+              repoUrl: 'https://github.com/giantswarm/agent-skills',
+              path: 'demo',
+              ref: 'main',
+              commit: HEAD,
+              contentReadable: true,
+            },
+          ],
+          ref: 'main',
+          commit: HEAD,
+          truncated: false,
+          contents: new Map([['demo', '---\nname: Demo\n---']]),
+        },
+      });
+
+      expect(fetchMock.mock.calls.map(([url]) => url as string)).toContain(
+        `https://api.github.com/repos/giantswarm/agent-skills/git/trees/${HEAD}?recursive=1`,
+      );
+      expect(files!.get('demo')!.total).toBe(2);
     });
   });
 

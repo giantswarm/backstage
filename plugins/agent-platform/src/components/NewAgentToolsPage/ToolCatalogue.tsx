@@ -86,7 +86,7 @@ function ToolRows({
 
 function pickedSuffix(count: number, whole = false): string {
   if (whole) {
-    return ' · whole server selected';
+    return ' · all tools selected';
   }
   return count > 0 ? ` · ${count} selected` : '';
 }
@@ -122,8 +122,8 @@ function ServerTools({
           title={`Sign in to see the tools of ${bucket.name}`}
           description={
             wholeServerSelected
-              ? `Selected without a sign-in: the whole server is part of the toolset and resolves for people who have access to ${bucket.name}. For you, the resolved list is incomplete until you sign in. Individual tools can be picked once they are listed.`
-              : `Its tools are listed once your session is signed in to it. The whole server can be selected without signing in — it then resolves for the people who have access to it — but individual tools can only be picked once they are listed.`
+              ? `Selected without a sign-in: it resolves for people with access to ${bucket.name}. Sign in to list and pick its tools.`
+              : 'Sign in to list and pick its tools. The whole connector can be selected without it.'
           }
         />
         {/* muster naming the server in servers_requiring_auth is reason enough
@@ -152,9 +152,8 @@ function ServerTools({
   }
   return (
     <Text variant="body-small" color="secondary">
-      No tools listed for this server right now
-      {bucket.state ? ` (${bucket.state})` : ''}. The whole server can still be
-      selected.
+      No tools listed right now{bucket.state ? ` (${bucket.state})` : ''}. The
+      whole connector can still be selected.
     </Text>
   );
 }
@@ -186,12 +185,12 @@ function ServerPanel({
           selector itself as the meta. */}
       <ToolTable
         role="group"
-        ariaLabel={`Whole server ${bucket.name}`}
+        ariaLabel={`Whole connector ${bucket.name}`}
         items={[
           {
             key: selector,
             name: `Every tool of ${bucket.name}`,
-            ariaLabel: `Server ${bucket.name}`,
+            ariaLabel: `Connector ${bucket.name}`,
             meta: (
               <Text variant="body-x-small" color="secondary">
                 <span className={cardClasses.code}>{selector}</span>
@@ -199,8 +198,8 @@ function ServerPanel({
               </Text>
             ),
             description: bucket.isFamily
-              ? 'A federated family: one tool surface across the management clusters it runs on.'
-              : 'Whatever this server exposes, now and after it adds tools.',
+              ? 'A federated family: one tool surface across its management clusters.'
+              : 'Also tools it adds later.',
             mode: {
               kind: 'select',
               role: 'checkbox',
@@ -271,7 +270,7 @@ function platformAdministrationEntry(
         <Alert
           status="warning"
           title="These tools manage the platform itself"
-          description="muster's own core tools register and control servers, run and change workflows, and read and change configuration. No shipped preset includes them except Full gateway; give them to an agent deliberately, one by one."
+          description="muster's own tools: they register connectors, run and change workflows, and change configuration. Only Full gateway includes them."
         />
         <ToolRows
           tools={tools}
@@ -344,7 +343,7 @@ export function groupSummary(
 ): string {
   const parts: string[] = [];
   if (group.servers.length > 0) {
-    parts.push(countNoun(group.servers.length, 'server'));
+    parts.push(countNoun(group.servers.length, 'connector'));
     const tools = group.servers.reduce(
       (sum, bucket) => sum + bucket.tools.length,
       0,

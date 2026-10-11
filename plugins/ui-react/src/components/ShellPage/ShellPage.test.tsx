@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   mockDesktopLayout,
@@ -169,6 +169,58 @@ describe('ShellPage', () => {
       expect(
         screen.getByRole('complementary', { name: 'Facts' }),
       ).toHaveTextContent('Address: jira.example.com');
+    });
+
+    // T72: Customize's six tabs with counts scroll sideways in one row.
+    it('scrolls a long tab strip to its selected tab, through the gutter', async () => {
+      layout = mockPhoneLayout();
+      const scrollTo = jest.fn();
+      Object.defineProperty(Element.prototype, 'scrollTo', {
+        configurable: true,
+        writable: true,
+        value: scrollTo,
+      });
+      try {
+        const { container } = renderAt(
+          '/connectors/jira/workflows',
+          <ShellPage
+            title="Customize"
+            tabs={[
+              { id: 'agents', path: 'agents', title: 'Agents', count: 6 },
+              { id: 'skills', path: 'skills', title: 'Skills', count: 12 },
+              { id: 'tools', path: 'tools', title: 'Connectors', count: 4 },
+              { id: 'models', path: 'models', title: 'Models', count: 1 },
+              { id: 'flows', path: 'workflows', title: 'Workflows', count: 9 },
+              { id: 'runs', path: 'runs', title: 'Runs', count: 30 },
+            ]}
+          />,
+        );
+
+        expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+          'Workflows (9)',
+        );
+        const strip = container.querySelector('.bui-Tabs')!.parentElement!;
+        await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+        expect(scrollTo.mock.contexts).toEqual([strip]);
+
+        // The bleed into the page gutter, read from the injected stylesheet
+        // (jsdom applies no media rules).
+        const bleeds = Array.from(document.styleSheets)
+          .flatMap(sheet => Array.from(sheet.cssRules))
+          .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule)
+          .flatMap(rule => Array.from(rule.cssRules))
+          .map(rule => rule.cssText)
+          .filter(text => /margin-inline: -16px;/.test(text));
+        expect(
+          bleeds.some(text =>
+            Array.from(strip.classList).some(name =>
+              text.startsWith(`.${name} {`),
+            ),
+          ),
+        ).toBe(true);
+      } finally {
+        delete (Element.prototype as Partial<Element>).scrollTo;
+      }
     });
 
     it('names the fold-out by asideLabel', () => {

@@ -122,7 +122,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/muster keeps it disconnected until it is activated\./),
+      screen.getByText(/disconnected until activated\./),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Use “Activate”/)).not.toBeInTheDocument();
   });
@@ -147,9 +147,7 @@ describe('AuthChain', () => {
     );
 
     expect(screen.getByText('sigv4')).toBeInTheDocument();
-    expect(
-      screen.getByText(/All users share this identity/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/all users share it/)).toBeInTheDocument();
     expect(screen.getByText('Signing region')).toBeInTheDocument();
     expect(screen.getByText('eu-central-1')).toBeInTheDocument();
     expect(screen.getByText('aws-mcp')).toBeInTheDocument();
@@ -247,9 +245,7 @@ describe('AuthChain', () => {
 
     expect(screen.getByText('Forward token')).toBeInTheDocument();
     expect(screen.queryByText('Signing region')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/All users share this identity/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/all users share it/)).not.toBeInTheDocument();
   });
 });
 
@@ -316,7 +312,7 @@ describe('ServerTools with no tools to show', () => {
       await screen.findByText(/the connector may be down or unreachable/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Use “Sign in” in the connector’s actions/),
+      screen.queryByText(/Use “Sign in” in its actions/),
     ).not.toBeInTheDocument();
   });
 
@@ -324,7 +320,7 @@ describe('ServerTools with no tools to show', () => {
     await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
 
     expect(
-      await screen.findByText(/Use “Sign in” in the connector’s actions/),
+      await screen.findByText(/Use “Sign in” in its actions/),
     ).toBeInTheDocument();
   });
 
@@ -336,7 +332,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        /connects per session with your own identity; its tools appear here once your muster session has connected to it/,
+        /connects per session with your identity; its tools appear once muster has connected it for you/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();

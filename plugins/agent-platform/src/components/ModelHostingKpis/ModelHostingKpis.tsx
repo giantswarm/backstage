@@ -95,7 +95,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
     costTile = (
       <KpiTile
         label="GPU cost now"
-        hint="What the GPU nodes running now cost per hour at the cloud's on-demand list price for their node size, as cluster-manager lists it. A pool that may run several sizes adds the range from its cheapest to its dearest."
+        hint="Hourly on-demand list price of the GPU nodes running now. A pool that may run several sizes adds a cheapest-to-dearest range."
         value={describeHourlyRange(cost.minUSD, cost.maxUSD)}
         sub={
           unpricedRunning > 0
@@ -160,7 +160,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             label="Model cache"
             hint={
               cache.basis === 'claims'
-                ? 'The volumes the model weights are cached on, as cluster-manager lists them: their size, billed every month they exist.'
+                ? 'Volumes caching model weights, as cluster-manager lists them — billed monthly while they exist.'
                 : 'What the serving backends hold in their download caches on the nodes.'
             }
             value={cache.size}

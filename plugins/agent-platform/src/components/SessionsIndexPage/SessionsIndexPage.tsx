@@ -264,7 +264,7 @@ function SessionsIndexPageContent() {
             title="Some sessions are not scoped to you"
             description={`kagent on ${notUserScopedInstallations.join(
               ', ',
-            )} is not configured to identify individual users, so sessions from those environments are shared rather than yours alone.`}
+            )} does not identify individual users, so their sessions are shared, not yours alone.`}
           />
         )}
 

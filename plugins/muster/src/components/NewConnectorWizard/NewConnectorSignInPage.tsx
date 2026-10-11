@@ -74,13 +74,13 @@ const SIGN_IN_CHOICES: Array<{
     title: 'Company login',
     recommended: true,
     description:
-      'People are signed in with their company account automatically. Muster forwards each person’s platform identity token, which is not scoped to this server — use it for apps your platform team runs.',
+      'Automatic, with the company account. Forwards each person’s platform identity token, which is not scoped to this server — only for apps your platform team runs.',
   },
   {
     value: 'own-account',
     title: 'Each person signs in with their own account',
     description:
-      'People connect their own account the first time an agent needs it, and their own permissions apply. Muster acts as the OAuth client.',
+      'Each person connects their account on first use; their own permissions apply.',
   },
   {
     value: 'none',
@@ -91,7 +91,7 @@ const SIGN_IN_CHOICES: Array<{
     value: 'sigv4',
     title: 'AWS request signing (SigV4)',
     description:
-      'Muster signs every request with its own shared AWS identity — not the person’s. For AWS-hosted servers.',
+      'For AWS-hosted servers. Muster signs every request with one shared AWS identity, not the person’s.',
   },
 ];
 
@@ -280,8 +280,7 @@ export function NewConnectorSignInPage() {
   return (
     <ConnectorWizardFrame step="signin" onBack={onBack}>
       <WizardStepHeading title="How do people sign in?">
-        Agents act as the person chatting with them, so with a personal sign-in
-        each person&apos;s own permissions apply.
+        Agents act as the person chatting with them.
       </WizardStepHeading>
 
       <div
@@ -309,8 +308,8 @@ export function NewConnectorSignInPage() {
       {state.authMode === 'own-account' && (
         <Flex direction="column" gap="3">
           <Text as="p" variant="body-small" color="secondary">
-            Before people can sign in, the app&apos;s authorization server must
-            allow redirects back to muster&apos;s callback URL
+            The app&apos;s authorization server must allow redirects to
+            muster&apos;s callback URL
             {callbackUrl ? ':' : ' (https://<muster host>/oauth/callback).'}
           </Text>
           {callbackUrl && (
@@ -335,10 +334,8 @@ export function NewConnectorSignInPage() {
           >
             <div className={classes.disclosureBody}>
               <Text variant="body-small" color="secondary">
-                Only needed when the app doesn&apos;t publish its sign-in
-                settings (GitHub, for example). Leave everything empty and
-                muster looks them up by itself — the default, and what most apps
-                expect.
+                Only for apps that don&apos;t publish their sign-in settings,
+                such as GitHub. Leave empty and muster looks them up.
               </Text>
               <TextField
                 label="Where people sign in (issuer URL)"
@@ -346,7 +343,7 @@ export function NewConnectorSignInPage() {
                 value={state.issuer}
                 onChange={setIssuer}
                 placeholder="https://auth.example.com"
-                description="The address of the app's sign-in service. Every setting below needs this one filled in."
+                description="Every setting below requires this."
                 {...fieldErrorProps(errorFor(fieldErrors.issuer))}
               />
               <TextField
@@ -358,7 +355,7 @@ export function NewConnectorSignInPage() {
                 placeholder="read write"
                 description={
                   authFields.scopes.available
-                    ? "The scopes as the app's documentation names them, separated by spaces."
+                    ? "Space-separated, as the app's documentation names them."
                     : authFields.scopes.reason
                 }
               />
@@ -368,7 +365,7 @@ export function NewConnectorSignInPage() {
                 value={state.authorizationEndpoint}
                 onChange={setAuthorizationEndpoint}
                 placeholder="https://github.com/login/oauth/authorize"
-                description="Where people are sent to sign in. Fill it in together with the token address below, or leave both empty."
+                description="Set together with the token address, or leave both empty."
                 {...fieldErrorProps(
                   errorFor(fieldErrors.authorizationEndpoint),
                 )}
@@ -379,7 +376,7 @@ export function NewConnectorSignInPage() {
                 value={state.tokenEndpoint}
                 onChange={setTokenEndpoint}
                 placeholder="https://github.com/login/oauth/access_token"
-                description="Where muster picks up the result of a sign-in. Fill it in together with the sign-in page address."
+                description="Set together with the sign-in page address."
                 {...fieldErrorProps(errorFor(fieldErrors.tokenEndpoint))}
               />
               <div
@@ -396,12 +393,10 @@ export function NewConnectorSignInPage() {
                   Client credentials — stored in a Kubernetes Secret
                 </Text>
                 <Text variant="body-small" color="secondary">
-                  If you registered this app with its provider yourself (a
-                  GitHub App, for example), its client ID and client secret are
-                  kept in a Kubernetes Secret. Enter where to find them: the
-                  Secret&apos;s name and the names of the keys inside it — never
-                  the client ID or secret themselves. Leave this empty when
-                  muster can register itself with the app.
+                  Only if you registered the app with its provider yourself,
+                  such as a GitHub App. Enter the Secret&apos;s name and key
+                  names — never the client ID or secret themselves. Leave empty
+                  when muster can register itself.
                 </Text>
                 <TextField
                   label="Secret name"
@@ -409,7 +404,6 @@ export function NewConnectorSignInPage() {
                   value={state.clientSecretName}
                   onChange={setClientSecretName}
                   placeholder="github-oauth-client"
-                  description="The name of the Kubernetes Secret, not its contents."
                   {...fieldErrorProps(errorFor(fieldErrors.clientSecretName))}
                 />
                 <TextField
@@ -418,7 +412,7 @@ export function NewConnectorSignInPage() {
                   value={state.clientSecretNamespace}
                   onChange={setClientSecretNamespace}
                   placeholder="muster"
-                  description="Leave empty when the Secret is in the connector's own namespace."
+                  description="Defaults to the connector's namespace."
                 />
                 <TextField
                   label="Key holding the client ID"
@@ -426,7 +420,7 @@ export function NewConnectorSignInPage() {
                   value={state.clientIdKey}
                   onChange={setClientIdKey}
                   placeholder="client-id"
-                  description="The key's name inside the Secret. Leave empty for client-id."
+                  description="Defaults to client-id."
                 />
                 <TextField
                   label="Key holding the client secret"
@@ -434,7 +428,7 @@ export function NewConnectorSignInPage() {
                   value={state.clientSecretKey}
                   onChange={setClientSecretKey}
                   placeholder="client-secret"
-                  description="The key's name inside the Secret. Leave empty for client-secret."
+                  description="Defaults to client-secret."
                 />
               </div>
               <Select
@@ -446,7 +440,7 @@ export function NewConnectorSignInPage() {
                     setGrantScope(key);
                   }
                 }}
-                description="Reusing a sign-in suits accounts people own, like GitHub: it lasts until they sign out of this connector."
+                description="Reuse suits personal accounts like GitHub; it lasts until the person signs out."
               />
             </div>
           </DisclosureAccordion>
@@ -461,13 +455,12 @@ export function NewConnectorSignInPage() {
             value={audiencesRaw}
             onChange={onAudiencesChange}
             placeholder="my-backend-audience"
-            description="Audiences the forwarded token must carry, comma-separated. Leave empty unless the backend checks a specific audience."
+            description="Comma-separated. Only if the backend checks a specific audience."
           />
           <Text as="p" variant="body-small" color="secondary">
-            Muster computes its identity-provider scope set from required
-            audiences at startup — a new audience takes effect only after muster
-            restarts and people sign in to the platform again. Reusing an
-            audience muster already requests needs no such step.
+            A new audience takes effect only after muster restarts and people
+            sign in to the platform again; one muster already requests works
+            right away.
           </Text>
         </Flex>
       )}
@@ -488,7 +481,7 @@ export function NewConnectorSignInPage() {
             placeholder="eu-central-1"
             description={
               authFields.sigv4.available
-                ? "The region in the server's URL — the endpoint checks the signature against it."
+                ? "Must match the region in the server's URL."
                 : authFields.sigv4.reason
             }
             {...fieldErrorProps(errorFor(fieldErrors.sigv4Region))}
@@ -500,7 +493,7 @@ export function NewConnectorSignInPage() {
             value={state.sigv4Service}
             onChange={setSigv4Service}
             placeholder="aws-mcp"
-            description="Leave empty to derive it from the URL's first hostname label."
+            description="Defaults to the URL's first hostname label."
           />
           <TextField
             label="Assumed role ARN"
@@ -509,7 +502,7 @@ export function NewConnectorSignInPage() {
             value={state.sigv4RoleArn}
             onChange={setSigv4RoleArn}
             placeholder="arn:aws:iam::123456789012:role/muster-mcp"
-            description="A role muster assumes before signing. Leave empty to sign as muster's own identity."
+            description="Defaults to muster's own identity."
           />
           {authAdvisories.map(advisory => (
             <Alert
@@ -525,13 +518,13 @@ export function NewConnectorSignInPage() {
       {!authenticated && (
         <SessionGate
           session={session}
-          context="Adding the connector runs live through muster, which needs a live session."
+          context="Adding the connector needs a muster session."
         />
       )}
       {validation.shown && fieldErrors.transport && (
         <Alert
           status="danger"
-          title="Please fix the following before continuing"
+          title="Fix before continuing"
           description={fieldErrors.transport}
         />
       )}

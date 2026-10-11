@@ -20,10 +20,13 @@ import {
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
+  StackedRowList,
+  type StackedRowItem,
   StatusDot,
   isAwaitingData,
   stopRowPress,
   useCatalogFilters,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type { ServerAuthStatus } from '../../apis/types';
@@ -62,6 +65,14 @@ const useStyles = makeStyles({
     justifyContent: 'center',
     fontWeight: 700,
     color: 'var(--bui-fg-secondary)',
+  },
+  // A phone row's description: two lines, then the connector's page.
+  description: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
   },
 });
 
@@ -152,6 +163,76 @@ function ConnectorStatusCell({
   );
 }
 
+/**
+ * The phone layout of the table (T22 B8): at 343px the table's three
+ * secondary columns froze at bui's 75px minimum, the name got ~46px, and the
+ * Sign in button was clipped out of reach inside the Status cell. A stacked
+ * row per connector instead:
+ *
+ * - line 1: the letter tile, the connector's name (the row's link) and its
+ *   state;
+ * - line 2: how one signs in · its tools;
+ * - under them, the description (two lines) and the sign-in, outside the
+ *   link. The sign-in grows into a sentence and a second button while it
+ *   waits on the person, so it gets the row's width, not the end of line 1.
+ */
+function ConnectorStackedList({
+  rows,
+  installation,
+  hrefOf,
+  toolsPending,
+}: {
+  rows: Row[];
+  installation: string;
+  hrefOf: (row: Row) => string | undefined;
+  toolsPending: boolean;
+}) {
+  const classes = useStyles();
+  const items = rows.map<StackedRowItem>(row => {
+    const status = connectorStatus(row.entry, row.authStatus);
+    const href = hrefOf(row);
+    const details =
+      row.description || row.signInServer ? (
+        <Flex direction="column" gap="2" align="start">
+          {row.description && (
+            <Text
+              variant="body-small"
+              color="secondary"
+              className={classes.description}
+            >
+              {row.description}
+            </Text>
+          )}
+          {row.signInServer && (
+            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+              <ServerAuthActions
+                noun="connector"
+                serverName={row.signInServer}
+                installation={installation}
+              />
+            </Flex>
+          )}
+        </Flex>
+      ) : undefined;
+    return {
+      id: row.id,
+      title: row.entry.id,
+      ...(href ? { href } : {}),
+      leading: (
+        <span className={classes.tile} aria-hidden>
+          {row.entry.id.charAt(0).toUpperCase()}
+        </span>
+      ),
+      ...(status.label
+        ? { status: <StatusDot tone={status.tone} label={status.label} /> }
+        : {}),
+      facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
+      ...(details ? { details } : {}),
+    };
+  });
+  return <StackedRowList rows={items} aria-label="Connectors" />;
+}
+
 function ConnectorsTable({
   search,
   installation,
@@ -225,6 +306,13 @@ function ConnectorsTable({
     facets: CONNECTOR_FACETS,
   });
   const rows = filters.filtered;
+  const isPhone = usePhoneLayout();
+  const hrefOf = (row: Row) =>
+    row.entry.shadowed
+      ? undefined
+      : links.server(row.entry.id, installation, {
+          q: row.entry.toolMatches ? search.trim() : undefined,
+        });
 
   const columns: ColumnConfig<Row>[] = [
     {
@@ -287,21 +375,23 @@ function ConnectorsTable({
         initial={INITIAL_ROWS}
         noun="connector"
       >
-        {page => (
-          <Table<Row>
-            columnConfig={columns}
-            data={page}
-            pagination={{ type: 'none' }}
-            rowConfig={{
-              getHref: row =>
-                row.entry.shadowed
-                  ? undefined
-                  : links.server(row.entry.id, installation, {
-                      q: row.entry.toolMatches ? search.trim() : undefined,
-                    }),
-            }}
-          />
-        )}
+        {page =>
+          isPhone ? (
+            <ConnectorStackedList
+              rows={page}
+              installation={installation}
+              hrefOf={hrefOf}
+              toolsPending={isAwaitingData(catalogue)}
+            />
+          ) : (
+            <Table<Row>
+              columnConfig={columns}
+              data={page}
+              pagination={{ type: 'none' }}
+              rowConfig={{ getHref: hrefOf }}
+            />
+          )
+        }
       </ShowMore>
     );
   }

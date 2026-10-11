@@ -98,9 +98,8 @@ export function ConfirmActionDialog({
       <Text as="p" variant="body-medium">
         {action?.destructive ? (
           <>
-            This permanently removes the connector{' '}
-            <code>{server.getName()}</code> from this muster instance. This is a
-            live mutation and cannot be undone.
+            Permanently removes the connector <code>{server.getName()}</code>{' '}
+            from muster. This cannot be undone.
           </>
         ) : (
           <>
@@ -114,7 +113,7 @@ export function ConfirmActionDialog({
       {mutation.isSuccess && (
         <Alert
           status="success"
-          description="Done. The connector list has been refreshed; the connection status may take a few seconds to settle."
+          description="Done. The connection status may take a few seconds to settle."
         />
       )}
     </ConfirmDialog>
@@ -159,7 +158,7 @@ export function AdHocServerDialog({
       validateTool="core_mcpserver_validate"
       saveTool="core_mcpserver_update"
       saveUntrackedReason="An edit of a server, not an addition."
-      savedMessage="Saved. The connector list has been refreshed."
+      savedMessage="Saved."
     />
   );
 }
@@ -169,9 +168,8 @@ export function AdHocServerDialog({
  * sign-in (see `serverLiveActions`).
  */
 export const OAUTH_SIGN_IN_GATE =
-  'This connector authenticates per user session (OAuth), and reconnecting ' +
-  'cannot sign a session in — muster refuses it. Use “Sign in” in the ' +
-  'page header instead.';
+  'This connector signs in per user session (OAuth), which reconnecting ' +
+  'cannot do. Use “Sign in” in the page header.';
 
 /**
  * The live lifecycle and CRUD actions muster offers for an ad-hoc server, each
@@ -207,8 +205,7 @@ export function serverLiveActions(server: MCPServer): {
         label: `Activate ${name}`,
         tool: 'core_service_start',
         args: { name },
-        description:
-          'muster will resume maintaining a connection to this connector.',
+        description: 'muster connects it again and keeps it connected.',
       },
       remove,
     };
@@ -219,14 +216,14 @@ export function serverLiveActions(server: MCPServer): {
       tool: 'core_service_stop',
       args: { name },
       description:
-        'muster will disconnect this connector and keep it deactivated until it is activated again.',
+        'muster disconnects it and keeps it off until it is activated again.',
     },
     reconnect: {
       label: `Reconnect ${name}`,
       tool: 'core_service_restart',
       args: { name },
       description:
-        'muster will drop the current session to this connector and establish a fresh one, re-running tool discovery.',
+        'muster opens a fresh session to it and re-runs tool discovery.',
     },
     reconnectGate: oauthSignInGated ? OAUTH_SIGN_IN_GATE : undefined,
     remove,

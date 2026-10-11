@@ -1,3 +1,8 @@
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmModelRow } from '../../../lib/llmUsage';
@@ -143,5 +148,32 @@ describe('LlmByModelTable', () => {
       expect(order).toHaveLength(15);
       expect(order[0]).toBe('model-299');
     });
+  });
+});
+
+// T22 B10: six columns in 343px clipped every figure and cut a model id to "a…".
+describe('LlmByModelTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  it('keeps the model, its cost and its tokens per call, the model on two lines', () => {
+    layout = mockPhoneLayout();
+    render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toEqual(['Model', 'Cost', 'Avg tokens/call']);
+    const name = screen.getByText(ROWS[0].model);
+    // Wraps to two lines rather than truncating to one, and no `title=`.
+    expect(name).not.toHaveAttribute('data-truncate');
+    expect(name).not.toHaveAttribute('title');
+  });
+
+  it('keeps every column on a desktop', () => {
+    layout = mockDesktopLayout();
+    render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
+
+    expect(headers()).toHaveLength(6);
   });
 });

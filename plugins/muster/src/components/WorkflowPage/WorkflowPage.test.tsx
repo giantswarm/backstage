@@ -3,7 +3,12 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, workflowsRouteRef } from '../../routes';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
@@ -491,64 +496,114 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('lists only the latest few runs and puts the totals in the details panel', async () => {
+  it('orders the sections: what it needs, how it runs, statistics, then one Advanced disclosure', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    const titles = [
+      'What it needs',
+      'How it runs',
+      'Statistics',
+      'Advanced',
+    ].map(title => screen.getByText(title));
+    for (let i = 1; i < titles.length; i++) {
+      expect(
+        // eslint-disable-next-line no-bitwise
+        titles[i - 1].compareDocumentPosition(titles[i]) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // No run list and no runs fact beside the page any more.
+    expect(screen.queryByText('Recent runs')).toBeNull();
+    expect(screen.queryByText(/older run/)).toBeNull();
+    const facts = within(
+      screen.getByRole('complementary', { name: 'Workflow details' }),
+    );
+    expect(facts.queryByText('Runs')).toBeNull();
+    expect(screen.queryByText(/succeeded ·/)).toBeNull();
+    // Where agents use it and the technical details wait inside Advanced.
+    expect(screen.queryByText('Where agents use it')).toBeNull();
+    expect(screen.queryByText('Technical details')).toBeNull();
+  });
+
+  it('puts the last run and muster’s run totals in Statistics', async () => {
     const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
 
-    expect(
-      await screen.findByText('1,200 succeeded · 34 failed'),
-    ).toBeInTheDocument();
+    const lastRun = await screen.findByTestId('workflow-last-run');
+    expect(lastRun).toHaveTextContent('Last run');
+    expect(lastRun).toHaveTextContent('Succeeded');
+    expect(lastRun).toHaveTextContent('started 9 Oct 2026, 08:00 UTC');
+    expect(lastRun).toHaveTextContent('took 18.0s');
+    // The breakdown counts every recorded run (muster's per-status totals),
+    // not the stats sample of two.
+    expect(await screen.findByText('1,200')).toBeInTheDocument();
+    expect(screen.getByText('34')).toBeInTheDocument();
     expect(api.listExecutions).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'completed', limit: 1 }),
     );
     expect(api.listExecutions).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'failed', limit: 1 }),
     );
-    expect(api.listExecutions).toHaveBeenCalledWith(
-      expect.objectContaining({ workflowName: 'deploy', limit: 5 }),
+    // One newest-run read, shared with the canvas overlay.
+    const unfiltered = api.listExecutions.mock.calls.filter(
+      ([options]) => !options.status,
     );
+    expect(unfiltered).toEqual([
+      [expect.objectContaining({ workflowName: 'deploy', limit: 1 })],
+    ]);
+    expect(api.getWorkflowStats).toHaveBeenCalledWith('deploy', 'gazelle');
     expect(
-      screen.getByText(/The newest 2 of 1,234 recorded runs\./),
+      screen.getByText(/about three weeks, at most 10,000/),
     ).toBeInTheDocument();
   });
 
-  it('names the failed step in a run’s trace, with the record behind its own fold-out', async () => {
-    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+  it('names a failed last run’s error in Statistics', async () => {
+    const api = makeApi();
+    api.listExecutions.mockImplementation(
+      async (options: { status?: string }) =>
+        options.status
+          ? { executions: [], total: 3, limit: 1, offset: 0, has_more: true }
+          : {
+              executions: [FAILED_RUN],
+              total: 6,
+              limit: 1,
+              offset: 0,
+              has_more: true,
+            },
+    );
+    await renderAt(`${BASE}/deploy?installation=gazelle`, api);
 
-    expect(await screen.findByText('Succeeded')).toBeInTheDocument();
-    const failed = await screen.findByText('Failed');
-    expect(screen.getByText('apply refused')).toBeInTheDocument();
-    expect(
-      screen.getByText(/muster keeps run records for about three weeks/),
-    ).toBeInTheDocument();
-
-    // Expanding the failed run fetches its per-step trace lazily.
-    await userEvent.click(failed);
-    expect(
-      await screen.findByText('Failed at step 2 (apply): apply refused'),
-    ).toBeInTheDocument();
-    expect(api.getExecution).toHaveBeenCalledWith('run-2', 'gazelle');
-    expect(screen.queryByText(/"execution_id": "run-2"/)).toBeNull();
-    const folds = screen.getAllByRole('button', {
-      name: 'Show technical information',
-    });
-    await userEvent.click(folds[folds.length - 1]);
-    expect(
-      await screen.findByText(/"execution_id": "run-2"/),
-    ).toBeInTheDocument();
+    const lastRun = await screen.findByTestId('workflow-last-run');
+    expect(lastRun).toHaveTextContent('Failed');
+    expect(lastRun).toHaveTextContent('apply refused');
+    expect(lastRun).toHaveTextContent('took 2.0s');
   });
 
-  it('shows the raw definition behind its own fold-out', async () => {
+  it('holds where agents use it and the technical details in one Advanced disclosure', async () => {
     const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
 
     expect(api.getWorkflow).not.toHaveBeenCalled();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Show the raw definition' }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: /^Advanced/ }));
+
+    expect(screen.getByText('Where agents use it')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Agents run this workflow by calling the tool workflow_deploy.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('No other workflow calls this one as a step.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Technical details')).toBeInTheDocument();
+    // The raw definition is part of the technical details — no second fold.
+    expect(
+      screen.queryByRole('button', { name: 'Show the raw definition' }),
+    ).toBeNull();
     const editor = await screen.findByRole('textbox', {
       name: 'Definition (YAML)',
     });
     expect(editor).toHaveValue('name: deploy\nsteps: []\n');
     expect(api.getWorkflow).toHaveBeenCalledWith('deploy', 'gazelle');
+    expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
   });
 
   it('offers no run, create, edit or delete affordances — the page is read-only (D11)', async () => {
@@ -568,12 +623,16 @@ describe('WorkflowPage', () => {
 
     expect(
       screen.getByText(
-        /Run history, statistics and the read-only badge are read through your muster session/,
+        /Statistics, the last run and the read-only badge need a muster session/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('Only reads')).toBeNull();
-    expect(screen.queryByText(/succeeded ·/)).toBeNull();
+    expect(
+      screen.getByText(/Connect to muster above to see statistics/),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('workflow-last-run')).toBeNull();
     expect(api.listExecutions).not.toHaveBeenCalled();
+    expect(api.getWorkflowStats).not.toHaveBeenCalled();
     expect(api.describeTool).not.toHaveBeenCalled();
     expect(api.filterTools).not.toHaveBeenCalled();
     // The CR-backed flow still renders, without a run overlay.
@@ -596,5 +655,282 @@ describe('WorkflowPage', () => {
     expect(
       screen.getByRole('link', { name: 'Back to the workflows' }),
     ).toHaveAttribute('href', '/customize/workflows');
+  });
+});
+
+/** A workflow of `count` plain steps, and a parallel group as its second. */
+function longWorkflow(count: number): MusterWorkflow {
+  return new MusterWorkflow(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'Workflow',
+      metadata: { name: 'long', namespace: 'muster' },
+      spec: {
+        description: 'Many steps.',
+        steps: Array.from({ length: count }, (_, i) =>
+          i === 1
+            ? {
+                id: 'both',
+                description: 'Check both regions',
+                parallel: [
+                  {
+                    id: 'east',
+                    tool: 'core_service_list',
+                    description: 'East',
+                  },
+                  {
+                    id: 'west',
+                    tool: 'core_service_list',
+                    description: 'West',
+                  },
+                ],
+              }
+            : {
+                id: `step-${i + 1}`,
+                tool: 'core_service_list',
+                description: `Do thing ${i + 1}`,
+              },
+        ),
+      },
+      status: { valid: true },
+    } as never,
+    'gazelle',
+  );
+}
+
+describe('WorkflowPage at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('lists the steps in place of the canvas: groups indented, gates as lines, cleanup as its own section', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    // No canvas, so no sideways flow and no scroll box to trap the swipe.
+    expect(screen.queryByTestId('workflow-flow-canvas')).toBeNull();
+    expect(screen.queryByTestId('workflow-flow-viewport')).toBeNull();
+    const list = within(screen.getByTestId('workflow-step-list'));
+    expect(list.getByText(/Tap a step to see its details\.$/)).toBeVisible();
+
+    const steps = list.getByRole('list', {
+      name: "The workflow's 3 steps, in order",
+    });
+    const first = within(steps).getByRole('button', {
+      name: /^Step 1: Read the current pods, kubernetes · get_pods/,
+    });
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    // The title is written out, never cut.
+    expect(first).toHaveTextContent('Read the current pods');
+
+    // The condition is a line on the step it may skip, not a fork.
+    const gated = within(steps).getByRole('button', {
+      name: /^Step 2: Apply the manifests/,
+    });
+    expect(gated).toHaveTextContent('Only if step 1 (fetch) succeeded');
+    expect(list.queryByText(/^(yes|no)$/i)).toBeNull();
+
+    // The loop is a card with its steps indented under it.
+    const loop = within(steps).getByRole('button', {
+      name: /^Step 3: Check every cluster/,
+    });
+    expect(loop).toHaveTextContent('For each cluster in the input “clusters”');
+    const body = list.getByRole('list', { name: 'Steps of step 3' });
+    expect(loop.closest('li')).toContainElement(body);
+    expect(
+      within(body).getByRole('button', { name: /^Step 3\.1: Probe it/ }),
+    ).toBeInTheDocument();
+
+    // Cleanup is its own section, after the steps.
+    const cleanup = within(
+      screen.getByRole('region', { name: 'If a step fails' }),
+    );
+    expect(
+      cleanup.getByText('Cleanup muster runs when a step fails.'),
+    ).toBeInTheDocument();
+    expect(
+      cleanup.getByRole('button', { name: /^Cleanup step: Roll back/ }),
+    ).toBeInTheDocument();
+    // Plain level: the exact tool name appears nowhere until asked for.
+    expect(screen.queryByText('x_kubernetes_get_pods')).toBeNull();
+  });
+
+  it('opens a step’s details in place under it, several at once, and Close folds them back onto the step', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const gated = screen.getByRole('button', {
+      name: /^Step 2: Apply the manifests/,
+    });
+
+    await userEvent.click(gated);
+    expect(gated).toHaveAttribute('aria-expanded', 'true');
+    const panel = screen.getByRole('region', {
+      name: 'Details of Step 2 · Apply the manifests',
+    });
+    // In the step's own list item, right under it, and named as its control.
+    expect(gated.closest('li')).toContainElement(panel);
+    expect(gated).toHaveAttribute('aria-controls', panel.id);
+    expect(
+      within(panel).getByText(
+        'Only if step 1 (fetch) succeeded — otherwise this step is skipped.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(panel).getByRole('button', {
+        name: 'Show technical information',
+      }),
+    );
+    expect(within(panel).getByText('x_kubernetes_apply')).toBeInTheDocument();
+
+    // Opening another step leaves this one open: nothing jumps.
+    await userEvent.click(
+      screen.getByRole('button', { name: /^Step 1: Read the current pods/ }),
+    );
+    expect(screen.getAllByTestId('workflow-step-details')).toHaveLength(2);
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Close' }));
+    expect(gated).toHaveAttribute('aria-expanded', 'false');
+    expect(gated).toHaveFocus();
+    expect(screen.getAllByTestId('workflow-step-details')).toHaveLength(1);
+
+    // A press on the card folds it too.
+    const first = screen.getByRole('button', {
+      name: /^Step 1: Read the current pods/,
+    });
+    await userEvent.click(first);
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('workflow-step-details')).toBeNull();
+  });
+
+  it('marks each card with the latest run and what its tool does', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const list = screen.getByTestId('workflow-step-list');
+    const card = (key: string) =>
+      list.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
+
+    await waitFor(() =>
+      expect(card('s0')).toHaveAttribute('data-run-status', 'completed'),
+    );
+    expect(card('s0')).toHaveTextContent('✓ 1.2s');
+    expect(card('s1')).toHaveTextContent('Skipped');
+    expect(card('s2.0')).toHaveTextContent('✓ ×2');
+    expect(card('f0')).toHaveAttribute('data-run-status', 'notRun');
+    await waitFor(() => expect(card('s0')).toHaveTextContent('Reads'));
+    expect(card('s1')).toHaveTextContent('Changes things');
+    expect(
+      screen.getByRole('button', {
+        name: /^Step 2: .*skipped in the last run/,
+      }),
+    ).toBe(card('s1'));
+  });
+
+  it('shows a long workflow a page of steps at a time, a parallel group as its own indented list', async () => {
+    mockWorkflows = [longWorkflow(300)];
+    await renderAt(`${BASE}/long?installation=gazelle`);
+
+    const steps = screen.getByRole('list', {
+      name: "The workflow's 300 steps, in order",
+    });
+    // 20 top-level cards, the parallel group's two siblings under step 2.
+    expect(
+      within(steps).getAllByRole('button', { name: /^Step [\d.]+: / }),
+    ).toHaveLength(22);
+    const group = screen.getByRole('button', {
+      name: /^Step 2: Check both regions, These run at the same time/,
+    });
+    const siblings = screen.getByRole('list', { name: 'Steps of step 2' });
+    expect(group.closest('li')).toContainElement(siblings);
+    expect(within(siblings).getAllByRole('button')).toHaveLength(2);
+    expect(
+      screen.getByRole('button', { name: 'Show 20 more steps' }),
+    ).toBeInTheDocument();
+  });
+
+  it('wraps a long default instead of cutting it', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+    const pill = screen.getByTestId('arg-default');
+
+    expect(getComputedStyle(pill).whiteSpace).not.toBe('nowrap');
+    expect(getComputedStyle(pill.firstElementChild!).whiteSpace).toBe('normal');
+    expect(pill).toHaveTextContent('default: false');
+  });
+
+  it('says when the last run started to the minute, as text — a phone shows no hover title', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    expect(await screen.findByTestId('workflow-last-run')).toHaveTextContent(
+      'started 9 Oct 2026, 08:00 UTC',
+    );
+  });
+});
+
+describe('WorkflowPage on a desktop', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    layout = mockDesktopLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('never cuts a step title: wraps it in a taller box, and tooltips only a title that may not show whole', async () => {
+    const long =
+      'Read the health of the control plane and of every node it reports';
+    const huge =
+      'CPU saturation across all nodes, averaged over fifteen minutes, compared with the requests the release asks for, per namespace and per node pool';
+    mockWorkflows = [
+      new MusterWorkflow(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'Workflow',
+          metadata: { name: 'titles', namespace: 'muster' },
+          spec: {
+            steps: [
+              { id: 'a', tool: 'core_service_list', description: 'Short' },
+              { id: 'b', tool: 'core_service_list', description: long },
+              { id: 'c', tool: 'core_service_list', description: huge },
+            ],
+          },
+          status: { valid: true },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    await renderAt(`${BASE}/titles?installation=gazelle`);
+    const figure = screen.getByTestId('workflow-flow-canvas');
+    const node = (key: string) =>
+      figure.querySelector(`[data-step-key="${key}"]`) as HTMLElement;
+    const title = (key: string) =>
+      within(node(key)).getByText(/./, {
+        selector: '[class*="title"]',
+      });
+
+    // Every title is written out in full; the box decides how it shows.
+    expect(node('s0')).toHaveAttribute('data-title-fit', 'oneLine');
+    expect(title('s0')).toHaveTextContent('Short');
+    expect(title('s0')).not.toHaveAttribute('title');
+    expect(node('s1')).toHaveAttribute('data-title-fit', 'twoLines');
+    expect(title('s1')).toHaveTextContent(long);
+    expect(title('s1')).toHaveAttribute('title', long);
+    expect(node('s2')).toHaveAttribute('data-title-fit', 'clamped');
+    expect(title('s2')).toHaveTextContent(huge);
+    expect(title('s2')).toHaveAttribute('title', huge);
+    // A wrapped title gets the taller box, and the boxes share one width.
+    expect(parseFloat(node('s1').style.height)).toBeGreaterThan(
+      parseFloat(node('s0').style.height),
+    );
+    expect(node('s0').style.width).toBe(node('s2').style.width);
+    // Two lines, then the clamp — never a one-line ellipsis.
+    const style = getComputedStyle(title('s1'));
+    expect(style.whiteSpace).not.toBe('nowrap');
+    expect(style.textOverflow).not.toBe('ellipsis');
+  });
+
+  it('keeps the capped canvas, with no step list', async () => {
+    await renderAt(`${BASE}/deploy?installation=gazelle`);
+
+    expect(screen.getByTestId('workflow-flow-viewport')).toBeInTheDocument();
+    expect(screen.queryByTestId('workflow-step-list')).toBeNull();
+    expect(
+      screen.getByText(/Select a step to see its details\.$/),
+    ).toBeInTheDocument();
   });
 });

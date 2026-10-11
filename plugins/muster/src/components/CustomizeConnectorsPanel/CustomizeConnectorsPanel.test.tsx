@@ -3,6 +3,11 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
@@ -433,6 +438,129 @@ describe('CustomizeConnectorsPanel', () => {
       expect(
         screen.getByText('20 connectors shown, 280 more'),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('at phone width (T22 B8)', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    const list = () => screen.getByRole('list', { name: 'Connectors' });
+    const items = () => within(list()).getAllByRole('listitem');
+    const itemOf = (name: string) =>
+      within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
+
+    it('stacks a row per connector: name and state, then sign-in and tools', async () => {
+      await renderPanel();
+
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      // No table to squeeze: its columns froze at 75px and clipped Sign in.
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
+      expect(items()).toHaveLength(3);
+
+      const github = itemOf('github');
+      expect(
+        within(github).getByRole('link', { name: 'github' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/connectors/github?installation=gazelle',
+      );
+      expect(within(github).getByText('Your own account')).toBeInTheDocument();
+      expect(
+        within(github).getByText('Repositories and pull requests'),
+      ).toBeInTheDocument();
+      expect(
+        await within(github).findByText('Sign in needed'),
+      ).toBeInTheDocument();
+
+      const kubernetes = itemOf('kubernetes');
+      expect(within(kubernetes).getByText('Company login')).toBeInTheDocument();
+      expect(within(kubernetes).getByText('1 tool')).toBeInTheDocument();
+      expect(within(kubernetes).getByText('Connected')).toBeInTheDocument();
+      expect(
+        within(kubernetes).queryByRole('button', { name: 'Sign in' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("signs in from the row, the button outside the row's link", async () => {
+      const open = jest.spyOn(window, 'open').mockReturnValue(null);
+      await renderPanel();
+
+      const github = itemOf('github');
+      const signIn = await within(github).findByRole('button', {
+        name: 'Sign in',
+      });
+      expect(
+        within(github).getByRole('link', { name: 'github' }),
+      ).not.toContainElement(signIn);
+      await userEvent.click(signIn);
+
+      await waitFor(() =>
+        expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
+      );
+      expect(mockNavigate).not.toHaveBeenCalled();
+      open.mockRestore();
+    });
+
+    it('keeps the table on a wide viewport', async () => {
+      layout.restore();
+      layout = mockDesktopLayout();
+      await renderPanel();
+
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('list', { name: 'Connectors' }),
+      ).not.toBeInTheDocument();
+      expect(rowOf('github')).toBeInTheDocument();
+    });
+
+    it('draws three connectors with no paging chrome', async () => {
+      await renderPanel();
+
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      expect(items()).toHaveLength(3);
+      expect(
+        screen.queryByRole('button', { name: /^Show \d+ more|fewer/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
+    });
+
+    it('windows 300 connectors by name, a page of stacked rows at a time', async () => {
+      mockServers = Array.from({ length: 300 }, (_, i) =>
+        makeServer(`connector-${String(i).padStart(3, '0')}`),
+      ).reverse();
+      await renderPanel();
+
+      expect(items()).toHaveLength(20);
+      expect(within(items()[0]).getByText('connector-000')).toBeInTheDocument();
+      expect(
+        screen.getByText('20 connectors shown, 280 more'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 20 more connectors' }),
+      );
+      expect(items()).toHaveLength(40);
+    });
+
+    it('narrows the stacked rows with the filters', async () => {
+      await renderPanel();
+
+      await userEvent.click(
+        await screen.findByRole('button', {
+          name: /Filter by connection/,
+          hidden: true,
+        }),
+      );
+      await userEvent.click(
+        await screen.findByRole('option', { name: 'Sign-in needed 1' }),
+      );
+      await userEvent.keyboard('{Escape}');
+
+      expect(items()).toHaveLength(1);
+      expect(itemOf('github')).toBeInTheDocument();
     });
   });
 

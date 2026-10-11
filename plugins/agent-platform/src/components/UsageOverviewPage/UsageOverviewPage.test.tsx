@@ -293,7 +293,7 @@ describe('UsageOverviewPage', () => {
   it('draws model calls per day as an activity heatmap', async () => {
     renderPage();
 
-    const grid = await screen.findByRole('img', {
+    const grid = await screen.findByRole('group', {
       name: /^Model calls per day:/,
     });
     // The day is formatted in the reader's locale, so only its parts are
@@ -304,7 +304,9 @@ describe('UsageOverviewPage', () => {
     expect(grid.querySelectorAll('rect[data-day]')).toHaveLength(3);
     // The last day is today, still filling up — its cell says so.
     expect(
-      within(grid).getByText(/^Sun, .*11.* \(today, so far\): 12 model calls$/),
+      within(grid).getByRole('button', {
+        name: /^Sun, .*11.* \(today, so far\): 12 model calls$/,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -317,7 +319,7 @@ describe('UsageOverviewPage', () => {
       await screen.findByText(/could not be loaded from the metrics store/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('img', { name: /^Model calls per day:/ }),
+      screen.queryByRole('group', { name: /^Model calls per day:/ }),
     ).toBeNull();
     // The rest of the view is still true without them.
     expect(screen.getByText('Gateway health')).toBeInTheDocument();

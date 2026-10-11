@@ -6,8 +6,8 @@ import {
 } from '@backstage/frontend-plugin-api';
 import {
   Avatar,
-  Button,
   ButtonIcon,
+  Flex,
   Menu,
   MenuItem,
   MenuSection,
@@ -43,9 +43,33 @@ const useStyles = makeStyles({
         'var(--agent-shell-avatar-ring, inset 0 0 0 1px var(--bui-border-2))',
     },
   },
-  button: {
+  // The pinned rail's trigger, dressed as a rail item (RailLink's padding,
+  // radius and hover) so it lines up left with the rest. Not a bui Button: its
+  // content box centers whatever it holds (T73).
+  railItem: {
+    display: 'block',
     width: '100%',
-    justifyContent: 'flex-start',
+    padding: 'var(--bui-space-2)',
+    boxSizing: 'border-box',
+    border: 0,
+    borderRadius: 'var(--bui-radius-2)',
+    background: 'transparent',
+    color: 'var(--bui-fg-primary)',
+    font: 'inherit',
+    textAlign: 'left',
+    cursor: 'pointer',
+    '&:hover, &[data-pressed], &[aria-expanded="true"]': {
+      background: 'var(--agent-shell-rail-item-hover, var(--bui-bg-neutral-2))',
+    },
+    '&[data-focus-visible]': {
+      outline: '2px solid var(--bui-ring)',
+      outlineOffset: -2,
+    },
+  },
+  railItemText: {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
   },
   identity: {
     display: 'flex',
@@ -174,15 +198,25 @@ export function ProfileMenu({
       <ButtonIcon variant="tertiary" icon={avatar} aria-label={item.title} />
     );
   } else {
+    // Who is signed in, with what the entry opens beneath — the subtitle is
+    // what tells it apart from a name tag (T73). Without a name yet, the title
+    // alone. The accessible name stays the title, which the subtitle shows.
     trigger = (
-      <Button
-        variant="tertiary"
-        iconStart={avatar}
-        aria-label={item.title}
-        className={classes.button}
-      >
-        {name || item.title}
-      </Button>
+      <AriaButton aria-label={item.title} className={classes.railItem}>
+        <Flex align="center" gap="2">
+          {avatar}
+          <span className={classes.railItemText}>
+            <Text as="span" variant="body-medium" truncate>
+              {name || item.title}
+            </Text>
+            {name && (
+              <Text as="span" variant="body-small" color="secondary" truncate>
+                {item.title}
+              </Text>
+            )}
+          </span>
+        </Flex>
+      </AriaButton>
     );
   }
 

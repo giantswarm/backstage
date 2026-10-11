@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
-import { Cell, CellText, Skeleton, Table, Text, useTable } from '@backstage/ui';
+import { Cell, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
   columnMax,
   DataBar,
   ShowMore,
+  usePhoneColumns,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import {
@@ -17,6 +19,7 @@ import {
   type Currency,
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
+import { NameCell } from '../LlmUsage/NameCell';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
 
@@ -97,6 +100,7 @@ export function ByAgentTable({
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
+  const isPhone = usePhoneLayout();
 
   // One maximum per column, and the cost column's is derived the same way its
   // cells are — from the row's tokens and the shared rate — so the longest bar
@@ -122,7 +126,19 @@ export function ByAgentTable({
       label: 'Agent',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <CellText title={row.agentName} href={row.href} />,
+      // At phone width the Reported cost column is hidden; a runtime's own
+      // figure is named under the agent instead, so it stays on the row.
+      cell: row => (
+        <NameCell
+          title={row.agentName}
+          href={row.href}
+          description={
+            isPhone && row.reportedCostUsd !== undefined
+              ? `${formatUsd(row.reportedCostUsd)} reported by its runtime`
+              : undefined
+          }
+        />
+      ),
     },
     {
       id: 'sessions',
@@ -234,7 +250,7 @@ export function ByAgentTable({
                     as="span"
                     variant="body-small"
                     color="secondary"
-                    title="This agent's runtime reported no cost for these turns. Only some runtimes price their own work — the claude harness does, ADK does not."
+                    title="Only some runtimes report a cost — the claude harness does, ADK does not."
                   >
                     Not reported
                   </Text>
@@ -254,6 +270,15 @@ export function ByAgentTable({
         ]
       : []),
   ];
+
+  // At phone width the agent, its sessions and the estimate (T22 B11): six or
+  // seven columns in 343px clipped every figure. Turns and tokens are in the
+  // totals above and on the agent's own Usage tab, a link away.
+  const shownColumns = usePhoneColumns(columnConfig, [
+    'agentName',
+    'sessions',
+    'estCostUsd',
+  ]);
 
   const { tableProps } = useTable<ByAgentRow>({
     mode: 'complete',
@@ -277,8 +302,6 @@ export function ByAgentTable({
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. The section above renders a spinner
           while loading, so this table only ever mounts with data. */}
-      {/* The table scrolls inside the card at phone width rather than pushing
-          the page wide — the 375px requirement. */}
       <ShowMore
         items={tableProps.data ?? []}
         initial={BY_AGENT_ROWS}
@@ -286,18 +309,16 @@ export function ByAgentTable({
         revealAll
       >
         {visible => (
-          <div style={{ overflowX: 'auto' }}>
-            <Table<ByAgentRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={columnConfig}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  {emptyMessage}
-                </Text>
-              }
-            />
-          </div>
+          <Table<ByAgentRow>
+            {...tableProps}
+            data={visible}
+            columnConfig={shownColumns}
+            emptyState={
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            }
+          />
         )}
       </ShowMore>
       {/* The note has to match what the column actually shows. It described a
@@ -311,18 +332,15 @@ export function ByAgentTable({
             {rateWindow ? `the last ${rateWindow} of ` : ''}
             {installation ?? 'this environment'}&apos;s observed cost per token
             — <strong>a blend across every model</strong>, not each agent&apos;s
-            own. The session detail page prices one session at its own
-            model&apos;s rate instead, so the two will differ. Not a billed
-            figure.
+            own. Session pages use each session&apos;s own model rate, so the
+            figures differ. Not a billed figure.
             {anyReported &&
               ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
           </>
         ) : (
           <>
-            No cost estimate: no rate could be derived from{' '}
-            {installation ?? 'this environment'}&apos;s gateway metrics, so
-            there is nothing to price your token counts at. The counts
-            themselves are unaffected.
+            No cost estimate: {installation ?? 'this environment'}&apos;s
+            gateway metrics yield no rate. Token counts are unaffected.
           </>
         )}
       </div>

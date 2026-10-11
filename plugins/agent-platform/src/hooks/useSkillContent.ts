@@ -4,11 +4,13 @@ import {
   useApi,
 } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
-import type { DiscoveredSkill } from '../lib/skills';
+import type { DiscoveredSkill, SkillFileListing } from '../lib/skills';
 
 /**
- * One skill's SKILL.md at a commit, split the way the add-skill form edits it.
- * Mirrors `SkillContent` in plugins/gs-backend/src/agentSkills/readSkillContent.ts.
+ * One skill's SKILL.md at a commit, split the way the add-skill form edits it,
+ * with the list of the skill's files (`files`, absent when the backend could
+ * not list them). Mirrors `SkillContent` in
+ * plugins/gs-backend/src/agentSkills/readSkillContent.ts.
  */
 export type SkillContent = {
   repoUrl: string;
@@ -18,7 +20,26 @@ export type SkillContent = {
   description: string;
   /** The Markdown body under the frontmatter. */
   instructions: string;
-};
+} & SkillFileListing;
+
+/**
+ * The reason a failed skill read gives (gs-backend's `{error: {message}}`),
+ * else `fallback` with the HTTP status.
+ */
+export async function skillReadError(
+  response: Response,
+  fallback: string,
+): Promise<Error> {
+  const reason = await response
+    .json()
+    .then((body: { error?: { message?: unknown } }) => body?.error?.message)
+    .catch(() => undefined);
+  return new Error(
+    typeof reason === 'string' && reason
+      ? reason
+      : `${fallback}: HTTP ${response.status}`,
+  );
+}
 
 /**
  * Reads a skill's current SKILL.md — frontmatter `name`/`description` and the
@@ -53,17 +74,7 @@ export function useSkillContent(
         `${baseUrl}/agent-skills/content?${params.toString()}`,
       );
       if (!response.ok) {
-        const reason = await response
-          .json()
-          .then(
-            (body: { error?: { message?: unknown } }) => body?.error?.message,
-          )
-          .catch(() => undefined);
-        throw new Error(
-          typeof reason === 'string' && reason
-            ? reason
-            : `Could not read the skill: HTTP ${response.status}`,
-        );
+        throw await skillReadError(response, 'Could not read the skill');
       }
       return (await response.json()) as SkillContent;
     },

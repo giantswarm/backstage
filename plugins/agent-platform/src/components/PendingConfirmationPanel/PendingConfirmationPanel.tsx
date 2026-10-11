@@ -12,6 +12,10 @@ import {
   TextAreaField,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import {
+  PHONE_MEDIA,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
 import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import SecurityIcon from '@material-ui/icons/Security';
@@ -23,7 +27,7 @@ import type {
 } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey } from '../../lib/sendKey';
+import { isSendKey, sendEnterKeyHint, sendKeyCaption } from '../../lib/sendKey';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -33,6 +37,17 @@ import { isSendKey } from '../../lib/sendKey';
  * body between them scrolls.
  */
 const CARD_MAX_HEIGHT = 'min(50dvh, 440px)';
+
+/**
+ * At phone width (T22 B21) the composer under the card folds to one line, so
+ * the card keeps half the view without the 440px cap, and never more than
+ * leaves 200px beside the bottom bar — the conversation the person answers
+ * from — which binds in landscape, where half the view is little. The body is
+ * the card's one scroller there: the proposed arguments flow in it rather
+ * than in a second, nested one.
+ */
+const PHONE_CARD_MAX_HEIGHT =
+  'min(50dvh, calc(100dvh - var(--agent-shell-mobile-bar-height, 0px) - 200px))';
 
 const useStyles = makeStyles(theme => ({
   // Attached to the message box: the same border, radius and surface as the
@@ -52,6 +67,9 @@ const useStyles = makeStyles(theme => ({
     backgroundColor: `var(--bui-bg-neutral-1, ${theme.palette.background.paper})`,
     padding: theme.spacing(1.5, 2),
     gap: theme.spacing(1.5),
+    [PHONE_MEDIA]: {
+      maxHeight: PHONE_CARD_MAX_HEIGHT,
+    },
   },
   // An approval keeps the prototype's warm permission surface: what it asks
   // for changes things outside the conversation. Colours ride the shell's
@@ -136,6 +154,10 @@ const useStyles = makeStyles(theme => ({
     overflowWrap: 'anywhere',
     maxHeight: 160,
     overflowY: 'auto',
+    [PHONE_MEDIA]: {
+      maxHeight: 'none',
+      overflowY: 'visible',
+    },
   },
   // bui's form controls are sized for dense forms — 12px labels against the
   // conversation's 16px/24px. A question's options *are* conversation, so they are
@@ -225,8 +247,9 @@ export type PendingConfirmationPanelProps = {
  *
  * **Enter sends from any answer control** — a radio, a checkbox or the text box —
  * with Shift+Enter for a newline in the box, the same rule as the composers (see
- * {@link isSendKey}). Handled explicitly rather than left to the browser: a textarea
- * never submits its form on Enter, and whether a focused radio does is
+ * {@link isSendKey}); on touch input Enter breaks the line and only the buttons
+ * send. Handled explicitly rather than left to the browser: a textarea never
+ * submits its form on Enter, and whether a focused radio does is
  * browser-specific, so without this the answer could only be sent by reaching the
  * button. In the **reason** box Enter confirms the decline instead: that box only
  * exists because Decline was pressed, and sending an approval from it would do the
@@ -254,6 +277,7 @@ export function PendingConfirmationPanel({
   agentName,
 }: PendingConfirmationPanelProps) {
   const classes = useStyles();
+  const touch = useTouchInput();
   const isQuestion = pending.asks === 'input' && pending.questions.length > 0;
   const questionCount = pending.questions.length;
   const isPaged = isQuestion && questionCount > 1;
@@ -434,10 +458,15 @@ export function PendingConfirmationPanel({
     // Send was refused, and on the last page the reason is out of sight.
     caption = `Question ${firstUnanswered + 1} still needs an answer.`;
   } else if (isQuestion && !isLastPage) {
-    caption = 'Enter goes to the next question, Shift+Enter for a new line.';
+    caption = sendKeyCaption(
+      { key: 'Enter goes to the next question', tap: 'Tap Next to go on' },
+      touch,
+    );
   } else if (isQuestion) {
-    caption =
-      'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.';
+    caption = `Answering resumes the agent where it stopped. ${sendKeyCaption(
+      { key: 'Enter sends', tap: 'Tap Send answer to send it' },
+      touch,
+    )}`;
   }
 
   const send = () => {
@@ -466,7 +495,7 @@ export function PendingConfirmationPanel({
   // approval as well. Prevented even when nothing can be sent, so Enter never
   // breaks the line in the box.
   const handleAnswerKeyDown = (event: KeyboardEvent) => {
-    if (isSendKey(event)) {
+    if (isSendKey(event, touch)) {
       event.preventDefault();
       if (isLastPage) {
         send();
@@ -489,7 +518,7 @@ export function PendingConfirmationPanel({
   };
 
   const handleReasonKeyDown = (event: KeyboardEvent) => {
-    if (isSendKey(event)) {
+    if (isSendKey(event, touch)) {
       event.preventDefault();
       decline();
     }
@@ -577,8 +606,8 @@ export function PendingConfirmationPanel({
 
         {isUserScoped === false && (
           <Text variant="body-small" color="secondary">
-            This kagent deployment does not scope sessions to individual users,
-            so this question may have been put to somebody else.
+            This kagent does not scope sessions to users, so this question may
+            be meant for someone else.
           </Text>
         )}
 
@@ -655,6 +684,7 @@ export function PendingConfirmationPanel({
               value={typed[pageIndex] ?? ''}
               onChange={value => setTypedAt(pageIndex, value)}
               onKeyDown={handleAnswerKeyDown}
+              enterKeyHint={sendEnterKeyHint(touch)}
               isDisabled={isAnswering}
               rows={2}
             />
@@ -676,6 +706,7 @@ export function PendingConfirmationPanel({
             value={reason}
             onChange={setReason}
             onKeyDown={handleReasonKeyDown}
+            enterKeyHint={sendEnterKeyHint(touch)}
             isDisabled={isAnswering}
             rows={2}
           />

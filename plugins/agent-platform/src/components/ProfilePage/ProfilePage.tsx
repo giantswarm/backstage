@@ -89,7 +89,14 @@ export function ProfilePage() {
               size="large"
               purpose="decoration"
             />
-            <Flex direction="column" gap="1">
+            {/* Shrinks beside the avatar and breaks a long address anywhere,
+                rather than pushing the row past a phone's 343px (T22 C6). */}
+            <Flex
+              direction="column"
+              gap="1"
+              style={{ minWidth: 0, overflowWrap: 'anywhere' }}
+              data-testid="profile-identity"
+            >
               <Text as="div" variant="title-x-small" weight="bold">
                 {name || 'Signed in'}
               </Text>

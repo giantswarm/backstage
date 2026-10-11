@@ -632,7 +632,7 @@ export function ServingPage() {
         <EmptyState
           missing="data"
           title="No serving layer"
-          description="None of the reachable environments has a serving layer this portal can see — KServe LLMInferenceServices, or a model-manager (Ollama, LM Studio, Lemonade, KServe). Model configs pointing at external endpoints work without one. A GPU node pool brings model serving to a cluster along with the capacity for it."
+          description="No reachable environment has a serving layer this portal can see (KServe or model-manager). Model configs for external endpoints work without one; a GPU node pool adds serving to a cluster."
           action={addActions}
         />
       );
@@ -643,7 +643,7 @@ export function ServingPage() {
         title="No model backend yet"
         description={`model-manager on ${installations.join(
           ', ',
-        )} is running with no backend registered, so nothing is served here yet. Register a backend you already run — Ollama, LM Studio, Lemonade or KServe — and its models appear on this page; a GPU node pool brings model serving to a cluster along with the capacity for it.`}
+        )} has no backend registered. Register one you already run — Ollama, LM Studio, Lemonade or KServe — or add a GPU node pool.`}
         action={addActions}
       />
     );
@@ -655,22 +655,13 @@ export function ServingPage() {
     stoppingVia === 'llminferenceservice' &&
     !stopPermission.isLoading &&
     !stopPermission.allowed
-      ? `Your account may not delete LLMInferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}, so the cluster would refuse this.`
+      ? `Your account may not delete LLMInferenceService ${stopping.name} in ${stopping.namespace} on ${stopping.installation}.`
       : undefined);
 
   let description =
-    'Models served on the environments that have a serving layer — KServe LLMInferenceServices read from the cluster, or the inventory of a model-manager (Ollama, LM Studio, Lemonade, KServe). The model configs are how agents reach them.';
+    'Models served by KServe or a model-manager (Ollama, LM Studio, Lemonade, KServe). Agents reach them through model configs.';
   if (canLoad || canPull || canImport) {
-    description = `${description} ${[
-      canLoad && 'Serve a model from a curated preset or stop one',
-      canImport &&
-        "import a model from Hugging Face into a node's cache after a size and fit check",
-      canPull && 'pull a model onto a backend, load, unload or delete it',
-    ]
-      .filter(Boolean)
-      .join(
-        '; ',
-      )}; the model config agents use is created for a model the platform serves.`;
+    description = `${description} Serving a model here creates its model config.`;
   }
 
   return (

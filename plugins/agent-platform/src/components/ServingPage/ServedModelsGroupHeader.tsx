@@ -145,13 +145,23 @@ export function ServedModelsGroupHeader({
         </Text>
       )}
       {group.endpoint && (
-        <Flex align="center" gap="1">
+        // `minWidth: 0` on the row and the text, or the truncation never
+        // engages: a flex item is as wide as its content by default, and a
+        // long `…svc.cluster.local:11434` widened the whole card past a
+        // phone's width (T22 C21). The copy action carries the full URL.
+        <Flex
+          align="center"
+          gap="1"
+          style={{ minWidth: 0, maxWidth: '100%' }}
+          data-testid="served-models-group-endpoint"
+        >
           <Text
             as="span"
             variant="body-medium"
             color="secondary"
             truncate
             title={group.endpoint}
+            style={{ minWidth: 0 }}
           >
             {group.endpoint}
           </Text>

@@ -352,14 +352,14 @@ export function ModelDetailPage() {
             <Alert
               status="info"
               title={`Managed by ${owner}`}
-              description={`This model is asserted by ${owner}, which would revert portal edits on its next run — so it is read-only here. Change it where ${owner} is configured.`}
+              description={`${owner} asserts this model and would revert portal edits. Change it where ${owner} is configured.`}
             />
           )}
           {isUnsupportedProvider && !owner && (
             <Alert
               status="info"
               title={`Provider ${modelConfig.getProvider()} is not editable here`}
-              description="The edit form covers OpenAI-compatible, Anthropic, Gemini and Ollama models. Manage this config with kubectl."
+              description="The form covers OpenAI-compatible, Anthropic, Gemini and Ollama models; manage this one with kubectl."
             />
           )}
 

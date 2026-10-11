@@ -11,6 +11,8 @@ import {
   type Fact,
   FactList,
   InfoCard,
+  usePhoneLayout,
+  useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ClientServingSummary } from '../../lib/serving';
@@ -29,6 +31,24 @@ function Mono({ children }: { children: string }) {
     <Text variant="body-small" style={MONO}>
       {children}
     </Text>
+  );
+}
+
+/**
+ * A commit, short where a pointer can hover for the whole of it, whole where
+ * none can: a phone or a touch screen never shows a `title`, and these are
+ * the ids someone retypes into `kubectl` or `git`.
+ */
+function Pin({ value }: { value: string }) {
+  const isPhone = usePhoneLayout();
+  const isTouch = useTouchInput();
+  if (isPhone || isTouch) {
+    return <span style={MONO}>{value}</span>;
+  }
+  return (
+    <span style={MONO} title={value}>
+      {shortPin(value)}
+    </span>
   );
 }
 
@@ -59,9 +79,9 @@ function ResourceFacts({ agent }: { agent: Agent }) {
     facts.push({
       label: 'Revision',
       value: (
-        <span title={revision}>
-          <Mono>{shortPin(revision)}</Mono>
-        </span>
+        <Text variant="body-small">
+          <Pin value={revision} />
+        </Text>
       ),
     });
   }
@@ -81,10 +101,7 @@ function ResourceFacts({ agent }: { agent: Agent }) {
               key={`${skill.url}#${skill.path ?? ''}#${index}`}
               variant="body-small"
             >
-              {skillLabel(skill)} at{' '}
-              <span style={MONO} title={skill.pin}>
-                {shortPin(skill.pin)}
-              </span>
+              {skillLabel(skill)} at <Pin value={skill.pin} />
             </Text>
           ))}
         </Flex>

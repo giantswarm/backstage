@@ -165,7 +165,7 @@ describe('RemoveModelCacheDialog', () => {
     );
     expect(
       screen.getByText(
-        /The cluster's serving slice mounts this claim: it switches to serve from the node's disk — every pool of the cluster/,
+        /The cluster's serving slice mounts this claim: every pool switches to serving from the node's disk/,
       ),
     ).toBeInTheDocument();
     expect(screen.getByTestId('served-models')).toHaveTextContent(

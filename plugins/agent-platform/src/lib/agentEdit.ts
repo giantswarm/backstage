@@ -31,6 +31,12 @@ export type AgentEditState = {
   skills: AgentSkillEntry[];
   /** Extra HTTP(S) origins the agent may reach, one per line as typed. */
   egressText: string;
+  /**
+   * The Tools step's *Nothing outside the chat* was picked: an empty `toolset`
+   * then declares `preset:none` even for an agent that declares no toolset
+   * (whose untouched empty selection is no change).
+   */
+  chatOnly?: boolean;
 };
 
 /** The fields an update can carry, in the order the form shows them. */
@@ -116,7 +122,11 @@ export function changedFields(
   // change to `preset:none`.
   const declared = declaredSelection(agent);
   const selection = normalizeSelection(edit.toolset);
-  if (declared ? !sameList(selection, declared) : selection.length > 0) {
+  if (
+    declared
+      ? !sameList(selection, declared)
+      : selection.length > 0 || Boolean(edit.chatOnly)
+  ) {
     changed.push('toolset');
   }
   if (!sameSkills(edit.skills, baseline.skills)) {
@@ -250,6 +260,9 @@ export function formStateOfAgent(
     selectedSkills,
     keptSkills,
     toolset: baseline.toolset,
+    // An agent declaring no tools is *Nothing outside the chat* on the Tools
+    // step; one declaring no toolset at all (implicit full access) is not.
+    toolsChatOnly: agent.toolset !== undefined && baseline.toolset.length === 0,
   };
 }
 
@@ -302,5 +315,6 @@ export function editStateOfForm(
     toolset: form.toolset,
     skills: skillEntriesOfForm(agent, form),
     egressText: form.egressText,
+    chatOnly: Boolean(form.toolsChatOnly),
   };
 }

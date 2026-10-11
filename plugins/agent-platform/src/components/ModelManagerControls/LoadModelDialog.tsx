@@ -538,9 +538,9 @@ export function LoadModelDialog({
       <DialogBody>
         <Flex direction="column" gap="4" ref={fieldScope}>
           <Text variant="body-medium" color="secondary">
-            Starts serving through model-manager as you. On a GPU pool the model
-            is one of the presets published for the cluster; the node it needs
-            is launched for it and stopped when it is unloaded.
+            Serves through model-manager as you. On a GPU pool, presets are the
+            cluster's published ones; the needed node starts with the model and
+            stops when it is unloaded.
           </Text>
 
           {seed?.pool && (
@@ -675,7 +675,7 @@ export function LoadModelDialog({
                 <Flex direction="column" gap="1" data-testid="serve-nodes">
                   <CheckboxGroup
                     label="Nodes"
-                    description="Tick a node for one copy there, several for one copy on each behind the same endpoint. None ticked: one copy on a node that fits."
+                    description="One copy per ticked node, behind one endpoint. None ticked: one copy on a node that fits."
                     value={copyNodes}
                     onChange={setTickedNodes}
                     isDisabled={isBusy}

@@ -43,6 +43,7 @@ export const portalEvents = defineEvents({
         'skillDetail',
         'createAgentAssist',
         'searchPalette',
+        'skillCreationAssist',
       ],
     },
   },

@@ -273,7 +273,7 @@ export function SessionTimeline({
       title="Some messages could not be read"
       description={`${timeline.skippedMessages} ${
         timeline.skippedMessages === 1 ? 'message' : 'messages'
-      } in this session did not match the shape we expect from kagent and are not shown.`}
+      } in this session could not be read and are not shown.`}
     />
   );
 

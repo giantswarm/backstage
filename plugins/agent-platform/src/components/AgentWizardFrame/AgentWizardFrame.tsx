@@ -96,11 +96,14 @@ export function useAgentWizardLinks(): AgentWizardLinks {
 export function AgentWizardFrame({
   step,
   onBack,
+  rail,
   children,
 }: {
   step: AgentWizardStepId;
   /** Shown as the footer's Back button; the first step passes none. */
   onBack?: () => void;
+  /** A sticky overview beside the step, where there is room (`WizardFrame`). */
+  rail?: ReactNode;
   children: ReactNode;
 }) {
   const links = useAgentWizardLinks();
@@ -133,6 +136,7 @@ export function AgentWizardFrame({
       closeHref={closeHref}
       onBack={onBack}
       width="wide"
+      rail={rail}
     >
       {children}
     </WizardFrame>

@@ -7,7 +7,6 @@ import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import BarChart from '@material-ui/icons/BarChart';
 import Code from '@material-ui/icons/Code';
-import History from '@material-ui/icons/History';
 import FormatListNumbered from '@material-ui/icons/FormatListNumbered';
 import Share from '@material-ui/icons/Share';
 import Tune from '@material-ui/icons/Tune';
@@ -38,11 +37,9 @@ import {
   SessionGate,
   StateBadge,
 } from '../shared';
-import { WorkflowStatsPanel } from '../WorkflowDetailPage/WorkflowStatsPanel';
 import { WorkflowEffectBadge } from './WorkflowEffectBadge';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
-import { useRunCounts } from './useRecentRuns';
-import { WorkflowRunsSection } from './WorkflowRunsSection';
+import { WorkflowStatistics } from './WorkflowStatistics';
 
 const WORKFLOW_TOOL_PREFIX = 'workflow_';
 
@@ -67,6 +64,9 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   argHead: {
     flexShrink: 0,
+    // Never wider than the row: a long default wraps inside its pill.
+    minWidth: 0,
+    maxWidth: '100%',
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -80,15 +80,38 @@ const useStyles = makeStyles((theme: Theme) => ({
   pill: {
     display: 'inline-flex',
     alignItems: 'center',
-    height: 20,
+    boxSizing: 'border-box',
+    minHeight: 20,
+    maxWidth: '100%',
+    paddingTop: 2,
+    paddingBottom: 2,
     paddingLeft: theme.spacing(0.75),
     paddingRight: theme.spacing(0.75),
     borderRadius: theme.shape.borderRadius,
     fontSize: 11,
-    lineHeight: 1,
-    whiteSpace: 'nowrap',
+    lineHeight: 1.3,
     backgroundColor: theme.palette.action.selected,
     color: 'var(--bui-fg-secondary)',
+  },
+  // A default can be a long JSON object or URL; the list clips what
+  // overflows it, so the value wraps instead of running out of sight.
+  pillValue: {
+    display: 'inline',
+    minWidth: 0,
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+  },
+  // The Advanced disclosure's summary: a section-sized name over what it
+  // holds. Spans, not a Flex: it renders inside the trigger's button.
+  advancedSummary: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
+    textAlign: 'left',
+    padding: theme.spacing(0.5, 0),
+  },
+  advancedBody: {
+    paddingTop: theme.spacing(1),
   },
   pillRequired: {
     backgroundColor: 'transparent',
@@ -138,13 +161,15 @@ function ArgumentsList({ workflow }: { workflow: MusterWorkflow }) {
               </span>
             )}
             {def.default !== undefined && (
-              <span className={classes.pill}>
-                default:&nbsp;
-                <code>
-                  {typeof def.default === 'object'
-                    ? JSON.stringify(def.default)
-                    : String(def.default)}
-                </code>
+              <span className={classes.pill} data-testid="arg-default">
+                <span className={classes.pillValue}>
+                  default:{' '}
+                  <code>
+                    {typeof def.default === 'object'
+                      ? JSON.stringify(def.default)
+                      : String(def.default)}
+                  </code>
+                </span>
               </span>
             )}
           </div>
@@ -160,9 +185,11 @@ function ArgumentsList({ workflow }: { workflow: MusterWorkflow }) {
 }
 
 /**
- * The technical-details block: the raw definition YAML (muster's
- * `/workflows/:name` already returns it; without a session the CR manifest
- * stands in), the exact referenced tools, and the CR's namespace and labels.
+ * The technical-details block: the CR's namespace and labels, the exact
+ * referenced tools, and the raw definition YAML (muster's `/workflows/:name`
+ * already returns it; without a session the CR manifest stands in). It sits
+ * inside the page's Advanced disclosure, which mounts it — and so reads the
+ * definition — only when opened.
  */
 function TechnicalDetails({
   workflow,
@@ -275,8 +302,6 @@ function WorkflowPageContent({
     staleTime: 30_000,
   });
   const effect = toolQuery.data ? toolEffect(toolQuery.data) : undefined;
-  // muster's own per-status totals: the run list itself stays a handful.
-  const runCounts = useRunCounts(name, installation, hasSession);
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
@@ -302,19 +327,6 @@ function WorkflowPageContent({
       label: 'Tool name',
       value: <code className={classes.mono}>{toolName}</code>,
     },
-    ...(runCounts
-      ? [
-          {
-            label: 'Runs',
-            value: (
-              <Text variant="body-small">
-                {runCounts.succeeded.toLocaleString('en-US')} succeeded ·{' '}
-                {runCounts.failed.toLocaleString('en-US')} failed
-              </Text>
-            ),
-          },
-        ]
-      : []),
     ...(created
       ? [
           {
@@ -350,7 +362,7 @@ function WorkflowPageContent({
           <SessionGate
             session={session}
             installation={installation}
-            context="Run history, statistics and the read-only badge are read through your muster session."
+            context="Statistics, the last run and the read-only badge need a muster session."
           />
         )}
 
@@ -359,8 +371,8 @@ function WorkflowPageContent({
             status="warning"
             description={
               <>
-                muster's validator flagged this workflow's definition. It can
-                still run — this is a non-blocking warning.
+                muster's validator flagged this definition. The workflow can
+                still run.
                 {validationErrors.length > 0 && (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
                     {validationErrors.map(error => (
@@ -377,7 +389,7 @@ function WorkflowPageContent({
           <SectionHeader
             icon={<Tune />}
             title="What it needs"
-            description="The inputs an agent passes when it runs this workflow."
+            description="Inputs an agent passes when running it."
           />
           <ArgumentsList workflow={workflow} />
         </Box>
@@ -386,7 +398,7 @@ function WorkflowPageContent({
           <SectionHeader
             icon={<FormatListNumbered />}
             title="How it runs"
-            description="The steps, in order. A step with a condition is skipped when the condition does not hold — it never branches to another path."
+            description="Steps in order. A step whose condition does not hold is skipped — there is no branching."
           />
           <WorkflowFlowCanvas
             name={name}
@@ -400,90 +412,87 @@ function WorkflowPageContent({
 
         <Box>
           <SectionHeader
-            icon={<History />}
-            title="Recent runs"
+            icon={<BarChart />}
+            title="Statistics"
             description="Every run counts, whether an agent, another workflow or a person started it."
           />
-          <WorkflowRunsSection
+          <WorkflowStatistics
             name={name}
             installation={installation}
             hasSession={hasSession}
-            prefixes={prefixes}
           />
         </Box>
 
-        <Box>
-          <SectionHeader
-            icon={<BarChart />}
-            title="Statistics"
-            description="How often this workflow runs and how reliably, over a recent sample of its executions."
-          />
-          {hasSession ? (
-            <WorkflowStatsPanel name={name} installation={installation} />
-          ) : (
-            <Text as="p" variant="body-medium" color="secondary">
-              Statistics are read through your muster session — connect above to
-              see them.
-            </Text>
-          )}
-        </Box>
+        <DisclosureAccordion
+          summary={
+            <span className={classes.advancedSummary}>
+              <Text as="span" variant="body-large" weight="bold">
+                Advanced
+              </Text>
+              <Text as="span" variant="body-small" color="secondary">
+                Where agents use it, the raw definition and the CR's
+                bookkeeping.
+              </Text>
+            </span>
+          }
+        >
+          <Flex direction="column" gap="6" className={classes.advancedBody}>
+            <Box>
+              <SectionHeader
+                icon={<Share />}
+                title="Where agents use it"
+                description={`Agents run this workflow by calling the tool ${toolName}.`}
+              />
+              <Flex direction="column" gap="2">
+                {connectors.length > 0 && (
+                  <Text as="p" variant="body-medium" color="secondary">
+                    Its steps use tools from: {connectors.join(', ')}.
+                  </Text>
+                )}
+                {referencedBy.length > 0 ? (
+                  <Text as="p" variant="body-medium" color="secondary">
+                    Called as a step by:{' '}
+                    {referencedBy.map((ref, index) => {
+                      const base = detailRoute?.({ name: ref.getName() });
+                      return (
+                        <span key={`${ref.cluster}/${ref.getName()}`}>
+                          {index > 0 && ', '}
+                          {base ? (
+                            <Link
+                              href={`${base}${installationSearch(ref.cluster)}`}
+                              variant="body-medium"
+                            >
+                              {ref.getName()}
+                            </Link>
+                          ) : (
+                            ref.getName()
+                          )}
+                        </span>
+                      );
+                    })}
+                  </Text>
+                ) : (
+                  <Text as="p" variant="body-medium" color="secondary">
+                    No other workflow calls this one as a step.
+                  </Text>
+                )}
+              </Flex>
+            </Box>
 
-        <Box>
-          <SectionHeader
-            icon={<Share />}
-            title="Where agents use it"
-            description={`Agents run this workflow by calling the tool ${toolName}.`}
-          />
-          <Flex direction="column" gap="2">
-            {connectors.length > 0 && (
-              <Text as="p" variant="body-medium" color="secondary">
-                Its steps use tools from: {connectors.join(', ')}.
-              </Text>
-            )}
-            {referencedBy.length > 0 ? (
-              <Text as="p" variant="body-medium" color="secondary">
-                Called as a step by:{' '}
-                {referencedBy.map((ref, index) => {
-                  const base = detailRoute?.({ name: ref.getName() });
-                  return (
-                    <span key={`${ref.cluster}/${ref.getName()}`}>
-                      {index > 0 && ', '}
-                      {base ? (
-                        <Link
-                          href={`${base}${installationSearch(ref.cluster)}`}
-                          variant="body-medium"
-                        >
-                          {ref.getName()}
-                        </Link>
-                      ) : (
-                        ref.getName()
-                      )}
-                    </span>
-                  );
-                })}
-              </Text>
-            ) : (
-              <Text as="p" variant="body-medium" color="secondary">
-                No other workflow calls this one as a step.
-              </Text>
-            )}
+            <Box>
+              <SectionHeader
+                icon={<Code />}
+                title="Technical details"
+                description="Bookkeeping, referenced tools and the raw definition."
+              />
+              <TechnicalDetails
+                workflow={workflow}
+                installation={installation}
+                hasSession={hasSession}
+              />
+            </Box>
           </Flex>
-        </Box>
-
-        <Box>
-          <SectionHeader
-            icon={<Code />}
-            title="Technical details"
-            description="The raw definition and the CR's bookkeeping."
-          />
-          <DisclosureAccordion summary="Show the raw definition">
-            <TechnicalDetails
-              workflow={workflow}
-              installation={installation}
-              hasSession={hasSession}
-            />
-          </DisclosureAccordion>
-        </Box>
+        </DisclosureAccordion>
       </Flex>
     </ShellPage>
   );
@@ -492,12 +501,14 @@ function WorkflowPageContent({
 /**
  * A workflow's page in the agent-platform shell — read-only by decision D11:
  * no create, edit or delete affordances; changes happen through Git or agents
- * via muster. Plain level: what it needs, how it runs (the flow canvas — a
- * step opens its details on click), the latest few runs, statistics and where
- * agents use it. Technical detail is disclosed where it belongs, never by a
+ * via muster. Plain level, in order: what it needs, how it runs (the flow
+ * canvas, coloured by the last run — a step opens its details on click), and
+ * its statistics (the last run, muster's run totals, rates and runs per day).
+ * Everything else is one "Advanced" disclosure at the bottom: where agents
+ * use it and the technical details (the CR's bookkeeping and the raw
+ * definition). Technical detail is disclosed where it belongs, never by a
  * page-wide toggle: each step's own fold-out (exact tool, templated
- * arguments, condition spec), each run's (execution JSON), and the raw
- * definition at the bottom.
+ * arguments, condition spec) and the Advanced disclosure.
  */
 export function WorkflowPage() {
   const { name = '' } = useParams<{ name: string }>();
@@ -554,8 +565,8 @@ function WorkflowPageBody({ name }: { name: string }) {
           }
           description={
             activeInstallation
-              ? `The environment ${activeInstallation} has no workflow with this name. It may run on another environment, or it may have been removed.`
-              : 'None of the environments this portal knows runs muster.'
+              ? 'It may be on another environment, or removed.'
+              : "None of this portal's environments runs muster."
           }
           action={
             paths.workflows ? (

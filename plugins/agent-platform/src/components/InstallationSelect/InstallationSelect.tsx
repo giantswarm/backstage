@@ -19,7 +19,7 @@ import { useModelConfigs } from '../ModelConfigsProvider';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 const DESCRIPTION =
-  'The management cluster this agent runs on. Determines which models are available and where the agent is deployed.';
+  'The management cluster the agent runs on; it decides which models are available.';
 
 /** How many installations a note names, and links to, before the rest are a count. */
 const NAMED_INSTALLATIONS = NAMED_IN_SENTENCE;
@@ -57,7 +57,7 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
           ? `No agent-manager on ${list}`
           : 'No agent-manager on some environments'
       }
-      description={`Agents are created through agent-manager, reached through muster as you. muster on ${list} lists no agent-manager MCPServer, so agents cannot be created there. A platform admin enables the agent-manager component of the Agent Platform.`}
+      description={`muster on ${list} lists no agent-manager, so agents cannot be created there. A platform admin can enable the Agent Platform's agent-manager component.`}
     />
   );
 }
@@ -149,7 +149,7 @@ function InaccessibleInstallationsNote({
           ? `Couldn't check ${list}`
           : `Couldn't check ${installations.length} environments`
       }
-      description={`Cluster access to ${list} isn't healthy (session expired, unreachable, or not signed in), so whether agents can be created there is unknown. The Cluster access status in the sidebar shows why.`}
+      description={`Cluster access to ${list} isn't healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there. See Cluster access in the sidebar.`}
     />
   );
 }
@@ -301,7 +301,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         <Alert
           status="warning"
           title="The muster plugin is required"
-          description="Agents are created through agent-manager's tools over muster as the signed-in person, and this portal has no muster plugin installed. Nothing can be created from here."
+          description="Agents are created through agent-manager over muster, and this portal has no muster plugin installed."
         />
       </InstallationCard>
     );
@@ -342,7 +342,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
               <Alert
                 status="info"
                 title="No environments with models"
-                description="None of the reachable environments have a kagent ModelConfig provisioned yet. A platform admin needs to add one before you can create an agent."
+                description="No reachable environment has a kagent ModelConfig yet. A platform admin must add one before agents can be created."
               />
             )}
           </Flex>

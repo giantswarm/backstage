@@ -9,7 +9,10 @@ import {
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef, type ToolSummary } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
@@ -158,7 +161,7 @@ describe('NewConnectorTestPage', () => {
 
     expect(screen.getByText('Connecting…')).toBeInTheDocument();
     expect(
-      screen.getByText(/waiting for muster to connect it/),
+      screen.getByText(/Waiting for muster to connect it/),
     ).toBeInTheDocument();
   });
 
@@ -188,6 +191,41 @@ describe('NewConnectorTestPage', () => {
     expect(screen.getAllByText('Reads')).toHaveLength(5);
     expect(screen.getAllByText('Changes things')).toHaveLength(3);
     expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+  });
+
+  it('fits a phone: one line for the steps, long tool names wrap beside their badge', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      listServers.mockResolvedValue({
+        mcpServers: [{ name: 'jira', state: 'Connected', toolsCount: 1 }],
+      });
+      filterTools.mockResolvedValue({
+        total: 1,
+        filtered_count: 1,
+        truncated: false,
+        tools: [
+          tool('transition_issue_to_the_next_status_in_its_workflow', false),
+        ],
+      });
+
+      await renderTestStep();
+
+      expect(screen.getByText('Step 3 of 3 · Test')).toBeInTheDocument();
+      const name = await screen.findByText(
+        'transition_issue_to_the_next_status_in_its_workflow',
+      );
+      const column = name.parentElement!;
+      expect(getComputedStyle(column).minWidth).toBe('0px');
+      expect(getComputedStyle(column).overflowWrap).toBe('anywhere');
+      // The badge keeps its width; the name gives way.
+      const badge = screen.getByText('Changes things');
+      expect(column.nextElementSibling).toContainElement(badge);
+      expect(getComputedStyle(column.nextElementSibling!).flex).toMatch(
+        /^(none|0 0 auto)$/,
+      );
+    } finally {
+      layout.restore();
+    }
   });
 
   it('lists three tools with no reveal control and no partial-list note', async () => {
@@ -235,7 +273,7 @@ describe('NewConnectorTestPage', () => {
       await screen.findByText(/Jira offers 300 tools\./),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Only the first 200 of its 300 tools are listed here.'),
+      screen.getByText('Only the first 200 of 300 tools are listed.'),
     ).toBeInTheDocument();
     const badges = () => screen.getAllByText(/^(Reads|Changes things)$/).length;
     expect(badges()).toBe(6);

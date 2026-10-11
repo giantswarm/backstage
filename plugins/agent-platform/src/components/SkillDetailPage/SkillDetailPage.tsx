@@ -10,20 +10,27 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
+  ButtonIcon,
   ButtonLink,
   Flex,
   Link,
   List,
   ListRow,
+  Menu,
+  MenuItem,
+  MenuTrigger,
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
+  MENU_WIDTH,
   SectionHeader,
   ShellPage,
+  usePhoneLayout,
   type BreadcrumbItem,
   type Fact,
   type RouteTabSpec,
@@ -58,6 +65,7 @@ import { AgentAvatar } from '../AgentAvatar';
 import { AgentRow, useAgents } from '../AgentsDataProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
+import { SkillFiles } from '../SkillFiles';
 import { SkillInstructions } from '../SkillInstructions';
 import { evaluationPrompt } from './evaluationPrompt';
 import {
@@ -179,10 +187,27 @@ function OverviewTab({
 }
 
 /**
+ * The header's "· N more files" for a skill whose directory holds more than
+ * its SKILL.md (`fileCount` from the listing); nothing for a single file or
+ * an older backend.
+ */
+export function moreFilesCaption(fileCount: number | undefined): string {
+  const more = (fileCount ?? 0) - 1;
+  if (more <= 0) {
+    return '';
+  }
+  return ` · ${more} more ${more === 1 ? 'file' : 'files'}`;
+}
+
+/**
  * The SKILL.md body, read at the pinned commit through
  * `GET /agent-skills/content` — the same read Edit is prefilled from, cached
  * by commit, so opening Edit from here reads nothing twice. Only for a
  * readable skill; the tab is not offered otherwise.
+ *
+ * A skill with more files than its SKILL.md (the read lists them) shows them
+ * here too, as a tree beside a viewer (`SkillFiles`); a single-file skill, or
+ * one whose files could not be listed, is just its instructions.
  */
 function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
   const { content, isLoading, error } = useSkillContent(skill);
@@ -199,6 +224,17 @@ function InstructionsTab({ skill }: { skill: DiscoveredSkill }) {
         description={
           error?.message ?? 'The SKILL.md could not be read right now.'
         }
+      />
+    );
+  }
+  if (content.files && content.files.length > 1) {
+    return (
+      <SkillFiles
+        skill={skill}
+        commit={content.commit}
+        instructions={content.instructions}
+        files={content.files}
+        filesTruncated={content.filesTruncated}
       />
     );
   }
@@ -285,15 +321,19 @@ function UsedByTab({
                       }
                     />
                   }
-                  customActions={
-                    <Text variant="body-small" color="secondary">
-                      {row.installation} · {row.namespace}
-                      {pinnedBehind.has(row.id) &&
-                        ` · older version (${shortCommit(
-                          pinnedBehind.get(row.id)!,
-                        )})`}
-                    </Text>
-                  }
+                  // Under the name, not beside it: at the row's end it
+                  // squeezed the agent's name to ~130px on a phone.
+                  description={[
+                    row.installation,
+                    row.namespace,
+                    ...(pinnedBehind.has(row.id)
+                      ? [
+                          `older version (${shortCommit(
+                            pinnedBehind.get(row.id)!,
+                          )})`,
+                        ]
+                      : []),
+                  ].join(' · ')}
                 >
                   {row.name}
                 </ListRow>
@@ -332,6 +372,77 @@ function UsedByTab({
   );
 }
 
+/** One header action: a press, or a link (View source, in a new tab). */
+type SkillAction = {
+  id: string;
+  label: string;
+  onAction?: () => void;
+  href?: string;
+  isDisabled?: boolean;
+};
+
+/**
+ * The header's actions at phone width: the primary one as a button (else the
+ * first), the others in a ⋯ menu — four buttons wrapped to two rows at
+ * 343px. The Model hosting header's idiom (`ModelHostingActions`).
+ */
+function PhoneSkillActions({
+  primary,
+  others,
+}: {
+  primary?: SkillAction;
+  others: SkillAction[];
+}) {
+  const [button, ...rest] = primary ? [primary, ...others] : others;
+  if (!button) {
+    return null;
+  }
+  const buttonProps = {
+    variant: button === primary ? ('primary' as const) : ('secondary' as const),
+    isDisabled: button.isDisabled,
+  };
+  return (
+    <Flex align="center" gap="2">
+      {button.href ? (
+        <ButtonLink
+          {...buttonProps}
+          href={button.href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {button.label}
+        </ButtonLink>
+      ) : (
+        <Button {...buttonProps} onPress={button.onAction}>
+          {button.label}
+        </Button>
+      )}
+      {rest.length > 0 && (
+        <MenuTrigger>
+          <ButtonIcon
+            icon={<MoreVertIcon />}
+            aria-label="More actions"
+            variant="tertiary"
+          />
+          <Menu maxWidth={MENU_WIDTH}>
+            {rest.map(action => (
+              <MenuItem
+                key={action.id}
+                id={action.id}
+                href={action.href}
+                onAction={action.onAction}
+                isDisabled={action.isDisabled}
+              >
+                {action.label}
+              </MenuItem>
+            ))}
+          </Menu>
+        </MenuTrigger>
+      )}
+    </Flex>
+  );
+}
+
 function SkillPage({
   skill,
   tab,
@@ -343,6 +454,7 @@ function SkillPage({
   basePath: string;
 }) {
   const navigate = useNavigate();
+  const isPhone = usePhoneLayout();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const skillsRoute = useRouteRef(skillsRouteRef);
   const {
@@ -498,8 +610,40 @@ function SkillPage({
   // behind, the Used by tab says so in a line instead.
   const canEvaluate = Boolean(evaluator) && proposable;
   const canUpdateAgents = !agentsLoading && behind.length > 0;
-  const actions =
-    canUpdateAgents || editHref || sourceUrl || canEvaluate ? (
+  let actions: ReactNode;
+  if (isPhone) {
+    const others: SkillAction[] = [
+      ...(canUpdateAgents
+        ? [
+            {
+              id: 'update-agents',
+              label: 'Update agents',
+              onAction: openUpdateAgents,
+            },
+          ]
+        : []),
+      ...(editHref ? [{ id: 'edit', label: 'Edit', onAction: openEdit }] : []),
+      ...(sourceUrl
+        ? [{ id: 'view-source', label: 'View source ↗', href: sourceUrl }]
+        : []),
+    ];
+    actions = (
+      <PhoneSkillActions
+        primary={
+          canEvaluate
+            ? {
+                id: 'evaluate',
+                label: isCreating ? 'Starting…' : 'Evaluate',
+                onAction: onEvaluate,
+                isDisabled: isCreating,
+              }
+            : undefined
+        }
+        others={others}
+      />
+    );
+  } else if (canUpdateAgents || editHref || sourceUrl || canEvaluate) {
+    actions = (
       <>
         {canUpdateAgents && (
           <Button variant="secondary" onPress={openUpdateAgents}>
@@ -531,7 +675,8 @@ function SkillPage({
           </Button>
         )}
       </>
-    ) : undefined;
+    );
+  }
 
   let content;
   if (tab === 'instructions') {
@@ -558,7 +703,9 @@ function SkillPage({
       <ShellPage
         title={skill.name}
         breadcrumbs={breadcrumbs}
-        meta={`Read from ${source} at ${shortCommit(skill.commit)}`}
+        meta={`Read from ${source} at ${shortCommit(
+          skill.commit,
+        )}${moreFilesCaption(skill.fileCount)}`}
         actions={actions}
         tabs={tabs}
         tabsBasePath={basePath}
@@ -608,7 +755,9 @@ function SkillPage({
  * - **Instructions** (`…/instructions`): the SKILL.md body as a document
  *   (`SkillInstructions`: GFM, no raw HTML, no remote loads) — only for a
  *   skill whose SKILL.md the portal could read (`contentReadable`); otherwise
- *   the Overview says the portal cannot read its source;
+ *   the Overview says the portal cannot read its source. A skill with more
+ *   files shows them there as a tree beside a viewer (`SkillFiles`), and the
+ *   header says "· N more files";
  * - **Used by** (`…/used-by`): the agents mounting it, windowed.
  *
  * Actions: "Update agents" appears only while some agent using the skill pins

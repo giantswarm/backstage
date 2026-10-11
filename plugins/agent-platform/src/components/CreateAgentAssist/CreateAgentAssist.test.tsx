@@ -1,6 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { sessionsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
@@ -326,5 +330,139 @@ describe('CreateAgentAssist', () => {
     expect(screen.getByTestId('system-prompt')).toHaveTextContent(
       'hand-written',
     );
+  });
+
+  it('keeps the conversation when the panel is closed and opened again', async () => {
+    configuredRoles = { agentManagement: 'swarm-operator' };
+    mockRows = [agent('swarm-operator', 'Swarm Operator')];
+    mockView = viewWithDraft();
+    await renderAssist();
+
+    const open = screen.getByRole('button', {
+      name: 'Let Swarm Operator help',
+    });
+    await userEvent.click(open);
+    const panel = screen.getByRole('complementary', {
+      name: 'Swarm Operator assist',
+    });
+    await userEvent.click(within(panel).getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+
+    await userEvent.click(
+      within(panel).getByRole('button', { name: 'Close assistant' }),
+    );
+    expect(
+      screen.queryByRole('complementary', { name: 'Swarm Operator assist' }),
+    ).toBeNull();
+    expect(open).toHaveAttribute('aria-expanded', 'false');
+    expect(open).toHaveFocus();
+
+    await userEvent.click(open);
+    // The same conversation, not a new start: no second session, no second
+    // first message.
+    const reopened = screen.getByRole('complementary', {
+      name: 'Swarm Operator assist',
+    });
+    expect(within(reopened).getByTestId('timeline')).toHaveTextContent(
+      'Here is a draft:',
+    );
+    expect(
+      within(reopened).queryByRole('button', { name: 'Start' }),
+    ).toBeNull();
+    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  describe('at phone width', () => {
+    let layout: MockedLayout;
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    async function openOnPhone() {
+      configuredRoles = { agentManagement: 'swarm-operator' };
+      mockRows = [agent('swarm-operator', 'Swarm Operator')];
+      mockView = viewWithDraft();
+      const rendered = await renderAssist();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Let Swarm Operator help' }),
+      );
+      return rendered;
+    }
+
+    it('is a full-screen modal dialog with the page behind it inert', async () => {
+      const { container } = await openOnPhone();
+
+      const dialog = screen.getByRole('dialog', {
+        name: 'Swarm Operator assist',
+      });
+      expect(dialog).toHaveAttribute('aria-modal', 'true');
+      // Outside the wizard's DOM, so the wizard can be made inert around it.
+      expect(container.contains(dialog)).toBe(false);
+      expect(container.closest('[inert]')).not.toBeNull();
+      expect(dialog.closest('[inert]')).toBeNull();
+      expect(document.body.style.overflow).toBe('hidden');
+      // A one-line header: the explanation is on the banner already.
+      expect(
+        within(dialog).queryByText(/Helps you set up this agent/),
+      ).toBeNull();
+    });
+
+    it('goes "Back to form" keeping the conversation, and lifts the inert', async () => {
+      const { container } = await openOnPhone();
+
+      const dialog = screen.getByRole('dialog', {
+        name: 'Swarm Operator assist',
+      });
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Start' }),
+      );
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Back to form' }),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(container.closest('[inert]')).toBeNull();
+      expect(document.body.style.overflow).toBe('');
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Let Swarm Operator help' }),
+      );
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Swarm Operator assist' }),
+        ).getByTestId('timeline'),
+      ).toHaveTextContent('Here is a draft:');
+      expect(createSession).toHaveBeenCalledTimes(1);
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on Escape, keeping the draft prompt', async () => {
+      await openOnPhone();
+
+      const dialog = screen.getByRole('dialog', {
+        name: 'Swarm Operator assist',
+      });
+      const prompt = within(dialog).getByRole('textbox', {
+        name: 'Prompt',
+      }) as HTMLTextAreaElement;
+      await userEvent.clear(prompt);
+      await userEvent.type(prompt, 'A ticket triage agent');
+      await userEvent.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).toBeNull();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Let Swarm Operator help' }),
+      );
+      expect(
+        (
+          within(
+            screen.getByRole('dialog', { name: 'Swarm Operator assist' }),
+          ).getByRole('textbox', { name: 'Prompt' }) as HTMLTextAreaElement
+        ).value,
+      ).toBe('A ticket triage agent');
+    });
   });
 });

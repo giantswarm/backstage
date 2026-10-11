@@ -810,7 +810,7 @@ describe('ServerPage lifecycle and edit actions', () => {
 
     expect(await menuItems()).toEqual(['Deactivate…', 'Delete…']);
     expect(
-      screen.getByText(/reconnecting cannot sign a session in/),
+      screen.getByText(/which reconnecting cannot do/),
     ).toBeInTheDocument();
   });
 
@@ -880,7 +880,7 @@ describe('ServerPage session auth', () => {
     expect(
       within(header!.container).queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(/muster's own AWS machine identity/)).toBeVisible();
+    expect(screen.getByText(/muster's own AWS identity/)).toBeVisible();
   });
 });
 

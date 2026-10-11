@@ -1,48 +1,12 @@
-import { useState } from 'react';
-import { Button, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core/styles';
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@backstage/ui';
 import { readMetaAgents } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
-import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useMetaAgent } from '../../hooks/useMetaAgent';
-import type { AvatarSize } from '../../lib/agentAvatar';
-import { AgentAvatar } from '../AgentAvatar';
 import { AgentsDataProvider } from '../AgentsDataProvider';
+import { MetaAgentBanner } from '../MetaAgentBanner';
 import { AssistPanel } from './AssistPanel';
-
-/** Twice the rendered 32px, for sharp 2x displays. */
-const AVATAR_SIZE: AvatarSize = 96;
-
-const useStyles = makeStyles({
-  // The CreateAgent artboard's tinted Swarm Operator strip above the form:
-  // the assistant's avatar, a title line and what it does, the button that
-  // opens it — wrapping to stacked lines at phone width. Same tint and
-  // spacing as Customize → Agents' helper banner, so the two read as one
-  // idiom.
-  banner: {
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 'var(--bui-space-3) var(--bui-space-4)',
-    padding: 'var(--bui-space-4)',
-    borderRadius: 12,
-    background: 'var(--agent-shell-rail-bg, #f0f7f9)',
-  },
-  identity: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 'var(--bui-space-3)',
-    flex: '1 1 260px',
-    minWidth: 0,
-  },
-  copy: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    minWidth: 0,
-  },
-});
 
 /**
  * The create flow's "with Swarm Operator" affordance (W6 stretch), gated on
@@ -68,51 +32,54 @@ export function CreateAgentAssist() {
 }
 
 function CreateAgentAssistControl() {
-  const classes = useStyles();
   const assistant = useMetaAgent('agentManagement');
-  const buildAvatarUrl = useAgentAvatarUrl();
   const [isOpen, setOpen] = useState(false);
+  // Mounted from the first opening on, and only hidden when closed: on a
+  // phone the panel is the screen, so looking at the form means closing it —
+  // which must not throw away the draft or the conversation (B7).
+  const [isMounted, setMounted] = useState(false);
+  const openerRef = useRef<HTMLButtonElement>(null);
+
+  // Focus goes back to the button that opened the panel. In an effect, after
+  // the panel's own effects have lifted the modal's `inert` off the page.
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !isOpen) {
+      openerRef.current?.focus();
+    }
+    wasOpen.current = isOpen;
+  }, [isOpen]);
+
   if (!assistant) {
     return null;
   }
   return (
     <>
-      <section
-        className={classes.banner}
-        aria-label={`Set up the agent with ${assistant.name}`}
-      >
-        <div className={classes.identity}>
-          <AgentAvatar
-            size="medium"
-            purpose="decoration"
-            name={assistant.name}
-            src={
-              buildAvatarUrl(assistant.installation, assistant.technicalName, {
-                size: AVATAR_SIZE,
-              }) ?? ''
-            }
-          />
-          <div className={classes.copy}>
-            <Text as="p" variant="body-medium" weight="bold">
-              Rather describe it in your own words?
-            </Text>
-            <Text as="p" variant="body-small" color="secondary">
-              {assistant.name} drafts the instructions and suggests skills with
-              you in a side chat. Nothing changes in the form until you accept
-              it.
-            </Text>
-          </div>
-        </div>
-        <Button
-          variant="secondary"
-          onPress={() => setOpen(true)}
-          aria-expanded={isOpen}
-        >
-          Let {assistant.name} help
-        </Button>
-      </section>
-      {isOpen && (
-        <AssistPanel assistant={assistant} onClose={() => setOpen(false)} />
+      <MetaAgentBanner
+        agent={assistant}
+        label={`Set up the agent with ${assistant.name}`}
+        title="Rather describe it in your own words?"
+        description={`${assistant.name} drafts the instructions and suggests skills with you in a side chat. Nothing changes in the form until you accept it.`}
+        action={
+          <Button
+            ref={openerRef}
+            variant="secondary"
+            onPress={() => {
+              setMounted(true);
+              setOpen(true);
+            }}
+            aria-expanded={isOpen}
+          >
+            Let {assistant.name} help
+          </Button>
+        }
+      />
+      {isMounted && (
+        <AssistPanel
+          assistant={assistant}
+          isOpen={isOpen}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   );

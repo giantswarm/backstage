@@ -8,7 +8,10 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockPhoneLayout,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -666,6 +669,44 @@ describe('NewAgentReviewPage', () => {
       screen.getByRole('link', { name: 'Open the pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('moves the pull-request alternative out of the footer at phone width', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      const user = userEvent.setup();
+      const { callTool } = await renderReview({
+        info: { capabilities: { ...INFO.capabilities, commit: true } },
+      });
+
+      await screen.findByTestId('code-agent.yaml');
+      const commit = await screen.findByRole('button', {
+        name: 'Propose as pull request instead',
+      });
+      // One row in the footer: Back (an icon) and Create; the alternative is
+      // on the page, above the technical details.
+      const footer = screen.getByRole('contentinfo');
+      expect(footer).not.toContainElement(commit);
+      expect(
+        within(footer)
+          .getAllByRole('button')
+          .map(
+            button => button.getAttribute('aria-label') ?? button.textContent,
+          ),
+      ).toEqual(['Back', 'Create agent']);
+
+      await waitFor(() => expect(commit).toBeEnabled());
+      await user.click(commit);
+      await waitFor(() =>
+        expect(callTool).toHaveBeenCalledWith(
+          'x_agent-manager_create_agent',
+          expect.objectContaining({ mode: 'commit' }),
+          'gazelle',
+        ),
+      );
+    } finally {
+      layout.restore();
+    }
   });
 
   it("renders the manual fallback from agent-manager's values and chart", async () => {

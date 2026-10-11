@@ -134,9 +134,9 @@ export function RemoveModelBackendDialog({
         <DialogBody>
           <Flex direction="column" gap="3" ref={scope}>
             <Text variant="body-small" color="secondary">
-              model-manager drops the model configs it wired for this backend,
-              deletes its backend document and stops listing it. The backend
-              itself keeps running where it is; its models stay there.
+              model-manager unwires its model configs, deletes its backend
+              document and stops listing it. The backend and its models keep
+              running.
             </Text>
             {plan && (
               <Flex direction="column" gap="1" data-testid="remove-plan">

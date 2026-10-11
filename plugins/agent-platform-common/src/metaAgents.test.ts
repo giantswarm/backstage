@@ -13,11 +13,13 @@ describe('readMetaAgents', () => {
         readerOf({
           'agentPlatform.metaAgents.skillEvaluation': 'skill-evaluator',
           'agentPlatform.metaAgents.agentManagement': 'kagent/swarm-operator',
+          'agentPlatform.metaAgents.skillCreation': 'skill-creator',
         }),
       ),
     ).toEqual({
       skillEvaluation: 'skill-evaluator',
       agentManagement: 'kagent/swarm-operator',
+      skillCreation: 'skill-creator',
     });
   });
 

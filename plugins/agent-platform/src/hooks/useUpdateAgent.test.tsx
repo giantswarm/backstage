@@ -272,4 +272,27 @@ describe('useUpdateAgent', () => {
     );
     expectAgentUpdated('commit', 'edited');
   });
+
+  it('reports a committed skills refresh as mode commit, change skillsRefreshed', async () => {
+    callTool.mockResolvedValue(
+      committedTo('https://github.com/org/gitops/pull/4'),
+    );
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current.commit({
+        namespace: 'kagent',
+        name: 'pr-reviewer',
+        refreshSkills: true,
+      });
+    });
+
+    expect(callTool.mock.calls[0][1]).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      refreshSkills: true,
+      mode: 'commit',
+    });
+    expectAgentUpdated('commit', 'skillsRefreshed');
+  });
 });

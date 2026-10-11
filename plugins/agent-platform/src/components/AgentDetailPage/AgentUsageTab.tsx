@@ -82,7 +82,7 @@ function AgentUsageContent({
           <>
             <KpiTile
               label="Est. cost"
-              hint="What the gateway priced this agent's model calls at, for every user, from its own model catalogue. A model missing from the catalogue adds nothing."
+              hint="The gateway's price for this agent's model calls, every user. Models missing from its catalogue add nothing."
               // No row is no calls, which is zero spend; a row without a
               // cost is a model the catalogue cannot price, which is "—".
               value={
@@ -94,13 +94,13 @@ function AgentUsageContent({
             />
             <KpiTile
               label="Tokens"
-              hint="Every token this agent's model calls used, for every user, as the gateway counted them."
+              hint="Tokens this agent's model calls used, as the gateway counted them."
               value={formatTokens(gatewayRow?.tokens ?? 0)}
               sub="every user"
             />
             <KpiTile
               label="Model calls"
-              hint="How often this agent asked its model, for every user."
+              hint="How often this agent called its model."
               value={formatCount(gatewayRow?.calls ?? 0)}
               sub="every user"
             />
@@ -109,7 +109,7 @@ function AgentUsageContent({
         {hasSessions && (
           <KpiTile
             label="Your sessions"
-            hint={`Sessions you started with this agent over the last ${sessionWindow} days. Other users' sessions are not countable from here.`}
+            hint={`Sessions you started with this agent in the last ${sessionWindow} days. Other users' sessions can't be counted here.`}
             value={formatCount(sessionRow?.sessions ?? 0)}
             sub={`yours, last ${sessionWindow} days`}
           />
@@ -118,7 +118,7 @@ function AgentUsageContent({
         {sessionRow?.reportedCostUsd !== undefined && (
           <KpiTile
             label="Reported cost"
-            hint="What the agent's runtime itself reported for your turns. Only some runtimes report a cost."
+            hint="What the agent's runtime reported for your turns. Only some runtimes report one."
             value={formatUsd(sessionRow.reportedCostUsd)}
             sub="from the agent's runtime, your sessions"
           />

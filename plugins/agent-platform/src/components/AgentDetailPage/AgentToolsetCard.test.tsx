@@ -276,7 +276,7 @@ describe('AgentToolsetCard', () => {
 
     expect(screen.getByText('Toolset not readable')).toBeInTheDocument();
     expect(
-      screen.getByText(/RemoteMCPServers of namespace kagent on gazelle/),
+      screen.getByText(/RemoteMCPServers in kagent on gazelle/),
     ).toBeInTheDocument();
   });
 
@@ -287,7 +287,7 @@ describe('AgentToolsetCard', () => {
 
     expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
     expect(
-      screen.getByText(/no server of that name exists in namespace kagent/),
+      screen.getByText(/which does not exist in kagent/),
     ).toBeInTheDocument();
     expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
   });
@@ -316,7 +316,7 @@ describe('AgentToolsetCard', () => {
     await renderCard(makeAgent([{ mcpServer: GATEWAY }]), api);
 
     expect(screen.getByText('Implicit full access')).toBeInTheDocument();
-    expect(screen.getByText(/declares no toolset/)).toBeInTheDocument();
+    expect(screen.getByText(/No toolset declared/)).toBeInTheDocument();
     // Nothing to resolve.
     expect(filterTools).not.toHaveBeenCalled();
   });
@@ -327,7 +327,9 @@ describe('AgentToolsetCard', () => {
 
     expect(screen.getByText('No tools')).toBeInTheDocument();
     expect(
-      screen.getByText(/what a toolset of preset:none renders to/),
+      screen.getByText(
+        /a chat-only agent with nothing beyond its own reasoning/,
+      ),
     ).toBeInTheDocument();
   });
 

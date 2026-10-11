@@ -21,7 +21,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import {
   DateComponent,
+  ShowMore,
+  StackedRowList,
   stopRowPress,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -57,6 +60,7 @@ import {
   Unknown,
 } from './cells';
 import { ShellSessionsTable } from './ShellSessionsTable';
+import { sessionStackedRow } from './stackedRows';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 export { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE };
@@ -454,6 +458,7 @@ function ClassicSessionsTable({
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  const isPhone = usePhoneLayout();
 
   // Both parameters are needed: kagent session ids are only unique within an
   // installation. Undefined when the route isn't bound, in which case rows render
@@ -561,6 +566,33 @@ function ClassicSessionsTable({
   const activeFilter = filter.value ?? NO_SESSIONS_FILTER;
   const filtered = isSessionsFilterActive(activeFilter);
 
+  const emptyState = (
+    <Text variant="body-medium" color="secondary">
+      {emptyText(searchTerm, filtered, emptyMessage)}
+    </Text>
+  );
+
+  // At phone width the same search and filters, newest first, as stacked
+  // rows a page at a time (T22 C14): the table's minimum widths made it
+  // scroll sideways inside 343px, its sort arrows only show on hover, and its
+  // pagination row does not fit. The rows are worked out here rather than
+  // taken from `tableProps`, which hands over one page of the table's own
+  // paging.
+  const hiddenColumns = useMemo(
+    () => new Set<string>(hiddenKey ? hiddenKey.split(',') : []),
+    [hiddenKey],
+  );
+  const phoneRows = useMemo(
+    () =>
+      isPhone && !isLoading
+        ? sortSessionsBy(filterSessions(searchedRows, activeFilter), {
+            column: 'createdAt',
+            direction: 'descending',
+          })
+        : [],
+    [isPhone, isLoading, searchedRows, activeFilter],
+  );
+
   return (
     <Flex direction="column" gap="3">
       {(showStateFilter || showAgentFilter) && (
@@ -582,26 +614,90 @@ function ClassicSessionsTable({
           onChange={search.onChange}
         />
       )}
-      <Table<SessionTableRow>
-        {...tableProps}
-        columnConfig={columnConfig}
-        rowConfig={{
-          // Whole-row click as a convenience, on top of the anchor in the title
-          // cell. `onClick` + navigate rather than `getHref`, because without
-          // BUIProvider a bui href does a full page reload (see the title cell).
-          onClick: row => {
-            const href = hrefFor(row);
-            if (href) {
-              navigate(href);
-            }
-          },
-        }}
-        emptyState={
-          <Text variant="body-medium" color="secondary">
-            {emptyText(searchTerm, filtered, emptyMessage)}
-          </Text>
-        }
-      />
+      {isPhone ? (
+        <PhoneSessionsList
+          rows={phoneRows}
+          isLoading={Boolean(isLoading)}
+          hrefFor={hrefFor}
+          buildAvatarUrl={buildAvatarUrl}
+          isLoadingStates={isLoadingStates}
+          showState={hasStates}
+          showAgent={!hiddenColumns.has('agentName')}
+          showInstallation={!hiddenColumns.has('installation')}
+          emptyState={emptyState}
+        />
+      ) : (
+        <Table<SessionTableRow>
+          {...tableProps}
+          columnConfig={columnConfig}
+          rowConfig={{
+            // Whole-row click as a convenience, on top of the anchor in the title
+            // cell. `onClick` + navigate rather than `getHref`, because without
+            // BUIProvider a bui href does a full page reload (see the title cell).
+            onClick: row => {
+              const href = hrefFor(row);
+              if (href) {
+                navigate(href);
+              }
+            },
+          }}
+          emptyState={emptyState}
+        />
+      )}
     </Flex>
+  );
+}
+
+/** The classic list at phone width: stacked rows, a page at a time. */
+function PhoneSessionsList({
+  rows,
+  isLoading,
+  hrefFor,
+  buildAvatarUrl,
+  isLoadingStates,
+  showState,
+  showAgent,
+  showInstallation,
+  emptyState,
+}: {
+  rows: SessionTableRow[];
+  isLoading: boolean;
+  hrefFor: (row: SessionRow) => string | undefined;
+  buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
+  isLoadingStates: boolean;
+  showState: boolean;
+  showAgent: boolean;
+  showInstallation: boolean;
+  emptyState: JSX.Element;
+}) {
+  if (isLoading) {
+    return <Skeleton height="44px" />;
+  }
+  if (rows.length === 0) {
+    return emptyState;
+  }
+  return (
+    <ShowMore items={rows} noun="session">
+      {visible => (
+        <StackedRowList
+          aria-label="Sessions"
+          rows={visible.map(row =>
+            sessionStackedRow({
+              row,
+              href: hrefFor(row),
+              buildAvatarUrl,
+              isLoadingStates,
+              showState,
+              stateWords: 'classic',
+              showAgent,
+              showInstallation,
+              started: row.createdAt ? (
+                <DateComponent value={row.createdAt} relative />
+              ) : undefined,
+            }),
+          )}
+        />
+      )}
+    </ShowMore>
   );
 }

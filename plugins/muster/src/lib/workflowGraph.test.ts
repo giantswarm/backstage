@@ -2,6 +2,7 @@ import type { WorkflowExecutionStep } from '../apis/types';
 import type { WorkflowStep, WorkflowSubStep } from './k8s';
 import {
   buildWorkflowGraph,
+  estimateTextWidth,
   findFlowStep,
   FLOW_METRICS,
   forEachSummary,
@@ -255,6 +256,16 @@ describe('layoutWorkflowGraph', () => {
     expect(layout.width).toBe(lane.x + lane.width + FLOW_METRICS.margin);
   });
 
+  it('names the spine’s center line, where a wide flow opens', () => {
+    const spine = ['s0', 's1'].map(byKey);
+    for (const node of spine) {
+      expect(node.x + node.width / 2).toBe(layout.spineX);
+    }
+    // The parallel row is wider than a node, and centered on the spine.
+    const parallel = layout.groups.find(g => g.kind === 'parallel')!;
+    expect(parallel.x + parallel.width / 2).toBe(layout.spineX);
+  });
+
   it('fits everything inside its bounds', () => {
     for (const node of layout.nodes) {
       expect(node.x).toBeGreaterThanOrEqual(0);
@@ -272,6 +283,118 @@ describe('layoutWorkflowGraph', () => {
     const cleanupOnly = layoutWorkflowGraph(buildWorkflowGraph([], CLEANUP));
     expect(cleanupOnly.groups.map(g => g.kind)).toEqual(['onFailure']);
     expect(cleanupOnly.groups[0].x).toBe(FLOW_METRICS.margin);
+  });
+});
+
+describe('layoutWorkflowGraph — step titles are never cut', () => {
+  const titled = (...titles: string[]): WorkflowStep[] =>
+    titles.map((description, i) => ({
+      id: `step-${i}`,
+      tool: 'core_service_list',
+      description,
+    }));
+  const nodeOf = (
+    layout: ReturnType<typeof layoutWorkflowGraph>,
+    key: string,
+  ) => layout.nodes.find(n => n.node.key === key)!;
+
+  it('keeps the narrow node and one line for short titles', () => {
+    const layout = layoutWorkflowGraph(
+      buildWorkflowGraph(titled('Count the targets', 'Slowest scrape')),
+    );
+    for (const node of layout.nodes) {
+      expect(node.width).toBe(FLOW_METRICS.nodeWidth);
+      expect(node.titleFit).toBe('oneLine');
+      expect(node.height).toBe(FLOW_METRICS.nodeHeight);
+    }
+  });
+
+  it('wraps a longer title onto a second line in a taller box', () => {
+    const layout = layoutWorkflowGraph(
+      buildWorkflowGraph(
+        titled('Short', 'Find containers that restarted three times today'),
+      ),
+    );
+    expect(nodeOf(layout, 's0').titleFit).toBe('oneLine');
+    expect(nodeOf(layout, 's1').titleFit).toBe('twoLines');
+    expect(nodeOf(layout, 's1').height).toBe(FLOW_METRICS.nodeHeightTwoLines);
+    // The next step starts below the taller box.
+    expect(nodeOf(layout, 's1').y).toBeGreaterThan(
+      nodeOf(layout, 's0').y + nodeOf(layout, 's0').height,
+    );
+  });
+
+  it('widens every node, never past the cap, until each title fits in two lines', () => {
+    const long =
+      'Read the health of the control plane and of every node it reports';
+    const layout = layoutWorkflowGraph(
+      buildWorkflowGraph(titled('Short', long)),
+    );
+    const width = nodeOf(layout, 's1').width;
+    expect(width).toBeGreaterThan(FLOW_METRICS.nodeWidth);
+    expect(width).toBeLessThanOrEqual(FLOW_METRICS.maxNodeWidth);
+    // One width for the whole flow: the spine stays one straight column.
+    expect(nodeOf(layout, 's0').width).toBe(width);
+    expect(nodeOf(layout, 's1').titleFit).toBe('twoLines');
+    // Two lines of the title fit the box's title room.
+    const room = width - FLOW_METRICS.nodeChrome;
+    expect(estimateTextWidth(long, FLOW_METRICS.titleFontSize)).toBeLessThan(
+      2 * room,
+    );
+  });
+
+  it('clamps only a title longer than two lines at the widest node', () => {
+    const layout = layoutWorkflowGraph(
+      buildWorkflowGraph(
+        titled(
+          'CPU saturation across all nodes, averaged over fifteen minutes, compared with the requests the release asks for, per namespace and per node pool',
+        ),
+      ),
+    );
+    expect(nodeOf(layout, 's0').width).toBe(FLOW_METRICS.maxNodeWidth);
+    expect(nodeOf(layout, 's0').titleFit).toBe('clamped');
+    expect(nodeOf(layout, 's0').height).toBe(FLOW_METRICS.nodeHeightTwoLines);
+  });
+
+  it('gives a parallel row the height of its tallest sibling and a wrapped group head more room', () => {
+    const steps: WorkflowStep[] = [
+      {
+        id: 'loop',
+        description:
+          'Inspect each namespace that takes part in the release, one by one',
+        forEach: {
+          items: '{{ .input.namespaces }}',
+          steps: [{ id: 'pods', tool: 'x_a', description: 'Count pods' }],
+        },
+      },
+      {
+        id: 'both',
+        description: 'At once',
+        parallel: [
+          { id: 'a', tool: 'x_a', description: 'p99' },
+          {
+            id: 'b',
+            tool: 'x_b',
+            description:
+              'Error rate of every request over the last five minutes',
+          },
+        ],
+      },
+    ];
+    const layout = layoutWorkflowGraph(buildWorkflowGraph(steps));
+    const loop = layout.groups.find(g => g.kind === 'forEach')!;
+    expect(loop.titleFit).toBe('twoLines');
+    expect(loop.headerHeight).toBe(FLOW_METRICS.groupHeaderTwoLines);
+    expect(nodeOf(layout, 's0.0').y).toBeGreaterThanOrEqual(
+      loop.y + FLOW_METRICS.groupHeaderTwoLines,
+    );
+    const parallel = layout.groups.find(g => g.kind === 'parallel')!;
+    expect(parallel.headerHeight).toBe(FLOW_METRICS.groupHeader);
+    const [a, b] = ['s1.0', 's1.1'].map(key => nodeOf(layout, key));
+    expect(a.y).toBe(b.y);
+    expect(a.height).toBe(FLOW_METRICS.nodeHeight);
+    expect(b.height).toBe(FLOW_METRICS.nodeHeightTwoLines);
+    expect(b.y + b.height).toBeLessThanOrEqual(parallel.y + parallel.height);
   });
 });
 

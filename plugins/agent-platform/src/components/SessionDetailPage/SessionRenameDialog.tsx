@@ -121,8 +121,8 @@ export function SessionRenameDialog({
             />
             {isUserScoped === false && (
               <Text variant="body-medium">
-                This kagent deployment does not scope sessions to individual
-                users, so this session may have been started by somebody else.
+                This kagent does not scope sessions to users, so someone else
+                may have started this session.
               </Text>
             )}
             {error ? <Alert status="danger" description={error} /> : null}

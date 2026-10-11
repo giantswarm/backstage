@@ -80,7 +80,8 @@ export function AgentSkillsCard({
   /**
    * Opens the Update skills dialog — the pins never move on their own; this
    * re-pins every git skill to its repository's default-branch head after a
-   * dry run. Absent when the page cannot reach agent-manager.
+   * dry run — for an agent applied from git, as a pull request. Absent when the
+   * page cannot reach agent-manager.
    */
   onUpdateSkills?: () => void;
   /**

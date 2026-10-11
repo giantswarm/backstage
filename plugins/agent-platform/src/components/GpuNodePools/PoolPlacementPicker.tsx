@@ -252,7 +252,7 @@ export function PoolPlacementPicker({
         >
           <CheckboxGroup
             label="Zones"
-            description="Where the pool's nodes may launch: every zone of the cluster by default, any combination. Fewer zones is a capacity risk taken knowingly; with the model cache on, the pool follows its cache once a claim is bound."
+            description="Every zone by default. Fewer zones risks capacity; with the model cache on, the pool follows its cache once a claim is bound."
             value={zones}
             onChange={onZonesChange}
             isDisabled={isBusy || !hasZones}

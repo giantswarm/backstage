@@ -7,6 +7,7 @@ import {
   CANCELED_STATE,
   isRuntimeLostFailureText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { ActivityRow, InertActivityRow } from './ActivityRow';
 import { AttachmentEntry } from './AttachmentEntry';
@@ -118,6 +119,11 @@ const useStyles = makeStyles(theme => ({
     fontStyle: 'italic',
     maxHeight: 320,
     overflowY: 'auto',
+    // The payloads' rule (`PayloadBlock`): a scroller short enough on a phone
+    // that a swipe can land beside it and move the conversation (T22 C3).
+    [PHONE_MEDIA]: {
+      maxHeight: 'min(320px, 40dvh)',
+    },
   },
   payloads: {
     display: 'flex',

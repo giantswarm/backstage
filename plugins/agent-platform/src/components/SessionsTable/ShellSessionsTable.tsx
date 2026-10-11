@@ -32,7 +32,12 @@ import {
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { StatusDot, stopRowPress } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  StackedRowList,
+  StatusDot,
+  stopRowPress,
+  usePhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useDeleteSession } from '../../hooks/useDeleteSession';
@@ -78,6 +83,7 @@ import {
   Unknown,
 } from './cells';
 import type { SessionsTableProps } from './SessionsTable';
+import { sessionStackedRow } from './stackedRows';
 import {
   sessionStateDotVar,
   STABLE_CLASS_NAMES,
@@ -102,9 +108,8 @@ export const MAX_RENDERED_SESSIONS = 4 * SESSIONS_PAGE_SIZE;
 const ROW_ATTRIBUTE = 'data-session-row';
 
 const STATE_UNKNOWN_TITLE =
-  'kagent could not be read for this session, so its state is not known. This is not the same as finished.';
-const STATE_IDLE_TITLE =
-  'This session was started and has no turn that reported a state.';
+  'kagent could not be read for this session, so its state is unknown — not the same as finished.';
+const STATE_IDLE_TITLE = 'Started, but no turn has reported a state.';
 const STATE_UNEVALUATED_LABEL = 'Not loaded';
 const STATE_UNEVALUATED_TITLE = 'Open the session to see its state.';
 
@@ -276,6 +281,27 @@ function RowPinButton({
   );
 }
 
+/** A row's pin and ⋯ menu: the table's last column, a stacked row's end. */
+function RowActions({
+  row,
+  focusAfterDelete,
+  onRowDeleted,
+  onTogglePin,
+}: {
+  row: SessionTableRow;
+  focusAfterDelete: (rowId: string) => string | undefined;
+  onRowDeleted: (focusRowId: string | undefined) => void;
+  onTogglePin: (rowId: string) => void;
+}) {
+  const focusRowId = focusAfterDelete(row.id);
+  return (
+    <Flex align="center" gap="1">
+      <RowPinButton row={row} onToggle={onTogglePin} />
+      <SessionRowMenu row={row} onDeleted={() => onRowDeleted(focusRowId)} />
+    </Flex>
+  );
+}
+
 function shellColumns({
   buildAvatarUrl,
   hrefFor,
@@ -393,20 +419,16 @@ function shellColumns({
       label: 'Actions',
       hideLabel: true,
       width: '96px',
-      cell: row => {
-        const focusRowId = focusAfterDelete(row.id);
-        return (
-          <Cell>
-            <Flex align="center" gap="1">
-              <RowPinButton row={row} onToggle={onTogglePin} />
-              <SessionRowMenu
-                row={row}
-                onDeleted={() => onRowDeleted(focusRowId)}
-              />
-            </Flex>
-          </Cell>
-        );
-      },
+      cell: row => (
+        <Cell>
+          <RowActions
+            row={row}
+            focusAfterDelete={focusAfterDelete}
+            onRowDeleted={onRowDeleted}
+            onTogglePin={onTogglePin}
+          />
+        </Cell>
+      ),
     },
   );
   return columns;
@@ -468,6 +490,59 @@ function DayTable({
         </TableBody>
       </TableRoot>
     </div>
+  );
+}
+
+/**
+ * One day's sessions at phone width: stacked rows named by the day's heading
+ * (T22 B1). A table there gave the title ~31px; a row gives it the width and
+ * two lines, with the agent, state and start time under it.
+ */
+function DayList({
+  label,
+  rows,
+  group,
+  hrefFor,
+  buildAvatarUrl,
+  isLoadingStates,
+  showStates,
+  showInstallation,
+  currentYear,
+  renderActions,
+}: {
+  label: string;
+  rows: SessionTableRow[];
+  group: SessionListGroup;
+  hrefFor: (row: SessionRow) => string | undefined;
+  buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
+  isLoadingStates: boolean;
+  showStates: boolean;
+  showInstallation: boolean;
+  currentYear: number;
+  renderActions: (row: SessionTableRow) => ReactNode;
+}) {
+  return (
+    <StackedRowList
+      aria-label={label}
+      rows={rows.map(row =>
+        sessionStackedRow({
+          row,
+          href: hrefFor(row),
+          buildAvatarUrl,
+          isLoadingStates,
+          showState: showStates,
+          stateWords: 'shell',
+          showAgent: true,
+          showInstallation,
+          started: row.createdAt ? (
+            <time dateTime={row.createdAt}>
+              {formatSessionStart(row.createdAt, group, currentYear)}
+            </time>
+          ) : undefined,
+          actions: renderActions(row),
+        }),
+      )}
+    />
   );
 }
 
@@ -576,7 +651,8 @@ function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
         container.querySelectorAll<HTMLElement>(`[${ROW_ATTRIBUTE}]`),
       ).find(element => element.getAttribute(ROW_ATTRIBUTE) === rowId)
     : undefined;
-  const row = marker?.closest<HTMLElement>('[role="row"]');
+  // A table's row, or a stacked row's <li> at phone width.
+  const row = marker?.closest<HTMLElement>('[role="row"], li');
   if (row) {
     row.focus();
     if (row.contains(document.activeElement)) {
@@ -609,6 +685,7 @@ export function ShellSessionsTable({
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const baseId = useId();
+  const isPhone = usePhoneLayout();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const hrefFor = useCallback(
@@ -921,13 +998,35 @@ export function ShellSessionsTable({
               >
                 {group.label}
               </Text>
-              <DayTable
-                headingId={headingId}
-                rows={group.rows}
-                group={group.id}
-                columns={columns}
-                onRowAction={onRowAction}
-              />
+              {isPhone ? (
+                <DayList
+                  label={group.label}
+                  rows={group.rows}
+                  group={group.id}
+                  hrefFor={hrefFor}
+                  buildAvatarUrl={buildAvatarUrl}
+                  isLoadingStates={isLoadingStates}
+                  showStates={hasStates}
+                  showInstallation={showInstallation}
+                  currentYear={currentYear}
+                  renderActions={row => (
+                    <RowActions
+                      row={row}
+                      focusAfterDelete={focusAfterDelete}
+                      onRowDeleted={onRowDeleted}
+                      onTogglePin={togglePin}
+                    />
+                  )}
+                />
+              ) : (
+                <DayTable
+                  headingId={headingId}
+                  rows={group.rows}
+                  group={group.id}
+                  columns={columns}
+                  onRowAction={onRowAction}
+                />
+              )}
             </Flex>
           );
         })}

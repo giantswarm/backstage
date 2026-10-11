@@ -76,6 +76,14 @@ function measureReserve(column: HTMLElement): number {
  * fold-out, a tab stop) can keep a scroll margin clear of it — the dock grows
  * while a question card is attached.
  *
+ * The same height goes on the document root while the dock is there (T22 B4),
+ * for what floats over the page from outside the column: the shell's
+ * stylesheet lifts the toasts (`[class*='Toast_container']`) by it, so a
+ * "waiting for you" toast lands above the docked composer instead of on it.
+ * It is the dock's own height, not counting the shell's bottom bar under it
+ * (the stylesheet adds that), and it is removed when the dock goes, so a page
+ * without one puts the toasts back at the bar.
+ *
  * Takes the elements rather than refs (the page holds them through callback
  * refs), so it re-runs exactly when the column or the dock mounts or goes —
  * both exist only on some of the page's paths. Without `ResizeObserver`
@@ -90,16 +98,22 @@ export function useDockedComposerLayout(
       return undefined;
     }
     let frame = 0;
+    const root = document.documentElement;
     const measure = () => {
       frame = 0;
       columnElement.style.setProperty(
         COLUMN_RESERVE_VAR,
         `${measureReserve(columnElement)}px`,
       );
-      columnElement.style.setProperty(
-        DOCK_HEIGHT_VAR,
-        `${dockElement ? Math.ceil(dockElement.offsetHeight) : 0}px`,
-      );
+      const dockHeight = `${
+        dockElement ? Math.ceil(dockElement.offsetHeight) : 0
+      }px`;
+      columnElement.style.setProperty(DOCK_HEIGHT_VAR, dockHeight);
+      if (dockElement) {
+        root.style.setProperty(DOCK_HEIGHT_VAR, dockHeight);
+      } else {
+        root.style.removeProperty(DOCK_HEIGHT_VAR);
+      }
     };
     const schedule = () => {
       if (!frame) {
@@ -124,6 +138,9 @@ export function useDockedComposerLayout(
       if (frame) {
         cancelAnimationFrame(frame);
       }
+      // The dock is going (or being swapped for another element, which the
+      // next run measures): nothing is docked until then.
+      root.style.removeProperty(DOCK_HEIGHT_VAR);
     };
   }, [columnElement, dockElement]);
 }

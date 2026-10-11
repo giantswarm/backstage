@@ -1,6 +1,7 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Link } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
+import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { UsageCard } from '../UsageCard';
 import { formatCount, formatPercent } from '../../../lib/formatNumbers';
 
@@ -18,18 +19,38 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1.5),
     alignItems: 'center',
     fontSize: 13.5,
+    // At phone width the name has the line to itself, beside the figures,
+    // with the bar under both (T22 C23): in the three-column row the name got
+    // ~96px and a truncation whose full text lived only in `title=`, which a
+    // phone never shows.
+    [PHONE_MEDIA]: {
+      gridTemplateColumns: 'minmax(0, 1fr) auto',
+      gridTemplateAreas: '"name amount" "track track"',
+      rowGap: theme.spacing(0.5),
+    },
   },
   name: {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     minWidth: 0,
+    [PHONE_MEDIA]: {
+      gridArea: 'name',
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+      display: '-webkit-box',
+      WebkitLineClamp: 2,
+      WebkitBoxOrient: 'vertical',
+    },
   },
   track: {
     height: 8,
     borderRadius: 4,
     background: theme.palette.divider,
     overflow: 'hidden',
+    [PHONE_MEDIA]: {
+      gridArea: 'track',
+    },
   },
   fill: {
     height: '100%',
@@ -40,6 +61,9 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontVariantNumeric: 'tabular-nums',
     textAlign: 'right',
     whiteSpace: 'nowrap',
+    [PHONE_MEDIA]: {
+      gridArea: 'amount',
+    },
   },
   // Read out, not shown: what the count is, and a pause before the share, so
   // a screen reader (and a copy) says "12 model calls, 53%", not "1253%".

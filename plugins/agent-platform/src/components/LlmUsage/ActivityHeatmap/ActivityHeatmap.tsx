@@ -1,6 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { makeStyles, Theme, useTheme } from '@material-ui/core';
 import { Text } from '@backstage/ui';
+import {
+  usePhoneLayout,
+  useTouchInput,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount } from '../../../lib/formatNumbers';
 import { UsageCard } from '../UsageCard';
 import {
@@ -27,8 +31,21 @@ const STEPS_DARK = ['#383835', '#3987e5', '#6da7ec', '#9ec5f4', '#cde2fb'];
 
 /** Cell edge and the gap between cells, in px — GitHub's proportions. */
 const CELL = 12;
+/**
+ * The cell edge at phone width: a bigger tap target (T22 C22). 14 weeks —
+ * the widest a 90-day window spans — are 28 + 14 × 19 − 3 = 291px, inside
+ * the 311px a phone-width card leaves.
+ */
+const PHONE_CELL = 16;
 const GAP = 3;
-const STEP = CELL + GAP;
+
+/** One step down or across the grid, for the arrow keys. */
+const KEY_STEP: Record<string, number> = {
+  ArrowUp: -1,
+  ArrowDown: 1,
+  ArrowLeft: -7,
+  ArrowRight: 7,
+};
 /** Room for the weekday labels left of the grid and the months above it. */
 const LEFT = 28;
 const TOP = 16;
@@ -53,8 +70,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
     // The grid keeps its intrinsic size and scrolls sideways rather than
-    // squash, but at the widest window (90 days, 14 columns) it is ~240px —
-    // inside a 375px screen with room to spare.
+    // squash, but at the widest window (90 days, 14 columns) it is ~235px, and
+    // 291px with the phone's bigger cells — inside a 375px screen's card.
     maxWidth: '100%',
     overflowX: 'auto',
   },
@@ -64,10 +81,34 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: 10,
       fill: theme.palette.text.secondary,
     },
+    '& rect[data-day]': {
+      cursor: 'pointer',
+      outline: 'none',
+    },
     '& rect[data-day]:hover': {
       stroke: theme.palette.text.primary,
       strokeWidth: 1,
     },
+    '& rect[data-day][aria-pressed="true"]': {
+      stroke: theme.palette.text.primary,
+      strokeWidth: 1.5,
+    },
+    '& rect[data-day]:focus-visible': {
+      stroke: theme.palette.primary.main,
+      strokeWidth: 2,
+    },
+  },
+  // The selected day's figure, in words: what a phone cannot get from the
+  // cells' hover titles.
+  caption: {
+    margin: 0,
+    paddingLeft: LEFT,
+    fontSize: 12,
+    color: theme.palette.text.primary,
+    fontVariantNumeric: 'tabular-nums',
+  },
+  captionHint: {
+    color: theme.palette.text.secondary,
   },
   legend: {
     display: 'flex',
@@ -144,6 +185,11 @@ export type ActivityHeatmapProps = {
  * grid's accessible name is a one-sentence summary, and a visually hidden
  * table lists every day — bounded by the window, so at most 90 rows.
  *
+ * **A day can be selected** (T22 C22): a tap, a click, or the arrow keys
+ * (one tab stop for the grid) select a cell, and its day and figure are said
+ * in a line under the legend — the only way a phone, which never hovers,
+ * reads one day's figure off the grid. Cells are 16px at phone width.
+ *
  * Days outside the list get no cell: a 3-day window is three cells, not a
  * calendar of blanks claiming idle days the window never covered.
  */
@@ -157,10 +203,52 @@ export function ActivityHeatmap({
   const classes = useStyles();
   const theme = useTheme();
   const steps = theme.palette.type === 'dark' ? STEPS_DARK : STEPS_LIGHT;
+  const isPhone = usePhoneLayout();
+  const isTouch = useTouchInput();
+  const cellSize = isPhone ? PHONE_CELL : CELL;
+  const step = cellSize + GAP;
 
   const layout = useMemo(() => layoutHeatmap(days), [days]);
   const summary = useMemo(() => summarizeHeatmap(days), [days]);
   const lastDay = days[days.length - 1]?.day;
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [selected, setSelected] = useState<string>();
+  // The grid's one tab stop: the selected day, else the latest one.
+  const selectedCell = layout.cells.find(cell => cell.day === selected);
+  const focusDay =
+    selectedCell?.day ?? layout.cells[layout.cells.length - 1]?.day;
+
+  const selectAndFocus = (day: string) => {
+    setSelected(day);
+    svgRef.current
+      ?.querySelector<SVGRectElement>(`rect[data-day="${day}"]`)
+      ?.focus();
+  };
+
+  const onCellKeyDown = (event: KeyboardEvent, index: number) => {
+    let next: number | undefined;
+    if (event.key in KEY_STEP) {
+      next = index + KEY_STEP[event.key];
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = layout.cells.length - 1;
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      const day = layout.cells[index].day;
+      setSelected(current => (current === day ? undefined : day));
+      return;
+    }
+    if (next === undefined) {
+      return;
+    }
+    event.preventDefault();
+    // Cells are consecutive days, so ±7 is the same weekday a column over.
+    if (next >= 0 && next < layout.cells.length) {
+      selectAndFocus(layout.cells[next].day);
+    }
+  };
 
   const count = (value: number) =>
     `${formatCount(value)} ${Math.round(value) === 1 ? noun.one : noun.other}`;
@@ -173,8 +261,8 @@ export function ActivityHeatmap({
   const dayLabel = (day: string) =>
     `${formatHeatmapDay(day)}${partialLast && day === lastDay ? ' (today, so far)' : ''}`;
 
-  const width = LEFT + layout.weeks * STEP - GAP;
-  const height = TOP + 7 * STEP - GAP;
+  const width = LEFT + layout.weeks * step - GAP;
+  const height = TOP + 7 * step - GAP;
 
   const ariaLabel = summary.busiest
     ? `${title}: ${count(summary.total)} over ${days.length} days, on ${summary.activeDays} of them. Busiest: ${formatHeatmapDay(summary.busiest.day)}, ${count(summary.busiest.value)}.`
@@ -189,13 +277,15 @@ export function ActivityHeatmap({
             width={width}
             height={height}
             viewBox={`0 0 ${width} ${height}`}
-            role="img"
+            ref={svgRef}
+            // A group, not an image: its cells are buttons a person selects.
+            role="group"
             aria-label={ariaLabel}
           >
             {layout.monthLabels.map(({ week, label }) => (
               <text
                 key={`${week}-${label}`}
-                x={LEFT + week * STEP}
+                x={LEFT + week * step}
                 y={TOP - 5}
                 aria-hidden
               >
@@ -206,23 +296,33 @@ export function ActivityHeatmap({
               <text
                 key={label}
                 x={0}
-                y={TOP + row * STEP + CELL - 2}
+                y={TOP + row * step + cellSize - 2}
                 aria-hidden
               >
                 {label}
               </text>
             ))}
-            {layout.cells.map(cell => (
+            {layout.cells.map((cell, index) => (
               <rect
                 key={cell.day}
                 data-day={cell.day}
                 data-level={cell.level}
-                x={LEFT + cell.week * STEP}
-                y={TOP + cell.weekday * STEP}
-                width={CELL}
-                height={CELL}
+                x={LEFT + cell.week * step}
+                y={TOP + cell.weekday * step}
+                width={cellSize}
+                height={cellSize}
                 rx={2}
                 fill={steps[cell.level]}
+                role="button"
+                aria-label={`${dayLabel(cell.day)}: ${count(cell.value)}`}
+                aria-pressed={cell.day === selected}
+                tabIndex={cell.day === focusDay ? 0 : -1}
+                onClick={() =>
+                  setSelected(current =>
+                    current === cell.day ? undefined : cell.day,
+                  )
+                }
+                onKeyDown={event => onCellKeyDown(event, index)}
               >
                 <title>{`${dayLabel(cell.day)}: ${count(cell.value)}`}</title>
               </rect>
@@ -239,6 +339,22 @@ export function ActivityHeatmap({
             ))}
             <span className={classes.legendWord}>More</span>
           </div>
+          {/* Polite: a person stepping through days with the arrows hears
+              each figure once they pause, not a queue of them. */}
+          <p className={classes.caption} aria-live="polite">
+            {selectedCell && (
+              <>
+                {dayLabel(selectedCell.day)}: {count(selectedCell.value)}
+              </>
+            )}
+            {!selectedCell &&
+              (isPhone || isTouch) &&
+              layout.cells.length > 0 && (
+                <span className={classes.captionHint}>
+                  Tap a day for its figure.
+                </span>
+              )}
+          </p>
         </figure>
 
         <dl className={classes.facts}>

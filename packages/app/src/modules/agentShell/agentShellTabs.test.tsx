@@ -29,7 +29,7 @@ describe('agent-shell.css tab strips', () => {
     // again.
     const { container } = renderTabs();
 
-    for (const className of ['bui-Tab', 'bui-TabList', 'bui-TabActive']) {
+    for (const className of ['bui-Tab', 'bui-TabActive']) {
       expect(shellCss).toContain(`.${className}`);
       expect([
         className,
@@ -43,5 +43,13 @@ describe('agent-shell.css tab strips', () => {
     expect(shellCss).toMatch(
       /html\[data-agent-shell\] \.bui-Tab \{\s*white-space: nowrap;/,
     );
+  });
+
+  // T72: a strip too long for a phone scrolls sideways in RouteTabs (ui-react),
+  // so the stylesheet no longer wraps tabs to a second row or squeezes a
+  // five-tab strip (R4) — either would fight the scrolling strip.
+  it('leaves long strips to the scrolling RouteTabs: no wrap, no squeeze', () => {
+    expect(shellCss).not.toMatch(/\.bui-TabList[^{]*\{[^}]*flex-wrap: wrap/);
+    expect(shellCss).not.toContain('.bui-Tab:nth-child(5)');
   });
 });

@@ -1,6 +1,11 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  type MockedLayout,
+  mockDesktopLayout,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
 import { skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
@@ -246,6 +251,74 @@ describe('CustomizeSkillsPanel at 3 skills and at 300 (T39)', () => {
   });
 });
 
+describe('CustomizeSkillsPanel at phone width (T22 P3)', () => {
+  let layout: MockedLayout;
+  const catalogOf = (count: number): SkillCatalog => ({
+    ...loaded,
+    skills: Array.from({ length: count }, (_, index) =>
+      skill(`skill-${String(index).padStart(3, '0')}`),
+    ),
+  });
+
+  beforeEach(() => {
+    mockCatalog = loaded;
+    mockAgentsLoading = false;
+    mockAgentSkillIds = [];
+    mockRepositories = [REPO];
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('breaks a long skill name inside its card', async () => {
+    const longName = 'reconcile-quarterly-infrastructure-costs-against-budgets';
+    mockCatalog = { ...loaded, skills: [skill(longName)] };
+    await renderPanel();
+
+    expect(screen.getByRole('heading', { name: longName })).toHaveStyle({
+      overflowWrap: 'anywhere',
+    });
+  });
+
+  it('gives Add skill its own full-width line under the filters', async () => {
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: /Add skill/ })).toHaveStyle({
+      width: '100%',
+    });
+    expect(
+      screen.getByRole('button', { name: /Filter by source/, hidden: true }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps Add skill at its own width on a wide viewport', async () => {
+    layout.restore();
+    layout = mockDesktopLayout();
+    await renderPanel();
+
+    expect(screen.getByRole('link', { name: /Add skill/ }).style.width).toBe(
+      '',
+    );
+  });
+
+  it('shows three skills whole and pages 300', async () => {
+    mockCatalog = catalogOf(3);
+    const { unmount } = await renderPanel();
+    expect(listedRows()).toHaveLength(3);
+    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
+    unmount();
+
+    mockCatalog = catalogOf(300);
+    await renderPanel();
+    expect(listedRows()).toHaveLength(SKILL_CARDS_SHOWN);
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: `Show ${SKILL_CARDS_SHOWN} more skills`,
+      }),
+    );
+    expect(listedRows()).toHaveLength(2 * SKILL_CARDS_SHOWN);
+  });
+});
+
 describe('CustomizeSkillsPanel links and Add skill', () => {
   beforeEach(() => {
     mockCatalog = loaded;
@@ -316,7 +389,9 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
       screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Skills are added from here as GitHub pull requests/),
+      screen.getByText(
+        /Adding skills here needs a github\.com skill repository/,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -326,7 +401,9 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
 
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
     expect(
-      screen.queryByText(/Skills are added from here as GitHub pull requests/),
+      screen.queryByText(
+        /Adding skills here needs a github\.com skill repository/,
+      ),
     ).not.toBeInTheDocument();
   });
 });

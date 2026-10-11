@@ -11,6 +11,11 @@ import {
 import type { AgentRow } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { CommandPalette } from './CommandPalette';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -107,6 +112,9 @@ jest.mock('../../hooks/useCreateSession', () => ({
 // The composer drags in the full agent picker; the palette's wiring to it —
 // which agent it preselects, what happens on start — is what this file covers.
 jest.mock('../NewSessionDialog', () => ({
+  PHONE_FULL_SCREEN_DIALOG: jest.requireActual(
+    '../NewSessionDialog/phoneDialog',
+  ).PHONE_FULL_SCREEN_DIALOG,
   NewSessionDialog: ({
     isOpen,
     defaultAgent,
@@ -468,5 +476,61 @@ describe('CommandPalette', () => {
         'Nothing in your sessions, agents, skills or connectors matches “zzz-no-such-thing”.',
       ),
     ).toBeVisible();
+  });
+});
+
+describe('CommandPalette by touch (T22 B20, P7)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  it('starts a session from a button on the agent’s row, without opening the agent', async () => {
+    layout = mockPhoneLayout();
+    const input = await openPalette();
+    await userEvent.type(input, 'sso');
+
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Start a session with Support Triage',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Composer for Support Triage'),
+    ).toBeVisible();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('offers the button on agents only', async () => {
+    layout = mockPhoneLayout();
+    const input = await openPalette();
+    await userEvent.type(input, 'sso');
+
+    expect(
+      screen.getAllByRole('button', { name: /^Start a session with/ }),
+    ).toHaveLength(1);
+  });
+
+  it('shows no key hints on touch input, only what is still loading', async () => {
+    layout = mockPhoneLayout();
+    mockSessions = { ...mockSessions, isLoadingMore: true };
+    await openPalette();
+
+    expect(screen.queryByText(/move$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/open$/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Some results are still loading…'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps ⌘↵ and its hint on a desktop, with no button', async () => {
+    layout = mockDesktopLayout();
+    const input = await openPalette();
+    await userEvent.type(input, 'sso');
+    fireEvent.keyDown(input, { key: 'ArrowDown' }); // onto the agent
+
+    expect(screen.getByText(/start a session with this agent/)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /^Start a session with/ }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -13,6 +13,7 @@ import {
   discoverAgentSkills,
   GitHubApiError,
   parseRepoUrl,
+  SkillDiscoverySnapshot,
 } from './agentSkills/discoverAgentSkills';
 import {
   discoverAgentSkillsFromGit,
@@ -28,11 +29,20 @@ import {
   SKILL_PULL_REQUEST_BODY_LIMIT,
 } from './agentSkills/createSkillPullRequest';
 import {
-  readSkillContentFromGit,
+  listSkillFilesFromGitHub,
   readSkillContentFromGitHub,
+  readSkillFileFromGitHub,
+  SkillContent,
   skillContentFromRaw,
 } from './agentSkills/readSkillContent';
 import { SkillDiscoveryCache } from './agentSkills/skillDiscoveryCache';
+import {
+  isSkillFilePath,
+  needsFileBytes,
+  repositoryFilePath,
+  SkillFileList,
+  skillFileContent,
+} from './agentSkills/skillFiles';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { readSignedInConfig } from './signedInConfig';
@@ -412,20 +422,106 @@ export async function createRouter({
     }
   });
 
+  const isGitHubUrl = (repoUrl: string): boolean =>
+    repoUrl.toLowerCase().startsWith('https://github.com/');
+
+  /** The query both content routes take: a skill at a commit. */
+  const skillAtCommitQuery = z.object({
+    repoUrl: z
+      .string()
+      .url()
+      .refine(u => /^https?:\/\//.test(u), {
+        message: 'Only http(s) repository URLs are allowed',
+      }),
+    path: z.string().default('').refine(isSkillDirectory, {
+      message: 'path must be a relative skill directory',
+    }),
+    commit: z.string().regex(COMMIT_RE, {
+      message: 'commit must be a full commit id',
+    }),
+    ref: z.string().min(1).max(255).optional(),
+  });
+
+  // Generic-git reads of a commit the cache does not hold, in flight: the
+  // file viewer's requests share one clone.
+  const gitCommitReads = new Map<string, Promise<SkillDiscoverySnapshot>>();
+
+  /**
+   * A generic-git repository read at `commit` outside a listing: one depth-1
+   * clone whose head must still be `commit` (a 409 otherwise), scanned like
+   * discovery — every SKILL.md, every skill's files, the small files' bytes
+   * (`mustRead`'s whatever the budget) — and remembered, so the next views
+   * are answered from memory.
+   */
+  const readGitCommit = (
+    repoUrl: string,
+    ref: string | undefined,
+    commit: string,
+    mustRead?: string,
+  ): Promise<SkillDiscoverySnapshot> => {
+    const key = `${repoUrl.toLowerCase()}#${commit}#${mustRead ?? ''}`;
+    let pending = gitCommitReads.get(key);
+    if (!pending) {
+      pending = discoverAgentSkillsFromGit({ repoUrl, ref, commit, mustRead })
+        .then(snapshot => {
+          skillDiscoveryCache.rememberPinned(repoUrl, commit, {
+            files: snapshot.files ?? new Map(),
+            contents: snapshot.contents,
+            fileContents: snapshot.fileContents,
+          });
+          return snapshot;
+        })
+        .finally(() => gitCommitReads.delete(key));
+      gitCommitReads.set(key, pending);
+    }
+    return pending;
+  };
+
+  /**
+   * Every skill's files of a github.com repository at a commit no listing
+   * covers (an agent's older pin): one tree read, remembered.
+   */
+  const readGitHubCommitFiles = async (
+    repoUrl: string,
+    commit: string,
+  ): Promise<Map<string, SkillFileList>> => {
+    const files = await listSkillFilesFromGitHub({
+      repoUrl,
+      commit,
+      githubCredentialsProvider,
+    });
+    skillDiscoveryCache.rememberPinned(repoUrl, commit, { files });
+    return files;
+  };
+
+  /** A 404 for a skill directory without a SKILL.md at the commit. */
+  const noSkillAt = (repoUrl: string, path: string, commit: string) =>
+    new GitFetchError(
+      404,
+      `${path ? `${path}/SKILL.md` : 'SKILL.md'} was not found in ${repoUrl} at ${commit.slice(0, 7)}.`,
+    );
+
   /**
    * GET /agent-skills/content
    *
    * One skill's SKILL.md at a commit, split into frontmatter `name`,
-   * `description` and the Markdown body (`instructions`): what the portal
-   * prefills a skill edit with. github.com repositories are read through the
-   * contents API (with the GitHub integration's token, like discovery); any
-   * other http(s) repository from the same depth-1 clone discovery makes,
-   * whose head must still be the commit asked for (409 otherwise — re-reading
-   * the catalog picks up the new head).
+   * `description` and the Markdown body (`instructions`) — what the portal
+   * prefills a skill edit with — plus the skill's other files: `files`
+   * (`{ path, size, sha }`, path relative to the skill directory, SKILL.md
+   * first) and `filesTruncated` (the skill has more than 200 files, or
+   * GitHub truncated the repository tree). A nested skill's files belong to
+   * it, not to the skill above it.
    *
-   * A SKILL.md the listing already read at that commit is answered from the
-   * discovery cache, with no request upstream (no rate limit, no 409 for a
-   * branch that moved on since the listing).
+   * Answered from the discovery cache when the listing read that commit (no
+   * request upstream — no rate limit, no 409 for a branch that moved on since
+   * the listing). Otherwise github.com repositories are read through the
+   * contents API, with the GitHub integration's token like discovery, and the
+   * file list through one tree read — best effort: when the tree read fails
+   * the content is still answered, without `files`/`filesTruncated`. Any
+   * other http(s) repository is read from one depth-1 clone, whose head must
+   * still be the commit asked for (409 otherwise — re-reading the catalog
+   * picks up the new head); that clone also lists the files and keeps the
+   * small ones for `/content/file`.
    *
    * Only the configured `agentPlatform.skills.repositories`, for both
    * providers: the route reads what the catalog lists and nothing else.
@@ -436,25 +532,11 @@ export async function createRouter({
    * - commit: the full commit id to read at
    * - ref: optional branch the commit is the head of (git provider only)
    *
-   * Returns { repoUrl, path, commit, name, description, instructions }.
+   * Returns { repoUrl, path, commit, name, description, instructions,
+   * files?, filesTruncated? }.
    */
   router.get('/agent-skills/content', async (req, res) => {
-    const schema = z.object({
-      repoUrl: z
-        .string()
-        .url()
-        .refine(u => /^https?:\/\//.test(u), {
-          message: 'Only http(s) repository URLs are allowed',
-        }),
-      path: z.string().default('').refine(isSkillDirectory, {
-        message: 'path must be a relative skill directory',
-      }),
-      commit: z.string().regex(COMMIT_RE, {
-        message: 'commit must be a full commit id',
-      }),
-      ref: z.string().min(1).max(255).optional(),
-    });
-    const parsed = schema.safeParse(req.query);
+    const parsed = skillAtCommitQuery.safeParse(req.query);
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
@@ -465,34 +547,202 @@ export async function createRouter({
       );
     }
 
-    const known = skillDiscoveryCache.readContent(repoUrl, path, commit);
-    if (known) {
-      res.json(
-        skillContentFromRaw(known.raw, {
+    try {
+      let known = skillDiscoveryCache.readContent(repoUrl, path, commit);
+      let files = skillDiscoveryCache.readSkillFiles(repoUrl, path, commit);
+      let content: SkillContent;
+      if (isGitHubUrl(repoUrl)) {
+        content = known
+          ? skillContentFromRaw(known.raw, {
+              repoUrl: known.repoUrl,
+              path,
+              commit,
+            })
+          : await readSkillContentFromGitHub({
+              repoUrl,
+              path,
+              commit,
+              githubCredentialsProvider,
+            });
+        if (!files) {
+          files = await readGitHubCommitFiles(content.repoUrl, commit).then(
+            all => all.get(path),
+            error => {
+              logger?.info('Could not list the files of a skill', {
+                repository: repoUrl,
+                error: (error as Error)?.message,
+              });
+              return undefined;
+            },
+          );
+        }
+      } else {
+        if (!known || !files) {
+          const snapshot = await readGitCommit(repoUrl, ref, commit);
+          const raw = snapshot.contents.get(path);
+          if (raw === undefined) {
+            throw noSkillAt(
+              snapshot.skills[0]?.repoUrl ?? repoUrl,
+              path,
+              commit,
+            );
+          }
+          known = { raw, repoUrl: snapshot.skills[0]?.repoUrl ?? repoUrl };
+          files = snapshot.files?.get(path);
+        }
+        content = skillContentFromRaw(known.raw, {
           repoUrl: known.repoUrl,
           path,
           commit,
-        }),
-      );
-      return;
-    }
-
-    try {
-      const content = repoUrl.toLowerCase().startsWith('https://github.com/')
-        ? await readSkillContentFromGitHub({
-            repoUrl,
-            path,
-            commit,
-            githubCredentialsProvider,
-          })
-        : await readSkillContentFromGit({ repoUrl, path, commit, ref });
-      res.json(content);
+        });
+      }
+      res.json({
+        ...content,
+        ...(files
+          ? { files: files.files, filesTruncated: files.truncated }
+          : {}),
+      });
     } catch (error) {
       // Expected outcomes keep their upstream status (404 file gone, 409 the
       // branch moved on, 403/429 rate limit), like discovery — not 500s.
       if (error instanceof GitHubApiError || error instanceof GitFetchError) {
         res.status(error.status).json({
           error: { message: `Failed to read the skill: ${error.message}` },
+        });
+        return;
+      }
+      throw error;
+    }
+  });
+
+  /**
+   * GET /agent-skills/content/file
+   *
+   * One file of a skill at a commit, for the Instructions tab's file viewer.
+   *
+   * The same gates as `/content` (a configured repository, a skill directory,
+   * a full commit id), and `file` — relative to the skill directory, no `..`
+   * or `.` segment, no leading `/` — **must be one of the skill's listed
+   * files** (the `files` `/content` answers). That list is the security
+   * boundary: the route reads with the portal's own credentials, and never
+   * serves a path outside the skill (nor a symlink, nor a file of a nested
+   * skill below it, nor one past the 200-file cap — 404).
+   *
+   * Returns { path, size, sha, binary, truncated, content? }: `content` is the
+   * file as UTF-8 text, present only for a text file up to 512 KB; a binary
+   * file (by extension, or a NUL byte in its first 8,000) answers `binary:
+   * true` and an oversize one `truncated: true`, both without `content` (the
+   * UI links to the repository). An oversize or binary-by-extension file is
+   * answered from its listed size and name without being read at all.
+   *
+   * Content at a commit never changes: the answer is `Cache-Control: private,
+   * max-age=86400, immutable`, and the server keeps small files in a
+   * size-capped LRU (repository#commit#path, 32 MB).
+   *
+   * Reads on a cache miss:
+   * - github.com: the file list from one tree read (when no listing covers
+   *   the commit), the file from the contents API at the commit — one request
+   *   per file, then from memory.
+   * - generic git: never a clone per click. Discovery's checkout scan (and
+   *   `/content`'s, for a commit no listing holds) already keeps every small
+   *   listed file. Only when the file cache evicted it, or no read covered the
+   *   commit, does the route clone once more — one depth-1 clone that
+   *   repopulates the whole commit (concurrent requests share it); its head
+   *   must still be the commit asked for, so a branch that moved on answers
+   *   409 ("reload the skill"), as `/content` does.
+   *
+   * Query parameters: repoUrl, path, commit, ref (as `/content`), and file.
+   */
+  router.get('/agent-skills/content/file', async (req, res) => {
+    const parsed = skillAtCommitQuery
+      .extend({
+        file: z.string().refine(isSkillFilePath, {
+          message: 'file must be a path relative to the skill directory',
+        }),
+      })
+      .safeParse(req.query);
+    if (!parsed.success) {
+      throw new InputError(parsed.error.toString());
+    }
+    const { repoUrl, path, commit, ref, file } = parsed.data;
+    if (!isConfiguredSkillRepository(repoUrl)) {
+      throw new InputError(
+        `${repoUrl} is not one of the configured skill repositories`,
+      );
+    }
+    const isGitHub = isGitHubUrl(repoUrl);
+    const filePath = repositoryFilePath(path, file);
+    const notFound = (message: string) => {
+      res.status(404).json({ error: { message } });
+    };
+
+    try {
+      let gitRead: SkillDiscoverySnapshot | undefined;
+      let list = skillDiscoveryCache.readSkillFiles(repoUrl, path, commit);
+      if (!list) {
+        if (isGitHub) {
+          list = (await readGitHubCommitFiles(repoUrl, commit)).get(path);
+        } else {
+          gitRead = await readGitCommit(repoUrl, ref, commit, filePath);
+          list = gitRead.files?.get(path);
+        }
+      }
+      if (!list) {
+        notFound(
+          `There is no skill at ${path || 'the root'} of ${repoUrl} at ${commit.slice(0, 7)}.`,
+        );
+        return;
+      }
+      const entry = list.files.find(f => f.path === file);
+      if (!entry) {
+        notFound(
+          `${file} is not ${list.truncated ? 'among the listed files' : 'a file'} of the skill at ${path || 'the root'} of ${repoUrl} at ${commit.slice(0, 7)}.`,
+        );
+        return;
+      }
+
+      let read: { bytes?: Uint8Array; binary?: boolean } | undefined;
+      if (needsFileBytes(entry)) {
+        // A clone just made has the bytes at hand, whatever the cache kept.
+        const scanned = gitRead?.fileContents?.get(filePath);
+        read = scanned
+          ? { bytes: scanned }
+          : skillDiscoveryCache.readFile(repoUrl, commit, filePath);
+        if (!read && isGitHub) {
+          const bytes = await readSkillFileFromGitHub({
+            repoUrl,
+            filePath,
+            commit,
+            githubCredentialsProvider,
+          });
+          read = skillDiscoveryCache.rememberFile(
+            repoUrl,
+            commit,
+            filePath,
+            bytes,
+          );
+        } else if (!read) {
+          const bytes = (
+            await readGitCommit(repoUrl, ref, commit, filePath)
+          ).fileContents?.get(filePath);
+          if (!bytes) {
+            notFound(
+              `${file} could not be read from ${repoUrl} at ${commit.slice(0, 7)}.`,
+            );
+            return;
+          }
+          read = { bytes };
+        }
+      }
+
+      res.setHeader('Cache-Control', 'private, max-age=86400, immutable');
+      res.json(skillFileContent(entry, read));
+    } catch (error) {
+      // Expected outcomes keep their upstream status (404, 409 the branch
+      // moved on, 403/429 rate limit), like `/content` — not 500s.
+      if (error instanceof GitHubApiError || error instanceof GitFetchError) {
+        res.status(error.status).json({
+          error: { message: `Failed to read the skill file: ${error.message}` },
         });
         return;
       }
