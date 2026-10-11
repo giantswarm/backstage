@@ -55,7 +55,7 @@ export function AgentSessionBlocker({
       <Alert
         status="danger"
         icon
-        title="Sessions can't start"
+        title="Sessions cannot start"
         description={description}
         customActions={
           canFix ? (

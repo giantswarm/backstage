@@ -65,7 +65,7 @@ export function UnreachableInstallationsAlert({
   }
 
   const count = installations.length;
-  const title = `Couldn't read ${count} environment${count === 1 ? '' : 's'}`;
+  const title = `Could not read ${count} environment${count === 1 ? '' : 's'}`;
 
   if (count <= NAMED_IN_SENTENCE) {
     return (
@@ -74,12 +74,12 @@ export function UnreachableInstallationsAlert({
         title={title}
         description={
           failures
-            ? `Skipped because their ${resourceName} couldn't be read: ${installations
+            ? `Skipped because their ${resourceName} could not be read: ${installations
                 .map(installation =>
                   describe(installation, failures[installation]),
                 )
                 .join('; ')}.`
-            : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
+            : `Skipped because their ${resourceName} could not be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${installations.join(
                 ', ',
               )}.`
         }
@@ -88,7 +88,7 @@ export function UnreachableInstallationsAlert({
   }
 
   const sentence = failures
-    ? `Skipped because their ${resourceName} couldn't be read: ${groupNames(
+    ? `Skipped because their ${resourceName} could not be read: ${groupNames(
         installations,
         installation => installation,
         installation => failures[installation]?.reason ?? '',
@@ -97,7 +97,7 @@ export function UnreachableInstallationsAlert({
           group ? `${joinNames(names)} (${group})` : joinNames(names),
         )
         .join('; ')}.`
-    : `Skipped because their ${resourceName} couldn't be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${joinNames(
+    : `Skipped because their ${resourceName} could not be read — the environment may be unreachable, or you may not have permission to list ${resourceName} there: ${joinNames(
         installations,
       )}.`;
 

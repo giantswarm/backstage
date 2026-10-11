@@ -493,15 +493,15 @@ function NewAgentSkillsPageContent() {
         {error && skills.length === 0 && (
           <Alert
             status="warning"
-            title="Couldn't discover skills"
-            description="The skill repositories couldn't be read. You can still create the agent without skills."
+            title="Could not discover skills"
+            description="The skill repositories could not be read. You can still create the agent without skills."
           />
         )}
 
         {failedRepositories.length > 0 && (
           <Alert
             status="warning"
-            title="Some skill repositories couldn't be read"
+            title="Some skill repositories could not be read"
             description={`Skipped: ${failedRepositories.join(', ')}.`}
           />
         )}
@@ -510,7 +510,7 @@ function NewAgentSkillsPageContent() {
           <Alert
             status="warning"
             title="Skill list may be incomplete"
-            description="A repository was too large to list fully (or a skill couldn't be read), so some skills may be missing."
+            description="A repository was too large to list fully (or a skill could not be read), so some skills may be missing."
           />
         )}
 

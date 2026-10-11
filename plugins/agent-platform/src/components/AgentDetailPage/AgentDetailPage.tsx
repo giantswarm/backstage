@@ -8,12 +8,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
-import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
 import {
   toastApiRef,
   useApi,
@@ -32,11 +27,13 @@ import {
   type BreadcrumbItem,
   DateComponent,
   FactsColumn,
+  LoadingIndicator,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
   type ShellPageProps,
   ShellPageTitleSkeleton,
+  StatusDot,
   StatusLabel,
   useProvidePageHeaderActions,
   useSplatBasePath,
@@ -79,6 +76,7 @@ import {
 import { InstallationChip } from '../InstallationChip';
 import { NewSessionDialog } from '../NewSessionDialog';
 import { ServingProvider, useServing } from '../ServingProvider';
+import { toneOfIntent } from '../../lib/customize';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
@@ -268,11 +266,12 @@ function ReadinessBadge({ readiness }: { readiness: ReadinessPresentation }) {
   return (
     // Tagged because the derived readiness and the condition it came from
     // share a label ("Ready", "Ready") — this is the derived one.
+    // A dot and its label, as the Customize list draws the same state and as
+    // the model, session and connector headers draw theirs.
     <span data-testid="agent-readiness">
-      <StatusLabel
+      <StatusDot
+        tone={toneOfIntent(readiness.intent)}
         label={readiness.label}
-        intent={readiness.intent}
-        icon={readiness.icon}
       />
     </span>
   );
@@ -658,12 +657,20 @@ function AgentDetailPageContent() {
         <AgentActionsMenu
           agent={agent}
           agentManager={agentManagerGate}
-          onEdit={openEdit}
+          // The shell's header has Edit as a button of its own.
+          onEdit={agentShell ? undefined : openEdit}
           onUpdateSkills={openUpdateSkills}
           onDelete={openDelete}
         />
       ) : null,
-    [agent, agentManagerGate, openEdit, openUpdateSkills, openDelete],
+    [
+      agent,
+      agentManagerGate,
+      agentShell,
+      openEdit,
+      openUpdateSkills,
+      openDelete,
+    ],
   );
   const isReady = agentRow?.readiness === 'ready';
   const actions = useMemo(
@@ -756,7 +763,7 @@ function AgentDetailPageContent() {
         tabsSearch={location.search}
         aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
       >
-        <Progress aria-label="Loading agent" />
+        <LoadingIndicator label="Reading the agent…" />
       </AgentFrame>
     );
   }
@@ -962,7 +969,6 @@ function AgentDetailPageContent() {
           ) : undefined
         }
       >
-        <Helmet title={`${displayName} · Agents · Agent Platform`} />
         <Flex direction="column" gap="4">
           {status}
 

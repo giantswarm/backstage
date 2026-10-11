@@ -294,7 +294,7 @@ describe('GpuNodePoolsPanel at phone width', () => {
       within(item).getByRole('button', { name: 'Actions for pool wc1-l4' }),
     );
     await user.click(
-      await screen.findByRole('menuitem', { name: 'Remove pool' }),
+      await screen.findByRole('menuitem', { name: 'Remove pool…' }),
     );
     expect(onRemove).toHaveBeenCalledWith(POOL);
   });

@@ -220,7 +220,8 @@ export function formatTokensPerSecond(value: number | undefined): string {
 }
 
 /**
- * Format a latency in seconds, or `—`.
+ * Format a latency in seconds, or `—`. A space before the unit, as every
+ * other duration on the platform has ("1.2 s", "took 35 s").
  *
  * `undefined` is the normal answer for an idle installation, not an error:
  * `histogram_quantile` over a histogram with no observations is `NaN`.
@@ -230,9 +231,9 @@ export function formatSeconds(value: number | undefined): string {
     return '—';
   }
   if (value < 1) {
-    return `${Math.round(value * 1000)}ms`;
+    return `${Math.round(value * 1000)} ms`;
   }
-  return `${value.toFixed(value < 10 ? 1 : 0)}s`;
+  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
 }
 
 const BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];

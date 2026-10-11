@@ -8,7 +8,11 @@ import {
   useParams,
 } from 'react-router-dom';
 import { EmptyState } from '@backstage/core-components';
-import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -22,8 +26,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
-import Edit from '@material-ui/icons/Edit';
-import MoreHoriz from '@material-ui/icons/MoreHoriz';
+import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
   FactsColumn,
@@ -34,10 +37,17 @@ import {
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
+  StatusDot,
+  type StatusDotTone,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { MCPServer } from '../../lib/k8s';
+import {
+  MCPServer,
+  MCPServerSeverity,
+  mcpServerStateSeverity,
+  worstSeverity,
+} from '../../lib/k8s';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
@@ -73,9 +83,9 @@ import {
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
   deactivatedSignInGate,
-  FamilyHealthBadge,
+  familyHealthLabel,
   ServerAuthActions,
-  ServerStateBadge,
+  serverStateLabel,
   SessionGate,
   useServerSignIn,
 } from '../shared';
@@ -107,6 +117,9 @@ function useCustomizePaths(): {
   };
 }
 
+/** How long a success toast stays, as on the platform's other deletes. */
+const TOAST_TIMEOUT_MS = 6000;
+
 const useStyles = makeStyles({
   tile: {
     flex: 'none',
@@ -133,12 +146,43 @@ function ConnectorTile({ name }: { name: string }) {
   );
 }
 
+/** The page's dot tones for muster's severities, as the list's dots read. */
+const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
+  ok: 'success',
+  warning: 'warning',
+  error: 'danger',
+  unknown: 'neutral',
+};
+
+/**
+ * The connector's state beside its name: a dot and its words, as the
+ * Customize list and the agent, model and session headers draw a state. The
+ * words stay muster's own (`serverStateLabel`, `familyHealthLabel`), with the
+ * Ready condition's explanation as the tooltip.
+ */
 function StatusBadge({ row }: { row: ServerPageRow }) {
   if (row.kind === 'server') {
-    return <ServerStateBadge server={row.server} />;
+    return (
+      <span title={row.server.getStateExplanation()}>
+        <StatusDot
+          tone={
+            SEVERITY_DOT_TONE[mcpServerStateSeverity(row.server.getState())]
+          }
+          label={serverStateLabel(row.server)}
+        />
+      </span>
+    );
   }
   if (row.kind === 'family') {
-    return <FamilyHealthBadge instances={row.servers} />;
+    const worst = row.servers
+      .map(server => mcpServerStateSeverity(server.getState()))
+      .reduce<MCPServerSeverity>(worstSeverity, 'ok');
+    return (
+      <StatusDot
+        tone={SEVERITY_DOT_TONE[worst]}
+        label={familyHealthLabel(row.servers)}
+      />
+    );
   }
   return null;
 }
@@ -192,6 +236,7 @@ function ConnectorPageContent({
   const session = useMusterSession();
   const { authenticated } = session;
   const navigate = useNavigate();
+  const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
   const paths = useCustomizePaths();
   const serversRoute = useRouteRef(mcpServersRouteRef);
@@ -300,7 +345,8 @@ function ConnectorPageContent({
         onAction: () =>
           openAction({
             ...deactivate,
-            label: `Turn off ${singular.getName()}`,
+            label: `Turn off "${singular.getName()}"?`,
+            confirmLabel: 'Turn off',
           }),
       });
     }
@@ -310,7 +356,11 @@ function ConnectorPageContent({
         id: 'turn-on',
         label: 'Turn on…',
         onAction: () =>
-          openAction({ ...activate, label: `Turn on ${singular.getName()}` }),
+          openAction({
+            ...activate,
+            label: `Turn on "${singular.getName()}"?`,
+            confirmLabel: 'Turn on',
+          }),
       });
     }
     menu.push({
@@ -318,7 +368,11 @@ function ConnectorPageContent({
       label: 'Remove…',
       danger: true,
       onAction: () =>
-        openAction({ ...live.remove, label: `Remove ${singular.getName()}` }),
+        openAction({
+          ...live.remove,
+          label: `Remove "${singular.getName()}"?`,
+          confirmLabel: 'Remove',
+        }),
     });
   }
 
@@ -444,15 +498,10 @@ function ConnectorPageContent({
   // cannot be used, then the menu — itself disabled with the reason while
   // nothing in it is available. Only muster itself, which is never edited,
   // has neither.
-  const editIcon = <Edit fontSize="inherit" />;
   let editAction: ReactNode;
   if (row.kind !== 'core') {
     editAction = editHref ? (
-      <Button
-        variant="secondary"
-        iconStart={editIcon}
-        onPress={() => navigate(editHref)}
-      >
+      <Button variant="secondary" onPress={() => navigate(editHref)}>
         Edit
       </Button>
     ) : (
@@ -462,19 +511,14 @@ function ConnectorPageContent({
         }
       >
         {describedBy => (
-          <Button
-            variant="secondary"
-            iconStart={editIcon}
-            isDisabled
-            aria-describedby={describedBy}
-          >
+          <Button variant="secondary" isDisabled aria-describedby={describedBy}>
             Edit
           </Button>
         )}
       </DisabledAction>
     );
   }
-  const moreIcon = <MoreHoriz />;
+  const moreIcon = <MoreVertIcon />;
   let menuAction: ReactNode;
   if (menu.length > 0) {
     menuAction = (
@@ -621,6 +665,14 @@ function ConnectorPageContent({
             onDone={done => {
               const away = paths.connectors ?? serversRoute?.();
               if (done.destructive && away) {
+                // Leaving the page takes the dialog's own confirmation with
+                // it, so the removal is acknowledged as the platform's other
+                // deletes are: a toast on the list it returns to.
+                toastApi.post({
+                  title: `Connector "${singular.getName()}" removed`,
+                  status: 'success',
+                  timeout: TOAST_TIMEOUT_MS,
+                });
                 navigate(away);
               }
             }}
@@ -696,7 +748,14 @@ function ConnectorPageBody({
   }
   if (!activeInstallation) {
     return (
-      <ShellPage title={key}>
+      <ShellPage
+        title={key}
+        breadcrumbs={[
+          { label: 'Customize', href: paths.customize },
+          { label: 'Connectors', href: paths.connectors },
+          { label: key },
+        ]}
+      >
         <EmptyState
           missing="data"
           title="No muster environment"
@@ -721,7 +780,7 @@ function ConnectorPageBody({
           description="It may be on another environment, or removed."
           action={
             paths.connectors ? (
-              <Link href={paths.connectors}>Back to the connectors</Link>
+              <Link href={paths.connectors}>Back to connectors</Link>
             ) : undefined
           }
         />

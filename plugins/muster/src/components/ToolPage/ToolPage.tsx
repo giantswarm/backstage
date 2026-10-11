@@ -135,9 +135,7 @@ export function ToolPage() {
         action={
           serverHref ? (
             <Link href={serverHref}>
-              {row
-                ? `Back to the tools of ${serverKey}`
-                : 'Back to the connectors'}
+              {row ? `Back to the tools of ${serverKey}` : 'Back to connectors'}
             </Link>
           ) : undefined
         }

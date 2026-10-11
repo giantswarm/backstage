@@ -274,7 +274,7 @@ describe('LlmByAgentTable at phone width', () => {
     layout = mockPhoneLayout();
     render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
 
-    expect(headers()).toEqual(['Agent', 'Cost']);
+    expect(headers()).toEqual(['Agent', 'Est. cost']);
     expect(screen.getByRole('link', { name: 'Big spender' })).toBeVisible();
     expect(screen.getByText('$42.50')).toBeVisible();
     expect(screen.queryByText('Model calls')).toBeNull();
@@ -288,7 +288,7 @@ describe('LlmByAgentTable at phone width', () => {
       'Agent',
       'Model calls',
       'Tokens',
-      'Cost',
+      'Est. cost',
       'Share of spend',
     ]);
   });

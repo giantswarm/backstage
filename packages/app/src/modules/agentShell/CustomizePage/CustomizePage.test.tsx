@@ -16,6 +16,7 @@ import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 
 let mockCustomizeData: Record<string, unknown>;
 let mockMusterCounts: Record<string, number>;
+let mockCanAddSkill = false;
 
 function mockPanel(name: string) {
   return (props: { search: string }) => (
@@ -31,18 +32,22 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     '@backstage/frontend-plugin-api',
   );
   const agents = createRouteRef();
+  const skills = createRouteRef();
   const models = createRouteRef();
   return {
     agentPlatformPlugin: {
       routes: {
         agents,
         newAgent: createSubRouteRef({ path: '/new', parent: agents }),
+        skills,
+        newSkill: createSubRouteRef({ path: '/new', parent: skills }),
         models,
         newModel: createSubRouteRef({ path: '/new', parent: models }),
       },
     },
     CustomizeDataProvider: ({ children }: { children: ReactNode }) => children,
     useCustomizeData: () => mockCustomizeData,
+    useCanAddSkill: () => mockCanAddSkill,
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
@@ -90,6 +95,7 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
 const allRoutes = {
   '/customize': customizeRouteRef,
   '/agent-platform/agents': agentPlatformPlugin.routes.agents,
+  '/agent-platform/skills': agentPlatformPlugin.routes.skills,
   '/agent-platform/models': agentPlatformPlugin.routes.models,
   '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
 };
@@ -136,6 +142,7 @@ describe('CustomizePage', () => {
       hasSkillRepositories: true,
     };
     mockMusterCounts = { connectors: 7, workflows: 2 };
+    mockCanAddSkill = false;
   });
 
   it('draws a tab per area with its count', async () => {
@@ -203,6 +210,16 @@ describe('CustomizePage', () => {
       );
     },
   );
+
+  it('puts Add skill beside the search, as the other tabs’ create actions, where a skill can be proposed', async () => {
+    mockCanAddSkill = true;
+    await renderCustomize('/customize/skills');
+
+    expect(screen.getByRole('link', { name: 'Add skill' })).toHaveAttribute(
+      'href',
+      '/agent-platform/skills/new',
+    );
+  });
 
   it.each([
     ['skills', 'Skills'],

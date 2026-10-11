@@ -104,7 +104,7 @@ export function UsageKpiTiles({
       {sessions && (
         <KpiTile
           label="Your sessions"
-          hint="Counts your sessions with at least one turn in the window, from kagent. Other users' sessions can't be counted here, and the gateway figures beside it are everyone's."
+          hint="Counts your sessions with at least one turn in the window, from kagent. Other users' sessions cannot be counted here, and the gateway figures beside it are everyone's."
           value={
             sessions.isLoading ? (
               <Skeleton width={56} height={28} rounded />

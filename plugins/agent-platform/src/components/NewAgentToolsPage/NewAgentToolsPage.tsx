@@ -106,7 +106,7 @@ function SectionTitle({ title }: { title: string }) {
   return (
     <Text
       as="h3"
-      variant="title-small"
+      variant="title-x-small"
       weight="bold"
       className={classes.sectionTitle}
     >
@@ -140,7 +140,7 @@ function connectorsHint({
     return 'Reading what the preset covers…';
   }
   if (!derived) {
-    return "This preset can't be shown per connector here.";
+    return 'This preset cannot be shown per connector here.';
   }
   // A change keeps the preset as the base while everything it covers stays
   // chosen (B1); taking part of it away writes it out, and what the author
@@ -586,7 +586,7 @@ export function NewAgentToolsPage() {
             )}
             {!musterApi && (
               <Text variant="body-small" color="secondary">
-                Connectors can't be listed in this portal.
+                Connectors cannot be listed in this portal.
               </Text>
             )}
             {musterApi && catalogue.error && (

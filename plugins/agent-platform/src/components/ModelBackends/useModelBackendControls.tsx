@@ -204,7 +204,7 @@ export function useModelBackendControls(): ModelBackendControls {
           {removable && (
             <Button
               size="small"
-              variant="tertiary"
+              variant="secondary"
               onPress={() =>
                 setRemoving({
                   installation: group.installation,

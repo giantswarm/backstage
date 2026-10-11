@@ -116,7 +116,7 @@ export function HarnessPicker() {
       <Alert
         status="info"
         title="Runtime reset to the platform default"
-        description={`The Harness ${droppedHarness} doesn't serve this model's namespace, so the agent runs on the platform Harness${
+        description={`The Harness ${droppedHarness} does not serve this model's namespace, so the agent runs on the platform Harness${
           hasChoice ? '. Pick another runtime below to change that' : ''
         }.`}
       />
@@ -147,8 +147,8 @@ export function HarnessPicker() {
         {couldNotRead && (
           <Alert
             status="warning"
-            title="Couldn't read the runtimes"
-            description={`The Harnesses in ${namespace} on ${installation} couldn't be read — you may lack permission — so the agent runs on the platform Harness.`}
+            title="Could not read the runtimes"
+            description={`The Harnesses in ${namespace} on ${installation} could not be read — you may lack permission — so the agent runs on the platform Harness.`}
           />
         )}
       </Flex>
@@ -176,7 +176,7 @@ export function HarnessPicker() {
       {errors.length > 0 && (
         <Alert
           status="warning"
-          title="Some runtimes couldn't be loaded; the list may be incomplete."
+          title="Some runtimes could not be loaded; the list may be incomplete."
         />
       )}
       {hasChoice ? (

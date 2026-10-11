@@ -127,7 +127,11 @@ export function AgentActionsMenu({
 }: {
   agent: Agent;
   agentManager: AgentManagerGate;
-  onEdit: () => void;
+  /**
+   * Opens Edit agent. Left out where the header already offers Edit beside
+   * the menu (the shell), so the same action is not listed twice.
+   */
+  onEdit?: () => void;
   onUpdateSkills: () => void;
   onDelete: () => void;
 }) {
@@ -148,7 +152,7 @@ export function AgentActionsMenu({
           </MenuItem>
           {/* Three separate conditionals rather than one fragment: react-aria
               builds the menu's collection from its direct children. */}
-          {writeMode !== undefined ? (
+          {writeMode !== undefined && onEdit ? (
             <MenuItem iconStart={<EditOutlinedIcon />} onAction={onEdit}>
               Edit agent…
             </MenuItem>

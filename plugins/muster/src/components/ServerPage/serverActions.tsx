@@ -30,6 +30,12 @@ export type LiveAction = {
   /** One sentence saying what muster will actually do (shown in the confirm dialog). */
   description?: string;
   destructive?: boolean;
+  /**
+   * The confirm button's label, naming the action ("Turn off", "Remove") as
+   * the platform's other confirms do. Defaults to "Delete" for a destructive
+   * action and "Confirm" otherwise.
+   */
+  confirmLabel?: string;
 };
 
 /**
@@ -88,7 +94,9 @@ export function ConfirmActionDialog({
         }
       }}
       title={action?.label ?? ''}
-      confirmLabel={action?.destructive ? 'Delete' : 'Confirm'}
+      confirmLabel={
+        action?.confirmLabel ?? (action?.destructive ? 'Delete' : 'Confirm')
+      }
       destructive={action?.destructive}
       isBusy={mutation.isPending}
       error={mutation.error ? mutationErrorMessage(mutation.error) : undefined}

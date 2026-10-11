@@ -206,7 +206,12 @@ export function RemoveModelBackendDialog({
             {removed ? 'Close' : 'Cancel'}
           </Button>
           {!removed && (
-            <Button type="submit" variant="primary" isDisabled={!canConfirm}>
+            <Button
+              type="submit"
+              variant="primary"
+              destructive
+              isDisabled={!canConfirm}
+            >
               {isBusy && plan ? 'Removing…' : 'Remove backend'}
             </Button>
           )}

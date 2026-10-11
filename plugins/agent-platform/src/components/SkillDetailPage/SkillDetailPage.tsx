@@ -5,6 +5,7 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
+import { EmptyState } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
@@ -23,7 +24,6 @@ import {
 import { makeStyles } from '@material-ui/core/styles';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
-  EmptyStateCard,
   FactsColumn,
   LoadingIndicator,
   MENU_WIDTH,
@@ -361,7 +361,11 @@ function UsedByTab({
 
   return (
     <Flex direction="column" gap="3">
-      <SectionHeader title={usedByLabel(using.length)} />
+      <SectionHeader
+        as="h2"
+        variant="title-x-small"
+        title={usedByLabel(using.length)}
+      />
       {unreachableInstallations.length > 0 && (
         <Text as="p" variant="body-small" color="secondary">
           {unreachableInstallations.length === 1
@@ -432,6 +436,10 @@ function PhoneSkillActions({
                 key={action.id}
                 id={action.id}
                 href={action.href}
+                // A link here leaves the portal (View source), so it opens a
+                // new tab as the same action does as a button.
+                target={action.href ? '_blank' : undefined}
+                rel={action.href ? 'noopener noreferrer' : undefined}
                 onAction={action.onAction}
                 isDisabled={action.isDisabled}
               >
@@ -838,20 +846,30 @@ export function SkillDetailPage() {
     );
   }
 
+  // As the agent and model pages: a failed read is an error, a skill that is
+  // not there an empty state, each with the way back.
+  const backToSkills = (
+    <Link href={`${SHELL_CUSTOMIZE_PATH}/skills`}>Back to skills</Link>
+  );
   let body;
   if (catalog.error || catalog.failedRepositories.length > 0) {
     body = (
-      <Alert
-        status="warning"
-        title="Could not read the skill repositories"
-        description="The skill may exist, but its repository could not be read right now. Try again in a moment."
-      />
+      <Flex direction="column" gap="3" align="start">
+        <Alert
+          status="danger"
+          title="Could not read the skill repositories"
+          description="The skill may exist, but its repository could not be read right now. Try again in a moment."
+        />
+        {backToSkills}
+      </Flex>
     );
   } else {
     body = (
-      <EmptyStateCard
+      <EmptyState
+        missing="data"
         title="Skill not found"
         description="No skill with this address exists in the configured repositories. It may have been renamed or removed."
+        action={backToSkills}
       />
     );
   }

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 
 const useStyles = makeStyles(theme => ({
   root: {
@@ -7,9 +8,28 @@ const useStyles = makeStyles(theme => ({
     borderRadius: 12,
     padding: theme.spacing(1.5, 2),
   },
+  // Drawn as the shell's other fold-outs ("Technical details"): the label at
+  // the start, a chevron at the end that turns over when open, no native
+  // disclosure triangle.
   summary: {
     cursor: 'pointer',
     color: 'var(--bui-fg-primary)',
+    listStyle: 'none',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing(1),
+    '&::-webkit-details-marker': {
+      display: 'none',
+    },
+  },
+  chevron: {
+    flexShrink: 0,
+    color: 'var(--bui-fg-secondary)',
+    transition: 'transform 150ms ease',
+    'details[open] > summary > &': {
+      transform: 'rotate(180deg)',
+    },
   },
   defaults: {
     color: 'var(--bui-fg-secondary)',
@@ -61,13 +81,20 @@ export function MoreOptions({
       }
     >
       <summary className={classes.summary}>
-        More options
-        {summary ? (
-          <>
-            {' '}
-            <span className={classes.defaults}>· {summary}</span>
-          </>
-        ) : null}
+        <span>
+          More options
+          {summary ? (
+            <>
+              {' '}
+              <span className={classes.defaults}>· {summary}</span>
+            </>
+          ) : null}
+        </span>
+        <ExpandMoreIcon
+          className={classes.chevron}
+          fontSize="small"
+          aria-hidden
+        />
       </summary>
       <div className={classes.body}>{children}</div>
     </details>

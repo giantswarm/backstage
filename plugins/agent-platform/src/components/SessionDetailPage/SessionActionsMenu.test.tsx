@@ -172,7 +172,7 @@ describe('SessionActionsMenu', () => {
       screen.getByText(/can no longer be listed or opened/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/can't be restored\s+from here/),
+      screen.getByText(/cannot be restored\s+from here/),
     ).toBeInTheDocument();
     // Opening the dialog does not delete anything.
     expect(deleteSession).not.toHaveBeenCalled();

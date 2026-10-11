@@ -14,7 +14,7 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import DeleteIcon from '@material-ui/icons/Delete';
+import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   InfoCard,
@@ -219,8 +219,12 @@ export function modelCacheStackedRow(
           aria-label={`Actions for cache ${claim.name} on ${row.cluster.name}`}
         />
         <Menu maxWidth={MENU_WIDTH}>
-          <MenuItem iconStart={<DeleteIcon />} onAction={() => onRemove(row)}>
-            Remove cache
+          <MenuItem
+            color="danger"
+            iconStart={<DeleteOutlineIcon />}
+            onAction={() => onRemove(row)}
+          >
+            Remove cache…
           </MenuItem>
         </Menu>
       </MenuTrigger>

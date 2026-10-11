@@ -748,7 +748,7 @@ describe('NewAgentToolsPage', () => {
         'Only the tools I choose below',
       ]);
       expect(
-        screen.getByText("Connectors can't be listed in this portal."),
+        screen.getByText('Connectors cannot be listed in this portal.'),
       ).toBeInTheDocument();
 
       await ownPicks(user);

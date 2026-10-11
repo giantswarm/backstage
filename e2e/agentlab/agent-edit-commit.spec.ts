@@ -12,8 +12,8 @@ import {
  * The Edit agent wizard's two write modes on the worker's own agent: an agent
  * written live keeps Save changes, one applied from git dry-runs in mode
  * commit and offers Propose changes as pull request — in the repository that
- * owns it — in place of Save, locked once the pull request is open. The agent detail page's four
- * ways to it — the header's Edit, the actions menu, Overview's Add skills and
+ * owns it — in place of Save, locked once the pull request is open. The agent detail page's three
+ * ways to it — the header's Edit, Overview's Add skills and
  * the failure blocker — offer it for an agent applied from git only when
  * agent-manager can commit.
  *
@@ -281,7 +281,7 @@ test('agent edit: every entry point opens the commit-mode Edit page for an agent
 
   // The failure blocker.
   await open(admin, labAgent.detailPath);
-  await expect(admin.getByText("Sessions can't start")).toBeVisible({
+  await expect(admin.getByText('Sessions cannot start')).toBeVisible({
     timeout: 60_000,
   });
   await expect(
@@ -300,14 +300,17 @@ test('agent edit: every entry point opens the commit-mode Edit page for an agent
     .click();
   await expectCommitModeEditPage(admin, labAgent);
 
-  // The actions menu: Edit, and Update skills, which commits too (T70).
+  // The actions menu: Update skills, which commits too (T70). Edit is the
+  // header's button alone; the menu does not list it a second time (T98).
   await open(admin, labAgent.detailPath);
   await admin.getByRole('button', { name: 'Agent actions' }).click();
   await expect(
     admin.getByRole('menuitem', { name: /Update skills/ }),
   ).toBeVisible();
-  await admin.getByRole('menuitem', { name: /Edit agent/ }).click();
-  await expectCommitModeEditPage(admin, labAgent);
+  await expect(admin.getByRole('menuitem', { name: /Edit agent/ })).toHaveCount(
+    0,
+  );
+  await admin.keyboard.press('Escape');
 
   // Overview's Skills section offers Add skills: the lab agent has none.
   await open(admin, labAgent.detailPath);

@@ -84,7 +84,7 @@ describe('PullModelPage', () => {
     expect(post).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Pulling qwen2.5:0.5b on lab',
-        status: 'info',
+        status: 'success',
       }),
     );
   });

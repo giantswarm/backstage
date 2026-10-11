@@ -276,7 +276,7 @@ describe('ModelCachePanel at phone width', () => {
       }),
     );
     await user.click(
-      await screen.findByRole('menuitem', { name: 'Remove cache' }),
+      await screen.findByRole('menuitem', { name: 'Remove cache…' }),
     );
     expect(onRemove).toHaveBeenCalledWith(ROWS[0]);
   });

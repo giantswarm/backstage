@@ -21,6 +21,7 @@ import { makeStyles } from '@material-ui/core';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
+  SEARCH_MIN,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -41,9 +42,6 @@ import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 const COLLAPSED_ROWS = 1;
 const EXPANDED_ROWS = 3;
 const MAX_ROWS = 12;
-
-/** Above this many agents the picker gets a search box. */
-const SEARCHABLE_THRESHOLD = 8;
 
 /** Matches the sessions table's row avatar: one line of text, 2× for hi-dpi. */
 const OPTION_AVATAR_SIZE: AvatarSize = 48;
@@ -444,7 +442,7 @@ export function NewSessionComposer({
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
-  const isSearchable = searchable ?? listed.length > SEARCHABLE_THRESHOLD;
+  const isSearchable = searchable ?? listed.length > SEARCH_MIN;
   const isSearching = searchText.trim() !== '';
   const options = useMemo(() => {
     const installations = [...new Set(listed.map(agent => agent.installation))];

@@ -225,8 +225,8 @@ export function SessionSwitcherRail({
             <Tooltip
               title={
                 isError
-                  ? 'Couldn’t load active sessions'
-                  : 'Some sessions couldn’t be read'
+                  ? 'Could not load active sessions'
+                  : 'Some sessions could not be read'
               }
             >
               <span className={classes.stripUnknown}>?</span>
@@ -328,7 +328,7 @@ function RailBody({
     return (
       <div className={classes.notice}>
         <Text variant="body-small" color="secondary">
-          Couldn’t load active sessions.
+          Could not load active sessions.
         </Text>
         <Button variant="tertiary" size="small" onClick={onRetry}>
           Retry
@@ -361,7 +361,7 @@ function RailBody({
       return (
         <div className={classes.notice}>
           <Text variant="body-small" color="secondary">
-            Couldn’t tell what’s active.
+            Could not tell what’s active.
           </Text>
           <Text variant="body-small" color="secondary">
             {describeIncomplete(unreadableCount, skippedCount)}
@@ -416,7 +416,7 @@ function RailBody({
 function describeIncomplete(unreadable: number, skipped: number): string {
   const parts: string[] = [];
   if (unreadable > 0) {
-    parts.push(`${unreadable} couldn’t be read`);
+    parts.push(`${unreadable} could not be read`);
   }
   if (skipped > 0) {
     parts.push(`${skipped} not checked`);

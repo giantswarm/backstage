@@ -16,6 +16,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         sessions: createRouteRef(),
         usage: createRouteRef(),
         agents: createRouteRef(),
+        skills: createRouteRef(),
         models: createRouteRef(),
       },
     },

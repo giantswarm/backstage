@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ShellDocumentTitle } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  ShellDocumentTitle,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EmptyState, Progress } from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import {
   identityApiRef,
   useApi,
@@ -193,7 +196,7 @@ function AgentPlatformHomeContent({
             </Text>
           </Flex>
           {isLoading ? (
-            <Progress aria-label="Loading agents" />
+            <LoadingIndicator label="Reading your agents…" />
           ) : (
             <StartNewSession
               entryPoint="home"
@@ -213,7 +216,6 @@ function AgentPlatformHomeContent({
                 showUnavailable: true,
                 groupByNamespace: true,
                 recentAgentIds,
-                searchable: true,
                 pickerPlaceholder: 'Choose an agent',
                 pickerFooterAction: manageAgents,
                 promptPlaceholder,

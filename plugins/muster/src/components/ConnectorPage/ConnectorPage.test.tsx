@@ -531,8 +531,9 @@ describe('ConnectorPage', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Remove…' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Remove jira' }),
+      await screen.findByRole('heading', { name: 'Remove "jira"?' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
   it('says so when the installation has no such connector', async () => {

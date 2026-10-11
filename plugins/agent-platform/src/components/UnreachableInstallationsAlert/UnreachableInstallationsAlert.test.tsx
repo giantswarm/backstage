@@ -21,7 +21,7 @@ describe('UnreachableInstallationsAlert', () => {
     );
 
     expect(
-      screen.getByText("Couldn't read 2 environments"),
+      screen.getByText('Could not read 2 environments'),
     ).toBeInTheDocument();
     expect(screen.getByText(/Agents/)).toBeInTheDocument();
     expect(screen.getByText(/gremlin, gauss/)).toBeInTheDocument();
@@ -32,7 +32,9 @@ describe('UnreachableInstallationsAlert', () => {
       <UnreachableInstallationsAlert installations={['gremlin']} />,
     );
 
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
   });
 
   it('names the reason and the request id per installation', async () => {
@@ -49,7 +51,7 @@ describe('UnreachableInstallationsAlert', () => {
 
     expect(
       screen.getByText(
-        "Skipped because their Sessions couldn't be read: gremlin (authentication failed, request id req-1); gauss (timed out).",
+        'Skipped because their Sessions could not be read: gremlin (authentication failed, request id req-1); gauss (timed out).',
       ),
     ).toBeInTheDocument();
   });
@@ -109,7 +111,7 @@ describe('UnreachableInstallationsAlert', () => {
 
     expect(
       screen.getByText(
-        "Skipped because their Sessions couldn't be read: inst-1, inst-3, inst-5, inst-7, inst-9 and 145 more (timed out); inst-2, inst-4, inst-6, inst-8, inst-10 and 145 more (permission denied).",
+        'Skipped because their Sessions could not be read: inst-1, inst-3, inst-5, inst-7, inst-9 and 145 more (timed out); inst-2, inst-4, inst-6, inst-8, inst-10 and 145 more (permission denied).',
       ),
     ).toBeInTheDocument();
 
@@ -129,14 +131,14 @@ describe('UnreachableInstallationsAlert', () => {
       );
 
       const alert = screen.getByRole('alert');
-      expect(alert).toHaveTextContent("Couldn't read 2 environments");
+      expect(alert).toHaveTextContent('Could not read 2 environments');
 
       await userEvent.click(
         within(alert).getByRole('button', { name: 'Close' }),
       );
 
       expect(screen.queryByRole('alert')).toBeNull();
-      expect(screen.queryByText("Couldn't read 2 environments")).toBeNull();
+      expect(screen.queryByText('Could not read 2 environments')).toBeNull();
     });
 
     it('closes the long form, with its disclosure, too', async () => {
@@ -171,7 +173,7 @@ describe('UnreachableInstallationsAlert', () => {
         <UnreachableInstallationsAlert installations={['gremlin', 'gauss']} />,
       );
       expect(screen.getByRole('alert')).toHaveTextContent(
-        "Couldn't read 2 environments",
+        'Could not read 2 environments',
       );
     });
   });

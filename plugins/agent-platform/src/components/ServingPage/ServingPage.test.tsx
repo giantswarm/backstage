@@ -853,7 +853,7 @@ describe('ServingPage', () => {
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
     expect(
       await screen.findByRole('progressbar', {
-        name: 'Looking for a serving layer',
+        name: 'Reading the serving layer…',
       }),
     ).toBeInTheDocument();
   });
@@ -904,7 +904,9 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(
-      await screen.findByRole('progressbar', { name: 'Loading served models' }),
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
@@ -982,9 +984,11 @@ describe('ServingPage', () => {
 
     await renderSection();
 
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
     expect(
-      screen.getByText(/served models couldn't be read/),
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/served models could not be read/),
     ).toBeInTheDocument();
     expect(screen.getByText(/inst-3/)).toBeInTheDocument();
   });
@@ -1318,6 +1322,8 @@ describe('ServingPage', () => {
     await renderSection();
 
     expect(screen.queryByText('No serving layer')).not.toBeInTheDocument();
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
   });
 });

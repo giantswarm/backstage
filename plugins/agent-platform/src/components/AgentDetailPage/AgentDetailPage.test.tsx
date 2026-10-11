@@ -642,7 +642,7 @@ describe('AgentDetailPage', () => {
     expect(screen.queryByText(/From the label/)).toBeNull();
 
     // Nothing stands in for Start a session: the agent is ready.
-    expect(screen.queryByText("Sessions can't start")).toBeNull();
+    expect(screen.queryByText('Sessions cannot start')).toBeNull();
     expect(
       screen.queryByText('Sessions can start once the agent is ready'),
     ).toBeNull();
@@ -1170,7 +1170,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expectHeaderReadiness('Failed');
-      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
       expect(
         screen.getAllByText(
           'Dedicated sub-agents are not supported by this Harness',
@@ -1226,7 +1226,7 @@ describe('AgentDetailPage', () => {
       await renderPage();
 
       expectHeaderReadiness('Failed');
-      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
       expect(
         screen.getAllByText(
           'resolve ModelConfig "qwen3-4b-instruct": not found',
@@ -1769,7 +1769,7 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('button', { name: 'Start a session' }),
       ).toBeNull();
       // The banner above the tabs says why, on this tab too.
-      expect(screen.getByText("Sessions can't start")).toBeInTheDocument();
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
     });
 
     it('distinguishes unreadable sessions from no sessions', async () => {

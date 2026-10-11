@@ -234,7 +234,7 @@ export function NewConnectorConnectPage() {
         placeholder="e.g. Jira"
         description={
           registeredName
-            ? "Can't be changed after registration."
+            ? 'It cannot be changed after registration.'
             : 'Shown when giving an agent access.'
         }
         {...fieldErrorProps(

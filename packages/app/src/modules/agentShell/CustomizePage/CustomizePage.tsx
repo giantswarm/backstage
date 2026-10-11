@@ -27,6 +27,7 @@ import {
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
+  useCanAddSkill,
   useCustomizeData,
   WorkflowCreateAssist,
 } from '@giantswarm/backstage-plugin-agent-platform';
@@ -63,7 +64,17 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
       routeRef: agentPlatformPlugin.routes.newAgent,
     },
   },
-  { id: 'skills', title: 'Skills', searchLabel: 'Search skills' },
+  {
+    id: 'skills',
+    title: 'Skills',
+    searchLabel: 'Search skills',
+    // Offered only where a github.com repository can take the pull request
+    // (`useCanAddSkill`).
+    create: {
+      label: 'Add skill',
+      routeRef: agentPlatformPlugin.routes.newSkill,
+    },
+  },
   {
     id: 'connectors',
     title: 'Connectors',
@@ -155,6 +166,8 @@ function renderWorkflowCreateAssist(installation: string) {
  */
 function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
   const { counts, hasSkillRepositories } = useCustomizeData();
+  const canAddSkill = useCanAddSkill();
+  const create = tab.id === 'skills' && !canAddSkill ? undefined : tab.create;
   const musterCounts = useMusterCustomizeCounts();
   const location = useLocation();
   const isPhone = usePhoneLayout();
@@ -206,9 +219,7 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
               onChange={setSearch}
             />
           </div>
-          {tab.create && (
-            <CreateAction create={tab.create} fullWidth={isPhone} />
-          )}
+          {create && <CreateAction create={create} fullWidth={isPhone} />}
         </Flex>
         <TabPanel tab={tab.id} search={search} />
       </Flex>

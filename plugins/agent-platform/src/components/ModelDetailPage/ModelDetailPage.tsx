@@ -1,10 +1,9 @@
 import { ReactNode, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Content, Progress } from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import EditIcon from '@material-ui/icons/Edit';
 import {
   ModelConfig,
   useResource,
@@ -15,6 +14,7 @@ import {
   DateComponent,
   type Fact,
   FactsColumn,
+  LoadingIndicator,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageFactsSkeleton,
@@ -248,11 +248,7 @@ export function ModelDetailPage() {
     () => (
       <Flex gap="2" align="center">
         {isEditable && modelEditRoute && (
-          <Button
-            variant="secondary"
-            iconStart={<EditIcon fontSize="small" />}
-            onPress={openEdit}
-          >
+          <Button variant="secondary" onPress={openEdit}>
             Edit
           </Button>
         )}
@@ -277,7 +273,7 @@ export function ModelDetailPage() {
         badges={<ShellPageBadgeSkeleton />}
         aside={<ShellPageFactsSkeleton />}
       >
-        <Progress aria-label="Loading model" />
+        <LoadingIndicator label="Reading the model…" />
       </ModelFrame>
     );
   }
@@ -285,15 +281,27 @@ export function ModelDetailPage() {
   if (!modelConfig) {
     return (
       <ModelFrame title="Model">
-        <Alert
-          status="warning"
-          title="Model not found"
-          description={
-            errors.length > 0
-              ? `ModelConfig ${namespace}/${name} on ${installation} could not be read. It may have been deleted, or you may not have permission to read it.`
-              : `ModelConfig ${namespace}/${name} does not exist on ${installation}.`
-          }
-        />
+        {/* As the agent page: a failed read is an error with the way back, a
+            model that is not there an empty state with it. */}
+        {errors.length > 0 ? (
+          <Flex direction="column" gap="3">
+            <Alert
+              status="danger"
+              title="Could not load this model"
+              description={`ModelConfig ${namespace}/${name} on ${installation} could not be read. It may have been deleted, or you may not have permission to read it.`}
+            />
+            <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
+          </Flex>
+        ) : (
+          <EmptyState
+            missing="data"
+            title="Model not found"
+            description={`ModelConfig ${namespace}/${name} does not exist on ${installation}.`}
+            action={
+              <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
+            }
+          />
+        )}
       </ModelFrame>
     );
   }

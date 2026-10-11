@@ -64,6 +64,7 @@ function CreateAgentAssistControl() {
           <Button
             ref={openerRef}
             variant="secondary"
+            size="small"
             onPress={() => {
               setMounted(true);
               setOpen(true);

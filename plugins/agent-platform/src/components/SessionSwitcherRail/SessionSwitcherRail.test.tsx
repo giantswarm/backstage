@@ -194,7 +194,7 @@ describe('SessionSwitcherRail', () => {
     await renderRail();
 
     expect(
-      screen.getByText('Couldn’t load active sessions.'),
+      screen.getByText('Could not load active sessions.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('link')).toBeNull();
 
@@ -291,9 +291,9 @@ describe('SessionSwitcherRail — an incomplete summary', () => {
 
     expect(screen.queryByText('All caught up.')).toBeNull();
     expect(
-      screen.getByText('Couldn’t tell what’s active.'),
+      screen.getByText('Could not tell what’s active.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('4 couldn’t be read.')).toBeInTheDocument();
+    expect(screen.getByText('4 could not be read.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
@@ -325,7 +325,7 @@ describe('SessionSwitcherRail — an incomplete summary', () => {
     await renderRail();
 
     expect(
-      screen.getByText('2 couldn’t be read, 5 not checked.'),
+      screen.getByText('2 could not be read, 5 not checked.'),
     ).toBeInTheDocument();
   });
 
@@ -348,7 +348,7 @@ describe('SessionSwitcherRail — an incomplete summary', () => {
 
     expect(screen.getAllByRole('link')).toHaveLength(3);
     expect(
-      screen.getByText('1 couldn’t be read, 12 not checked.'),
+      screen.getByText('1 could not be read, 12 not checked.'),
     ).toBeInTheDocument();
   });
 

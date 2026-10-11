@@ -553,7 +553,7 @@ export function SkillUpdateAgentsDialog({
       isConfirmDisabled={count === 0 || isChecking}
       isDone={isDone}
       onConfirm={onConfirm}
-      width={640}
+      width="min(90vw, 640px)"
     >
       {installations.map(installation => (
         <InstallationRunner

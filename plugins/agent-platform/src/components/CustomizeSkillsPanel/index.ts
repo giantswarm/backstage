@@ -1,2 +1,2 @@
-export { CustomizeSkillsPanel } from './CustomizeSkillsPanel';
+export { CustomizeSkillsPanel, useCanAddSkill } from './CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './CustomizeSkillsPanel';

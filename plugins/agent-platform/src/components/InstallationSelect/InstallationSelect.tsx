@@ -33,7 +33,11 @@ function InstallationCard({ children }: { children: ReactNode }) {
   return (
     <Card>
       <CardBody>
-        <SectionHeader title="Environment" description={DESCRIPTION} />
+        <SectionHeader
+          variant="title-x-small"
+          title="Environment"
+          description={DESCRIPTION}
+        />
         {children}
       </CardBody>
     </Card>
@@ -90,8 +94,8 @@ function AgentManagerUnknownNote({
       status="info"
       title={
         installations.length === 1
-          ? `Couldn't check ${list} for agent-manager`
-          : "Couldn't check some environments for agent-manager"
+          ? `Could not check ${list} for agent-manager`
+          : 'Could not check some environments for agent-manager'
       }
       description={
         <Flex direction="column" gap="1">
@@ -146,10 +150,10 @@ function InaccessibleInstallationsNote({
       status="warning"
       title={
         installations.length === 1
-          ? `Couldn't check ${list}`
-          : `Couldn't check ${installations.length} environments`
+          ? `Could not check ${list}`
+          : `Could not check ${installations.length} environments`
       }
-      description={`Cluster access to ${list} isn't healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there. See Cluster access in the sidebar.`}
+      description={`Cluster access to ${list} is not healthy (session expired, unreachable or not signed in), so it's unknown whether agents can be created there. See Cluster access in the sidebar.`}
     />
   );
 }

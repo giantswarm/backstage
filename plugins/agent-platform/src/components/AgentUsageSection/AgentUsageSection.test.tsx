@@ -213,7 +213,7 @@ describe('AgentUsageSection', () => {
     state.isError = true;
     render(<AgentUsageSection />);
 
-    expect(screen.getByText(/Couldn't read/i)).toBeInTheDocument();
+    expect(screen.getByText(/Could not read/i)).toBeInTheDocument();
   });
 
   it('says nothing runs kagent when nothing does', () => {

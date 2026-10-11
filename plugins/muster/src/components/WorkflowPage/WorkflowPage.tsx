@@ -4,17 +4,13 @@ import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
 import { EmptyState } from '@backstage/core-components';
 import { Alert, Box, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import BarChart from '@material-ui/icons/BarChart';
-import Code from '@material-ui/icons/Code';
-import FormatListNumbered from '@material-ui/icons/FormatListNumbered';
-import Share from '@material-ui/icons/Share';
-import Tune from '@material-ui/icons/Tune';
 import { useQuery } from '@tanstack/react-query';
 import {
   BreadcrumbItem,
   DateComponent,
   FactsColumn,
   LoadingIndicator,
+  SectionHeader,
   ShellDocumentTitle,
   ShellPage,
   ShellPageBadgeSkeleton,
@@ -38,12 +34,7 @@ import {
   workflowDetailRouteRef,
 } from '../../routes';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import {
-  DisclosureAccordion,
-  SectionHeader,
-  SessionGate,
-  StateBadge,
-} from '../shared';
+import { DisclosureAccordion, SessionGate, StateBadge } from '../shared';
 import { WorkflowEffectBadge } from './WorkflowEffectBadge';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
 import { WorkflowStatistics } from './WorkflowStatistics';
@@ -440,7 +431,8 @@ function WorkflowPageContent({
 
           <Box>
             <SectionHeader
-              icon={<Tune />}
+              as="h2"
+              variant="title-x-small"
               title="What it needs"
               description="An agent passes these inputs when running it."
             />
@@ -449,7 +441,8 @@ function WorkflowPageContent({
 
           <Box>
             <SectionHeader
-              icon={<FormatListNumbered />}
+              as="h2"
+              variant="title-x-small"
               title="How it runs"
               description="Steps in order. A step whose condition does not hold is skipped — there is no branching."
             />
@@ -465,7 +458,8 @@ function WorkflowPageContent({
 
           <Box>
             <SectionHeader
-              icon={<BarChart />}
+              as="h2"
+              variant="title-x-small"
               title="Statistics"
               description="Every run counts, whether an agent, another workflow or a person started it."
             />
@@ -492,7 +486,7 @@ function WorkflowPageContent({
             <Flex direction="column" gap="6" className={classes.advancedBody}>
               <Box>
                 <SectionHeader
-                  icon={<Share />}
+                  variant="title-x-small"
                   title="Where agents use it"
                   description={`Agents run this workflow by calling the tool ${toolName}.`}
                 />
@@ -534,7 +528,7 @@ function WorkflowPageContent({
 
               <Box>
                 <SectionHeader
-                  icon={<Code />}
+                  variant="title-x-small"
                   title="Technical details"
                   description="Shows the bookkeeping, referenced tools and the raw definition."
                 />
@@ -640,7 +634,7 @@ function WorkflowPageBody({
           }
           action={
             paths.workflows ? (
-              <Link href={paths.workflows}>Back to the workflows</Link>
+              <Link href={paths.workflows}>Back to workflows</Link>
             ) : undefined
           }
         />

@@ -29,7 +29,10 @@ export type {
 } from './components/CustomizeDataProvider';
 export { CustomizeAgentsPanel } from './components/CustomizeAgentsPanel';
 export type { CustomizeAgentsPanelProps } from './components/CustomizeAgentsPanel';
-export { CustomizeSkillsPanel } from './components/CustomizeSkillsPanel';
+export {
+  CustomizeSkillsPanel,
+  useCanAddSkill,
+} from './components/CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';

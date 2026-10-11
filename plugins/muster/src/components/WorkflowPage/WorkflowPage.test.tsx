@@ -931,7 +931,7 @@ describe('WorkflowPage', () => {
       screen.getByText('No workflow “missing” on gazelle'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Back to the workflows' }),
+      screen.getByRole('link', { name: 'Back to workflows' }),
     ).toHaveAttribute('href', '/customize/workflows');
   });
 });

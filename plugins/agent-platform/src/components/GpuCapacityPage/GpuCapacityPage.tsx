@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
-import { EmptyState } from '@backstage/core-components';
 import { Flex, Text } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
-import { useProvidePageHeaderActions } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EmptyStateCard,
+  useProvidePageHeaderActions,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { ModelHostingActions } from '../ModelHostingActions';
 import { ShellAwareContent } from '../ShellAwareContent';
@@ -115,14 +117,13 @@ export function GpuCapacityPage({
       <ShellAwareContent>
         {pools.dialogs}
         {pools.panel}
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title={noBackendYet ? 'No GPU node pools yet' : 'No GPU inventory'}
           description={emptyStateDescription(
             serving.installations,
             noBackendYet,
           )}
-          action={pools.addButton}
+          actions={pools.addButton}
         />
         {cachePanel}
       </ShellAwareContent>

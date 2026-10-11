@@ -238,7 +238,7 @@ describe('SessionsIndexPage', () => {
       screen.getByRole('heading', { level: 1, name: 'Sessions' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Lists every conversation you have had with an agent.'),
+      screen.getByText('Find every conversation you have had with an agent.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
       'href',
@@ -428,7 +428,7 @@ describe('SessionsIndexPage', () => {
       await render();
 
       expect(
-        screen.queryByRole('progressbar', { name: 'Loading sessions' }),
+        screen.queryByRole('progressbar', { name: 'Reading your sessions…' }),
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole('heading', { level: 2, name: 'No sessions yet' }),
@@ -508,7 +508,7 @@ describe('SessionsIndexPage', () => {
       ).not.toBeInTheDocument();
       expect(screen.getByText('Start a new session')).toBeInTheDocument();
       expect(
-        screen.getByText(/Couldn't read 1 environment/),
+        screen.getByText(/Could not read 1 environment/),
       ).toBeInTheDocument();
     });
 
@@ -709,7 +709,9 @@ describe('SessionsIndexPage', () => {
 
     await render();
 
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/gazelle \(authentication failed, request id req-7\)/),
     ).toBeInTheDocument();
@@ -727,7 +729,7 @@ describe('SessionsIndexPage', () => {
       screen.getByText('golem, wombat: not reachable from this portal'),
     ).toBeInTheDocument();
     // Never queried, so not a read failure: the warning card stays away.
-    expect(screen.queryByText(/Couldn't read/)).toBeNull();
+    expect(screen.queryByText(/Could not read/)).toBeNull();
   });
 
   it('still explains an unconfigured instance', async () => {

@@ -1,13 +1,11 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, ButtonLink, Card, Flex, Text } from '@backstage/ui';
+import { Alert, Card, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import AddIcon from '@material-ui/icons/Add';
 import {
   CatalogNoMatch,
   EmptyStateCard,
   LoadingIndicator,
-  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
@@ -207,6 +205,27 @@ function SkillCard({ card }: { card: Row }) {
 }
 
 /**
+ * Whether the Skills tab offers Add skill: once the catalog is read, when a
+ * github.com repository to propose to is configured and the add page is
+ * bound. Add skill = a pull request to a source repository, opened as the
+ * person (G16 B). The Customize screen draws it beside the tab's search, where
+ * every tab's create action sits. Must be used inside a
+ * `CustomizeDataProvider`.
+ */
+export function useCanAddSkill(): boolean {
+  const { skillCatalog } = useCustomizeData();
+  const newSkillRoute = useRouteRef(newSkillRouteRef);
+  const { config } = useSignedInConfig();
+  const repositories =
+    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+  return (
+    !skillCatalog.isLoading &&
+    repositories.some(canProposeSkillTo) &&
+    Boolean(newSkillRoute)
+  );
+}
+
+/**
  * The Skills tab of the shell's Customize screen, in the prototype's
  * presentation: the skills discovered in the configured repositories as a
  * grid of catalog cards, the ones the agents in scope use most first, each
@@ -216,11 +235,9 @@ function SkillCard({ card }: { card: Row }) {
  */
 export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const classes = useStyles();
-  const isPhone = usePhoneLayout();
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillsRoute = useRouteRef(skillsRouteRef);
-  const newSkillRoute = useRouteRef(newSkillRouteRef);
   // The add form's target repositories: the github.com entries of the same
   // signed-in-config list the catalog is discovered from — skills are
   // proposed as GitHub pull requests, and the endpoint refuses any other
@@ -363,8 +380,6 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   }
 
-  const canAdd =
-    !skillCatalog.isLoading && proposable.length > 0 && Boolean(newSkillRoute);
   // Repositories configured, none on github.com: nothing to propose a skill
   // to, and the reason is the configuration, not the person.
   const cannotAddHere =
@@ -375,34 +390,8 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
 
   return (
     <Flex direction="column" gap="4">
-      {/* The filters, then Add skill on the same line at the right: the tab's
-          search sits above, on the page. Add skill = a pull request to a
-          source repository, opened as the person (G16 B) — offered whenever a
-          repository to target exists. A page of its own
-          (`/agent-platform/skills/new`), in the same in-content wizard frame
-          as the other create flows. */}
-      {(hasFilters || canAdd) && (
-        <Flex
-          align="center"
-          justify={hasFilters ? 'between' : 'end'}
-          gap="4"
-          style={{ flexWrap: 'wrap' }}
-        >
-          <SkillsFilterBar filters={filters} />
-          {canAdd && newSkillRoute && (
-            <ButtonLink
-              href={newSkillRoute()}
-              variant="primary"
-              iconStart={<AddIcon />}
-              // On a phone the filters take the row and the action its own
-              // full-width line under them, as the page's create action does.
-              style={isPhone ? { width: '100%' } : undefined}
-            >
-              Add skill
-            </ButtonLink>
-          )}
-        </Flex>
-      )}
+      {/* The tab's search and Add skill sit above, on the page. */}
+      {hasFilters && <SkillsFilterBar filters={filters} />}
       {cannotAddHere && (
         <Text as="p" variant="body-small" color="secondary">
           Adding skills here needs a github.com skill repository; add them in

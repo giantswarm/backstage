@@ -14,6 +14,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
   type CatalogFacet,
+  CatalogNoMatch,
   INITIAL_ROWS,
   LoadingIndicator,
   SEARCH_MIN,
@@ -34,9 +35,11 @@ const useStyles = makeStyles({
     gap: 8,
     marginBottom: 8,
   },
+  // A width cap, as the Resources and Prompts tabs' search has. The toolbar
+  // is a column, so a flex basis here set the field's height: a tall empty
+  // band between the search and the filter.
   search: {
-    flex: '0 1 280px',
-    minWidth: 200,
+    maxWidth: 360,
   },
   trigger: {
     display: 'flex',
@@ -255,9 +258,12 @@ export function ConnectorToolsTab({
         </Text>
       )}
       {shown.length === 0 ? (
-        <Text as="p" variant="body-medium" color="secondary">
-          No tools match.
-        </Text>
+        <CatalogNoMatch
+          plural="tools"
+          search={query}
+          isFiltered={filters.isFiltered}
+          onClearFilters={filters.clear}
+        />
       ) : (
         // A server can list hundreds of tools, each an accordion; a page of
         // them at a time, starting over when the search or filter changes.

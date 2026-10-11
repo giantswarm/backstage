@@ -85,7 +85,7 @@ export function SessionDeleteDialog({
     >
       <Text variant="body-medium">
         The runtime shuts down, and the session can no longer be listed or
-        opened. kagent keeps it in its database, but it can't be restored from
+        opened. kagent keeps it in its database, but it cannot be restored from
         here.
       </Text>
       {isUserScoped === false && (

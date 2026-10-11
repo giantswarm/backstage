@@ -219,7 +219,7 @@ export function SectionTitle({
     <>
       <Text
         as="h3"
-        variant="title-small"
+        variant="title-x-small"
         weight="bold"
         className={classes.sectionTitle}
       >

@@ -69,6 +69,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     routeRef: customizeRouteRef,
     currentOn: [
       agentPlatformPlugin.routes.agents,
+      agentPlatformPlugin.routes.skills,
       agentPlatformPlugin.routes.models,
       musterPlugin.routes.mcpServers,
       musterPlugin.routes.workflows,

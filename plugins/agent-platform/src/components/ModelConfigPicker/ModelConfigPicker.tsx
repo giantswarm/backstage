@@ -139,8 +139,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
       {!isLoading && modelConfigs.length === 0 && hasError && (
         <Alert
           status="warning"
-          title="Couldn't read models"
-          description={`The kagent resources on ${installation} couldn't be read — unreachable, or you may not list ModelConfigs there.`}
+          title="Could not read models"
+          description={`The kagent resources on ${installation} could not be read — unreachable, or you may not list ModelConfigs there.`}
         />
       )}
 
@@ -164,7 +164,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
 
       {unlistedCurrent && (
         <Text variant="body-small" color="secondary">
-          Currently {unlistedCurrent}, a model that isn't listed for you
+          Currently {unlistedCurrent}, a model that is not listed for you
           {isLoading ? ' yet' : ''}.
         </Text>
       )}

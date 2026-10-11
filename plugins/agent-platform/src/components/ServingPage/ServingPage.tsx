@@ -6,7 +6,6 @@ import {
   useState,
 } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
-import { EmptyState } from '@backstage/core-components';
 import {
   toastApiRef,
   useApi,
@@ -22,6 +21,7 @@ import {
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  EmptyStateCard,
   LoadingIndicator,
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -529,28 +529,26 @@ export function ServingPage() {
     installations.every(name => backendsOn(serving, name).length === 0);
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
-    emptyBody = <LoadingIndicator label="Looking for a serving layer" />;
+    emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
   } else if (noServingLayer) {
     emptyBody =
       emptyGroups.length > 0 ? (
         servedModelsTable
       ) : (
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title="No serving layer"
           description="No environment in reach runs KServe or model-manager. Models on external endpoints work without one; a GPU node pool adds serving to a cluster."
-          action={addActions}
+          actions={addActions}
         />
       );
   } else if (noBackendYet) {
     emptyBody = (
-      <EmptyState
-        missing="data"
+      <EmptyStateCard
         title="No model backend yet"
         description={`model-manager on ${installations.join(
           ', ',
         )} has no backend registered. Register one you already run — Ollama, LM Studio, Lemonade or KServe — or add a GPU node pool.`}
-        action={addActions}
+        actions={addActions}
       />
     );
   }
@@ -585,7 +583,7 @@ export function ServingPage() {
           <Text color="secondary">{description}</Text>
 
           {serving.isLoading && rows.length === 0 ? (
-            <LoadingIndicator label="Loading served models" />
+            <LoadingIndicator label="Reading the served models…" />
           ) : (
             servedModelsTable
           )}

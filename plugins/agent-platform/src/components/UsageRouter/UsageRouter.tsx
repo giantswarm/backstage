@@ -57,7 +57,7 @@ function hasSectionsIn(sections: ReactNode[] | undefined): boolean {
 
 /** The screen's one line under its title, in the shell's header. */
 const USAGE_DESCRIPTION =
-  'Shows what agents cost, how much they are used and how healthy the platform is.';
+  'See what agents cost, how much they are used and how healthy the platform is.';
 
 /** Sends the tab index to the first view, keeping the query string. */
 const IndexRedirect = () => {

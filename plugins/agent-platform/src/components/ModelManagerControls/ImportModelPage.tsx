@@ -321,7 +321,7 @@ export function ImportModelPage({
       description: `${
         node ? `It goes into the cache on ${node}. ` : ''
       }Its row among the served models shows the progress; serve it from there once it is done.`,
-      status: 'info',
+      status: 'success',
       timeout: TOAST_TIMEOUT_MS,
     });
     onImported?.();

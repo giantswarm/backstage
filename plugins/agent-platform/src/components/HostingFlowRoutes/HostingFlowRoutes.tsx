@@ -76,7 +76,7 @@ function HostingFlowGate({
       {unavailable && !isLoading ? (
         <Alert status="info" description={unavailable} />
       ) : (
-        <LoadingIndicator label="Loading the environments" />
+        <LoadingIndicator label="Reading the environments…" />
       )}
     </WizardFrame>
   );

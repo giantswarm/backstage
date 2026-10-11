@@ -35,7 +35,7 @@ export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
     <KpiTileGrid>
       <KpiTile
         label="Your sessions"
-        hint={`Counts your sessions with at least one turn over ${windowNote}, from kagent. Other users' sessions can't be counted here.`}
+        hint={`Counts your sessions with at least one turn over ${windowNote}, from kagent. Other users' sessions cannot be counted here.`}
         value={formatCount(totals.sessions)}
         sub="yours — see Your sessions for the breakdown"
       />

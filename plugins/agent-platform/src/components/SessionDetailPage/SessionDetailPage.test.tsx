@@ -585,7 +585,7 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Could not load this session')).toBeInTheDocument();
     expect(screen.getByText(/kagent is unavailable/)).toBeInTheDocument();
-    expect(screen.queryByText('no activity')).not.toBeInTheDocument();
+    expect(screen.queryByText('No activity yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Turns')).not.toBeInTheDocument();
   });
 
@@ -618,7 +618,7 @@ describe('SessionDetailPage', () => {
 
     await render();
 
-    expect(screen.getByText('no activity')).toBeInTheDocument();
+    expect(screen.getByText('No activity yet')).toBeInTheDocument();
     expect(
       screen.getByText('This session has no messages yet.'),
     ).toBeInTheDocument();

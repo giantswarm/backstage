@@ -108,6 +108,7 @@ function SkillCreationAssistControl({ getTarget }: SkillCreationAssistProps) {
         action={
           <Button
             variant="secondary"
+            size="small"
             iconEnd={<ArrowForwardIcon fontSize="small" />}
             isDisabled={isCreating}
             onPress={onStart}

@@ -10,6 +10,7 @@ import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import {
   PageHeaderActionsProvider,
+  LoadingIndicator,
   SectionHeader,
   ShellPage,
   ShowMore,
@@ -108,13 +109,12 @@ export function ProfilePage() {
         {(installationsLoading || installations.length > 0) && (
           <section aria-label="Environments" className={classes.section}>
             <SectionHeader
+              variant="title-x-small"
               title="Environments"
               description="These are the environments this portal talks to."
             />
             {installationsLoading ? (
-              <Text variant="body-medium" color="secondary">
-                Loading…
-              </Text>
+              <LoadingIndicator label="Reading the environments…" />
             ) : (
               // A fleet of 50 is a wall of badges: the first 20, then one
               // click for the rest.

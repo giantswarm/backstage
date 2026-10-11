@@ -31,6 +31,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         sessions: createRouteRef(),
         usage: createRouteRef(),
         agents: createRouteRef(),
+        skills: createRouteRef(),
         models: createRouteRef(),
       },
     },
@@ -104,6 +105,7 @@ async function renderNav({
           '/customize': customizeRouteRef,
           '/agent-platform/usage': agentPlatformPlugin.routes.usage,
           '/agent-platform/agents': agentPlatformPlugin.routes.agents,
+          '/agent-platform/skills': agentPlatformPlugin.routes.skills,
           '/agent-platform/models': agentPlatformPlugin.routes.models,
           '/agent-platform/mcp-servers': musterPlugin.routes.mcpServers,
           '/agent-platform/workflows': musterPlugin.routes.workflows,
@@ -506,6 +508,7 @@ describe('AgentShellNav', () => {
 
   it.each([
     '/agent-platform/agents/gazelle/kagent/sre',
+    '/agent-platform/skills/giantswarm/agent-skills/triage',
     '/agent-platform/models/serving',
     '/agent-platform/mcp-servers',
     '/agent-platform/workflows/deploy',

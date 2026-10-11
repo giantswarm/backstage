@@ -8,21 +8,18 @@ import {
   useState,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Content,
-  EmptyState,
-  Link,
-  Progress,
-} from '@backstage/core-components';
+import { Content, EmptyState, Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles, useMediaQuery, useTheme } from '@material-ui/core';
 import {
   DateComponent,
+  LoadingIndicator,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
   ShellPageTitleSkeleton,
+  StatusDot,
   useProvidePageHeaderActions,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -60,7 +57,12 @@ import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
 import { SessionSwitcherRail } from '../SessionSwitcherRail';
-import { RUNTIME_LOST_LABEL, RUNTIME_LOST_TITLE } from '../SessionsTable';
+import {
+  RUNTIME_LOST_LABEL,
+  RUNTIME_LOST_TITLE,
+  STATE_IDLE_LABEL,
+} from '../SessionsTable';
+import { sessionStateDotVar } from '../../lib/stableClassNames';
 import { createPolledPairing, fresherStreamedCopy } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
@@ -941,7 +943,7 @@ export function SessionDetailPage() {
         title={<ShellPageTitleSkeleton label="Loading session" />}
         badges={<ShellPageBadgeSkeleton />}
       >
-        <Progress aria-label="Loading session" />
+        <LoadingIndicator label="Reading the session…" />
       </Shell>
     );
   }
@@ -1295,8 +1297,20 @@ export function SessionDetailPage() {
      one the list and the rail carry; only kagent's own word earns it. */
   const stateBadges = (
     <>
-      {state && <Badge size="small">{state.label}</Badge>}
-      {!state && <Badge size="small">no activity</Badge>}
+      {/* The dot and word the sessions list and the rail draw (T98). */}
+      {state ? (
+        <StatusDot
+          tone={state.tone}
+          label={state.label}
+          colorVar={sessionStateDotVar(state.tone)}
+        />
+      ) : (
+        <StatusDot
+          tone="neutral"
+          label={STATE_IDLE_LABEL}
+          colorVar={sessionStateDotVar('neutral')}
+        />
+      )}
       {runtimeLoss?.reported && (
         <Badge size="small" title={RUNTIME_LOST_TITLE}>
           {RUNTIME_LOST_LABEL}

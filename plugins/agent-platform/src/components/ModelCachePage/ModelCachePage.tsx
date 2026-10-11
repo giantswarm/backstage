@@ -1,4 +1,4 @@
-import { EmptyState } from '@backstage/core-components';
+import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useGpuNodePoolControls } from '../GpuNodePools';
 import { ShellAwareContent } from '../ShellAwareContent';
@@ -27,8 +27,7 @@ export function ModelCachePage() {
     <ShellAwareContent>
       {pools.dialogs}
       {pools.cachePanel ?? (
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title="No model cache"
           description="The model cache keeps model weights between serves. cluster-manager lists it per cluster, and no environment in reach runs cluster-manager."
         />

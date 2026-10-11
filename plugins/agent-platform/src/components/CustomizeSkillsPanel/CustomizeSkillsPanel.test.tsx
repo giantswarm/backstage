@@ -1,17 +1,18 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
-  mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { SkillCatalog } from '../../hooks/useSkillCatalog';
-import { skillsRouteRef } from '../../routes';
+import { newSkillRouteRef, skillsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import {
   CustomizeSkillsPanel,
   SKILL_CARDS_SHOWN,
+  useCanAddSkill,
 } from './CustomizeSkillsPanel';
 
 const REPO = 'https://github.com/giantswarm/skills';
@@ -57,10 +58,27 @@ const loaded: SkillCatalog = {
   truncated: false,
 };
 
+/**
+ * Add skill as the Customize screen draws it, beside the tab's search, from
+ * `useCanAddSkill`.
+ */
+function AddSkillAction() {
+  const newSkill = useRouteRef(newSkillRouteRef);
+  return useCanAddSkill() && newSkill ? (
+    <a href={newSkill()}>Add skill</a>
+  ) : null;
+}
+
 function renderPanel(search = '') {
-  return renderInTestApp(<CustomizeSkillsPanel search={search} />, {
-    mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
-  });
+  return renderInTestApp(
+    <>
+      <AddSkillAction />
+      <CustomizeSkillsPanel search={search} />
+    </>,
+    {
+      mountedRoutes: { '/agent-platform/skills': skillsRouteRef },
+    },
+  );
 }
 
 /** The catalog's cards, in order. */
@@ -277,27 +295,6 @@ describe('CustomizeSkillsPanel at phone width (T22 P3)', () => {
     expect(screen.getByRole('heading', { name: longName })).toHaveStyle({
       overflowWrap: 'anywhere',
     });
-  });
-
-  it('gives Add skill its own full-width line under the filters', async () => {
-    await renderPanel();
-
-    expect(screen.getByRole('link', { name: /Add skill/ })).toHaveStyle({
-      width: '100%',
-    });
-    expect(
-      screen.getByRole('button', { name: /Filter by source/, hidden: true }),
-    ).toBeInTheDocument();
-  });
-
-  it('keeps Add skill at its own width on a wide viewport', async () => {
-    layout.restore();
-    layout = mockDesktopLayout();
-    await renderPanel();
-
-    expect(screen.getByRole('link', { name: /Add skill/ }).style.width).toBe(
-      '',
-    );
   });
 
   it('shows three skills whole and pages 300', async () => {

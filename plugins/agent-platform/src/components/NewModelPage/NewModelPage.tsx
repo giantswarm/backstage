@@ -322,6 +322,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         <Card>
           <CardBody>
             <SectionHeader
+              variant="title-x-small"
               title="Environment"
               description="Choose the management cluster this model becomes available on."
             />

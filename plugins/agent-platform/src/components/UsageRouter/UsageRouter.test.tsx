@@ -421,7 +421,7 @@ describe('UsageRouter', () => {
       );
       expect(
         screen.getByText(
-          'Shows what agents cost, how much they are used and how healthy the platform is.',
+          'See what agents cost, how much they are used and how healthy the platform is.',
         ),
       ).toBeInTheDocument();
     });

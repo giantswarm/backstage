@@ -224,7 +224,9 @@ describe('AgentsIndexPage', () => {
       screen.queryByRole('heading', { name: 'No agents yet' }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
   });
 
   it('renders agent rows', async () => {
@@ -288,7 +290,7 @@ describe('AgentsIndexPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText("Couldn't read 2 environments"),
+      screen.getByText('Could not read 2 environments'),
     ).toBeInTheDocument();
     expect(screen.getByText(/gremlin, gauss/)).toBeInTheDocument();
   });
@@ -305,7 +307,9 @@ describe('AgentsIndexPage', () => {
     await renderPage();
 
     expect(screen.getByTestId('progress')).toBeInTheDocument();
-    expect(screen.getByText("Couldn't read 1 environment")).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
   });
 
   it('keeps the Installation and Namespace columns when the rows differ in both', async () => {

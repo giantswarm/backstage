@@ -301,7 +301,7 @@ describe('InstallationSelect', () => {
       const { getByText } = render(<InstallationSelect />);
 
       expect(getByText(/^Runs on/)).toBeInTheDocument();
-      expect(getByText(/Couldn't read 1 environment/)).toBeInTheDocument();
+      expect(getByText(/Could not read 1 environment/)).toBeInTheDocument();
       expect(mockSetInstallation).toHaveBeenCalledWith('alpha');
     });
 
@@ -313,8 +313,8 @@ describe('InstallationSelect', () => {
 
       const { getByText } = render(<InstallationSelect />);
 
-      expect(getByText("Couldn't check gamma")).toBeInTheDocument();
-      expect(getByText(/Cluster access to gamma isn't healthy/)).toBeVisible();
+      expect(getByText('Could not check gamma')).toBeInTheDocument();
+      expect(getByText(/Cluster access to gamma is not healthy/)).toBeVisible();
     });
   });
 
@@ -331,7 +331,7 @@ describe('InstallationSelect', () => {
       expect(queryByText(/^Runs on/)).not.toBeInTheDocument();
       expect(queryByText('beta')).not.toBeInTheDocument();
       expect(
-        getByText("Couldn't check beta for agent-manager"),
+        getByText('Could not check beta for agent-manager'),
       ).toBeInTheDocument();
       expect(
         getByText(/Sign in to muster on beta to check whether agents/),
@@ -431,10 +431,10 @@ describe('InstallationSelect', () => {
 
       const { getByText } = render(<InstallationSelect />);
 
-      expect(getByText("Couldn't check 50 environments")).toBeInTheDocument();
+      expect(getByText('Could not check 50 environments')).toBeInTheDocument();
       expect(
         getByText(
-          /^Cluster access to gone-00, gone-01, gone-02, gone-03, gone-04 and 45 more isn't healthy/,
+          /^Cluster access to gone-00, gone-01, gone-02, gone-03, gone-04 and 45 more is not healthy/,
         ),
       ).toBeVisible();
     });
@@ -502,7 +502,7 @@ describe('InstallationSelect', () => {
 
       const { getByText, queryByText } = render(<InstallationSelect />);
 
-      expect(getByText(/Couldn't read 1 environment/)).toBeInTheDocument();
+      expect(getByText(/Could not read 1 environment/)).toBeInTheDocument();
       // Don't claim "no models" when the read never succeeded.
       expect(queryByText('No environments with models')).toBeNull();
     });
@@ -513,7 +513,7 @@ describe('InstallationSelect', () => {
       const { getByText, queryByText } = render(<InstallationSelect />);
 
       expect(
-        getByText("Couldn't check solo for agent-manager"),
+        getByText('Could not check solo for agent-manager'),
       ).toBeInTheDocument();
       expect(queryByText('No environments with models')).toBeNull();
     });
@@ -527,7 +527,7 @@ describe('InstallationSelect', () => {
 
       const { getByText, queryByText } = render(<InstallationSelect />);
 
-      expect(getByText("Couldn't check solo")).toBeInTheDocument();
+      expect(getByText('Could not check solo')).toBeInTheDocument();
       expect(queryByText('No environments with models')).toBeNull();
     });
   });

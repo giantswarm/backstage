@@ -1,11 +1,15 @@
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import usePrevious from 'react-use/esm/usePrevious';
-import { Content, EmptyState, Progress } from '@backstage/core-components';
+import { Content } from '@backstage/core-components';
 import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
-import { ShellPage } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  EmptyStateCard,
+  LoadingIndicator,
+  ShellPage,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentShell } from '../../hooks/useAgentShell';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -40,7 +44,7 @@ function SessionsFrame({
   return (
     <ShellPage
       title="Sessions"
-      description="Lists every conversation you have had with an agent."
+      description="Find every conversation you have had with an agent."
       actions={
         <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
           New session
@@ -66,23 +70,16 @@ function ShellSessionsEmpty({ replacesList }: { replacesList: boolean }) {
     }
   }, [replacesList]);
   return (
-    <Flex direction="column" gap="2" py="6" align="center">
-      <Text
-        as="h2"
-        ref={headingRef}
-        tabIndex={-1}
-        variant="body-large"
-        weight="bold"
-      >
-        No sessions yet
-      </Text>
-      <Text as="p" variant="body-medium" color="secondary">
-        The sessions you start with an agent are listed here.
-      </Text>
-      <ButtonLink href="/" variant="secondary" iconStart={<AddIcon />}>
-        New session
-      </ButtonLink>
-    </Flex>
+    <EmptyStateCard
+      titleRef={headingRef}
+      title="No sessions yet"
+      description="The sessions you start with an agent are listed here."
+      actions={
+        <ButtonLink href="/" variant="secondary" iconStart={<AddIcon />}>
+          New session
+        </ButtonLink>
+      }
+    />
   );
 }
 
@@ -125,10 +122,9 @@ function SessionsIndexPageContent() {
   if (!isLoading && !hasInstallations) {
     return (
       <SessionsFrame agentShell={agentShell}>
-        <EmptyState
-          missing="data"
+        <EmptyStateCard
           title="No environments configured"
-          description="Sessions are read from kagent on your management clusters, but no environments are configured for this instance."
+          description="Sessions are read from your environments, and this portal knows none."
         />
       </SessionsFrame>
     );
@@ -210,7 +206,7 @@ function SessionsIndexPageContent() {
             gated off, and without this the tab would render nothing at all.
             The shell has no composer here, so it waits for no agent. */}
         {(isLoading || (isEmpty && isLoadingAgents && !agentShell)) && (
-          <Progress aria-label="Loading sessions" />
+          <LoadingIndicator label="Reading your sessions…" />
         )}
 
         {agentShell && invitesFirstSession && (

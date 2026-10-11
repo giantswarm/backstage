@@ -137,6 +137,7 @@ export function ModelConfigFormFields({
       <Card>
         <CardBody>
           <SectionHeader
+            variant="title-x-small"
             title="Name"
             description="People creating agents see the model under this name."
           />
@@ -154,6 +155,7 @@ export function ModelConfigFormFields({
       <Card>
         <CardBody>
           <SectionHeader
+            variant="title-x-small"
             title="Provider & model"
             description="Choose where the model runs and which model to request there."
           />
@@ -218,6 +220,7 @@ export function ModelConfigFormFields({
         <Card>
           <CardBody>
             <SectionHeader
+              variant="title-x-small"
               title="API key"
               description="Stored as a Kubernetes Secret next to the model config; never shown again."
             />
@@ -247,7 +250,7 @@ export function ModelConfigFormFields({
             secondaryLabel="fixed"
             isReadOnly
             value={values.name}
-            description="Names the resource and its key Secret. It can't be changed."
+            description="Names the resource and its key Secret. It cannot be changed."
           />
         ) : (
           <TextField
@@ -257,7 +260,7 @@ export function ModelConfigFormFields({
             value={values.name}
             onChange={name => onChange({ name })}
             placeholder="e.g. sonnet-4-5"
-            description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret; it can't be changed later."
+            description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret; it cannot be changed later."
             {...fieldErrorProps(errors.name)}
           />
         )}

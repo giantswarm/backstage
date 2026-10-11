@@ -138,7 +138,7 @@ export function PullModelPage({
         ? `Pulling ${reference} on ${where}`
         : `${reference} is already being pulled on ${where}`,
       description: 'Its progress shows in its row among the served models.',
-      status: 'info',
+      status: 'success',
       timeout: TOAST_TIMEOUT_MS,
     });
     onPulled?.();

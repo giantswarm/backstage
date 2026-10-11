@@ -5,6 +5,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   fieldErrorProps,
   InfoHint,
+  MoreOptions,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -28,34 +29,13 @@ import {
   systemMessageProblem,
 } from '../../lib/systemMessage';
 
-const useStyles = makeStyles(theme => ({
-  moreOptions: {
-    border: '1px solid var(--bui-border-1)',
-    borderRadius: 12,
-    padding: theme.spacing(1.5, 2),
-  },
-  moreOptionsSummary: {
-    cursor: 'pointer',
-    color: 'var(--bui-fg-primary)',
-  },
-  moreOptionsDefaults: {
-    color: 'var(--bui-fg-secondary)',
-    fontSize: '0.875rem',
-    // A long technical name must wrap rather than widen the page at 375px.
-    overflowWrap: 'anywhere',
-  },
+const useStyles = makeStyles({
   // The info button sits in the line of text, on its baseline.
   modelHint: {
     verticalAlign: 'text-bottom',
     marginLeft: 2,
   },
-  moreOptionsBody: {
-    marginTop: theme.spacing(2),
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(2.5),
-  },
-}));
+});
 
 export function NewAgentPage() {
   return (
@@ -93,8 +73,8 @@ function NewAgentPageContent() {
   // blocked Continue moves the focus to the first one.
   const validation = useFieldValidation();
   // "More options" holds the technical knobs (model, runtime, technical name,
-  // extra egress), collapsed: their defaults fit most agents. A native
-  // <details>, so the pickers inside stay mounted while it is closed — the
+  // extra egress), collapsed: their defaults fit most agents. The shared
+  // `MoreOptions` disclosure keeps the pickers inside mounted while closed — the
   // model picker's preselection of the installation's default model runs
   // without the person ever opening it.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
@@ -238,6 +218,7 @@ function NewAgentPageContent() {
         </Flex>
         <TextAreaField
           label="What is it for?"
+          secondaryLabel="optional"
           value={state.description}
           onChange={setDescription}
           rows={2}
@@ -270,60 +251,50 @@ function NewAgentPageContent() {
           </Text>
         )}
 
-        <details
-          className={classes.moreOptions}
+        <MoreOptions
           open={moreOptionsOpen}
-          onToggle={event =>
-            setMoreOptionsOpen((event.currentTarget as HTMLDetailsElement).open)
-          }
+          onOpenChange={setMoreOptionsOpen}
+          summary={defaultsSummary}
         >
-          <summary className={classes.moreOptionsSummary}>
-            More options{' '}
-            <span className={classes.moreOptionsDefaults}>
-              · {defaultsSummary}
-            </span>
-          </summary>
-          <div className={classes.moreOptionsBody}>
-            <Text variant="body-small" color="secondary">
-              The defaults work for most agents.
-            </Text>
-            <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
-            <HarnessPicker />
-            {edit ? (
-              <TextField
-                label="Technical name"
-                secondaryLabel="fixed"
-                isReadOnly
-                value={state.slug}
-                description={`Used in links and resource names on ${edit.installation}.`}
-              />
-            ) : (
-              <TextField
-                label="Technical name"
-                secondaryLabel="filled in from the name"
-                isRequired
-                value={state.slug}
-                onChange={setSlug}
-                placeholder="support-triage"
-                description="Used in links and resource names. Can't be changed later."
-                {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
-              />
-            )}
-            <TextAreaField
-              label="Extra egress origins"
-              secondaryLabel="optional"
-              value={state.egressText}
-              onChange={setEgressText}
-              rows={3}
-              mono
-              placeholder={
-                'https://github.com:443\nhttps://*.githubusercontent.com'
-              }
-              description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
-              error={egressIssue}
+          <Text variant="body-small" color="secondary">
+            The defaults work for most agents.
+          </Text>
+          <ModelConfigPicker error={validation.errorFor(fieldErrors.model)} />
+          <HarnessPicker />
+          {edit ? (
+            <TextField
+              label="Technical name"
+              secondaryLabel="fixed"
+              isReadOnly
+              value={state.slug}
+              description={`Used in links and resource names on ${edit.installation}.`}
             />
-          </div>
-        </details>
+          ) : (
+            <TextField
+              label="Technical name"
+              secondaryLabel="filled in from the name"
+              isRequired
+              value={state.slug}
+              onChange={setSlug}
+              placeholder="support-triage"
+              description="Used in links and resource names; it cannot be changed later."
+              {...fieldErrorProps(validation.errorFor(fieldErrors.slug))}
+            />
+          )}
+          <TextAreaField
+            label="Extra egress origins"
+            secondaryLabel="optional"
+            value={state.egressText}
+            onChange={setEgressText}
+            rows={3}
+            mono
+            placeholder={
+              'https://github.com:443\nhttps://*.githubusercontent.com'
+            }
+            description="List hosts beyond its model, connectors, skill and plugin sources and telemetry, which need no entry. Use one http(s) origin per line; a leading * matches one host label."
+            error={egressIssue}
+          />
+        </MoreOptions>
       </Flex>
 
       <Text as="p" color="secondary">

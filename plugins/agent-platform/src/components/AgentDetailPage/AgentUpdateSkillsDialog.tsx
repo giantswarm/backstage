@@ -257,7 +257,7 @@ export function AgentUpdateSkillsDialog({
         updating.failure && !notConnected ? updating.failure.message : undefined
       }
       onConfirm={onConfirm}
-      width={720}
+      width="min(90vw, 720px)"
     >
       <Flex direction="column" gap="3">
         <Text variant="body-medium">

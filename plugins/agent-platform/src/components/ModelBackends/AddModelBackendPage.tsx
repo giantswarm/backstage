@@ -518,6 +518,7 @@ export function AddModelBackendPage({
                     />
                     <TextField
                       label="Organization"
+                      secondaryLabel="optional"
                       value={form.organization}
                       onChange={set('organization')}
                     />
@@ -561,6 +562,7 @@ export function AddModelBackendPage({
                 {isHost && (
                   <TextField
                     label="Agent endpoint"
+                    secondaryLabel="optional"
                     description="Enter the base URL as agent pods reach it, if it differs from the endpoint."
                     value={form.agentEndpoint}
                     onChange={set('agentEndpoint')}
@@ -571,12 +573,14 @@ export function AddModelBackendPage({
                   <>
                     <TextField
                       label="Discovery ConfigMap namespace"
+                      secondaryLabel="optional"
                       description="Enter where the model-serving discovery ConfigMap lives; the default is the serving namespace."
                       value={form.discoveryNamespace}
                       onChange={set('discoveryNamespace')}
                     />
                     <TextField
                       label="Discovery ConfigMap name"
+                      secondaryLabel="optional"
                       description={`The default is ${DEFAULT_DISCOVERY_NAME}.`}
                       value={form.discoveryName}
                       onChange={set('discoveryName')}
@@ -585,6 +589,7 @@ export function AddModelBackendPage({
                 )}
                 <TextField
                   label="Credentials Secret"
+                  secondaryLabel="optional"
                   description={
                     kind === 'kserve'
                       ? 'Enter the name of the Secret in the serving namespace that holds the Hugging Face token, never the token itself.'
@@ -596,6 +601,7 @@ export function AddModelBackendPage({
                 {form.credentialsSecret.trim() && (
                   <TextField
                     label="Secret key"
+                    secondaryLabel="optional"
                     description="The default is token."
                     value={form.credentialsKey}
                     onChange={set('credentialsKey')}

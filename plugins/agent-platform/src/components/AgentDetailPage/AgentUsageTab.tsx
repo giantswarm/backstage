@@ -109,7 +109,7 @@ function AgentUsageContent({
         {hasSessions && (
           <KpiTile
             label="Your sessions"
-            hint={`Counts the sessions you started with this agent in the last ${sessionWindow} days. Other users' sessions can't be counted here.`}
+            hint={`Counts the sessions you started with this agent in the last ${sessionWindow} days. Other users' sessions cannot be counted here.`}
             value={formatCount(sessionRow?.sessions ?? 0)}
             sub={`yours, last ${sessionWindow} days`}
           />

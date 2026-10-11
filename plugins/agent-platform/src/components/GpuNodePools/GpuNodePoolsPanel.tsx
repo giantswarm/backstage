@@ -14,7 +14,7 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
-import DeleteIcon from '@material-ui/icons/Delete';
+import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import ExpandLessIcon from '@material-ui/icons/ExpandLess';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -231,8 +231,12 @@ export function gpuNodePoolStackedRow(
             aria-label={`Actions for pool ${row.pool.name}`}
           />
           <Menu maxWidth={MENU_WIDTH}>
-            <MenuItem iconStart={<DeleteIcon />} onAction={() => onRemove(row)}>
-              Remove pool
+            <MenuItem
+              color="danger"
+              iconStart={<DeleteOutlineIcon />}
+              onAction={() => onRemove(row)}
+            >
+              Remove pool…
             </MenuItem>
           </Menu>
         </MenuTrigger>

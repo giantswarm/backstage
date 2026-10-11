@@ -298,7 +298,9 @@ describe('AgentPlatformHome', () => {
     await render();
 
     expect(screen.getByText(/No agents could be read/)).toBeInTheDocument();
-    expect(screen.getByText(/Couldn't read 1 environment/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Could not read 1 environment/),
+    ).toBeInTheDocument();
   });
 
   it('says the Agent Platform is not enabled when its routes are not bound', async () => {
@@ -463,12 +465,30 @@ describe('AgentPlatformHome', () => {
       expect(agentPicker()).toHaveTextContent('Choose an agent');
     });
 
+    it('offers no search over a short list of agents', async () => {
+      await render({ manageAgentsHref: '/customize/agents' });
+
+      await userEvent.click(agentPicker());
+      expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+    });
+
     it('keeps Manage agents in the picker while searching', async () => {
+      // Past SEARCH_MIN, where the picker offers its search.
+      const more = Array.from({ length: 7 }, (_, index) => ({
+        ...sre,
+        id: `gazelle/kagent/helper-${index}`,
+        name: `Helper ${index}`,
+        technicalName: `helper-${index}`,
+      }));
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [sre, research, docs, ...more],
+      });
       await render({ manageAgentsHref: '/customize/agents' });
 
       await userEvent.click(agentPicker());
       await userEvent.type(
-        screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+        screen.getByRole('searchbox', { name: 'Search 10 agents' }),
         'docs',
       );
 

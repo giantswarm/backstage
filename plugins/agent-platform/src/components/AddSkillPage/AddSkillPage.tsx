@@ -377,6 +377,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
           />
           <TextAreaField
             label="Instructions"
+            // As bui's `isRequired` marks the fields above it.
+            secondaryLabel="Required"
             description="Write what the agent should know and do, in Markdown."
             rows={10}
             value={instructions}

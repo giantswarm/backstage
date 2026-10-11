@@ -101,9 +101,9 @@ describe('formatPercent', () => {
 
 describe('formatSeconds', () => {
   it('switches to milliseconds under a second', () => {
-    expect(formatSeconds(0.42)).toBe('420ms');
-    expect(formatSeconds(1.5)).toBe('1.5s');
-    expect(formatSeconds(42)).toBe('42s');
+    expect(formatSeconds(0.42)).toBe('420 ms');
+    expect(formatSeconds(1.5)).toBe('1.5 s');
+    expect(formatSeconds(42)).toBe('42 s');
   });
 
   it('is an em dash for an empty histogram', () => {

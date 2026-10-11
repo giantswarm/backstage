@@ -114,7 +114,7 @@ describe('HarnessPicker', () => {
     );
     await render();
 
-    expect(screen.getByText("Couldn't read the runtimes")).toBeInTheDocument();
+    expect(screen.getByText('Could not read the runtimes')).toBeInTheDocument();
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
   });
 
@@ -153,7 +153,7 @@ describe('HarnessPicker', () => {
 
     expect(formHarness).toBeUndefined();
     expect(screen.getByRole('status')).toHaveTextContent(
-      "The Harness claude doesn't serve this model's namespace",
+      "The Harness claude does not serve this model's namespace",
     );
   });
 
@@ -230,7 +230,7 @@ describe('HarnessPicker', () => {
 
     expect(
       screen.getByText(
-        "Some runtimes couldn't be loaded; the list may be incomplete.",
+        'Some runtimes could not be loaded; the list may be incomplete.',
       ),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('radio')).toHaveLength(2);
