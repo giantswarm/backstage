@@ -3,7 +3,7 @@
 ---
 
 Add the plans frontend plugin: a `/plans` page for reading and reviewing team
-plan documents from GitHub plan repositories (e.g. bumblebee-plans).
+plan documents from GitHub plan repositories (one `<team>-plans` per team).
 
 - **Proposed** tab lists open pull requests; selecting one opens a shareable
   full-width review page (`/plans/pr/<number>`) with a document nav and a

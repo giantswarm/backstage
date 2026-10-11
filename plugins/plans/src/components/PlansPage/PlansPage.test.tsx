@@ -24,10 +24,7 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 /** The repository picker the page put into the header last, if any. */
 const headerPicker = () => mockHeaderActions.mock.calls.at(-1)?.[0] ?? null;
 
-const REPOSITORIES = [
-  'giantswarm/bumblebee-plans',
-  'giantswarm/honeybadger-plans',
-];
+const REPOSITORIES = ['giantswarm/meadow-plans', 'giantswarm/orchard-plans'];
 
 async function renderAt(search: string) {
   const plansApi = {
@@ -46,9 +43,9 @@ async function renderAt(search: string) {
 
 describe('PlansPage', () => {
   it("shows the chosen team's plans repository", async () => {
-    await renderAt(`?team=${encodeURIComponent('Honey Badger 🦡')}`);
+    await renderAt(`?team=${encodeURIComponent('Orchard 🍎')}`);
     expect(
-      await screen.findByText('Proposed in giantswarm/honeybadger-plans'),
+      await screen.findByText('Proposed in giantswarm/orchard-plans'),
     ).toBeInTheDocument();
     expect(headerPicker()).toBeNull();
   });
@@ -64,7 +61,7 @@ describe('PlansPage', () => {
   it('starts all teams on the first repository', async () => {
     await renderAt('?team=all');
     expect(
-      await screen.findByText('Proposed in giantswarm/bumblebee-plans'),
+      await screen.findByText('Proposed in giantswarm/meadow-plans'),
     ).toBeInTheDocument();
     expect(headerPicker()).not.toBeNull();
   });

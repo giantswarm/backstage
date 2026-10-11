@@ -84,15 +84,15 @@ describe('hive', () => {
 
   it('maps a team to its plans repository, all teams to every one', () => {
     const repositories = [
-      'giantswarm/bumblebee-plans',
-      'giantswarm/honeybadger-plans',
-      'giantswarm/atlas-plans',
+      'giantswarm/meadow-plans',
+      'giantswarm/orchard-plans',
+      'giantswarm/grove-plans',
     ];
-    expect(plansRepositoriesForTeam(repositories, 'Bumblebee🐝')).toEqual([
-      'giantswarm/bumblebee-plans',
+    expect(plansRepositoriesForTeam(repositories, 'Meadow🌼')).toEqual([
+      'giantswarm/meadow-plans',
     ]);
-    expect(plansRepositoriesForTeam(repositories, 'Honey Badger 🦡')).toEqual([
-      'giantswarm/honeybadger-plans',
+    expect(plansRepositoriesForTeam(repositories, 'Orchard 🍎')).toEqual([
+      'giantswarm/orchard-plans',
     ]);
     expect(plansRepositoriesForTeam(repositories, 'Phoenix 🔥')).toEqual([]);
     expect(plansRepositoriesForTeam(repositories, ALL_TEAMS)).toEqual(
