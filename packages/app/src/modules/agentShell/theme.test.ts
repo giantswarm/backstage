@@ -4,11 +4,37 @@ import { readFileSync } from 'fs';
 // eslint-disable-next-line no-restricted-imports
 import { join } from 'path';
 import { sidebarConfig } from '@backstage/core-components';
+import {
+  PHONE_MAX_WIDTH,
+  TOUCH_QUERY,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { agentShellLightColors } from './theme';
 
 function shellCss(): string {
   return readFileSync(join(__dirname, 'agent-shell.css'), 'utf8');
 }
+
+/** The bodies of the stylesheet's `@media <query>` blocks, braces matched. */
+function mediaBlocks(css: string, query: string): string[] {
+  const blocks: string[] = [];
+  const opener = `@media ${query} {`;
+  let from = css.indexOf(opener);
+  while (from !== -1) {
+    const start = from + opener.length;
+    let depth = 1;
+    let end = start;
+    while (depth > 0 && end < css.length) {
+      if (css[end] === '{') depth += 1;
+      if (css[end] === '}') depth -= 1;
+      end += 1;
+    }
+    blocks.push(css.slice(start, end - 1));
+    from = css.indexOf(opener, end);
+  }
+  return blocks;
+}
+
+const PHONE = `(max-width: ${PHONE_MAX_WIDTH}px)`;
 
 function cssColorValues(): string[] {
   // Only values that carry a colour: the stylesheet also declares layout
@@ -149,6 +175,86 @@ describe('agentShellLightColors', () => {
     expect(shellCss()).toMatch(
       /html\[data-agent-shell\] \[class\*='BackstageTable-root'\] \{\s*max-width: 100%;\s*overflow-x: auto;/,
     );
+  });
+
+  // CSS cannot import the TS constant; this keeps the two equal (T22 §2.1).
+  it('switches to the phone layout at ui-react’s PHONE_MAX_WIDTH, and only there', () => {
+    const widths = [
+      ...shellCss().matchAll(/@media \(max-width: ([\d.]+)px\)/g),
+    ].map(match => Number(match[1]));
+    expect(widths.length).toBeGreaterThan(0);
+    expect(new Set(widths)).toEqual(new Set([PHONE_MAX_WIDTH]));
+  });
+
+  // T22 B3 / D3: below 16px iOS Safari zooms into a field on focus.
+  it('sets form controls at 16px at phone width, and only there', () => {
+    const css = shellCss();
+    const rule =
+      /html\[data-agent-shell\] :is\(input, textarea, select\) \{\s*font-size: 16px;\s*\}/;
+    expect(mediaBlocks(css, PHONE).some(block => rule.test(block))).toBe(true);
+    expect(css.match(new RegExp(rule.source, 'g'))).toHaveLength(1);
+  });
+
+  // T22 §0.1 / P14: bui tables do not scroll by themselves.
+  it('scrolls a bui table of four or more width-less columns inside itself at phone width', () => {
+    const css = shellCss();
+    expect(css).not.toContain('bring their own scroll container');
+    const phone = mediaBlocks(css, PHONE).join('\n');
+    expect(phone).toMatch(
+      /\.bui-TableWrapper\s*> \.bui-TableScrollContainer\s*> \.bui-Table:has\(\.bui-TableHead:nth-child\(4\)\) \{\s*--agent-shell-table-columns: 4;\s*min-width: calc\(var\(--agent-shell-table-columns\) \* 7rem\);/,
+    );
+  });
+
+  // T22 P13: bui's sort arrow is opacity 0 until hovered.
+  it('shows bui’s table sort arrow where there is no hover', () => {
+    expect(
+      mediaBlocks(shellCss(), '(hover: none)').some(block =>
+        /\.bui-TableHeadSortButton \{\s*opacity: 1;/.test(block),
+      ),
+    ).toBe(true);
+  });
+
+  // T22 B4. The upstream class is a CSS-module name with a hash suffix; the
+  // shell matches its prefix, which this pins against the installed package.
+  it('keeps toasts clear of the bottom bar and the docked composer', () => {
+    const upstream = readFileSync(
+      join(
+        require.resolve('@backstage/plugin-app/package.json'),
+        '..',
+        'dist/components/Toast/Toast.module.css.esm.js',
+      ),
+      'utf8',
+    );
+    expect(upstream).toMatch(
+      /\.Toast_container__\w+ \{\\n\s*position: fixed;\\n\s*bottom: 1rem;/,
+    );
+
+    const css = shellCss();
+    expect(css).toMatch(
+      /html\[data-agent-shell\] \[class\*='Toast_container'\] \{\s*bottom: calc\(2rem \+ var\(--session-dock-height, 0px\)\);/,
+    );
+    expect(
+      mediaBlocks(css, PHONE).some(block =>
+        /\[class\*='Toast_container'\] \{\s*bottom: calc\(\s*var\(--agent-shell-mobile-bar-height\) \+ var\(--session-dock-height, 0px\) \+\s*8px\s*\);/.test(
+          block,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // T22 C2: the bar steps aside for the soft keyboard on a touch phone.
+  it('hides the bottom bar while a text field has focus on a touch phone', () => {
+    const [block] = mediaBlocks(shellCss(), `${PHONE} and ${TOUCH_QUERY}`);
+    expect(block).toBeDefined();
+    expect(block).toMatch(
+      /:not\(\[readonly\]\):focus\s*\) \{\s*--agent-shell-mobile-bar-height: 0px;/,
+    );
+    expect(block).toMatch(
+      /:not\(\[readonly\]\):focus\s*\)\s*\.agent-shell-mobile-bar \{\s*display: none;/,
+    );
+    // A checkbox or a button raises no keyboard.
+    expect(block).toContain("[type='checkbox']");
+    expect(block).toContain("[type='button']");
   });
 
   it('is the only source of the colours in agent-shell.css', () => {

@@ -49,6 +49,7 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
         key === 'agentPlatform.integrations.slack'
           ? mockSlackConfigured
           : undefined,
+      getOptionalString: () => undefined,
     },
     isLoading: false,
   }),

@@ -21,10 +21,19 @@ const listStyle: CSSProperties = {
   listStyle: 'none',
 };
 
+// `minWidth: 0` on the item and `overflowWrap` on its label: a long
+// snake_case crumb (a tool, a workflow) breaks inside the 343px a phone
+// leaves, instead of pushing the page sideways.
 const itemStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 'var(--bui-space-1)',
+  minWidth: 0,
+};
+
+const labelStyle: CSSProperties = {
+  minWidth: 0,
+  overflowWrap: 'anywhere',
 };
 
 /**
@@ -41,7 +50,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
           return (
             <li key={`${index}-${item.label}`} style={itemStyle}>
               {item.href && !last ? (
-                <Link href={item.href} variant="body-small">
+                <Link href={item.href} variant="body-small" style={labelStyle}>
                   {item.label}
                 </Link>
               ) : (
@@ -49,6 +58,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
                   variant="body-small"
                   color="secondary"
                   aria-current={last ? 'page' : undefined}
+                  style={labelStyle}
                 >
                   {item.label}
                 </Text>

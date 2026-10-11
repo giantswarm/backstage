@@ -6,16 +6,17 @@ import {
 } from '@backstage/frontend-plugin-api';
 import type { AgentShellNavItem } from '../../navItems';
 import { RailLink } from '../RailLink';
+import type { RailLayout } from '../railLayout';
 
 /** A rail link to a route ref; nothing while the route is not bound. */
 export function RouteRailLink({
   item,
   routeRef,
-  compact,
+  layout,
 }: {
   item: AgentShellNavItem;
   routeRef: RouteRef;
-  compact: boolean;
+  layout: RailLayout;
 }) {
   const route = useRouteRef(routeRef);
   const routeResolution = useApi(routeResolutionApiRef);
@@ -35,7 +36,7 @@ export function RouteRailLink({
       item={item}
       href={route()}
       currentOn={currentOn}
-      compact={compact}
+      layout={layout}
     />
   );
 }

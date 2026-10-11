@@ -1,14 +1,19 @@
-import type { ReactNode } from 'react';
-import { Text } from '@backstage/ui';
+import { type ReactNode, useState } from 'react';
+import {
+  Accordion,
+  AccordionPanel,
+  AccordionTrigger,
+  Text,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { PHONE_MEDIA, usePhoneLayout } from '../../utils/breakpoints';
 import { BreadcrumbItem, Breadcrumbs } from '../Breadcrumbs';
 import {
   useOwnPageHeader,
   usePageHeaderActionsSlot,
 } from '../PageHeaderActions';
 import { RouteTabs, RouteTabSpec } from '../RouteTabs';
-
-const NARROW_BREAKPOINT = 600;
+import { useSimpleAccordionStyles } from '../SimpleAccordion';
 
 /**
  * CSS variable, set on the page's root: the room the page leaves under its
@@ -26,7 +31,9 @@ const useStyles = makeStyles({
     margin: '0 auto',
     [SHELL_PAGE_PADDING_BOTTOM_VAR]: '40px',
     padding: `28px 48px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
-    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+    // The shell's phone layout, the width at which its rail becomes the
+    // bottom bar: phone gutters and the desktop rail never meet.
+    [PHONE_MEDIA]: {
       [SHELL_PAGE_PADDING_BOTTOM_VAR]: '32px',
       padding: `20px 16px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     },
@@ -87,6 +94,10 @@ const useStyles = makeStyles({
     alignItems: 'flex-start',
     gap: 48,
     marginTop: 20,
+    // Stacked, the fold-out sits close above the content it belongs to.
+    [PHONE_MEDIA]: {
+      rowGap: 20,
+    },
   },
   main: {
     flex: '999 1 480px',
@@ -96,9 +107,17 @@ const useStyles = makeStyles({
     flex: '1 1 260px',
     maxWidth: 300,
     minWidth: 0,
-    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+    [PHONE_MEDIA]: {
       maxWidth: 'none',
     },
+  },
+  // The aside at phone width: first, folded, and as wide as the content.
+  // Outlined like the shell's other fold-outs ("Technical details").
+  asideFoldOut: {
+    flex: '1 1 100%',
+    minWidth: 0,
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
   },
   footer: {
     marginTop: 32,
@@ -131,17 +150,51 @@ export interface ShellPageProps {
   tabsSearch?: string;
   /** The tab hrefs' base, when not the splat route's (see `RouteTabs`). */
   tabsBasePath?: string;
-  /** A narrow column beside the content, e.g. a `FactsColumn`. */
+  /**
+   * A narrow column beside the content, e.g. a `FactsColumn`. At phone
+   * width it comes first instead, folded under {@link ShellPageProps.asideLabel},
+   * so it is not left behind hundreds of rows of the content.
+   */
   aside?: ReactNode;
+  /** The aside's fold-out heading at phone width. Defaults to "Details". */
+  asideLabel?: string;
   /** Below the content and the aside. */
   footer?: ReactNode;
   children?: ReactNode;
 }
 
 /**
+ * The aside at phone width: above the content and folded. A facts column
+ * wrapped after a tab of hundreds of tools or a whole workflow is a column
+ * nobody reaches. Controlled, so the aside mounts only while open — bui's
+ * panel otherwise stays mounted, merely hidden.
+ */
+function AsideFoldOut({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  const spacing = useSimpleAccordionStyles();
+  const [isExpanded, setExpanded] = useState(false);
+  return (
+    <Accordion
+      className={`${classes.asideFoldOut} ${spacing.group}`}
+      isExpanded={isExpanded}
+      onExpandedChange={setExpanded}
+    >
+      <AccordionTrigger level={2}>{label}</AccordionTrigger>
+      <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
+    </Accordion>
+  );
+}
+
+/**
  * The agent-platform shell's page frame: breadcrumbs, a title row with
  * badges and actions, optional routed tabs, and the content with an optional
- * column beside it.
+ * column beside it — above it, folded, at phone width.
  *
  * It renders the page-header-actions slot but mounts no
  * `PageHeaderActionsProvider`: the route that renders the page provides it,
@@ -162,10 +215,12 @@ export function ShellPage({
   tabsSearch,
   tabsBasePath,
   aside,
+  asideLabel = 'Details',
   footer,
   children,
 }: ShellPageProps) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
   const slotActions = usePageHeaderActionsSlot();
   useOwnPageHeader();
   const hasBreadcrumbs = breadcrumbs !== undefined && breadcrumbs.length > 0;
@@ -219,8 +274,11 @@ export function ShellPage({
         </div>
       )}
       <div className={classes.body}>
+        {aside && isPhone && (
+          <AsideFoldOut label={asideLabel}>{aside}</AsideFoldOut>
+        )}
         <div className={classes.main}>{children}</div>
-        {aside && <div className={classes.aside}>{aside}</div>}
+        {aside && !isPhone && <div className={classes.aside}>{aside}</div>}
       </div>
       {footer && <div className={classes.footer}>{footer}</div>}
     </div>

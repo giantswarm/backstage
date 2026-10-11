@@ -5,6 +5,15 @@ import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import RadioButtonUncheckedIcon from '@material-ui/icons/RadioButtonUnchecked';
 import CheckBoxIcon from '@material-ui/icons/CheckBox';
 import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank';
+import { PHONE_QUERY } from '../../utils/breakpoints';
+
+/**
+ * Where nothing is hovered: a touch screen, and a phone-width viewport (which
+ * is a touch screen often enough that its layout should not depend on hover).
+ * `hover: none` alone, not `TOUCH_QUERY`: a device with a stylus or a remote
+ * also cannot hover, whatever its pointer.
+ */
+const NO_HOVER_MEDIA = `@media (hover: none), ${PHONE_QUERY}`;
 
 // Shared styling + markup for the option cards of the creation flows (the
 // connector wizard's auth modes, the agent wizard's model, harness and skill
@@ -80,6 +89,23 @@ const useStyles = makeStyles(theme => ({
       opacity: 1,
       pointerEvents: 'auto',
     },
+    // Nothing is ever hovered here, so the control is always shown -- and in
+    // the card's flow, under its content, rather than over the last line of
+    // a clamped description it is there to expand.
+    [NO_HOVER_MEDIA]: {
+      position: 'static',
+      alignSelf: 'flex-end',
+      margin: theme.spacing(0, 0.5, 0.5),
+      opacity: 1,
+      pointerEvents: 'auto',
+    },
+  },
+  // The text beside the indicator: allowed to shrink, and to break a long
+  // snake_case name rather than run under the indicator or out of the card.
+  content: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    overflowWrap: 'anywhere',
   },
   // The same frame as `shell`, minus the affordances: nothing to click, so no
   // pointer cursor and no hover feedback. Kept next to it so the two stay
@@ -179,7 +205,9 @@ export type SelectableCardProps = {
   /**
    * A control of the card's own -- a *Show more* toggle, say -- shown in the
    * bottom-right corner while the pointer is on the card or it has focus.
-   * Anything interactive belongs here rather than in `children`.
+   * Where nothing hovers (touch input, phone width) it is always shown, under
+   * the card's content. Anything interactive belongs here rather than in
+   * `children`.
    */
   hoverAction?: ReactNode;
   /**
@@ -207,7 +235,7 @@ export function StaticCard({ children }: { children: ReactNode }) {
 
   return (
     <div role="listitem" className={classes.cardStatic}>
-      <Flex direction="column" gap="1">
+      <Flex direction="column" gap="1" className={classes.content}>
         {children}
       </Flex>
     </div>
@@ -252,7 +280,7 @@ export function SelectableCard({
         className={classes.card}
       >
         <Flex align="start" justify="between" gap="2">
-          <Flex direction="column" gap="1">
+          <Flex direction="column" gap="1" className={classes.content}>
             {children}
           </Flex>
           <Indicator

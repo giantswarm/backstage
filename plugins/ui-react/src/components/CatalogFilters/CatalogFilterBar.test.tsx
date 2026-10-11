@@ -85,6 +85,31 @@ describe('CatalogFilterBar', () => {
     expect(shown()).toEqual(['a', 'b', 'c']);
   });
 
+  it('wraps its chips itself, without the shell’s stylesheet', () => {
+    // Six providers with counts are wider than a phone's 343px.
+    const providers = [
+      'OpenAI',
+      'Anthropic',
+      'Azure OpenAI',
+      'Bedrock',
+      'Self-hosted',
+      'Vertex',
+    ];
+    render(
+      <Catalog
+        items={providers.map((provider, index) => ({
+          name: `m-${index}`,
+          provider,
+        }))}
+      />,
+    );
+
+    expect(
+      screen.getByRole('radiogroup', { name: 'Filter by provider' }),
+    ).toHaveStyle({ flexWrap: 'wrap', overflow: 'visible' });
+    expect(chips('Filter by provider')).toHaveLength(7);
+  });
+
   it('turns a facet of many values into a select at 300 entries', async () => {
     const items = Array.from({ length: 300 }, (_, index) => ({
       name: `m-${index}`,

@@ -42,6 +42,7 @@ export * from './SectionHeader';
 export * from './ShellPage';
 export * from './ShowMore';
 export * from './SimpleAccordion';
+export * from './StackedRowList';
 export * from './SingleSelect';
 export * from './Stat';
 export * from './StackedBarChart';

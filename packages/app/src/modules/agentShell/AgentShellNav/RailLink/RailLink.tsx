@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom';
 import { Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import type { AgentShellNavItem } from '../../navItems';
+import { type RailLayout, useBarItemStyles } from '../railLayout';
 
 const useStyles = makeStyles({
   link: {
@@ -38,20 +39,43 @@ export function RailLink({
   item,
   href,
   currentOn = [],
-  compact,
+  layout,
 }: {
   item: AgentShellNavItem;
   href: string;
   /** Further paths under which the item is the current one. */
   currentOn?: string[];
-  compact: boolean;
+  layout: RailLayout;
 }) {
   const classes = useStyles();
+  const barClasses = useBarItemStyles();
   const { pathname } = useLocation();
   const isActive = [href, ...currentOn].some(path =>
     isActivePath(pathname, path),
   );
   const Icon = item.icon;
+
+  if (layout === 'bar') {
+    // The phone's bottom bar: the icon over a short visible label — a phone
+    // shows no `title` — with the current item marked along the top edge.
+    return (
+      <li className={barClasses.slot}>
+        <Link
+          href={href}
+          target={item.newTab ? '_blank' : undefined}
+          className={barClasses.item}
+          aria-current={isActive ? 'page' : undefined}
+        >
+          <Icon fontSize="small" />
+          <span className={barClasses.label}>
+            {item.barTitle ?? item.title}
+          </span>
+        </Link>
+      </li>
+    );
+  }
+
+  const compact = layout === 'collapsed';
   return (
     <li>
       <Link

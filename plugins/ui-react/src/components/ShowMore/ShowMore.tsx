@@ -90,7 +90,13 @@ export function ShowMore<T>({
     <Flex direction="column" gap="2">
       {children(visible)}
       {(hidden > 0 || isExpanded) && (
-        <Flex align="center" gap="2">
+        // Wraps: "Show 20 more connectors", "Show fewer" and the tally are
+        // ~415px together, wider than a phone's 343px of content.
+        <Flex
+          align="center"
+          gap="2"
+          style={{ flexWrap: 'wrap', rowGap: 'var(--bui-space-1)' }}
+        >
           {hidden > 0 && (
             <Button
               variant="tertiary"

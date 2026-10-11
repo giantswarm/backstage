@@ -24,6 +24,30 @@ describe('GSMarkdownContent', () => {
     expect(screen.getByRole('columnheader', { name: 'a' })).toBeInTheDocument();
   });
 
+  it('keeps a wide table, a long URL or a long token inside a phone’s width', () => {
+    const wide = `| ${Array.from({ length: 8 }, (_, i) => `column_${i}`).join(
+      ' | ',
+    )} |\n|${' - |'.repeat(8)}\n| ${Array.from(
+      { length: 8 },
+      (_, i) => `value_${i}`,
+    ).join(' | ')} |`;
+    const { container } = render(
+      <GSMarkdownContent
+        content={`${wide}\n\nSee https://example.com/a/very/long/path/that/never/breaks/on/its/own and \`kubernetes_troubleshooting_and_incident_response\`.`}
+      />,
+    );
+
+    // The table scrolls itself; everything else breaks where it must.
+    expect(screen.getByRole('table')).toHaveStyle({
+      display: 'block',
+      overflowX: 'auto',
+      maxWidth: '100%',
+    });
+    expect(container.firstElementChild).toHaveStyle({
+      overflowWrap: 'anywhere',
+    });
+  });
+
   it('applies a caller-provided className to the wrapper', () => {
     const { container } = render(
       <GSMarkdownContent content="text" className="custom-class" />,

@@ -1,8 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-
-const NARROW_BREAKPOINT = 520;
+import { PHONE_MEDIA } from '../../utils/breakpoints';
 
 type StyleProps = {
   labelWidth: number;
@@ -34,7 +33,9 @@ const useStyles = makeStyles({
     '& > dt:last-of-type, & > dd:last-of-type': {
       borderBottom: 'none',
     },
-    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+    // At phone width each label sits above its value: two columns of 343px
+    // leave a value ~160px.
+    [PHONE_MEDIA]: {
       gridTemplateColumns: '1fr',
     },
   },
@@ -53,7 +54,7 @@ const useStyles = makeStyles({
   },
   // Stacked, a label and its value are one row, so only the value closes it.
   narrowStacked: {
-    [`@media (max-width: ${NARROW_BREAKPOINT}px)`]: {
+    [PHONE_MEDIA]: {
       borderBottom: 'none',
       paddingBottom: 0,
     },

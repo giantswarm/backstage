@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {
+  mockDesktopLayout,
+  MockedLayout,
+  mockPhoneLayout,
+} from '../../utils/mockPhoneLayout';
 import {
   PageHeaderActionsProvider,
   useProvidePageHeaderActions,
@@ -127,5 +133,73 @@ describe('ShellPage', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  describe('at phone width', () => {
+    let layout: MockedLayout | undefined;
+    afterEach(() => {
+      layout?.restore();
+      layout = undefined;
+    });
+
+    const facts = <aside aria-label="Facts">Address: jira.example.com</aside>;
+
+    it('puts the aside first, folded under "Details"', async () => {
+      layout = mockPhoneLayout();
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira" aside={facts}>
+          <p>Hundreds of tools</p>
+        </ShellPage>,
+      );
+
+      const toggle = screen.getByRole('button', { name: 'Details' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(
+        screen.queryByRole('complementary', { name: 'Facts' }),
+      ).not.toBeInTheDocument();
+      // Before the content in reading order, not after it.
+      expect(
+        toggle.compareDocumentPosition(screen.getByText('Hundreds of tools')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(
+        screen.getByRole('complementary', { name: 'Facts' }),
+      ).toHaveTextContent('Address: jira.example.com');
+    });
+
+    it('names the fold-out by asideLabel', () => {
+      layout = mockPhoneLayout();
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira" aside={facts} asideLabel="About this agent" />,
+      );
+
+      expect(
+        screen.getByRole('button', { name: 'About this agent' }),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the aside open beside the content on a desktop', () => {
+      layout = mockDesktopLayout();
+      renderAt(
+        '/connectors/jira',
+        <ShellPage title="Jira" aside={facts}>
+          <p>Hundreds of tools</p>
+        </ShellPage>,
+      );
+
+      expect(
+        screen.queryByRole('button', { name: 'Details' }),
+      ).not.toBeInTheDocument();
+      const aside = screen.getByRole('complementary', { name: 'Facts' });
+      expect(
+        aside.compareDocumentPosition(screen.getByText('Hundreds of tools')) &
+          Node.DOCUMENT_POSITION_PRECEDING,
+      ).toBeTruthy();
+    });
   });
 });

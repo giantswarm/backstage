@@ -2,6 +2,10 @@ import type { ReactNode } from 'react';
 import { SidebarPinStateProvider } from '@backstage/core-components';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -166,21 +170,10 @@ describe('AgentShellNav', () => {
   it('keeps a Sessions item in the mobile bar, which lists no recent sessions', async () => {
     await renderNav({ isMobile: true });
 
-    const nav = screen.getByRole('navigation', { name: 'Main' });
-    expect(
-      within(nav)
-        .getAllByRole('link')
-        .filter(link => link.textContent !== 'Skip to content')
-        .map(link => [
-          link.getAttribute('aria-label'),
-          link.getAttribute('href'),
-        ]),
-    ).toEqual([
+    expect(railLinks()).toEqual([
       ['New session', '/'],
       ['Sessions', '/agent-platform/sessions'],
       ['Customize', '/customize'],
-      ['Usage', '/agent-platform/usage'],
-      ['Platform Portal', '/clusters'],
     ]);
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
   });
@@ -202,6 +195,175 @@ describe('AgentShellNav', () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }
+  });
+
+  // T22 D1: five labelled items, with Usage and the Platform Portal moved into
+  // the Profile menu.
+  describe('the phone bottom bar', () => {
+    let layout: MockedLayout;
+
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+
+    afterEach(() => {
+      layout.restore();
+    });
+
+    function barItems() {
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      return within(nav).getAllByRole('listitem');
+    }
+
+    it('holds New session, Sessions, Search, Customize and Profile, in that order, each labelled', async () => {
+      await renderNav({ isMobile: true });
+
+      // The visible label under each icon: a phone shows no `title`.
+      const labels = [
+        'New session',
+        'Sessions',
+        'Search',
+        'Customize',
+        'Profile',
+      ];
+      const items = barItems();
+      expect(items).toHaveLength(labels.length);
+      items.forEach((item, index) => {
+        expect(within(item).getByText(labels[index])).toBeInTheDocument();
+      });
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      for (const name of ['New session', 'Sessions', 'Customize']) {
+        const link = within(nav).getByRole('link', { name });
+        expect(link).not.toHaveAttribute('title');
+        expect(link).not.toHaveAttribute('aria-label');
+      }
+      expect(
+        within(nav).getByRole('button', { name: 'Profile and settings' }),
+      ).toHaveTextContent('Profile');
+    });
+
+    it('promises no keyboard shortcut on Search', async () => {
+      await renderNav({ isMobile: true });
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      const search = within(nav).getByRole('button', { name: 'Search' });
+      expect(search).not.toHaveAttribute('title');
+      expect(search).not.toHaveAttribute('aria-keyshortcuts');
+      expect(nav).not.toHaveTextContent(/⌘K|Ctrl\+K/);
+    });
+
+    it('leaves Usage and the Platform Portal out of the bar', async () => {
+      await renderNav({ isMobile: true });
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      expect(within(nav).queryByRole('link', { name: 'Usage' })).toBeNull();
+      expect(
+        within(nav).queryByRole('link', { name: 'Platform Portal' }),
+      ).toBeNull();
+    });
+
+    it('moves Usage and the Platform Portal into the Profile menu', async () => {
+      await renderNav({ isMobile: true });
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+      const menu = await screen.findByRole('menu');
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map(menuItem => menuItem.textContent),
+      ).toEqual([
+        'Profile and settings',
+        'Usage',
+        'Platform Portal',
+        'Help and feedback',
+        'Sign out',
+      ]);
+      // Usage stays in the shell; the cross-link leaves it in a new tab.
+      const usage = within(menu).getByRole('menuitem', { name: 'Usage' });
+      expect(usage).toHaveAttribute('href', '/agent-platform/usage');
+      expect(usage).not.toHaveAttribute('target');
+      const portal = within(menu).getByRole('menuitem', {
+        name: 'Platform Portal',
+      });
+      expect(portal).toHaveAttribute('href', '/clusters');
+      expect(portal).toHaveAttribute('target', '_blank');
+    });
+
+    it('leaves the Platform Portal out of the Profile menu on an agent-only deployment', async () => {
+      await renderNav({
+        isMobile: true,
+        portals: { platformPortal: false, agentPlatform: true },
+      });
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+      const menu = await screen.findByRole('menu');
+      expect(
+        within(menu).queryByRole('menuitem', { name: 'Platform Portal' }),
+      ).toBeNull();
+      expect(
+        within(menu).getByRole('menuitem', { name: 'Usage' }),
+      ).toBeInTheDocument();
+    });
+
+    it('leaves Usage out of the Profile menu while its route is not bound', async () => {
+      await renderNav({ isMobile: true, bound: false });
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      );
+      const menu = await screen.findByRole('menu');
+      expect(
+        within(menu).queryByRole('menuitem', { name: 'Usage' }),
+      ).toBeNull();
+    });
+
+    it.each(['/agent-platform/usage/cost', '/agent-platform/profile'])(
+      'marks Profile current on %s, a page only its menu leads to',
+      async path => {
+        await renderNav({ isMobile: true, path });
+
+        expect(
+          screen.getByRole('button', { name: 'Profile and settings' }),
+        ).toHaveAttribute('data-current', 'true');
+      },
+    );
+
+    it('marks the current item, and only it', async () => {
+      await renderNav({ isMobile: true, path: '/customize/connectors' });
+
+      const nav = screen.getByRole('navigation', { name: 'Main' });
+      expect(
+        within(nav).getByRole('link', { name: 'Customize' }),
+      ).toHaveAttribute('aria-current', 'page');
+      expect(
+        within(nav).getByRole('link', { name: 'New session' }),
+      ).not.toHaveAttribute('aria-current');
+      expect(
+        screen.getByRole('button', { name: 'Profile and settings' }),
+      ).not.toHaveAttribute('data-current');
+    });
+
+    // agent-shell.css hides the bar by this class while the soft keyboard is
+    // up (T22 C2).
+    it('carries the stable class the stylesheet hides it by', async () => {
+      await renderNav({ isMobile: true });
+
+      expect(screen.getByRole('navigation', { name: 'Main' })).toHaveClass(
+        'agent-shell-mobile-bar',
+      );
+    });
+
+    it('is not the desktop rail', async () => {
+      await renderNav();
+
+      expect(screen.getByRole('navigation', { name: 'Main' })).not.toHaveClass(
+        'agent-shell-mobile-bar',
+      );
+    });
   });
 
   describe('the needs-input toast watcher', () => {
@@ -248,7 +410,7 @@ describe('AgentShellNav', () => {
       within(nav)
         .getAllByRole('button')
         .map(button => button.getAttribute('aria-label') ?? button.textContent),
-    ).toEqual(['Profile and settings', 'Search']);
+    ).toEqual(['Search', 'Profile and settings']);
   });
 
   it('hides the items whose route is not bound', async () => {

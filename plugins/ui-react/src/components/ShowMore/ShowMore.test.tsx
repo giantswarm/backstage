@@ -122,6 +122,19 @@ describe('ShowMore', () => {
     });
   });
 
+  it('lets its controls wrap, so a phone’s 343px does not squeeze the tally', async () => {
+    renderList({ items: Array.from({ length: 300 }, (_, i) => `Agent ${i}`) });
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 10 more agents' }),
+    );
+
+    const controls = screen.getByRole('button', {
+      name: 'Show fewer',
+    }).parentElement!;
+    expect(controls).toHaveStyle({ flexWrap: 'wrap' });
+    expect(controls).toHaveTextContent('20 agents shown, 280 more');
+  });
+
   it('offers nothing for a list that fits', () => {
     renderList({ items: names.slice(0, 10) });
     expect(rendered()).toBe(10);

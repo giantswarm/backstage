@@ -16,11 +16,19 @@ type AgentShellNavItemBase = {
   position: 'top' | 'bottom';
   /** Routes whose pages the item stands for in the rail, as their parent. */
   currentOn?: RouteRef[];
+  /** The label under the icon in the phone's bottom bar, when shorter. */
+  barTitle?: string;
   /**
    * Only in the mobile bar, which has no recent-sessions list and so no
    * "All sessions" link.
    */
   mobileOnly?: boolean;
+  /**
+   * Where the item goes at phone width (T22 D1): the bottom bar holds five
+   * labelled items — New session, Sessions, Search, Customize, Profile — so
+   * the rest move into the Profile menu. Default `'bar'`.
+   */
+  phone?: 'bar' | 'profileMenu';
   /** Opens in a new tab — for links that leave the shell. */
   newTab?: boolean;
   /**
@@ -73,6 +81,8 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     icon: BarChartIcon,
     routeRef: agentPlatformPlugin.routes.usage,
     position: 'top',
+    // The least-used destination on a phone (T22 D1).
+    phone: 'profileMenu',
   },
   {
     // The way back into the classic portal, whose own routes render classic
@@ -85,12 +95,21 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     position: 'bottom',
     newTab: true,
     crossLinkTo: 'platformPortal',
+    phone: 'profileMenu',
   },
   {
     id: 'profile',
     title: 'Profile and settings',
+    barTitle: 'Profile',
     icon: SettingsIcon,
     menu: 'profile',
     position: 'bottom',
   },
 ];
+
+/**
+ * Which item the Search trigger (the command palette, not a nav item) follows:
+ * right after New session in the rail, after Sessions in the phone's bar —
+ * New session · Sessions · Search · Customize · Profile.
+ */
+export const SEARCH_FOLLOWS = { rail: 'new-session', bar: 'sessions' } as const;

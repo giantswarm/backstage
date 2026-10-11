@@ -42,4 +42,31 @@ describe('Breadcrumbs', () => {
 
     expect(screen.queryByRole('link', { name: 'here' })).toBeNull();
   });
+
+  it('lets a long crumb break inside a phone’s width', () => {
+    render(
+      <Breadcrumbs
+        items={[
+          { label: 'Workflows', href: '/workflows' },
+          {
+            label: 'rotate_cluster_certificates_for_all_workload_clusters',
+            href: '/workflows/rotate',
+          },
+          { label: 'check_certificate_expiry_and_renew_if_needed' },
+        ]}
+      />,
+    );
+
+    for (const item of screen.getAllByRole('listitem')) {
+      expect(item).toHaveStyle({ minWidth: '0' });
+    }
+    expect(
+      screen.getByRole('link', {
+        name: 'rotate_cluster_certificates_for_all_workload_clusters',
+      }),
+    ).toHaveStyle({ overflowWrap: 'anywhere' });
+    expect(
+      screen.getByText('check_certificate_expiry_and_renew_if_needed'),
+    ).toHaveStyle({ overflowWrap: 'anywhere' });
+  });
 });

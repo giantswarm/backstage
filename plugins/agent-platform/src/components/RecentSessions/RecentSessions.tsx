@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import { Box, ButtonIcon, Flex, Link, Skeleton, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { StatusDot } from '@giantswarm/backstage-plugin-ui-react';
+import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
@@ -40,7 +40,8 @@ const useStyles = makeStyles({
     gap: 1,
   },
   // The pin button shows on the row's hover and while anything in the row has
-  // focus; a pinned row's (filled) pin is always there. Hidden with opacity
+  // focus; a pinned row's (filled) pin is always there, and on a touch screen
+  // — no hover to reveal it (T22 P10) — every row's is. Hidden with opacity
   // rather than display so it keeps its tab stop and its room in the row.
   item: {
     display: 'flex',
@@ -68,6 +69,9 @@ const useStyles = makeStyles({
   pin: {
     flex: 'none',
     opacity: 0,
+    [TOUCH_MEDIA]: {
+      opacity: 1,
+    },
   },
   pinned: {
     opacity: 1,

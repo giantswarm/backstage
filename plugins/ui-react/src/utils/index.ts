@@ -23,3 +23,25 @@ export { createMarkdownLinkResolver } from './resolveMarkdownLink';
 export { dialogDismissLock } from './dialogDismissLock';
 export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
+export {
+  PHONE_MAX_WIDTH,
+  PHONE_QUERY,
+  PHONE_MEDIA,
+  TWO_COLUMN_MIN_WIDTH,
+  TWO_COLUMN_QUERY,
+  TWO_COLUMN_MEDIA,
+  TOUCH_QUERY,
+  TOUCH_MEDIA,
+  useMediaQueryMatch,
+  usePhoneLayout,
+  useTouchInput,
+} from './breakpoints';
+export {
+  PHONE_TEST_WIDTH,
+  DESKTOP_TEST_WIDTH,
+  evaluateMediaQuery,
+  mockViewport,
+  mockPhoneLayout,
+  mockDesktopLayout,
+} from './mockPhoneLayout';
+export type { MockViewportOptions, MockedLayout } from './mockPhoneLayout';

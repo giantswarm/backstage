@@ -9,9 +9,9 @@ Two table components are in use. **Prefer the bui `Table` (`@backstage/ui`) for
 new tables** — it matches the new Backstage design system and is the direction
 we're moving. But it is not yet a full replacement for the older component.
 
-| Need | Use |
-| --- | --- |
-| Listing, incl. search, sorting, pagination, row selection | **bui `Table`** from `@backstage/ui` |
+| Need                                                            | Use                                                                  |
+| --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Listing, incl. search, sorting, pagination, row selection       | **bui `Table`** from `@backstage/ui`                                 |
 | Column-visibility toggle, CSV export, faceted-sidebar filtering | **`Table`** from `@backstage/core-components` (material-table based) |
 
 As of `@backstage/ui` **0.17.0** the bui `Table` does support sorting
@@ -44,21 +44,35 @@ import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
 type Row = { id: string; name: string; status: string };
 
 const columnConfig: ColumnConfig<Row>[] = [
-  { id: 'name', label: 'Name', isRowHeader: true, cell: r => <CellText title={r.name} /> },
+  {
+    id: 'name',
+    label: 'Name',
+    isRowHeader: true,
+    cell: r => <CellText title={r.name} />,
+  },
   // CellText renders title (+ optional description) as the standard cell text
-  { id: 'status', label: 'Status', cell: r => <Cell><StatusBadge status={r.status} /></Cell> },
+  {
+    id: 'status',
+    label: 'Status',
+    cell: r => (
+      <Cell>
+        <StatusBadge status={r.status} />
+      </Cell>
+    ),
+  },
 ];
 
 <Table<Row>
   columnConfig={columnConfig}
   data={rows}
-  isPending={isLoading}          // built-in loading state (`loading` is deprecated)
-  pagination={{ type: 'none' }}  // or { type: 'page', ... }
+  isPending={isLoading} // built-in loading state (`loading` is deprecated)
+  pagination={{ type: 'none' }} // or { type: 'page', ... }
   emptyState={<Text>No results</Text>}
 />;
 ```
 
 Key points:
+
 - Declare `@backstage/ui` in the plugin's `package.json` (`"backstage:^"`).
 - `ColumnConfig` fields: `id`, `label`, `cell`, plus optional `isRowHeader`,
   `isSortable`, `isHidden`, `width`/`minWidth`/`maxWidth`, `header`.
@@ -81,7 +95,7 @@ the data on your loading flag:
 ```tsx
 <Table
   columnConfig={columnConfig}
-  data={isLoading ? undefined : rows}  // undefined → skeleton; [] → emptyState
+  data={isLoading ? undefined : rows} // undefined → skeleton; [] → emptyState
   isPending={isLoading}
   emptyState={<Text>No results</Text>}
 />
@@ -89,6 +103,64 @@ the data on your loading flag:
 
 Then loading shows the skeleton, and only a settled empty result shows the
 empty state.
+
+### Phone width (≤599.95px): bui tables squash, they do not scroll
+
+bui's `Table` is `table-layout: fixed; width: 100%` with `overflow: hidden`
+cells. At phone width (343px of content at 375) it crams every column in:
+five columns leave the name a ~30px ellipsis and **clip the action buttons**.
+Its own scroll container (`ResizableTableContainer`) engages only when a column
+declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then react-aria's
+75px column minimum freezes `fr` columns. An `overflowX: auto` wrapper around
+the table does nothing. So every bui table on an agent-shell page picks one
+phone pattern (helpers in `@giantswarm/backstage-plugin-ui-react`):
+
+| Kind of table                                                                                     | Phone pattern                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A list a person scans to open or act on one item (sessions, connectors, served models, GPU pools) | **Stacked rows**: swap the table for `StackedRowList` when `usePhoneLayout()` is true. Line 1: title (a link; its hit area is the whole row), status, actions. Line 2: 2–4 facts joined by " · ".                          |
+| An analytic table, a name plus numbers (cost by agent/model, capacity)                            | **Column hiding**: `usePhoneColumns(columnConfig, ['agent', 'cost'])` sets `isHidden` on every column not kept (the `isRowHeader` column is always kept). Fold a dropped identity fact into the name cell's `description`. |
+| Data of unknown shape (a tool's result rows)                                                      | **Scroll inside the table**: `minWidth: 120` on each column, so bui's resizable container scrolls sideways. Never page-level horizontal scroll.                                                                            |
+
+```tsx
+const isPhone = usePhoneLayout();
+const columns = usePhoneColumns(columnConfig, ['agent', 'sessions', 'cost']);
+
+isPhone ? (
+  <ShowMore items={rows} noun="session">
+    {visible => (
+      <StackedRowList
+        aria-label="Sessions"
+        rows={visible.map(row => ({
+          id: row.id,
+          title: row.title,
+          href: row.href,
+          status: <StatusDot tone={row.tone} label={row.state} />,
+          facts: [row.agent, row.environment, row.started],
+          actions: <SessionMenu session={row} />,
+        }))}
+      />
+    )}
+  </ShowMore>
+) : (
+  <Table columnConfig={columns} data={rows} pagination={{ type: 'none' }} />
+);
+```
+
+Invariants:
+
+- An **actions column never disappears** at phone width: it becomes the row's
+  trailing ⋯ menu or button (`StackedRowItem.actions`). Destructive actions
+  (Remove pool, Remove cache) go in the ⋯ menu.
+- A hidden column's value stays reachable: in the row's second line, the name
+  cell's description, or the item's own page. Text that lived only in a
+  `title=` tooltip goes inline (`StackedRowItem.details`); a phone never shows
+  `title=`.
+- core-components tables keep the shell's `overflow-x: auto` and scroll.
+
+Test the phone branch in jsdom with `mockPhoneLayout()` (and
+`mockDesktopLayout()` for the other branch); call `restore()` on the result in
+`afterEach`. jsdom has no `matchMedia`, so without it only the desktop branch
+is ever tested.
 
 ## Table Structure
 
@@ -300,14 +372,21 @@ import { MTableToolbar } from '@material-table/core';
 const ToolbarComponent = useMemo(
   () => (props: React.ComponentProps<typeof MTableToolbar>) => (
     <Box display="flex" alignItems="center">
-      <Box flexGrow={1}><MTableToolbar {...props} /></Box>
-      <Box flexShrink={0} mr={2}><CreateButton /></Box>
+      <Box flexGrow={1}>
+        <MTableToolbar {...props} />
+      </Box>
+      <Box flexShrink={0} mr={2}>
+        <CreateButton />
+      </Box>
     </Box>
   ),
   [/* deps the button needs */],
 );
 
-<Table components={{ Toolbar: ToolbarComponent }} options={{ columnsButton: true }} />
+<Table
+  components={{ Toolbar: ToolbarComponent }}
+  options={{ columnsButton: true }}
+/>;
 ```
 
 Avoid the `components.Action` hack (a dummy free-action whose icon renders the

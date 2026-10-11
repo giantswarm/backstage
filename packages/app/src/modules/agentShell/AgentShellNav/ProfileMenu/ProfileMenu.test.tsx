@@ -22,7 +22,7 @@ async function renderMenu(
     email: 'jane@example.com',
   },
 ) {
-  await renderInTestApp(<ProfileMenu item={item} compact={false} />, {
+  await renderInTestApp(<ProfileMenu item={item} layout="expanded" />, {
     apis: [
       [
         identityApiRef,

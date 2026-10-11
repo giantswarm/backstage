@@ -5,6 +5,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { TOUCH_QUERY } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
@@ -360,6 +361,34 @@ describe('RecentSessions', () => {
           screen.queryByRole('list', { name: 'Pinned' }),
         ).not.toBeInTheDocument(),
       );
+    });
+
+    // T22 P10: the pin shows on hover, and a touch screen has none — a
+    // tablet's rail must still be able to pin. jsdom applies no media rule to
+    // computed styles, so this reads the rule the row's pin slot carries.
+    it('keeps every row’s pin visible on a touch screen', async () => {
+      await renderRecent({ shellRail: true });
+
+      await screen.findByText('Newest');
+      const slot = screen.getByRole('button', { name: 'Pin “Newest”' })
+        .parentElement as HTMLElement;
+      expect(window.getComputedStyle(slot).opacity).toBe('0');
+
+      const touchRules = Array.from(document.styleSheets)
+        .flatMap(sheet => Array.from(sheet.cssRules))
+        .filter(
+          (rule): rule is CSSMediaRule =>
+            rule instanceof CSSMediaRule && rule.conditionText === TOUCH_QUERY,
+        )
+        .flatMap(rule => Array.from(rule.cssRules) as CSSStyleRule[]);
+      const slotClasses = Array.from(slot.classList).map(name => `.${name}`);
+      expect(
+        touchRules.some(
+          rule =>
+            slotClasses.includes(rule.selectorText) &&
+            rule.style.opacity === '1',
+        ),
+      ).toBe(true);
     });
   });
 

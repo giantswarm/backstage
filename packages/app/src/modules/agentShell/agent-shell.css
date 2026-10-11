@@ -308,11 +308,162 @@ html[data-agent-shell] body {
   }
 
   /* core-components tables (Sessions, Agents, Models, usage) scroll inside
-     their own box at phone width instead of widening the page. bui tables
-     bring their own scroll container and need nothing. */
+     their own box at phone width instead of widening the page. */
   html[data-agent-shell] [class*='BackstageTable-root'] {
     max-width: 100%;
     overflow-x: auto;
+  }
+
+  /* bui tables do not scroll on their own: bui 0.18's Table is
+     `table-layout: fixed; width: 100%` with `overflow: hidden` cells, so
+     without column widths N columns are crammed into ~310px and their values
+     and action buttons clipped (T22 §0.1). Its scroll container only scrolls
+     once a column declares a width — then react-aria's resizable container
+     sizes the columns (75px each by default). The shell's phone patterns are
+     stacked rows (ui-react StackedRowList), column hiding (usePhoneColumns,
+     two or three columns) or per-column `minWidth` (T22 §2.2). As the
+     fallback for a table none of those reached yet, one that still shows
+     four or more columns without widths scrolls sideways inside its own
+     container, 7rem a column, rather than clipping — an actions column must
+     never become unreachable. Tables with three columns or fewer keep bui's
+     fixed layout and truncate. */
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(4)) {
+    --agent-shell-table-columns: 4;
+    min-width: calc(var(--agent-shell-table-columns) * 7rem);
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(5)) {
+    --agent-shell-table-columns: 5;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(6)) {
+    --agent-shell-table-columns: 6;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(7)) {
+    --agent-shell-table-columns: 7;
+  }
+
+  html[data-agent-shell]
+    .bui-TableWrapper
+    > .bui-TableScrollContainer
+    > .bui-Table:has(.bui-TableHead:nth-child(8)) {
+    --agent-shell-table-columns: 8;
+  }
+
+  /* Form controls at 16px (T22 B3, decision D3): below it iOS Safari zooms
+     the page into a field on focus — the composers, every search box, every
+     wizard field. Form controls only, at phone width only; the type scale is
+     unchanged. Unlayered and specific enough to beat bui's layered field
+     styles and the hand-rolled 14px fields' own class rules. */
+  html[data-agent-shell] :is(input, textarea, select) {
+    font-size: 16px;
+  }
+}
+
+/*
+ * The upstream toast (`@backstage/plugin-app`'s ToastContainer: fixed, bottom
+ * centre, `bottom: 1rem`, 2rem from 500px) lands on the phone's bottom bar
+ * and on the session's docked composer — the needs-input toast covered both
+ * (T22 B4). It sits above the bar at phone width and above the docked
+ * composer at any width: `--session-dock-height` is the docked composer's own
+ * height (not counting the bar), which the session page publishes on the
+ * document while its composer is docked; unset, it is 0. Matched by the
+ * module class's stable prefix, since the hash changes with every release;
+ * theme.test.ts checks the upstream class still carries it.
+ */
+html[data-agent-shell] [class*='Toast_container'] {
+  bottom: calc(2rem + var(--session-dock-height, 0px));
+}
+
+@media (max-width: 599.95px) {
+  html[data-agent-shell] [class*='Toast_container'] {
+    bottom: calc(
+      var(--agent-shell-mobile-bar-height) + var(--session-dock-height, 0px) +
+        8px
+    );
+  }
+}
+
+/*
+ * While the soft keyboard is up the 56px bar sits on top of it and eats the
+ * conversation's height (T22 C2). On a touch phone, while a text field has
+ * focus, the bar steps aside and everything docked above it — the session
+ * composer, the wizard footer, the toasts — drops by the same variable. Text
+ * fields only: a checkbox, a button or a read-only field raises no keyboard.
+ */
+@media (max-width: 599.95px) and (hover: none) and (pointer: coarse) {
+  html[data-agent-shell]
+    body:has(
+      :is(
+          textarea,
+          [contenteditable='true'],
+          [contenteditable=''],
+          input:not(
+            [type='button'],
+            [type='checkbox'],
+            [type='color'],
+            [type='file'],
+            [type='hidden'],
+            [type='image'],
+            [type='radio'],
+            [type='range'],
+            [type='reset'],
+            [type='submit']
+          )
+        ):not([readonly]):focus
+    ) {
+    --agent-shell-mobile-bar-height: 0px;
+  }
+
+  html[data-agent-shell]
+    body:has(
+      :is(
+          textarea,
+          [contenteditable='true'],
+          [contenteditable=''],
+          input:not(
+            [type='button'],
+            [type='checkbox'],
+            [type='color'],
+            [type='file'],
+            [type='hidden'],
+            [type='image'],
+            [type='radio'],
+            [type='range'],
+            [type='reset'],
+            [type='submit']
+          )
+        ):not([readonly]):focus
+    )
+    .agent-shell-mobile-bar {
+    display: none;
+  }
+}
+
+/*
+ * Controls bui reveals on hover only: on a touch screen there is no hover, so
+ * they stay visible (T22 §2.3). bui's table sort arrow (T22 P13) is
+ * `opacity: 0` until its header is hovered or sorted.
+ * Inside bui's components layer, so a component's unlayered overrides win.
+ */
+@layer components {
+  @media (hover: none) {
+    html[data-agent-shell] .bui-TableHeadSortButton {
+      opacity: 1;
+    }
   }
 }
 

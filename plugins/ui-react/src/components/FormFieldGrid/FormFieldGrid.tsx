@@ -1,11 +1,6 @@
 import type { ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core';
-
-/**
- * bui's `sm` breakpoint (768px): where its `Grid` switched these forms to two
- * columns before, so the layout changes at the same width it always did.
- */
-const TWO_COLUMNS_FROM = 768;
+import { TWO_COLUMN_MEDIA } from '../../utils/breakpoints';
 
 const useStyles = makeStyles({
   root: {
@@ -38,8 +33,11 @@ const useStyles = makeStyles({
       marginBottom: 'var(--bui-space-4)',
     },
   },
+  // The portal's two-column tier, bui's `sm` (768px): where its `Grid`
+  // switched these forms to two columns before, so the layout changes at the
+  // same width it always did.
   twoColumns: {
-    [`@media (min-width: ${TWO_COLUMNS_FROM}px)`]: {
+    [TWO_COLUMN_MEDIA]: {
       gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
     },
   },

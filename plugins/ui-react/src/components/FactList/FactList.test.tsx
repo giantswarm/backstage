@@ -52,4 +52,20 @@ describe('FactList', () => {
       html.replace(/makeStyles-([A-Za-z]+)-\d+/g, 'makeStyles-$1');
     expect(normalize(explicit.innerHTML)).toBe(normalize(sideBySide.innerHTML));
   });
+
+  it('stacks each label over its value at the shell’s phone width', () => {
+    const { container } = render(<FactList facts={facts} />);
+    const listClass = container.querySelector('dl')!.classList[0];
+    const css = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent ?? '')
+      .join('\n');
+
+    // jsdom applies no media queries; the rule is what can be pinned here.
+    expect(css).toMatch(
+      new RegExp(
+        `@media \\(max-width: 599\\.95px\\) \\{\\s*\\.${listClass} \\{\\s*grid-template-columns: 1fr;`,
+      ),
+    );
+    expect(css).not.toMatch(/max-width: 520px/);
+  });
 });

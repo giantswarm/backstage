@@ -13,8 +13,9 @@ import ChevronRightIcon from '@material-ui/icons/ChevronRight';
 import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
-import { agentShellNavItems } from '../navItems';
+import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
 import { RailItem } from './RailItem';
+import { type RailLayout, useBarItemStyles } from './railLayout';
 import { SkipLink } from './SkipLink';
 
 const useStyles = makeStyles({
@@ -60,8 +61,8 @@ const useStyles = makeStyles({
   mobileList: {
     height: '100%',
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
+    alignItems: 'stretch',
+    gap: 0,
   },
   logo: {
     color: 'var(--bui-fg-primary)',
@@ -119,17 +120,34 @@ const useStyles = makeStyles({
  * partial mock must degrade to "no Search item" rather than crash the rail.
  */
 function PaletteSearchItem({
-  compact,
+  layout,
   className,
   hintClassName,
 }: {
-  compact: boolean;
+  layout: RailLayout;
   className: string;
   hintClassName: string;
 }) {
+  const barClasses = useBarItemStyles();
   if (!CommandPalette) {
     return null;
   }
+  if (layout === 'bar') {
+    // A phone has no ⌘K to hint at: the icon and its label, nothing else.
+    return (
+      <CommandPalette
+        renderTrigger={open => (
+          <li className={barClasses.slot}>
+            <button type="button" className={barClasses.item} onClick={open}>
+              <SearchIcon fontSize="small" />
+              <span className={barClasses.label}>Search</span>
+            </button>
+          </li>
+        )}
+      />
+    );
+  }
+  const compact = layout === 'collapsed';
   const shortcut = /mac|iphone|ipad|ipod/i.test(navigator.platform)
     ? '⌘K'
     : 'Ctrl+K';
@@ -192,20 +210,40 @@ function AgentShellRail() {
   // The skip link sits outside the rail, fixed to the top left of the
   // viewport: inside the bottom-anchored mobile bar its hidden state floated
   // over the content and took the clicks meant for it.
+  //
+  // The bar holds five labelled items (T22 D1): New session · Sessions ·
+  // Search · Customize · Profile. The rest move into the Profile menu.
+  // `agent-shell-mobile-bar` is the stable hook agent-shell.css hides the bar
+  // by while the soft keyboard is up.
   if (isMobile) {
+    const inBar = [...top, ...bottom].filter(
+      item => item.phone !== 'profileMenu',
+    );
+    const inProfileMenu = items.filter(item => item.phone === 'profileMenu');
     return (
       <>
         <SkipLink />
-        <nav aria-label="Main" className={classes.mobileRail}>
+        <nav
+          aria-label="Main"
+          className={`${classes.mobileRail} agent-shell-mobile-bar`}
+        >
           <ul className={`${classes.list} ${classes.mobileList}`}>
-            {[...top, ...bottom].map(item => (
-              <RailItem key={item.id} item={item} compact />
+            {inBar.map(item => (
+              <Fragment key={item.id}>
+                <RailItem
+                  item={item}
+                  layout="bar"
+                  menuItems={'menu' in item ? inProfileMenu : undefined}
+                />
+                {item.id === SEARCH_FOLLOWS.bar && (
+                  <PaletteSearchItem
+                    layout="bar"
+                    className={classes.railButton}
+                    hintClassName={classes.shortcutHint}
+                  />
+                )}
+              </Fragment>
             ))}
-            <PaletteSearchItem
-              compact
-              className={classes.railButton}
-              hintClassName={classes.shortcutHint}
-            />
           </ul>
         </nav>
       </>
@@ -215,6 +253,7 @@ function AgentShellRail() {
   // SidebarPage pads the content by the classic sidebar's width for the same
   // pin state, so the rail takes exactly that width.
   const compact = !isPinned;
+  const layout: RailLayout = compact ? 'collapsed' : 'expanded';
   const desktopTop = top.filter(item => !item.mobileOnly);
   const width = isPinned
     ? sidebarConfig.drawerWidthOpen
@@ -260,10 +299,10 @@ function AgentShellRail() {
           <ul className={classes.list}>
             {desktopTop.map(item => (
               <Fragment key={item.id}>
-                <RailItem item={item} compact={compact} />
-                {item.id === 'new-session' && (
+                <RailItem item={item} layout={layout} />
+                {item.id === SEARCH_FOLLOWS.rail && (
                   <PaletteSearchItem
-                    compact={compact}
+                    layout={layout}
                     className={classes.railButton}
                     hintClassName={classes.shortcutHint}
                   />
@@ -279,7 +318,7 @@ function AgentShellRail() {
           <Box pt="2" className={classes.bottom}>
             <ul className={classes.list}>
               {bottom.map(item => (
-                <RailItem key={item.id} item={item} compact={compact} />
+                <RailItem key={item.id} item={item} layout={layout} />
               ))}
             </ul>
           </Box>

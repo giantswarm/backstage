@@ -14,6 +14,12 @@ import {
   FILTER_CHIPS_MAX,
 } from './catalogFilters';
 
+const CHIP_ROW_STYLE = {
+  flexWrap: 'wrap',
+  gap: 'var(--bui-space-2)',
+  overflow: 'visible',
+} as const;
+
 export type CatalogFilterBarProps = {
   dimensions: CatalogFilterDimension[];
   /** A pick; `undefined` picks every value of the facet again. */
@@ -49,6 +55,10 @@ function FilterDimension({
         // chip with what it would leave.
         <ToggleButtonGroup
           className={FILTER_CHIPS_CLASS_NAME}
+          // bui's group is one nowrap, overflow-hidden row: six chips with
+          // counts are wider than a phone, and the last ones were cut off.
+          // The chips' pill look stays with the shell's stylesheet.
+          style={CHIP_ROW_STYLE}
           aria-label={name}
           selectionMode="single"
           disallowEmptySelection
