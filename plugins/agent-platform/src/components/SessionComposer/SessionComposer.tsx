@@ -24,6 +24,7 @@ import {
 import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import { SendKeyHint } from '../SendKeyHint';
 
 /**
  * Longest message this composer will submit: the backend's bound, shared
@@ -185,7 +186,8 @@ export type SessionComposerProps = {
  * returns to the box, next to the error saying why.
  *
  * **Enter sends; Shift+Enter inserts a newline** — see {@link isSendKey} for why,
- * and for the IME case. Enter never inserts a newline, even when nothing can be sent:
+ * and for the IME case; {@link SendKeyHint} says so beside the disclaimer at rest.
+ * Enter never inserts a newline, even when nothing can be sent:
  * a key that sometimes sends and sometimes breaks the line is worse than one that
  * sometimes does nothing. **On touch input Enter breaks the line** and only the
  * Send button sends — a soft keyboard has no Shift — and the keyboard's Enter key
@@ -348,6 +350,11 @@ export function SessionComposer({
     caption = COMPOSER_DISCLAIMER;
   }
 
+  // How the box sends, said only at rest: while the agent works, a
+  // confirmation is open or the runtime is lost, Enter does not send, and the
+  // caption says what does.
+  const showSendKeyHint = caption === COMPOSER_DISCLAIMER && !isTooLong;
+
   // The card is the control while it stands; at phone width the box it
   // disables would only cost the conversation its room (see `attachment`).
   const isFolded = isPhone && Boolean(attachment) && isDisabled;
@@ -433,14 +440,24 @@ export function SessionComposer({
               }
             />
 
-            <Text
-              variant="body-small"
-              color={isTooLong ? 'danger' : 'secondary'}
+            {/* The send keys share the disclaimer's line, and wrap under it
+            when the line is too narrow for both (a phone). */}
+            <Flex
+              justify="between"
+              align="baseline"
+              gap="2"
+              style={{ flexWrap: 'wrap' }}
             >
-              {isTooLong
-                ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
-                : caption}
-            </Text>
+              <Text
+                variant="body-small"
+                color={isTooLong ? 'danger' : 'secondary'}
+              >
+                {isTooLong
+                  ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
+                  : caption}
+              </Text>
+              {showSendKeyHint && <SendKeyHint touch={touch} />}
+            </Flex>
 
             {newSession && (
               // Under the box, not in it: it is a way out of this session, not one

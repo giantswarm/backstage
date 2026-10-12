@@ -6,6 +6,7 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { sendKeyCaption } from '../../lib/sendKey';
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
 
 const onSubmit = jest.fn();
@@ -757,5 +758,64 @@ describe('SessionComposer on a phone (T22)', () => {
     renderComposer();
 
     expect(field()).toHaveAttribute('enterkeyhint', 'send');
+  });
+});
+
+describe('SessionComposer send-key hint', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const hint = () => screen.queryByTestId('send-key-hint');
+
+  it('says how the box sends beside the disclaimer, with key caps', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    expect(
+      screen.getByText('Agents can make mistakes. Check important results.'),
+    ).toBeInTheDocument();
+    // The same words as the other composers' caption.
+    expect(hint()).toHaveTextContent(sendKeyCaption({}, false));
+    expect(hint()?.querySelectorAll('kbd')).toHaveLength(3);
+  });
+
+  it('says to tap Send on touch input', () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    expect(hint()).toHaveTextContent('Tap Send to send.');
+    expect(hint()?.querySelector('kbd')).toBeNull();
+  });
+
+  it.each([
+    ['the agent works', { isAgentWorking: true }],
+    ['a confirmation is open', { disabledReason: 'Answer the question.' }],
+    [
+      'the runtime is lost',
+      {
+        newSession: {
+          label: 'Start a new session',
+          onStart: jest.fn(),
+          caption: 'This session cannot continue.',
+        },
+      },
+    ],
+  ])('leaves the keys out while %s', (_, props) => {
+    layout = mockDesktopLayout();
+    renderComposer(props);
+
+    expect(hint()).not.toBeInTheDocument();
+  });
+
+  it('gives way to the length error', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    fireEvent.change(field(), {
+      target: { value: 'x'.repeat(MESSAGE_TEXT_MAX_LENGTH + 1) },
+    });
+
+    expect(screen.getByText(/the limit is/)).toBeInTheDocument();
+    expect(hint()).not.toBeInTheDocument();
   });
 });
