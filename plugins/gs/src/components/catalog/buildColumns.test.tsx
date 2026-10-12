@@ -92,21 +92,52 @@ describe('build toolchain column', () => {
     expect(container.textContent).toBe('dev:abc123');
   });
 
-  it('sorts newest orb first and non-release pins last', () => {
-    const column = columnFactories.createBuildToolchainColumn();
-    const sort = column.customSort!;
-    const release = (v: string) =>
-      ({
-        entity: component({ 'giantswarm.io/architect-orb-version': v }),
-      }) as any;
-    const ref = {
-      entity: component({}, { 'giantswarm.io/architect-orb-ref': 'dev:abc' }),
-    } as any;
+  it('is titled like the sidebar facet', () => {
+    expect(columnFactories.createBuildToolchainColumn().title).toBe(
+      'Architect Orb Version',
+    );
+  });
 
-    // semverCompareSort is ascending; the table's default click direction
-    // flips it. What matters is that 10.10.0 is ordered numerically, not
-    // lexically, after 10.2.0, and that an unparseable pin sorts to the end.
-    expect(sort(release('10.2.0'), release('10.10.0'), 'row')).toBeLessThan(0);
-    expect(sort(release('10.10.0'), ref, 'row')).toBeLessThan(0);
+  describe('sorting', () => {
+    const sort = columnFactories.createBuildToolchainColumn().customSort!;
+    const release = (v: string) => ({
+      entity: component({ 'giantswarm.io/architect-orb-version': v }),
+    });
+    const rows = [
+      { entity: component({}) },
+      release('10.2.0'),
+      { entity: component({}, { 'giantswarm.io/architect-orb-ref': 'dev:a' }) },
+      release('9.6.0'),
+      release('10.10.0'),
+    ] as CatalogTableRow[];
+    const orbs = (sorted: CatalogTableRow[]) =>
+      sorted.map(
+        ({ entity }) =>
+          entity.metadata.labels?.['giantswarm.io/architect-orb-version'] ??
+          entity.metadata.annotations?.['giantswarm.io/architect-orb-ref'] ??
+          '',
+      );
+
+    // material-table sorts ascending on the first click, and descending by
+    // swapping the comparator's arguments.
+    it('puts the newest orb first and rows without one last', () => {
+      expect(orbs([...rows].sort((a, b) => sort(a, b, 'row')))).toEqual([
+        '10.10.0',
+        '10.2.0',
+        '9.6.0',
+        'dev:a',
+        '',
+      ]);
+    });
+
+    it('reverses exactly on the second click', () => {
+      expect(orbs([...rows].sort((a, b) => sort(b, a, 'row')))).toEqual([
+        '',
+        'dev:a',
+        '9.6.0',
+        '10.2.0',
+        '10.10.0',
+      ]);
+    });
   });
 });

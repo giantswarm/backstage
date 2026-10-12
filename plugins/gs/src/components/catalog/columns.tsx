@@ -257,23 +257,30 @@ export const columnFactories = Object.freeze({
   },
   /**
    * The architect orb the default branch declares, with the app-build-suite
-   * and app-test-suite versions it pins as hover detail. Sorts newest orb
-   * first; a pin that is not a release (`dev:…`, `volatile`) sorts after every
-   * release, since `semverCompareSort` puts anything it cannot parse last.
+   * and app-test-suite versions it pins as hover detail.
+   *
+   * The first click sorts newest release first, then pins that are not a
+   * release (`dev:…`, `volatile`), then rows without an orb. The comparator
+   * ignores the direction, so the second click is the exact reverse.
    */
   createBuildToolchainColumn(
     options: {
       hidden: boolean;
     } = { hidden: false },
   ): TableColumn<CatalogTableRow> {
+    const newestFirst = semverCompareSort<CatalogTableRow>(
+      ({ entity }) => getBuildToolchainFromEntity(entity).orbVersion,
+      { descending: true },
+    );
+    const hasNoOrb = ({ entity }: CatalogTableRow) =>
+      Number(!toolchainOrbText(getBuildToolchainFromEntity(entity)));
+
     return {
-      title: 'Build toolchain',
+      title: 'Architect Orb Version',
       hidden: options.hidden,
       width: 'auto',
       filtering: false,
-      customSort: semverCompareSort(
-        ({ entity }) => getBuildToolchainFromEntity(entity).orbVersion,
-      ),
+      customSort: (a, b) => newestFirst(a, b) || hasNoOrb(a) - hasNoOrb(b),
       render: ({ entity }) => {
         const toolchain = getBuildToolchainFromEntity(entity);
         const text = toolchainOrbText(toolchain);
