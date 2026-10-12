@@ -185,6 +185,14 @@ describe('AgentUpdateSkillsDialog', () => {
     const current = screen.getByTestId('skill-refresh-incident');
     expect(current).toHaveTextContent('Already at the head');
 
+    // The name and its source are separate lines, not one run-on string.
+    const name = within(moving).getByText('pr-review');
+    const source = within(moving).getByText(
+      'giantswarm/agent-skills · pr-review',
+    );
+    expect(name.parentElement).toBe(source.parentElement);
+    expect(name.parentElement).toHaveClass('bui-Flex');
+
     const digest = screen.getByTestId('skill-refresh-runbooks');
     expect(digest).toHaveTextContent('Pinned by digest — left alone');
     expect(digest).toHaveTextContent('n/a');

@@ -73,12 +73,15 @@ function PlanRow({ entry }: { entry: SkillRefreshEntry }) {
   return (
     <tr data-testid={`skill-refresh-${entry.name}`}>
       <td>
-        <Text variant="body-small" weight="bold">
-          {entry.name}
-        </Text>
-        <Text variant="body-x-small" color="secondary">
-          {place}
-        </Text>
+        {/* The name over its source: two elements, spaced by the layout. */}
+        <Flex direction="column" gap="0.5">
+          <Text variant="body-small" weight="bold">
+            {entry.name}
+          </Text>
+          <Text variant="body-x-small" color="secondary">
+            {place}
+          </Text>
+        </Flex>
       </td>
       <td>
         <span className={classes.code} title={entry.pinned}>
