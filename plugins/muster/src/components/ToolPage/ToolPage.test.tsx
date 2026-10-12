@@ -3,10 +3,8 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import {
-  mockPhoneLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';

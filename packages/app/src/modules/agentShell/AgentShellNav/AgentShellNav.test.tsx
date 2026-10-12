@@ -8,7 +8,7 @@ import { identityApiRef } from '@backstage/frontend-plugin-api';
 import {
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

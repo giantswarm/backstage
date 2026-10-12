@@ -5,7 +5,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ModelRow } from '../ModelsTable';
 import { modelsRouteRef } from '../../routes';

@@ -17,7 +17,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
