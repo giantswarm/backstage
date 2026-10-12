@@ -8,7 +8,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const onAnswer = jest.fn();
 

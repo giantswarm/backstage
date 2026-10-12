@@ -4,11 +4,11 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
-  PageHeaderActionsProvider,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
@@ -263,9 +263,7 @@ describe('ConnectorPage', () => {
   it('names the connector in the document title', async () => {
     await renderAt(`${BASE}/jira`);
 
-    await waitFor(() =>
-      expect(document.title).toBe('jira · Connectors · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('jira · Connectors'));
   });
 
   it('names its place under Customize without links where Customize is not bound', async () => {
