@@ -13,8 +13,9 @@ import { MUSTER_MCP_SERVER_NAME } from '../../lib/toolset';
  * Whether a binding reaches the muster gateway — the agent's own carrier
  * `RemoteMCPServer` (named after the agent) or the shared gateway server.
  *
- * A name match is a heuristic, so it only ever *adds* a link to the Tool
- * Explorer; a server we don't recognise is still listed, just without one.
+ * The rule `toolsetOfAgent` reads the toolset by (`isGatewayBinding`), so a
+ * binding this does not recognise is one the Tools tab cannot resolve either:
+ * the page lists it by name among the directly bound servers instead.
  */
 export function isGatewayServerBinding(
   agent: Pick<Agent, 'getName'>,

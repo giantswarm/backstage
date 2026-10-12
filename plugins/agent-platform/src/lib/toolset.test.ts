@@ -1,5 +1,6 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
+  bindsGateway,
   buildCatalogue,
   catalogueInventory,
   countNoun,
@@ -28,6 +29,7 @@ import {
   isGatewayBinding,
   toolsetOfAgent,
   toolsetProblems,
+  toolsetHasTools,
   toolsetShape,
   toolsetWasEvaluated,
   unsignedServerSelectors,
@@ -270,6 +272,33 @@ describe('toolsetOfAgent', () => {
         carrier('pr-reviewer', 'preset:full', 'elsewhere'),
       ]),
     ).toEqual({ state: 'unresolved', carrier: 'pr-reviewer' });
+  });
+
+  // The agent page's Tools tab: the same rule as the toolset read, from the
+  // agent alone and then from what its carrier declares.
+  it('says whether the agent binds the gateway by the same rule', () => {
+    expect(bindsGateway(agent('pr-reviewer'))).toBe(true);
+    expect(bindsGateway(agent('grafana', 'muster'))).toBe(true);
+    expect(bindsGateway(agent('grafana'))).toBe(false);
+    expect(bindsGateway(agent())).toBe(false);
+  });
+
+  it('gives the agent tools unless it has no gateway or declares preset:none', () => {
+    const hasTools = (...carriers: ReturnType<typeof carrier>[]) =>
+      toolsetHasTools(toolsetOfAgent(agent('pr-reviewer'), 'muster', carriers));
+    expect(hasTools(carrier('pr-reviewer', 'preset:read-only'))).toBe(true);
+    expect(hasTools(carrier('pr-reviewer'))).toBe(true);
+    expect(hasTools(carrier('pr-reviewer', 'preset:none'))).toBe(false);
+    // Not read yet, or not there: the tab stays, and says why on it.
+    expect(hasTools()).toBe(true);
+    expect(
+      toolsetHasTools(
+        toolsetOfAgent(agent('pr-reviewer'), 'muster', undefined),
+      ),
+    ).toBe(true);
+    expect(
+      toolsetHasTools(toolsetOfAgent(agent('grafana'), 'muster', [])),
+    ).toBe(false);
   });
 
   it('prefers a declaring carrier over an unreadable one when several bindings reach the gateway', () => {

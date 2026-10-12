@@ -19,7 +19,7 @@ import {
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import type { ClientServingSummary } from '../../lib/serving';
-import { describeToolset } from '../../lib/toolset';
+import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { FailureMarker } from './FailureMarker';
@@ -179,7 +179,7 @@ function ToolsValue({
   const directBindings = mcpBindings.filter(
     binding => !isGatewayServerBinding(agent, binding),
   );
-  const hasGateway = directBindings.length < mcpBindings.length;
+  const hasGateway = bindsGateway(agent);
   const agentRefs = agent.getSubAgentBindings();
 
   if (mcpBindings.length === 0 && agentRefs.length === 0) {
