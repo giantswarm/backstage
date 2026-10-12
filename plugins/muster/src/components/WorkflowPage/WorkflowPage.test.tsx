@@ -4,12 +4,12 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
-  PageHeaderActionsProvider,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, workflowsRouteRef } from '../../routes';
 import { MCPServer, MusterWorkflow } from '../../lib/k8s';
@@ -340,9 +340,7 @@ describe('WorkflowPage', () => {
     // previous page's title.
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
-    await waitFor(() =>
-      expect(document.title).toBe('deploy · Workflows · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('deploy · Workflows'));
   });
 
   it('lists the inputs with type, required and default', async () => {

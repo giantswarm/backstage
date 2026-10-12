@@ -7,7 +7,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { McpUsage, MusterApi, musterApiRef } from '../../apis';
 import {
   MusterInstance,

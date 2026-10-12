@@ -15,7 +15,7 @@ import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
-} from './mockPhoneLayout';
+} from '../testUtils/mockPhoneLayout';
 
 function Probe() {
   const phone = usePhoneLayout();

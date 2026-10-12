@@ -273,7 +273,8 @@ them and never invent a palette.
 - Use the breakpoints in `ui-react/src/utils/breakpoints.ts`
   (`usePhoneLayout`, `PHONE_MEDIA`, `TWO_COLUMN_MEDIA`, `TOUCH_MEDIA`).
   Components in slots of varying width measure their container instead. Test
-  phone branches with `mockPhoneLayout()` at `PHONE_TEST_WIDTH`.
+  phone branches with `mockPhoneLayout()` at `PHONE_TEST_WIDTH`, both from
+  `@giantswarm/backstage-plugin-ui-react/testUtils`.
 - Under touch, hover-revealed controls are always visible and hints open on a
   press.
 - Sticky footers and docks sit at

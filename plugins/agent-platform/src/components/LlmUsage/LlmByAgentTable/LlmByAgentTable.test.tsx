@@ -1,9 +1,9 @@
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-  ShellScopeProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmAgentRow } from '../../../lib/llmUsage';

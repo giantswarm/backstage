@@ -2,12 +2,14 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
-  mockDesktopLayout,
-  mockPhoneLayout,
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
-  type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { ServingContextValue } from '../ServingProvider';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { GpuCapacityPage } from './GpuCapacityPage';

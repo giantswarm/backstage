@@ -4,7 +4,7 @@ import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
-} from '../../utils/mockPhoneLayout';
+} from '../../testUtils/mockPhoneLayout';
 import type { ReactElement } from 'react';
 import { ShellScopeProvider } from '../ShellScope';
 import { InfoHint } from './InfoHint';
