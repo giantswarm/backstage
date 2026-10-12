@@ -82,6 +82,46 @@ test('the rail reaches the shell’s sections', async ({ admin }) => {
   ).toHaveCount(0);
 });
 
+test('the rail resizes from its edge, remembers the width, and the page follows', async ({
+  admin,
+}) => {
+  await open(admin, '/agent-platform/sessions');
+  const nav = rail(admin);
+  const handle = admin.getByRole('separator', {
+    name: 'Resize sidebar',
+    exact: true,
+  });
+  const content = admin.locator('#content');
+  const navWidth = async () => (await nav.boundingBox())?.width;
+  const contentLeft = async () => (await content.boundingBox())?.x;
+
+  const initial = await navWidth();
+  const grip = await handle.boundingBox();
+  expect(initial).toBeDefined();
+  expect(grip).not.toBeNull();
+  const x = grip!.x + grip!.width / 2;
+  const y = grip!.y + grip!.height / 2;
+  await admin.mouse.move(x, y);
+  await admin.mouse.down();
+  await admin.mouse.move(x + 100, y, { steps: 5 });
+  await admin.mouse.up();
+  await expect.poll(navWidth).toBe(initial! + 100);
+  await expect
+    .poll(contentLeft, 'the page starts at the rail')
+    .toBe(initial! + 100);
+
+  await admin.reload();
+  await expect
+    .poll(navWidth, 'remembered across a reload')
+    .toBe(initial! + 100);
+
+  // Home is the narrowest, the default; it also leaves the next test there.
+  await handle.focus();
+  await admin.keyboard.press('Home');
+  await expect.poll(navWidth).toBe(initial);
+  await expect.poll(contentLeft).toBe(initial);
+});
+
 test('the shell and the classic portal cross-link in new tabs', async ({
   admin,
 }) => {

@@ -14,9 +14,14 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
+import { useRailWidth } from '../railWidth';
 import { RailItem } from './RailItem';
+import { RailResizeHandle } from './RailResizeHandle';
 import { type RailLayout, useBarItemStyles } from './railLayout';
 import { SkipLink } from './SkipLink';
+
+/** The rail's id, which its resize handle names as what it resizes. */
+const RAIL_ID = 'agent-shell-rail';
 
 const useStyles = makeStyles({
   rail: {
@@ -199,6 +204,7 @@ export function AgentShellNav() {
 function AgentShellRail() {
   const classes = useStyles();
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
+  const { width: expandedWidth } = useRailWidth();
   const portals = usePortals();
   // A cross-link into the other portal only while the deployment serves it.
   const items = agentShellNavItems.filter(
@@ -251,18 +257,22 @@ function AgentShellRail() {
   }
 
   // SidebarPage pads the content by the classic sidebar's width for the same
-  // pin state, so the rail takes exactly that width.
+  // pin state. Collapsed, the rail takes exactly that width; expanded, the
+  // person can resize it, and ShellMain makes up the difference.
   const compact = !isPinned;
   const layout: RailLayout = compact ? 'collapsed' : 'expanded';
   const desktopTop = top.filter(item => !item.mobileOnly);
-  const width = isPinned
-    ? sidebarConfig.drawerWidthOpen
-    : sidebarConfig.drawerWidthClosed;
+  const width = isPinned ? expandedWidth : sidebarConfig.drawerWidthClosed;
 
   return (
     <>
       <SkipLink />
-      <nav aria-label="Main" className={classes.rail} style={{ width }}>
+      <nav
+        id={RAIL_ID}
+        aria-label="Main"
+        className={classes.rail}
+        style={{ width }}
+      >
         <Flex
           direction="column"
           gap="4"
@@ -324,6 +334,7 @@ function AgentShellRail() {
           </Box>
         </Flex>
       </nav>
+      {!compact && <RailResizeHandle controls={RAIL_ID} />}
     </>
   );
 }

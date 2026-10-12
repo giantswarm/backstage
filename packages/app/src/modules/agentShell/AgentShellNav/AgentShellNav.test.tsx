@@ -7,9 +7,14 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
+import {
+  RAIL_DEFAULT_WIDTH,
+  RAIL_WIDTH_STORAGE_KEY,
+  RailWidthProvider,
+} from '../railWidth';
 import { customizeRouteRef } from '../routes';
 import { AgentShellNav } from './AgentShellNav';
 
@@ -79,11 +84,13 @@ async function renderNav({
   portals?: PortalsConfig;
 } = {}) {
   await renderInTestApp(
-    <SidebarPinStateProvider
-      value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
-    >
-      <AgentShellNav />
-    </SidebarPinStateProvider>,
+    <RailWidthProvider>
+      <SidebarPinStateProvider
+        value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
+      >
+        <AgentShellNav />
+      </SidebarPinStateProvider>
+    </RailWidthProvider>,
     {
       initialRouteEntries: [path],
       config: {
@@ -124,6 +131,7 @@ function railLinks() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
 });
@@ -565,6 +573,111 @@ describe('AgentShellNav', () => {
     expect(screen.queryByText('Customize')).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
+  });
+
+  describe('resizing the rail', () => {
+    // jsdom's window is 1024px wide, so the rail goes up to 40% of it.
+    const maxWidth = Math.floor(1024 * 0.4);
+
+    function rail() {
+      return screen.getByRole('navigation', { name: 'Main' });
+    }
+    function handle() {
+      return screen.getByRole('separator', { name: 'Resize sidebar' });
+    }
+
+    it('has a handle on the expanded rail that names what it resizes', async () => {
+      await renderNav();
+
+      expect(handle()).toHaveAttribute('aria-orientation', 'vertical');
+      expect(handle()).toHaveAttribute('aria-controls', rail().id);
+      expect(handle()).toHaveAttribute(
+        'aria-valuenow',
+        String(RAIL_DEFAULT_WIDTH),
+      );
+      expect(handle()).toHaveAttribute(
+        'aria-valuemin',
+        String(RAIL_DEFAULT_WIDTH),
+      );
+      expect(handle()).toHaveAttribute('aria-valuemax', String(maxWidth));
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+    });
+
+    it('resizes from the keyboard, within its bounds, and remembers the width', async () => {
+      await renderNav();
+
+      // A tab stop of its own, after the rail's items.
+      expect(handle()).toHaveAttribute('tabindex', '0');
+      handle().focus();
+      await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH + 32}px` });
+      expect(handle()).toHaveAttribute(
+        'aria-valuenow',
+        String(RAIL_DEFAULT_WIDTH + 32),
+      );
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe(
+        String(RAIL_DEFAULT_WIDTH + 32),
+      );
+
+      await userEvent.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+
+      await userEvent.keyboard('{End}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      await userEvent.keyboard('{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+
+      await userEvent.keyboard('{Home}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+      // The default is not stored: a later default change reaches everyone.
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBeNull();
+    });
+
+    it('follows a drag of its edge and returns to the default on a double click', async () => {
+      await renderNav();
+
+      fireEvent.pointerDown(handle(), { button: 0, clientX: 224 });
+      fireEvent.pointerMove(handle(), { clientX: 300 });
+      expect(rail()).toHaveStyle({ width: '300px' });
+      fireEvent.pointerMove(handle(), { clientX: 2000 });
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      fireEvent.pointerMove(handle(), { clientX: 280 });
+      fireEvent.pointerUp(handle(), { clientX: 280 });
+      expect(rail()).toHaveStyle({ width: '280px' });
+      // Released: moving the pointer no longer resizes.
+      fireEvent.pointerMove(handle(), { clientX: 350 });
+      expect(rail()).toHaveStyle({ width: '280px' });
+
+      fireEvent.doubleClick(handle());
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+    });
+
+    it('opens at the remembered width', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '320');
+      await renderNav();
+      expect(rail()).toHaveStyle({ width: '320px' });
+    });
+
+    it('shows a remembered width too wide for the window as the widest it allows', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '470');
+      await renderNav();
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      // The choice itself is kept for a wider window.
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe('470');
+    });
+
+    it('has no handle on the collapsed rail, which keeps its own width', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '320');
+      await renderNav({ isPinned: false });
+
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+      expect(rail()).not.toHaveStyle({ width: '320px' });
+    });
+
+    it('has no handle in the mobile bar', async () => {
+      await renderNav({ isMobile: true });
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    });
   });
 
   it('heads the profile menu with the email alone when there is no name', async () => {
