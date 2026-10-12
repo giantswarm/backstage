@@ -438,6 +438,10 @@ describe('RecentSessions', () => {
       ).toBeInTheDocument();
       const other = screen.getByText('Newest').closest('li') as HTMLElement;
       expect(window.getComputedStyle(other).background).toBe('');
+      // The dot sits above the row's stretched hit area, so its tooltip is
+      // reached by hovering it.
+      const dot = within(link).getByRole('img', { name: 'Needs your input' });
+      expect(window.getComputedStyle(dot.parentElement!).zIndex).toBe('1');
     });
 
     it('puts a dot before the sessions whose agent is working', async () => {

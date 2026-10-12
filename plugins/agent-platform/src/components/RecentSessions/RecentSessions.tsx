@@ -65,6 +65,10 @@ const useStyles = makeStyles({
     '&:hover': {
       background: 'var(--bui-bg-neutral-2)',
     },
+    // The current session keeps its highlight under the pointer.
+    '&$active, &$active:hover': {
+      background: 'var(--bui-bg-neutral-3)',
+    },
     '&:hover $pin, &:focus-within $pin': {
       opacity: 1,
     },
@@ -105,6 +109,14 @@ const useStyles = makeStyles({
       outline: '2px solid var(--bui-ring)',
       outlineOffset: -2,
     },
+  },
+  // Above the row's stretched hit area, so the dot's tooltip (its only
+  // visible meaning) is reached by hovering it; a click on it still opens
+  // the session, since the dot is inside the link.
+  dot: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'inline-flex',
   },
   pin: {
     position: 'relative',
@@ -184,20 +196,22 @@ function SessionItem({
               awaiting-input states, `isWorking` everything active that isn't.
               A dot with no visible label carries its meaning as a tooltip and
               an accessible name. */}
-          {waiting ? (
-            <StatusDot
-              tone="warning"
-              aria-label={NEEDS_INPUT_LABEL}
-              colorVar={sessionStateDotVar('warning')}
-            />
-          ) : (
-            working && (
-              <StatusDot
-                tone="info"
-                aria-label={WORKING_LABEL}
-                colorVar={sessionStateDotVar('info')}
-              />
-            )
+          {(waiting || working) && (
+            <span className={classes.dot}>
+              {waiting ? (
+                <StatusDot
+                  tone="warning"
+                  aria-label={NEEDS_INPUT_LABEL}
+                  colorVar={sessionStateDotVar('warning')}
+                />
+              ) : (
+                <StatusDot
+                  tone="info"
+                  aria-label={WORKING_LABEL}
+                  colorVar={sessionStateDotVar('info')}
+                />
+              )}
+            </span>
           )}
           <Box grow minWidth="0">
             <Text
