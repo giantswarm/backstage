@@ -162,7 +162,14 @@ const AGENT_JSON = {
   },
   spec: {
     harnessRef: { name: 'kagent' },
-    template: { description: 'Reviews pull requests in depth.' },
+    template: {
+      description: 'Reviews pull requests in depth.',
+      // The gateway carrier the chart renders, named after the agent: an
+      // agent with tools, so the strip has its Tools tab.
+      tools: [
+        { mcp: { server: { kind: 'RemoteMCPServer', name: 'pr-reviewer' } } },
+      ],
+    },
   },
   status: {
     observedGeneration: 1,
@@ -417,11 +424,11 @@ async function renderThroughThePage() {
   return { releaseChunk: () => releaseChunk() };
 }
 
-/** The final header: avatar, title, badge row, the three tabs, the trail. */
+/** The final header: avatar, title, badge row, the four tabs, the trail. */
 const FINAL_FRAME = {
   leading: true,
   badgeRow: true,
-  tabs: 3,
+  tabs: 4,
   breadcrumbs: true,
 };
 

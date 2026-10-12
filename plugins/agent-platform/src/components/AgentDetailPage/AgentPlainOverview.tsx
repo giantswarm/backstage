@@ -316,17 +316,15 @@ function SkillsSection({
 
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares — with the exact tools one link away.
+ * read from the toolset it declares; the exact tools are the Tools tab.
  * Servers bound directly rather than through the gateway, and agents it calls
  * as tools, follow by name.
  */
 function ConnectorsSection({
   agent,
-  toolsHref,
   isFailing,
 }: {
   agent: Agent;
-  toolsHref?: string;
   isFailing: boolean;
 }) {
   const classes = useStyles();
@@ -355,14 +353,7 @@ function ConnectorsSection({
   }
 
   return (
-    <Section
-      title="Connectors"
-      action={
-        hasGateway && toolsHref ? (
-          <Link to={toolsHref}>See which tools</Link>
-        ) : undefined
-      }
-    >
+    <Section title="Connectors">
       <Text variant="body-medium">{reach}</Text>
       {(direct.length > 0 || subAgents.length > 0) && (
         <div className={classes.rows}>
@@ -446,7 +437,7 @@ export type AgentPlainOverviewProps = {
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
-  /** The agent's tools view, which resolves the toolset to exact tools. */
+  /** The Tools tab, which resolves the toolset to exact tools. */
   toolsHref?: string;
   /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
   onUpdateSkills?: () => void;
@@ -506,11 +497,7 @@ export function AgentPlainOverview({
         isGitOpsOwned={isGitOpsOwned}
       />
 
-      <ConnectorsSection
-        agent={agent}
-        toolsHref={toolsHref}
-        isFailing={failure?.field === 'tools'}
-      />
+      <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
 
       <TechnicalDetailsFoldOut
         defaultExpanded={agent.getReadiness() !== 'ready'}

@@ -77,13 +77,14 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
 import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
-import { SHELL_AGENT_TABS } from './AgentDetailTabs';
+import { agentTabs } from './AgentDetailTabs';
 import { agentFacts, AgentPlainOverview } from './AgentPlainOverview';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
 import { AgentUsageTab } from './AgentUsageTab';
+import { hasGatewayTools } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -121,23 +122,14 @@ function BackToAgents({ children }: { children: ReactNode }) {
 
 /**
  * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
- * and one level deeper for a view below the agent (its tools).
+ * on every tab, as on the connector and skill pages.
  */
-function agentBreadcrumbs(
-  title: string,
-  subPage?: { label: string; agentHref: string },
-): BreadcrumbItem[] {
-  const ancestors: BreadcrumbItem[] = [
+function agentBreadcrumbs(title: string): BreadcrumbItem[] {
+  return [
     { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
     { label: 'Agents', href: `${SHELL_CUSTOMIZE_PATH}/agents` },
+    { label: title },
   ];
-  return subPage
-    ? [
-        ...ancestors,
-        { label: title, href: subPage.agentHref },
-        { label: subPage.label },
-      ]
-    : [...ancestors, { label: title }];
 }
 
 /**
@@ -152,7 +144,6 @@ function agentBreadcrumbs(
 function AgentFrame({
   title,
   heading,
-  subPage,
   children,
   ...shellProps
 }: Omit<ShellPageProps, 'title' | 'breadcrumbs'> & {
@@ -160,13 +151,11 @@ function AgentFrame({
   title: string;
   /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
   heading?: ReactNode;
-  /** A view below the agent, named in the breadcrumbs after it. */
-  subPage?: { label: string; agentHref: string };
 }) {
   return (
     <ShellPage
       title={heading ?? title}
-      breadcrumbs={agentBreadcrumbs(title, subPage)}
+      breadcrumbs={agentBreadcrumbs(title)}
       {...shellProps}
     >
       {children}
@@ -612,10 +601,6 @@ function AgentDetailPageContent() {
   const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
   const path = location.pathname.replace(/\/$/, '');
   const onOverview = path === basePath;
-  const onTools = path === `${basePath}/tools`;
-  const subPage = onTools
-    ? { label: 'Tools', agentHref: `${basePath}${location.search}` }
-    : undefined;
 
   // Loading only while there is no agent to show. An agent already in the
   // query cache renders at once, even while the persisted cache restores on
@@ -631,7 +616,6 @@ function AgentDetailPageContent() {
       <AgentFrame
         title={name || 'Agent'}
         heading={<ShellPageTitleSkeleton label="Loading agent" />}
-        subPage={subPage}
         leading={
           <AgentAvatar
             size="large"
@@ -641,7 +625,10 @@ function AgentDetailPageContent() {
           />
         }
         badges={<ShellPageBadgeSkeleton />}
-        tabs={SHELL_AGENT_TABS}
+        // Whether the agent has tools is not known yet. The strip assumes it
+        // has, as most agents do, so it holds still when the read lands; a
+        // chat-only agent loses the Tools tab then.
+        tabs={agentTabs({ hasTools: true })}
         tabsSearch={location.search}
         aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
       >
@@ -727,7 +714,10 @@ function AgentDetailPageContent() {
     );
   }
 
-  const toolsHref = `${basePath}/tools${location.search}`;
+  const hasTools = hasGatewayTools(agent);
+  const toolsHref = hasTools
+    ? `${basePath}/tools${location.search}`
+    : undefined;
 
   /* What a write just made to the agent is doing, and why sessions cannot
      start: true on every tab, so above the routed content. */
@@ -796,9 +786,6 @@ function AgentDetailPageContent() {
   return (
     <AgentFrame
       title={displayName}
-      // The tools view is reached from the Overview's Connectors section
-      // rather than a tab, so the breadcrumbs are its way back.
-      subPage={subPage}
       leading={
         <AgentAvatar
           size="large"
@@ -821,10 +808,10 @@ function AgentDetailPageContent() {
       }
       actions={shellActions}
       menu={menu}
-      tabs={SHELL_AGENT_TABS}
+      tabs={agentTabs({ hasTools })}
       tabsSearch={location.search}
-      // The facts belong to the Overview; Sessions and Usage take the
-      // whole width.
+      // The facts belong to the Overview; the other tabs take the whole
+      // width.
       aside={
         onOverview ? (
           <FactsColumn
@@ -842,9 +829,10 @@ function AgentDetailPageContent() {
       <Flex direction="column" gap="4">
         {status}
 
-        {/* Routed, so each tab is its own URL. Tools and Skills are folded
-              into the Overview, per the prototype; the exact tools stay one link away, and a bookmarked
-              `skills` tab lands on the Overview that now shows them. */}
+        {/* Routed, so each tab is its own URL. Skills are folded into the
+              Overview, per the prototype, and a bookmarked `skills` tab lands
+              on the Overview that now shows them; so does `tools` for an
+              agent without tools. */}
         <Routes>
           <Route
             index
@@ -861,7 +849,16 @@ function AgentDetailPageContent() {
               />
             }
           />
-          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
+          <Route
+            path="tools"
+            element={
+              hasTools ? (
+                <AgentToolsetCard agent={agent} />
+              ) : (
+                <Navigate to={`${basePath}${location.search}`} replace />
+              )
+            }
+          />
           <Route
             path="sessions"
             element={
@@ -893,9 +890,10 @@ function AgentDetailPageContent() {
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * The prototype's plain-language page: three routed tabs — Overview (what it
- * is for, its instructions, skills and connectors, with the Kubernetes detail
- * in a "Technical details" fold-out), Sessions and Usage — under the
+ * The prototype's plain-language page: routed tabs — Overview (what it is
+ * for, its instructions, skills and connectors, with the Kubernetes detail in
+ * a "Technical details" fold-out), Sessions, Tools (for an agent bound to the
+ * gateway: its toolset resolved to exact tools) and Usage — under the
  * platform-standard `ShellPage` header, with the model and environment as
  * facts beside the Overview. Overview is the index, so the three-segment URL
  * the rest of the portal links to still opens the agent. The creation

@@ -24,6 +24,20 @@ export function isGatewayServerBinding(
 }
 
 /**
+ * Whether the agent has tools the Tools tab can show: it binds the muster
+ * gateway, through which it reaches connectors and Platform tools. A
+ * chat-only agent (`preset:none`) renders without the binding. Servers bound
+ * directly are listed on the Overview's Connectors section instead.
+ */
+export function hasGatewayTools(
+  agent: Pick<Agent, 'getName' | 'getMcpBindings'>,
+): boolean {
+  return agent
+    .getMcpBindings()
+    .some(binding => isGatewayServerBinding(agent, binding));
+}
+
+/**
  * `<kind> <name>` for an MCP binding. Bindings are same-namespace on API v2,
  * so the name alone identifies the server within the agent's namespace.
  */

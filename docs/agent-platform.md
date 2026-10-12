@@ -1636,12 +1636,19 @@ Each tab is its own URL, in a `ShellPage`:
 | -------- | -------------------- | ----------------------------------------------------------------------------- |
 | Overview | the agent URL itself | what it's for, instructions, skills, connectors; model and environment beside |
 | Sessions | `…/<name>/sessions`  | your sessions with this agent                                                 |
+| Tools    | `…/<name>/tools`     | the declared toolset and the exact tools it resolves to for you               |
 | Usage    | `…/<name>/usage`     | its spend, tokens and model calls; your sessions with it                      |
 
-Tools and Skills fold into the Overview (`…/<name>/tools` shows the toolset;
-`…/skills` lands on the Overview), and the GitOps, configuration and status
-cards sit in a Technical details fold-out that starts open for an agent that is not
-ready. The Usage tab reads the Usage screen's sources for 30 days: the
+The Tools tab is there only for an agent bound to the muster gateway (its
+carrier `RemoteMCPServer` or the shared gateway server), which is how an agent
+reaches connectors and Platform tools; a chat-only agent (`preset:none`)
+renders without the binding. Servers bound directly are listed in the
+Overview's Connectors section. Without the binding, `…/tools` lands on the
+Overview. The loading frame draws the Tools tab, since most agents have tools.
+
+Skills fold into the Overview (`…/skills` lands on it), and the GitOps,
+configuration and status cards sit in a Technical details fold-out that starts
+open for an agent that is not ready. The Usage tab reads the Usage screen's sources for 30 days: the
 gateway's by-agent figures (everyone's calls) and kagent's session summary
 (yours, with any runtime-reported cost).
 
