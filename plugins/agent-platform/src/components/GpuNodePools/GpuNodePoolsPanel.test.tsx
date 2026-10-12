@@ -5,7 +5,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';

@@ -238,9 +238,7 @@ describe('EditSkillPage', () => {
       screen.getByText("The portal cannot read this skill's source"),
     ).toBeInTheDocument();
     await waitFor(() =>
-      expect(document.title).toBe(
-        'Edit ticket-triage · Skills · Agent Platform',
-      ),
+      expect(document.title).toBe('Edit ticket-triage · Skills'),
     );
     expect(screen.queryByLabelText(/Instructions/)).not.toBeInTheDocument();
   });
@@ -250,8 +248,6 @@ describe('EditSkillPage', () => {
 
     expect(mockUseSkillContent).toHaveBeenCalledWith(undefined);
     expect(screen.getByText('Skill not found')).toBeInTheDocument();
-    await waitFor(() =>
-      expect(document.title).toBe('Edit skill · Skills · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Edit skill · Skills'));
   });
 });
