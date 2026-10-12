@@ -114,10 +114,8 @@ describe('AppSignInPage', () => {
   });
 
   it('leaves the default message out of the shell-style sign-in', async () => {
-    const config = { gs: { authProvider: 'oidc-gazelle' } };
-
     renderSignIn({
-      ...config,
+      gs: { authProvider: 'oidc-gazelle' },
       app: { title: 'Giant Swarm Portal', portals: { agentPlatform: true } },
     });
     expect(

@@ -4,7 +4,10 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GiantSwarmMark } from '../../../assets/logo';
 import { ShellSignInPage } from './ShellSignInPage';
-import { PROVIDER_STORAGE_KEY } from './useProviderSignIn';
+import {
+  PROVIDER_STORAGE_KEY,
+  type ShellSignInProvider,
+} from './useProviderSignIn';
 
 const stubLogo = () => <span data-testid="logo" />;
 const mockLogoIcon = jest.fn(stubLogo);
@@ -58,6 +61,7 @@ function renderPage({
   onSignInSuccess = jest.fn(),
   analytics = mockApis.analytics(),
   only,
+  options = only === undefined ? providers : [providers[only]],
 }: {
   path?: string;
   main?: ReturnType<typeof mockAuthApi>;
@@ -65,12 +69,10 @@ function renderPage({
   onSignInSuccess?: jest.Mock;
   analytics?: ReturnType<typeof mockApis.analytics>;
   only?: number;
+  options?: ShellSignInProvider[];
 } = {}) {
   const result = renderInTestApp(
-    <ShellSignInPage
-      onSignInSuccess={onSignInSuccess}
-      providers={only === undefined ? providers : [providers[only]]}
-    />,
+    <ShellSignInPage onSignInSuccess={onSignInSuccess} providers={options} />,
     {
       initialRouteEntries: [path],
       config: { app: { portals: { agentPlatform: true } } },
@@ -127,16 +129,9 @@ describe('ShellSignInPage', () => {
   });
 
   it('shows a bare button for an option without a message', async () => {
-    renderInTestApp(
-      <ShellSignInPage
-        onSignInSuccess={jest.fn()}
-        providers={[{ id: 'dex-auth-provider', title: 'Dex', apiRef: mainRef }]}
-      />,
-      {
-        config: { app: { portals: { agentPlatform: true } } },
-        apis: [[mainRef, mockAuthApi()]],
-      },
-    );
+    renderPage({
+      options: [{ id: 'dex-auth-provider', title: 'Dex', apiRef: mainRef }],
+    });
 
     const button = await screen.findByRole('button', {
       name: 'Sign in with Dex',

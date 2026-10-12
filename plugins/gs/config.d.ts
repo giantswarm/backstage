@@ -81,9 +81,9 @@ export interface Config {
        */
       title?: string;
       /**
-       * Card message. Default: `Sign in using Dex`. The Agent Platform's sign-in
-       * page shows a configured message only, as the default just repeats
-       * its button.
+       * Card message. Default: `Sign in using Dex`. The Agent Platform's
+       * sign-in page shows only a message other than the default, as the
+       * default just repeats its button.
        * @visibility frontend
        */
       message?: string;
@@ -112,9 +112,9 @@ export interface Config {
        */
       title?: string;
       /**
-       * Card message. Default: `Sign in through another identity provider`. The Agent Platform's sign-in
-       * page shows a configured message only, as the default just repeats
-       * its button.
+       * Card message. Default: `Sign in through another identity
+       * provider`. The Agent Platform's sign-in page shows only a message
+       * other than the default, as the default just repeats its button.
        * @visibility frontend
        */
       message?: string;

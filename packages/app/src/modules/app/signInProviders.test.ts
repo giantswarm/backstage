@@ -119,7 +119,26 @@ describe('shellSignInProviders', () => {
         apiRef: gsFallbackSignInAuthApiRef,
       },
     ]);
-    expect(providers[0]).not.toHaveProperty('message');
+  });
+
+  it('leaves out a configured message that only copies the default', () => {
+    const providers = shellSignInProviders(
+      new ConfigReader({
+        gs: {
+          authProvider: 'oidc-gazelle',
+          signInProvider: { message: 'Sign in using Dex' },
+          signInFallbackProvider: {
+            connectorId: 'giantswarm-ad',
+            message: 'Sign in through another identity provider',
+          },
+        },
+      }),
+    );
+
+    expect(providers.map(provider => provider.message)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it('keeps the messages the deployment wrote', () => {

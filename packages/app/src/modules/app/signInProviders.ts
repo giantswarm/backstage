@@ -9,6 +9,7 @@ import {
   gsAuthApiRef,
   gsFallbackSignInAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
+import type { ShellSignInProvider } from '../agentShell/ShellSignInPage';
 
 /** Shape of one `SignInPage` provider entry (`@backstage/core-components`). */
 export interface SignInProviderConfig {
@@ -89,13 +90,16 @@ export function signInProviders(configApi: ConfigApi): SignInProviderConfig[] {
 /**
  * The sign-in cards (see {@link readSignInProviders}) for the Agent
  * Platform's sign-in page, with a message only where the deployment wrote
- * one: the defaults just repeat the button's "Sign in with <title>".
+ * its own: the defaults just repeat the button's "Sign in with <title>", so
+ * neither the default nor a configured copy of it is shown.
  */
 export function shellSignInProviders(
   configApi: ConfigApi,
-): Array<Omit<SignInProviderConfig, 'message'> & { message?: string }> {
+): ShellSignInProvider[] {
   return readSignInProviders(configApi).map(
-    ({ message, defaultMessage: _, ...provider }) =>
-      message === undefined ? provider : { ...provider, message },
+    ({ message, defaultMessage, ...provider }) => ({
+      ...provider,
+      message: message === defaultMessage ? undefined : message,
+    }),
   );
 }
