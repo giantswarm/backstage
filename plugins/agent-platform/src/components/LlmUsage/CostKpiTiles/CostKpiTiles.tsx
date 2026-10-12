@@ -1,4 +1,9 @@
 import type { LlmUsage } from '../../../lib/llmUsage';
+import {
+  Stat,
+  StatDelta,
+  StatGrid,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { spendChangePct } from '../../../lib/usageKpis';
 import {
   formatMoney,
@@ -7,7 +12,6 @@ import {
   USD,
   type Currency,
 } from '../../../lib/formatNumbers';
-import { KpiDelta, KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type CostKpiTilesProps = {
   usage: LlmUsage;
@@ -54,8 +58,9 @@ export function CostKpiTiles({
   const windowNote = `the last ${windowDays} days`;
 
   return (
-    <KpiTileGrid>
-      <KpiTile
+    <StatGrid>
+      <Stat
+        variant="tile"
         label={converted ? 'Est. spend' : 'Spend'}
         hint={
           converted
@@ -63,10 +68,11 @@ export function CostKpiTiles({
             : `Sums the gateway's price for every model call over ${windowNote}. Models missing from its catalogue add nothing.`
         }
         value={formatMoney(totals.costUsd, currency)}
-        beside={deltaLabel && <KpiDelta>{deltaLabel}</KpiDelta>}
+        beside={deltaLabel && <StatDelta>{deltaLabel}</StatDelta>}
         sub="Every user's model calls, as the gateway priced them."
       />
-      <KpiTile
+      <Stat
+        variant="tile"
         label={converted ? 'Blended cost/1M tokens' : 'Blended $/1M tokens'}
         hint="Shows spend per million tokens. It is a blend, not a list price: cache reads count as tokens, so heavy caching pushes it below a model's headline rate."
         value={formatMoney(totals.usdPerMillion, currency)}
@@ -75,12 +81,13 @@ export function CostKpiTiles({
       {/* Untoned: a low cache-read share is worth knowing but is not a fault —
           plenty of workloads have nothing cacheable. `—` when there is no
           input traffic to measure it against, which is not the same as 0%. */}
-      <KpiTile
+      <Stat
+        variant="tile"
         label="Cache read share"
         hint="Shows cache reads as a share of all input tokens (plain, cache reads and writes). A high share means prompt caching pays off."
         value={formatPercent(totals.cacheReadSharePct)}
         sub="of input tokens, read from cache"
       />
-    </KpiTileGrid>
+    </StatGrid>
   );
 }

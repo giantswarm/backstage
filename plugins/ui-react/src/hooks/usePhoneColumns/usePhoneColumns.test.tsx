@@ -4,7 +4,7 @@ import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
-} from '../../utils/mockPhoneLayout';
+} from '../../testUtils/mockPhoneLayout';
 import { usePhoneColumns } from './usePhoneColumns';
 
 type CostRow = {

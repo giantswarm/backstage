@@ -126,7 +126,7 @@ describe('EditModelPage', () => {
     expect(screen.getByLabelText(/^Name/)).toHaveValue('Sonnet 4.5');
     // The document title names the model, like the skill edit frames.
     await waitFor(() =>
-      expect(document.title).toBe('Edit Sonnet 4.5 · Models · Agent Platform'),
+      expect(document.title).toBe('Edit Sonnet 4.5 · Models'),
     );
     // The locked technical name is said under the name, once.
     expect(

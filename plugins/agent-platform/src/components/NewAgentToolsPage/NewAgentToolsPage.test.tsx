@@ -18,11 +18,11 @@ import {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
   type MockedLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { agentsRouteRef } from '../../routes';
 import {

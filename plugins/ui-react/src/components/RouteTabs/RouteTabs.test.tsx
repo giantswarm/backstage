@@ -11,7 +11,7 @@ import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
-} from '../../utils/mockPhoneLayout';
+} from '../../testUtils/mockPhoneLayout';
 import { RouteTabs, RouteTabSpec } from './RouteTabs';
 
 const TABS: RouteTabSpec[] = [

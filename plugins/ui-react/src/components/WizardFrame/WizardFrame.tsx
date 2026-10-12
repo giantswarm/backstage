@@ -445,8 +445,8 @@ export interface WizardFrameProps {
   /** What the flow creates, e.g. "New agent": the page's h1. */
   title: string;
   /**
-   * The document title's parts, most specific first; " · Agent Platform"
-   * follows (`ShellDocumentTitle`). Defaults to the title.
+   * The document title's parts, most specific first; the suffix from
+   * `ShellDocumentTitleProvider` follows. Defaults to the title.
    */
   documentTitle?: ReadonlyArray<string | undefined>;
   /** Muted text after the title, e.g. "Customize / Models". */

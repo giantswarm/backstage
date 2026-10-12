@@ -6,7 +6,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { SkillFile, SkillFileContent } from '../../lib/skills';
 import { SkillFiles } from './SkillFiles';
 
