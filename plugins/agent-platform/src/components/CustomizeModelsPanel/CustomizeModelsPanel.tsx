@@ -239,14 +239,11 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
         onSelect={filters.select}
         onClear={filters.clear}
       />
-      {/* Once the read has settled: one environment failing while the others
-          are still being read is not yet the list's answer. */}
-      {!isReading && (
-        <UnreachableInstallationsAlert
-          installations={unreachableInstallations}
-          resourceName="Models"
-        />
-      )}
+      <UnreachableInstallationsAlert
+        installations={unreachableInstallations}
+        resourceName="Models"
+        isLoading={isReading}
+      />
       {body}
       <ModelHostingBanner />
       <ModelHostingHint />

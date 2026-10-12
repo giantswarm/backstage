@@ -527,10 +527,10 @@ export function ServingPage() {
     emptyGroups.length === 0 &&
     serving.unreachableInstallations.length === 0 &&
     installations.every(name => backendsOn(serving, name).length === 0);
-  // The table's own loading state. The read warning waits for it: one
-  // environment failing while the others are still being read is not yet the
-  // page's answer.
-  const isReadingServedModels = serving.isLoading && rows.length === 0;
+  // The table's own loading state, and what its read warnings wait for: the
+  // served-model reads alone, not the GPU node and pod reads beside them.
+  const isReadingServedModels =
+    (serving.isLoadingServedModels ?? serving.isLoading) && rows.length === 0;
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -593,14 +593,13 @@ export function ServingPage() {
           )}
           {!openedRow && lifecyclePanel}
 
-          {!isReadingServedModels && (
-            <UnreachableInstallationsAlert
-              installations={serving.unreachableInstallations}
-              resourceName="served models"
-            />
-          )}
+          <UnreachableInstallationsAlert
+            installations={serving.unreachableInstallations}
+            resourceName="served models"
+            isLoading={isReadingServedModels}
+          />
 
-          {downloadRows.errors.length > 0 && (
+          {!isReadingServedModels && downloadRows.errors.length > 0 && (
             <Alert
               status="warning"
               title="Could not read the downloads"

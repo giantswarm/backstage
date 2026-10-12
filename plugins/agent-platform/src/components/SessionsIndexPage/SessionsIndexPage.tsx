@@ -199,17 +199,16 @@ function SessionsIndexPageContent() {
           />
         )}
 
-        {/* Once the read has settled: one environment failing while the others
-            are still being read is not yet the list's answer. A fleet whose
-            every installation fails still gets here — a failed query is not
-            one awaiting data, so it ends `isLoading`. */}
-        {!isLoading && (
-          <UnreachableInstallationsAlert
-            installations={unreachableInstallations}
-            resourceName="Sessions"
-            failures={readFailures}
-          />
-        )}
+        {/* Waits for the list: a failure shows once no other installation
+            is still being read, or once rows are on screen. A failed query
+            is not one awaiting data, so a fleet whose every read failed still
+            ends `isLoading`; one paused offline does not. */}
+        <UnreachableInstallationsAlert
+          installations={unreachableInstallations}
+          resourceName="Sessions"
+          failures={readFailures}
+          isLoading={isLoading}
+        />
 
         {/* Installations that run kagent but whose endpoint the portal cannot
             reach (the backend's unauthenticated probe says so). Never queried,

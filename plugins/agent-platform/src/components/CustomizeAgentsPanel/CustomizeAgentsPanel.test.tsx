@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { type ReactNode, useState } from 'react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
@@ -80,6 +80,23 @@ function renderPanel(search = '', storage: StorageApi = mockApis.storage()) {
   return renderInTestApp(<CustomizeAgentsPanel search={search} />, {
     mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
     apis: [[storageApiRef, storage]],
+  });
+}
+
+// Re-render the panel from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what `useAgents` answers and watch
+// one mounted panel follow, the way the provider's updates do.
+let rerenderPanel: () => void = () => {};
+function RerenderablePanel() {
+  const [, setTick] = useState(0);
+  rerenderPanel = () => setTick(tick => tick + 1);
+  return <CustomizeAgentsPanel search="" />;
+}
+
+function renderRerenderablePanel() {
+  return renderInTestApp(<RerenderablePanel />, {
+    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    apis: [[storageApiRef, mockApis.storage()]],
   });
 }
 
@@ -253,7 +270,7 @@ describe('CustomizeAgentsPanel', () => {
     expect(screen.getByText(/lab/)).toBeInTheDocument();
   });
 
-  it('holds the read warning while the other environments are still being read', async () => {
+  it('holds the read warning until the read settles, and keeps it closed', async () => {
     // One environment has failed already, the rest are still being read.
     mockAgents = {
       ...mockAgents,
@@ -261,24 +278,30 @@ describe('CustomizeAgentsPanel', () => {
       isLoading: true,
       unreachableInstallations: ['lab'],
     };
-    const { unmount } = await renderPanel();
+    await renderRerenderablePanel();
     expect(
       await screen.findByLabelText('Reading your agents…'),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Could not read 1 environment'),
-    ).not.toBeInTheDocument();
-    unmount();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     // The read settles, with that failure as its answer.
     mockAgents = { ...mockAgents, isLoading: false };
-    await renderPanel();
+    act(() => rerenderPanel());
     expect(
       screen.queryByLabelText('Reading your agents…'),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText('Could not read 1 environment'),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+
+    // Closed, then an environment joins the read and it settles on the same
+    // failure: the warning stays closed.
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    mockAgents = { ...mockAgents, isLoading: true };
+    act(() => rerenderPanel());
+    mockAgents = { ...mockAgents, isLoading: false };
+    act(() => rerenderPanel());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   describe('favorites', () => {

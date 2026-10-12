@@ -162,25 +162,24 @@ describe('SessionsIndexPage', () => {
     expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
   });
 
-  it('holds the read warning while the other environments are still being read', async () => {
+  it('holds the read warning until the sessions are read', async () => {
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       isLoading: true,
       unreachableInstallations: ['gazelle'],
     });
-    const { unmount } = await render();
+    await renderRerenderable();
     expect(screen.getByTestId('progress')).toBeInTheDocument();
-    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
-    unmount();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     mockUseSessions.mockReturnValue({
       ...loadedSessions,
       unreachableInstallations: ['gazelle'],
     });
-    await render();
-    expect(
-      screen.getByText(/Could not read 1 environment/),
-    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
   });
 
   describe('with no session on the fleet yet', () => {

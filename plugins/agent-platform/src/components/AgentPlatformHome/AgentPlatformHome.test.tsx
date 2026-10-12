@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { storageApiRef } from '@backstage/core-plugin-api';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
@@ -137,20 +137,37 @@ const loadedAgents: AgentsContextValue = {
   unreachableInstallations: [],
 };
 
+// Re-render the home from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what `useAgents` answers and watch
+// one mounted page follow.
+let rerenderHome: () => void = () => {};
+function RerenderableHome(props: { manageAgentsHref?: string }) {
+  const [, setTick] = useState(0);
+  rerenderHome = () => setTick(tick => tick + 1);
+  return <AgentPlatformHome {...props} />;
+}
+
 function render({
   bound = true,
   displayName = 'Jane Doe',
   manageAgentsHref,
   url,
+  rerenderable = false,
 }: {
   bound?: boolean;
   displayName?: string;
   manageAgentsHref?: string;
   /** The URL the home opens at, e.g. with `?agent=`. */
   url?: string;
+  /** Mount it so `rerenderHome` can re-render it in place. */
+  rerenderable?: boolean;
 } = {}) {
   return renderInTestApp(
-    <AgentPlatformHome manageAgentsHref={manageAgentsHref} />,
+    rerenderable ? (
+      <RerenderableHome manageAgentsHref={manageAgentsHref} />
+    ) : (
+      <AgentPlatformHome manageAgentsHref={manageAgentsHref} />
+    ),
     {
       ...(url && { initialRouteEntries: [url] }),
       apis: [
@@ -288,29 +305,28 @@ describe('AgentPlatformHome', () => {
     ).toBeTruthy();
   });
 
-  it('holds the read warning while the other environments are still being read', async () => {
+  it('holds the read warning until the agents are read', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,
       rows: [],
       isLoading: true,
       unreachableInstallations: ['gazelle'],
     });
-    const { unmount } = await render();
+    await render({ rerenderable: true });
     expect(
       await screen.findByLabelText('Reading your agents…'),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
-    unmount();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     mockUseAgents.mockReturnValue({
       ...loadedAgents,
       rows: [],
       unreachableInstallations: ['gazelle'],
     });
-    await render();
-    expect(
-      screen.getByText(/Could not read 1 environment/),
-    ).toBeInTheDocument();
+    act(() => rerenderHome());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
   });
 
   it('says why no session can be started when the agents could not be read', async () => {
