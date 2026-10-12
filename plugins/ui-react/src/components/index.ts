@@ -42,6 +42,7 @@ export * from './RouteTabs';
 export * from './SectionHeader';
 export * from './ShellDocumentTitle';
 export * from './ShellPage';
+export * from './ShellScope';
 export * from './ShowMore';
 export * from './SimpleAccordion';
 export * from './StackedRowList';

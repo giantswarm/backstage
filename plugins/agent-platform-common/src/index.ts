@@ -24,6 +24,7 @@ export * from './kagent/kagentAttachments';
 export * from './kagent/kagentSessions';
 export * from './kagent/kagentSessionDetail';
 export * from './kagent/kagentSessionState';
+export * from './kagent/kagentMessageLimits';
 export * from './kagent/kagentRuntimeLost';
 export * from './kagent/kagentSessionStates';
 export * from './kagent/kagentSessionUsage';

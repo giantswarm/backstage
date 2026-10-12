@@ -68,7 +68,11 @@ import {
   STATE_IDLE_LABEL,
 } from '../SessionsTable';
 import { sessionStateDotVar } from '../../lib/stableClassNames';
-import { createPolledPairing, fresherStreamedCopy } from './helpers';
+import {
+  createPolledPairing,
+  fresherStreamedCopy,
+  STALLED_STATE_LABEL,
+} from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
 import { SessionActionsMenu } from './SessionActionsMenu';
 import { SessionRenameDialog } from './SessionRenameDialog';
@@ -895,11 +899,21 @@ export function SessionDetailPage() {
    * turn's end while the body already says "Working…". `showWorking` is the
    * signal that row uses, so while it holds the state is Working, and nothing
    * on the page can contradict the body.
+   *
+   * A stalled turn is the other way round (R2-4): the poll still reads it as
+   * working, while the body says it has not reported progress and offers
+   * Stop. The state then says so too, as a warning, so the header never
+   * claims Working beside a stalled row.
    */
-  const shownState = useMemo<SessionState | undefined>(
-    () => (showWorking ? describeSessionState('working') : state),
-    [showWorking, state],
-  );
+  const shownState = useMemo<SessionState | undefined>(() => {
+    if (showWorking) {
+      return describeSessionState('working');
+    }
+    if (isStalled && state?.isActive) {
+      return { ...state, label: STALLED_STATE_LABEL, tone: 'warning' };
+    }
+    return state;
+  }, [showWorking, isStalled, state]);
 
   /**
    * What the rail should believe about *this* session.
@@ -913,7 +927,10 @@ export function SessionDetailPage() {
    * Built from {@link shownState}, so the rail, the header and the "Working…"
    * row cannot disagree about whether the agent is busy. When nothing is in
    * flight this still overrides, with the state and timestamp read from the
-   * same task — a fresher copy of what the summary would eventually say.
+   * same task — a fresher copy of what the summary would eventually say. A
+   * stalled turn stays under the rail's Running group with the age of its last
+   * progress, as every session stuck in an active state does there
+   * (`groupActiveSessions`); the rail has no word per session to change.
    */
   const currentSessionState = useMemo<SessionStateEntry | undefined>(() => {
     if (showWorking) {

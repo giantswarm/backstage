@@ -189,6 +189,47 @@ describe('discoverAgentSkills', () => {
     );
   });
 
+  it('reads an empty ref as the default branch, never `…/commits/`', async () => {
+    const fetchMock = mockGitHub([{ path: 'demo/SKILL.md', type: 'blob' }], {
+      'demo/SKILL.md': '---\nname: Demo\n---',
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { skills, ref } = await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      ref: '',
+    });
+
+    expect(ref).toBe('main');
+    expect(skills[0].ref).toBe('main');
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
+      'https://api.github.com/repos/giantswarm/agent-skills/commits/main',
+    );
+  });
+
+  it('hands every request the caller’s abort signal', async () => {
+    const fetchMock = mockGitHub([{ path: 'demo/SKILL.md', type: 'blob' }], {
+      'demo/SKILL.md': '---\nname: Demo\n---',
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const { signal } = new AbortController();
+
+    await discoverAgentSkills({
+      repoUrl: 'https://github.com/giantswarm/agent-skills',
+      githubCredentialsProvider: credentialsProvider,
+      signal,
+    });
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(0);
+    for (const call of fetchMock.mock.calls as unknown as [
+      string,
+      RequestInit,
+    ][]) {
+      expect(call[1].signal).toBe(signal);
+    }
+  });
+
   it('resolves an explicit ref to its commit', async () => {
     global.fetch = mockGitHub([{ path: 'demo/SKILL.md', type: 'blob' }], {
       'demo/SKILL.md': '---\nname: Demo\n---',

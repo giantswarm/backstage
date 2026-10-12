@@ -5,6 +5,7 @@ import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { useAgentShellArea } from '../agentArea';
+import { setAgentShellMark } from '../AgentShellThemeRoot/useAgentShellAttribute';
 import { agentShellLightColors } from '../theme';
 import {
   type ShellSignInProvider,
@@ -65,10 +66,8 @@ function useShellDocumentMark() {
       return undefined;
     }
     import('../fonts').catch(() => {});
-    document.documentElement.dataset.agentShell = '';
-    return () => {
-      delete document.documentElement.dataset.agentShell;
-    };
+    setAgentShellMark(true);
+    return () => setAgentShellMark(false);
   }, [ownedByThemeRoot]);
 }
 

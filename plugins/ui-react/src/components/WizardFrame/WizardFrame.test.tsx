@@ -64,6 +64,7 @@ function renderFrame(
             }
           />
           <Route path="/customize/agents" element={<p>Customize page</p>} />
+          <Route path="/agents/new/skills" element={<p>Skills step</p>} />
         </Routes>
       </PageHeaderActionsProvider>
     </MemoryRouter>,
@@ -180,6 +181,38 @@ describe('WizardFrame', () => {
     );
 
     expect(await screen.findByText('Customize page')).toBeInTheDocument();
+  });
+
+  /** A `beforeunload` as the browser fires it; prevented means it asks. */
+  function unload(): boolean {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }
+
+  it('asks the browser to confirm a reload or a closed tab while the flow is dirty', () => {
+    const { unmount } = renderFrame({ confirmDiscard: true });
+
+    expect(unload()).toBe(true);
+
+    // Gone with the frame: the rest of the app unloads freely.
+    unmount();
+    expect(unload()).toBe(false);
+  });
+
+  it('lets an untouched flow unload without asking', () => {
+    renderFrame();
+
+    expect(unload()).toBe(false);
+  });
+
+  it('moves between its own steps without asking, a dirty flow too', async () => {
+    renderFrame({ confirmDiscard: true });
+
+    await userEvent.click(screen.getByRole('link', { name: /Skills/ }));
+
+    expect(await screen.findByText('Skills step')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renders Back when it can go back, then the step’s registered buttons', async () => {

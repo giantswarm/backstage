@@ -1,4 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
+
+const listeners = new Set<() => void>();
+
+function readMark(): boolean {
+  return document.documentElement.dataset.agentShell !== undefined;
+}
+
+/**
+ * Sets or clears the `data-agent-shell` mark on the document root and tells
+ * the theme providers synchronously. Called from a layout effect, the
+ * re-themed tree commits before the browser paints, so a crossing between
+ * classic and shell never shows a frame of the previous theme.
+ */
+export function setAgentShellMark(on: boolean): void {
+  if (on === readMark()) {
+    return;
+  }
+  if (on) {
+    document.documentElement.dataset.agentShell = '';
+  } else {
+    delete document.documentElement.dataset.agentShell;
+  }
+  listeners.forEach(listener => listener());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  // Writes that bypass setAgentShellMark still reach the providers, a
+  // microtask later.
+  const observer = new MutationObserver(listener);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-agent-shell'],
+  });
+  return () => {
+    listeners.delete(listener);
+    observer.disconnect();
+  };
+}
 
 /**
  * Whether the document root currently carries `data-agent-shell`, the mark
@@ -7,20 +46,5 @@ import { useEffect, useState } from 'react';
  * itself; inside the router use `useAgentShellArea` instead.
  */
 export function useAgentShellAttribute(): boolean {
-  const [active, setActive] = useState(
-    () => document.documentElement.dataset.agentShell !== undefined,
-  );
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setActive(document.documentElement.dataset.agentShell !== undefined);
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-agent-shell'],
-    });
-    // The attribute may have changed between the first render and this effect.
-    setActive(document.documentElement.dataset.agentShell !== undefined);
-    return () => observer.disconnect();
-  }, []);
-  return active;
+  return useSyncExternalStore(subscribe, readMark, () => false);
 }

@@ -31,3 +31,27 @@ export const AGENT_SHELL_FLAG = 'agent-platform-shell';
 export const AGENT_SHELL_ON = {
   featureFlags: { $contains: AGENT_SHELL_FLAG },
 };
+
+const latched = new WeakMap<object, boolean>();
+
+/**
+ * Whether the Agent Platform shell is available, as this app load decided it:
+ * the {@link AGENT_SHELL_FLAG}'s value at the first read, latched per
+ * FeatureFlagsApi instance (one per app load).
+ *
+ * Every render-time read of the flag goes through here, because the extension
+ * predicates ({@link AGENT_SHELL_ON}) are evaluated once, at app start, and the
+ * chrome must keep agreeing with the pages they routed. Toggling the opt-in on
+ * the settings page saves it for the next load and does not mix the shells in
+ * this one. The settings page itself keeps reading the live value.
+ */
+export function isAgentShellOn(featureFlags: {
+  isActive(name: string): boolean;
+}): boolean {
+  let on = latched.get(featureFlags);
+  if (on === undefined) {
+    on = featureFlags.isActive(AGENT_SHELL_FLAG);
+    latched.set(featureFlags, on);
+  }
+  return on;
+}

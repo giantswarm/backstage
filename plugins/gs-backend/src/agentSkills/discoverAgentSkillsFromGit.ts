@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import git from 'isomorphic-git';
+import git, { HttpClient } from 'isomorphic-git';
 import http from 'isomorphic-git/http/node';
 import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
@@ -68,30 +68,126 @@ export interface GitCloneResult {
 export interface GitClient {
   /**
    * Clones `repoUrl` at `ref` (the default branch when absent), depth 1, into
-   * `dir`, leaving a checked-out worktree there.
+   * `dir`, leaving a checked-out worktree there. `signal` aborting cancels
+   * the clone's requests.
    */
-  clone(dir: string, repoUrl: string, ref?: string): Promise<GitCloneResult>;
+  clone(
+    dir: string,
+    repoUrl: string,
+    ref?: string,
+    signal?: AbortSignal,
+  ): Promise<GitCloneResult>;
+}
+
+/**
+ * isomorphic-git's Node client with every request bound to `signal`:
+ * `git.clone` takes no signal, but its client passes one to `http.request`,
+ * which destroys the request — and a response being read — on abort.
+ */
+function abortableHttp(signal: AbortSignal): HttpClient {
+  return { request: request => http.request({ ...request, signal }) };
 }
 
 /** The real client: isomorphic-git over Node's http(s), no git binary. */
 const isomorphicGitClient: GitClient = {
-  async clone(dir, repoUrl, ref) {
+  async clone(dir, repoUrl, ref, signal) {
     await git.clone({
       fs,
-      http,
+      http: signal ? abortableHttp(signal) : http,
       dir,
       url: repoUrl,
-      ref,
+      ref: ref || undefined,
       singleBranch: true,
       depth: 1,
       noTags: true,
     });
     const commit = await git.resolveRef({ fs, dir, ref: 'HEAD' });
+    // `||`, not `??`: an empty ref reads the default branch, and the listing
+    // must name that branch, never ''.
     const branch =
-      ref ?? (await git.currentBranch({ fs, dir, fullname: false })) ?? 'HEAD';
+      ref || (await git.currentBranch({ fs, dir, fullname: false })) || 'HEAD';
     return { commit, ref: branch };
   },
 };
+
+/** Why an aborted read stopped: the signal's reason, else a 504. */
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new GitFetchError(504, 'The git read was cancelled.');
+}
+
+/** `work`, or the abort reason as soon as `signal` aborts, whichever first. */
+function untilAborted<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) {
+    return work;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortReason(signal));
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      value => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * Clones `repoUrl` at `ref` into a fresh temporary directory and hands it to
+ * `use`. The directory is removed once the clone has settled, however the
+ * read ends. When `signal` aborts mid-clone the caller is answered at once
+ * and the abandoned clone's directory goes when the clone stops — promptly
+ * with the real client, whose requests abort with the signal — so the
+ * checkout never outlives the clone writing into it, nor leaks.
+ */
+async function withClone<T>(
+  options: {
+    gitClient: GitClient;
+    repoUrl: string;
+    ref: string | undefined;
+    signal?: AbortSignal;
+  },
+  use: (dir: string, cloned: GitCloneResult) => Promise<T>,
+): Promise<T> {
+  const { gitClient, repoUrl, ref, signal } = options;
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-skills-'));
+  const removeDir = () => rm(dir, { recursive: true, force: true });
+  let cloneSettled = false;
+  const cloning = (async () => gitClient.clone(dir, repoUrl, ref, signal))();
+  const settled = cloning.then(
+    () => {
+      cloneSettled = true;
+    },
+    () => {
+      cloneSettled = true;
+    },
+  );
+  try {
+    let cloned: GitCloneResult;
+    try {
+      cloned = await untilAborted(cloning, signal);
+    } catch (error) {
+      throw toGitFetchError(error, repoUrl, ref);
+    }
+    return await use(dir, cloned);
+  } finally {
+    if (cloneSettled) {
+      await removeDir();
+    } else {
+      settled.then(removeDir).catch(() => undefined);
+    }
+  }
+}
 
 /**
  * Maps a clone failure to a `GitFetchError` whose status the route can
@@ -321,10 +417,14 @@ export async function discoverAgentSkillsFromGit(options: {
   commit?: string;
   /** A repository-relative file whose bytes to keep whatever the budget. */
   mustRead?: string;
+  /** Aborts the clone (the read guard's deadline). */
+  signal?: AbortSignal;
   /** Test seam; the real isomorphic-git client when absent. */
   gitClient?: GitClient;
 }): Promise<SkillDiscoverySnapshot> {
-  const { ref, commit, mustRead, gitClient = isomorphicGitClient } = options;
+  const { commit, mustRead, signal, gitClient = isomorphicGitClient } = options;
+  // An empty ref is the default branch, as absent is.
+  const ref = options.ref || undefined;
   const repoUrl = canonicalGitUrl(options.repoUrl);
   if (!/^https?:\/\//.test(repoUrl)) {
     throw new InputError(
@@ -332,14 +432,7 @@ export async function discoverAgentSkillsFromGit(options: {
     );
   }
 
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-skills-'));
-  try {
-    let cloned: GitCloneResult;
-    try {
-      cloned = await gitClient.clone(dir, repoUrl, ref);
-    } catch (error) {
-      throw toGitFetchError(error, repoUrl, ref);
-    }
+  return withClone({ gitClient, repoUrl, ref, signal }, async (dir, cloned) => {
     if (commit !== undefined && cloned.commit !== commit) {
       throw movedOn(cloned, repoUrl, commit);
     }
@@ -383,9 +476,7 @@ export async function discoverAgentSkillsFromGit(options: {
       files,
       fileContents,
     };
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 /**
@@ -407,10 +498,13 @@ export async function readFileFromGit(options: {
   /** The full commit id the file is read at. */
   commit: string;
   filePath: string;
+  /** Aborts the clone. */
+  signal?: AbortSignal;
   /** Test seam; the real isomorphic-git client when absent. */
   gitClient?: GitClient;
 }): Promise<string> {
-  const { ref, commit, filePath, gitClient = isomorphicGitClient } = options;
+  const { commit, filePath, signal, gitClient = isomorphicGitClient } = options;
+  const ref = options.ref || undefined;
   const repoUrl = canonicalGitUrl(options.repoUrl);
   if (!/^https?:\/\//.test(repoUrl)) {
     throw new InputError(
@@ -418,14 +512,7 @@ export async function readFileFromGit(options: {
     );
   }
 
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'agent-skills-'));
-  try {
-    let cloned: GitCloneResult;
-    try {
-      cloned = await gitClient.clone(dir, repoUrl, ref);
-    } catch (error) {
-      throw toGitFetchError(error, repoUrl, ref);
-    }
+  return withClone({ gitClient, repoUrl, ref, signal }, async (dir, cloned) => {
     if (cloned.commit !== commit) {
       throw movedOn(cloned, repoUrl, commit);
     }
@@ -446,7 +533,5 @@ export async function readFileFromGit(options: {
       throw notFound;
     }
     return await readFile(resolved, 'utf8');
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+  });
 }

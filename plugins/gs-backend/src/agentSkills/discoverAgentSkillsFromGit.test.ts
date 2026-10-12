@@ -1,4 +1,13 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdtemp,
+  mkdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
+import http from 'node:http';
+import { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -329,8 +338,136 @@ describe('discoverAgentSkillsFromGit', () => {
       expect.any(String),
       'https://git.example.com/team/skills',
       'feature',
+      undefined,
     );
     expect(result.ref).toBe('feature');
+  });
+
+  it('clones the default branch for an empty ref, as for none', async () => {
+    const clone = jest.fn(async (dir: string) => {
+      await writeSkill(dir, 'x', '---\nname: x\n---\n');
+      return { commit: HEAD, ref: 'main' };
+    });
+
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'https://git.example.com/team/skills',
+      ref: '',
+      gitClient: { clone },
+    });
+
+    expect(clone.mock.calls[0][2]).toBeUndefined();
+    expect(result.skills[0].ref).toBe('main');
+  });
+
+  describe('when the read is aborted mid-clone', () => {
+    const exists = (dir: string) =>
+      access(dir).then(
+        () => true,
+        () => false,
+      );
+    /** Whether `dir` is removed within a moment (the cleanup is async). */
+    const removedSoon = async (dir: string) => {
+      for (let i = 0; i < 50 && (await exists(dir)); i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      return !(await exists(dir));
+    };
+
+    it('stops at once and removes the checkout once the clone has stopped', async () => {
+      let cloneDir = '';
+      // Like the real client: its requests abort with the signal.
+      const clone = jest.fn(
+        (dir: string, _url: string, _ref?: string, signal?: AbortSignal) => {
+          cloneDir = dir;
+          return new Promise<never>((_, reject) => {
+            signal!.addEventListener('abort', () =>
+              reject(new Error('socket hang up')),
+            );
+          });
+        },
+      );
+      const controller = new AbortController();
+
+      const read = discoverAgentSkillsFromGit({
+        repoUrl: 'https://git.example.com/team/skills',
+        signal: controller.signal,
+        gitClient: { clone },
+      });
+      while (!cloneDir) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      expect(await exists(cloneDir)).toBe(true);
+      controller.abort(new GitFetchError(504, 'deadline'));
+
+      await expect(read).rejects.toMatchObject({ status: 504 });
+      expect(await removedSoon(cloneDir)).toBe(true);
+    });
+
+    it('aborts the real client’s request to a server that never answers', async () => {
+      // A black-holed git host: the request arrives, no answer ever does.
+      let closed!: () => void;
+      const connectionClosed = new Promise<void>(resolve => {
+        closed = resolve;
+      });
+      let received!: () => void;
+      const requestReceived = new Promise<void>(resolve => {
+        received = resolve;
+      });
+      const server = http.createServer(req => {
+        req.socket.on('close', closed);
+        received();
+      });
+      await new Promise<void>(resolve =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const { port } = server.address() as AddressInfo;
+      const controller = new AbortController();
+      try {
+        const read = discoverAgentSkillsFromGit({
+          repoUrl: `http://127.0.0.1:${port}/skills.git`,
+          signal: controller.signal,
+        });
+        await requestReceived;
+        controller.abort(new GitFetchError(504, 'deadline'));
+
+        await expect(read).rejects.toMatchObject({ status: 504 });
+        // The socket is torn down, not left hanging on the server.
+        await connectionClosed;
+      } finally {
+        server.closeAllConnections();
+        await new Promise(resolve => server.close(resolve));
+      }
+    });
+
+    it('keeps the checkout of a clone that ignores the abort until it stops, then removes it', async () => {
+      let cloneDir = '';
+      let finish!: () => void;
+      const clone = jest.fn(async (dir: string) => {
+        cloneDir = dir;
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+        // Still writing after the caller gave up.
+        await writeSkill(dir, 'late', '---\nname: late\n---\n');
+        return { commit: HEAD, ref: 'main' };
+      });
+      const controller = new AbortController();
+
+      const read = discoverAgentSkillsFromGit({
+        repoUrl: 'https://git.example.com/team/skills',
+        signal: controller.signal,
+        gitClient: { clone },
+      });
+      while (!cloneDir) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      controller.abort(new GitFetchError(504, 'deadline'));
+      await expect(read).rejects.toMatchObject({ status: 504 });
+      expect(await exists(cloneDir)).toBe(true);
+
+      finish();
+      expect(await removedSoon(cloneDir)).toBe(true);
+    });
   });
 
   it('refuses a non-http(s) URL before any clone', async () => {

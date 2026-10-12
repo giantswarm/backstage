@@ -2,8 +2,12 @@ import { GitHubApiError } from './discoverAgentSkills';
 import { GitFetchError } from './discoverAgentSkillsFromGit';
 import {
   isDefiniteMiss,
+  MAX_MISS_ENTRIES,
   MISS_TTL_MS,
+  READ_DEADLINE_MS,
+  UpstreamBusyError,
   UpstreamReadGuard,
+  UpstreamTimeoutError,
 } from './upstreamReadGuard';
 
 /** A promise to settle by hand, and the task that waits on it. */
@@ -29,6 +33,8 @@ describe('isDefiniteMiss', () => {
     [new GitFetchError(404, 'no ref'), true],
     [new GitFetchError(409, 'moved on'), true],
     [new GitFetchError(502, 'unreachable'), false],
+    [new UpstreamTimeoutError(30_000), false],
+    [new UpstreamBusyError(), false],
     [new Error('reset'), false],
   ])('%p → %p', (error, expected) => {
     expect(isDefiniteMiss(error)).toBe(expected);
@@ -145,6 +151,8 @@ describe('UpstreamReadGuard', () => {
       .read('github', 'repo#c3', task)
       .catch(e => e);
 
+    // Its own class: the discovery cache must not take it for an outage.
+    expect(refused).toBeInstanceOf(UpstreamBusyError);
     expect(refused).toBeInstanceOf(GitFetchError);
     expect(refused).toMatchObject({ status: 503 });
     upstream.resolve('ok');
@@ -168,5 +176,115 @@ describe('UpstreamReadGuard', () => {
     ).rejects.toMatchObject({ status: 503 });
     upstream.resolve('ok');
     await expect(running).resolves.toBe('ok');
+  });
+
+  it('releases the slot of a failed read and hands it to the next waiting read', async () => {
+    guard = new UpstreamReadGuard({ maxConcurrent: { clone: 1 } });
+    const failing = deferred<string>();
+    const next = jest.fn(async () => 'next');
+
+    const first = guard.read('clone', 'repo#c1', () => failing.promise);
+    const second = guard.read('clone', 'repo#c2', next);
+    await flush();
+    expect(next).not.toHaveBeenCalled();
+
+    failing.reject(new GitFetchError(502, 'unreachable'));
+    await expect(first).rejects.toMatchObject({ status: 502 });
+    await expect(second).resolves.toBe('next');
+    // The slot is free again, not leaked by the failure.
+    await expect(guard.read('clone', 'repo#c3', next)).resolves.toBe('next');
+  });
+
+  it(`remembers at most ${MAX_MISS_ENTRIES} misses, dropping the oldest first`, async () => {
+    const missing = jest.fn(async () => {
+      throw new GitHubApiError(404, 'Not Found');
+    });
+    for (let i = 0; i <= MAX_MISS_ENTRIES; i++) {
+      await guard.read('github', `repo#c${i}`, missing).catch(() => undefined);
+    }
+    expect(missing).toHaveBeenCalledTimes(MAX_MISS_ENTRIES + 1);
+
+    // The newest and the second oldest are still answered from memory...
+    await guard
+      .read('github', `repo#c${MAX_MISS_ENTRIES}`, missing)
+      .catch(() => undefined);
+    await guard.read('github', 'repo#c1', missing).catch(() => undefined);
+    expect(missing).toHaveBeenCalledTimes(MAX_MISS_ENTRIES + 1);
+    // ...the oldest was dropped and is asked upstream again.
+    await guard.read('github', 'repo#c0', missing).catch(() => undefined);
+    expect(missing).toHaveBeenCalledTimes(MAX_MISS_ENTRIES + 2);
+  });
+
+  describe('deadline', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('gives up a read that never settles: 504 for every caller, the slot freed, the work aborted', async () => {
+      guard = new UpstreamReadGuard({ maxConcurrent: { clone: 1 } });
+      let signal: AbortSignal | undefined;
+      const hung = jest.fn((s: AbortSignal) => {
+        signal = s;
+        return new Promise<string>(() => undefined);
+      });
+      const waiting = jest.fn(async () => 'next');
+
+      const first = guard.read('clone', 'repo#c1', hung);
+      const shared = guard.read('clone', 'repo#c1', hung);
+      const queued = guard.read('clone', 'repo#c2', waiting);
+      const outcomes = Promise.allSettled([first, shared]);
+
+      await jest.advanceTimersByTimeAsync(READ_DEADLINE_MS.clone - 1);
+      expect(signal?.aborted).toBe(false);
+      expect(waiting).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(1);
+      const [a, b] = await outcomes;
+      for (const outcome of [a, b]) {
+        expect(outcome).toMatchObject({
+          status: 'rejected',
+          reason: expect.any(UpstreamTimeoutError),
+        });
+        expect((outcome as PromiseRejectedResult).reason.status).toBe(504);
+      }
+      expect(signal?.aborted).toBe(true);
+      expect(signal?.reason).toBeInstanceOf(UpstreamTimeoutError);
+      // The slot went to the waiting read.
+      await expect(queued).resolves.toBe('next');
+      expect(hung).toHaveBeenCalledTimes(1);
+
+      // Transient: never remembered, so the next read asks upstream again.
+      const retry = jest.fn(async () => 'ok');
+      await expect(guard.read('clone', 'repo#c1', retry)).resolves.toBe('ok');
+    });
+
+    it('gives a plain limited task the pool’s own deadline too', async () => {
+      const listing = guard.limit(
+        'github',
+        () => new Promise<string>(() => undefined),
+      );
+      const outcome = listing.catch(e => e);
+
+      await jest.advanceTimersByTimeAsync(READ_DEADLINE_MS.github);
+      expect(await outcome).toBeInstanceOf(UpstreamTimeoutError);
+    });
+
+    it('does not cut short a read that finishes in time', async () => {
+      const read = guard.read(
+        'github',
+        'repo#c1',
+        () =>
+          new Promise<string>(resolve => {
+            setTimeout(() => resolve('ok'), READ_DEADLINE_MS.github - 1);
+          }),
+      );
+
+      await jest.advanceTimersByTimeAsync(READ_DEADLINE_MS.github);
+      await expect(read).resolves.toBe('ok');
+    });
   });
 });

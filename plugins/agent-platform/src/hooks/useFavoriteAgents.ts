@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
-import { storageApiRef, useApi } from '@backstage/core-plugin-api';
-import useObservable from 'react-use/esm/useObservable';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+
+import { storedSettingWriteClient, useStoredSetting } from './useStoredSetting';
 
 /**
  * One favorite agent, stored as a reference (not a copy) so it is re-resolved
@@ -15,8 +16,9 @@ export type FavoriteAgent = {
   namespace: string;
 };
 
-const BUCKET = 'agent-platform';
 const KEY = 'favoriteAgents';
+
+type FavoriteChange = 'added' | 'removed';
 
 /**
  * The composite id `AgentRow` already uses:
@@ -63,6 +65,10 @@ function isFavoriteAgent(value: unknown): value is FavoriteAgent {
   );
 }
 
+function readFavorites(value: unknown): FavoriteAgent[] {
+  return Array.isArray(value) ? value.filter(isFavoriteAgent) : [];
+}
+
 /**
  * The agents the user marked as favorites, persisted per user through the
  * StorageApi (bucket `agent-platform`, key `favoriteAgents`). With the app's
@@ -71,28 +77,19 @@ function isFavoriteAgent(value: unknown): value is FavoriteAgent {
  * (tests, signed-out) the same code persists to localStorage.
  *
  * Every mounted instance subscribes to the bucket's `observe$`, so a favorite
- * toggled in one component updates every other one without a reload.
+ * toggled in one component updates every other one without a reload. A toggle
+ * is applied to the latest stored list (`useStoredSetting`), so toggles in
+ * quick succession all land, and reports `AgentPlatform.agentFavoriteChanged`.
  *
  * Returns the same shape as {@link usePinnedSessions} so the two "starred
  * things" surfaces can share rendering code. Ids are the composite
  * `${installation}/${namespace}/${name}` that `AgentRow.id` already is.
  */
 export function useFavoriteAgents() {
-  const storageApi = useApi(storageApiRef);
-  const bucket = useMemo(() => storageApi.forBucket(BUCKET), [storageApi]);
-
-  // `observe$` emits on every change (and, for UserSettingsStorage, once with
-  // the fetched value on subscription); the snapshot seeds the first render.
-  const snapshot = useObservable(
-    useMemo(() => bucket.observe$<FavoriteAgent[]>(KEY), [bucket]),
-    useMemo(() => bucket.snapshot<FavoriteAgent[]>(KEY), [bucket]),
-  );
+  const { snapshot, update } = useStoredSetting(KEY);
 
   const entries = useMemo(
-    () =>
-      snapshot.presence === 'present' && Array.isArray(snapshot.value)
-        ? snapshot.value.filter(isFavoriteAgent)
-        : [],
+    () => readFavorites(snapshot.presence === 'present' ? snapshot.value : []),
     [snapshot],
   );
 
@@ -103,18 +100,40 @@ export function useFavoriteAgents() {
     [pinnedIds],
   );
 
+  const { mutateAsync } = useTrackedMutation(
+    {
+      mutationFn: (id: string) =>
+        update<FavoriteChange>(current => {
+          const entry = fromFavoriteAgentId(id);
+          if (!entry) {
+            return undefined;
+          }
+          const favorites = readFavorites(current);
+          return favorites.some(favorite => toFavoriteAgentId(favorite) === id)
+            ? {
+                value: favorites.filter(
+                  favorite => toFavoriteAgentId(favorite) !== id,
+                ),
+                result: 'removed',
+              }
+            : { value: [...favorites, entry], result: 'added' };
+        }),
+      event: change =>
+        change
+          ? {
+              name: 'AgentPlatform.agentFavoriteChanged',
+              attributes: { change },
+            }
+          : null,
+    },
+    storedSettingWriteClient,
+  );
+
   const togglePin = useCallback(
     async (id: string) => {
-      const entry = fromFavoriteAgentId(id);
-      if (!entry) {
-        return;
-      }
-      const next = pinnedIds.includes(id)
-        ? entries.filter(favorite => toFavoriteAgentId(favorite) !== id)
-        : [...entries, entry];
-      await bucket.set(KEY, next);
+      await mutateAsync(id);
     },
-    [bucket, entries, pinnedIds],
+    [mutateAsync],
   );
 
   return { pinnedIds, isPinned, togglePin };

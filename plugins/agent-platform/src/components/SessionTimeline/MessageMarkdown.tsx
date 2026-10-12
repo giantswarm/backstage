@@ -87,6 +87,9 @@ const useStyles = makeStyles(theme => ({
     borderBottom: `1px solid ${theme.palette.divider}`,
     lineHeight: 1.6,
     wordBreak: 'initial',
+    // The root's `overflow-wrap: anywhere` would shrink a cell's min-content
+    // width and break words mid-word; reset, a wide table scrolls instead.
+    overflowWrap: 'normal',
     padding: theme.spacing(1, 1),
   },
   list: {

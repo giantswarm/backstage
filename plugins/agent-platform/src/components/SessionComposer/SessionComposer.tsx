@@ -21,22 +21,16 @@ import {
   usePhoneLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /**
- * Longest message this composer will submit.
- *
- * Not a kagent limit — nothing upstream validates the text — but ours, generous
- * because pasting logs or a manifest into a prompt is a normal thing to do. The
- * backend enforces the same bound, because a `maxLength` on an input is a
- * courtesy and not a guard.
- *
- * Counts characters rather than bytes, in both places.
- *
- * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform-backend.
+ * Longest message this composer will submit: the backend's bound, shared
+ * through agent-platform-common. A `maxLength` on an input is a courtesy and
+ * not a guard, so the backend enforces it too.
  */
-export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
+export { MESSAGE_TEXT_MAX_LENGTH };
 
 /**
  * What the composer says under the box when nothing more pressing applies —

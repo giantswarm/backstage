@@ -87,6 +87,7 @@ async function renderSidebar({
   flag = FeatureFlagState.None,
   path = '/clusters',
   portals,
+  rootRedirect,
   navItems: items = navItems,
 }: {
   isMobile?: boolean;
@@ -94,6 +95,7 @@ async function renderSidebar({
   path?: string;
   /** The deployment's `app.portals`; unset is the classic-only default. */
   portals?: { platformPortal?: boolean; agentPlatform?: boolean };
+  rootRedirect?: string;
   navItems?: NavContentNavItems;
 } = {}) {
   const Content = createExtensionTester(SidebarContent).get(
@@ -108,7 +110,7 @@ async function renderSidebar({
     {
       initialRouteEntries: [path],
       config: {
-        app: { baseUrl: 'http://localhost:3000', portals },
+        app: { baseUrl: 'http://localhost:3000', portals, rootRedirect },
         backend: { baseUrl: 'http://localhost:7007' },
       },
       apis: [
@@ -311,6 +313,60 @@ describe('SidebarContent', () => {
       const link = screen.getByRole('link', { name: /Agent Platform/ });
       expect(link).toHaveAttribute('href', '/agent-platform');
       expect(link).not.toHaveAttribute('target');
+    });
+
+    it('keeps the classic logo home in the same tab with the classic portal alone', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: false },
+      });
+
+      const logo = screen.getByRole('link', { name: 'Home' });
+      expect(logo).toHaveAttribute('href', '/');
+      expect(logo).not.toHaveAttribute('target');
+    });
+
+    it('opens the shell’s home in a new tab from the classic logo when both portals are on', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: true },
+      });
+
+      const logo = screen.getByRole('link', {
+        name: 'Home (opens in a new tab)',
+      });
+      expect(logo).toHaveAttribute('href', '/');
+      expect(logo).toHaveAttribute('target', '_blank');
+    });
+
+    it('leads the classic logo to a classic app.rootRedirect when both portals are on', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: true },
+        rootRedirect: '/catalog',
+      });
+
+      const logo = screen.getByRole('link', { name: 'Home' });
+      expect(logo).toHaveAttribute('href', '/catalog');
+      expect(logo).not.toHaveAttribute('target');
+    });
+
+    it('ignores an app.rootRedirect into the agent area for the classic logo', async () => {
+      await renderSidebar({
+        portals: { platformPortal: true, agentPlatform: true },
+        rootRedirect: '/agent-platform',
+      });
+
+      expect(
+        screen.getByRole('link', { name: 'Home (opens in a new tab)' }),
+      ).toHaveAttribute('href', '/');
+    });
+
+    it('keeps the classic logo in the same tab on an agent-only deployment', async () => {
+      await renderSidebar({
+        portals: { platformPortal: false, agentPlatform: true },
+      });
+
+      expect(screen.getByRole('link', { name: 'Home' })).not.toHaveAttribute(
+        'target',
+      );
     });
 
     it('is the classic portal with no cross-link on a platform-only deployment', async () => {

@@ -34,8 +34,38 @@ export type SkillCreationTarget =
       instructions?: string;
     };
 
-/** Instructions as a fenced Markdown block their own content cannot close. */
-const fenced = (text: string) => fencedData(text, 'markdown');
+/**
+ * The most of one draft (a description, or instructions) a hand-off carries.
+ * Two of them and the prompt's own sentences stay well under the message cap
+ * (`MESSAGE_TEXT_MAX_LENGTH`, 32,000), which a hand-off cannot exceed: its
+ * session would be created, then its first message refused (R2-7).
+ */
+export const HANDOFF_DRAFT_MAX_CHARS = 12_000;
+
+/**
+ * A draft cut to {@link HANDOFF_DRAFT_MAX_CHARS}, saying inside it where it
+ * was cut and how much is left out. Never splits a surrogate pair.
+ */
+export function boundedDraft(text: string): string {
+  if (text.length <= HANDOFF_DRAFT_MAX_CHARS) {
+    return text;
+  }
+  let end = HANDOFF_DRAFT_MAX_CHARS;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) {
+    end -= 1;
+  }
+  const omitted = text.length - end;
+  return `${text.slice(0, end)}\n\n[The draft is cut here: its last ${omitted.toLocaleString(
+    'en-US',
+  )} characters did not fit into this message.]`;
+}
+
+/**
+ * A draft as a fenced Markdown block its own content cannot close, cut to
+ * {@link HANDOFF_DRAFT_MAX_CHARS}.
+ */
+const fenced = (text: string) => fencedData(boundedDraft(text), 'markdown');
 
 /**
  * The first message of a skill-creator session: which repository (and, for a
@@ -73,7 +103,7 @@ export function skillCreationPrompt(target: SkillCreationTarget): string {
   const known = [
     target.name?.trim() ? `Its name: ${inlineData(target.name)}.` : undefined,
     target.description?.trim()
-      ? `What it is for, so far: ${target.description.trim()}`
+      ? `What it is for, so far: ${boundedDraft(target.description.trim())}`
       : undefined,
   ].filter(Boolean);
   const draft = target.instructions?.trim();

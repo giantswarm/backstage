@@ -27,7 +27,49 @@ export const MAX_CONCURRENT_READS = { clone: 2, github: 4 } as const;
  */
 export const MAX_QUEUED_READS = 32;
 
+/**
+ * How long one upstream read may hold its slot, per pool, counted from when
+ * it gets the slot. A clone moves a whole (small) repository and scans it; a
+ * GitHub read is one request, or a listing's few dozen. Past it the read is
+ * aborted (see {@link UpstreamReadGuard}).
+ */
+export const READ_DEADLINE_MS = {
+  clone: 60 * 1000,
+  github: 30 * 1000,
+} as const;
+
 export type UpstreamPool = keyof typeof MAX_CONCURRENT_READS;
+
+/**
+ * An upstream read that missed its deadline ({@link READ_DEADLINE_MS}): a
+ * 504, transient, so it is never remembered as a miss and a listing falls
+ * back to its stale copy.
+ */
+export class UpstreamTimeoutError extends GitFetchError {
+  constructor(deadlineMs: number) {
+    super(
+      504,
+      `The skill repository did not answer within ${Math.round(
+        deadlineMs / 1000,
+      )} seconds. Try again in a moment.`,
+    );
+    this.name = 'UpstreamTimeoutError';
+  }
+}
+
+/**
+ * The guard's own refusal when a pool's wait queue is full: a 503 that says
+ * nothing about upstream, so no cache may remember it as an outage.
+ */
+export class UpstreamBusyError extends GitFetchError {
+  constructor() {
+    super(503, 'Too many skill reads are in progress. Try again in a moment.');
+    this.name = 'UpstreamBusyError';
+  }
+}
+
+/** An upstream read; `signal` aborts when the read misses its deadline. */
+export type UpstreamTask<T> = (signal: AbortSignal) => Promise<T>;
 
 /**
  * Whether a failed read is a definite answer that will not change for the
@@ -45,7 +87,7 @@ export function isDefiniteMiss(error: unknown): boolean {
   return false;
 }
 
-/** A counting semaphore with a bounded wait queue. */
+/** A counting semaphore with a bounded wait queue and a deadline per task. */
 class ConcurrencyLimit {
   private active = 0;
   private readonly waiting: Array<() => void> = [];
@@ -53,23 +95,34 @@ class ConcurrencyLimit {
   constructor(
     private readonly max: number,
     private readonly maxQueued: number,
+    private readonly deadlineMs: number,
   ) {}
 
-  async run<T>(task: () => Promise<T>): Promise<T> {
+  async run<T>(task: UpstreamTask<T>): Promise<T> {
     if (this.active >= this.max) {
       if (this.waiting.length >= this.maxQueued) {
-        throw new GitFetchError(
-          503,
-          'Too many skill reads are in progress. Try again in a moment.',
-        );
+        throw new UpstreamBusyError();
       }
       await new Promise<void>(resolve => this.waiting.push(resolve));
     } else {
       this.active += 1;
     }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await task();
+      const work = (async () => task(controller.signal))();
+      // A task the deadline gave up on may still fail later; nobody waits.
+      work.catch(() => undefined);
+      const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new UpstreamTimeoutError(this.deadlineMs);
+          controller.abort(error);
+          reject(error);
+        }, this.deadlineMs);
+      });
+      return await Promise.race([work, expired]);
     } finally {
+      clearTimeout(timer);
       const next = this.waiting.shift();
       if (next) {
         // The slot passes straight to the next read; `active` stays.
@@ -92,7 +145,12 @@ class ConcurrencyLimit {
  *   read.
  * - **Concurrency cap:** at most {@link MAX_CONCURRENT_READS} reads per pool
  *   run at once, at most {@link MAX_QUEUED_READS} wait; past that a read is
- *   refused with a 503.
+ *   refused with a 503 ({@link UpstreamBusyError}).
+ * - **Deadline:** a read that holds its slot past {@link READ_DEADLINE_MS}
+ *   is given up: its slot goes to the next read, every caller sharing it
+ *   gets a 504 ({@link UpstreamTimeoutError}, never remembered as a miss),
+ *   and the task's `signal` aborts, which cancels its requests (GitHub's
+ *   `fetch`, the clone's HTTP requests).
  *
  * A key names everything the outcome depends on (repository, commit and, as
  * the read needs, ref, path or file), so a miss is only replayed for the
@@ -112,6 +170,7 @@ export class UpstreamReadGuard {
       now?: () => number;
       maxConcurrent?: Partial<Record<UpstreamPool, number>>;
       maxQueued?: number;
+      deadlineMs?: Partial<Record<UpstreamPool, number>>;
     } = {},
   ) {
     this.now = options.now ?? (() => Date.now());
@@ -120,25 +179,27 @@ export class UpstreamReadGuard {
       clone: new ConcurrencyLimit(
         options.maxConcurrent?.clone ?? MAX_CONCURRENT_READS.clone,
         maxQueued,
+        options.deadlineMs?.clone ?? READ_DEADLINE_MS.clone,
       ),
       github: new ConcurrencyLimit(
         options.maxConcurrent?.github ?? MAX_CONCURRENT_READS.github,
         maxQueued,
+        options.deadlineMs?.github ?? READ_DEADLINE_MS.github,
       ),
     };
   }
 
   /**
-   * Runs `task` under the pool's concurrency cap only: for reads whose
-   * outcome changes over time (a listing at a ref), which keep their own
-   * de-dupe and failure backoff (`SkillDiscoveryCache`).
+   * Runs `task` under the pool's concurrency cap and deadline only: for
+   * reads whose outcome changes over time (a listing at a ref), which keep
+   * their own de-dupe and failure backoff (`SkillDiscoveryCache`).
    */
-  limit<T>(pool: UpstreamPool, task: () => Promise<T>): Promise<T> {
+  limit<T>(pool: UpstreamPool, task: UpstreamTask<T>): Promise<T> {
     return this.limits[pool].run(task);
   }
 
-  /** Runs the read of `key` through all three gates (see the class). */
-  read<T>(pool: UpstreamPool, key: string, task: () => Promise<T>): Promise<T> {
+  /** Runs the read of `key` through every gate (see the class). */
+  read<T>(pool: UpstreamPool, key: string, task: UpstreamTask<T>): Promise<T> {
     const fullKey = `${pool}#${key}`;
     const miss = this.misses.get(fullKey);
     if (miss) {

@@ -2,6 +2,7 @@ import { LoggerService } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
 import { ConflictError, InputError } from '@backstage/errors';
 import { create, toJson, type JsonObject } from '@bufbuild/protobuf';
+import { MESSAGE_TEXT_MAX_LENGTH } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   Code,
   ConnectError,
@@ -115,19 +116,12 @@ export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 export const SESSION_NAME_MAX_LENGTH = 200;
 
 /**
- * Longest message this proxy will forward to an agent.
- *
- * Ours, not kagent's — nothing upstream validates the text. Generous on purpose,
- * because pasting logs or a manifest into a prompt is a normal thing to do; it
- * exists to keep an absurd payload from becoming an agent's whole context window.
- *
- * Counts UTF-16 code units (JavaScript's `String.length`), so a character
- * outside the BMP costs two. The router raises its JSON body limit to keep this
+ * Longest message this proxy will forward to an agent: the one bound the
+ * frontend's composers and hand-offs stop before too, shared through
+ * agent-platform-common. The router raises its JSON body limit to keep this
  * the bound a caller actually meets, rather than the body parser's.
- *
- * Must match MESSAGE_TEXT_MAX_LENGTH in plugins/agent-platform.
  */
-export const MESSAGE_TEXT_MAX_LENGTH = 32_000;
+export { MESSAGE_TEXT_MAX_LENGTH };
 
 /**
  * Bounds of the controller's `request_id` (`CreateSessionRequest`,

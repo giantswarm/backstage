@@ -1,7 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import type { MetaAgentRole } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  MESSAGE_TEXT_MAX_LENGTH,
+  type MetaAgentRole,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { isStartableAgent } from '../components/NewSessionComposer';
@@ -34,6 +37,11 @@ export type MetaAgentHandoff = {
  * of every "<verb> with X" hand-off (`MetaAgentBanner`'s naming contract). The start reports
  * `AgentPlatform.sessionStarted` with `entryPoint`.
  *
+ * A prompt longer than a message may be (`MESSAGE_TEXT_MAX_LENGTH`) is refused
+ * before anything is created, through `error`, so the person stays on the form
+ * with what they typed (R2-7): created first, the session would open with its
+ * first message refused.
+ *
  * Reads `useAgents`, so it must be called under an `AgentsDataProvider`.
  */
 export function useMetaAgentHandoff(
@@ -45,12 +53,26 @@ export function useMetaAgentHandoff(
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const { createSession, isCreating, error } = useCreateSession(entryPoint);
+  const [refusal, setRefusal] = useState<Error | null>(null);
 
   const start = useCallback(
     async (prompt: string) => {
       if (!agent) {
         return;
       }
+      if (prompt.length > MESSAGE_TEXT_MAX_LENGTH) {
+        setRefusal(
+          new Error(
+            `What you typed is too large to carry into a session: it needs ${prompt.length.toLocaleString(
+              'en-US',
+            )} characters, and a message may hold ${MESSAGE_TEXT_MAX_LENGTH.toLocaleString(
+              'en-US',
+            )}.`,
+          ),
+        );
+        return;
+      }
+      setRefusal(null);
       let sessionId: string;
       try {
         sessionId = await createSession({ agent, prompt });
@@ -79,5 +101,5 @@ export function useMetaAgentHandoff(
     [agent, createSession, navigate, sessionDetailRoute],
   );
 
-  return { agent, start, isCreating, error };
+  return { agent, start, isCreating, error: refusal ?? error };
 }

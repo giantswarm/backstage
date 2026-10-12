@@ -88,8 +88,10 @@ export async function readSkillContentFromGitHub(options: {
   path: string;
   commit: string;
   githubCredentialsProvider: GithubCredentialsProvider;
+  /** Cancels the request (the read guard's deadline). */
+  signal?: AbortSignal;
 }): Promise<SkillContent> {
-  const { path, commit, githubCredentialsProvider } = options;
+  const { path, commit, githubCredentialsProvider, signal } = options;
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const repoUrl = `https://github.com/${owner}/${repo}`;
   const token = await integrationToken(githubCredentialsProvider, repoUrl);
@@ -99,6 +101,7 @@ export async function readSkillContentFromGitHub(options: {
     skillFilePath(path),
     commit,
     token,
+    signal,
   );
   return toSkillContent(raw, { repoUrl, path, commit }, repo);
 }
@@ -136,14 +139,16 @@ export async function listSkillFilesFromGitHub(options: {
   repoUrl: string;
   commit: string;
   githubCredentialsProvider: GithubCredentialsProvider;
+  /** Cancels the request (the read guard's deadline). */
+  signal?: AbortSignal;
 }): Promise<Map<string, SkillFileList>> {
-  const { commit, githubCredentialsProvider } = options;
+  const { commit, githubCredentialsProvider, signal } = options;
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const token = await integrationToken(
     githubCredentialsProvider,
     `https://github.com/${owner}/${repo}`,
   );
-  const tree = await readGitHubTree(owner, repo, commit, token);
+  const tree = await readGitHubTree(owner, repo, commit, token, signal);
   return skillFilesFromTree(tree.entries, tree.truncated).files;
 }
 
@@ -157,12 +162,14 @@ export async function readSkillFileFromGitHub(options: {
   filePath: string;
   commit: string;
   githubCredentialsProvider: GithubCredentialsProvider;
+  /** Cancels the request (the read guard's deadline). */
+  signal?: AbortSignal;
 }): Promise<Uint8Array> {
-  const { filePath, commit, githubCredentialsProvider } = options;
+  const { filePath, commit, githubCredentialsProvider, signal } = options;
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const token = await integrationToken(
     githubCredentialsProvider,
     `https://github.com/${owner}/${repo}`,
   );
-  return fetchRawBytes(owner, repo, filePath, commit, token);
+  return fetchRawBytes(owner, repo, filePath, commit, token, signal);
 }

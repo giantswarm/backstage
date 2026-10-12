@@ -38,6 +38,11 @@ const useStyles = makeStyles(theme => ({
       maxWidth: '100%',
       overflowX: 'auto',
     },
+    // `overflow-wrap: anywhere` inherits and shrinks a cell's min-content
+    // width, so a wide table would break words mid-word instead of scrolling.
+    '& th, & td': {
+      overflowWrap: 'normal',
+    },
     '& img': {
       maxWidth: '100%',
     },

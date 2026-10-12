@@ -4,11 +4,11 @@ import {
   useApiHolder,
 } from '@backstage/core-plugin-api';
 import {
+  isAgentShellOn,
   readPortals,
   type Portals,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { useLocation } from 'react-router-dom';
-import { AGENT_SHELL_FLAG } from './predicates';
 
 /**
  * The routes the agent shell owns while the Agent Platform is available.
@@ -33,13 +33,15 @@ export function isAgentArea(pathname: string): boolean {
  * `readPortals`): the Agent Platform shell, the classic Platform Portal, or
  * both — and so whether each shell cross-links to the other. The person's
  * `agent-platform-shell` flag counts as the opt-in while the deployment has
- * the Agent Platform off. Read at render time; the shell's extensions make the
- * same choice once, at app start (see `predicates.ts`).
+ * the Agent Platform off. The flag is latched at its first read
+ * (`isAgentShellOn`), so the chrome keeps agreeing with the extensions, which
+ * made the same choice once, at app start (see `predicates.ts`).
  */
 export function usePortals(): Portals {
   const apis = useApiHolder();
+  const featureFlags = apis.get(featureFlagsApiRef);
   return readPortals(apis.get(configApiRef), {
-    agentShellOptIn: apis.get(featureFlagsApiRef)?.isActive(AGENT_SHELL_FLAG),
+    agentShellOptIn: featureFlags ? isAgentShellOn(featureFlags) : undefined,
   });
 }
 

@@ -1,5 +1,6 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis } from '@backstage/frontend-test-utils';
+import { isAgentShellOn } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from './predicates';
 import { PortalFeatureFlags } from './PortalFeatureFlags';
 
@@ -55,6 +56,21 @@ describe('PortalFeatureFlags', () => {
       'other-flag',
     ]);
     expect(names(flagsFor({ agentPlatform: true }))).toEqual(['other-flag']);
+  });
+
+  it('latches the opt-in for render-time readers while the toggle keeps working', () => {
+    const flags = flagsFor({ agentPlatform: false });
+    expect(isAgentShellOn(flags)).toBe(false);
+
+    // The settings page flips the flag through the live `isActive`.
+    flags.save({ states: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active } });
+    expect(flags.isActive(AGENT_SHELL_FLAG)).toBe(true);
+    flags.save({ states: { [AGENT_SHELL_FLAG]: FeatureFlagState.None } });
+    expect(flags.isActive(AGENT_SHELL_FLAG)).toBe(false);
+    flags.save({ states: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active } });
+
+    // The chrome and the pages keep this load's choice until a reload.
+    expect(isAgentShellOn(flags)).toBe(false);
   });
 
   it('passes every other flag through', () => {

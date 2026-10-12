@@ -5,7 +5,14 @@ import {
   MockedLayout,
   mockPhoneLayout,
 } from '../../utils/mockPhoneLayout';
+import type { ReactElement } from 'react';
+import { ShellScopeProvider } from '../ShellScope';
 import { InfoHint } from './InfoHint';
+
+/** Renders as the agent-platform shell does: inside its scope. */
+function renderInShell(ui: ReactElement) {
+  return render(ui, { wrapper: ShellScopeProvider });
+}
 
 describe('InfoHint', () => {
   let layout: MockedLayout | undefined;
@@ -28,10 +35,23 @@ describe('InfoHint', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('It broke.');
   });
 
+  it('keeps the tooltip alone on classic pages: a press opens nothing', async () => {
+    layout = mockPhoneLayout();
+    const user = userEvent.setup();
+    render(<InfoHint label="How capacity is counted">Ready nodes.</InfoHint>);
+
+    const button = screen.getByRole('button', {
+      name: 'How capacity is counted',
+    });
+    expect(button).not.toHaveAttribute('aria-expanded');
+    await user.click(button);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('opens a popover named by its label on a press, and Escape gives focus back', async () => {
     layout = mockDesktopLayout();
     const user = userEvent.setup();
-    render(
+    renderInShell(
       <InfoHint label="How Tokens per second is calculated">
         Completion tokens over generation time.
       </InfoHint>,
@@ -62,7 +82,7 @@ describe('InfoHint', () => {
   it('closes on a press outside it', async () => {
     layout = mockDesktopLayout();
     const user = userEvent.setup();
-    render(
+    renderInShell(
       <>
         <InfoHint label="Why not ready">Compiling revision rev-2.</InfoHint>
         <p>Elsewhere</p>
@@ -81,7 +101,9 @@ describe('InfoHint', () => {
   it('opens on a tap on a phone, where there is no tooltip to hover', async () => {
     layout = mockPhoneLayout();
     const user = userEvent.setup();
-    render(<InfoHint label="How healthy is counted">Two are off.</InfoHint>);
+    renderInShell(
+      <InfoHint label="How healthy is counted">Two are off.</InfoHint>,
+    );
 
     const button = screen.getByRole('button', {
       name: 'How healthy is counted',
@@ -101,7 +123,7 @@ describe('InfoHint', () => {
     layout = mockPhoneLayout();
     const user = userEvent.setup();
     const onRowClick = jest.fn();
-    render(
+    renderInShell(
       // A hand-rolled clickable row, as some lists still have.
       // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div onClick={onRowClick}>

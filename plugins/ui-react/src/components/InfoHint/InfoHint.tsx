@@ -15,6 +15,7 @@ import {
   useTouchInput,
 } from '../../utils/breakpoints';
 import { stopRowPress } from '../../utils/rowPress';
+import { useShellScope } from '../ShellScope';
 
 const SIZES = {
   // Shrunk to a 0.7rem label's own height, so a hinted label lines up with an
@@ -44,6 +45,8 @@ const useStyles = makeStyles({
     minWidth: SIZES[size].button,
     padding: 0,
     color: 'inherit',
+  }),
+  shellHitArea: {
     '&::before': {
       content: '""',
       position: 'absolute',
@@ -52,7 +55,7 @@ const useStyles = makeStyles({
     [`@media ${PHONE_QUERY}, ${TOUCH_QUERY}`]: {
       '&::before': hitArea(HIT_AREA.touch),
     },
-  }),
+  },
   icon: ({ size }: { size: keyof typeof SIZES }) => ({
     fontSize: SIZES[size].icon,
   }),
@@ -75,10 +78,10 @@ export interface InfoHintProps {
   /**
    * The button's accessible name: what pressing it reveals, e.g. "How Tokens
    * per second is calculated". Beside text already on screen, "Info" says
-   * nothing. Also names the popover the press opens.
+   * nothing. In the shell, also names the popover the press opens.
    */
   label: string;
-  /** The explanation, shown in the tooltip and in the popover. */
+  /** The explanation, shown in the tooltip (and, in the shell, the popover). */
   children: ReactNode;
   /** `small` beside a small uppercase label, `medium` beside body text. */
   size?: keyof typeof SIZES;
@@ -88,24 +91,58 @@ export interface InfoHintProps {
 /**
  * An info icon that explains the thing next to it.
  *
+ * On classic pages, hover with a mouse or keyboard focus shows the explanation
+ * as a tooltip.
+ *
+ * Inside the agent-platform shell (`ShellScopeProvider`), a press adds the
+ * same text as a popover:
+ *
  * - **Press** (tap, click, Enter or Space) opens the explanation in a popover
  *   — a dialog named by `label`, closed by Escape, a press outside it or
  *   pressing the icon again — and focus returns to the icon. This is the only
  *   way in on a touch screen, where nothing is ever hovered.
- * - **Hover** with a mouse, or **keyboard focus**, shows the same text as a
- *   tooltip, as before. Not on touch input, where a tooltip cannot be reached
- *   and a press already opens the popover.
+ * - **Hover** with a mouse, or **keyboard focus**, shows the tooltip. Not on
+ *   touch input, where a tooltip cannot be reached and a press already opens
+ *   the popover.
+ * - The icon stays small to line up with the label beside it; its hit area is
+ *   24px, 44px at phone width or on touch input.
  *
  * A focusable button rather than a `title` on the text, for two reasons: bui's
  * `TooltipTrigger` wraps react-aria's, which only wires up its own focusable
  * components — a bare `<span>` gets nothing — and a hint reachable only by
  * hovering inert text is invisible to the keyboard, to touch, and to anyone
  * who does not think to hover it.
- *
- * The icon stays small to line up with the label beside it; its hit area is
- * 24px, 44px at phone width or on touch input.
  */
-export function InfoHint({
+export function InfoHint(props: InfoHintProps) {
+  return useShellScope() ? (
+    <ShellInfoHint {...props} />
+  ) : (
+    <ClassicInfoHint {...props} />
+  );
+}
+
+function ClassicInfoHint({
+  label,
+  children,
+  size = 'small',
+  className,
+}: InfoHintProps) {
+  const classes = useStyles({ size });
+  return (
+    <TooltipTrigger delay={200}>
+      <ButtonIcon
+        className={classNames(classes.button, className)}
+        variant="tertiary"
+        size="small"
+        aria-label={label}
+        icon={<InfoOutlinedIcon className={classes.icon} />}
+      />
+      <Tooltip className={classes.tooltip}>{children}</Tooltip>
+    </TooltipTrigger>
+  );
+}
+
+function ShellInfoHint({
   label,
   children,
   size = 'small',
@@ -121,7 +158,11 @@ export function InfoHint({
       <TooltipTrigger delay={200} isDisabled={isTouch || isOpen}>
         <ButtonIcon
           ref={triggerRef}
-          className={classNames(classes.button, className)}
+          className={classNames(
+            classes.button,
+            classes.shellHitArea,
+            className,
+          )}
           variant="tertiary"
           size="small"
           aria-label={label}

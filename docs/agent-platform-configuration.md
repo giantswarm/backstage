@@ -98,7 +98,10 @@ app:
 ```
 
 `app.rootRedirect` applies only to the classic home page; where the shell is
-on, `/` is the shell's new-session screen (`AgentShellHomePage`).
+on, `/` is the shell's new-session screen (`AgentShellHomePage`). With both
+portals on, the classic sidebar's logo leads to `app.rootRedirect` when it
+names a classic page, and otherwise opens `/` in a new tab
+(`packages/app/src/modules/nav/SidebarLogo.tsx`).
 
 ### The `agent-platform-shell` feature flag
 
@@ -108,7 +111,8 @@ reports it as on whenever `app.portals.agentPlatform` is on, and as the
 person's own setting otherwise. It is therefore only a per-browser opt-in where
 the shell is off, and it is not listed in the settings while
 `app.portals.agentPlatform` is on. Every shell extension keys on the flag
-internally.
+internally. The app reads it once per load (`isAgentShellOn`), so toggling it
+in the settings takes effect after a reload.
 
 ## Installations: `gs.installations.<name>`
 

@@ -1,4 +1,6 @@
+import { mockServices } from '@backstage/backend-test-utils';
 import {
+  branchCandidates,
   createSkillPullRequest,
   existingSkillName,
   isSkillDirectory,
@@ -157,17 +159,31 @@ describe('createSkillPullRequest', () => {
     );
   });
 
-  it('refuses with 409 when the branch already exists (an open PR)', async () => {
-    mockGithub({
+  it('refuses with 409, naming it, when the branch has an open pull request', async () => {
+    const calls = mockGithub({
       ...happyHandlers,
       [`POST ${API}/git/refs`]: () => ({
         status: 422,
         body: { message: 'Reference already exists' },
       }),
+      [`GET ${API}/pulls?head=giantswarm%3Aadd-skill%2Fticket-triage&state=open&per_page=1`]:
+        () => ({
+          status: 200,
+          body: [{ html_url: 'https://github.com/giantswarm/skills/pull/7' }],
+        }),
     });
 
     await expect(createSkillPullRequest(input)).rejects.toThrow(
-      'The branch add-skill/ticket-triage already exists in giantswarm/skills — a pull request for this skill may already be open.',
+      new GitHubApiError(
+        409,
+        'A pull request for this skill is already open from add-skill/ticket-triage: https://github.com/giantswarm/skills/pull/7.',
+      ),
+    );
+    expect(
+      calls.filter(call => call.key === `POST ${API}/git/refs`),
+    ).toHaveLength(1);
+    expect(calls.map(call => call.key)).not.toContain(
+      `PUT ${API}/contents/ticket-triage/SKILL.md`,
     );
   });
 
@@ -407,21 +423,175 @@ describe('createSkillPullRequest — update', () => {
     );
   });
 
-  it('refuses with 409 only when the branch already exists', async () => {
+  const refExists = () => ({
+    status: 422,
+    body: { message: 'Reference already exists' },
+  });
+  const pullsOf = (branch: string) =>
+    `GET ${API}/pulls?head=${encodeURIComponent(
+      `giantswarm:${branch}`,
+    )}&state=open&per_page=1`;
+  const SUFFIXED = `${BRANCH}-bbbbbbb`;
+
+  it('refuses with 409, naming it, when the branch has an open pull request', async () => {
     mockGithub({
       ...updateHandlers,
-      [`POST ${API}/git/refs`]: () => ({
-        status: 422,
-        body: { message: 'Reference already exists' },
+      [`POST ${API}/git/refs`]: refExists,
+      [pullsOf(BRANCH)]: () => ({
+        status: 200,
+        body: [{ html_url: 'https://github.com/giantswarm/skills/pull/40' }],
       }),
     });
 
     await expect(createSkillPullRequest(update)).rejects.toThrow(
       new GitHubApiError(
         409,
-        `The branch ${BRANCH} already exists in giantswarm/skills — a pull request for this skill may already be open.`,
+        `A pull request for this skill is already open from ${BRANCH}: https://github.com/giantswarm/skills/pull/40.`,
       ),
     );
+  });
+
+  it('leaves a branch without an open pull request alone and pushes to one suffixed with the head', async () => {
+    // update-skill/<dir> outlived its merged pull request.
+    const calls = mockGithub({
+      ...updateHandlers,
+      [`POST ${API}/git/refs`]: init =>
+        JSON.parse(String(init?.body)).ref === `refs/heads/${BRANCH}`
+          ? refExists()
+          : { status: 201, body: {} },
+      [pullsOf(BRANCH)]: () => ({ status: 200, body: [] }),
+    });
+
+    const result = await createSkillPullRequest(update);
+
+    expect(result.branch).toBe(SUFFIXED);
+    expect(
+      calls
+        .filter(call => call.key === `POST ${API}/git/refs`)
+        .map(call => call.body),
+    ).toEqual([
+      { ref: `refs/heads/${BRANCH}`, sha: HEAD },
+      { ref: `refs/heads/${SUFFIXED}`, sha: HEAD },
+    ]);
+    expect(
+      (
+        calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
+          ?.body as { branch: string }
+      ).branch,
+    ).toBe(SUFFIXED);
+    expect(
+      calls.find(call => call.key === `POST ${API}/pulls`)?.body,
+    ).toMatchObject({ head: SUFFIXED });
+    // Never force-updated, never deleted: it may hold someone's work.
+    expect(calls.map(call => call.key)).not.toContain(
+      `PATCH ${API}/git/refs/heads/${BRANCH}`,
+    );
+    expect(calls.map(call => call.key)).not.toContain(
+      `DELETE ${API}/git/refs/heads/${BRANCH}`,
+    );
+  });
+
+  it('refuses with 409 once every candidate branch is left over', async () => {
+    const pulls: Record<string, Handler> = {};
+    for (const branch of branchCandidates(BRANCH, HEAD)) {
+      pulls[pullsOf(branch)] = () => ({ status: 200, body: [] });
+    }
+    mockGithub({
+      ...updateHandlers,
+      ...pulls,
+      [`POST ${API}/git/refs`]: refExists,
+    });
+
+    await expect(createSkillPullRequest(update)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringContaining('Delete the stale branches'),
+    });
+  });
+
+  it('says a pull request may be open when GitHub cannot list them', async () => {
+    mockGithub({
+      ...updateHandlers,
+      [`POST ${API}/git/refs`]: refExists,
+      [pullsOf(BRANCH)]: () => ({ status: 403 }),
+    });
+
+    await expect(createSkillPullRequest(update)).rejects.toThrow(
+      new GitHubApiError(
+        409,
+        `The branch ${BRANCH} already exists in giantswarm/skills, and a pull request for this skill may already be open.`,
+      ),
+    );
+  });
+
+  describe('when a step after the branch fails', () => {
+    const DELETE_REF = `DELETE ${API}/git/refs/heads/${BRANCH}`;
+
+    it.each([
+      [
+        'the write',
+        {
+          [`PUT ${API}/contents/${FILE}`]: () => ({
+            status: 409,
+            body: { message: 'sha does not match' },
+          }),
+        },
+        409,
+      ],
+      [
+        'the pull request',
+        {
+          [`POST ${API}/pulls`]: () => ({
+            status: 502,
+            body: { message: 'Server Error' },
+          }),
+        },
+        502,
+      ],
+    ])(
+      'deletes the branch it created when %s fails, and forwards the failure',
+      async (_, failing, status) => {
+        const calls = mockGithub({
+          ...updateHandlers,
+          ...failing,
+          [DELETE_REF]: () => ({ status: 204 }),
+        });
+
+        await expect(createSkillPullRequest(update)).rejects.toMatchObject({
+          status,
+        });
+        expect(calls.map(call => call.key)).toContain(DELETE_REF);
+      },
+    );
+
+    it('still forwards the failure when the cleanup fails, logging it at debug', async () => {
+      const logger = mockServices.logger.mock();
+      mockGithub({
+        ...updateHandlers,
+        [`POST ${API}/pulls`]: () => ({ status: 403 }),
+        [DELETE_REF]: () => ({ status: 403 }),
+      });
+
+      await expect(
+        createSkillPullRequest({ ...update, logger }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Could not delete the branch of a failed skill edit',
+        expect.objectContaining({ branch: BRANCH, status: 403 }),
+      );
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('does not delete a branch it did not create', async () => {
+      const calls = mockGithub({
+        ...updateHandlers,
+        [`POST ${API}/git/refs`]: () => ({ status: 403 }),
+      });
+
+      await expect(createSkillPullRequest(update)).rejects.toMatchObject({
+        status: 403,
+      });
+      expect(calls.map(call => call.key)).not.toContain(DELETE_REF);
+    });
   });
 });
 
@@ -451,14 +621,39 @@ describe('updateBranchName', () => {
 });
 
 describe('isSkillDirectory', () => {
-  it.each(['', 'ticket-triage', 'plugins/gs-base/skills/registries', 'a.b_c'])(
-    'accepts %p',
-    path => expect(isSkillDirectory(path)).toBe(true),
-  );
-  it.each(['/abs', 'trail/', 'a//b', '..', 'a/../b', './a', 'a b', 'a\\b'])(
-    'refuses %p',
-    path => expect(isSkillDirectory(path)).toBe(false),
-  );
+  // Discovery's syntax rule: whatever directory a listed skill has opens.
+  it.each([
+    '',
+    'ticket-triage',
+    'plugins/gs-base/skills/registries',
+    'a.b_c',
+    'ops/Incident Review',
+    'skills/über',
+  ])('accepts %p', path => expect(isSkillDirectory(path)).toBe(true));
+  it.each([
+    '/abs',
+    'trail/',
+    'a//b',
+    '..',
+    'a/../b',
+    './a',
+    'a\\b',
+    'a\nb',
+    'a\u0000b',
+  ])('refuses %p', path => expect(isSkillDirectory(path)).toBe(false));
+});
+
+describe('branchCandidates', () => {
+  it('tries the skill’s branch, then suffixes with the short head, then numbers', () => {
+    expect(
+      branchCandidates('update-skill/notes', 'abcdef0'.padEnd(40, '1')),
+    ).toEqual([
+      'update-skill/notes',
+      'update-skill/notes-abcdef0',
+      'update-skill/notes-abcdef0-2',
+      'update-skill/notes-abcdef0-3',
+    ]);
+  });
 });
 
 describe('renderSkillMarkdown', () => {

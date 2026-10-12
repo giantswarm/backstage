@@ -417,7 +417,7 @@ export async function createAgentInWizard(
   await open(page, '/agent-platform/agents/new');
   await expectWizardStep(page, 'Details');
   await expect(
-    page.getByText('No installations with models'),
+    page.getByText('No environments with models'),
     `the wizard sees no reachable installation with a ModelConfig — the lab's kagent route may be unreachable from Backstage, or the backend cached an unreachable probe after a pod roll (5 min TTL)`,
   ).toBeHidden();
   await page

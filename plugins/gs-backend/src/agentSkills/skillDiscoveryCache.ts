@@ -7,6 +7,7 @@ import {
 import { GitFetchError } from './discoverAgentSkillsFromGit';
 import { CachedSkillFile, SkillFileCache } from './skillFileCache';
 import { SkillFileList } from './skillFiles';
+import { UpstreamBusyError } from './upstreamReadGuard';
 
 /**
  * How long a discovered listing is served without asking upstream again.
@@ -135,7 +136,9 @@ export interface CachedDiscovery {
  *   failure answers the previous listing (up to {@link MAX_STALE_MS} old),
  *   and upstream is not asked again before GitHub's retry time (or
  *   {@link FAILURE_BACKOFF_MS}). A definite answer (404, access refused)
- *   drops the listing and is forwarded.
+ *   drops the listing and is forwarded. The read guard's own "too busy"
+ *   refusal (`UpstreamBusyError`) is never remembered: it answers the
+ *   stale listing when there is one, and the next request asks again.
  * - Keeps every `SKILL.md` discovery read, so `GET /agent-skills/content`
  *   answers a skill at the commit listed without another request.
  * - Keeps every skill's file list, and — in a size-capped LRU of small files
@@ -176,9 +179,11 @@ export class SkillDiscoveryCache {
   }
 
   /**
-   * The listing of `repoUrl` at `ref` (the default branch when absent),
-   * from memory when fresh, else through `load` — which receives the previous
-   * snapshot to reuse what it can.
+   * The listing of `repoUrl` at `ref` (the default branch when absent or
+   * empty — one entry for both, so the route must hand `load` the same
+   * meaning: it normalizes `''` to absent), from memory when fresh, else
+   * through `load` — which receives the previous snapshot to reuse what it
+   * can.
    */
   async discover(
     repoUrl: string,
@@ -188,7 +193,7 @@ export class SkillDiscoveryCache {
     ) => Promise<SkillDiscoverySnapshot>,
   ): Promise<CachedDiscovery> {
     const repoKey = repositoryKey(repoUrl);
-    const key = `${repoKey}#${ref ?? ''}`;
+    const key = `${repoKey}#${ref || ''}`;
     const entry = this.entries.get(key);
     if (entry && this.now() < entry.freshUntil) {
       if (entry.snapshot) {
@@ -378,6 +383,14 @@ export class SkillDiscoveryCache {
       return this.answer(entry);
     } catch (error) {
       const now = this.now();
+      if (error instanceof UpstreamBusyError) {
+        // This backend's own back-pressure, not an answer from upstream:
+        // the entry stays as it was, so the next request asks again.
+        if (previous?.snapshot && now - previous.readAt <= MAX_STALE_MS) {
+          return this.answer(previous);
+        }
+        throw error;
+      }
       const freshUntil = backoffUntil(error, now);
       if (
         isTransientDiscoveryError(error) &&

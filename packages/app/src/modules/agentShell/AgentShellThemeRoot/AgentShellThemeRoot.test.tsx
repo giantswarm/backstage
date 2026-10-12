@@ -1,7 +1,15 @@
-import { useNavigate } from 'react-router-dom';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { act, screen } from '@testing-library/react';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
+import {
+  configApiRef,
+  featureFlagsApiRef,
+  FeatureFlagState,
+} from '@backstage/frontend-plugin-api';
+import {
+  mockApis,
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/frontend-test-utils';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AGENT_SHELL_FLAG } from '../predicates';
 import { AgentShellThemeRoot } from './AgentShellThemeRoot';
@@ -95,5 +103,64 @@ describe('useAgentShellAttribute', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('probe')).toHaveTextContent('false');
+  });
+});
+
+describe('the theme providers on a crossing', () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.agentShell;
+  });
+
+  function ThemeProbe() {
+    const agentShell = useAgentShellAttribute();
+    return <div data-testid="theme">{agentShell ? 'shell' : 'classic'}</div>;
+  }
+
+  function renderSync(path: string) {
+    return render(
+      <TestApiProvider
+        apis={[
+          [configApiRef, mockApis.config()],
+          [
+            featureFlagsApiRef,
+            mockApis.featureFlags({
+              initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
+            }),
+          ],
+        ]}
+      >
+        <MemoryRouter initialEntries={[path]}>
+          <ThemeProbe />
+          <AgentShellThemeRoot />
+          <GoTo to="/clusters" />
+          <GoTo to="/agent-platform/sessions" />
+        </MemoryRouter>
+      </TestApiProvider>,
+    );
+  }
+
+  // Asserted synchronously, with no microtask in between: the browser cannot
+  // paint before this point, so no frame carries the previous theme. The old
+  // MutationObserver hop would still read "classic" here.
+  it('carries the shell theme before the first paint of a cold shell load', () => {
+    renderSync('/agent-platform/sessions');
+    expect(screen.getByTestId('theme')).toHaveTextContent('shell');
+  });
+
+  it('switches the theme before the next paint on every crossing', () => {
+    renderSync('/agent-platform/sessions');
+
+    act(() => {
+      screen.getByRole('button', { name: 'go to /clusters' }).click();
+    });
+    expect(document.documentElement).not.toHaveAttribute('data-agent-shell');
+    expect(screen.getByTestId('theme')).toHaveTextContent('classic');
+
+    act(() => {
+      screen
+        .getByRole('button', { name: 'go to /agent-platform/sessions' })
+        .click();
+    });
+    expect(screen.getByTestId('theme')).toHaveTextContent('shell');
   });
 });

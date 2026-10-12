@@ -5,6 +5,7 @@ import {
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
+import { useShellScope } from '@giantswarm/backstage-plugin-ui-react';
 import { screen } from '@testing-library/react';
 import { navModule } from '../nav';
 import { AGENT_SHELL_FLAG } from './predicates';
@@ -53,6 +54,15 @@ jest.mock('@backstage/plugin-user-settings', () => ({
   Settings: () => null,
 }));
 
+/** A page that reports whether shared components see the shell's scope. */
+function StubPage({ testId, children }: { testId: string; children: string }) {
+  return (
+    <div data-testid={testId} data-in-shell={String(useShellScope())}>
+      {children}
+    </div>
+  );
+}
+
 const stubPagePlugin = createFrontendPlugin({
   pluginId: 'stub',
   extensions: [
@@ -61,7 +71,7 @@ const stubPagePlugin = createFrontendPlugin({
       params: {
         path: '/stub',
         noHeader: true,
-        loader: async () => <div data-testid="stub-page">Stub</div>,
+        loader: async () => <StubPage testId="stub-page">Stub</StubPage>,
       },
     }),
     // A route inside the agent area.
@@ -70,7 +80,7 @@ const stubPagePlugin = createFrontendPlugin({
       params: {
         path: '/agent-platform',
         noHeader: true,
-        loader: async () => <div data-testid="agent-stub-page">Agent</div>,
+        loader: async () => <StubPage testId="agent-stub-page">Agent</StubPage>,
       },
     }),
   ],
@@ -203,6 +213,7 @@ describe('the app layout', () => {
 
       const page = await screen.findByTestId('agent-stub-page');
       expect(screen.getByRole('main')).toContainElement(page);
+      expect(page).toHaveAttribute('data-in-shell', 'true');
       const portal = screen.getByRole('link', { name: 'Platform Portal' });
       expect(portal).toHaveAttribute('href', '/clusters');
       expect(portal).toHaveAttribute('target', '_blank');
@@ -212,7 +223,10 @@ describe('the app layout', () => {
     it('keeps the classic chrome, cross-linked, outside the agent area when both are on', async () => {
       renderDeployment({ platformPortal: true, agentPlatform: true }, '/stub');
 
-      expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
+      expect(await screen.findByTestId('stub-page')).toHaveAttribute(
+        'data-in-shell',
+        'false',
+      );
       expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: /Agent Platform/ }),
@@ -298,7 +312,7 @@ describe('the Agent Platform per portal mode', () => {
         params: {
           path: '/stub',
           noHeader: true,
-          loader: async () => <div data-testid="stub-page">Stub</div>,
+          loader: async () => <StubPage testId="stub-page">Stub</StubPage>,
         },
       }),
     ],

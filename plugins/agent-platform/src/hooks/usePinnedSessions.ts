@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
-import { storageApiRef, useApi } from '@backstage/core-plugin-api';
-import useObservable from 'react-use/esm/useObservable';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+
+import { storedSettingWriteClient, useStoredSetting } from './useStoredSetting';
 
 /**
  * One pinned session, stored as a reference (not a copy) so it is re-resolved
@@ -13,7 +14,6 @@ export type PinnedSession = {
   sessionId: string;
 };
 
-const BUCKET = 'agent-platform';
 const KEY = 'pinnedSessions';
 
 /**
@@ -36,6 +36,8 @@ function fromPinnedSessionId(id: string): PinnedSession | undefined {
   };
 }
 
+type PinChange = 'pinned' | 'unpinned';
+
 /**
  * Stored values come back from a shared bucket that older (or future) portal
  * versions also write, so every entry is checked rather than trusted.
@@ -53,6 +55,10 @@ function isPinnedSession(value: unknown): value is PinnedSession {
   );
 }
 
+function readPins(value: unknown): PinnedSession[] {
+  return Array.isArray(value) ? value.filter(isPinnedSession) : [];
+}
+
 /**
  * The sessions the user pinned, persisted per user through the StorageApi
  * (bucket `agent-platform`, key `pinnedSessions`). With the app's
@@ -61,27 +67,18 @@ function isPinnedSession(value: unknown): value is PinnedSession {
  * signed-out) the same code persists to localStorage.
  *
  * Every mounted instance subscribes to the bucket's `observe$`, so a pin
- * toggled in one component updates every other one without a reload.
+ * toggled in one component updates every other one without a reload. A toggle
+ * is applied to the latest stored list (`useStoredSetting`), so toggles in
+ * quick succession all land, and reports `AgentPlatform.sessionPinChanged`.
  *
  * Ids are the composite `${installation}/${sessionId}` the session tables and
  * rails already key their rows by.
  */
 export function usePinnedSessions() {
-  const storageApi = useApi(storageApiRef);
-  const bucket = useMemo(() => storageApi.forBucket(BUCKET), [storageApi]);
-
-  // `observe$` emits on every change (and, for UserSettingsStorage, once with
-  // the fetched value on subscription); the snapshot seeds the first render.
-  const snapshot = useObservable(
-    useMemo(() => bucket.observe$<PinnedSession[]>(KEY), [bucket]),
-    useMemo(() => bucket.snapshot<PinnedSession[]>(KEY), [bucket]),
-  );
+  const { snapshot, update } = useStoredSetting(KEY);
 
   const entries = useMemo(
-    () =>
-      snapshot.presence === 'present' && Array.isArray(snapshot.value)
-        ? snapshot.value.filter(isPinnedSession)
-        : [],
+    () => readPins(snapshot.presence === 'present' ? snapshot.value : []),
     [snapshot],
   );
 
@@ -92,18 +89,38 @@ export function usePinnedSessions() {
     [pinnedIds],
   );
 
+  const { mutateAsync } = useTrackedMutation(
+    {
+      mutationFn: (id: string) =>
+        update<PinChange>(current => {
+          const entry = fromPinnedSessionId(id);
+          if (!entry) {
+            return undefined;
+          }
+          const pins = readPins(current);
+          return pins.some(pinned => toPinnedSessionId(pinned) === id)
+            ? {
+                value: pins.filter(pinned => toPinnedSessionId(pinned) !== id),
+                result: 'unpinned',
+              }
+            : { value: [...pins, entry], result: 'pinned' };
+        }),
+      event: change =>
+        change
+          ? {
+              name: 'AgentPlatform.sessionPinChanged',
+              attributes: { change },
+            }
+          : null,
+    },
+    storedSettingWriteClient,
+  );
+
   const togglePin = useCallback(
     async (id: string) => {
-      const entry = fromPinnedSessionId(id);
-      if (!entry) {
-        return;
-      }
-      const next = pinnedIds.includes(id)
-        ? entries.filter(pinned => toPinnedSessionId(pinned) !== id)
-        : [...entries, entry];
-      await bucket.set(KEY, next);
+      await mutateAsync(id);
     },
-    [bucket, entries, pinnedIds],
+    [mutateAsync],
   );
 
   return { pinnedIds, isPinned, togglePin };

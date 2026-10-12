@@ -19,7 +19,7 @@ import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
  * Opens the stream for one turn, handing each event to `onEvent`; resolves
  * when the stream ends, which is not necessarily when the turn does. `signal`
  * aborts the stream — pulled when the poll shows the turn over while the stream
- * is still open.
+ * is still open, and when the hook's page unmounts.
  */
 export type OpenTurnStream = (
   onEvent: (result: unknown) => void,
@@ -117,6 +117,18 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   const lostRef = useRef<LostStream | null>(null);
   // Ends the stream in flight. Null outside a stream.
   const abortRef = useRef<AbortController | null>(null);
+  // Leaving the page (the rail, the palette, Back) ends the stream in flight
+  // (R2-3): nothing reads it any more, and left open it holds one of the
+  // browser's few connections per host until the gateway cuts it. The turn
+  // survives a client abort, and the next visit's poll follows it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const setStreamTurn = useCallback((turn: StreamTurn | null) => {
     streamRef.current = turn;
@@ -187,8 +199,9 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         }, control.signal);
       } catch (error) {
         // Any event at all means the turn exists — a later failure only cut
-        // the preview short, and the poll finishes the job.
-        if (!turn.dispatched) {
+        // the preview short, and the poll finishes the job. An abort because
+        // the page went away is no failure either: no one is left to tell.
+        if (!turn.dispatched && !unmountedRef.current) {
           if (
             !isStreamTransportError(error) ||
             !(await messageLanded(messageId))
@@ -198,6 +211,12 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         }
       } finally {
         abortRef.current = null;
+      }
+
+      // Gone from the page: nothing here renders the outcome, and the next
+      // visit reads the conversation afresh.
+      if (unmountedRef.current) {
+        return;
       }
 
       // The stream is over; the turn may not be. Recorded before the re-read

@@ -1,6 +1,8 @@
+import { LoggerService } from '@backstage/backend-plugin-api';
 import { dump } from 'js-yaml';
 import { GitHubApiError, parseRepoUrl } from './discoverAgentSkills';
 import { splitSkillMarkdown } from './frontmatter';
+import { isSkillFilePath } from './skillFiles';
 
 /**
  * The header the signed-in person's GitHub access token travels in, from the
@@ -45,6 +47,8 @@ export interface CreateSkillPullRequestOptions {
    * start (the route always requires it).
    */
   baseCommit?: string;
+  /** For the best-effort cleanup of a branch a failed attempt left (debug). */
+  logger?: LoggerService;
 }
 
 export interface SkillPullRequest {
@@ -52,7 +56,7 @@ export interface SkillPullRequest {
   pullRequestUrl: string;
   number: number;
   /** The branch the SKILL.md was pushed to (`add-skill/<name>`, or
-   * `update-skill/<directory as a slug>`). */
+   * `update-skill/<directory as a slug>`; see {@link branchCandidates}). */
   branch: string;
   /** The branch the pull request targets (the repo's default branch). */
   base: string;
@@ -83,29 +87,18 @@ export const MAX_SKILL_DISPLAY_NAME = 256;
  */
 export const SKILL_PULL_REQUEST_BODY_LIMIT = '1mb';
 
-const SKILL_DIR_SEGMENT_RE = /^[\w.@+-]+$/;
-
 /**
  * Whether `path` is a skill directory as discovery reports one: '' (the
- * repository root) or relative `/`-separated segments — no leading or trailing
- * slash, no empty, `.` or `..` segment, nothing that could address a file
- * outside the repository (or, for a checkout, outside the clone).
+ * repository root) or relative `/`-separated segments by the syntax rule
+ * every file path is held to (`isSkillFilePath`) — no leading or trailing
+ * slash, no empty, `.` or `..` segment, no backslash or control character,
+ * so nothing can address a file outside the repository (or, for a checkout,
+ * outside the clone). Discovery filters no directory names, so neither does
+ * this: a listed `ops/Incident Review` or `skills/über` must open and edit.
+ * Only a new skill's directory is a slug ({@link SKILL_NAME_RE}).
  */
 export function isSkillDirectory(path: string): boolean {
-  if (path === '') {
-    return true;
-  }
-  if (path.length > 512) {
-    return false;
-  }
-  return path
-    .split('/')
-    .every(
-      segment =>
-        SKILL_DIR_SEGMENT_RE.test(segment) &&
-        segment !== '.' &&
-        segment !== '..',
-    );
+  return path === '' || isSkillFilePath(path);
 }
 
 /** The SKILL.md of a skill directory ('' → the root `SKILL.md`). */
@@ -142,6 +135,19 @@ export function updateBranchName(dir: string, repo: string): string {
     .slice(0, 100)
     .replace(/^-+|-+$/g, '');
   return `update-skill/${slug || 'skill'}`;
+}
+
+/**
+ * The branch names a pull request tries, in order: the skill's own, then —
+ * when that one exists with no open pull request (GitHub keeps a merged
+ * pull request's branch by default, and an earlier failed attempt may have
+ * left one) — the same suffixed with the default branch head's short sha,
+ * then numbered. A leftover branch is never force-updated: it may hold
+ * someone's unpublished work.
+ */
+export function branchCandidates(branch: string, headSha: string): string[] {
+  const suffixed = `${branch}-${headSha.slice(0, 7)}`;
+  return [branch, suffixed, `${suffixed}-2`, `${suffixed}-3`];
 }
 
 /** A repository path for a GitHub contents URL, each segment encoded. */
@@ -233,20 +239,23 @@ export function renderSkillMarkdown(options: {
  *   file that is gone is a 404, an edit that changes nothing a 422, a name
  *   that is neither a slug nor the skill's existing name a 422.
  *
- * Either way a branch that already exists is a 409 (a pull request for the
- * skill may be open). Refusals are thrown as {@link GitHubApiError} with the
+ * Either way, when the branch already exists with an open pull request the
+ * answer is a 409 naming it; a leftover branch without one is left alone and
+ * the next of {@link branchCandidates} is used. When writing the file or
+ * opening the pull request fails, the branch this call created is deleted
+ * again (best effort). Refusals are thrown as {@link GitHubApiError} with the
  * upstream status, so the route forwards an expected outcome (no push access,
  * the skill already existing, a rate limit) instead of reporting a 500.
  */
 export async function createSkillPullRequest(
   options: CreateSkillPullRequestOptions,
 ): Promise<SkillPullRequest> {
-  const { skillName, description, instructions, token } = options;
+  const { skillName, description, instructions, token, logger } = options;
   const isUpdate = options.kind === 'update';
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const api = `https://api.github.com/repos/${owner}/${repo}`;
   const dir = isUpdate ? (options.path ?? '') : skillName;
-  const branch = isUpdate
+  const baseBranch = isUpdate
     ? updateBranchName(dir, repo)
     : `add-skill/${skillName}`;
   const path = skillFilePath(dir);
@@ -404,19 +413,77 @@ export async function createSkillPullRequest(
     }
   }
 
-  const refResponse = await githubRequest(`${api}/git/refs`, token, {
-    method: 'POST',
-    body: { ref: `refs/heads/${branch}`, sha: headSha },
-  });
-  if (refResponse.status === 422) {
+  // The branch, off the head checked above (see branchCandidates).
+  let branch: string | undefined;
+  for (const candidate of branchCandidates(baseBranch, headSha)) {
+    const refResponse = await githubRequest(`${api}/git/refs`, token, {
+      method: 'POST',
+      body: { ref: `refs/heads/${candidate}`, sha: headSha },
+    });
+    if (refResponse.ok) {
+      branch = candidate;
+      break;
+    }
+    if (refResponse.status !== 422) {
+      await refuse(`create the branch ${candidate}`, refResponse);
+    }
+    // It exists: an open pull request from it is the edit in progress.
+    const open = await githubRequest(
+      `${api}/pulls?head=${encodeURIComponent(
+        `${owner}:${candidate}`,
+      )}&state=open&per_page=1`,
+      token,
+    );
+    if (!open.ok) {
+      throw new GitHubApiError(
+        409,
+        `The branch ${candidate} already exists in ${owner}/${repo}, and a pull request for this skill may already be open.`,
+      );
+    }
+    const pulls = (await open.json()) as unknown;
+    const pull = Array.isArray(pulls)
+      ? (pulls[0] as { html_url?: string } | undefined)
+      : undefined;
+    if (pull) {
+      throw new GitHubApiError(
+        409,
+        `A pull request for this skill is already open from ${candidate}: ${
+          pull.html_url ?? `https://github.com/${owner}/${repo}/pulls`
+        }.`,
+      );
+    }
+  }
+  if (!branch) {
     throw new GitHubApiError(
       409,
-      `The branch ${branch} already exists in ${owner}/${repo} — a pull request for this skill may already be open.`,
+      `The branch ${baseBranch} and its numbered variants already exist in ${owner}/${repo} without an open pull request. Delete the stale branches and try again.`,
     );
   }
-  if (!refResponse.ok) {
-    await refuse(`create the branch ${branch}`, refResponse);
-  }
+  const created = branch;
+
+  /** Best effort: the branch must not block the person's retry. */
+  const deleteBranch = async () => {
+    try {
+      const response = await githubRequest(
+        `${api}/git/refs/heads/${encodePath(created)}`,
+        token,
+        { method: 'DELETE' },
+      );
+      if (!response.ok) {
+        logger?.debug('Could not delete the branch of a failed skill edit', {
+          repository: `${owner}/${repo}`,
+          branch: created,
+          status: response.status,
+        });
+      }
+    } catch (error) {
+      logger?.debug('Could not delete the branch of a failed skill edit', {
+        repository: `${owner}/${repo}`,
+        branch: created,
+        error: (error as Error)?.message,
+      });
+    }
+  };
 
   const content = Buffer.from(
     renderSkillMarkdown({
@@ -427,25 +494,6 @@ export async function createSkillPullRequest(
     }),
     'utf8',
   ).toString('base64');
-  const putResponse = await githubRequest(
-    `${api}/contents/${encodePath(path)}`,
-    token,
-    {
-      method: 'PUT',
-      body: {
-        message: isUpdate
-          ? `Update the ${skillName} skill`
-          : `Add the ${skillName} skill`,
-        content,
-        branch,
-        ...(existingSha ? { sha: existingSha } : {}),
-      },
-    },
-  );
-  if (!putResponse.ok) {
-    await refuse(`write ${path}`, putResponse);
-  }
-
   const origin = isUpdate
     ? `Edited from the skill's page in the portal${
         options.baseCommit
@@ -453,21 +501,46 @@ export async function createSkillPullRequest(
           : ''
       }. Agents keep the commit they are pinned to until their skills are updated.`
     : "Opened from the portal's Customize → Skills tab. The skill appears in the catalog once this merges.";
-  const prResponse = await githubRequest(
-    `https://api.github.com/repos/${owner}/${repo}/pulls`,
-    token,
-    {
-      method: 'POST',
-      body: {
-        title: `${isUpdate ? 'Update' : 'Add'} skill: ${skillName}`,
-        head: branch,
-        base,
-        body: `${description.trim()}\n\n${origin}`,
+  let prResponse: Response;
+  try {
+    const putResponse = await githubRequest(
+      `${api}/contents/${encodePath(path)}`,
+      token,
+      {
+        method: 'PUT',
+        body: {
+          message: isUpdate
+            ? `Update the ${skillName} skill`
+            : `Add the ${skillName} skill`,
+          content,
+          branch: created,
+          ...(existingSha ? { sha: existingSha } : {}),
+        },
       },
-    },
-  );
-  if (!prResponse.ok) {
-    await refuse('open the pull request', prResponse);
+    );
+    if (!putResponse.ok) {
+      await refuse(`write ${path}`, putResponse);
+    }
+
+    prResponse = await githubRequest(
+      `https://api.github.com/repos/${owner}/${repo}/pulls`,
+      token,
+      {
+        method: 'POST',
+        body: {
+          title: `${isUpdate ? 'Update' : 'Add'} skill: ${skillName}`,
+          head: created,
+          base,
+          body: `${description.trim()}\n\n${origin}`,
+        },
+      },
+    );
+    if (!prResponse.ok) {
+      await refuse('open the pull request', prResponse);
+    }
+  } catch (error) {
+    await deleteBranch();
+    throw error;
   }
   const pr = (await prResponse.json()) as {
     html_url?: string;
@@ -483,7 +556,7 @@ export async function createSkillPullRequest(
   return {
     pullRequestUrl: pr.html_url,
     number: pr.number,
-    branch,
+    branch: created,
     base,
     path,
   };

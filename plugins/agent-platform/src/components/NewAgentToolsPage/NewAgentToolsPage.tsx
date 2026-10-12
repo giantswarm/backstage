@@ -122,17 +122,26 @@ function connectorsHint({
   derived,
   resolving,
   unsignedConnectors,
+  extrasBase,
 }: {
   level: AccessLevel;
   derived: boolean;
   resolving: boolean;
   unsignedConnectors: boolean;
+  /** A preset with more beside it whose coverage is not in hand. */
+  extrasBase?: 'reading' | 'unshown';
 }): string | undefined {
   if (level === ACCESS_CHAT_ONLY) {
     return 'Pick another option above to add tools.';
   }
   if (level === PRESET_FULL) {
     return 'Full gateway includes every tool.';
+  }
+  if (extrasBase === 'reading') {
+    return 'Reading what the preset covers…';
+  }
+  if (extrasBase === 'unshown') {
+    return 'The preset in this toolset cannot be shown per connector here, so change it under the individual tools.';
   }
   if (!isPresetLevel(level)) {
     return undefined;
@@ -241,9 +250,16 @@ export function NewAgentToolsPage() {
     offered,
   );
   const presetLevel = isPresetLevel(level);
-  // The preset the toolset is built on, alone or with more beside it (B1).
+  // The preset the toolset holds, alone or with more beside it (B1).
+  const ownBase = presetBaseOf(state.toolset, offered);
+  // The preset every change compacts against, kept for the life of the step
+  // (R2-1): a change that takes part of it away writes it out, and without the
+  // base kept here, undoing that change could never collapse back to it.
+  // Picking an access level, copying a toolset or removing the preset itself
+  // replaces it.
+  const [keptBase, setKeptBase] = useState<string | undefined>();
+  const presetBase = ownBase ?? keptBase;
   // Its own resolution is the toolset's while it stands alone (one query).
-  const presetBase = presetBaseOf(state.toolset, offered);
   const presetResolution = useToolsetResolution(
     installation,
     presetBase ? [presetBase] : [],
@@ -253,21 +269,43 @@ export function NewAgentToolsPage() {
     !isCatalogueLoading &&
     presetResolution.status === 'resolved' &&
     !presetResolution.truncated;
-  // While the toolset is built on a preset, the grid and the catalogue show
-  // what it selects (T81b): the preset written out plus what is beside it —
-  // once the resolution and the catalogue are in, and only when the
-  // resolution is whole.
+  // While the toolset holds a preset, the grid and the catalogue show what it
+  // selects (T81b): the preset written out plus what is beside it — once the
+  // resolution and the catalogue are in, and only when the resolution is
+  // whole.
   const expanded = useMemo(
     () =>
-      presetResolved
+      presetResolved && ownBase
         ? expandSelection(
             materialize(presetResolution.tools, groups),
-            state.toolset.filter(selector => selector !== presetBase),
+            state.toolset.filter(selector => selector !== ownBase),
             groups,
           )
         : undefined,
-    [presetResolved, presetResolution.tools, groups, state.toolset, presetBase],
+    [presetResolved, presetResolution.tools, groups, state.toolset, ownBase],
   );
+  // A preset with more beside it whose coverage is not in hand (R2-2): the
+  // grid would read its connectors as None, so it stays off — while the
+  // coverage is read, the whole selection; once that failed, only the grid,
+  // and the individual tools show every selector as it is (T81b's display).
+  const holdsUnofferedPreset =
+    presets.isLoading &&
+    ownBase === undefined &&
+    state.toolset.some(selector => presetNameOf(selector) !== undefined);
+  const extrasBaseReading =
+    holdsUnofferedPreset ||
+    (ownBase !== undefined &&
+      !presetLevel &&
+      !expanded &&
+      (isCatalogueLoading || presetResolution.status === 'loading'));
+  const extrasBaseUnshown =
+    ownBase !== undefined && !presetLevel && !expanded && !extrasBaseReading;
+  let extrasBaseState: 'reading' | 'unshown' | undefined;
+  if (extrasBaseReading) {
+    extrasBaseState = 'reading';
+  } else if (extrasBaseUnshown) {
+    extrasBaseState = 'unshown';
+  }
   // The preset alone, written out.
   const derived = presetLevel ? expanded : undefined;
   // What every change below starts from: the selection as it shows, or as it
@@ -275,19 +313,24 @@ export function NewAgentToolsPage() {
   const base = expanded ?? state.toolset;
   const selected = useMemo(() => new Set(base), [base]);
   // Every change is stored as compactly as selectors allow (B1): the preset
-  // plus what was added while everything it covers is still chosen.
+  // plus what was added while everything it covers is still chosen — against
+  // the kept base, so restoring what a change took away collapses back to it.
   const commit = useCallback(
-    (next: string[]) =>
+    (next: string[]) => {
+      if (presetBase) {
+        setKeptBase(presetBase);
+      }
       setToolset(
         compactSelection(
           next,
-          expanded && presetBase
+          presetResolved && presetBase
             ? { preset: presetBase, resolved: presetResolution.tools }
             : undefined,
           groups,
         ),
-      ),
-    [setToolset, expanded, presetBase, presetResolution.tools, groups],
+      );
+    },
+    [setToolset, presetResolved, presetBase, presetResolution.tools, groups],
   );
   // Over the cap, the step can say which connectors to reduce.
   const problems = useMemo(
@@ -307,7 +350,9 @@ export function NewAgentToolsPage() {
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
-  const selectionOff = isSelectionOff(level) || (presetLevel && !derived);
+  const selectionOff =
+    isSelectionOff(level) || (presetLevel && !derived) || extrasBaseReading;
+  const gridOff = selectionOff || extrasBaseUnshown;
 
   // The individual tools: behind the link, or open from the start when the
   // selection holds what the level and the connectors cannot show (an edited
@@ -315,15 +360,21 @@ export function NewAgentToolsPage() {
   const [showIndividual, setShowIndividual] = useState(false);
   const decided = useRef(false);
   useEffect(() => {
-    if (decided.current || isCatalogueLoading || presets.isLoading) {
+    if (
+      decided.current ||
+      isCatalogueLoading ||
+      presets.isLoading ||
+      extrasBaseReading
+    ) {
       return;
     }
     decided.current = true;
     // Beside a preset the step writes out, only what is added counts: the
-    // grid shows the preset's part itself.
+    // grid shows the preset's part itself — unless it cannot, and then every
+    // selector is shown as it is.
     const builtOn = presetBaseOf(state.toolset, offered);
     const shown =
-      builtOn === undefined || state.toolset.length === 1
+      builtOn === undefined || state.toolset.length === 1 || extrasBaseUnshown
         ? state.toolset
         : state.toolset.filter(selector => selector !== builtOn);
     if (
@@ -338,6 +389,8 @@ export function NewAgentToolsPage() {
   }, [
     isCatalogueLoading,
     presets.isLoading,
+    extrasBaseReading,
+    extrasBaseUnshown,
     state.toolset,
     groups,
     level,
@@ -412,6 +465,9 @@ export function NewAgentToolsPage() {
   // starting point: it starts empty).
   const pickLevel = useCallback(
     (next: AccessLevel) => {
+      // A level picked is a fresh start: the base is the preset picked, or
+      // none — Only the tools I choose below writes the preset out on purpose.
+      setKeptBase(presetBaseOf([next], offered));
       if (next === ACCESS_CHAT_ONLY) {
         setToolsChatOnly();
       } else if (next === ACCESS_OWN_PICKS) {
@@ -426,7 +482,7 @@ export function NewAgentToolsPage() {
         setToolset([next]);
       }
     },
-    [setToolsChatOnly, setToolset, state.toolset, level, derived],
+    [setToolsChatOnly, setToolset, state.toolset, level, derived, offered],
   );
   // Every change below starts from `base`, what the grid shows; unless it
   // lands back on the preset alone, the radio then reads Only the tools I
@@ -445,11 +501,25 @@ export function NewAgentToolsPage() {
   // out — the preset with all it covers — and anything else is a change like
   // the grid's.
   const removeSelectors = useCallback(
-    (selectors: string[]) =>
-      selectors.every(entry => state.toolset.includes(entry))
-        ? setToolset(state.toolset.filter(entry => !selectors.includes(entry)))
-        : commit(base.filter(entry => !selectors.includes(entry))),
-    [setToolset, commit, state.toolset, base],
+    (selectors: string[]) => {
+      if (!selectors.every(entry => state.toolset.includes(entry))) {
+        commit(base.filter(entry => !selectors.includes(entry)));
+        return;
+      }
+      if (presetBase && selectors.includes(presetBase)) {
+        setKeptBase(undefined);
+      }
+      setToolset(state.toolset.filter(entry => !selectors.includes(entry)));
+    },
+    [setToolset, commit, state.toolset, base, presetBase],
+  );
+  // A copied toolset replaces the selection, and with it the base.
+  const copyToolset = useCallback(
+    (toolset: string[]) => {
+      setKeptBase(undefined);
+      setToolset(toolset);
+    },
+    [setToolset],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.
@@ -497,8 +567,7 @@ export function NewAgentToolsPage() {
 
   const railProps: SelectedRailProps = {
     // An untouched preset is listed with what it covers.
-    selectors:
-      expanded && presetBase ? [presetBase, ...expanded] : state.toolset,
+    selectors: expanded && ownBase ? [ownBase, ...expanded] : state.toolset,
     catalogue: groups,
     resolution,
     unsigned,
@@ -521,6 +590,7 @@ export function NewAgentToolsPage() {
     derived: Boolean(derived),
     resolving: presetLevel && resolution.status === 'loading',
     unsignedConnectors: connectors.some(bucket => bucket.needsSignIn),
+    extrasBase: extrasBaseState,
   });
 
   return (
@@ -604,7 +674,7 @@ export function NewAgentToolsPage() {
               <ConnectorGrid
                 connectors={connectors}
                 selected={selected}
-                disabled={selectionOff}
+                disabled={gridOff}
                 onChoose={chooseConnector}
               />
             )}
@@ -699,7 +769,7 @@ export function NewAgentToolsPage() {
                     <CopyFromAgent
                       installation={installation}
                       current={state.toolset}
-                      onCopy={setToolset}
+                      onCopy={copyToolset}
                     />
                   </div>
                 </details>

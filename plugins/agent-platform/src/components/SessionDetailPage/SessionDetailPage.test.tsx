@@ -1281,6 +1281,25 @@ describe('SessionDetailPage', () => {
         ).toBeInTheDocument();
       });
 
+      it('names the stall in the state too, not Working (R2-4)', async () => {
+        // The poll still reads the stalled task as working; the header must
+        // not say so beside a row that says it stopped reporting progress.
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        await render();
+
+        expect(screen.getByText('Not responding')).toBeInTheDocument();
+        expect(screen.queryByText('Working')).not.toBeInTheDocument();
+      });
+
+      it('names the stall over an open but silent stream as well', async () => {
+        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
+        await render();
+
+        expect(screen.getByText('Not responding')).toBeInTheDocument();
+        expect(screen.queryByText('Working')).not.toBeInTheDocument();
+      });
+
       it('keeps Send withheld — the session is still busy — and says why', async () => {
         mockUseSessionDetail.mockReturnValue(stalledView);
         await render();

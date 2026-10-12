@@ -258,7 +258,7 @@ test('a session whose runtime is lost explains itself, is marked, and opens a ne
       "the person's message is on the timeline",
     ).toBeVisible();
     await expect(
-      admin.getByText('The agent’s runtime could not be reached'),
+      admin.getByText('Could not reach the agent’s runtime'),
       'the failed turn says whose failure it is',
     ).toBeVisible({ timeout: 60_000 });
     await expect(

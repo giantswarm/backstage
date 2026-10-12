@@ -26,6 +26,10 @@ import {
  * The flag is listed on the settings page only while it means something
  * (the deployment has the Agent Platform off); otherwise toggling it would
  * change nothing.
+ *
+ * `isActive` stays live, because the settings page's toggle reads it to flip
+ * the flag. Render-time readers latch it instead (`isAgentShellOn`), so a
+ * toggle applies on the next load rather than mixing the shells in this one.
  */
 export class PortalFeatureFlags implements FeatureFlagsApi {
   constructor(

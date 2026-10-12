@@ -45,6 +45,7 @@ import {
 import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
   isSkillFilePath,
+  MAX_INLINE_FILE_BYTES,
   needsFileBytes,
   repositoryFilePath,
   SkillFileList,
@@ -116,6 +117,18 @@ export async function createRouter({
 
   /** A full commit id (SHA-1 or SHA-256). */
   const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+
+  /**
+   * An optional git ref. Empty (`?ref=`) means the default branch, exactly
+   * as absent does, so it is normalized to absent: it must neither key a
+   * cache entry of its own nor reach a provider as ''.
+   */
+  const optionalRef = z
+    .string()
+    .trim()
+    .max(255)
+    .optional()
+    .transform(ref => ref || undefined);
 
   /**
    * GET /config
@@ -380,7 +393,7 @@ export async function createRouter({
    * Query parameters:
    * - repoUrl: one of the configured skill repositories
    * - ref: Optional git ref (branch; for GitHub also a tag/SHA); defaults to
-   *   the default branch
+   *   the default branch (also when empty)
    *
    * Returns:
    * - skills: Array of { name, description, repoUrl, path, ref, commit,
@@ -400,7 +413,7 @@ export async function createRouter({
         .refine(u => /^https?:\/\//.test(u), {
           message: 'Only http(s) repository URLs are allowed',
         }),
-      ref: z.string().optional(),
+      ref: optionalRef,
     });
     const parsed = schema.safeParse(req.query);
     if (!parsed.success) {
@@ -419,7 +432,7 @@ export async function createRouter({
         repoUrl,
         ref,
         previous =>
-          upstreamReads.limit(isGitHub ? 'github' : 'clone', () =>
+          upstreamReads.limit(isGitHub ? 'github' : 'clone', signal =>
             isGitHub
               ? discoverAgentSkills({
                   repoUrl,
@@ -427,8 +440,9 @@ export async function createRouter({
                   githubCredentialsProvider,
                   previous,
                   logger,
+                  signal,
                 })
-              : discoverAgentSkillsFromGit({ repoUrl, ref }),
+              : discoverAgentSkillsFromGit({ repoUrl, ref, signal }),
           ),
       );
       res.json({ ...result, readAt: new Date(readAt).toISOString(), stale });
@@ -455,39 +469,48 @@ export async function createRouter({
       .refine(u => /^https?:\/\//.test(u), {
         message: 'Only http(s) repository URLs are allowed',
       }),
+    // Discovery's syntax rule, not the create slug: every listed skill
+    // (`ops/Incident Review`, `skills/über`) must open.
     path: z.string().default('').refine(isSkillDirectory, {
       message: 'path must be a relative skill directory',
     }),
     commit: z.string().regex(COMMIT_RE, {
       message: 'commit must be a full commit id',
     }),
-    ref: z.string().min(1).max(255).optional(),
+    ref: optionalRef,
   });
 
   /**
    * A generic-git repository read at `commit` outside a listing: one depth-1
    * clone whose head must still be `commit` (a 409 otherwise), scanned like
-   * discovery — every SKILL.md, every skill's files, the small files' bytes
-   * (`mustRead`'s whatever the budget) — and remembered, so the next views
-   * are answered from memory. Through `upstreamReads`: the file viewer's
-   * concurrent requests share one clone, a 404 or 409 is answered from
-   * memory for a while, and only a few clones run at once.
+   * discovery — every SKILL.md, every skill's files, the small files' bytes —
+   * and remembered, so the next views are answered from memory. Through
+   * `upstreamReads`, keyed on repository, ref and commit only: the file
+   * viewer's concurrent requests (`/content` and `/content/file`, any files)
+   * share one clone, a 404 or 409 is answered from memory for a while, and
+   * only a few clones run at once.
+   *
+   * `mustRead` (a repository-relative file the caller is about to answer)
+   * is kept whatever the scan's budget by the clone that runs for it. A
+   * caller that joined a clone made for another file and finds its listed
+   * small file past that clone's budget (a commit with over 16 MB of small
+   * files) reads once more, keyed with the file.
    */
-  const readGitCommit = (
+  const readGitCommit = async (
     repoUrl: string,
     ref: string | undefined,
     commit: string,
     mustRead?: string,
-  ): Promise<SkillDiscoverySnapshot> =>
-    upstreamReads.read(
-      'clone',
-      `${repositoryKey(repoUrl)}#${ref ?? ''}#${commit}#${mustRead ?? ''}`,
-      async () => {
+  ): Promise<SkillDiscoverySnapshot> => {
+    const key = `${repositoryKey(repoUrl)}#${ref ?? ''}#${commit}`;
+    const cloneAt =
+      (keep: string | undefined) => async (signal: AbortSignal) => {
         const snapshot = await discoverAgentSkillsFromGit({
           repoUrl,
           ref,
           commit,
-          mustRead,
+          mustRead: keep,
+          signal,
         });
         skillDiscoveryCache.rememberPinned(repoUrl, commit, {
           files: snapshot.files ?? new Map(),
@@ -496,8 +519,17 @@ export async function createRouter({
           truncated: snapshot.truncated,
         });
         return snapshot;
-      },
-    );
+      };
+    const shared = await upstreamReads.read('clone', key, cloneAt(mustRead));
+    if (
+      mustRead === undefined ||
+      shared.fileContents?.has(mustRead) ||
+      !keepsBytes(shared, mustRead)
+    ) {
+      return shared;
+    }
+    return upstreamReads.read('clone', `${key}#${mustRead}`, cloneAt(mustRead));
+  };
 
   /**
    * Every skill's files of a github.com repository at a commit no listing
@@ -511,11 +543,12 @@ export async function createRouter({
     upstreamReads.read(
       'github',
       `tree#${repositoryKey(repoUrl)}#${commit}`,
-      async () => {
+      async signal => {
         const files = await listSkillFilesFromGitHub({
           repoUrl,
           commit,
           githubCredentialsProvider,
+          signal,
         });
         skillDiscoveryCache.rememberPinned(repoUrl, commit, {
           files,
@@ -603,12 +636,13 @@ export async function createRouter({
           : await upstreamReads.read(
               'github',
               `content#${repositoryKey(repoUrl)}#${commit}#${path}`,
-              () =>
+              signal =>
                 readSkillContentFromGitHub({
                   repoUrl,
                   path,
                   commit,
                   githubCredentialsProvider,
+                  signal,
                 }),
             );
         if (!files) {
@@ -694,16 +728,19 @@ export async function createRouter({
    *   `/content`'s, for a commit no listing holds) already keeps every small
    *   listed file. Only when the file cache evicted it, or no read covered the
    *   commit, does the route clone once more — one depth-1 clone that
-   *   repopulates the whole commit (concurrent requests share it); its head
-   *   must still be the commit asked for, so a branch that moved on answers
-   *   409 ("reload the skill"), as `/content` does.
+   *   repopulates the whole commit (concurrent requests share it, whichever
+   *   files they ask for, `/content`'s too); its head must still be the
+   *   commit asked for, so a branch that moved on answers 409 ("reload the
+   *   skill"), as `/content` does.
    *
    * Every upstream read on a miss, here and in `/content`, goes through
    * `UpstreamReadGuard`: a 404, 409 or 422 is answered from memory for five
-   * minutes per read, concurrent reads of one key share one, and at most two
+   * minutes per read, concurrent reads of one key share one, at most two
    * clones and four GitHub reads run at once (32 more wait each; past that,
-   * 503), so random commit ids cannot make the backend clone or spend the
-   * GitHub token without bound. A path missing from a commit whose file
+   * 503), and a read is aborted with a 504 past its deadline (60 s for a
+   * clone, 30 s for a GitHub read), so random commit ids cannot make the
+   * backend clone or spend the GitHub token without bound, and a stalled
+   * upstream cannot hold a slot. A path missing from a commit whose file
    * lists are already known is a 404 from memory, here and in `/content`
    * (re-reading the same commit would list the same tree), so random paths
    * at a known commit cost no upstream read either.
@@ -770,12 +807,13 @@ export async function createRouter({
           const bytes = await upstreamReads.read(
             'github',
             `file#${repositoryKey(repoUrl)}#${commit}#${filePath}`,
-            () =>
+            signal =>
               readSkillFileFromGitHub({
                 repoUrl,
                 filePath,
                 commit,
                 githubCredentialsProvider,
+                signal,
               }),
           );
           read = skillDiscoveryCache.rememberFile(
@@ -948,6 +986,7 @@ export async function createRouter({
                 baseCommit: parsed.data.baseCommit,
               }
             : {}),
+          ...(logger ? { logger } : {}),
         }),
       );
     } catch (error) {
@@ -969,4 +1008,23 @@ export async function createRouter({
   });
 
   return router;
+}
+
+/**
+ * Whether a clone's scan would keep the bytes of `filePath` (repository-
+ * relative) when asked to: a listed file of some skill, small enough to be
+ * answered inline. Anything else no clone keeps, so reading again is waste.
+ */
+function keepsBytes(snapshot: SkillDiscoverySnapshot, filePath: string) {
+  for (const [dir, list] of snapshot.files ?? []) {
+    for (const file of list.files) {
+      if (
+        repositoryFilePath(dir, file.path) === filePath &&
+        file.size <= MAX_INLINE_FILE_BYTES
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 }

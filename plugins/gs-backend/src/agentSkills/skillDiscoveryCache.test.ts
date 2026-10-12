@@ -13,6 +13,12 @@ import {
   SkillDiscoveryCache,
   UNREADABLE_RETRY_MS,
 } from './skillDiscoveryCache';
+import {
+  READ_DEADLINE_MS,
+  UpstreamBusyError,
+  UpstreamReadGuard,
+  UpstreamTimeoutError,
+} from './upstreamReadGuard';
 
 const REPO = 'https://github.com/giantswarm/skills';
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
@@ -67,6 +73,15 @@ describe('SkillDiscoveryCache', () => {
     expect(first.readAt).toBe(Date.UTC(2026, 9, 10, 12, 0));
     expect(first.result).not.toHaveProperty('contents');
     expect(first.result.skills[0].contentReadable).toBe(true);
+  });
+
+  it('keys an empty ref and none alike: both are the default branch', async () => {
+    const load = jest.fn(async () => snapshot());
+
+    await cache.discover(REPO, undefined, load);
+    await cache.discover(REPO, '', load);
+
+    expect(load).toHaveBeenCalledTimes(1);
   });
 
   it('keys by repository and ref', async () => {
@@ -219,6 +234,71 @@ describe('SkillDiscoveryCache', () => {
         }),
       ).rejects.toBe(gone);
       expect(cache.readContent(REPO, 'notes', HEAD)).toBeUndefined();
+    });
+
+    it('serves the last listing when the read missed its deadline (504)', async () => {
+      await cache.discover(REPO, undefined, async () => snapshot());
+      now += DISCOVERY_TTL_MS;
+
+      const answer = await cache.discover(REPO, undefined, async () => {
+        throw new UpstreamTimeoutError(READ_DEADLINE_MS.github);
+      });
+
+      expect(answer.stale).toBe(true);
+      expect(answer.result.commit).toBe(HEAD);
+    });
+
+    it('never remembers the read guard’s own back-pressure refusal', async () => {
+      const busy = jest.fn(async (): Promise<SkillDiscoverySnapshot> => {
+        throw new UpstreamBusyError();
+      });
+      // No listing to fall back on: forwarded, but not kept for the backoff.
+      await expect(
+        cache.discover(REPO, undefined, busy),
+      ).rejects.toBeInstanceOf(UpstreamBusyError);
+      const load = jest.fn(async () => snapshot());
+      await expect(
+        cache.discover(REPO, undefined, load),
+      ).resolves.toMatchObject({ stale: false });
+      expect(load).toHaveBeenCalledTimes(1);
+
+      // With one: answered stale, and the next request asks again.
+      now += DISCOVERY_TTL_MS;
+      expect((await cache.discover(REPO, undefined, busy)).stale).toBe(true);
+      await cache.discover(REPO, undefined, load);
+      expect(load).toHaveBeenCalledTimes(2);
+    });
+
+    describe('a load that never settles', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('is given up at the read guard’s deadline: the stale listing is served and the slot freed', async () => {
+        const guard = new UpstreamReadGuard({ maxConcurrent: { clone: 1 } });
+        const hung = () =>
+          guard.limit('clone', () => new Promise<never>(() => undefined));
+        await cache.discover(REPO, undefined, async () => snapshot());
+        now += DISCOVERY_TTL_MS;
+
+        const first = cache.discover(REPO, undefined, hung);
+        // Joins the one refresh rather than starting another.
+        const joined = cache.discover(REPO, undefined, hung);
+        await jest.advanceTimersByTimeAsync(READ_DEADLINE_MS.clone);
+
+        for (const answer of await Promise.all([first, joined])) {
+          expect(answer.stale).toBe(true);
+          expect(answer.result.commit).toBe(HEAD);
+        }
+        // The one clone slot is free for the next read.
+        await expect(guard.limit('clone', async () => 'next')).resolves.toBe(
+          'next',
+        );
+      });
     });
 
     it('stops serving a listing older than a day', async () => {

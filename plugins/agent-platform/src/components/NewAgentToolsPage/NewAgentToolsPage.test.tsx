@@ -984,6 +984,39 @@ describe('NewAgentToolsPage', () => {
           'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
         ),
       ).toBeInTheDocument();
+
+      // Undoing the change holds everything the preset covers again: the
+      // toolset collapses back to it (R2-1), and Continue works again.
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()).toBe('preset:read-only');
+      expect(level('Read-only tools')).toBeChecked();
+      expect(continueButton()).toBeEnabled();
+    });
+
+    it('keeps what was added beside the preset when a change to it is undone', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: MANY_READ_ONLY,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await user.click(level('Read-only tools'));
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+      await user.click(access('agent-manager', 'All'));
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
+
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()).not.toContain('preset:read-only');
+      expect(continueButton()).toBeDisabled();
+
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
+      expect(level('Only the tools I choose below')).toBeChecked();
+      expect(continueButton()).toBeEnabled();
     });
 
     it('names the connectors that list the most when a selection is over the cap', async () => {
@@ -1544,6 +1577,78 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe(
         'preset:read-only | server:agent-manager | server:kubernetes',
       );
+    });
+
+    it('keeps the selection off while the preset beside other selectors is read', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => {
+        release = resolve;
+      });
+      const gated: MusterApi = {
+        ...api,
+        filterTools: async (options = {}) => {
+          if (options.toolset?.join() === 'preset:read-only') {
+            await gate;
+          }
+          return api.filterTools(options);
+        },
+      };
+      await renderStep({
+        api: gated,
+        toolset: ['preset:read-only', 'server:agent-manager'],
+      });
+      await connectorsListed();
+
+      // Unread, the grid would claim kubernetes is None (R2-2).
+      expect(
+        await screen.findByText('Reading what the preset covers…'),
+      ).toBeInTheDocument();
+      expect(access('kubernetes', 'All')).toBeDisabled();
+      expect(individualToggle()).toBeDisabled();
+
+      release();
+
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+      expect(access('kubernetes', 'All')).toBeEnabled();
+      expect(
+        screen.queryByText('Reading what the preset covers…'),
+      ).not.toBeInTheDocument();
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
+    });
+
+    it('shows every selector as it is when the preset beside others cannot be read', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        resolutionFails: 'muster is unreachable',
+      });
+      await renderStep({
+        api,
+        toolset: ['preset:read-only', 'server:agent-manager'],
+      });
+      await connectorsListed();
+
+      expect(
+        await screen.findByText(
+          'The preset in this toolset cannot be shown per connector here, so change it under the individual tools.',
+        ),
+      ).toBeInTheDocument();
+      expect(access('kubernetes', 'Read-only')).toBeDisabled();
+      expect(access('agent-manager', 'All')).toBeDisabled();
+      // The individual tools stay open to change it, the preset listed as it is.
+      expect(
+        await screen.findByRole('heading', { name: 'Individual tools' }),
+      ).toBeInTheDocument();
+      expect(
+        within(summaryBar()).getByTitle('preset:read-only'),
+      ).toBeInTheDocument();
+      expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
     });
 
     it('shows several presets and a workflow as own picks, opens the catalogue, and rewrites nothing', async () => {

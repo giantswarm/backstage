@@ -1,20 +1,54 @@
 import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider, mockApis } from '@backstage/test-utils';
-import { storageApiRef, StorageApi } from '@backstage/core-plugin-api';
+import {
+  analyticsApiRef,
+  storageApiRef,
+  StorageApi,
+} from '@backstage/core-plugin-api';
 import { usePinnedSessions } from './usePinnedSessions';
 
 const BUCKET = 'agent-platform';
 const KEY = 'pinnedSessions';
 
+const analyticsApi = mockApis.analytics.mock();
+
 function renderWith(storage: StorageApi) {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider apis={[[storageApiRef, storage]]}>
+    <TestApiProvider
+      apis={[
+        [storageApiRef, storage],
+        [analyticsApiRef, analyticsApi],
+      ]}
+    >
       {children}
     </TestApiProvider>
   );
 
   return renderHook(() => usePinnedSessions(), { wrapper });
+}
+
+/**
+ * A bucket whose writes land only once `release` is called, like
+ * `UserSettingsStorage`'s, which emits a change after its PUT returns.
+ */
+function laggingStorage() {
+  const inner = mockApis.storage().forBucket(BUCKET);
+  let release: () => void = () => {};
+  const gate = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const bucket = {
+    forBucket: () => bucket,
+    snapshot: (key: string) => inner.snapshot(key),
+    observe$: (key: string) => inner.observe$(key),
+    remove: (key: string) => inner.remove(key),
+    set: async (key: string, value: never) => {
+      await gate;
+      await inner.set(key, value);
+    },
+  } as unknown as StorageApi;
+  return { storage: bucket, release };
 }
 
 /** What the hook left behind in the storage bucket. */
@@ -156,5 +190,57 @@ describe('usePinnedSessions', () => {
     const { result } = renderWith(storage);
 
     expect(result.current.pinnedIds).toEqual([]);
+  });
+  it('keeps both of two toggles in quick succession', async () => {
+    const { storage, release } = laggingStorage();
+    const { result } = renderWith(storage);
+
+    let first: Promise<void> = Promise.resolve();
+    let second: Promise<void> = Promise.resolve();
+    act(() => {
+      // Neither awaited: the second starts while the first is in flight.
+      first = result.current.togglePin('gazelle/abc');
+      second = result.current.togglePin('goat/def');
+    });
+    release();
+    await act(async () => {
+      await Promise.all([first, second]);
+    });
+
+    expect(stored(storage)).toEqual([
+      { installation: 'gazelle', sessionId: 'abc' },
+      { installation: 'goat', sessionId: 'def' },
+    ]);
+    await waitFor(() =>
+      expect(result.current.pinnedIds).toEqual(['gazelle/abc', 'goat/def']),
+    );
+  });
+
+  it('reports each change, and which way it went', async () => {
+    jest.mocked(analyticsApi.captureEvent).mockClear();
+    const { result } = renderWith(mockApis.storage());
+
+    await act(async () => {
+      await result.current.togglePin('gazelle/abc');
+    });
+    await act(async () => {
+      await result.current.togglePin('gazelle/abc');
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(2);
+    expect(analyticsApi.captureEvent).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionPinChanged',
+        attributes: { change: 'pinned' },
+      }),
+    );
+    expect(analyticsApi.captureEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionPinChanged',
+        attributes: { change: 'unpinned' },
+      }),
+    );
   });
 });

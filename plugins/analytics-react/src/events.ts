@@ -49,6 +49,16 @@ export const portalEvents = defineEvents({
       ],
     },
   },
+  'AgentPlatform.sessionPinChanged': {
+    description:
+      "A session was pinned to, or unpinned from, the top of the person's session lists.",
+    attributes: { change: ['pinned', 'unpinned'] },
+  },
+  'AgentPlatform.agentFavoriteChanged': {
+    description:
+      "An agent was added to, or removed from, the person's favorites.",
+    attributes: { change: ['added', 'removed'] },
+  },
   'AgentPlatform.skillProposed': {
     description:
       'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',

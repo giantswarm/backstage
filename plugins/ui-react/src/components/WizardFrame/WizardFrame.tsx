@@ -458,10 +458,13 @@ export interface WizardFrameProps {
   closeHref: string;
   /**
    * The flow holds input that leaving would lose: Close and Cancel then ask
-   * first, in one dialog ("Discard changes" / "Keep editing"). Off by default,
-   * and while nothing was entered — an untouched flow leaves at once. Only
-   * these two controls ask; the browser's Back is not intercepted (the app's
-   * router has no navigation blocker).
+   * first, in one dialog ("Discard changes" / "Keep editing"), and a reload or
+   * a closed tab asks through the browser's own prompt. Off by default, and
+   * while nothing was entered — an untouched flow leaves at once. The step
+   * strip's links do not ask: they stay inside the flow, whose state lives
+   * above its steps. In-app navigation elsewhere — the shell's nav and rail,
+   * the command palette, the browser's Back — is not intercepted, because the
+   * app's router has no navigation blocker.
    */
   confirmDiscard?: boolean;
   /** Shows a Back button in the footer. */
@@ -532,6 +535,23 @@ export function WizardFrame({
     },
     [confirmDiscard],
   );
+  // A reload or a closed tab would lose the input too; the browser asks with
+  // its own standard prompt (its text cannot be set). Client-side navigation
+  // does not unload the page, so neither the step strip nor a save's redirect
+  // triggers it. In-app navigation away (the shell's nav and rail, the palette,
+  // Back) would need a router blocker, which the app does not have.
+  useEffect(() => {
+    if (!confirmDiscard) {
+      return undefined;
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Still required by some browsers to show the prompt.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [confirmDiscard]);
   const isPhone = usePhoneLayout();
   const isTwoColumn = useMediaQueryMatch(TWO_COLUMN_QUERY);
   const { rootRef, footerRef, frameWidth } = useFrameMeasurements();

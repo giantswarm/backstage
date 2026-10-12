@@ -201,6 +201,7 @@ async function githubApiFetch(
   url: string,
   token: string | undefined,
   accept = 'application/vnd.github+json',
+  signal?: AbortSignal,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     Accept: accept,
@@ -210,7 +211,8 @@ async function githubApiFetch(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, { headers });
+  // `signal` (the read guard's deadline) cancels the request and its body.
+  const response = await fetch(url, { headers, signal });
   if (!response.ok) {
     const limited = rateLimitMessage(response, Boolean(token));
     throw new GitHubApiError(
@@ -263,10 +265,13 @@ async function resolveDefaultBranch(
   owner: string,
   repo: string,
   token: string | undefined,
+  signal?: AbortSignal,
 ): Promise<string> {
   const response = await githubApiFetch(
     `https://api.github.com/repos/${owner}/${repo}`,
     token,
+    undefined,
+    signal,
   );
   const data = (await response.json()) as { default_branch?: string };
   return data.default_branch || 'main';
@@ -283,6 +288,7 @@ async function resolveHeadCommit(
   ref: string,
   token: string | undefined,
   logger?: LoggerService,
+  signal?: AbortSignal,
 ): Promise<string> {
   const response = await githubApiFetch(
     `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(
@@ -290,6 +296,7 @@ async function resolveHeadCommit(
     )}`,
     token,
     'application/vnd.github.sha',
+    signal,
   );
   const sha = (await response.text()).trim();
   if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(sha)) {
@@ -316,10 +323,13 @@ export async function readGitHubTree(
   repo: string,
   commit: string,
   token: string | undefined,
+  signal?: AbortSignal,
 ): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
   const response = await githubApiFetch(
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${commit}?recursive=1`,
     token,
+    undefined,
+    signal,
   );
   const tree = (await response.json()) as {
     tree?: TreeEntry[];
@@ -338,6 +348,7 @@ export async function fetchRawBytes(
   path: string,
   ref: string,
   token: string | undefined,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
   const response = await githubApiFetch(
@@ -346,6 +357,7 @@ export async function fetchRawBytes(
     )}`,
     token,
     'application/vnd.github.raw+json',
+    signal,
   );
   return new Uint8Array(await response.arrayBuffer());
 }
@@ -357,6 +369,7 @@ export async function fetchRawContent(
   path: string,
   ref: string,
   token: string | undefined,
+  signal?: AbortSignal,
 ): Promise<string> {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
   const response = await githubApiFetch(
@@ -365,6 +378,7 @@ export async function fetchRawContent(
     )}`,
     token,
     'application/vnd.github.raw+json',
+    signal,
   );
   return response.text();
 }
@@ -421,8 +435,13 @@ export async function discoverAgentSkills(options: {
   /** The last snapshot of this repository and ref, to reuse what it read. */
   previous?: SkillDiscoverySnapshot;
   logger?: LoggerService;
+  /** Cancels every request (the read guard's deadline). */
+  signal?: AbortSignal;
 }): Promise<SkillDiscoverySnapshot> {
-  const { repoUrl, githubCredentialsProvider, ref, previous, logger } = options;
+  const { repoUrl, githubCredentialsProvider, previous, logger, signal } =
+    options;
+  // An empty ref is the default branch, as absent is: never `…/commits/`.
+  const ref = options.ref || undefined;
   const { owner, repo } = parseRepoUrl(repoUrl);
   const canonicalRepoUrl = `https://github.com/${owner}/${repo}`;
 
@@ -431,8 +450,16 @@ export async function discoverAgentSkills(options: {
     canonicalRepoUrl,
   );
 
-  const branch = ref ?? (await resolveDefaultBranch(owner, repo, token));
-  const commit = await resolveHeadCommit(owner, repo, branch, token, logger);
+  const branch =
+    ref ?? (await resolveDefaultBranch(owner, repo, token, signal));
+  const commit = await resolveHeadCommit(
+    owner,
+    repo,
+    branch,
+    token,
+    logger,
+    signal,
+  );
 
   const unchanged =
     previous !== undefined &&
@@ -448,7 +475,7 @@ export async function discoverAgentSkills(options: {
     skillDirs = previous.skills.map(s => s.path);
     files = previous.files;
   } else {
-    const tree = await readGitHubTree(owner, repo, commit, token);
+    const tree = await readGitHubTree(owner, repo, commit, token, signal);
     ({ skillDirs, files } = skillFilesFromTree(tree.entries, tree.truncated));
     // GitHub caps the recursive tree (~100k entries / 7MB); past that some
     // SKILL.md files are missing.
@@ -485,6 +512,7 @@ export async function discoverAgentSkills(options: {
         dir ? `${dir}/${SKILL_FILE}` : SKILL_FILE,
         commit,
         token,
+        signal,
       ),
   );
   const fresh = new Map<string, PromiseSettledResult<string>>(

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { ShellScopeProvider } from '../ShellScope';
 import { FactList } from './FactList';
 
 const facts = [
@@ -53,19 +54,26 @@ describe('FactList', () => {
     expect(normalize(explicit.innerHTML)).toBe(normalize(sideBySide.innerHTML));
   });
 
-  it('stacks each label over its value at the shell’s phone width', () => {
-    const { container } = render(<FactList facts={facts} />);
+  // jsdom applies no media queries; the rule is what can be pinned here.
+  function narrowMediaOf(container: HTMLElement): string | undefined {
     const listClass = container.querySelector('dl')!.classList[0];
     const css = Array.from(document.querySelectorAll('style'))
       .map(style => style.textContent ?? '')
       .join('\n');
+    return new RegExp(
+      `@media \\(max-width: ([\\d.]+)px\\) \\{\\s*\\.${listClass} \\{\\s*grid-template-columns: 1fr;`,
+    ).exec(css)?.[1];
+  }
 
-    // jsdom applies no media queries; the rule is what can be pinned here.
-    expect(css).toMatch(
-      new RegExp(
-        `@media \\(max-width: 599\\.95px\\) \\{\\s*\\.${listClass} \\{\\s*grid-template-columns: 1fr;`,
-      ),
-    );
-    expect(css).not.toMatch(/max-width: 520px/);
+  it('stacks each label over its value at the shell’s phone width inside the shell', () => {
+    const { container } = render(<FactList facts={facts} />, {
+      wrapper: ShellScopeProvider,
+    });
+    expect(narrowMediaOf(container)).toBe('599.95');
+  });
+
+  it('keeps the classic 520px stack point outside the shell', () => {
+    const { container } = render(<FactList facts={facts} />);
+    expect(narrowMediaOf(container)).toBe('520');
   });
 });

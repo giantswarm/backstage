@@ -92,7 +92,10 @@ export function useAgentWizardLinks(): AgentWizardLinks {
  * step provides its primary button through `useProvidePageHeaderActions`.
  * Editing an agent is the same wizard, titled "Edit agent" and closing to the
  * agent's page. Close and Cancel ask before discarding a dirty form
- * (`isDirty`), on every step.
+ * (`isDirty`), on every step, and so does the browser on a reload or a closed
+ * tab. Leaving through the shell's nav, rail or palette, or the browser's
+ * Back, discards it without asking: blocking in-app navigation needs a router
+ * blocker, which the app does not have (R2-6).
  */
 export function AgentWizardFrame({
   step,

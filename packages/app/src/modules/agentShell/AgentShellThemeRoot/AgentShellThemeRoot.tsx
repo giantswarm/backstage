@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import { useAgentShellArea } from '../agentArea';
+import { setAgentShellMark } from './useAgentShellAttribute';
 import '../agent-shell.css';
 
 /**
@@ -7,19 +8,18 @@ import '../agent-shell.css';
  * override in agent-shell.css — exactly while the current location renders
  * the agent shell (Agent Platform available, agent-area route). The mark
  * follows the location, so classic pages keep classic styling even where the
- * Agent Platform is on.
+ * Agent Platform is on. Set in a layout effect so the theme providers re-theme
+ * before the first paint.
  */
 export function AgentShellThemeRoot() {
   const active = useAgentShellArea();
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) {
       return undefined;
     }
     import('../fonts').catch(() => {});
-    document.documentElement.dataset.agentShell = '';
-    return () => {
-      delete document.documentElement.dataset.agentShell;
-    };
+    setAgentShellMark(true);
+    return () => setAgentShellMark(false);
   }, [active]);
   return null;
 }

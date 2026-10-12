@@ -557,6 +557,7 @@ describe('GET /agent-skills', () => {
     expect(discoverAgentSkillsFromGit).toHaveBeenCalledWith({
       repoUrl: 'http://gitserver.agent-platform.svc.cluster.local/skills.git',
       ref: 'main',
+      signal: expect.any(AbortSignal),
     });
     expect(discoverAgentSkills).not.toHaveBeenCalled();
   });
@@ -642,6 +643,33 @@ describe('GET /agent-skills', () => {
       clock.mockRestore();
     }
   });
+
+  it.each([
+    ['github.com', 'https://github.com/giantswarm/skills'],
+    [
+      'generic git',
+      'http://gitserver.agent-platform.svc.cluster.local/skills.git',
+    ],
+  ])(
+    'reads an empty ref as the default branch, sharing its listing (%s)',
+    async (_, repoUrl) => {
+      const app = await buildDiscoveryApp();
+
+      const empty = await request(app)
+        .get('/agent-skills')
+        .query({ repoUrl, ref: '' });
+      const absent = await request(app).get('/agent-skills').query({ repoUrl });
+
+      expect(empty.status).toBe(200);
+      expect(absent.body).toEqual(empty.body);
+      const provider = repoUrl.startsWith('https://github.com/')
+        ? discoverAgentSkills
+        : discoverAgentSkillsFromGit;
+      // One upstream read for both, and '' never reaches the provider.
+      expect(provider).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(provider).mock.calls[0][0].ref).toBeUndefined();
+    },
+  );
 
   it("forwards the git provider's refusal with its upstream status", async () => {
     jest
@@ -776,12 +804,14 @@ describe('GET /agent-skills/content', () => {
       path: 'notes',
       commit: COMMIT,
       githubCredentialsProvider,
+      signal: expect.any(AbortSignal),
     });
     // The files of a commit no listing covers: one tree read, remembered.
     expect(listSkillFilesFromGitHub).toHaveBeenCalledWith({
       repoUrl: 'https://github.com/giantswarm/skills',
       commit: COMMIT,
       githubCredentialsProvider,
+      signal: expect.any(AbortSignal),
     });
     await request(app).get('/agent-skills/content').query({
       repoUrl: 'https://github.com/giantswarm/skills',
@@ -830,6 +860,7 @@ describe('GET /agent-skills/content', () => {
       repoUrl: GIT_REPO,
       ref: 'main',
       commit: COMMIT,
+      signal: expect.any(AbortSignal),
     });
     expect(readSkillContentFromGit).not.toHaveBeenCalled();
 
@@ -842,6 +873,67 @@ describe('GET /agent-skills/content', () => {
       .query({ repoUrl: GIT_REPO, commit: COMMIT, file: 'references/x.md' });
     expect(file.body.content).toBe('text');
     expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens a listed skill whose directory has a space or a non-ASCII letter', async () => {
+    jest.mocked(discoverAgentSkillsFromGit).mockResolvedValue({
+      ...gitSnapshot,
+      contents: new Map([
+        ['ops/Incident Review', '---\nname: Incident review\n---\nAct.'],
+        ['skills/über', '---\nname: über\n---\nMehr.'],
+      ]),
+      files: new Map([
+        ['ops/Incident Review', notesFiles],
+        ['skills/über', notesFiles],
+      ]),
+      fileContents: new Map([
+        ['ops/Incident Review/references/x.md', Buffer.from('text')],
+      ]),
+    });
+    const app = await buildContentApp();
+
+    for (const path of ['ops/Incident Review', 'skills/über']) {
+      const response = await request(app)
+        .get('/agent-skills/content')
+        .query({ repoUrl: GIT_REPO, path, commit: COMMIT, ref: 'main' });
+      expect(response.status).toBe(200);
+      expect(response.body.path).toBe(path);
+    }
+    const file = await request(app).get('/agent-skills/content/file').query({
+      repoUrl: GIT_REPO,
+      path: 'ops/Incident Review',
+      commit: COMMIT,
+      file: 'references/x.md',
+    });
+    expect(file.status).toBe(200);
+    expect(file.body.content).toBe('text');
+  });
+
+  it.each(['a/../b', 'a\\b', '/abs'])(
+    'still refuses %p as a skill directory',
+    async path => {
+      const app = await buildContentApp();
+
+      const response = await request(app)
+        .get('/agent-skills/content')
+        .query({ repoUrl: GIT_REPO, path, commit: COMMIT });
+
+      expect(response.status).toBe(400);
+      expect(discoverAgentSkillsFromGit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reads an empty ref as the default branch, as no ref', async () => {
+    const app = await buildContentApp();
+
+    const response = await request(app)
+      .get('/agent-skills/content')
+      .query({ repoUrl: GIT_REPO, commit: COMMIT, ref: '' });
+
+    expect(response.status).toBe(200);
+    expect(
+      jest.mocked(discoverAgentSkillsFromGit).mock.calls[0][0].ref,
+    ).toBeUndefined();
   });
 
   it('answers 404 for a generic-git directory without a SKILL.md at the commit', async () => {
@@ -1149,6 +1241,7 @@ describe('GET /agent-skills/content/file', () => {
       filePath: 'ops/references/runbook.md',
       commit: COMMIT,
       githubCredentialsProvider,
+      signal: expect.any(AbortSignal),
     });
 
     const again = await request(app)
@@ -1273,6 +1366,7 @@ describe('GET /agent-skills/content/file', () => {
       repoUrl: REPO,
       commit: COMMIT,
       githubCredentialsProvider,
+      signal: expect.any(AbortSignal),
     });
     // Remembered for the next file.
     await request(app)
@@ -1374,6 +1468,81 @@ describe('GET /agent-skills/content/file', () => {
       expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
     });
 
+    it('shares one clone between the content and any file read at one commit', async () => {
+      let finish!: () => void;
+      jest.mocked(discoverAgentSkillsFromGit).mockImplementation(async () => {
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+        return {
+          ...listing(GIT_REPO),
+          fileContents: new Map([
+            ['ops/references/runbook.md', Buffer.from('cloned')],
+            ['ops/data/packed.dat', Buffer.from('abc')],
+          ]),
+        };
+      });
+      const app = await buildFileApp();
+
+      const reads = Promise.all([
+        request(app).get('/agent-skills/content').query({
+          repoUrl: GIT_REPO,
+          path: 'ops',
+          commit: COMMIT,
+          ref: 'main',
+        }),
+        request(app)
+          .get('/agent-skills/content/file')
+          .query(gitQuery('references/runbook.md')),
+        request(app)
+          .get('/agent-skills/content/file')
+          .query(gitQuery('data/packed.dat')),
+      ]);
+      for (let i = 0; i < 50 && !finish; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      // Let every request reach the guard before the clone settles.
+      await new Promise(resolve => setTimeout(resolve, 20));
+      finish();
+      const [content, runbook, packed] = await reads;
+
+      expect(content.status).toBe(200);
+      expect(runbook.body.content).toBe('cloned');
+      expect(packed.body.content).toBe('abc');
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads once more, for its file, when the shared clone kept no bytes of it', async () => {
+      // The shared clone ran for runbook.md and spent its budget elsewhere.
+      jest
+        .mocked(discoverAgentSkillsFromGit)
+        .mockImplementation(async ({ mustRead }) => ({
+          ...listing(GIT_REPO),
+          fileContents: new Map([
+            [mustRead ?? '', Buffer.from(`kept ${mustRead}`)],
+          ]),
+        }));
+      const app = await buildFileApp();
+
+      const [runbook, packed] = await Promise.all([
+        request(app)
+          .get('/agent-skills/content/file')
+          .query(gitQuery('references/runbook.md')),
+        request(app)
+          .get('/agent-skills/content/file')
+          .query(gitQuery('data/packed.dat')),
+      ]);
+
+      expect(runbook.body.content).toBe('kept ops/references/runbook.md');
+      expect(packed.body.content).toBe('kept ops/data/packed.dat');
+      expect(
+        jest
+          .mocked(discoverAgentSkillsFromGit)
+          .mock.calls.map(([options]) => options.mustRead)
+          .sort(),
+      ).toEqual(['ops/data/packed.dat', 'ops/references/runbook.md']);
+    });
+
     it('clones once at the commit on a miss, keeping the asked-for file, and answers from memory after', async () => {
       jest.mocked(discoverAgentSkillsFromGit).mockResolvedValue({
         ...listing(GIT_REPO),
@@ -1399,6 +1568,7 @@ describe('GET /agent-skills/content/file', () => {
         ref: 'main',
         commit: COMMIT,
         mustRead: 'ops/references/runbook.md',
+        signal: expect.any(AbortSignal),
       });
       expect(readSkillFileFromGitHub).not.toHaveBeenCalled();
     });
@@ -1441,8 +1611,9 @@ describe('GET /agent-skills/content/file', () => {
 
       expect(again.status).toBe(409);
       expect(viaContent.status).toBe(409);
-      // `/content` reads without `mustRead`: one more clone, then remembered.
-      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(2);
+      // `/content` shares the clone key (no file in it): the 409 remembered
+      // for the file viewer answers it too.
+      expect(discoverAgentSkillsFromGit).toHaveBeenCalledTimes(1);
     });
 
     it('runs at most two clones at once, however many commits are asked for', async () => {

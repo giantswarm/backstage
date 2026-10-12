@@ -46,6 +46,13 @@ describe('GSMarkdownContent', () => {
     expect(container.firstElementChild).toHaveStyle({
       overflowWrap: 'anywhere',
     });
+    // Cells keep whole words, so the table scrolls rather than squeezing.
+    expect(screen.getByRole('columnheader', { name: 'column_0' })).toHaveStyle({
+      overflowWrap: 'normal',
+    });
+    expect(screen.getByRole('cell', { name: 'value_0' })).toHaveStyle({
+      overflowWrap: 'normal',
+    });
   });
 
   it('applies a caller-provided className to the wrapper', () => {

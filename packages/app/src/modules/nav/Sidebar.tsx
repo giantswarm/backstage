@@ -173,7 +173,7 @@ function ClassicSidebar({
     <>
       <ClusterAccessConnector />
       <Sidebar>
-        <SidebarLogo />
+        <SidebarLogo portals={portals} />
 
         {searchItem && (
           <SidebarGroup label="Search" icon={<SearchIcon />} to="/search">

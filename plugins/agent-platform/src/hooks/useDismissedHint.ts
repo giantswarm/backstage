@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from 'react';
-import { storageApiRef, useApi } from '@backstage/core-plugin-api';
-import useObservable from 'react-use/esm/useObservable';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
-const BUCKET = 'agent-platform';
+import { storedSettingWriteClient, useStoredSetting } from './useStoredSetting';
+
 const KEY = 'dismissedHints';
 
 /**
@@ -25,30 +25,37 @@ function readIds(value: unknown): string[] {
  *
  * `isKnown` stays false until the stored value has been read (the user-settings
  * backend answers asynchronously), so a caller can hold a dismissed hint back
- * instead of flashing it for a moment on every visit.
+ * instead of flashing it for a moment on every visit. The dismissal is added
+ * to the latest stored list (`useStoredSetting`), so two hints dismissed in
+ * quick succession both stay dismissed.
  */
 export function useDismissedHint(hintId: string) {
-  const storageApi = useApi(storageApiRef);
-  const bucket = useMemo(() => storageApi.forBucket(BUCKET), [storageApi]);
-
-  // `observe$` emits on every change (and, for UserSettingsStorage, once with
-  // the fetched value on subscription); the snapshot seeds the first render.
-  const snapshot = useObservable(
-    useMemo(() => bucket.observe$<string[]>(KEY), [bucket]),
-    useMemo(() => bucket.snapshot<string[]>(KEY), [bucket]),
-  );
+  const { snapshot, update } = useStoredSetting(KEY);
 
   const ids = useMemo(
     () => (snapshot.presence === 'present' ? readIds(snapshot.value) : []),
     [snapshot],
   );
 
+  const { mutateAsync } = useTrackedMutation(
+    {
+      mutationFn: () =>
+        update<true>(current => {
+          const stored = readIds(current);
+          return stored.includes(hintId)
+            ? undefined
+            : { value: [...stored, hintId], result: true };
+        }),
+      event: null,
+      untrackedReason:
+        'Dismissing a hint is housekeeping of the page, not an action in the product.',
+    },
+    storedSettingWriteClient,
+  );
+
   const dismiss = useCallback(async () => {
-    if (ids.includes(hintId)) {
-      return;
-    }
-    await bucket.set(KEY, [...ids, hintId]);
-  }, [bucket, hintId, ids]);
+    await mutateAsync();
+  }, [mutateAsync]);
 
   return {
     dismissed: ids.includes(hintId),

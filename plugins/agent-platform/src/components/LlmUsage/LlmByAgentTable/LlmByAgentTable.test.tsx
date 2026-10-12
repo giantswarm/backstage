@@ -2,6 +2,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
+  ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -313,6 +314,8 @@ describe('LlmByAgentTable at phone width', () => {
         ]}
         emptyMessage="none"
       />,
+      // The press opens a popover inside the shell, where this table lives.
+      { wrapper: ShellScopeProvider },
     );
 
     await user.click(

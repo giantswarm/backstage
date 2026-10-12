@@ -5,7 +5,10 @@ import {
   createExtensionInput,
 } from '@backstage/frontend-plugin-api';
 import { SidebarPage } from '@backstage/core-components';
-import { DateTimeZoneProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateTimeZoneProvider,
+  ShellScopeProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentShellArea } from './agentArea';
 import { ShellMain } from './ShellMain';
 
@@ -28,14 +31,18 @@ function AgentShellLayout({
 }) {
   const shellActive = useAgentShellArea();
   // The shell tells time on the browser's clock, as its lists already do by
-  // grouping on the local day; classic pages keep the portal's UTC. Always
+  // grouping on the local day; classic pages keep the portal's UTC. Shared
+  // components take their shell behavior from the scope (`InfoHint`'s
+  // popover, `FactList`'s phone stacking); classic pages keep theirs. Always
   // mounted, so moving between the two does not remount the page.
   return (
     <DateTimeZoneProvider timeZone={shellActive ? 'local' : 'utc'}>
-      <SidebarPage>
-        {nav}
-        {shellActive ? <ShellMain>{content}</ShellMain> : content}
-      </SidebarPage>
+      <ShellScopeProvider inShell={shellActive}>
+        <SidebarPage>
+          {nav}
+          {shellActive ? <ShellMain>{content}</ShellMain> : content}
+        </SidebarPage>
+      </ShellScopeProvider>
     </DateTimeZoneProvider>
   );
 }

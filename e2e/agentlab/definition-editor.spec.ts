@@ -76,7 +76,7 @@ test("an ad-hoc server's Edit as JSON validates, shows a parse error and stays o
 
   const dialog = admin.getByRole('dialog');
   const editor = dialog.getByRole('textbox', {
-    name: 'Server definition (JSON)',
+    name: 'Connector definition (JSON)',
   });
   await expect(
     dialog.getByRole('heading', { name: `Edit as JSON — ${server}` }),
