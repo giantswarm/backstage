@@ -69,7 +69,7 @@ export function shellTitleParts(
  * The title is whole: it also sets the template to `%s`, so a template from
  * an outer page layout ("%s | <app title>") cannot append the product a
  * second time. The innermost one mounted wins, so a page frame's title can be
- * sharpened by its content.
+ * sharpened by its content. An empty title sets nothing.
  */
 export function ShellDocumentTitle({
   title,
@@ -79,7 +79,11 @@ export function ShellDocumentTitle({
 }) {
   const suffix = useContext(SuffixContext);
   const parts = typeof title === 'string' ? [title] : title;
-  return (
-    <Helmet title={shellDocumentTitle(parts, suffix)} titleTemplate="%s" />
-  );
+  const documentTitle = shellDocumentTitle(parts, suffix);
+  // Nothing to name yet (a session's name still loading, no suffix): leave
+  // the title to the layout rather than blanking it.
+  if (!documentTitle) {
+    return null;
+  }
+  return <Helmet title={documentTitle} titleTemplate="%s" />;
 }

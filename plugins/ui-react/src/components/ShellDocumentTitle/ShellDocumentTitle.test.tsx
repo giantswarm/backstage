@@ -67,6 +67,16 @@ describe('ShellDocumentTitle', () => {
       expect(document.title).toBe('Lab Helper · Agents · Agent Platform'),
     );
   });
+
+  it('leaves an outer title alone when it has nothing to name', async () => {
+    render(
+      <>
+        <Helmet title="Sessions" />
+        <ShellDocumentTitle title={[undefined]} />
+      </>,
+    );
+    await waitFor(() => expect(document.title).toBe('Sessions'));
+  });
 });
 
 describe('ShellPage', () => {

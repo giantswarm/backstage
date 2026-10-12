@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Stat, StatDelta, StatGrid } from './Stat';
+import { StatDelta } from '../StatDelta';
+import { StatGrid } from '../StatGrid';
+import { Stat } from './Stat';
 
 const injectedCss = () =>
   Array.from(document.querySelectorAll('style'))
@@ -104,6 +106,6 @@ describe('Stat as a tile', () => {
       /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/,
     );
     // The value steps down so a money figure stays on one line in half the width.
-    expect(phoneRule(/tileValue/)).toMatch(/font-size: 1\.375rem/);
+    expect(phoneRule(/valueTile/)).toMatch(/font-size: 1\.375rem/);
   });
 });

@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react';
-import { Stat, StatDelta, StatGrid } from './Stat';
+import { StatDelta } from '../StatDelta';
+import { StatGrid } from '../StatGrid';
+import { Stat } from './Stat';
 import { componentDocs } from '../../storybook/docs';
 
 const meta = {
@@ -67,16 +69,16 @@ export const WithHint: Story = {
 };
 
 export const TilesInAGrid: Story = {
-  args: { label: 'Spend', value: '$1,234.56', variant: 'tile' },
-  render: () => (
+  args: {
+    variant: 'tile',
+    label: 'Spend',
+    value: '$1,234.56',
+    beside: <StatDelta>+12% vs last week</StatDelta>,
+    sub: 'Last 7 days',
+  },
+  render: args => (
     <StatGrid>
-      <Stat
-        variant="tile"
-        label="Spend"
-        value="$1,234.56"
-        beside={<StatDelta>+12% vs last week</StatDelta>}
-        sub="Last 7 days"
-      />
+      <Stat {...args} />
       <Stat variant="tile" label="Model calls" value="12,345" />
       <Stat
         variant="tile"

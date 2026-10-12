@@ -1,58 +1,59 @@
 import { ReactNode } from 'react';
+import { Card, CardBody } from '@backstage/ui';
 import { makeStyles, Theme, useTheme } from '@material-ui/core';
+import classNames from 'classnames';
 import { PHONE_MEDIA } from '../../utils/breakpoints';
 import { Tone, toneColors } from '../../utils/tones';
 import { InfoHint } from '../InfoHint';
 
+// Each variant's rules set properties the shared rules leave alone, so the
+// result does not depend on the order the rules are declared in.
 const useStyles = makeStyles((theme: Theme) => ({
   root: {
     display: 'flex',
     flexDirection: 'column',
+  },
+  rootInline: {
     gap: 2,
+  },
+  rootTile: {
+    gap: theme.spacing(0.5),
+  },
+  // bui's Card has no border prop; without the outline a tile dissolves into
+  // the page (as `EmptyStateCard`'s does).
+  tile: {
+    border: `1px solid ${theme.palette.divider}`,
+    borderRadius: 'var(--bui-radius-3)',
+    minWidth: 0,
   },
   label: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
-    fontSize: '0.7rem',
-    fontWeight: 500,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     color: theme.palette.text.secondary,
   },
-  value: {
-    fontSize: '1.25rem',
-    fontWeight: 600,
-    lineHeight: 1.2,
-    // Tabular figures so a column of stats does not jitter as values change,
-    // and so digits line up across a strip.
-    fontVariantNumeric: 'tabular-nums',
-    letterSpacing: '-0.01em',
+  labelInline: {
+    fontSize: '0.7rem',
+    fontWeight: 500,
   },
-  valueRow: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: theme.spacing(1),
-    flexWrap: 'wrap',
-  },
-  sub: {
-    fontSize: 12,
-    color: theme.palette.text.secondary,
-  },
-  // The tile: an outlined card, drawn directly so it needs no MUI component.
-  tile: {
-    padding: theme.spacing(2),
-    border: `1px solid ${theme.palette.divider}`,
-    borderRadius: theme.shape.borderRadius * 2,
-    background: theme.palette.background.paper,
-    gap: theme.spacing(0.5),
-    minWidth: 0,
-  },
-  tileLabel: {
+  labelTile: {
     fontSize: 11,
     fontWeight: 600,
   },
-  tileValue: {
+  value: {
+    // Tabular figures so a column of stats does not jitter as values change,
+    // and so digits line up across a strip.
+    fontVariantNumeric: 'tabular-nums',
+  },
+  valueInline: {
+    fontSize: '1.25rem',
+    fontWeight: 600,
+    lineHeight: 1.2,
+    letterSpacing: '-0.01em',
+  },
+  valueTile: {
     fontSize: '1.75rem',
     fontWeight: 300,
     lineHeight: 1.15,
@@ -64,27 +65,15 @@ const useStyles = makeStyles((theme: Theme) => ({
       fontSize: '1.375rem',
     },
   },
-  grid: {
-    display: 'grid',
-    // Four across where there is room, fewer as the row narrows.
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: theme.spacing(2),
-    // Two across at phone width, not one: one tile per row put 420–520px of
-    // tiles above the content they summarise.
-    [PHONE_MEDIA]: {
-      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-      gap: theme.spacing(1.5),
-    },
+  valueRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: theme.spacing(1),
+    flexWrap: 'wrap',
   },
-  delta: {
+  sub: {
     fontSize: 12,
-    fontVariantNumeric: 'tabular-nums',
     color: theme.palette.text.secondary,
-    whiteSpace: 'nowrap',
-    // Half a phone's width has no room for a long comparison on one line.
-    [PHONE_MEDIA]: {
-      whiteSpace: 'normal',
-    },
   },
 }));
 
@@ -104,10 +93,10 @@ export interface StatProps {
   /**
    * `inline` (the default) for a strip of stats inside a card or pane;
    * `tile` for a headline figure in its own outlined card, larger, laid out
-   * in a {@link StatGrid}.
+   * in a `StatGrid`.
    */
   variant?: 'inline' | 'tile';
-  /** Rendered on the value's baseline, e.g. a {@link StatDelta}. */
+  /** Rendered on the value's baseline, e.g. a `StatDelta`. */
   beside?: ReactNode;
   /** A muted line under the value, e.g. what the figure covers. */
   sub?: ReactNode;
@@ -136,20 +125,25 @@ export function Stat({
   const theme = useTheme();
   const color = tone ? toneColors(theme, tone).text : undefined;
   const tile = variant === 'tile';
+
   const valueNode = (
     <span
-      className={tile ? `${classes.value} ${classes.tileValue}` : classes.value}
+      className={classNames(
+        classes.value,
+        tile ? classes.valueTile : classes.valueInline,
+      )}
       style={color ? { color } : undefined}
     >
       {value}
     </span>
   );
-  return (
-    <div className={tile ? `${classes.root} ${classes.tile}` : classes.root}>
+  const content = (
+    <>
       <span
-        className={
-          tile ? `${classes.label} ${classes.tileLabel}` : classes.label
-        }
+        className={classNames(
+          classes.label,
+          tile ? classes.labelTile : classes.labelInline,
+        )}
       >
         {label}
         {hint && (
@@ -165,18 +159,21 @@ export function Stat({
         valueNode
       )}
       {sub && <span className={classes.sub}>{sub}</span>}
+    </>
+  );
+
+  if (tile) {
+    return (
+      <Card className={classes.tile}>
+        <CardBody className={classNames(classes.root, classes.rootTile)}>
+          {content}
+        </CardBody>
+      </Card>
+    );
+  }
+  return (
+    <div className={classNames(classes.root, classes.rootInline)}>
+      {content}
     </div>
   );
-}
-
-/** The responsive row `tile` stats sit in: four across, two on a phone. */
-export function StatGrid({ children }: { children: ReactNode }) {
-  const classes = useStyles();
-  return <div className={classes.grid}>{children}</div>;
-}
-
-/** Muted text on a stat's value baseline (`beside`), e.g. a change against the last window. */
-export function StatDelta({ children }: { children: ReactNode }) {
-  const classes = useStyles();
-  return <span className={classes.delta}>{children}</span>;
 }
