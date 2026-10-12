@@ -215,9 +215,7 @@ describe('AgentPlatformHome', () => {
     // kept that page's.
     await render();
 
-    await waitFor(() =>
-      expect(document.title).toBe('New session · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('New session'));
   });
 
   it('greets without a name when the profile has none', async () => {

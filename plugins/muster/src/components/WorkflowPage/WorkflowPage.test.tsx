@@ -340,9 +340,7 @@ describe('WorkflowPage', () => {
     // previous page's title.
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
-    await waitFor(() =>
-      expect(document.title).toBe('deploy · Workflows · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('deploy · Workflows'));
   });
 
   it('lists the inputs with type, required and default', async () => {

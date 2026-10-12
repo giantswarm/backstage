@@ -897,9 +897,7 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     // The app layout appends " | <app title>"; the page sets the rest.
-    await waitFor(() =>
-      expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
     expect(
       screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
     ).toBeInTheDocument();
@@ -913,9 +911,7 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    await waitFor(() =>
-      expect(document.title).toBe('pr-reviewer · Agents · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('pr-reviewer · Agents'));
   });
 
   it('lists the configuration as terms and descriptions, not headings', async () => {

@@ -476,14 +476,10 @@ describe('CustomizePage', () => {
       config: { app: { title: 'Agent Platform' } },
     });
 
-    await waitFor(() =>
-      expect(document.title).toBe('Agents · Customize · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Agents · Customize'));
 
     await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
 
-    await waitFor(() =>
-      expect(document.title).toBe('Workflows · Customize · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
   });
 });

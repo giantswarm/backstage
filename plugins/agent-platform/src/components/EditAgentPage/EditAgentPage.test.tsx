@@ -315,7 +315,7 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     // The document title names the agent, like the skill edit frames.
     await waitFor(() =>
-      expect(document.title).toBe('Edit PR reviewer · Agents · Agent Platform'),
+      expect(document.title).toBe('Edit PR reviewer · Agents'),
     );
     expect(screen.getByLabelText(/^What is it for\?/)).toHaveValue(
       'Reviews pull requests.',
