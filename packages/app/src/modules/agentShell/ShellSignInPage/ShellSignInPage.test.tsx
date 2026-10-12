@@ -118,13 +118,31 @@ describe('ShellSignInPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Agent Platform' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sign in to continue.')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Sign in with GitHub' }),
     ).toHaveAccessibleDescription('Giant Swarm SSO');
     expect(
       screen.getByRole('button', { name: 'Sign in with Microsoft' }),
     ).toHaveAccessibleDescription('Entra ID account');
+  });
+
+  it('shows a bare button for an option without a message', async () => {
+    renderInTestApp(
+      <ShellSignInPage
+        onSignInSuccess={jest.fn()}
+        providers={[{ id: 'dex-auth-provider', title: 'Dex', apiRef: mainRef }]}
+      />,
+      {
+        config: { app: { portals: { agentPlatform: true } } },
+        apis: [[mainRef, mockAuthApi()]],
+      },
+    );
+
+    const button = await screen.findByRole('button', {
+      name: 'Sign in with Dex',
+    });
+    expect(button).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText(/Sign in using/)).not.toBeInTheDocument();
   });
 
   it('offers a single option alone', async () => {

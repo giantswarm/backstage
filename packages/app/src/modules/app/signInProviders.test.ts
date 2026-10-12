@@ -3,7 +3,7 @@ import {
   gsAuthApiRef,
   gsFallbackSignInAuthApiRef,
 } from '@giantswarm/backstage-plugin-gs';
-import { signInProviders } from './signInProviders';
+import { shellSignInProviders, signInProviders } from './signInProviders';
 
 describe('signInProviders', () => {
   it('offers the main provider alone when nothing else is configured', () => {
@@ -97,5 +97,49 @@ describe('signInProviders', () => {
 
     expect(providers).toHaveLength(1);
     expect(providers[0].apiRef).toBe(gsAuthApiRef);
+  });
+});
+
+describe('shellSignInProviders', () => {
+  it('leaves out the default messages, which repeat the buttons', () => {
+    const providers = shellSignInProviders(
+      new ConfigReader({
+        gs: {
+          authProvider: 'oidc-gazelle',
+          signInFallbackProvider: { connectorId: 'giantswarm-ad' },
+        },
+      }),
+    );
+
+    expect(providers).toEqual([
+      { id: 'dex-auth-provider', title: 'Dex', apiRef: gsAuthApiRef },
+      {
+        id: 'dex-fallback-auth-provider',
+        title: 'Other identity provider',
+        apiRef: gsFallbackSignInAuthApiRef,
+      },
+    ]);
+    expect(providers[0]).not.toHaveProperty('message');
+  });
+
+  it('keeps the messages the deployment wrote', () => {
+    const providers = shellSignInProviders(
+      new ConfigReader({
+        gs: {
+          authProvider: 'oidc-gazelle',
+          signInProvider: { title: 'GitHub', message: 'Giant Swarm SSO' },
+          signInFallbackProvider: {
+            connectorId: 'giantswarm-ad',
+            title: 'Microsoft',
+            message: 'Entra ID account',
+          },
+        },
+      }),
+    );
+
+    expect(providers.map(provider => provider.message)).toEqual([
+      'Giant Swarm SSO',
+      'Entra ID account',
+    ]);
   });
 });
