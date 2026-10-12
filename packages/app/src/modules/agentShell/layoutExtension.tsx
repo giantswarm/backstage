@@ -11,6 +11,7 @@ import {
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentShellArea } from './agentArea';
+import { RailWidthProvider } from './RailWidthProvider';
 import { ShellMain } from './ShellMain';
 
 /**
@@ -21,7 +22,9 @@ import { ShellMain } from './ShellMain';
  * is exactly the upstream one, so the classic portal keeps its chrome (and
  * its UTC dates; the shell's are local). The shell is decided per location at
  * render time; the nav element makes the same choice for the rail vs the
- * classic sidebar.
+ * classic sidebar. The rail's width, which the person can change, is shared
+ * by the rail and the content region beside it (`RailWidthProvider`); off the
+ * shell the provider does no work.
  */
 function AgentShellLayout({
   nav,
@@ -40,10 +43,12 @@ function AgentShellLayout({
     <DateTimeZoneProvider timeZone={shellActive ? 'local' : 'utc'}>
       <ShellScopeProvider inShell={shellActive}>
         <ShellDocumentTitleProvider suffix="Agent Platform">
-          <SidebarPage>
-            {nav}
-            {shellActive ? <ShellMain>{content}</ShellMain> : content}
-          </SidebarPage>
+          <RailWidthProvider active={shellActive}>
+            <SidebarPage>
+              {nav}
+              {shellActive ? <ShellMain>{content}</ShellMain> : content}
+            </SidebarPage>
+          </RailWidthProvider>
         </ShellDocumentTitleProvider>
       </ShellScopeProvider>
     </DateTimeZoneProvider>

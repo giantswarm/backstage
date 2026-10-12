@@ -48,13 +48,27 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 1,
   },
+  // A rail row with a pin toggle: the row, not the link, takes the hover and
+  // current-session background, so the highlight spans the rail's width with
+  // the pin inside it. The link's hit area stretches over the whole row
+  // (`rowLink`), the pin sits above it.
+  //
   // The pin button shows on the row's hover and while anything in the row has
   // focus; a pinned row's (filled) pin is always there, and on a touch screen
   // — no hover to reveal it (T22 P10) — every row's is. Hidden with opacity
   // rather than display so it keeps its tab stop and its room in the row.
   item: {
+    position: 'relative',
     display: 'flex',
     alignItems: 'center',
+    borderRadius: 'var(--bui-radius-2)',
+    '&:hover': {
+      background: 'var(--bui-bg-neutral-2)',
+    },
+    // The current session keeps its highlight under the pointer.
+    '&$active:hover': {
+      background: 'var(--bui-bg-neutral-3)',
+    },
     '&:hover $pin, &:focus-within $pin': {
       opacity: 1,
     },
@@ -75,8 +89,39 @@ const useStyles = makeStyles({
   active: {
     background: 'var(--bui-bg-neutral-3)',
   },
+  // After `link`, whose hover background it takes back.
+  rowLink: {
+    '&:hover': {
+      background: 'transparent',
+    },
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      borderRadius: 'inherit',
+    },
+    // The focus ring goes round the row, as the highlight does. Inset, so the
+    // rail's scroll box does not clip it.
+    '&[data-focus-visible]': {
+      outline: 'none',
+    },
+    '&[data-focus-visible]::after': {
+      outline: '2px solid var(--bui-ring)',
+      outlineOffset: -2,
+    },
+  },
+  // Above the row's stretched hit area, so the dot's tooltip (its only
+  // visible meaning) is reached by hovering it; a click on it still opens
+  // the session, since the dot is inside the link.
+  dot: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'inline-flex',
+  },
   pin: {
+    position: 'relative',
     flex: 'none',
+    marginRight: 'var(--bui-space-1)',
     opacity: 0,
     [TOUCH_MEDIA]: {
       opacity: 1,
@@ -131,11 +176,17 @@ function SessionItem({
   pin?: { isPinned: boolean; onToggle: () => void };
 }) {
   const classes = useStyles();
+  // With a pin, the row carries the highlight (`item`); without, the link.
+  const activeClass = isActive ? classes.active : '';
   return (
-    <li className={pin ? classes.item : undefined}>
+    <li className={pin ? `${classes.item} ${activeClass}` : undefined}>
       <Link
         href={href}
-        className={`${classes.link} ${isActive ? classes.active : ''}`}
+        className={
+          pin
+            ? `${classes.link} ${classes.rowLink}`
+            : `${classes.link} ${activeClass}`
+        }
         aria-current={isActive ? 'page' : undefined}
       >
         <Flex align="center" gap="2">
@@ -145,20 +196,22 @@ function SessionItem({
               awaiting-input states, `isWorking` everything active that isn't.
               A dot with no visible label carries its meaning as a tooltip and
               an accessible name. */}
-          {waiting ? (
-            <StatusDot
-              tone="warning"
-              aria-label={NEEDS_INPUT_LABEL}
-              colorVar={sessionStateDotVar('warning')}
-            />
-          ) : (
-            working && (
-              <StatusDot
-                tone="info"
-                aria-label={WORKING_LABEL}
-                colorVar={sessionStateDotVar('info')}
-              />
-            )
+          {(waiting || working) && (
+            <span className={classes.dot}>
+              {waiting ? (
+                <StatusDot
+                  tone="warning"
+                  aria-label={NEEDS_INPUT_LABEL}
+                  colorVar={sessionStateDotVar('warning')}
+                />
+              ) : (
+                <StatusDot
+                  tone="info"
+                  aria-label={WORKING_LABEL}
+                  colorVar={sessionStateDotVar('info')}
+                />
+              )}
+            </span>
           )}
           <Box grow minWidth="0">
             <Text

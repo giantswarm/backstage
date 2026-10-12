@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { SidebarPinStateProvider } from '@backstage/core-components';
+import {
+  SidebarPinStateProvider,
+  sidebarConfig,
+} from '@backstage/core-components';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import {
@@ -7,9 +10,15 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
+import {
+  RAIL_COLLAPSED_WIDTH,
+  RAIL_DEFAULT_WIDTH,
+  RAIL_WIDTH_STORAGE_KEY,
+  RailWidthProvider,
+} from '../RailWidthProvider';
 import { customizeRouteRef } from '../routes';
 import { AgentShellNav } from './AgentShellNav';
 
@@ -79,11 +88,13 @@ async function renderNav({
   portals?: PortalsConfig;
 } = {}) {
   await renderInTestApp(
-    <SidebarPinStateProvider
-      value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
-    >
-      <AgentShellNav />
-    </SidebarPinStateProvider>,
+    <RailWidthProvider>
+      <SidebarPinStateProvider
+        value={{ isPinned, toggleSidebarPinState: () => {}, isMobile }}
+      >
+        <AgentShellNav />
+      </SidebarPinStateProvider>
+    </RailWidthProvider>,
     {
       initialRouteEntries: [path],
       config: {
@@ -124,6 +135,7 @@ function railLinks() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   signOut.mockClear();
   mockOpenPalette.mockClear();
 });
@@ -494,6 +506,22 @@ describe('AgentShellNav', () => {
     expect(logo).toHaveTextContent('');
   });
 
+  it('scales the logo down to fit the collapsed rail rather than cutting it off', async () => {
+    await renderNav({ isPinned: false });
+
+    const logo = screen.getByRole('link', { name: 'Agent Platform' });
+    expect(window.getComputedStyle(logo).maxWidth).toBe('100%');
+    // The ant here; a branding logo icon is an <img> under the same rule.
+    const mark = await waitFor(() => {
+      const element = logo.querySelector('svg, img');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const style = window.getComputedStyle(mark);
+    expect(style.maxWidth).toBe('100%');
+    expect(style.objectFit).toBe('contain');
+  });
+
   it('highlights the item of the current location', async () => {
     await renderNav({ path: '/agent-platform/usage/cost' });
 
@@ -565,6 +593,174 @@ describe('AgentShellNav', () => {
     expect(screen.queryByText('Customize')).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
+  });
+
+  it('collapses narrower than the classic sidebar, every icon on one axis', async () => {
+    await renderNav({ isPinned: false });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(nav).toHaveStyle({ width: `${RAIL_COLLAPSED_WIDTH}px` });
+    expect(RAIL_COLLAPSED_WIDTH).toBeLessThan(sidebarConfig.drawerWidthClosed);
+
+    // Menu items, Search and the profile trigger, which is narrower than the
+    // rest: each centred in its row, as the logo and expand button are.
+    const rows = nav.querySelectorAll('ul > li');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of Array.from(rows)) {
+      const style = window.getComputedStyle(row);
+      expect(style.display).toBe('flex');
+      expect(style.justifyContent).toBe('center');
+    }
+    expect(
+      within(nav).getByRole('button', { name: 'Profile and settings' }),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).getByRole('button', { name: 'Search' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the expanded rail items left-aligned', async () => {
+    await renderNav();
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const row = screen.getByRole('link', { name: 'Customize' }).parentElement!;
+    expect(nav).toContainElement(row);
+    expect(window.getComputedStyle(row).justifyContent).not.toBe('center');
+  });
+
+  describe('resizing the rail', () => {
+    // jsdom's window is 1024px wide, so the rail goes up to 40% of it.
+    const maxWidth = Math.floor(1024 * 0.4);
+
+    function rail() {
+      return screen.getByRole('navigation', { name: 'Main' });
+    }
+    function handle() {
+      return screen.getByRole('separator', { name: 'Resize sidebar' });
+    }
+
+    it('has a handle on the expanded rail that names what it resizes', async () => {
+      await renderNav();
+
+      expect(handle()).toHaveAttribute('aria-orientation', 'vertical');
+      expect(handle()).toHaveAttribute('aria-controls', rail().id);
+      expect(handle()).toHaveAttribute(
+        'aria-valuenow',
+        String(RAIL_DEFAULT_WIDTH),
+      );
+      expect(handle()).toHaveAttribute(
+        'aria-valuemin',
+        String(RAIL_DEFAULT_WIDTH),
+      );
+      expect(handle()).toHaveAttribute('aria-valuemax', String(maxWidth));
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+    });
+
+    it('resizes from the keyboard, within its bounds, and remembers the width', async () => {
+      await renderNav();
+
+      // A tab stop of its own, after the rail's items.
+      expect(handle()).toHaveAttribute('tabindex', '0');
+      handle().focus();
+      await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH + 32}px` });
+      expect(handle()).toHaveAttribute(
+        'aria-valuenow',
+        String(RAIL_DEFAULT_WIDTH + 32),
+      );
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe(
+        String(RAIL_DEFAULT_WIDTH + 32),
+      );
+
+      await userEvent.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+
+      await userEvent.keyboard('{End}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      await userEvent.keyboard('{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+
+      await userEvent.keyboard('{Home}');
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+      // The default is not stored: a later default change reaches everyone.
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBeNull();
+    });
+
+    it('follows a drag of its edge and returns to the default on a double click', async () => {
+      await renderNav();
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
+
+      fireEvent.pointerDown(handle(), { button: 0, clientX: 224 });
+      fireEvent.pointerMove(handle(), { clientX: 300 });
+      await waitFor(() => expect(rail()).toHaveStyle({ width: '300px' }));
+      fireEvent.pointerMove(handle(), { clientX: 2000 });
+      await waitFor(() =>
+        expect(rail()).toHaveStyle({ width: `${maxWidth}px` }),
+      );
+      fireEvent.pointerMove(handle(), { clientX: 280 });
+      // Remembered on release, not on every frame of the drag.
+      expect(setItem).not.toHaveBeenCalledWith(
+        RAIL_WIDTH_STORAGE_KEY,
+        expect.anything(),
+      );
+      fireEvent.pointerUp(handle(), { clientX: 280 });
+      expect(rail()).toHaveStyle({ width: '280px' });
+      expect(setItem.mock.calls).toEqual([[RAIL_WIDTH_STORAGE_KEY, '280']]);
+      setItem.mockRestore();
+      // Released: moving the pointer no longer resizes.
+      fireEvent.pointerMove(handle(), { clientX: 350 });
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      expect(rail()).toHaveStyle({ width: '280px' });
+
+      fireEvent.doubleClick(handle());
+      expect(rail()).toHaveStyle({ width: `${RAIL_DEFAULT_WIDTH}px` });
+    });
+
+    it('opens at the remembered width', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '320');
+      await renderNav();
+      expect(rail()).toHaveStyle({ width: '320px' });
+    });
+
+    it('shows a remembered width too wide for the window as the widest it allows', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '470');
+      await renderNav();
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      // The choice itself is kept for a wider window.
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe('470');
+    });
+
+    it('keeps a remembered width too wide for the window through a press, a release and End', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '470');
+      await renderNav();
+
+      fireEvent.pointerDown(handle(), { button: 0, clientX: maxWidth });
+      fireEvent.pointerMove(handle(), { clientX: maxWidth + 0.4 });
+      fireEvent.pointerUp(handle(), { clientX: maxWidth + 0.4 });
+      handle().focus();
+      await userEvent.keyboard('{End}{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe('470');
+
+      // A real change is remembered.
+      await userEvent.keyboard('{ArrowLeft}');
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe(
+        String(maxWidth - 16),
+      );
+    });
+
+    it('has no handle on the collapsed rail, which keeps its own width', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '320');
+      await renderNav({ isPinned: false });
+
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+      expect(rail()).not.toHaveStyle({ width: '320px' });
+    });
+
+    it('has no handle in the mobile bar', async () => {
+      await renderNav({ isMobile: true });
+      expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    });
   });
 
   it('heads the profile menu with the email alone when there is no name', async () => {
