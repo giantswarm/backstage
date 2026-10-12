@@ -32,12 +32,6 @@ const MIB = 2 ** 20;
 export const TOOLS_CAPABILITY = 'tools';
 
 /**
- * Model features not worth a chip: every model completes text, so saying so
- * is noise next to the ones that distinguish it (tools, vision, thinking).
- */
-const IMPLIED_MODEL_CAPABILITIES = new Set(['completion']);
-
-/**
  * The backends the seam knows. model-manager may grow others; an installation
  * reporting one the portal has no vocabulary for is skipped (with a console
  * warning) rather than mislabelled.
@@ -555,13 +549,6 @@ export function lacksToolCalling(
   return (
     model.capabilities !== undefined &&
     !model.capabilities.includes(TOOLS_CAPABILITY)
-  );
-}
-
-/** The features worth showing, in the backend's order. */
-export function notableCapabilities(capabilities: string[]): string[] {
-  return capabilities.filter(
-    capability => !IMPLIED_MODEL_CAPABILITIES.has(capability),
   );
 }
 

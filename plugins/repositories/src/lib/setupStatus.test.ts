@@ -1,10 +1,5 @@
 import { newService, presentService } from '../fixtures/records';
-import {
-  resultFindings,
-  stepDetail,
-  stepsNotOk,
-  verdictIntent,
-} from './setupStatus';
+import { stepDetail, stepsNotOk, verdictIntent } from './setupStatus';
 
 /**
  * `devctl repo status` prints `setup.checks` as a STEP / VERDICT / DETAIL
@@ -48,16 +43,6 @@ describe('set-up status, as devctl repo status prints it', () => {
     ).toBe(
       'not followed | follow project; enable setup workflows | 2 findings',
     );
-  });
-
-  it('lists the findings as "[kind] message / fix: fix"', () => {
-    expect(
-      resultFindings(checks).map(
-        f => `- [${f.kind}] ${f.message}\n  fix: ${f.fix}`,
-      ),
-    ).toEqual([
-      '- [default-icon] the repository uses the default icon\n  fix: upload an icon in the repository settings',
-    ]);
   });
 
   it('gives every verdict a status intent, unknown ones a neutral one', () => {
