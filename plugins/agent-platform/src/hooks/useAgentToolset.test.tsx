@@ -66,6 +66,22 @@ const PENDING = query({});
 describe('useAgentToolset', () => {
   beforeEach(() => mockUseResources.mockReset());
 
+  // The agent page reads it before its early returns, while the agent may
+  // not be read yet.
+  it('reads nothing and answers undefined without an agent', () => {
+    mockUseResources.mockReturnValue({ resources: [], queries: [] });
+
+    const { result } = renderHook(() => useAgentToolset(undefined));
+
+    expect(mockUseResources).toHaveBeenCalledWith(
+      '',
+      RemoteMCPServer,
+      { '': { namespace: undefined } },
+      { enableDiscovery: false, enabled: false },
+    );
+    expect(result.current).toBeUndefined();
+  });
+
   it('reads the carrier RemoteMCPServers of the agent’s own namespace', () => {
     mockUseResources.mockReturnValue({
       resources: [carrier('preset:read-only')],
@@ -78,7 +94,7 @@ describe('useAgentToolset', () => {
       'gazelle',
       RemoteMCPServer,
       { gazelle: { namespace: 'kagent' } },
-      { enableDiscovery: false },
+      { enableDiscovery: false, enabled: true },
     );
     expect(result.current).toEqual({
       declared: {

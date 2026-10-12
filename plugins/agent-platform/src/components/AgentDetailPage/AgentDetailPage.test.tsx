@@ -244,6 +244,22 @@ const READ_ONLY_TOOLSET = {
   isReading: false,
   isUnreadable: false,
 };
+/** A chat-only agent: no binding reaches the gateway. */
+const NO_GATEWAY_TOOLSET = {
+  declared: { state: 'no-gateway' },
+  isReading: false,
+  isUnreadable: false,
+};
+/** Bound to the gateway, but its carrier declares no tools. */
+const NONE_TOOLSET = {
+  declared: {
+    state: 'declared',
+    carrier: 'pr-reviewer',
+    selectors: ['preset:none'],
+  },
+  isReading: false,
+  isUnreadable: false,
+};
 
 // The shell's plain Overview names skills the way the skill catalog does,
 // when it has them. Driven per case; empty by default.
@@ -714,7 +730,7 @@ describe('AgentDetailPage', () => {
   });
 
   describe('tools', () => {
-    it('renders the toolset one level below the agent', async () => {
+    it('renders the toolset under the Tools tab', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage('tools');
@@ -2117,9 +2133,48 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
     });
 
     it('leaves the Tools tab out for an agent without the gateway', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
       stubResources({
         resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
       });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('leaves the Tools tab out for a gateway-bound agent declaring preset:none', async () => {
+      mockUseAgentToolset.mockReturnValue(NONE_TOOLSET);
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Usage',
+      ]);
+    });
+
+    it('draws the Tools tab while loading only on a deep link to it', async () => {
+      stubResources({ isLoading: true });
+
+      const { unmount } = await renderShell('tools');
+
+      expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
+        'Overview',
+        'Sessions',
+        'Tools',
+        'Usage',
+      ]);
+      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+        'Tools',
+      );
+      unmount();
 
       await renderShell();
 
@@ -2385,13 +2440,18 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
     it('sends the retired Skills tab to the Overview that now shows them', async () => {
       stubResources({ resource: makeAgent() });
 
-      await renderShell('skills');
+      await renderShell('skills?installation=gazelle');
 
       expect(
         screen.getByRole('heading', { name: 'Skills' }),
       ).toBeInTheDocument();
+      // The query string survives the redirect: the tabs carry it.
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
         'Overview',
+      );
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
       );
     });
 
@@ -2408,9 +2468,10 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       const breadcrumbs = screen.getByRole('navigation', {
         name: 'Breadcrumb',
       });
-      expect(within(breadcrumbs).getByText('PR reviewer')).not.toHaveAttribute(
-        'href',
-      );
+      expect(within(breadcrumbs).getByText('PR reviewer')).toBeInTheDocument();
+      expect(
+        within(breadcrumbs).queryByRole('link', { name: 'PR reviewer' }),
+      ).toBeNull();
       expect(within(breadcrumbs).queryByText('Tools')).toBeNull();
       await waitFor(() => expect(document.title).toBe('PR reviewer · Agents'));
       // The facts belong to the Overview.
@@ -2420,11 +2481,12 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
     });
 
     it('sends the tools of an agent without the gateway to the Overview', async () => {
+      mockUseAgentToolset.mockReturnValue(NO_GATEWAY_TOOLSET);
       stubResources({
         resource: makeAgent({ spec: { tools: [] } } as Partial<AgentInterface>),
       });
 
-      await renderShell('tools');
+      await renderShell('tools?installation=gazelle');
 
       expect(screen.queryByTestId('agent-toolset-card')).toBeNull();
       expect(
@@ -2432,6 +2494,11 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       ).toBeInTheDocument();
       expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
         'Overview',
+      );
+      // The query string survives the redirect, as from `skills`.
+      expect(screen.getByRole('tab', { selected: true })).toHaveAttribute(
+        'href',
+        `${AGENT_PATH}?installation=gazelle`,
       );
     });
   });

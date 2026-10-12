@@ -36,6 +36,7 @@ import {
   skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { bindsGateway } from '../../lib/toolset';
 import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
 import { describeReach } from '../AgentReachLine';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
@@ -329,11 +330,10 @@ function ConnectorsSection({
 }) {
   const classes = useStyles();
   const { declared, isReading, isUnreadable } = useAgentToolset(agent);
-  const bindings = agent.getMcpBindings();
-  const direct = bindings.filter(
-    binding => !isGatewayServerBinding(agent, binding),
-  );
-  const hasGateway = direct.length < bindings.length;
+  const direct = agent
+    .getMcpBindings()
+    .filter(binding => !isGatewayServerBinding(agent, binding));
+  const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
   let reach: string;

@@ -24,6 +24,7 @@ import {
   parseSelector,
   labelOfPresetSelector,
   selectorLabel,
+  toolsetHasTools,
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
@@ -133,9 +134,13 @@ function DeclaredSelectors({
  * to), the sign-in is offered instead of an empty list.
  *
  * Loud where it matters: an agent with no toolset at all is labelled
- * *implicit full access*, `preset:full` is *Full gateway access*, and a
- * chat-only agent is *No tools*. A toolset naming a preset the installation no
- * longer defines shows muster's own error (D12) — never a quietly empty list.
+ * *implicit full access*, and `preset:full` is *Full gateway access*. A
+ * toolset naming a preset the installation no longer defines shows muster's
+ * own error (D12) — never a quietly empty list.
+ *
+ * Rendered for an agent with tools only (`toolsetHasTools`): the page has no
+ * Tools tab for a chat-only agent and sends `…/tools` to its Overview, so this
+ * card draws nothing for one.
  */
 export function AgentToolsetCard({ agent }: { agent: Agent }) {
   const classes = useStyles();
@@ -205,18 +210,12 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     serversRoute,
   ]);
 
+  if (!toolsetHasTools(declared)) {
+    return null;
+  }
+
   let body: React.ReactNode;
-  if (declared.state === 'no-gateway') {
-    // Decided by the agent's own bindings, so it is already final — a
-    // chat-only agent has nothing to wait for and says so at once.
-    body = (
-      <Alert
-        status="info"
-        title="No tools"
-        description="It has no gateway entry, so it is a chat-only agent with nothing beyond its own reasoning."
-      />
-    );
-  } else if (isReading) {
+  if (isReading) {
     // Until the carrier read answers, nothing can be said — and saying it
     // cannot be read would be wrong on every healthy agent. The indicator
     // holds itself back for 250ms, so a read served from cache shows nothing
@@ -258,13 +257,6 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
             description="The full preset: this agent can call every tool the gateway exposes to whoever invokes it, platform tools included."
           />
         )}
-        {shape === 'none' && (
-          <Alert
-            status="info"
-            title="No tools"
-            description="The toolset is preset:none, so this is a chat-only agent."
-          />
-        )}
         {unsignedServers.length > 0 && musterApi && (
           <Flex direction="column" gap="2">
             <Alert
@@ -288,31 +280,27 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
             })}
           </Flex>
         )}
-        {shape !== 'none' && (
-          <>
-            {/* h3, not h4: bui's AccordionTrigger wraps every disclosure
+        {/* h3, not h4: bui's AccordionTrigger wraps every disclosure
                 heading in an h3 at every depth, so an h4 here would put this
                 section's own heading *below* the headings it contains. Flat
                 is the best available outline until the trigger's level can be
                 set. */}
-            <Text
-              as="h3"
-              variant="body-medium"
-              weight="bold"
-              className={classes.heading}
-            >
-              Resolves to, for you
-              {resolution.status === 'resolved'
-                ? ` (${resolution.tools.length})`
-                : ''}
-            </Text>
-            <ToolsetResolutionList
-              resolution={resolution}
-              servers={servers}
-              toolHref={toolHref}
-            />
-          </>
-        )}
+        <Text
+          as="h3"
+          variant="body-medium"
+          weight="bold"
+          className={classes.heading}
+        >
+          Resolves to, for you
+          {resolution.status === 'resolved'
+            ? ` (${resolution.tools.length})`
+            : ''}
+        </Text>
+        <ToolsetResolutionList
+          resolution={resolution}
+          servers={servers}
+          toolHref={toolHref}
+        />
       </Flex>
     );
   }

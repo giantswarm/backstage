@@ -371,6 +371,18 @@ export function gatewayBindings(
 }
 
 /**
+ * Whether the agent binds the gateway at all: what `toolsetOfAgent` reads as
+ * anything but `no-gateway`. Known from the agent alone, before its carrier is
+ * read.
+ */
+export function bindsGateway(
+  agent: Pick<Agent, 'getName' | 'getMcpBindings'>,
+  gatewayName: string = MUSTER_MCP_SERVER_NAME,
+): boolean {
+  return gatewayBindings(agent, gatewayName).length > 0;
+}
+
+/**
  * The toolset an agent declares: its gateway bindings, joined with the
  * `RemoteMCPServer`s of its namespace to read the `X-Muster-Toolset` header
  * off the carrier each binding names. `carriers` undefined means the servers
@@ -410,6 +422,24 @@ export function toolsetOfAgent(
   return unresolved !== undefined
     ? { state: 'unresolved', carrier: unresolved }
     : { state: 'implicit-full', carrier: bindings[0].server.name };
+}
+
+/**
+ * Whether a declared toolset gives the agent tools, which is when its page
+ * has a Tools tab: it binds the gateway and does not declare `preset:none`.
+ * An `unresolved` toolset counts: while its carrier is read, the tab stays
+ * rather than flicker, and an unreadable or missing carrier is explained on
+ * the tab.
+ */
+export function toolsetHasTools(toolset: DeclaredToolset): boolean {
+  switch (toolset.state) {
+    case 'no-gateway':
+      return false;
+    case 'declared':
+      return toolsetShape(toolset.selectors) !== 'none';
+    default:
+      return true;
+  }
 }
 
 /**

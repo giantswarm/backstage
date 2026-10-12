@@ -43,6 +43,7 @@ import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { useAgentToolset } from '../../hooks/useAgentToolset';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -54,6 +55,7 @@ import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
+import { toolsetHasTools } from '../../lib/toolset';
 import {
   agentEditRouteRef,
   agentsRouteRef,
@@ -84,7 +86,6 @@ import { AgentSessionsCard } from './AgentSessionsCard';
 import { AgentToolsetCard } from './AgentToolsetCard';
 import { AgentUpdateSkillsDialog } from './AgentUpdateSkillsDialog';
 import { AgentUsageTab } from './AgentUsageTab';
-import { hasGatewayTools } from './helpers';
 import { AgentAvatar } from '../AgentAvatar';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -415,6 +416,10 @@ function AgentDetailPageContent() {
   // the tab segment removed — what the tab strip builds its hrefs from and
   // where an unknown sub-path is sent.
   const basePath = useSplatBasePath();
+  // Whether the agent has tools decides the Tools tab, on every tab. The
+  // carrier read is shared with the Overview's Connectors section and the
+  // toolset card, so it runs once.
+  const toolset = useAgentToolset(agent);
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -603,6 +608,7 @@ function AgentDetailPageContent() {
   const avatarUrl = buildAvatarUrl(installation, name, { size: AVATAR_SIZE });
   const path = location.pathname.replace(/\/$/, '');
   const onOverview = path === basePath;
+  const onTools = path === `${basePath}/tools`;
 
   // Loading only while there is no agent to show. An agent already in the
   // query cache renders at once, even while the persisted cache restores on
@@ -627,10 +633,10 @@ function AgentDetailPageContent() {
           />
         }
         badges={<ShellPageBadgeSkeleton />}
-        // Whether the agent has tools is not known yet. The strip assumes it
-        // has, as most agents do, so it holds still when the read lands; a
-        // chat-only agent loses the Tools tab then.
-        tabs={agentTabs({ hasTools: true })}
+        // Whether the agent has tools is not known yet: the Tools tab is drawn
+        // only where it is the tab asked for, so a deep link keeps its tab
+        // selected. Elsewhere it joins the strip once the agent is read.
+        tabs={agentTabs({ hasTools: onTools })}
         tabsSearch={location.search}
         aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
       >
@@ -716,7 +722,7 @@ function AgentDetailPageContent() {
     );
   }
 
-  const hasTools = hasGatewayTools(agent);
+  const hasTools = toolset ? toolsetHasTools(toolset.declared) : false;
   const toolsHref = hasTools
     ? `${basePath}/tools${location.search}`
     : undefined;
@@ -881,7 +887,10 @@ function AgentDetailPageContent() {
               />
             }
           />
-          <Route path="*" element={<Navigate to={basePath} replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${location.search}`} replace />}
+          />
         </Routes>
       </Flex>
       {dialogs}
