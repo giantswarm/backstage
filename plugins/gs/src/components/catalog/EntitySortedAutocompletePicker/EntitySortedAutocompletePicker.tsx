@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AllowedEntityFilters,
   CatalogAutocomplete,
   catalogApiRef,
   DefaultEntityFilters,
@@ -22,7 +23,6 @@ import CheckBoxOutlineBlankIcon from '@material-ui/icons/CheckBoxOutlineBlank';
 import useAsync from 'react-use/esm/useAsync';
 import { isEqual } from 'lodash';
 import { CustomFilters, reduceBackendCatalogFilters } from '../filters';
-import { AllowedEntityFilters } from '../EntityCheckboxesPicker';
 
 type EntitySortedAutocompletePickerProps<
   T extends DefaultEntityFilters = CustomFilters,

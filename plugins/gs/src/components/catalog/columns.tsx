@@ -3,6 +3,8 @@ import { CatalogTableRow } from '@backstage/plugin-catalog';
 import { Box, Typography } from '@material-ui/core';
 import { Text } from '@backstage/ui';
 import {
+  GS_ARCHITECT_ORB_REF,
+  GS_ARCHITECT_ORB_VERSION,
   getBuildFailingChecksFromEntity,
   getBuildStatusFromEntity,
   getBuildToolchainFromEntity,
@@ -30,7 +32,7 @@ import {
 } from '../utils/readiness';
 import { DateComponent } from '../UI';
 import { compareDates } from '../utils/helpers';
-import { Entity } from '@backstage/catalog-model';
+import { Entity, stringifyEntityRef } from '@backstage/catalog-model';
 import {
   semverCompareSort,
   StatusLabel,
@@ -260,27 +262,48 @@ export const columnFactories = Object.freeze({
    * and app-test-suite versions it pins as hover detail.
    *
    * The first click sorts newest release first, then pins that are not a
-   * release (`dev:…`, `volatile`), then rows without an orb. The comparator
-   * ignores the direction, so the second click is the exact reverse.
+   * release (`dev:…`, `volatile`) by name, then rows without an orb; ties
+   * fall back to the entity ref. The comparator ignores the direction, so the
+   * second click is the exact reverse.
    */
   createBuildToolchainColumn(
     options: {
       hidden: boolean;
     } = { hidden: false },
   ): TableColumn<CatalogTableRow> {
-    const newestFirst = semverCompareSort<CatalogTableRow>(
-      ({ entity }) => getBuildToolchainFromEntity(entity).orbVersion,
+    const newestRelease = semverCompareSort<CatalogTableRow>(
+      ({ entity }) => entity.metadata.labels?.[GS_ARCHITECT_ORB_VERSION],
       { descending: true },
     );
-    const hasNoOrb = ({ entity }: CatalogTableRow) =>
-      Number(!toolchainOrbText(getBuildToolchainFromEntity(entity)));
+    const refsByName = (
+      { entity: entity1 }: CatalogTableRow,
+      { entity: entity2 }: CatalogTableRow,
+    ) => {
+      const ref1 = entity1.metadata.annotations?.[GS_ARCHITECT_ORB_REF];
+      const ref2 = entity2.metadata.annotations?.[GS_ARCHITECT_ORB_REF];
+      if (ref1 === ref2) {
+        return 0;
+      }
+      if (!ref1) {
+        return 1;
+      }
+      if (!ref2) {
+        return -1;
+      }
+      return ref1.localeCompare(ref2);
+    };
 
     return {
       title: 'Architect Orb Version',
       hidden: options.hidden,
       width: 'auto',
       filtering: false,
-      customSort: (a, b) => newestFirst(a, b) || hasNoOrb(a) - hasNoOrb(b),
+      customSort: (a, b) =>
+        newestRelease(a, b) ||
+        refsByName(a, b) ||
+        stringifyEntityRef(a.entity).localeCompare(
+          stringifyEntityRef(b.entity),
+        ),
       render: ({ entity }) => {
         const toolchain = getBuildToolchainFromEntity(entity);
         const text = toolchainOrbText(toolchain);

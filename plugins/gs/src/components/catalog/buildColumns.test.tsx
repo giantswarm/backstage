@@ -100,44 +100,59 @@ describe('build toolchain column', () => {
 
   describe('sorting', () => {
     const sort = columnFactories.createBuildToolchainColumn().customSort!;
-    const release = (v: string) => ({
-      entity: component({ 'giantswarm.io/architect-orb-version': v }),
-    });
+    const row = (
+      name: string,
+      labels: Record<string, string> = {},
+      annotations: Record<string, string> = {},
+    ) =>
+      ({
+        entity: {
+          ...component(labels, annotations),
+          metadata: { name, labels, annotations },
+        },
+      }) as CatalogTableRow;
+    const release = (name: string, v: string) =>
+      row(name, { 'giantswarm.io/architect-orb-version': v });
+    const pin = (name: string, ref: string) =>
+      row(name, {}, { 'giantswarm.io/architect-orb-ref': ref });
+
+    // Ties on every key but the name, so a stable sort that only mirrors the
+    // keys would leave them in the same order in both directions.
     const rows = [
-      { entity: component({}) },
-      release('10.2.0'),
-      { entity: component({}, { 'giantswarm.io/architect-orb-ref': 'dev:a' }) },
-      release('9.6.0'),
-      release('10.10.0'),
-    ] as CatalogTableRow[];
-    const orbs = (sorted: CatalogTableRow[]) =>
-      sorted.map(
-        ({ entity }) =>
-          entity.metadata.labels?.['giantswarm.io/architect-orb-version'] ??
-          entity.metadata.annotations?.['giantswarm.io/architect-orb-ref'] ??
-          '',
-      );
+      row('no-orb-b'),
+      release('release-b', '10.2.0'),
+      pin('pin-volatile', 'volatile'),
+      release('old', '9.6.0'),
+      row('no-orb-a'),
+      pin('pin-dev', 'dev:a'),
+      release('release-a', '10.2.0'),
+      release('newest', '10.10.0'),
+    ];
+    const names = (sorted: CatalogTableRow[]) =>
+      sorted.map(({ entity }) => entity.metadata.name);
+    const firstClick = [
+      'newest',
+      'release-a',
+      'release-b',
+      'old',
+      'pin-dev',
+      'pin-volatile',
+      'no-orb-a',
+      'no-orb-b',
+    ];
 
     // material-table sorts ascending on the first click, and descending by
     // swapping the comparator's arguments.
     it('puts the newest orb first and rows without one last', () => {
-      expect(orbs([...rows].sort((a, b) => sort(a, b, 'row')))).toEqual([
-        '10.10.0',
-        '10.2.0',
-        '9.6.0',
-        'dev:a',
-        '',
-      ]);
+      expect(names([...rows].sort((a, b) => sort(a, b, 'row')))).toEqual(
+        firstClick,
+      );
     });
 
     it('reverses exactly on the second click', () => {
-      expect(orbs([...rows].sort((a, b) => sort(b, a, 'row')))).toEqual([
-        '',
-        'dev:a',
-        '9.6.0',
-        '10.2.0',
-        '10.10.0',
-      ]);
+      expect(names([...rows].sort((a, b) => sort(b, a, 'row')))).toEqual(
+        [...firstClick].reverse(),
+      );
     });
   });
 });

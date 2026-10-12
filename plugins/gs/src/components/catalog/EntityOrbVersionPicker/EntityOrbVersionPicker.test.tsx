@@ -15,7 +15,8 @@ async function renderPicker(updateFilters = jest.fn()) {
   const catalogApi = {
     getEntityFacets: jest.fn().mockResolvedValue({
       facets: {
-        [facet]: ['10.10.0', '10.2.0', '9.6.0'].map(value => ({
+        // The catalog returns facet values in text order.
+        [facet]: ['10.1.0', '10.10.0', '10.2.0', '9.6.0'].map(value => ({
           value,
           count: 1,
         })),
@@ -47,6 +48,7 @@ describe('EntityOrbVersionPicker', () => {
     expect(options.map(option => option.textContent)).toEqual([
       '10.10.0',
       '10.2.0',
+      '10.1.0',
       '9.6.0',
     ]);
   });
