@@ -357,7 +357,12 @@ describe('discoverAgentSkillsFromGit', () => {
       gitClient: { clone },
     });
 
-    expect(clone.mock.calls[0][2]).toBeUndefined();
+    expect(clone).toHaveBeenCalledWith(
+      expect.any(String),
+      'https://git.example.com/team/skills',
+      undefined,
+      undefined,
+    );
     expect(result.skills[0].ref).toBe('main');
   });
 
