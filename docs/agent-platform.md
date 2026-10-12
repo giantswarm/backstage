@@ -540,11 +540,12 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
 derives the same verdict from `status.harnesses[]`. A `not_found` right after
 the create is polled through. Polling stops at `ready`, and at `failed` unless
-it is a new agent's missing reference (see "Setting up" below), which is
-re-read, backing off from 3 s, until its grace period is over. After that the
-page's own Agent read, which keeps polling, turns the alert Ready if the
-failure clears. The installation's cached `kagent.dev` lists are invalidated
-after the write.
+it may still be the agent being set up (see "Setting up" below), which is
+re-read every 3 s until its window is over. After that the page's own Agent
+read, which keeps polling, turns the alert Ready if the failure clears — once
+that read describes the written revision, so a ready Agent from before an
+update is not taken for the update's success. The installation's cached
+`kagent.dev` lists are invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -1626,13 +1627,18 @@ broken agent does not pin the fast tier.
 A new agent can read `failed` for a moment on its way to `ready`: the release
 renders the Agent before the RemoteMCPServer it is bound to exists, so kagent
 reports `ResolvedRefs=False` (`resolve RemoteMCPServer "<agent>": not found`)
-until it does. The detail page shows that one failure as **Setting up**
-(neutral) for `PROVISIONING_GRACE_MS` (three minutes, the same window the list
-gives a converging agent), and as the failure after that
-(`lib/agentProvisioning.ts`). It is deliberately narrow, and fails closed:
+until it does. Every view shows that one failure as **Setting up** (neutral)
+for `PROVISIONING_GRACE_MS` (three minutes, the same window the list gives a
+converging agent), and as the failure after that. One rule decides it,
+`displayReadinessOf` in `lib/agentProvisioning.ts`: `toAgentRow` uses it, so
+the Customize list, the composer's agent picker and the detail page agree, and
+whoever builds rows re-renders when a window closes (`nextSettingUpDeadline`).
+It is deliberately narrow, and fails closed:
 
-- only `ResolvedRefs=False` as the root cause, with a message that says
-  `not found`;
+- only `ResolvedRefs=False` as the root cause, naming the agent's own
+  RemoteMCPServer — the one its release creates — as not found
+  (`isOwnCarrierMissing`); a missing ModelConfig, Secret or other server is a
+  mistake, shown at once;
 - only a new agent: the window runs from the Agent's `creationTimestamp`, so
   no later condition change restarts it, and an agent without one gets none;
 - before the page has the Agent, agent-manager's verdict has to show the same
@@ -1646,15 +1652,17 @@ HelmRelease itself (`useReleaseSettingUp`; agent-manager names it after the
 agent) and shows it as deploying while it was created less than three minutes
 ago and has no `Ready` condition yet, or one that is not `True` with reason
 `Progressing` or `DependencyNotReady`, and it is neither suspended nor
-`Stalled`. Meanwhile agent-manager's verdict is re-read so it is not left
-stale. A refused read gives no window.
+`Stalled`. Until that read answers the release is undecided, shown as
+deploying, not as failed. Meanwhile agent-manager's verdict is re-read so it is
+not left stale. The release is polled every 5 s only while it can still open a
+window; a refused or failed read stops it and gives no window.
 
 Everything else is shown at once: `Accepted=False`, `Compatible=False`, a
 reference that exists but does not resolve, a release that failed to install
 or upgrade or is not ready for any other reason, a verdict without a
-breakdown, and any failure of an agent that is not new.
-Once the page has the Agent, its clock decides for the header, the session
-blocker, the facts and the creation progress alike (`useAgentSettingUp`).
+breakdown, and any failure of an agent that is not new. Once the page has the
+Agent, its clock decides for the header, the session blocker, the facts and
+the creation progress alike (`useAgentSettingUp`).
 
 ### Absence
 
@@ -1697,11 +1705,11 @@ Every write goes through agent-manager over muster as the person (see the
 sections below); the plugin performs no Kubernetes write for agents.
 
 The agent is fetched with **one targeted `useResource`**, so a deep link works
-without the list. It polls 60 s once the agent is ready; until then it starts
-at 5 s and doubles every minute its status does not change, up to 60 s
-(`getAgentRefetchInterval`), so a failure that clears turns the page ready
-without a reload. Like every interval refetch it pauses while the tab is
-hidden.
+without the list. It polls 60 s once the agent is ready; until then 5 s for
+the three minutes after its status last changed (the window a new agent is set
+up in), then doubling every minute up to 60 s (`getAgentRefetchInterval`), so
+a failure that clears turns the page ready without a reload. Like every
+interval refetch it pauses while the tab is hidden.
 
 ### Layout
 

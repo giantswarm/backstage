@@ -1,7 +1,6 @@
 import type { Query } from '@tanstack/react-query';
 import {
   Agent,
-  AgentReadiness,
   AgentInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
@@ -17,8 +16,12 @@ import {
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
 import {
+  type AgentDisplayReadiness,
+  agentSettingUpUntil,
   backoffRefetchInterval,
+  displayReadinessOf,
   PROVISIONING_GRACE_MS,
+  SETTING_UP_MESSAGE,
 } from '../../lib/agentProvisioning';
 import {
   MUSTER_MCP_SERVER_NAME,
@@ -78,7 +81,7 @@ function msSinceStatusChange(json: AgentInterface, now: number): number {
  *
  * The fleet list's test, so it backs off from a *permanently* broken agent — see
  * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists. The detail page
- * backs off gradually instead (see {@link getAgentRefetchInterval}).
+ * backs off gradually after it instead (see {@link getAgentRefetchInterval}).
  */
 function isAgentConverging(json: AgentInterface, now: number): boolean {
   return (
@@ -90,12 +93,13 @@ function isAgentConverging(json: AgentInterface, now: number): boolean {
 /**
  * Refetch interval for a single agent, for the detail page.
  *
- * The baseline once the agent is ready. Until then it starts at the fast tier
- * and backs off from there, doubling every minute the agent's status does not
- * change, up to the baseline: the detail page is exactly where someone watches
- * an agent come up, including one that reads as failed while it is still being
- * set up, and where a failure fixed elsewhere should turn the page ready
- * without a reload. A status change restarts the backoff.
+ * The baseline once the agent is ready. Until then the fast tier for as long
+ * as the list's converging window ({@link TRANSITIONAL_MAX_AGE_MS}) lasts from
+ * the agent's last status change — the window a new agent is set up in, which
+ * is not to be slowed — and then backing off, doubling every minute up to the
+ * baseline: the detail page is exactly where someone watches an agent come
+ * up, and where a failure fixed elsewhere should turn the page ready without a
+ * reload. A status change restarts the window.
  */
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
@@ -106,7 +110,7 @@ export function getAgentRefetchInterval(
   }
 
   return backoffRefetchInterval(
-    msSinceStatusChange(json, Date.now()),
+    msSinceStatusChange(json, Date.now()) - TRANSITIONAL_MAX_AGE_MS,
     TRANSITIONAL_REFETCH_INTERVAL_MS,
     BASELINE_REFETCH_INTERVAL_MS,
   );
@@ -214,8 +218,11 @@ export type AgentRow = {
    * a model row carries. `undefined` when the agent references no model.
    */
   modelConfigId?: string;
-  /** Readiness derived from the Agent's conditions. */
-  readiness: AgentReadiness;
+  /**
+   * Readiness derived from the Agent's conditions, `settingUp` for a new
+   * agent still waiting for its own tool server (`displayReadinessOf`).
+   */
+  readiness: AgentDisplayReadiness;
   /**
    * Detail explaining a non-ready readiness (the Harness's reconcile error or
    * the unresolved reference), for the
@@ -321,6 +328,8 @@ export function toAgentRow(
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
   harnesses?: readonly Harness[],
+  /** When to judge "setting up" at; see {@link nextSettingUpDeadline}. */
+  now: number = Date.now(),
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -332,6 +341,7 @@ export function toAgentRow(
       candidate.getName() === harnessName,
   );
   const modelConfig = resolveModelConfig(agent, modelConfigs);
+  const readiness = displayReadinessOf(agent, now);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
@@ -364,14 +374,41 @@ export function toAgentRow(
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),
-    readiness: agent.getReadiness(),
-    readinessMessage: agent.getReadinessMessage(),
+    readiness,
+    readinessMessage:
+      readiness === 'settingUp'
+        ? SETTING_UP_MESSAGE
+        : agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers
       ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
       : {}),
   };
+}
+
+/**
+ * The earliest moment one of these agents stops reading as being set up, after
+ * `now`; `undefined` when none is. Rows are built from data that does not
+ * change when a window closes, so whoever builds them re-renders at this
+ * moment (`useDeadlinePassed`) to turn "Setting up" into the failure.
+ */
+export function nextSettingUpDeadline(
+  agents: Iterable<Agent>,
+  now: number,
+): number | undefined {
+  let next: number | undefined;
+  for (const agent of agents) {
+    const until = agentSettingUpUntil(agent);
+    if (
+      until !== undefined &&
+      until > now &&
+      (next === undefined || until < next)
+    ) {
+      next = until;
+    }
+  }
+  return next;
 }
 
 /**

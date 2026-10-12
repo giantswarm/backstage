@@ -48,3 +48,12 @@ export function useWatchStartedAt(key: string | undefined): number | undefined {
   }
   return watch.startedAt;
 }
+
+/**
+ * Whether there is a deadline and it has not passed yet: a window that is
+ * open, closing on its own at `until` (see {@link useDeadlinePassed}).
+ */
+export function useBeforeDeadline(until: number | undefined): boolean {
+  const isPast = useDeadlinePassed(until);
+  return until !== undefined && !isPast;
+}

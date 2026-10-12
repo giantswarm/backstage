@@ -113,6 +113,9 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getReadiness: () => spec.readiness ?? 'ready',
     getHarnessName: () => 'kagent',
     getReadinessMessage: () => undefined,
+    // No failure, so never "setting up" (`displayReadinessOf`).
+    getFailure: () => undefined,
+    getCreatedTimestamp: () => undefined,
     getHarnessWarnings: () => [],
     getMcpBindings: () => [],
   };

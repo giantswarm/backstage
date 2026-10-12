@@ -106,17 +106,6 @@ const DEPLOYING_PRESENTATION: ReadinessPresentation = {
 };
 
 /**
- * The header label for an agent that reads `failed` for a reason it passes
- * through while it is provisioned (see `useAgentSettingUp`): neutral, not the
- * red "Failed" the same conditions read as once the grace period is over.
- */
-const SETTING_UP_PRESENTATION: ReadinessPresentation = {
-  label: 'Setting up',
-  intent: 'neutral',
-  icon: READINESS_PRESENTATION.pending.icon,
-};
-
-/**
  * Link back to the list.
  *
  * `useRouteRef` returns undefined when the route is not bound — which in practice
@@ -253,17 +242,14 @@ function AgentDetailPageContent() {
   // A new release that has not reconciled yet is `failed` to agent-manager
   // too; read from the HelmRelease itself, it is set up for a grace period,
   // and the verdict is re-read meanwhile so it is not left stale.
-  const isReleaseSettingUp = useReleaseSettingUp(
-    installation,
-    namespace,
-    name,
-    {
-      enabled: isAgentMissing,
-    },
-  );
+  const releaseWindow = useReleaseSettingUp(installation, namespace, name, {
+    enabled: isAgentMissing,
+  });
   const release = useAgentStatus(installation, namespace, name, {
     enabled: isAgentMissing,
-    keepReadingFailed: isReleaseSettingUp,
+    // Also while the release read has not answered: until it has, a `failed`
+    // verdict is not known to be final, and must not stop being re-read.
+    keepReadingFailed: releaseWindow.isSettingUp || releaseWindow.isDeciding,
   });
   const isDeploying =
     isAgentMissing &&
@@ -310,7 +296,10 @@ function AgentDetailPageContent() {
       agent
         ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
         : undefined,
-    [agent, modelConfig, resolveServing],
+    // `isSettingUp` too: the row's readiness is judged at build time, and has
+    // to turn into the failure when the window closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [agent, modelConfig, resolveServing, isSettingUp],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -695,7 +684,12 @@ function AgentDetailPageContent() {
     if (isDeploying) {
       // A new agent's missing reference, or a new release still
       // reconciling, is still deploying until its grace period is over.
-      const isSettingUpRelease = release.isSettingUp || isReleaseSettingUp;
+      // Undecided while the release read is outstanding: neither a failure
+      // nor a window is known yet, so it reads as deploying, not as failed.
+      const isSettingUpRelease =
+        release.isSettingUp ||
+        releaseWindow.isSettingUp ||
+        releaseWindow.isDeciding;
       const failed =
         release.status?.verdict === 'failed' && !isSettingUpRelease;
       return (
@@ -720,7 +714,10 @@ function AgentDetailPageContent() {
                   : 'Deploying — waiting for kagent to render the agent'
               }
               description={
-                (isSettingUpRelease ? undefined : release.status?.summary) ??
+                // A failure's summary reads as one, so not under "Deploying".
+                (release.status?.verdict === 'failed' && !failed
+                  ? undefined
+                  : release.status?.summary) ??
                 'agent-manager applied the Helm release.'
               }
             />
@@ -775,6 +772,7 @@ function AgentDetailPageContent() {
         namespace={namespace}
         name={name}
         isAgentReady={isReady}
+        agentGeneration={agent.jsonData.metadata?.generation}
         isSettingUp={isSettingUp}
       />
 
@@ -851,7 +849,7 @@ function AgentDetailPageContent() {
         <ReadinessBadge
           readiness={
             isSettingUp
-              ? SETTING_UP_PRESENTATION
+              ? READINESS_PRESENTATION.settingUp
               : READINESS_PRESENTATION[agent.getReadiness()]
           }
         />

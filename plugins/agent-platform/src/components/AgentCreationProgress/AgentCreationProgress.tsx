@@ -51,6 +51,11 @@ const WORDING: Record<
 type AgentReadState = {
   /** The Agent read finds the agent ready. */
   isAgentReady: boolean;
+  /**
+   * The `metadata.generation` of the Agent the read holds, which tells whether
+   * its "ready" is about the revision a write produced or the one before it.
+   */
+  agentGeneration?: number;
   /** The Agent read finds the agent failed, but still being set up. */
   isSettingUp: boolean;
 };
@@ -63,6 +68,7 @@ type AgentReadState = {
 function CreatedAgentVerdict({
   handoff,
   isAgentReady,
+  agentGeneration,
   isSettingUp,
 }: { handoff: AgentCreatedHandoff } & AgentReadState) {
   const {
@@ -136,8 +142,19 @@ function CreatedAgentVerdict({
   }
 
   // The verdict is not re-read once it is `failed`, but the page's Agent read
-  // goes on polling, so a failure that clears still turns this alert Ready.
-  if (status?.verdict === 'ready' || (isFailed && isAgentReady)) {
+  // goes on polling, so a failure that clears still turns this alert Ready —
+  // once that read describes the written revision. Right after an update the
+  // read can still hold the ready Agent from before the write (the Harness
+  // has not re-rendered it yet), and its "ready" is not this write's.
+  // `isAgentReady` already implies the controller caught up with that
+  // generation (a lagging status reads `pending`).
+  const agentDescribesThisWrite =
+    fromGeneration === undefined ||
+    (agentGeneration !== undefined && agentGeneration > fromGeneration);
+  if (
+    status?.verdict === 'ready' ||
+    (isFailed && isAgentReady && agentDescribesThisWrite)
+  ) {
     const harness = harnessOf(status);
     return (
       <Alert
@@ -182,6 +199,7 @@ export function AgentCreationProgress({
   namespace,
   name,
   isAgentReady,
+  agentGeneration,
   isSettingUp,
 }: {
   installation: string;
@@ -201,6 +219,7 @@ export function AgentCreationProgress({
     <CreatedAgentVerdict
       handoff={handoff}
       isAgentReady={isAgentReady}
+      agentGeneration={agentGeneration}
       isSettingUp={isSettingUp}
     />
   );

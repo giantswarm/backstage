@@ -1,6 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useDeadlinePassed, useWatchStartedAt } from './useDeadlinePassed';
+import {
+  useBeforeDeadline,
+  useDeadlinePassed,
+  useWatchStartedAt,
+} from './useDeadlinePassed';
 
 const NOW = Date.parse('2026-07-31T12:00:00Z');
 
@@ -75,5 +79,21 @@ describe('useWatchStartedAt', () => {
 
     rerender({ watch: 'b' });
     expect(result.current).toBe(NOW + 60_000);
+  });
+});
+
+describe('useBeforeDeadline', () => {
+  it('is true until the deadline, and false without one', () => {
+    const { result } = renderHook(() => useBeforeDeadline(NOW + 1_000));
+    expect(result.current).toBe(true);
+
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+
+    expect(result.current).toBe(false);
+    expect(renderHook(() => useBeforeDeadline(undefined)).result.current).toBe(
+      false,
+    );
   });
 });

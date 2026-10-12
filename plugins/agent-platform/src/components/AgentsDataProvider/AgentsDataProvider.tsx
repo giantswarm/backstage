@@ -23,6 +23,7 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
+import { useDeadlinePassed } from '../../hooks/useDeadlinePassed';
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -35,6 +36,7 @@ import {
   TRANSITIONAL_REFETCH_INTERVAL_MS,
   sortAgentRows,
   toAgentRow,
+  nextSettingUpDeadline,
 } from './helpers';
 
 export type AgentsContextValue = {
@@ -397,7 +399,17 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
+  // A new agent reads "Setting up" until its window closes, and nothing about
+  // the data changes then: rebuild the rows at the earliest such moment, so the
+  // list and the composer's picker turn it into the failure on time.
+  const settingUpDeadline = nextSettingUpDeadline(
+    Object.values(agentsByInstallation).flat(),
+    Date.now(),
+  );
+  const isPastSettingUpDeadline = useDeadlinePassed(settingUpDeadline);
+
   const value = useMemo<AgentsContextValue>(() => {
+    const now = Date.now();
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
         agents.map(agent =>
@@ -409,6 +421,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
+            now,
           ),
         ),
       ),
@@ -483,6 +496,8 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     resolveServing,
     allInstallationsKey,
     scopedInstallationsKey,
+    settingUpDeadline,
+    isPastSettingUpDeadline,
   ]);
 
   return (

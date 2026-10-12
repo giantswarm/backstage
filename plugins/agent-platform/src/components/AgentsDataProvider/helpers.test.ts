@@ -13,6 +13,7 @@ import type { ServedModel } from '../../lib/serving';
 import {
   getAgentRefetchInterval,
   getAgentsRefetchInterval,
+  nextSettingUpDeadline,
   resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
@@ -650,18 +651,85 @@ describe('getAgentRefetchInterval', () => {
 
   // A failed agent is polled too, not only a compiling one: right after a
   // create it is often the agent still being set up, and the page should turn
-  // ready on its own once it is.
-  it('backs off from the fast tier while a failed agent does not change', () => {
+  // ready on its own once it is. The fast tier holds for the whole window a
+  // new agent is set up in, and only then backs off.
+  it('holds the fast tier through the window, then backs off', () => {
     expect(getAgentRefetchInterval(query(unresolvedAgent(0)))).toBe(FAST);
-    expect(getAgentRefetchInterval(query(unresolvedAgent(70_000)))).toBe(
+    expect(getAgentRefetchInterval(query(unresolvedAgent(150_000)))).toBe(FAST);
+    expect(getAgentRefetchInterval(query(unresolvedAgent(200_000)))).toBe(FAST);
+    expect(getAgentRefetchInterval(query(unresolvedAgent(250_000)))).toBe(
       2 * FAST,
-    );
-    expect(getAgentRefetchInterval(query(unresolvedAgent(150_000)))).toBe(
-      4 * FAST,
     );
     expect(getAgentRefetchInterval(query(unresolvedAgent(30 * 60_000)))).toBe(
       BASELINE,
     );
+  });
+});
+
+// One rule for every view: the list, the composer's picker and the detail page
+// all read a new agent waiting for its own tool server as "Setting up".
+describe('toAgentRow: an agent still being set up', () => {
+  const CREATED = Date.parse('2026-07-31T12:00:00Z');
+
+  const missingCarrier = (name: string, createdAt = CREATED) =>
+    makeAgent({
+      name,
+      creationTimestamp: new Date(createdAt).toISOString(),
+      status: reported([
+        condition('Accepted', 'True', 'Admitted'),
+        condition(
+          'ResolvedRefs',
+          'False',
+          'ReferenceResolutionFailed',
+          `resolve RemoteMCPServer "${name}": not found`,
+        ),
+      ]),
+    });
+
+  it('reads as setting up, with a neutral message, inside the window', () => {
+    const row = toAgentRow(
+      missingCarrier('fresh'),
+      [],
+      undefined,
+      undefined,
+      undefined,
+      CREATED + 10_000,
+    );
+
+    expect(row.readiness).toBe('settingUp');
+    expect(row.readinessMessage).toMatch(/still being set up/);
+  });
+
+  it('reads as failed, with the controller’s message, after it', () => {
+    const row = toAgentRow(
+      missingCarrier('stuck'),
+      [],
+      undefined,
+      undefined,
+      undefined,
+      CREATED + 10 * 60_000,
+    );
+
+    expect(row.readiness).toBe('failed');
+    expect(row.readinessMessage).toBe(
+      'resolve RemoteMCPServer "stuck": not found',
+    );
+  });
+
+  it('names the earliest window still to close, for the rows to be rebuilt at', () => {
+    const agents = [
+      missingCarrier('older', CREATED),
+      missingCarrier('newer', CREATED + 60_000),
+      makeAgent({ name: 'ready', status: readyStatus() }),
+    ];
+
+    expect(nextSettingUpDeadline(agents, CREATED + 1_000)).toBe(
+      CREATED + 3 * 60_000,
+    );
+    expect(nextSettingUpDeadline(agents, CREATED + 3 * 60_000)).toBe(
+      CREATED + 4 * 60_000,
+    );
+    expect(nextSettingUpDeadline(agents, CREATED + 4 * 60_000)).toBeUndefined();
   });
 });
 

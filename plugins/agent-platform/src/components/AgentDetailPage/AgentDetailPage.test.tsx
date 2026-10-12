@@ -1919,7 +1919,19 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('marks nothing as failing while a new agent’s model is still being set up', async () => {
+    it('marks nothing as failing while a new agent’s tool server is still being created', async () => {
+      stubResources({ resource: unresolvedAgent(10_000) });
+
+      await renderPage();
+
+      expectHeaderReadiness('Setting up');
+      // Neither the connectors on the Overview nor the facts beside it.
+      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
+    });
+
+    // Only the agent's own tool server is created by its release. A missing
+    // ModelConfig, Secret or other server is a mistake, shown at once.
+    it('shows a new agent’s missing model as failed at once', async () => {
       stubResources({
         resource: unresolvedAgent(10_000, {
           message: 'resolve ModelConfig "opus-4-7": not found',
@@ -1928,9 +1940,22 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expectHeaderReadiness('Setting up');
-      // Neither the facts beside the Overview nor the configuration.
-      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+      expect(configurationModelRow()).toContain('Cannot be resolved');
+    });
+
+    it('shows a new agent’s missing other tool server as failed at once', async () => {
+      stubResources({
+        resource: unresolvedAgent(10_000, {
+          message: 'resolve RemoteMCPServer "someone-else": not found',
+        }),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
     });
 
     // The grace period is for a new agent only: an edit that points at a
@@ -2108,12 +2133,13 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
-      // Asked only because the template read came back empty …
+      // Asked only because the template read came back empty, and re-read
+      // even past a `failed` while the release read has not answered …
       expect(mockUseAgentStatus).toHaveBeenCalledWith(
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: true, keepReadingFailed: false },
+        { enabled: true, keepReadingFailed: true },
       );
       // … and while the release is there, the template is re-read at the fast
       // tier, so the page switches to the rendered agent within one poll of it
@@ -2122,7 +2148,49 @@ describe('AgentDetailPage', () => {
     });
 
     it('carries agent-manager’s failure when the release itself does not become ready', async () => {
-      templateNotFound();
+      // The release read has answered: the install failed, which no grace
+      // period covers.
+      stubResources(
+        {
+          error: new Error('not found'),
+          errors: [
+            {
+              type: 'error',
+              cluster: 'gazelle',
+              error: Object.assign(new Error('not found'), {
+                name: 'NotFoundError',
+              }),
+            },
+          ],
+        },
+        undefined,
+        {
+          helmRelease: new HelmRelease(
+            {
+              apiVersion: 'helm.toolkit.fluxcd.io/v2',
+              kind: 'HelmRelease',
+              metadata: {
+                name: mockParams.name,
+                namespace: mockParams.namespace,
+                creationTimestamp: new Date().toISOString(),
+              },
+              spec: {},
+              status: {
+                conditions: [
+                  {
+                    type: 'Ready',
+                    status: 'False',
+                    reason: 'InstallFailed',
+                    message: 'install retries exhausted',
+                    lastTransitionTime: new Date().toISOString(),
+                  },
+                ],
+              },
+            },
+            'gazelle',
+          ),
+        },
+      );
       mockUseAgentStatus.mockReturnValue(
         releaseOnly({
           verdict: 'failed',
@@ -2233,6 +2301,86 @@ describe('AgentDetailPage', () => {
           mockParams.name,
           { enabled: true, keepReadingFailed: true },
         );
+      });
+
+      // Until the release read answers, whether it is being set up is not
+      // known, and a `failed` verdict is not shown as final meanwhile.
+      it('treats the release as undecided until its read answers', async () => {
+        withRelease(undefined);
+        failedRelease();
+
+        await renderPage();
+
+        expectHeaderReadiness('Deploying');
+        expect(
+          screen.getByText(
+            'Deploying — waiting for kagent to render the agent',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('The agent’s release did not become ready'),
+        ).not.toBeInTheDocument();
+        expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
+          mockParams.installation,
+          mockParams.namespace,
+          mockParams.name,
+          { enabled: true, keepReadingFailed: true },
+        );
+      });
+
+      // The release is polled only while it can still open a window.
+      it('stops polling the release once it cannot open a window', async () => {
+        withRelease(undefined);
+        failedRelease();
+
+        await renderPage();
+
+        const call = mockUseResource.mock.calls.find(
+          ([, ResourceClass]) => ResourceClass === HelmRelease,
+        );
+        const { refetchInterval } = call?.[3] as {
+          refetchInterval: (query: {
+            state: { data?: unknown; error?: unknown };
+          }) => number | false;
+        };
+        const json = (
+          ready?: { status: 'True' | 'False' | 'Unknown'; reason: string },
+          ageMs = 30_000,
+        ) => helmRelease(ageMs, ready).jsonData;
+
+        // Not answered yet, or answered and still in its window: polled.
+        expect(refetchInterval({ state: {} })).toBe(5_000);
+        expect(
+          refetchInterval({
+            state: { data: json({ status: 'Unknown', reason: 'Progressing' }) },
+          }),
+        ).toBe(5_000);
+        // Refused, failed, ready or past its window: stopped.
+        expect(
+          refetchInterval({ state: { error: new Error('forbidden') } }),
+        ).toBe(false);
+        expect(
+          refetchInterval({
+            state: { data: json({ status: 'False', reason: 'InstallFailed' }) },
+          }),
+        ).toBe(false);
+        expect(
+          refetchInterval({
+            state: {
+              data: json({ status: 'True', reason: 'InstallSucceeded' }),
+            },
+          }),
+        ).toBe(false);
+        expect(
+          refetchInterval({
+            state: {
+              data: json(
+                { status: 'Unknown', reason: 'Progressing' },
+                PROVISIONING_GRACE_MS + 1_000,
+              ),
+            },
+          }),
+        ).toBe(false);
       });
 
       it('gives a release with no Ready condition yet the same grace', async () => {

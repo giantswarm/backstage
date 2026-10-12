@@ -3,7 +3,7 @@ import ErrorIcon from '@material-ui/icons/Error';
 import HourglassEmptyIcon from '@material-ui/icons/HourglassEmpty';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
-import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
+import type { AgentDisplayReadiness } from '../../lib/agentProvisioning';
 
 /**
  * How each readiness state presents. `Failed` is the word the Harness rows and
@@ -26,11 +26,18 @@ export type ReadinessPresentation = {
 };
 
 export const READINESS_PRESENTATION: Record<
-  AgentReadiness,
+  AgentDisplayReadiness,
   ReadinessPresentation
 > = {
   ready: { label: 'Ready', intent: 'positive', icon: CheckCircleIcon },
   notReady: { label: 'Not ready', intent: 'warning', icon: ReportProblemIcon },
   failed: { label: 'Failed', intent: 'negative', icon: ErrorIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
+  // A new agent still waiting for its own tool server: neutral, not the red
+  // "Failed" the same conditions read as once its window is over.
+  settingUp: {
+    label: 'Setting up',
+    intent: 'neutral',
+    icon: HourglassEmptyIcon,
+  },
 };

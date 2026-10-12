@@ -46,7 +46,11 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
 }
 
 /** What the detail page's own Agent read says, as the page passes it in. */
-type AgentRead = { isAgentReady: boolean; isSettingUp: boolean };
+type AgentRead = {
+  isAgentReady: boolean;
+  agentGeneration?: number;
+  isSettingUp: boolean;
+};
 
 /**
  * The page's Agent read as a store the test answers polls through, so the
@@ -76,6 +80,7 @@ function Host() {
         namespace="kagent"
         name="pr-reviewer"
         isAgentReady={read.isAgentReady}
+        agentGeneration={read.agentGeneration}
         isSettingUp={read.isSettingUp}
       />
     </div>
@@ -245,6 +250,42 @@ describe('AgentCreationProgress', () => {
       await render();
 
       expect(await screen.findByText('Ready')).toBeInTheDocument();
+    });
+
+    // Right after an update the page's Agent read can still hold the ready
+    // Agent from before the write, and that "ready" is not this write's.
+    it('does not report a failed update as ready from the Agent before it', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
+      callTool.mockResolvedValue({
+        ...status('failed', {
+          agent: {
+            exists: true,
+            generation: 5,
+            observedGeneration: 5,
+            ready: false,
+            accepted: true,
+            resolvedRefs: false,
+            compatible: false,
+          },
+        }),
+        summary: 'resolve ModelConfig "typo": not found',
+      });
+
+      await render({ isAgentReady: true, agentGeneration: 4 });
+
+      expect(
+        await screen.findByText('The updated agent did not become ready'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+
+      // The read catches up with the written revision, and it is ready.
+      answerAgentRead({
+        isAgentReady: true,
+        agentGeneration: 5,
+        isSettingUp: false,
+      });
+
+      expect(screen.getByText('Ready')).toBeInTheDocument();
     });
 
     // The bound exists for a write whose generation never moves — a release

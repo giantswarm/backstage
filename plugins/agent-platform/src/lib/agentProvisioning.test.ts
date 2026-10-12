@@ -9,6 +9,8 @@ import type { AgentStatus } from './agentManager';
 import {
   agentSettingUpUntil,
   backoffRefetchInterval,
+  displayReadinessOf,
+  isOwnCarrierMissing,
   isMissingReferenceStatus,
   releaseSettingUpUntil,
   PROVISIONING_GRACE_MS,
@@ -104,6 +106,26 @@ describe('agentSettingUpUntil', () => {
     );
   });
 
+  // Only the agent's own tool server is created by its release.
+  it('gives a missing ModelConfig, Secret or other server none', () => {
+    for (const message of [
+      'resolve ModelConfig "opus": not found',
+      'resolve ModelConfig "opus": secret "llm" not found',
+      'resolve RemoteMCPServer "someone-else": not found',
+    ]) {
+      const agent = agentWith([
+        condition('Accepted', 'True', 'Admitted'),
+        condition(
+          'ResolvedRefs',
+          'False',
+          'ReferenceResolutionFailed',
+          message,
+        ),
+      ]);
+      expect(agentSettingUpUntil(agent)).toBeUndefined();
+    }
+  });
+
   it('gives an unresolved reference that is not missing none', () => {
     const agent = agentWith([
       condition('Accepted', 'True', 'Admitted'),
@@ -169,6 +191,65 @@ describe('agentSettingUpUntil', () => {
   });
 });
 
+describe('isOwnCarrierMissing', () => {
+  it('matches the agent’s own server, bare or namespaced', () => {
+    expect(
+      isOwnCarrierMissing(
+        'resolve RemoteMCPServer "adhoc": not found',
+        'kagent',
+        'adhoc',
+      ),
+    ).toBe(true);
+    expect(
+      isOwnCarrierMissing(
+        'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "kagent/adhoc": not found)',
+        'kagent',
+        'adhoc',
+      ),
+    ).toBe(true);
+  });
+
+  it('matches nothing else', () => {
+    for (const message of [
+      'resolve RemoteMCPServer "adhoc-2": not found',
+      'resolve RemoteMCPServer "other/adhoc": not found',
+      'resolve ModelConfig "adhoc": not found',
+      'resolve RemoteMCPServer "adhoc": unreachable',
+      undefined,
+    ]) {
+      expect(isOwnCarrierMissing(message, 'kagent', 'adhoc')).toBe(false);
+    }
+  });
+});
+
+describe('displayReadinessOf', () => {
+  const missingCarrier = () =>
+    agentWith([
+      condition('Accepted', 'True', 'Admitted'),
+      condition(
+        'ResolvedRefs',
+        'False',
+        'ReferenceResolutionFailed',
+        'resolve RemoteMCPServer "adhoc": not found',
+      ),
+    ]);
+
+  it('reads a new agent waiting for its own server as setting up', () => {
+    expect(displayReadinessOf(missingCarrier(), Date.parse(CREATED_AT))).toBe(
+      'settingUp',
+    );
+  });
+
+  it('reads it as failed once its window is over', () => {
+    expect(
+      displayReadinessOf(
+        missingCarrier(),
+        Date.parse(CREATED_AT) + PROVISIONING_GRACE_MS,
+      ),
+    ).toBe('failed');
+  });
+});
+
 describe('isMissingReferenceStatus', () => {
   const MISSING =
     'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "adhoc": not found)';
@@ -218,6 +299,17 @@ describe('isMissingReferenceStatus', () => {
             resolvedRefs: null,
             compatible: null,
           },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it('reads another missing reference as a failure', () => {
+    expect(
+      isMissingReferenceStatus(
+        status({
+          summary:
+            'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve ModelConfig "opus": not found)',
         }),
       ),
     ).toBe(false);

@@ -7,11 +7,14 @@ import {
   type AgentStatus,
 } from '../lib/agentManager';
 import {
-  backoffRefetchInterval,
   isMissingReferenceStatus,
   PROVISIONING_GRACE_MS,
 } from '../lib/agentProvisioning';
-import { useDeadlinePassed, useWatchStartedAt } from './useDeadlinePassed';
+import {
+  useBeforeDeadline,
+  useDeadlinePassed,
+  useWatchStartedAt,
+} from './useDeadlinePassed';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -22,14 +25,6 @@ import { useAgentManagerClient } from './useAgentManager';
  * watching the page notices without hammering agent-manager.
  */
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
-
-/**
- * The longest interval a `failed` verdict that may still be the agent being
- * set up ({@link AgentStatusState.isSettingUp}) is re-read at, backing off from
- * {@link AGENT_STATUS_POLL_INTERVAL_MS}. Any other `failed` verdict is not
- * re-read: the detail page's own Agent read follows a failure that clears.
- */
-export const FAILED_STATUS_MAX_POLL_INTERVAL_MS = 60_000;
 
 /**
  * How long to wait for a write's revision to appear before taking the verdict
@@ -59,8 +54,8 @@ export type AgentStatusState = {
    */
   isNotFound: boolean;
   /**
-   * The verdict is `failed` on a reference to an object not created yet (see
-   * `isMissingReferenceStatus`), for a read with no write baseline (a create,
+   * The verdict is `failed` on the agent's own tool server not created yet
+   * (see `isMissingReferenceStatus`), for a read with no write baseline (a create,
    * or the detail page's own check), within {@link PROVISIONING_GRACE_MS} of
    * when this watch started: agent-manager's status carries no creation
    * timestamp, so the page's first sight of the agent stands in for it. Shown
@@ -80,8 +75,8 @@ export type AgentStatusState = {
  * `not_found` right after the create is the release not having rendered the
  * Agent yet, and is polled through like `progressing`. Polling stops at
  * `ready`, and at `failed` unless the failure may still be the agent being set
- * up (see {@link AgentStatusState.isSettingUp}), which is re-read with a
- * backoff while it may.
+ * up (see {@link AgentStatusState.isSettingUp}, and `keepReadingFailed`),
+ * which is re-read while it may.
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -98,8 +93,8 @@ export function useAgentStatus(
     watchId?: string;
     /**
      * The caller knows a `failed` verdict may still clear — the detail page,
-     * while the agent's HelmRelease is new and still reconciling — so it is
-     * re-read, backing off, for as long as this is true.
+     * while the agent's HelmRelease is new and still reconciling, or not read
+     * yet — so it is re-read for as long as this is true.
      */
     keepReadingFailed?: boolean;
   } = {},
@@ -142,7 +137,7 @@ export function useAgentStatus(
     fromGeneration === undefined && watchStartedAt !== undefined
       ? watchStartedAt + PROVISIONING_GRACE_MS
       : undefined;
-  const isPastGrace = useDeadlinePassed(graceUntil);
+  const isInGrace = useBeforeDeadline(graceUntil);
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
@@ -166,21 +161,17 @@ export function useAgentStatus(
           return AGENT_STATUS_POLL_INTERVAL_MS;
         }
         // `ready` is the answer, and so is any `failed` but a new agent's
-        // missing reference, re-read until its grace is over, or one the
-        // caller says may still clear; both less often the longer they stand.
-        const now = Date.now();
-        const isMissingReference =
+        // missing carrier, re-read until its grace is over, or one the caller
+        // says may still clear. Both windows are short — three minutes at
+        // most — and the common case clears inside them, so they are re-read
+        // at the same pace throughout, not backing off.
+        const isMissingCarrier =
           graceUntil !== undefined &&
-          now < graceUntil &&
+          Date.now() < graceUntil &&
           isMissingReferenceStatus(query.state.data!);
-        if (verdict === 'failed' && (isMissingReference || keepReadingFailed)) {
-          return backoffRefetchInterval(
-            now - (watchStartedAt ?? now),
-            AGENT_STATUS_POLL_INTERVAL_MS,
-            FAILED_STATUS_MAX_POLL_INTERVAL_MS,
-          );
-        }
-        return false;
+        return verdict === 'failed' && (isMissingCarrier || keepReadingFailed)
+          ? AGENT_STATUS_POLL_INTERVAL_MS
+          : false;
       }
       const lastError = query.state.error;
       if (
@@ -218,8 +209,7 @@ export function useAgentStatus(
       enabled &&
       !isSettling &&
       !error &&
-      graceUntil !== undefined &&
-      !isPastGrace &&
+      isInGrace &&
       data !== undefined &&
       isMissingReferenceStatus(data),
     error: error && !notFoundYet ? (error as Error) : null,
