@@ -9,13 +9,9 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import {
-  AGENT_STATUS_POLL_INTERVAL_MS,
-  FAILED_STATUS_POLL_INITIAL_MS,
-  FAILED_STATUS_POLL_MAX_AGE_MS,
-  FAILED_STATUS_POLL_MAX_MS,
+  FAILED_STATUS_POLL_INTERVAL_MS,
   MAX_REVISION_WAIT_MS,
 } from '../../hooks/useAgentStatus';
-import { musterAgentStatusQueryKey } from '../../lib/queryKeys';
 import { AgentCreationProgress } from './AgentCreationProgress';
 
 let mockLocationState: unknown;
@@ -50,11 +46,10 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
   };
 }
 
-async function render(
-  queryClient = new QueryClient({
+async function render() {
+  const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  }),
-) {
+  });
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
@@ -289,9 +284,8 @@ describe('AgentCreationProgress', () => {
   });
 
   // Right after a create kagent can report the agent's own tool server as an
-  // unresolved reference for a few seconds; that `failed` is not final. Every
-  // other path polls as it did before the failed verdict was re-read.
-  describe('re-reading the verdict', () => {
+  // unresolved reference for a few seconds; that `failed` is not final.
+  describe('a failed verdict', () => {
     const FAILED_TITLE = 'The agent did not become ready';
     const READY = status('ready', {
       agent: { exists: true, harness: 'kagent' },
@@ -314,15 +308,12 @@ describe('AgentCreationProgress', () => {
 
     /**
      * Moves the fake clock on, settling each read before the next timer, so a
-     * read lands at the moment its timer fires. A read due at the very end may
-     * not have rendered yet.
+     * read lands at the moment its timer fires. A read due at the very end has
+     * not rendered yet, hence the extra millisecond where one is checked.
      */
     async function wait(ms: number) {
       await act(() => jest.advanceTimersByTimeAsync(ms));
     }
-
-    /** The waits between consecutive reads. */
-    const gaps = () => readAt.slice(1).map((at, i) => at - readAt[i]);
 
     beforeEach(() => {
       jest.useFakeTimers();
@@ -334,155 +325,46 @@ describe('AgentCreationProgress', () => {
       jest.useRealTimers();
     });
 
-    it('re-reads a failed verdict less and less often until it turns ready, which ends the poll', async () => {
-      answer(status('failed'), status('failed'), status('failed'), READY);
+    it('is re-read every 15 s until it turns ready', async () => {
+      answer(status('failed'), READY);
 
       await render();
       await wait(0);
       expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
 
-      await wait(35_000);
-      expect(gaps()).toEqual([
-        FAILED_STATUS_POLL_INITIAL_MS,
-        2 * FAILED_STATUS_POLL_INITIAL_MS,
-        4 * FAILED_STATUS_POLL_INITIAL_MS,
+      await wait(FAILED_STATUS_POLL_INTERVAL_MS + 1);
+      expect(readAt).toEqual([
+        readAt[0],
+        readAt[0] + FAILED_STATUS_POLL_INTERVAL_MS,
       ]);
-
-      await wait(2 * FAILED_STATUS_POLL_MAX_MS);
-      expect(readAt).toHaveLength(4);
       expect(screen.getByText('Ready')).toBeInTheDocument();
       expect(screen.queryByText(FAILED_TITLE)).not.toBeInTheDocument();
     });
 
-    it('starts the backoff over after a failure that cleared and came back', async () => {
-      answer(
-        status('failed'),
-        status('failed'),
-        status('progressing'),
-        status('failed'),
-        READY,
-      );
-
-      await render();
-      await wait(5_000 + 10_000 + 3_000 + 5_000);
-
-      expect(gaps()).toEqual([
-        FAILED_STATUS_POLL_INITIAL_MS,
-        2 * FAILED_STATUS_POLL_INITIAL_MS,
-        AGENT_STATUS_POLL_INTERVAL_MS,
-        FAILED_STATUS_POLL_INITIAL_MS,
-      ]);
-    });
-
-    it('takes a failed verdict as final after ten minutes, and no longer reads it', async () => {
-      answer(status('failed'));
-
-      await render();
-      await wait(FAILED_STATUS_POLL_MAX_AGE_MS + FAILED_STATUS_POLL_MAX_MS);
-      const reads = readAt.length;
-      const lastRead = readAt[reads - 1] - readAt[0];
-      expect(lastRead).toBeGreaterThanOrEqual(FAILED_STATUS_POLL_MAX_AGE_MS);
-      expect(lastRead).toBeLessThan(
-        FAILED_STATUS_POLL_MAX_AGE_MS + FAILED_STATUS_POLL_MAX_MS,
-      );
-      expect(Math.max(...gaps())).toBe(FAILED_STATUS_POLL_MAX_MS);
-
-      await wait(10 * FAILED_STATUS_POLL_MAX_MS);
-      expect(readAt).toHaveLength(reads);
-      expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
-    });
-
-    it('keeps a failed verdict on screen and backs off on through a read error', async () => {
-      answer(
-        status('failed'),
-        new Error('muster: session expired'),
-        status('failed'),
-        READY,
-      );
-
-      await render();
-      await wait(FAILED_STATUS_POLL_INITIAL_MS + 1);
-      expect(readAt).toHaveLength(2);
-      expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
-      expect(
-        screen.queryByText(/could not read the agent's readiness/),
-      ).not.toBeInTheDocument();
-
-      // The error was one more unsuccessful read: the waits go on doubling.
-      await wait(2 * FAILED_STATUS_POLL_MAX_MS);
-      expect(gaps()).toEqual([
-        FAILED_STATUS_POLL_INITIAL_MS,
-        2 * FAILED_STATUS_POLL_INITIAL_MS,
-        4 * FAILED_STATUS_POLL_INITIAL_MS,
-      ]);
-      expect(screen.getByText('Ready')).toBeInTheDocument();
-    });
-
-    it('stops when a failed agent is gone, without going back to waiting', async () => {
-      answer(status('failed'), new Error('not_found: no agent pr-reviewer'));
-
-      await render();
-      await wait(10 * FAILED_STATUS_POLL_MAX_MS);
-
-      expect(readAt).toHaveLength(2);
-      expect(screen.queryByText('Deploying…')).not.toBeInTheDocument();
-    });
-
-    // As before the failed verdict was re-read: while the status still
-    // describes the revision before an update, an error does not stop the
-    // wait for the new one.
-    it('keeps waiting for an update through a read error', async () => {
-      mockLocationState = {
-        [AGENT_CREATED_STATE_KEY]: {
-          ...HANDOFF,
-          action: 'updated',
-          fromGeneration: 4,
-        },
-      };
-      const atGeneration = (generation: number) =>
-        status('ready', {
-          agent: {
-            exists: true,
-            generation,
-            observedGeneration: generation,
-            harness: 'kagent',
-          },
-        });
-      answer(
-        atGeneration(4),
-        new Error('backend_error: agent-manager restarting'),
-        atGeneration(5),
-      );
-
-      await render();
-      await wait(2 * FAILED_STATUS_POLL_MAX_MS);
-
-      expect(gaps()).toEqual([
-        AGENT_STATUS_POLL_INTERVAL_MS,
-        AGENT_STATUS_POLL_INTERVAL_MS,
-      ]);
-      expect(screen.getByText('Ready')).toBeInTheDocument();
-    });
-
-    it('does not count a failure cached from before the page was opened', async () => {
+    it('is no longer read once it has turned ready', async () => {
       answer(status('failed'), READY);
-      const queryClient = new QueryClient({
-        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-      });
-      queryClient.setQueryData(
-        musterAgentStatusQueryKey('gazelle', 'kagent', 'pr-reviewer'),
-        status('failed'),
-        { updatedAt: Date.now() - 10 * 60_000 },
-      );
 
-      await render(queryClient);
-      await wait(FAILED_STATUS_POLL_INITIAL_MS);
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
 
-      // Read again at the first step, not at the minute the cached failure's
-      // age would give it.
-      expect(readAt).toHaveLength(1);
-      await wait(FAILED_STATUS_POLL_INITIAL_MS);
-      expect(gaps()).toEqual([FAILED_STATUS_POLL_INITIAL_MS]);
+      expect(readAt).toHaveLength(2);
+    });
+
+    // A read error is handled as it always was: shown, while the settled
+    // verdict keeps the poll going.
+    it('shows a read error after it as any read error, and reads on', async () => {
+      answer(status('failed'), new Error('muster: session expired'), READY);
+
+      await render();
+      await wait(FAILED_STATUS_POLL_INTERVAL_MS + 1);
+      expect(readAt).toHaveLength(2);
+      expect(
+        screen.getByText(/could not read the agent's readiness/),
+      ).toBeInTheDocument();
+
+      await wait(FAILED_STATUS_POLL_INTERVAL_MS);
+      expect(readAt).toHaveLength(3);
+      expect(screen.getByText('Ready')).toBeInTheDocument();
     });
   });
 });
