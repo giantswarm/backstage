@@ -10,7 +10,6 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { MAX_REVISION_WAIT_MS } from '../../hooks/useAgentStatus';
-import { PROVISIONING_GRACE_MS } from '../../lib/agentProvisioning';
 import { AgentCreationProgress } from './AgentCreationProgress';
 
 let mockLocationState: unknown;
@@ -47,8 +46,7 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
 
 /** What the detail page's own Agent read says, as the page passes it in. */
 type AgentRead = {
-  isAgentReady: boolean;
-  agentGeneration?: number;
+  agentReady?: { generation?: number; since?: number };
   isSettingUp: boolean;
 };
 
@@ -79,8 +77,7 @@ function Host() {
         installation="gazelle"
         namespace="kagent"
         name="pr-reviewer"
-        isAgentReady={read.isAgentReady}
-        agentGeneration={read.agentGeneration}
+        agentReady={read.agentReady}
         isSettingUp={read.isSettingUp}
       />
     </div>
@@ -88,7 +85,7 @@ function Host() {
 }
 
 async function render(read: Partial<AgentRead> = {}) {
-  agentRead = { isAgentReady: false, isSettingUp: false, ...read };
+  agentRead = { isSettingUp: false, ...read };
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -271,7 +268,10 @@ describe('AgentCreationProgress', () => {
         summary: 'resolve ModelConfig "typo": not found',
       });
 
-      await render({ isAgentReady: true, agentGeneration: 4 });
+      // Ready since well before the write, at the generation before it.
+      await render({
+        agentReady: { generation: 4, since: Date.now() - 60 * 60_000 },
+      });
 
       expect(
         await screen.findByText('The updated agent did not become ready'),
@@ -280,12 +280,54 @@ describe('AgentCreationProgress', () => {
 
       // The read catches up with the written revision, and it is ready.
       answerAgentRead({
-        isAgentReady: true,
-        agentGeneration: 5,
+        agentReady: { generation: 5, since: Date.now() - 60 * 60_000 },
         isSettingUp: false,
       });
 
       expect(screen.getByText('Ready')).toBeInTheDocument();
+    });
+
+    // A write that changes nothing the chart renders leaves the generation
+    // where it was; a failure fixed elsewhere afterwards still turns the
+    // alert Ready, since the Agent's `Ready` turned after the write.
+    it('turns a failed update Ready when the Agent turns ready after it, without a generation bump', async () => {
+      jest.useFakeTimers();
+      try {
+        mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
+        callTool.mockResolvedValue({
+          ...status('failed', {
+            agent: {
+              exists: true,
+              generation: 4,
+              observedGeneration: 4,
+              ready: false,
+              accepted: true,
+              resolvedRefs: false,
+              compatible: false,
+            },
+          }),
+          summary: 'resolve ModelConfig "opus": not found',
+        });
+
+        await render();
+        await waitFor(() => expect(callTool).toHaveBeenCalled());
+        await act(async () => {
+          jest.advanceTimersByTime(MAX_REVISION_WAIT_MS);
+        });
+        expect(
+          screen.getByText('The updated agent did not become ready'),
+        ).toBeInTheDocument();
+
+        // The ModelConfig is created; the Agent turns ready at generation 4.
+        answerAgentRead({
+          agentReady: { generation: 4, since: Date.now() },
+          isSettingUp: false,
+        });
+
+        expect(screen.getByText('Ready')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     // The bound exists for a write whose generation never moves — a release
@@ -430,7 +472,10 @@ describe('AgentCreationProgress', () => {
         await screen.findByText('The agent did not become ready'),
       ).toBeInTheDocument();
 
-      answerAgentRead({ isAgentReady: true, isSettingUp: false });
+      answerAgentRead({
+        agentReady: { since: Date.now() },
+        isSettingUp: false,
+      });
 
       expect(screen.getByText('Ready')).toBeInTheDocument();
       expect(
@@ -447,7 +492,7 @@ describe('AgentCreationProgress', () => {
         await screen.findByText(/the agent is still being set up/),
       ).toBeInTheDocument();
 
-      answerAgentRead({ isAgentReady: false, isSettingUp: false });
+      answerAgentRead({ isSettingUp: false });
 
       expect(
         screen.getByText('The agent did not become ready'),
@@ -455,31 +500,45 @@ describe('AgentCreationProgress', () => {
       expect(screen.getByText(UNRESOLVED_SUMMARY)).toBeInTheDocument();
     });
 
-    it('stops reading a failed verdict once its grace period is over', async () => {
+    // The page's one decision drives the re-read too: a `failed` verdict is
+    // read again while the page calls the agent setting up (a release still
+    // reconciling under a rendered Agent among it), and no longer after.
+    it('re-reads a failed verdict while the page calls it setting up, and only then', async () => {
       jest.useFakeTimers();
       try {
         mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-        callTool.mockResolvedValue(unresolved);
+        callTool.mockResolvedValue({
+          ...status('failed'),
+          summary: 'HelmRelease is not ready',
+        });
 
         await render({ isSettingUp: true });
-        await waitFor(() => expect(callTool).toHaveBeenCalled());
+        await waitFor(() =>
+          expect(
+            screen.getByText(/the agent is still being set up/),
+          ).toBeInTheDocument(),
+        );
 
         await act(async () => {
-          jest.advanceTimersByTime(PROVISIONING_GRACE_MS + 60_000);
+          jest.advanceTimersByTime(60_000);
         });
         const reads = callTool.mock.calls.length;
         expect(reads).toBeGreaterThan(1);
 
+        answerAgentRead({ isSettingUp: false });
         await act(async () => {
           jest.advanceTimersByTime(10 * 60_000);
         });
-        expect(callTool.mock.calls.length).toBe(reads);
+        expect(callTool.mock.calls.length).toBeLessThanOrEqual(reads + 1);
+        expect(
+          screen.getByText('The agent did not become ready'),
+        ).toBeInTheDocument();
       } finally {
         jest.useRealTimers();
       }
     });
 
-    it('does not re-read a failure that is not a missing reference', async () => {
+    it('does not re-read a failed verdict the page does not call setting up', async () => {
       jest.useFakeTimers();
       try {
         mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };

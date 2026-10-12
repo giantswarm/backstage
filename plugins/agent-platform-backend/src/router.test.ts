@@ -114,11 +114,18 @@ describe('createRouter', () => {
     app = await buildApp();
   });
 
-  it('reports health with the number of configured installations', async () => {
+  it('reports health with the number of configured installations, and the server time', async () => {
+    const before = Date.now();
     const response = await request(app).get('/health');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ status: 'ok', configured: 2 });
+    expect(response.body).toEqual({
+      status: 'ok',
+      configured: 2,
+      now: expect.any(Number),
+    });
+    expect(response.body.now).toBeGreaterThanOrEqual(before);
+    expect(response.body.now).toBeLessThanOrEqual(Date.now());
   });
 
   it('lists installations by name with their reachability, sorted', async () => {
@@ -289,7 +296,11 @@ describe('createRouter', () => {
         '/health',
       );
 
-      expect(response.body).toEqual({ status: 'ok', configured: 0 });
+      expect(response.body).toEqual({
+        status: 'ok',
+        configured: 0,
+        now: expect.any(Number),
+      });
     });
 
     it('returns an empty installations list', async () => {

@@ -2,6 +2,7 @@ import { Alert, Button } from '@backstage/ui';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
+import { SETTING_UP_MESSAGE } from '../../lib/agentProvisioning';
 
 /**
  * Why sessions cannot be started with this agent, in place of the header's
@@ -87,9 +88,7 @@ export function AgentSessionBlocker({
       icon
       title="Sessions can start once the agent is ready"
       description={
-        (isSettingUp
-          ? 'The agent is still being set up: the objects it uses are being created.'
-          : agent.getReadinessMessage()) ??
+        (isSettingUp ? SETTING_UP_MESSAGE : agent.getReadinessMessage()) ??
         (readiness === 'pending'
           ? 'The controller has not reported on the current version of this agent yet.'
           : 'The Harness is preparing the current revision.')

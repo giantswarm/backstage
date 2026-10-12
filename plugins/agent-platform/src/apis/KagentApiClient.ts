@@ -213,6 +213,15 @@ export class KagentApiClient implements KagentApi {
     return parseKagentInstallations(body);
   }
 
+  async getServerTime(): Promise<number> {
+    // No installation, no token: the backend's health route carries its clock.
+    const body = await this.get<{ now?: unknown }>('/health');
+    if (typeof body.now !== 'number') {
+      throw new Error('The backend did not report its time.');
+    }
+    return body.now;
+  }
+
   async listSessions(installation: string): Promise<KagentSession[]> {
     const body = await this.get<unknown>('/kagent/sessions', installation);
     const { sessions, drift } = normalizeSessionList(body, installation);

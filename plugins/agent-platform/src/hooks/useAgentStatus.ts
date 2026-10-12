@@ -6,15 +6,7 @@ import {
   isSettledVerdict,
   type AgentStatus,
 } from '../lib/agentManager';
-import {
-  isMissingReferenceStatus,
-  PROVISIONING_GRACE_MS,
-} from '../lib/agentProvisioning';
-import {
-  useBeforeDeadline,
-  useDeadlinePassed,
-  useWatchStartedAt,
-} from './useDeadlinePassed';
+import { useDeadlinePassed, useWatchStartedAt } from './useDeadlinePassed';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -53,17 +45,6 @@ export type AgentStatusState = {
    * there".
    */
   isNotFound: boolean;
-  /**
-   * The verdict is `failed` on the agent's own tool server not created yet
-   * (see `isMissingReferenceStatus`), for a read with no write baseline (a create,
-   * or the detail page's own check), within {@link PROVISIONING_GRACE_MS} of
-   * when this watch started: agent-manager's status carries no creation
-   * timestamp, so the page's first sight of the agent stands in for it. Shown
-   * as the agent being set up rather than as a failure, and re-read meanwhile.
-   * Once the page has the Agent object, its own creation timestamp decides
-   * instead (`useAgentSettingUp`).
-   */
-  isSettingUp: boolean;
   error: Error | null;
 };
 
@@ -74,9 +55,9 @@ export type AgentStatusState = {
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
  * Agent yet, and is polled through like `progressing`. Polling stops at
- * `ready`, and at `failed` unless the failure may still be the agent being set
- * up (see {@link AgentStatusState.isSettingUp}, and `keepReadingFailed`),
- * which is re-read while it may.
+ * `ready`, and at `failed` unless the caller says the failure may still clear
+ * (`keepReadingFailed`: the agent is still being set up), which is re-read
+ * while it may.
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -93,8 +74,8 @@ export function useAgentStatus(
     watchId?: string;
     /**
      * The caller knows a `failed` verdict may still clear — the detail page,
-     * while the agent's HelmRelease is new and still reconciling, or not read
-     * yet — so it is re-read for as long as this is true.
+     * while the agent is still being set up (`settingUpUntil`) or its release
+     * has not been read yet — so it is re-read for as long as this is true.
      */
     keepReadingFailed?: boolean;
   } = {},
@@ -106,18 +87,18 @@ export function useAgentStatus(
   // still share one entry.
   const { fromGeneration, watchId, keepReadingFailed = false } = options;
 
-  // One clock for this watch, keyed by what is being watched: started on the
-  // render that first sees the watch enabled, and kept while it is disabled
-  // and re-enabled (the detail page's check turns off while the Agent read
-  // finds the object and back on if it 404s again), so neither deadline below
-  // restarts for the same agent.
+  // When this watch started, for how long a write's revision is waited for:
+  // started on the render that first sees the watch enabled, and kept while
+  // it is disabled and re-enabled, so the wait does not restart for the same
+  // write. A duration on the browser's own clock, never compared with a
+  // cluster timestamp.
   const watchStartedAt = useWatchStartedAt(
     enabled
       ? [installation, namespace, name, watchId, fromGeneration].join('/')
       : undefined,
   );
 
-  // Both deadlines schedule their own render, not a clock read taken whenever
+  // The deadline schedules its own render, not a clock read taken whenever
   // one happens anyway (`useDeadlinePassed`): this query is destructured to
   // `{ data, error }`, so react-query tracks those two props, and an unchanged
   // status is structurally shared — a poll that answers byte-identically keeps
@@ -131,13 +112,6 @@ export function useAgentStatus(
       ? watchStartedAt + MAX_REVISION_WAIT_MS
       : undefined,
   );
-  // A write with a baseline is on an agent that already existed, so it gets
-  // no grace: only a create, or a read with no write behind it, does.
-  const graceUntil =
-    fromGeneration === undefined && watchStartedAt !== undefined
-      ? watchStartedAt + PROVISIONING_GRACE_MS
-      : undefined;
-  const isInGrace = useBeforeDeadline(graceUntil);
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
@@ -160,16 +134,11 @@ export function useAgentStatus(
         ) {
           return AGENT_STATUS_POLL_INTERVAL_MS;
         }
-        // `ready` is the answer, and so is any `failed` but a new agent's
-        // missing carrier, re-read until its grace is over, or one the caller
-        // says may still clear. Both windows are short — three minutes at
-        // most — and the common case clears inside them, so they are re-read
-        // at the same pace throughout, not backing off.
-        const isMissingCarrier =
-          graceUntil !== undefined &&
-          Date.now() < graceUntil &&
-          isMissingReferenceStatus(query.state.data!);
-        return verdict === 'failed' && (isMissingCarrier || keepReadingFailed)
+        // `ready` is the answer, and so is `failed`, unless the caller says it
+        // may still clear. That window is short — three minutes at most — and
+        // the common case clears inside it, so it is re-read at the same pace
+        // throughout, not backing off.
+        return verdict === 'failed' && keepReadingFailed
           ? AGENT_STATUS_POLL_INTERVAL_MS
           : false;
       }
@@ -205,13 +174,6 @@ export function useAgentStatus(
     status: data,
     isNotFound: notFoundYet,
     isSettling,
-    isSettingUp:
-      enabled &&
-      !isSettling &&
-      !error &&
-      isInGrace &&
-      data !== undefined &&
-      isMissingReferenceStatus(data),
     error: error && !notFoundYet ? (error as Error) : null,
   };
 }

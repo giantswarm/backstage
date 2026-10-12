@@ -28,17 +28,24 @@ describe('useDeadlinePassed', () => {
     expect(result.current).toBe(true);
   });
 
-  // Timers run on a monotonic clock, Date.now() on the wall clock: one set
-  // back (or coarsened) reads just short of the deadline when the timer fires.
-  it('counts a timer that fires before the wall clock reaches the deadline', () => {
-    const { result } = renderHook(() => useDeadlinePassed(NOW + 1_000));
+  // Timers run on a monotonic clock, `now` on another (the server's, or a
+  // wall clock set back): the timer can fire before `now` reaches the
+  // deadline. Whoever reads `now` then must agree, so it re-arms.
+  it('re-arms a timer that fires before its clock reaches the deadline', () => {
+    let skew = 0;
+    const now = () => Date.now() + skew;
+    const { result } = renderHook(() => useDeadlinePassed(NOW + 1_000, now));
 
-    jest.setSystemTime(NOW - 500);
+    skew = -500;
     act(() => {
       jest.advanceTimersByTime(1_000);
     });
+    expect(now()).toBeLessThan(NOW + 1_000);
+    expect(result.current).toBe(false);
 
-    expect(Date.now()).toBeLessThan(NOW + 1_000);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
     expect(result.current).toBe(true);
   });
 

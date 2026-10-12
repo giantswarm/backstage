@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Query } from '@tanstack/react-query';
 import type { AgentReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -71,6 +71,12 @@ jest.mock('../ServingProvider', () => ({
   useOptionalServing: () => undefined,
 }));
 
+// The server's clock reads the backend through react-query, which this test
+// leaves out (`useResources` is stubbed); the browser's stands in for it.
+jest.mock('../../hooks/useServerClock', () => ({
+  useServerClock: () => Date.now,
+}));
+
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
   // Harness reads answer empty, so `mockUseResources` sees only the Agents
   // and the carriers.
@@ -97,6 +103,11 @@ type AgentSpec = {
   resourceVersion?: string;
   description?: string;
   readiness?: AgentReadiness;
+  /**
+   * Failed on its own tool server not created yet, created at this time
+   * (epoch ms): a new agent still being set up.
+   */
+  missingCarrierSince?: number;
 };
 
 // Duck-typed stand-in for an Agent instance — only the getters toAgentRow uses.
@@ -110,12 +121,23 @@ function fakeAgent(cluster: string, spec: AgentSpec) {
     getModelConfigName: () => undefined,
     getSkillCount: () => 0,
     getSkills: () => [],
-    getReadiness: () => spec.readiness ?? 'ready',
+    getReadiness: () =>
+      spec.missingCarrierSince !== undefined
+        ? 'failed'
+        : (spec.readiness ?? 'ready'),
     getHarnessName: () => 'kagent',
     getReadinessMessage: () => undefined,
-    // No failure, so never "setting up" (`displayReadinessOf`).
-    getFailure: () => undefined,
-    getCreatedTimestamp: () => undefined,
+    getFailure: () =>
+      spec.missingCarrierSince !== undefined
+        ? {
+            condition: 'ResolvedRefs',
+            message: `resolve RemoteMCPServer "${spec.name}": not found`,
+          }
+        : undefined,
+    getCreatedTimestamp: () =>
+      spec.missingCarrierSince !== undefined
+        ? new Date(spec.missingCarrierSince).toISOString()
+        : undefined,
     getHarnessWarnings: () => [],
     getMcpBindings: () => [],
   };
@@ -216,6 +238,37 @@ describe('AgentsDataProvider', () => {
     expect(hook.current.hasInstallations).toBe(false);
     expect(hook.current.isLoading).toBe(false);
     expect(hook.current.isLoadingMore).toBe(false);
+  });
+
+  // The list and the composer's picker read a new agent still waiting for
+  // its own tool server as "Setting up", and turn it into the failure when its
+  // window closes — nothing about the data changes then.
+  it('shows a new agent as setting up, and as failed once its window closes', async () => {
+    jest.useFakeTimers();
+    try {
+      mockUseResources.mockReturnValue(
+        result({
+          succeeded: {
+            alpha: [
+              { name: 'fresh', missingCarrierSince: Date.now() - 60_000 },
+            ],
+          },
+        }),
+      );
+
+      const { result: hook } = renderUseAgents();
+
+      await waitFor(() => expect(hook.current.rows).toHaveLength(1));
+      expect(hook.current.rows[0].readiness).toBe('settingUp');
+
+      await act(async () => {
+        jest.advanceTimersByTime(2 * 60_000);
+      });
+
+      expect(hook.current.rows[0].readiness).toBe('failed');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('renders rows as soon as they arrive, even while other installations load', async () => {

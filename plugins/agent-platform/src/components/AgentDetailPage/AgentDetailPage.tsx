@@ -42,9 +42,10 @@ import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
-import { useAgentSettingUp } from '../../hooks/useAgentSettingUp';
+import { useAgentRelease } from '../../hooks/useAgentRelease';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
-import { useReleaseSettingUp } from '../../hooks/useReleaseSettingUp';
+import { useServerClock } from '../../hooks/useServerClock';
+import { useSettingUp } from '../../hooks/useSettingUp';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import {
   useAgentManagerAvailability,
@@ -229,28 +230,31 @@ function AgentDetailPageContent() {
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
   const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
-  // A new release that has not reconciled yet is `failed` to agent-manager
-  // too; read from the HelmRelease itself, it is set up for a grace period,
-  // and the verdict is re-read meanwhile so it is not left stale.
-  const releaseWindow = useReleaseSettingUp(installation, namespace, name, {
-    enabled: isAgentMissing,
-  });
+  // Whether the agent is still being set up: one definition
+  // (`settingUpUntil`), one clock (the server's), from the Agent and its
+  // HelmRelease — read whether or not the Agent exists yet, since a release
+  // can still be reconciling after it has rendered the Agent. The header, the
+  // session blocker, the facts, the row and the creation progress all take
+  // this one answer.
+  const now = useServerClock();
+  const agentRelease = useAgentRelease(installation, namespace, name, now);
+  const isSettingUp = useSettingUp(
+    { agent, release: agentRelease.release },
+    now,
+  );
+  // agent-manager's verdict is `failed` for such an agent too; re-read while
+  // it may still clear, or while the release read has not answered and so
+  // whether it may is not known yet.
+  const keepReadingFailed = isSettingUp || agentRelease.isDeciding;
   const release = useAgentStatus(installation, namespace, name, {
     enabled: isAgentMissing,
-    // Also while the release read has not answered: until it has, a `failed`
-    // verdict is not known to be final, and must not stop being re-read.
-    keepReadingFailed: releaseWindow.isSettingUp || releaseWindow.isDeciding,
+    keepReadingFailed,
   });
   const isDeploying =
     isAgentMissing &&
     (release.status?.helmRelease?.exists === true ||
       release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
-  // A new agent failing only on a reference to an object not created yet
-  // shows as being set up for a grace period, not as broken. One clock for the
-  // whole page: the header, the session blocker, the facts and the creation
-  // progress all take this. The read above keeps polling it, backing off.
-  const isSettingUp = useAgentSettingUp(agent);
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
   const isAskingAgentManager =
@@ -284,11 +288,15 @@ function AgentDetailPageContent() {
   const agentRow = useMemo(
     () =>
       agent
-        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
+        ? toAgentRow(
+            agent,
+            modelConfig ? [modelConfig] : [],
+            resolveServing,
+            undefined,
+            undefined,
+            isSettingUp,
+          )
         : undefined,
-    // `isSettingUp` too: the row's readiness is judged at build time, and has
-    // to turn into the failure when the window closes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [agent, modelConfig, resolveServing, isSettingUp],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
@@ -675,16 +683,10 @@ function AgentDetailPageContent() {
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
-      // A new agent's missing reference, or a new release still
-      // reconciling, is still deploying until its grace period is over.
-      // Undecided while the release read is outstanding: neither a failure
-      // nor a window is known yet, so it reads as deploying, not as failed.
-      const isSettingUpRelease =
-        release.isSettingUp ||
-        releaseWindow.isSettingUp ||
-        releaseWindow.isDeciding;
-      const failed =
-        release.status?.verdict === 'failed' && !isSettingUpRelease;
+      // A new release still reconciling is still deploying until its window
+      // is over; so is one whose read has not answered, since neither a
+      // failure nor a window is known yet.
+      const failed = release.status?.verdict === 'failed' && !keepReadingFailed;
       return (
         <AgentFrame
           title={name}
@@ -767,8 +769,16 @@ function AgentDetailPageContent() {
         installation={installation}
         namespace={namespace}
         name={name}
-        isAgentReady={isReady}
-        agentGeneration={agent.jsonData.metadata?.generation}
+        agentReady={
+          isReady
+            ? {
+                generation: agent.jsonData.metadata?.generation,
+                since: Date.parse(
+                  agent.getCondition('Ready')?.lastTransitionTime ?? '',
+                ),
+              }
+            : undefined
+        }
         isSettingUp={isSettingUp}
       />
 

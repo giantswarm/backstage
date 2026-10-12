@@ -1,32 +1,43 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Whether `until` (epoch milliseconds) has passed; `false` without one.
+ * Whether `until` (epoch milliseconds on the `now` clock) has passed; `false`
+ * without one.
  *
  * The deadline schedules its own render. The reads these deadlines are about
  * poll, but an unchanged answer is structurally shared and renders nothing, so
- * a `Date.now()` comparison made whenever a render happens to occur could
- * stay on the near side of the deadline for good.
+ * a comparison made whenever a render happens to occur could stay on the near
+ * side of the deadline for good.
  *
- * Which deadline expired is kept, not just that one did: a timer firing a
- * moment before `Date.now()` reaches `until` (a coarsened clock, or a wall
- * clock set back — timers run on a monotonic one) still counts, and a new
- * deadline starts out not passed, on its first render rather than one render
- * later.
+ * The timer runs on the browser's monotonic clock and `now` on another (the
+ * server's, see `useServerClock`, or a wall clock set back), so it can fire
+ * before `now` reaches `until`. It then re-arms for what is left, rather than
+ * calling the deadline passed: whoever reads `now` at that moment — to build
+ * rows, say — has to agree. Which deadline expired is kept, so a new deadline
+ * starts out not passed on its first render.
  */
-export function useDeadlinePassed(until: number | undefined): boolean {
+export function useDeadlinePassed(
+  until: number | undefined,
+  now: () => number = Date.now,
+): boolean {
   const [expired, setExpired] = useState<number>();
   useEffect(() => {
     if (until === undefined) {
       return undefined;
     }
-    const timer = setTimeout(
-      () => setExpired(until),
-      Math.max(0, until - Date.now()),
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const remaining = until - now();
+      if (remaining <= 0) {
+        setExpired(until);
+      } else {
+        timer = setTimeout(check, remaining);
+      }
+    };
+    check();
     return () => clearTimeout(timer);
-  }, [until]);
-  return until !== undefined && (expired === until || Date.now() >= until);
+  }, [until, now]);
+  return until !== undefined && (expired === until || now() >= until);
 }
 
 /**
@@ -53,7 +64,10 @@ export function useWatchStartedAt(key: string | undefined): number | undefined {
  * Whether there is a deadline and it has not passed yet: a window that is
  * open, closing on its own at `until` (see {@link useDeadlinePassed}).
  */
-export function useBeforeDeadline(until: number | undefined): boolean {
-  const isPast = useDeadlinePassed(until);
+export function useBeforeDeadline(
+  until: number | undefined,
+  now: () => number = Date.now,
+): boolean {
+  const isPast = useDeadlinePassed(until, now);
   return until !== undefined && !isPast;
 }

@@ -52,6 +52,13 @@ export interface KagentApi {
   listInstallations(): Promise<KagentInstallation[]>;
 
   /**
+   * The backend's clock, as epoch milliseconds — what the age of a cluster
+   * object is measured against (see `useServerClock`). Optional, so a stand-in
+   * without it falls back to the browser's clock.
+   */
+  getServerTime?(): Promise<number>;
+
+  /**
    * The signed-in user's sessions on one installation, already parsed and
    * normalized.
    *

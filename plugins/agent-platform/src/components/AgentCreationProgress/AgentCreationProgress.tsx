@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert } from '@backstage/ui';
 
 import {
@@ -6,6 +7,7 @@ import {
   type AgentWriteAction,
 } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { useServerClock } from '../../hooks/useServerClock';
 import { hasReachedWrittenRevision } from '../../lib/agentManager';
 import type { AgentStatus } from '../../lib/agentManager';
 
@@ -49,14 +51,14 @@ const WORDING: Record<
  * clock, so this alert, the header and the session blocker agree.
  */
 type AgentReadState = {
-  /** The Agent read finds the agent ready. */
-  isAgentReady: boolean;
   /**
-   * The `metadata.generation` of the Agent the read holds, which tells whether
-   * its "ready" is about the revision a write produced or the one before it.
+   * Set when the Agent read finds the agent ready: the Agent's
+   * `metadata.generation` and when its `Ready` condition last turned (epoch
+   * milliseconds, server time) — what tells whether that "ready" is this
+   * write's or left over from before it.
    */
-  agentGeneration?: number;
-  /** The Agent read finds the agent failed, but still being set up. */
+  agentReady?: { generation?: number; since?: number };
+  /** The page reads the agent as still being set up (`settingUpUntil`). */
   isSettingUp: boolean;
 };
 
@@ -67,8 +69,7 @@ type AgentReadState = {
  */
 function CreatedAgentVerdict({
   handoff,
-  isAgentReady,
-  agentGeneration,
+  agentReady,
   isSettingUp,
 }: { handoff: AgentCreatedHandoff } & AgentReadState) {
   const {
@@ -83,12 +84,19 @@ function CreatedAgentVerdict({
   // Scoped to the write: the verdict counts once the Agent's generation has
   // moved past what it was before it, so an agent that was already `ready` is
   // not reported as done before the Harness has compiled anything.
+  // A `failed` verdict on an agent still being set up — its release still
+  // reconciling, its own tool server not created yet — is re-read until the
+  // page stops calling it that.
   const { status, isSettling, error } = useAgentStatus(
     installation,
     namespace,
     name,
-    { fromGeneration, watchId },
+    { fromGeneration, watchId, keepReadingFailed: isSettingUp },
   );
+  // When this alert started following the write, on the server's clock, to
+  // compare with when the Agent's `Ready` condition last turned.
+  const now = useServerClock();
+  const [watchedSince] = useState(now);
 
   const wording = WORDING[action];
   const as = requestedBy ? ` as ${requestedBy}` : '';
@@ -141,20 +149,20 @@ function CreatedAgentVerdict({
     );
   }
 
-  // The verdict is not re-read once it is `failed`, but the page's Agent read
-  // goes on polling, so a failure that clears still turns this alert Ready —
-  // once that read describes the written revision. Right after an update the
-  // read can still hold the ready Agent from before the write (the Harness
-  // has not re-rendered it yet), and its "ready" is not this write's.
-  // `isAgentReady` already implies the controller caught up with that
-  // generation (a lagging status reads `pending`).
-  const agentDescribesThisWrite =
-    fromGeneration === undefined ||
-    (agentGeneration !== undefined && agentGeneration > fromGeneration);
-  if (
-    status?.verdict === 'ready' ||
-    (isFailed && isAgentReady && agentDescribesThisWrite)
-  ) {
+  // A `failed` verdict that is not being re-read can go stale; the page's
+  // Agent read goes on polling, so a failure that clears still turns this
+  // alert Ready — once that "ready" is this write's. Right after an update the
+  // read can still hold the ready Agent from before it, so it counts when the
+  // Agent's generation has moved past the write's, or when its `Ready` turned
+  // since the write: the cause fixed elsewhere, on a write that changed nothing
+  // the generation counts.
+  const isReadyAfterWrite =
+    agentReady !== undefined &&
+    (fromGeneration === undefined ||
+      (agentReady.generation !== undefined &&
+        agentReady.generation > fromGeneration) ||
+      (agentReady.since !== undefined && agentReady.since >= watchedSince));
+  if (status?.verdict === 'ready' || (isFailed && isReadyAfterWrite)) {
     const harness = harnessOf(status);
     return (
       <Alert
@@ -198,8 +206,7 @@ export function AgentCreationProgress({
   installation,
   namespace,
   name,
-  isAgentReady,
-  agentGeneration,
+  agentReady,
   isSettingUp,
 }: {
   installation: string;
@@ -218,8 +225,7 @@ export function AgentCreationProgress({
   return (
     <CreatedAgentVerdict
       handoff={handoff}
-      isAgentReady={isAgentReady}
-      agentGeneration={agentGeneration}
+      agentReady={agentReady}
       isSettingUp={isSettingUp}
     />
   );

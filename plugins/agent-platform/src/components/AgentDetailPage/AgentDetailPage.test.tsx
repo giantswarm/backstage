@@ -172,9 +172,14 @@ const NO_STATUS: AgentStatusState = {
   status: undefined,
   isSettling: false,
   isNotFound: false,
-  isSettingUp: false,
   error: null,
 };
+
+// The server's clock reads the backend through react-query, which this page
+// test leaves out; the browser's stands in for it.
+jest.mock('../../hooks/useServerClock', () => ({
+  useServerClock: () => Date.now,
+}));
 
 jest.mock('../../hooks/useAgentStatus', () => ({
   useAgentStatus: (...args: unknown[]) => mockUseAgentStatus(...args),
@@ -474,6 +479,8 @@ const ONE_SESSION: AgentSessionsView = {
 /** Every `useResource` outcome the page can see, per resource class. */
 type ResourceOutcome = {
   resource?: unknown;
+  /** Answered since mount; the page decides on nothing older. Default: yes. */
+  isFetchedAfterMount?: boolean;
   isLoading?: boolean;
   error?: Error | null;
   errors?: unknown[];
@@ -486,6 +493,8 @@ type ResourceOutcome = {
  */
 type FluxChain = {
   helmRelease?: unknown;
+  /** The HelmRelease read has not answered since mount yet. */
+  helmReleasePending?: boolean;
   kustomization?: unknown;
   gitRepository?: unknown;
 };
@@ -500,6 +509,7 @@ function stubResources(
     isLoading: outcome.isLoading ?? false,
     error: outcome.error ?? null,
     errors: outcome.errors ?? [],
+    isFetchedAfterMount: outcome.isFetchedAfterMount ?? true,
     // Part of `useResource`'s real shape, and read by GitOpsCard.
     incompatibilities: [],
     discoveryErrors: [],
@@ -516,7 +526,10 @@ function stubResources(
         case ModelConfig:
           return fill(modelConfig);
         case HelmRelease:
-          return fill({ resource: flux.helmRelease });
+          return fill({
+            resource: flux.helmRelease,
+            isFetchedAfterMount: !flux.helmReleasePending,
+          });
         case Kustomization:
           return fill({ resource: flux.kustomization });
         case GitRepository:
@@ -694,7 +707,6 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
-        isSettingUp: false,
         error: null,
       });
 
@@ -718,7 +730,6 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
-        isSettingUp: false,
         error: null,
       });
 
@@ -2005,6 +2016,70 @@ describe('AgentDetailPage', () => {
       expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
     });
 
+    // After the release renders the Agent, helm-controller can still be
+    // waiting on the release's resources, and agent-manager calls that
+    // `failed` too; the page keeps it in the window and its verdict re-read.
+    it('keeps the window while the release still reconciles under a rendered Agent', async () => {
+      const createdAt = new Date(Date.now() - 20_000).toISOString();
+      const compiling = makeAgent({
+        metadata: {
+          name: 'pr-reviewer',
+          namespace: 'agent-platform',
+          generation: 1,
+          creationTimestamp: createdAt,
+        },
+        status: reported(
+          [
+            { ...READY_CONDITIONS[0], lastTransitionTime: createdAt },
+            {
+              type: 'Ready',
+              status: 'False',
+              reason: 'Compiling',
+              message: 'Compiling revision rev-1',
+              lastTransitionTime: createdAt,
+            },
+          ],
+          { latestSuccessfulRevision: undefined },
+        ),
+      } as Partial<AgentInterface>);
+      const reconciling = new HelmRelease(
+        {
+          apiVersion: 'helm.toolkit.fluxcd.io/v2',
+          kind: 'HelmRelease',
+          metadata: {
+            name: mockParams.name,
+            namespace: mockParams.namespace,
+            creationTimestamp: createdAt,
+          },
+          spec: {},
+          status: {
+            conditions: [
+              {
+                type: 'Ready',
+                status: 'Unknown',
+                reason: 'Progressing',
+                message: 'Running install',
+                lastTransitionTime: createdAt,
+              },
+            ],
+          },
+        },
+        'gazelle',
+      );
+      stubResources({ resource: compiling }, undefined, {
+        helmRelease: reconciling,
+      });
+
+      await renderPage();
+
+      expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
+        mockParams.installation,
+        mockParams.namespace,
+        mockParams.name,
+        { enabled: false, keepReadingFailed: true },
+      );
+    });
+
     it('shows a failure that outlasts the grace period as failed', async () => {
       stubResources({
         resource: unresolvedAgent(PROVISIONING_GRACE_MS + 60_000),
@@ -2027,53 +2102,6 @@ describe('AgentDetailPage', () => {
       expectHeaderReadiness('Setting up');
       await waitFor(() => expectHeaderReadiness('Failed'), { timeout: 3_000 });
       expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-    });
-
-    it('shows a release agent-manager calls failed as still deploying while it is set up', async () => {
-      stubResources({
-        error: new Error('not found'),
-        errors: [
-          {
-            type: 'error',
-            cluster: 'gazelle',
-            error: Object.assign(new Error('not found'), {
-              name: 'NotFoundError',
-            }),
-          },
-        ],
-      });
-      mockUseAgentStatus.mockReturnValue({
-        status: {
-          name: mockParams.name,
-          namespace: mockParams.namespace,
-          verdict: 'failed',
-          summary: 'HelmRelease is not ready: chart not fetched yet',
-          helmRelease: {
-            exists: true,
-            ready: false,
-            suspended: false,
-            gitOpsOwned: false,
-            deleting: false,
-          },
-        },
-        isSettling: false,
-        isNotFound: false,
-        isSettingUp: true,
-        error: null,
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Deploying');
-      expect(
-        screen.getByText('Deploying — waiting for kagent to render the agent'),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByText('The agent’s release did not become ready'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByText('HelmRelease is not ready: chart not fetched yet'),
-      ).not.toBeInTheDocument();
     });
   });
 
@@ -2123,7 +2151,6 @@ describe('AgentDetailPage', () => {
       },
       isSettling: true,
       isNotFound: false,
-      isSettingUp: false,
       error: null,
     });
 
@@ -2154,13 +2181,12 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
-      // Asked only because the template read came back empty, and re-read
-      // even past a `failed` while the release read has not answered …
+      // Asked only because the template read came back empty …
       expect(mockUseAgentStatus).toHaveBeenCalledWith(
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: true, keepReadingFailed: true },
+        { enabled: true, keepReadingFailed: false },
       );
       // … and while the release is there, the template is re-read at the fast
       // tier, so the page switches to the rendered agent within one poll of it
@@ -2280,7 +2306,7 @@ describe('AgentDetailPage', () => {
           'gazelle',
         );
 
-      const withRelease = (release: unknown) =>
+      const withRelease = (release: unknown, { pending = false } = {}) =>
         stubResources(
           {
             error: new Error('not found'),
@@ -2295,7 +2321,7 @@ describe('AgentDetailPage', () => {
             ],
           },
           undefined,
-          { helmRelease: release },
+          { helmRelease: release, helmReleasePending: pending },
         );
 
       it('shows it as deploying, not as a release that did not become ready', async () => {
@@ -2327,7 +2353,7 @@ describe('AgentDetailPage', () => {
       // Until the release read answers, whether it is being set up is not
       // known, and a `failed` verdict is not shown as final meanwhile.
       it('treats the release as undecided until its read answers', async () => {
-        withRelease(undefined);
+        withRelease(undefined, { pending: true });
         failedRelease();
 
         await renderPage();
@@ -2351,7 +2377,7 @@ describe('AgentDetailPage', () => {
 
       // The release is polled only while it can still open a window.
       it('stops polling the release once it cannot open a window', async () => {
-        withRelease(undefined);
+        withRelease(undefined, { pending: true });
         failedRelease();
 
         await renderPage();
@@ -2404,6 +2430,28 @@ describe('AgentDetailPage', () => {
         ).toBe(false);
       });
 
+      // The cache (persisted across reloads) can hold the release of an agent
+      // deleted and created again under the same name; only an answer read
+      // since mount decides.
+      it('does not decide on a cached release before its read since mount answers', async () => {
+        withRelease(
+          helmRelease(30_000, { status: 'False', reason: 'InstallFailed' }),
+          { pending: true },
+        );
+        failedRelease();
+
+        await renderPage();
+
+        expect(
+          screen.queryByText('The agent’s release did not become ready'),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByText(
+            'Deploying — waiting for kagent to render the agent',
+          ),
+        ).toBeInTheDocument();
+      });
+
       it('gives a release with no Ready condition yet the same grace', async () => {
         withRelease(helmRelease(30_000));
         failedRelease();
@@ -2451,7 +2499,6 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
-        isSettingUp: false,
         error: null,
       });
 
@@ -2467,7 +2514,6 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: true,
-        isSettingUp: false,
         error: null,
       });
 

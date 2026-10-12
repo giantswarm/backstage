@@ -17,7 +17,6 @@ import {
 import { canonicalSkillId } from '../../lib/skills';
 import {
   type AgentDisplayReadiness,
-  agentSettingUpUntil,
   backoffRefetchInterval,
   displayReadinessOf,
   PROVISIONING_GRACE_MS,
@@ -219,8 +218,8 @@ export type AgentRow = {
    */
   modelConfigId?: string;
   /**
-   * Readiness derived from the Agent's conditions, `settingUp` for a new
-   * agent still waiting for its own tool server (`displayReadinessOf`).
+   * Readiness derived from the Agent's conditions, `settingUp` for a failed
+   * agent the caller judged still being set up (`settingUpUntil`).
    */
   readiness: AgentDisplayReadiness;
   /**
@@ -328,8 +327,12 @@ export function toAgentRow(
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
   harnesses?: readonly Harness[],
-  /** When to judge "setting up" at; see {@link nextSettingUpDeadline}. */
-  now: number = Date.now(),
+  /**
+   * The caller's verdict from `settingUpUntil` on its server clock. Passed
+   * in, not judged here, so a row never reads a clock of its own and cannot
+   * disagree with the header or the list that built it.
+   */
+  isSettingUp: boolean = false,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -341,7 +344,7 @@ export function toAgentRow(
       candidate.getName() === harnessName,
   );
   const modelConfig = resolveModelConfig(agent, modelConfigs);
-  const readiness = displayReadinessOf(agent, now);
+  const readiness = displayReadinessOf(agent, isSettingUp);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
@@ -385,30 +388,6 @@ export function toAgentRow(
       ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
       : {}),
   };
-}
-
-/**
- * The earliest moment one of these agents stops reading as being set up, after
- * `now`; `undefined` when none is. Rows are built from data that does not
- * change when a window closes, so whoever builds them re-renders at this
- * moment (`useDeadlinePassed`) to turn "Setting up" into the failure.
- */
-export function nextSettingUpDeadline(
-  agents: Iterable<Agent>,
-  now: number,
-): number | undefined {
-  let next: number | undefined;
-  for (const agent of agents) {
-    const until = agentSettingUpUntil(agent);
-    if (
-      until !== undefined &&
-      until > now &&
-      (next === undefined || until < next)
-    ) {
-      next = until;
-    }
-  }
-  return next;
 }
 
 /**

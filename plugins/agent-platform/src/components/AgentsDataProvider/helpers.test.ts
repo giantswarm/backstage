@@ -13,7 +13,6 @@ import type { ServedModel } from '../../lib/serving';
 import {
   getAgentRefetchInterval,
   getAgentsRefetchInterval,
-  nextSettingUpDeadline,
   resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
@@ -667,14 +666,13 @@ describe('getAgentRefetchInterval', () => {
 });
 
 // One rule for every view: the list, the composer's picker and the detail page
-// all read a new agent waiting for its own tool server as "Setting up".
+// all judge "setting up" with `settingUpUntil` on the server's clock, and hand
+// the verdict to the row, which never reads a clock of its own.
 describe('toAgentRow: an agent still being set up', () => {
-  const CREATED = Date.parse('2026-07-31T12:00:00Z');
-
-  const missingCarrier = (name: string, createdAt = CREATED) =>
+  const missingCarrier = (name: string) =>
     makeAgent({
       name,
-      creationTimestamp: new Date(createdAt).toISOString(),
+      creationTimestamp: '2026-07-31T12:00:00Z',
       status: reported([
         condition('Accepted', 'True', 'Admitted'),
         condition(
@@ -686,50 +684,27 @@ describe('toAgentRow: an agent still being set up', () => {
       ]),
     });
 
-  it('reads as setting up, with a neutral message, inside the window', () => {
+  it('reads as setting up, with a neutral message, when judged so', () => {
     const row = toAgentRow(
       missingCarrier('fresh'),
       [],
       undefined,
       undefined,
       undefined,
-      CREATED + 10_000,
+      true,
     );
 
     expect(row.readiness).toBe('settingUp');
     expect(row.readinessMessage).toMatch(/still being set up/);
   });
 
-  it('reads as failed, with the controller’s message, after it', () => {
-    const row = toAgentRow(
-      missingCarrier('stuck'),
-      [],
-      undefined,
-      undefined,
-      undefined,
-      CREATED + 10 * 60_000,
-    );
+  it('reads as failed, with the controller’s message, otherwise', () => {
+    const row = toAgentRow(missingCarrier('stuck'), []);
 
     expect(row.readiness).toBe('failed');
     expect(row.readinessMessage).toBe(
       'resolve RemoteMCPServer "stuck": not found',
     );
-  });
-
-  it('names the earliest window still to close, for the rows to be rebuilt at', () => {
-    const agents = [
-      missingCarrier('older', CREATED),
-      missingCarrier('newer', CREATED + 60_000),
-      makeAgent({ name: 'ready', status: readyStatus() }),
-    ];
-
-    expect(nextSettingUpDeadline(agents, CREATED + 1_000)).toBe(
-      CREATED + 3 * 60_000,
-    );
-    expect(nextSettingUpDeadline(agents, CREATED + 3 * 60_000)).toBe(
-      CREATED + 4 * 60_000,
-    );
-    expect(nextSettingUpDeadline(agents, CREATED + 4 * 60_000)).toBeUndefined();
   });
 });
 
