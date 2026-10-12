@@ -21,17 +21,20 @@ yarn test:e2e:agentlab --headed                  # watch it
 yarn playwright show-report e2e-test-report/agentlab
 ```
 
-| Variable                 | Default                              | Meaning                                                                                                                                                  |
-| ------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENTLAB_BACKSTAGE_URL` | `https://backstage.127.0.0.1.nip.io` | the lab portal (another lab, another port)                                                                                                               |
-| `AGENTLAB_PASSWORD`      | `password`                           | the lab users' fixture password                                                                                                                          |
-| `AGENTLAB_PORTAL_MODE`   | `classic`                            | the portals the lab's Backstage serves: `classic` (`app.portals.agentPlatform` off) or `shell` (both portals on) — see [Portal modes](#portal-modes)     |
-| `AGENTLAB_INSTALLATION`  | `agent-platform`                     | the platform's Helm release name                                                                                                                         |
-| `AGENTLAB_CLUSTER`       | `agentlab`                           | the lab's `clusterName`: its MCP server `<cluster>-mcp-kubernetes` and its kind node `<cluster>-control-plane`                                           |
-| `AGENTLAB_KIND_NODE`     | `<cluster>-control-plane`            | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                             |
-| `AGENTLAB_E2E_WORKERS`   | `1`                                  | parallel workers, each with one sign-in                                                                                                                  |
-| `AGENTLAB_KUBECONFIG`    | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts` and `deployment-auto-upgrades.spec.ts`, which also need `kubectl`; skipped without it   |
-| `AGENTLAB_SLASH_BRANCH`  | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one |
+| Variable                          | Default                              | Meaning                                                                                                                                                  |
+| --------------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AGENTLAB_BACKSTAGE_URL`          | `https://backstage.127.0.0.1.nip.io` | the lab portal (another lab, another port)                                                                                                               |
+| `AGENTLAB_PASSWORD`               | `password`                           | the lab users' fixture password                                                                                                                          |
+| `AGENTLAB_PORTAL_MODE`            | `classic`                            | the portals the lab's Backstage serves: `classic` (`app.portals.agentPlatform` off) or `shell` (both portals on) — see [Portal modes](#portal-modes)     |
+| `AGENTLAB_INSTALLATION`           | `agent-platform`                     | the platform's Helm release name                                                                                                                         |
+| `AGENTLAB_CLUSTER`                | `agentlab`                           | the lab's `clusterName`: its MCP server `<cluster>-mcp-kubernetes` and its kind node `<cluster>-control-plane`                                           |
+| `AGENTLAB_KIND_NODE`              | `<cluster>-control-plane`            | the kind node `serve-node-choice.spec.ts` serves on, for a lab whose node is named otherwise                                                             |
+| `AGENTLAB_E2E_WORKERS`            | `1`                                  | parallel workers, each with one sign-in                                                                                                                  |
+| `AGENTLAB_KUBECONFIG`             | unset                                | the lab's `state/kubeconfig`, for `deployment-uninstall.spec.ts` and `deployment-auto-upgrades.spec.ts`, which also need `kubectl`; skipped without it   |
+| `AGENTLAB_SLASH_BRANCH`           | the checkout's branch                | a pushed branch with a slash in its name for `slash-branch.spec.ts`, which reads its template fixture from it on GitHub; skipped on a branch without one |
+| `AGENTLAB_WORKSPACE_ORGANIZATION` | `lab`                                | the Organization the lab gives the workspace-manager, which the [workspace fixtures](#workspaces) create in                                              |
+| `AGENTLAB_WORKSPACE_PROVIDER`     | `fake`                               | the provider instance the workspace fixtures' sources name: the lab's own GitHub                                                                         |
+| `AGENTLAB_GITHUB_FAKE_URL`        | unset                                | the lab's GitHub as this host reaches it, `https://127.0.0.1:<port>` (`docker port <cluster>-lab-github`); the [refusal](#workspaces) skips without it   |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
 
@@ -133,6 +136,54 @@ out of this suite's reach.
 | `repositories-actions.spec.ts`        | the write side of the Repositories page (#2399, #2427, #2428): Create repository's intro (create → scaffold → pull request as the person) and its dry run as the manager renders it — a Go service with the CircleCI generator on, a configuration repository refused until the refusal's fix (one click) turns _Generate CircleCI config_ off and Review passes; Create → the repository, its scaffold commit and the pull request named as the person, the new repository followed to readiness phase by phase (`watch_repository`: the phases with their time since the creation, the pending one with what it waits for, the repository linked as ready only when every phase is done, then the record's set-up steps; the commit, the watch and the record stubbed at the browser; every other call reaches the manager); a row's Archive dialog naming its effect and the team's review, and its dry run naming the ask's channel by name (`channelName`), never by Slack ID; a row's Align now as one dialog per manager mode — the dry run as it opens, the sentence, the intranet link, the planned changes, the opt-in commit followed to the pull request (the align route stubbed at the browser in the manager's shape: the lab's manager cannot read a team file). Skipped unless `AGENTLAB_REPO_MANAGER=1` |
 | `hive.spec.ts`                        | with `AGENTLAB_HIVE=1` (a lab whose Backstage enables `page:plans`, `api:plans`, `page:roadmap`, `api:roadmap`, `page:plans/plans-redirect` and `page:plans/magazine`): Hive at `/hive` is the one sidebar entry with the tabs Now, History, Roadmap, Plans and Knowledge; Now renders its lanes in priority order (show all, the header search, plans to review, blocked, other teams), History the last three weeks with no window to choose, the Roadmap board follows the header team and search, Knowledge deep-links a document, and `/product`, `/roadmap` and `/plans` redirect into Hive; from mocked plans- and roadmap-backend routes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `clusters-delete.spec.ts`             | with `AGENTLAB_CLUSTER_MANAGER=1` (cluster-manager 0.27.0 or newer in muster) and `AGENTLAB_KUBECONFIG`: Delete cluster to the end (#2752) on a minimal Cluster held in deletion by a finalizer — Delete, the finalizer dropped, **Finish removal** answered `notFound.nothingLeft` reads as removed, and the dialog opened again reads the cluster as already removed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `workspaces.spec.ts`                  | the [workspace fixtures](#workspaces) against the lab's workspace-manager, through the portal's muster route as each person: a workspace of public repositories (one by name, one by language and topic) reaches its first successful sync with both in its manifest and is deleted; a workspace an aborted run left is removed before anything is created; the viewer, outside the Organization, is refused reading, listing and starting on the fixture's workspace; the developer, a member who cannot read its private repository, is refused at Session start naming it, while the admin is not. Skipped, with the reason, on a lab without the workspace-manager or its `fake` instance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+## Workspaces
+
+`workspaces.fixture.ts` puts workspaces into a known state through the
+workspace-manager's own tools, called as a person through the portal's muster
+route (`POST /api/muster/call`) with the tokens of that person's signed-in page.
+A spec asks for:
+
+- `labWorkspace`: a workspace of the lab's Organization, created as the admin,
+  with one source on the lab's GitHub: `agentlab-org/platform-api` by name and
+  `agentlab-org/monorepo` by its language (Go) and topic (`monorepo`). The test
+  gets it once its first sync succeeded with both repositories in the manifest.
+- `refusalWorkspace`: a workspace whose last sync holds the private
+  `agentlab-org/platform-infra`, with the developer connected to the lab's
+  GitHub. The developer is a member of the Organization who cannot read that
+  repository, so their Session start is refused naming it.
+- `NON_MEMBER`: the viewer. The lab's Organization is the Dex groups
+  `platform-admins` and `developers`; `viewers` are outside it.
+- `workspaceLab.tools(user)`: the manager's tools as any lab user, on a page of
+  their own.
+
+Each worker creates its workspaces on first use and deletes them when it ends,
+after a failed test too. Their names carry the run's id (`e2e-ws-<run>-…`);
+before a worker creates anything it deletes every `e2e-ws-` workspace of
+another run, so a rerun after an aborted run starts clean.
+
+What the lab needs:
+
+- Workspaces on (`agentlab configure --workspaces`, then `agentlab platform`),
+  on an agentlab that gives the workspace-manager the Organization `lab`, with
+  the provider instance `fake` (`--workspaces-provider fake` or `fake,github`).
+  Without the workspace-manager, or without `fake`, every workspace spec skips
+  with that reason.
+- A Backstage whose muster route answers a tool's structured content where the
+  tool's text is prose: the workspace-manager answers every tool that way.
+- For the refusal, `AGENTLAB_GITHUB_FAKE_URL`: the developer's consent to the
+  lab's GitHub is fetched from its loopback port, which the browser reaches,
+  unlike its name on the lab domain. Without it the refusal skips.
+
+Run the workspace specs alone:
+
+```bash
+AGENTLAB_GITHUB_FAKE_URL="https://$(docker port agentlab-lab-github 8080/tcp)" \
+  yarn test:e2e:agentlab -g workspaces
+```
+
+The smoke test's first-sync time is an annotation in the report.
 
 ## How it signs in
 
