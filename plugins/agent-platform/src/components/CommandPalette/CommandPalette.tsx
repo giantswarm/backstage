@@ -43,7 +43,7 @@ import {
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
-import { Kbd } from '../Kbd';
+import { EnterKey, Kbd } from '../Kbd';
 import {
   buildPaletteGroups,
   isEditableTarget,
@@ -748,11 +748,11 @@ function PaletteDialog({
                   <Kbd>↑</Kbd> <Kbd>↓</Kbd> move
                 </Text>
                 <Text variant="body-x-small" color="secondary">
-                  <Kbd>↵</Kbd> open
+                  <EnterKey /> open
                 </Text>
                 {activeEntry?.agent && (
                   <Text variant="body-x-small" color="secondary">
-                    <Kbd>{mod}</Kbd> <Kbd>↵</Kbd> start a session with this
+                    <Kbd>{mod}</Kbd> <EnterKey /> start a session with this
                     agent
                   </Text>
                 )}

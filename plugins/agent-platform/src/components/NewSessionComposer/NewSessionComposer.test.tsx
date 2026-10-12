@@ -1067,11 +1067,12 @@ describe('NewSessionComposer with touch input (T22 B2)', () => {
     layout = mockDesktopLayout();
     renderComposer({ defaultAgent: sre });
 
+    // The keys are key caps; the words read as the caption does.
     expect(
-      screen.getByText(
-        'Enter starts the session with this message, Shift+Enter for a new line.',
-      ),
-    ).toBeInTheDocument();
+      screen.getByText(/starts the session with this message/),
+    ).toHaveTextContent(
+      'Enter starts the session with this message, Shift+Enter for a new line.',
+    );
     expect(field()).toHaveAttribute('enterkeyhint', 'send');
   });
 });

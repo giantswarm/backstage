@@ -1,2 +1,2 @@
-export { Kbd } from './Kbd';
+export { EnterKey, Kbd } from './Kbd';
 export type { KbdProps } from './Kbd';

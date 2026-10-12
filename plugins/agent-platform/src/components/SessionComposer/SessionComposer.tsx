@@ -167,8 +167,9 @@ export type SessionComposerProps = {
     /** Send is withheld and this becomes the primary control; Enter starts
      * the session. */
     replacesSend?: boolean;
-    /** What the caption says while this is offered. */
-    caption: string;
+    /** What the caption says while this is offered; may draw keys
+     * (`SendKeyHint`). */
+    caption: ReactNode;
   };
 };
 
@@ -328,7 +329,13 @@ export function SessionComposer({
     placeholder = `Reply to ${agentName}…`;
   }
 
-  let caption: string;
+  // At rest: nothing more pressing to say, so the caption is the disclaimer
+  // and the box says how it sends. Every other state below has its own
+  // caption, which says what to do instead.
+  const atRest =
+    !disabledReason && !newSession && !isStopping && !isAgentWorking;
+
+  let caption: ReactNode;
   if (disabledReason) {
     caption = disabledReason;
   } else if (newSession) {
@@ -350,10 +357,11 @@ export function SessionComposer({
     caption = COMPOSER_DISCLAIMER;
   }
 
-  // How the box sends, said only at rest: while the agent works, a
-  // confirmation is open or the runtime is lost, Enter does not send, and the
-  // caption says what does.
-  const showSendKeyHint = caption === COMPOSER_DISCLAIMER && !isTooLong;
+  // How the box sends, said only at rest. While the agent works or a
+  // confirmation is open, Enter does not send. A pending Stop and a suspected
+  // runtime loss leave Enter sending, but their captions say what matters
+  // more then; once the loss is reported, that caption names its keys itself.
+  const showSendKeyHint = atRest && !isTooLong;
 
   // The card is the control while it stands; at phone width the box it
   // disables would only cost the conversation its room (see `attachment`).
@@ -456,7 +464,15 @@ export function SessionComposer({
                   ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
                   : caption}
               </Text>
-              {showSendKeyHint && <SendKeyHint touch={touch} />}
+              {showSendKeyHint && (
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  data-testid="send-key-hint"
+                >
+                  <SendKeyHint touch={touch} />
+                </Text>
+              )}
             </Flex>
 
             {newSession && (

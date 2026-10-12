@@ -34,7 +34,8 @@ import {
 } from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey, sendEnterKeyHint, sendKeyCaption } from '../../lib/sendKey';
+import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
+import { SendKeyHint } from '../SendKeyHint';
 import { AgentAvatar } from '../AgentAvatar';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
@@ -573,7 +574,7 @@ export function NewSessionComposer({
     }
   };
 
-  let caption: string;
+  let caption: ReactNode;
   if (awaitingAgent) {
     caption = 'Choose an agent first.';
   } else if (isTooLong) {
@@ -581,12 +582,14 @@ export function NewSessionComposer({
   } else if (isLoadingAgents) {
     caption = 'Still checking the remaining environments for agents…';
   } else {
-    caption = sendKeyCaption(
-      {
-        key: 'Enter starts the session with this message',
-        tap: 'Tap the arrow to start the session with this message',
-      },
-      touch,
+    caption = (
+      <SendKeyHint
+        options={{
+          key: 'Enter starts the session with this message',
+          tap: 'Tap the arrow to start the session with this message',
+        }}
+        touch={touch}
+      />
     );
   }
 

@@ -1,40 +1,44 @@
-import { Text, VisuallyHidden } from '@backstage/ui';
-import KeyboardReturnIcon from '@material-ui/icons/KeyboardReturn';
-import { sendKeyCaption } from '../../lib/sendKey';
-import { Kbd } from '../Kbd';
+import { Fragment } from 'react';
+import { sendKeyCaption, type SendKeyCaptionOptions } from '../../lib/sendKey';
+import { EnterKey, Kbd } from '../Kbd';
 
 export type SendKeyHintProps = {
+  /** What Enter and the button do: {@link sendKeyCaption}'s overrides. A
+   * prop of its own because `key` is React's. */
+  options?: SendKeyCaptionOptions;
   /** Whether the person types on a soft keyboard (`useTouchInput`). */
   touch: boolean;
 };
 
-/** Enter as a key cap: the Return icon, named for screen readers. */
-function EnterKey() {
-  return (
-    <Kbd>
-      <KeyboardReturnIcon aria-hidden />
-      <VisuallyHidden>Enter</VisuallyHidden>
-    </Kbd>
-  );
-}
+/** The keys a send-key caption names, as they appear in its words. */
+const KEY_NAMES = /\b(Shift\+Enter|Enter)\b/;
 
 /**
- * The hint under a message box that says how it sends — {@link sendKeyCaption}
- * drawn with key caps. Its text reads the same as the caption the other
- * composers show ("Enter sends, Shift+Enter for a new line."), with Enter drawn
- * as the Return icon. On touch input it is the caption's tap wording, since
- * Enter breaks the line there as on any phone.
+ * How a message box sends: {@link sendKeyCaption}'s words, with the keys they
+ * name drawn as key caps — Enter as the Return icon. The words come from the
+ * caption itself, so every box says the same thing whether it draws keys or
+ * not. On touch input the caption names a button, not a key, and is plain
+ * text.
+ *
+ * Inline content, for the caller's caption `Text`.
  */
-export function SendKeyHint({ touch }: SendKeyHintProps) {
+export function SendKeyHint({ options, touch }: SendKeyHintProps) {
+  // `split` with a capture group keeps the key names at the odd indexes.
+  const parts = sendKeyCaption(options, touch).split(KEY_NAMES);
   return (
-    <Text variant="body-small" color="secondary" data-testid="send-key-hint">
-      {touch ? (
-        sendKeyCaption({}, true)
-      ) : (
-        <>
-          <EnterKey /> sends, <Kbd>Shift</Kbd>+<EnterKey /> for a new line.
-        </>
-      )}
-    </Text>
+    <>
+      {parts.map((part, index) => {
+        if (index % 2 === 0) {
+          return part;
+        }
+        return part === 'Enter' ? (
+          <EnterKey key={index} />
+        ) : (
+          <Fragment key={index}>
+            <Kbd>Shift</Kbd>+<EnterKey />
+          </Fragment>
+        );
+      })}
+    </>
   );
 }

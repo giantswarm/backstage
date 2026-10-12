@@ -1,4 +1,11 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Button,
@@ -29,7 +36,8 @@ import type {
 } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey, sendEnterKeyHint, sendKeyCaption } from '../../lib/sendKey';
+import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
+import { SendKeyHint } from '../SendKeyHint';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -445,7 +453,7 @@ export function PendingConfirmationPanel({
   // A permission request carries no resting caption: its reassurance ("Nothing
   // is sent until you allow it.") stands under its title, as the prototype
   // places it, and its buttons sit at the card's end.
-  let caption: string | undefined;
+  let caption: ReactNode;
   if (isAnswerTooLong) {
     caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isReasonTooLong) {
@@ -454,15 +462,25 @@ export function PendingConfirmationPanel({
     // Send was refused, and on the last page the reason is out of sight.
     caption = `Question ${firstUnanswered + 1} still needs an answer.`;
   } else if (isQuestion && !isLastPage) {
-    caption = sendKeyCaption(
-      { key: 'Enter goes to the next question', tap: 'Tap Next to go on' },
-      touch,
+    caption = (
+      <SendKeyHint
+        options={{
+          key: 'Enter goes to the next question',
+          tap: 'Tap Next to go on',
+        }}
+        touch={touch}
+      />
     );
   } else if (isQuestion) {
-    caption = `Answering resumes the agent where it stopped. ${sendKeyCaption(
-      { key: 'Enter sends', tap: 'Tap Send answer to send it' },
-      touch,
-    )}`;
+    caption = (
+      <>
+        Answering resumes the agent where it stopped.{' '}
+        <SendKeyHint
+          options={{ key: 'Enter sends', tap: 'Tap Send answer to send it' }}
+          touch={touch}
+        />
+      </>
+    );
   }
 
   const send = () => {
