@@ -44,6 +44,7 @@ import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentSettingUp } from '../../hooks/useAgentSettingUp';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { useReleaseSettingUp } from '../../hooks/useReleaseSettingUp';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -249,8 +250,20 @@ function AgentDetailPageContent() {
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
   const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
+  // A new release that has not reconciled yet is `failed` to agent-manager
+  // too; read from the HelmRelease itself, it is set up for a grace period,
+  // and the verdict is re-read meanwhile so it is not left stale.
+  const isReleaseSettingUp = useReleaseSettingUp(
+    installation,
+    namespace,
+    name,
+    {
+      enabled: isAgentMissing,
+    },
+  );
   const release = useAgentStatus(installation, namespace, name, {
     enabled: isAgentMissing,
+    keepReadingFailed: isReleaseSettingUp,
   });
   const isDeploying =
     isAgentMissing &&
@@ -680,10 +693,11 @@ function AgentDetailPageContent() {
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
-      // A release Flux has not installed yet is `failed` to agent-manager
-      // too; until the grace period is over it is still deploying.
+      // A new agent's missing reference, or a new release still
+      // reconciling, is still deploying until its grace period is over.
+      const isSettingUpRelease = release.isSettingUp || isReleaseSettingUp;
       const failed =
-        release.status?.verdict === 'failed' && !release.isSettingUp;
+        release.status?.verdict === 'failed' && !isSettingUpRelease;
       return (
         <AgentFrame
           title={name}
@@ -706,7 +720,7 @@ function AgentDetailPageContent() {
                   : 'Deploying — waiting for kagent to render the agent'
               }
               description={
-                (release.isSettingUp ? undefined : release.status?.summary) ??
+                (isSettingUpRelease ? undefined : release.status?.summary) ??
                 'agent-manager applied the Helm release.'
               }
             />

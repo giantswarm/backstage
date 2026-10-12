@@ -1,6 +1,7 @@
 import {
   Agent,
   AgentConditionType,
+  HelmRelease,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type { AgentStatus } from './agentManager';
@@ -93,4 +94,49 @@ export function isMissingReferenceStatus(status: AgentStatus): boolean {
     !helmRelease?.deleting &&
     NOT_FOUND.test(summary)
   );
+}
+
+/**
+ * The reasons helm-controller gives a release that is still on its way:
+ * `Progressing` while it reconciles, `DependencyNotReady` while a release it
+ * depends on is not ready yet. Every other reason — `InstallFailed`,
+ * `UpgradeFailed`, `ArtifactFailed`, a stall, or one not listed — is a failure.
+ */
+const RELEASE_PROGRESSING_REASONS: ReadonlySet<string> = new Set([
+  'Progressing',
+  'DependencyNotReady',
+]);
+
+/**
+ * Until when a new agent's HelmRelease reads as being set up, as epoch
+ * milliseconds; `undefined` when it does not at all — the release counterpart
+ * of {@link agentSettingUpUntil}, for the moment before the release has
+ * rendered the Agent.
+ *
+ * Only a release that has not reconciled yet: no `Ready` condition at all, or
+ * one that is not `True` with a reason in {@link RELEASE_PROGRESSING_REASONS};
+ * not suspended, and not `Stalled`. The window runs from the release's
+ * `creationTimestamp`, so it covers a new release only; without one there is
+ * no window.
+ */
+export function releaseSettingUpUntil(
+  release: HelmRelease,
+): number | undefined {
+  if (
+    release.isSuspended() ||
+    release.findStatusCondition('Stalled')?.status === 'True'
+  ) {
+    return undefined;
+  }
+  const ready = release.findReadyCondition();
+  if (
+    ready &&
+    (ready.status === 'True' || !RELEASE_PROGRESSING_REASONS.has(ready.reason))
+  ) {
+    return undefined;
+  }
+  const createdAt = Date.parse(release.getCreatedTimestamp() ?? '');
+  return Number.isNaN(createdAt)
+    ? undefined
+    : createdAt + PROVISIONING_GRACE_MS;
 }

@@ -1,5 +1,6 @@
 import {
   Agent,
+  HelmRelease,
   type AgentCondition,
   type AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -9,6 +10,7 @@ import {
   agentSettingUpUntil,
   backoffRefetchInterval,
   isMissingReferenceStatus,
+  releaseSettingUpUntil,
   PROVISIONING_GRACE_MS,
 } from './agentProvisioning';
 
@@ -247,5 +249,86 @@ describe('isMissingReferenceStatus', () => {
     expect(isMissingReferenceStatus(status({ verdict: 'progressing' }))).toBe(
       false,
     );
+  });
+});
+
+describe('releaseSettingUpUntil', () => {
+  const release = (
+    conditions: Array<{ type: string; status: string; reason: string }>,
+    { suspend = false, created = CREATED_AT as string | null } = {},
+  ) =>
+    new HelmRelease(
+      {
+        apiVersion: 'helm.toolkit.fluxcd.io/v2',
+        kind: 'HelmRelease',
+        metadata: {
+          name: 'adhoc',
+          namespace: 'kagent',
+          creationTimestamp: created ?? undefined,
+        },
+        spec: { suspend },
+        status: {
+          conditions: conditions.map(releaseCondition => ({
+            ...releaseCondition,
+            message: '',
+            lastTransitionTime: CREATED_AT,
+          })),
+        },
+      } as never,
+      'gazelle',
+    );
+  const UNTIL = Date.parse(CREATED_AT) + PROVISIONING_GRACE_MS;
+
+  it('gives a release with no Ready condition yet the grace period from its creation', () => {
+    expect(releaseSettingUpUntil(release([]))).toBe(UNTIL);
+  });
+
+  it('gives a release that is still progressing the grace period', () => {
+    expect(
+      releaseSettingUpUntil(
+        release([{ type: 'Ready', status: 'Unknown', reason: 'Progressing' }]),
+      ),
+    ).toBe(UNTIL);
+    expect(
+      releaseSettingUpUntil(
+        release([
+          { type: 'Ready', status: 'False', reason: 'DependencyNotReady' },
+        ]),
+      ),
+    ).toBe(UNTIL);
+  });
+
+  it('gives a failed install, or any other reason, none', () => {
+    for (const reason of ['InstallFailed', 'UpgradeFailed', 'Whatever']) {
+      expect(
+        releaseSettingUpUntil(
+          release([{ type: 'Ready', status: 'False', reason }]),
+        ),
+      ).toBeUndefined();
+    }
+  });
+
+  it('gives a stalled, suspended, ready or undated release none', () => {
+    expect(
+      releaseSettingUpUntil(
+        release([
+          { type: 'Ready', status: 'Unknown', reason: 'Progressing' },
+          { type: 'Stalled', status: 'True', reason: 'RetriesExceeded' },
+        ]),
+      ),
+    ).toBeUndefined();
+    expect(
+      releaseSettingUpUntil(release([], { suspend: true })),
+    ).toBeUndefined();
+    expect(
+      releaseSettingUpUntil(
+        release([
+          { type: 'Ready', status: 'True', reason: 'InstallSucceeded' },
+        ]),
+      ),
+    ).toBeUndefined();
+    expect(
+      releaseSettingUpUntil(release([], { created: null })),
+    ).toBeUndefined();
   });
 });

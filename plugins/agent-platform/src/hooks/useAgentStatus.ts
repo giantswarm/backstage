@@ -96,6 +96,12 @@ export function useAgentStatus(
      * entry, and the second is served the first's settled result.
      */
     watchId?: string;
+    /**
+     * The caller knows a `failed` verdict may still clear — the detail page,
+     * while the agent's HelmRelease is new and still reconciling — so it is
+     * re-read, backing off, for as long as this is true.
+     */
+    keepReadingFailed?: boolean;
   } = {},
 ): AgentStatusState {
   const client = useAgentManagerClient(installation);
@@ -103,7 +109,7 @@ export function useAgentStatus(
   // A read with no write behind it passes no `watchId` and keeps the plain key,
   // so the detail page's own existence check and the create flow's progress
   // still share one entry.
-  const { fromGeneration, watchId } = options;
+  const { fromGeneration, watchId, keepReadingFailed = false } = options;
 
   // One clock for this watch, keyed by what is being watched: started on the
   // render that first sees the watch enabled, and kept while it is disabled
@@ -160,18 +166,16 @@ export function useAgentStatus(
           return AGENT_STATUS_POLL_INTERVAL_MS;
         }
         // `ready` is the answer, and so is any `failed` but a new agent's
-        // missing reference, which is re-read, less often the longer it
-        // stands, until its grace is over.
+        // missing reference, re-read until its grace is over, or one the
+        // caller says may still clear; both less often the longer they stand.
         const now = Date.now();
-        if (
-          verdict === 'failed' &&
+        const isMissingReference =
           graceUntil !== undefined &&
-          watchStartedAt !== undefined &&
           now < graceUntil &&
-          isMissingReferenceStatus(query.state.data!)
-        ) {
+          isMissingReferenceStatus(query.state.data!);
+        if (verdict === 'failed' && (isMissingReference || keepReadingFailed)) {
           return backoffRefetchInterval(
-            now - watchStartedAt,
+            now - (watchStartedAt ?? now),
             AGENT_STATUS_POLL_INTERVAL_MS,
             FAILED_STATUS_MAX_POLL_INTERVAL_MS,
           );

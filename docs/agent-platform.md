@@ -1640,9 +1640,19 @@ gives a converging agent), and as the failure after that
   agent, since the status carries no timestamp; never for a write with a
   generation baseline.
 
+A new release gets the same window before the Agent exists: agent-manager
+calls a release that has not reconciled yet `failed` too, so the page reads the
+HelmRelease itself (`useReleaseSettingUp`; agent-manager names it after the
+agent) and shows it as deploying while it was created less than three minutes
+ago and has no `Ready` condition yet, or one that is not `True` with reason
+`Progressing` or `DependencyNotReady`, and it is neither suspended nor
+`Stalled`. Meanwhile agent-manager's verdict is re-read so it is not left
+stale. A refused read gives no window.
+
 Everything else is shown at once: `Accepted=False`, `Compatible=False`, a
-reference that exists but does not resolve, a release that is not ready, a
-verdict without a breakdown, and any failure of an agent that is not new.
+reference that exists but does not resolve, a release that failed to install
+or upgrade or is not ready for any other reason, a verdict without a
+breakdown, and any failure of an agent that is not new.
 Once the page has the Agent, its clock decides for the header, the session
 blocker, the facts and the creation progress alike (`useAgentSettingUp`).
 

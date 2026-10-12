@@ -1905,7 +1905,7 @@ describe('AgentDetailPage', () => {
       // Still re-read at the fast tier, not left for the 60 s baseline.
       expect(agentPollInterval(settingUp)).toBe(5_000);
       expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
+        screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
       await answerPoll(makeAgent());
@@ -1915,7 +1915,7 @@ describe('AgentDetailPage', () => {
         screen.queryByText('Sessions can start once the agent is ready'),
       ).not.toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Start a session' }),
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
     });
 
@@ -2113,7 +2113,7 @@ describe('AgentDetailPage', () => {
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: true },
+        { enabled: true, keepReadingFailed: false },
       );
       // … and while the release is there, the template is re-read at the fast
       // tier, so the page switches to the rendered agent within one poll of it
@@ -2140,6 +2140,140 @@ describe('AgentDetailPage', () => {
         screen.getByText('HelmRelease is not ready: install retries exhausted'),
       ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
+    });
+
+    // A new release that has not reconciled yet is `failed` to agent-manager
+    // as well; read from the HelmRelease itself, it is still deploying.
+    describe('a new release that has not reconciled yet', () => {
+      const failedRelease = () =>
+        mockUseAgentStatus.mockReturnValue(
+          releaseOnly({
+            verdict: 'failed',
+            summary: 'HelmRelease is not ready',
+            helmRelease: {
+              exists: true,
+              ready: false,
+              suspended: false,
+              gitOpsOwned: false,
+              deleting: false,
+            },
+          }),
+        );
+
+      /** The agent's HelmRelease, created `ageMs` ago, with this `Ready`. */
+      const helmRelease = (
+        ageMs: number,
+        ready?: { status: 'True' | 'False' | 'Unknown'; reason: string },
+      ) =>
+        new HelmRelease(
+          {
+            apiVersion: 'helm.toolkit.fluxcd.io/v2',
+            kind: 'HelmRelease',
+            metadata: {
+              name: mockParams.name,
+              namespace: mockParams.namespace,
+              creationTimestamp: new Date(Date.now() - ageMs).toISOString(),
+            },
+            spec: {},
+            status: ready
+              ? {
+                  conditions: [
+                    {
+                      type: 'Ready',
+                      ...ready,
+                      message: '',
+                      lastTransitionTime: new Date().toISOString(),
+                    },
+                  ],
+                }
+              : {},
+          },
+          'gazelle',
+        );
+
+      const withRelease = (release: unknown) =>
+        stubResources(
+          {
+            error: new Error('not found'),
+            errors: [
+              {
+                type: 'error',
+                cluster: 'gazelle',
+                error: Object.assign(new Error('not found'), {
+                  name: 'NotFoundError',
+                }),
+              },
+            ],
+          },
+          undefined,
+          { helmRelease: release },
+        );
+
+      it('shows it as deploying, not as a release that did not become ready', async () => {
+        withRelease(
+          helmRelease(30_000, { status: 'Unknown', reason: 'Progressing' }),
+        );
+        failedRelease();
+
+        await renderPage();
+
+        expectHeaderReadiness('Deploying');
+        expect(
+          screen.getByText(
+            'Deploying — waiting for kagent to render the agent',
+          ),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('The agent’s release did not become ready'),
+        ).not.toBeInTheDocument();
+        // The stale verdict is re-read meanwhile.
+        expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
+          mockParams.installation,
+          mockParams.namespace,
+          mockParams.name,
+          { enabled: true, keepReadingFailed: true },
+        );
+      });
+
+      it('gives a release with no Ready condition yet the same grace', async () => {
+        withRelease(helmRelease(30_000));
+        failedRelease();
+
+        await renderPage();
+
+        expect(
+          screen.queryByText('The agent’s release did not become ready'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('shows a failed install at once', async () => {
+        withRelease(
+          helmRelease(30_000, { status: 'False', reason: 'InstallFailed' }),
+        );
+        failedRelease();
+
+        await renderPage();
+
+        expect(
+          screen.getByText('The agent’s release did not become ready'),
+        ).toBeInTheDocument();
+      });
+
+      it('shows a release past its grace period as failed', async () => {
+        withRelease(
+          helmRelease(PROVISIONING_GRACE_MS + 60_000, {
+            status: 'Unknown',
+            reason: 'Progressing',
+          }),
+        );
+        failedRelease();
+
+        await renderPage();
+
+        expect(
+          screen.getByText('The agent’s release did not become ready'),
+        ).toBeInTheDocument();
+      });
     });
 
     it('waits for agent-manager’s answer before choosing between deploying and not found', async () => {
@@ -2184,7 +2318,7 @@ describe('AgentDetailPage', () => {
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: false },
+        { enabled: false, keepReadingFailed: false },
       );
     });
   });
