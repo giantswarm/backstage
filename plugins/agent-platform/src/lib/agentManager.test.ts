@@ -6,6 +6,7 @@ import {
   helmInstallCommand,
   isSettledVerdict,
   looksNotConnected,
+  releaseOutsideDirectory,
 } from './agentManager';
 
 describe('agentManagerToolName', () => {
@@ -54,6 +55,32 @@ describe('classifyAgentManagerError', () => {
       new Error('Note: the request failed'),
     );
     expect(error).not.toBeInstanceOf(AgentManagerError);
+  });
+});
+
+describe('releaseOutsideDirectory', () => {
+  const message =
+    "HelmRelease flux-giantswarm/cluster-manager-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/cluster-manager-agent.yaml there): change it in the file that defines it";
+
+  it("reads the release, directory and repository from agent-manager's conflict", () => {
+    expect(releaseOutsideDirectory({ code: 'conflict', message })).toEqual({
+      release: 'flux-giantswarm/cluster-manager-agent',
+      directory: 'management-clusters/gazelle/extras/agent-manager',
+      repository: 'giantswarm/giantswarm-management-clusters',
+    });
+  });
+
+  it('is undefined for any other refusal', () => {
+    expect(releaseOutsideDirectory(undefined)).toBeUndefined();
+    expect(
+      releaseOutsideDirectory({ code: 'invalid_request', message }),
+    ).toBeUndefined();
+    expect(
+      releaseOutsideDirectory({
+        code: 'conflict',
+        message: 'HelmRelease kagent/x is suspended',
+      }),
+    ).toBeUndefined();
   });
 });
 

@@ -45,9 +45,17 @@ type Scenario = {
   refreshed?: AgentSkillEntry[];
   validateError?: Error;
   updateError?: Error;
+  /** What update_agent's commit dry run throws (the confirm's write still works). */
+  commitDryRunError?: Error;
+  /** What only the pull request itself throws (the dry run passed). */
+  commitError?: Error;
   /** The dialog is open in commit mode: an agent applied from git. */
   commit?: boolean;
 };
+
+const OUTSIDE_DIRECTORY = new Error(
+  "conflict: HelmRelease flux-giantswarm/pr-reviewer-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml there): change it in the file that defines it",
+);
 
 function makeMusterApi(scenario: Scenario = {}) {
   const refreshed = scenario.refreshed ?? [
@@ -86,7 +94,16 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.updateError) {
             throw scenario.updateError;
           }
+          if (args.mode === 'commit' && args.dryRun) {
+            if (scenario.commitDryRunError) {
+              throw scenario.commitDryRunError;
+            }
+            return { ...committedTo(), dryRun: true };
+          }
           if (args.mode === 'commit') {
+            if (scenario.commitError) {
+              throw scenario.commitError;
+            }
             return committedTo('https://github.com/giantswarm/agents/pull/7');
           }
           return {
@@ -226,11 +243,19 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByRole('button', { name: 'Update all skills' }),
       ).not.toBeInTheDocument();
-      expect(
-        callTool.mock.calls.some(
-          ([tool]) => tool === 'x_agent-manager_update_agent',
-        ),
-      ).toBe(false);
+      // Only update_agent's commit dry run, which opens nothing.
+      const writes = callTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_update_agent',
+      );
+      expect(writes.map(([, args]) => args)).toEqual([
+        {
+          namespace: 'kagent',
+          name: 'pr-reviewer',
+          refreshSkills: true,
+          mode: 'commit',
+          dryRun: true,
+        },
+      ]);
     });
 
     it('opens the pull request with update_agent mode: commit, shows it, and reports the commit event', async () => {
@@ -245,7 +270,8 @@ describe('AgentUpdateSkillsDialog', () => {
         await screen.findByRole('link', { name: /Open the pull request/ }),
       ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
       const write = callTool.mock.calls.find(
-        ([tool]) => tool === 'x_agent-manager_update_agent',
+        ([tool, args]) =>
+          tool === 'x_agent-manager_update_agent' && !args.dryRun,
       );
       expect(write?.[1]).toEqual({
         namespace: 'kagent',
@@ -287,6 +313,64 @@ describe('AgentUpdateSkillsDialog', () => {
         await screen.findByText(/connect your GitHub account/),
       ).toBeInTheDocument();
       expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it("says where to update the skills, and offers no pull request, for a release outside agent-manager's directory", async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        commitDryRunError: OUTSIDE_DIRECTORY,
+      });
+
+      expect(
+        await screen.findByText('Update these skills in the GitOps repository'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('flux-giantswarm/pr-reviewer-agent'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('management-clusters/gazelle/extras/agent-manager'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', {
+          name: 'giantswarm/giantswarm-management-clusters',
+        }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/giantswarm-management-clusters',
+      );
+      // The plan stays: it is what to change by hand.
+      expect(screen.getByTestId('skill-refresh-pr-review')).toHaveTextContent(
+        'Moves to the head',
+      );
+      expect(
+        screen.queryByText(/opens a pull request as you/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Open pull request' }),
+      ).toBeDisabled();
+      expect(
+        callTool.mock.calls.some(
+          ([tool, args]) =>
+            tool === 'x_agent-manager_update_agent' && !args.dryRun,
+        ),
+      ).toBe(false);
+    });
+
+    it('says the same when only the pull request is refused that way', async () => {
+      await renderDialog({ commit: true, commitError: OUTSIDE_DIRECTORY });
+      await screen.findByTestId('skill-refresh-pr-review');
+      const confirm = screen.getByRole('button', { name: 'Open pull request' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      expect(
+        await screen.findByText('Update these skills in the GitOps repository'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/is not in agent-manager's directory/),
+      ).not.toBeInTheDocument();
+      expect(confirm).toBeDisabled();
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
   });

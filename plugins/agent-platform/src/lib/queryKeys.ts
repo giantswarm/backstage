@@ -282,6 +282,19 @@ export function musterValidateAgentUpdateQueryKey(
   ] as const;
 }
 
+export function musterCommitAgentUpdateDryRunQueryKey(
+  installation: string,
+  updateSignature: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'commit-agent-update-dry-run',
+    installation,
+    updateSignature,
+  ] as const;
+}
+
 /**
  * cluster-manager, read through the person's muster session like agent-manager
  * above: what it offers (`get_info`), the installation's clusters with their

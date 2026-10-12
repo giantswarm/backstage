@@ -335,6 +335,44 @@ export class AgentManagerError extends Error {
 }
 
 /**
+ * A release agent-manager cannot change through a pull request: it is applied
+ * from git, but not from a file in agent-manager's own directory (the
+ * Kustomization's path plus `agent-manager/`), so it is defined in another
+ * file of the repository, which agent-manager does not edit.
+ */
+export type ReleaseOutsideDirectory = {
+  /** The HelmRelease, `namespace/name`. */
+  release: string;
+  /** agent-manager's directory, e.g. `management-clusters/gazelle/extras/agent-manager`. */
+  directory: string;
+  /** The repository, `owner/name`. */
+  repository: string;
+};
+
+// agent-manager reports this case only in the message of its `conflict`
+// (`requireReleaseFile` in internal/agents/commit.go), so the message is parsed.
+const RELEASE_OUTSIDE_DIRECTORY =
+  /HelmRelease (\S+) is not in agent-manager's directory (\S+) of (\S+) \(/;
+
+/**
+ * Whether a refusal is agent-manager's "not in my directory" conflict, and if
+ * so for which release, directory and repository. `undefined` for any other
+ * refusal, which keeps its own message.
+ */
+export function releaseOutsideDirectory(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): ReleaseOutsideDirectory | undefined {
+  if (failure?.code !== 'conflict') {
+    return undefined;
+  }
+  const match = failure.message.match(RELEASE_OUTSIDE_DIRECTORY);
+  if (!match) {
+    return undefined;
+  }
+  return { release: match[1], directory: match[2], repository: match[3] };
+}
+
+/**
  * The person's muster session holds no connection to agent-manager yet: the
  * tool is not in the session's tool set, or muster refuses to open the
  * connection. A sign-in to the server in muster fixes it; the review page

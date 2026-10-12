@@ -149,11 +149,21 @@ export class AgentManagerClient {
    * Lands the update as a pull request in the owning GitOps repository instead
    * (`mode: commit`, giantswarm/agent-manager#24). Offered only when `get_info`
    * reports the `commit` capability.
+   *
+   * With `dryRun`, nothing is opened: agent-manager answers the repository,
+   * directory and files the pull request would carry — reading the base branch
+   * as the person, so it refuses up front what the real commit would, such as
+   * a release defined outside its directory (`validateUpdate` does not check
+   * the repository).
    */
-  commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
+  commitUpdateAgent(
+    update: AgentUpdate,
+    options: { dryRun?: boolean } = {},
+  ): Promise<CommitAgentResult> {
     return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
       ...update,
       mode: 'commit',
+      ...(options.dryRun ? { dryRun: true } : {}),
     });
   }
 
