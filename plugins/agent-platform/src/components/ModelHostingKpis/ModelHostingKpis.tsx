@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
-import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  countNoun,
+  Stat,
+  StatGrid,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   useClusterManagerAvailability,
@@ -9,7 +13,6 @@ import { useNodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { formatCount } from '../../lib/formatNumbers';
 import { describeHourlyRange, totalHourlyCost } from '../../lib/poolPricing';
 import { SERVED_MODEL_READINESS } from '../../lib/serving';
-import { KpiTile, KpiTileGrid } from '../LlmUsage';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { cacheSize, countRunningModels, gpuUse } from './hostingKpis';
@@ -95,7 +98,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
   let costTile: JSX.Element | null = null;
   if (hasPools && cost) {
     costTile = (
-      <KpiTile
+      <Stat
+        variant="tile"
         label="GPU cost now"
         hint="Shows the hourly on-demand list price of the GPU nodes running now. A pool that may run several sizes adds a cheapest-to-dearest range."
         value={describeHourlyRange(cost.minUSD, cost.maxUSD)}
@@ -109,7 +113,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
   } else if (hasPools && nodesRunning === 0) {
     // Every pool scaled to zero: nothing runs, so nothing is billed by the hour.
     costTile = (
-      <KpiTile
+      <Stat
+        variant="tile"
         label="GPU cost now"
         hint="GPU pools run nodes only while something is scheduled on them; none runs now."
         value="$0.00/h"
@@ -118,7 +123,12 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
     );
   } else if (hasPools && prices.isLoading) {
     costTile = (
-      <KpiTile label="GPU cost now" value="…" sub="reading the list prices" />
+      <Stat
+        variant="tile"
+        label="GPU cost now"
+        value="…"
+        sub="reading the list prices"
+      />
     );
   }
 
@@ -131,9 +141,10 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
 
   return (
     <section aria-label="Model hosting at a glance">
-      <KpiTileGrid>
+      <StatGrid>
         {scope === 'all' && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="Models running"
             hint="Counts served models that are loaded and answering now, on every environment in view."
             value={formatCount(running.running)}
@@ -141,7 +152,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
           />
         )}
         {showsGpu && gpus && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="GPUs in use"
             hint="Counts the accelerators that scheduled pods hold, out of those the nodes make schedulable."
             value={`${formatCount(gpus.used)} of ${formatCount(gpus.total)}`}
@@ -149,7 +161,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
           />
         )}
         {showsGpu && hasPools && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="GPU pools"
             hint="Counts the GPU node pools cluster-manager runs. A pool runs nodes only while something is scheduled on them."
             value={formatCount(pools.rows.length)}
@@ -158,7 +171,8 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
         )}
         {showsGpu && costTile}
         {showsCache && cache && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="Model cache"
             hint={
               cache.basis === 'claims'
@@ -179,7 +193,7 @@ export function ModelHostingKpis({ scope = 'all' }: ModelHostingKpisProps) {
             }
           />
         )}
-      </KpiTileGrid>
+      </StatGrid>
     </section>
   );
 }

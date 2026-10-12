@@ -6,6 +6,8 @@ import { makeStyles } from '@material-ui/core';
 import {
   LoadingIndicator,
   SectionHeader,
+  Stat,
+  StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useLlmUsage } from '../../hooks/useLlmUsage';
@@ -18,7 +20,7 @@ import {
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
-import { CostPerDayCard, KpiTile, KpiTileGrid } from '../LlmUsage';
+import { CostPerDayCard } from '../LlmUsage';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 import {
   agentsUsingModel,
@@ -112,27 +114,30 @@ function UsageSection({
   const sub = `every user's, last ${MODEL_USAGE_WINDOW_DAYS} days`;
   return (
     <Flex direction="column" gap="4">
-      <KpiTileGrid>
-        <KpiTile
+      <StatGrid>
+        <Stat
+          variant="tile"
           label="Spend"
           hint="Shows the gateway's price for calls to this model. A model missing from its catalogue shows —."
           // No calls is zero spend; calls without a price are "—".
           value={formatMoney(slice.calls === 0 ? 0 : slice.costUsd, currency)}
           sub={sub}
         />
-        <KpiTile
+        <Stat
+          variant="tile"
           label="Tokens"
           hint="Counts the tokens that calls to this model used, as the gateway counted them."
           value={formatTokens(slice.tokens)}
           sub={sub}
         />
-        <KpiTile
+        <Stat
+          variant="tile"
           label="Model calls"
           hint="Counts how often agents called this model through the gateway."
           value={formatCount(slice.calls)}
           sub={sub}
         />
-      </KpiTileGrid>
+      </StatGrid>
       {slice.costPerDay.series.length > 0 && (
         <CostPerDayCard daily={slice.costPerDay} currency={currency} />
       )}

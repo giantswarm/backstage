@@ -4,7 +4,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -476,14 +476,10 @@ describe('CustomizePage', () => {
       config: { app: { title: 'Agent Platform' } },
     });
 
-    await waitFor(() =>
-      expect(document.title).toBe('Agents · Customize · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Agents · Customize'));
 
     await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
 
-    await waitFor(() =>
-      expect(document.title).toBe('Workflows · Customize · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
   });
 });
