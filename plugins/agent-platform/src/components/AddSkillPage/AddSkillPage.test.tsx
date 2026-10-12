@@ -137,9 +137,7 @@ describe('AddSkillPage', () => {
   it('names itself in the document title', async () => {
     await renderPage();
 
-    await waitFor(() =>
-      expect(document.title).toBe('Add skill · Skills · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('Add skill · Skills'));
   });
 
   // Typing three fields with userEvent outruns the 5s default under a loaded
@@ -322,9 +320,7 @@ describe('AddSkillPage editing an existing skill', () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
     await waitFor(() =>
-      expect(document.title).toBe(
-        'Edit ticket-triage · Skills · Agent Platform',
-      ),
+      expect(document.title).toBe('Edit ticket-triage · Skills'),
     );
     expect(screen.getByLabelText(/Name/)).toHaveValue('ticket-triage');
     expect(screen.getByLabelText(/Description/)).toHaveValue('How to triage.');

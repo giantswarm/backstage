@@ -13,7 +13,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -232,9 +232,7 @@ describe('AgentPlatformHome', () => {
     // kept that page's.
     await render();
 
-    await waitFor(() =>
-      expect(document.title).toBe('New session · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('New session'));
   });
 
   it('greets without a name when the profile has none', async () => {

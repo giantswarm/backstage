@@ -7,7 +7,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { SlackPromoBanner, slackDocsUrl } from './SlackPromoBanner';
 
 let configured: Record<string, boolean | string | undefined> = {};

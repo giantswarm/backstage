@@ -4,7 +4,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import userEvent from '@testing-library/user-event';
 import { modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
