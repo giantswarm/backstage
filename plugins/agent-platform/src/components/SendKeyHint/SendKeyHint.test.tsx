@@ -1,42 +1,37 @@
 import { render } from '@testing-library/react';
-import { sendKeyCaption, type SendKeyCaptionOptions } from '../../lib/sendKey';
+import {
+  SEND_KEY_CAPTIONS,
+  sendKeyCaption,
+  type SendKeyCaptionOptions,
+} from '../../lib/sendKey';
 import { SendKeyHint } from './SendKeyHint';
 
+// In a <p>, as a caption's Text renders, so a block element inside a key cap
+// is a React nesting error — and that fails the test.
 function renderHint(
   options: SendKeyCaptionOptions | undefined,
   touch: boolean,
 ) {
+  const consoleError = jest.spyOn(console, 'error');
   const { container } = render(
     <p>
       <SendKeyHint options={options} touch={touch} />
     </p>,
   );
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
   return container.querySelector('p')!;
 }
 
-// The overrides the composers pass, and the default.
+// Every caption in use: the default and each box's own wording.
 const CAPTIONS: [string, SendKeyCaptionOptions | undefined][] = [
-  ['the default', undefined],
-  [
-    'the new-session composer',
-    {
-      key: 'Enter starts the session with this message',
-      tap: 'Tap the arrow to start the session with this message',
-    },
-  ],
-  [
-    'a paged question',
-    { key: 'Enter goes to the next question', tap: 'Tap Next to go on' },
-  ],
-  [
-    'a lost runtime',
-    { key: 'Enter starts it', tap: 'Tap the button below to start it' },
-  ],
+  ['default', undefined],
+  ...Object.entries(SEND_KEY_CAPTIONS),
 ];
 
 describe('SendKeyHint', () => {
   it.each(CAPTIONS)(
-    'reads as the caption with a keyboard, keys as caps, for %s',
+    'reads as the caption with a keyboard, keys as caps (%s)',
     (_, options) => {
       const hint = renderHint(options, false);
 
@@ -53,13 +48,20 @@ describe('SendKeyHint', () => {
     },
   );
 
-  it.each(CAPTIONS)(
-    'is the plain tap caption on touch, for %s',
-    (_, options) => {
-      const hint = renderHint(options, true);
+  it.each(CAPTIONS)('is the plain tap caption on touch (%s)', (_, options) => {
+    const hint = renderHint(options, true);
 
-      expect(hint.textContent).toBe(sendKeyCaption(options, true));
-      expect(hint.querySelector('kbd')).toBeNull();
-    },
-  );
+    expect(hint.textContent).toBe(sendKeyCaption(options, true));
+    expect(hint.querySelector('kbd')).toBeNull();
+  });
+
+  it('draws no key caps on touch, even where the words name Enter', () => {
+    const hint = renderHint(
+      { tap: 'Tap Enter on the keyboard to go on' },
+      true,
+    );
+
+    expect(hint.textContent).toBe('Tap Enter on the keyboard to go on.');
+    expect(hint.querySelector('kbd')).toBeNull();
+  });
 });

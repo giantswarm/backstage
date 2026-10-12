@@ -552,8 +552,8 @@ describe('AgentPlatformHome on a phone (T22)', () => {
 
     // The keys are key caps; the words read as the caption does.
     expect(
-      screen.getByText(/starts the session with this message/),
-    ).toHaveTextContent(
+      screen.getByText(/starts the session with this message/).textContent,
+    ).toBe(
       'Enter starts the session with this message, Shift+Enter for a new line.',
     );
   });

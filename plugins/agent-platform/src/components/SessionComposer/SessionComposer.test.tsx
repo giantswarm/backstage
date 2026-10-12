@@ -775,7 +775,8 @@ describe('SessionComposer send-key hint', () => {
       screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
     // The same words as the other composers' caption.
-    expect(hint()).toHaveTextContent(sendKeyCaption({}, false));
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe(sendKeyCaption({}, false));
     expect(hint()?.querySelectorAll('kbd')).toHaveLength(3);
   });
 
@@ -783,7 +784,8 @@ describe('SessionComposer send-key hint', () => {
     layout = mockPhoneLayout();
     renderComposer();
 
-    expect(hint()).toHaveTextContent('Tap Send to send.');
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe('Tap Send to send.');
     expect(hint()?.querySelector('kbd')).toBeNull();
   });
 
@@ -800,11 +802,14 @@ describe('SessionComposer send-key hint', () => {
         },
       },
     ],
-  ])('leaves the keys out while %s', (_, props) => {
+  ])('hides the keys while %s, keeping their room', (_, props) => {
     layout = mockDesktopLayout();
     renderComposer(props);
 
-    expect(hint()).not.toBeInTheDocument();
+    // Hidden rather than removed, so the docked composer keeps its height
+    // from turn to turn.
+    expect(hint()).toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
   });
 
   it('gives way to the length error', () => {
@@ -816,6 +821,6 @@ describe('SessionComposer send-key hint', () => {
     });
 
     expect(screen.getByText(/the limit is/)).toBeInTheDocument();
-    expect(hint()).not.toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
   });
 });

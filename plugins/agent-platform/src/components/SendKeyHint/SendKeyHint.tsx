@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { sendKeyCaption, type SendKeyCaptionOptions } from '../../lib/sendKey';
-import { EnterKey, Kbd } from '../Kbd';
+import { EnterKey } from '../EnterKey';
+import { Kbd } from '../Kbd';
 
 export type SendKeyHintProps = {
   /** What Enter and the button do: {@link sendKeyCaption}'s overrides. A
@@ -10,21 +11,23 @@ export type SendKeyHintProps = {
   touch: boolean;
 };
 
-/** The keys a send-key caption names, as they appear in its words. */
+/** The keys a keyboard caption names, as they appear in its words. */
 const KEY_NAMES = /\b(Shift\+Enter|Enter)\b/;
 
 /**
  * How a message box sends: {@link sendKeyCaption}'s words, with the keys they
  * name drawn as key caps — Enter as the Return icon. The words come from the
- * caption itself, so every box says the same thing whether it draws keys or
- * not. On touch input the caption names a button, not a key, and is plain
- * text.
+ * caption itself, so every box says the same thing. On touch input the
+ * caption names a button, not a key, and stays plain text.
  *
  * Inline content, for the caller's caption `Text`.
  */
 export function SendKeyHint({ options, touch }: SendKeyHintProps) {
+  if (touch) {
+    return <>{sendKeyCaption(options, true)}</>;
+  }
   // `split` with a capture group keeps the key names at the odd indexes.
-  const parts = sendKeyCaption(options, touch).split(KEY_NAMES);
+  const parts = sendKeyCaption(options, false).split(KEY_NAMES);
   return (
     <>
       {parts.map((part, index) => {

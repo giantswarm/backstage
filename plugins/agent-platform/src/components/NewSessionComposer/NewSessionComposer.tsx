@@ -34,7 +34,11 @@ import {
 } from '../../lib/serving';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
+import {
+  isSendKey,
+  SEND_KEY_CAPTIONS,
+  sendEnterKeyHint,
+} from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
 import { AgentAvatar } from '../AgentAvatar';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
@@ -583,13 +587,7 @@ export function NewSessionComposer({
     caption = 'Still checking the remaining environments for agents…';
   } else {
     caption = (
-      <SendKeyHint
-        options={{
-          key: 'Enter starts the session with this message',
-          tap: 'Tap the arrow to start the session with this message',
-        }}
-        touch={touch}
-      />
+      <SendKeyHint options={SEND_KEY_CAPTIONS.newSession} touch={touch} />
     );
   }
 

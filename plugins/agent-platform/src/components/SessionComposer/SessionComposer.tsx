@@ -330,11 +330,9 @@ export function SessionComposer({
   }
 
   // At rest: nothing more pressing to say, so the caption is the disclaimer
-  // and the box says how it sends. Every other state below has its own
-  // caption, which says what to do instead.
-  const atRest =
-    !disabledReason && !newSession && !isStopping && !isAgentWorking;
-
+  // and the box says how it sends. Set by the branch that picks the
+  // disclaimer, so a new caption state cannot leave the hint showing.
+  let atRest = false;
   let caption: ReactNode;
   if (disabledReason) {
     caption = disabledReason;
@@ -355,12 +353,17 @@ export function SessionComposer({
     // an idle session is the usual state between turns, and the placeholder
     // already says a message continues it.
     caption = COMPOSER_DISCLAIMER;
+    atRest = true;
   }
 
   // How the box sends, said only at rest. While the agent works or a
   // confirmation is open, Enter does not send. A pending Stop and a suspected
   // runtime loss leave Enter sending, but their captions say what matters
   // more then; once the loss is reported, that caption names its keys itself.
+  // Out of rest the hint is hidden, not removed: it keeps its room, so the
+  // docked composer does not change height on every turn and the
+  // conversation above it does not jump (it wraps to a line of its own on a
+  // phone).
   const showSendKeyHint = atRest && !isTooLong;
 
   // The card is the control while it stands; at phone width the box it
@@ -464,15 +467,14 @@ export function SessionComposer({
                   ? `That message is ${text.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`
                   : caption}
               </Text>
-              {showSendKeyHint && (
-                <Text
-                  variant="body-small"
-                  color="secondary"
-                  data-testid="send-key-hint"
-                >
-                  <SendKeyHint touch={touch} />
-                </Text>
-              )}
+              <Text
+                variant="body-small"
+                color="secondary"
+                data-testid="send-key-hint"
+                style={showSendKeyHint ? undefined : { visibility: 'hidden' }}
+              >
+                <SendKeyHint touch={touch} />
+              </Text>
             </Flex>
 
             {newSession && (

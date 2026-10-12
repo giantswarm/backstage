@@ -92,3 +92,28 @@ export function sendKeyCaption(
 ): string {
   return touch ? `${tap}.` : `${key}, Shift+Enter for a new line.`;
 }
+
+/**
+ * The boxes' own wording for {@link sendKeyCaption}, beyond the default
+ * ("Enter sends"). Kept here, not with each box, so `SendKeyHint`'s test
+ * checks every caption in use.
+ */
+export const SEND_KEY_CAPTIONS = {
+  /** The new-session composer. */
+  newSession: {
+    key: 'Enter starts the session with this message',
+    tap: 'Tap the arrow to start the session with this message',
+  },
+  /** The answer panel, on a question before the last. */
+  nextQuestion: {
+    key: 'Enter goes to the next question',
+    tap: 'Tap Next to go on',
+  },
+  /** The answer panel, on the last question. */
+  answer: { key: 'Enter sends', tap: 'Tap Send answer to send it' },
+  /** The session composer, once kagent has reported the runtime lost. */
+  runtimeLost: {
+    key: 'Enter starts it',
+    tap: 'Tap the button below to start it',
+  },
+} satisfies Record<string, SendKeyCaptionOptions>;

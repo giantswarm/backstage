@@ -1,7 +1,5 @@
 import { ReactNode } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
-import { VisuallyHidden } from '@backstage/ui';
-import KeyboardReturnIcon from '@material-ui/icons/KeyboardReturn';
 
 const useStyles = makeStyles({
   kbd: {
@@ -35,14 +33,4 @@ export type KbdProps = {
 export function Kbd({ children }: KbdProps) {
   const classes = useStyles();
   return <kbd className={classes.kbd}>{children}</kbd>;
-}
-
-/** Enter as a key cap: the Return icon, named "Enter" for screen readers. */
-export function EnterKey() {
-  return (
-    <Kbd>
-      <KeyboardReturnIcon />
-      <VisuallyHidden>Enter</VisuallyHidden>
-    </Kbd>
-  );
 }

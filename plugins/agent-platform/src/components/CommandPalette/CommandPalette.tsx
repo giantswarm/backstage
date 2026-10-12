@@ -43,7 +43,8 @@ import {
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
-import { EnterKey, Kbd } from '../Kbd';
+import { EnterKey } from '../EnterKey';
+import { Kbd } from '../Kbd';
 import {
   buildPaletteGroups,
   isEditableTarget,

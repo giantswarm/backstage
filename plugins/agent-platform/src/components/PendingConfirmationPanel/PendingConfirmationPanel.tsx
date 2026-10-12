@@ -36,7 +36,11 @@ import type {
 } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey, sendEnterKeyHint } from '../../lib/sendKey';
+import {
+  isSendKey,
+  SEND_KEY_CAPTIONS,
+  sendEnterKeyHint,
+} from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
 
 /**
@@ -463,22 +467,13 @@ export function PendingConfirmationPanel({
     caption = `Question ${firstUnanswered + 1} still needs an answer.`;
   } else if (isQuestion && !isLastPage) {
     caption = (
-      <SendKeyHint
-        options={{
-          key: 'Enter goes to the next question',
-          tap: 'Tap Next to go on',
-        }}
-        touch={touch}
-      />
+      <SendKeyHint options={SEND_KEY_CAPTIONS.nextQuestion} touch={touch} />
     );
   } else if (isQuestion) {
     caption = (
       <>
         Answering resumes the agent where it stopped.{' '}
-        <SendKeyHint
-          options={{ key: 'Enter sends', tap: 'Tap Send answer to send it' }}
-          touch={touch}
-        />
+        <SendKeyHint options={SEND_KEY_CAPTIONS.answer} touch={touch} />
       </>
     );
   }

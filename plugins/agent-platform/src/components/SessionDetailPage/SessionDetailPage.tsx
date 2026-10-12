@@ -89,6 +89,7 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
+import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
@@ -1158,10 +1159,7 @@ export function SessionDetailPage() {
                       This session cannot continue; your message starts a new
                       one with the same agent.{' '}
                       <SendKeyHint
-                        options={{
-                          key: 'Enter starts it',
-                          tap: 'Tap the button below to start it',
-                        }}
+                        options={SEND_KEY_CAPTIONS.runtimeLost}
                         touch={touch}
                       />
                     </>
