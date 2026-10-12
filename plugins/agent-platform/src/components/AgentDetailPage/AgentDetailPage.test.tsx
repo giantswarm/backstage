@@ -1620,8 +1620,11 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       // The header's and the empty list's own.
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' }),
-      ).toHaveLength(2);
+        screen.getByRole('button', { name: 'Use this agent' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Start a session' }),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('searchbox')).toBeNull();
       expect(screen.queryByRole('table')).toBeNull();
       expect(screen.queryByText(/not a usage total/)).toBeNull();
@@ -1648,6 +1651,9 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('You have no sessions with this agent.'),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
       expect(
         screen.queryByRole('button', { name: 'Start a session' }),
       ).toBeNull();
@@ -2099,7 +2105,7 @@ describe('AgentDetailPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: 'Start a session' }),
+        screen.queryByRole('button', { name: 'Use this agent' }),
       ).not.toBeInTheDocument();
 
       // Asked only because the template read came back empty …
@@ -2360,7 +2366,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       );
     });
 
-    it('puts Edit beside "Start a session", with the rest in the menu', async () => {
+    it('puts Edit beside "Use this agent", with the rest in the menu', async () => {
       withAgentManager();
       stubResources({ resource: makeAgent() });
 
@@ -2368,7 +2374,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
@@ -2382,7 +2388,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
 
       expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
     });
 
@@ -2607,8 +2613,8 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(sectionTitle('Status')).toBeInTheDocument();
       // Nothing to start a session with yet.
       expect(
-        screen.queryAllByRole('button', { name: 'Start a session' }),
-      ).toHaveLength(0);
+        screen.queryByRole('button', { name: 'Use this agent' }),
+      ).toBeNull();
     });
 
     it('sends the retired Skills tab to the Overview that now shows them', async () => {
@@ -2759,7 +2765,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       // Edit, the primary action and the ⋯: no fourth button to wrap.
       expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(
-        screen.getAllByRole('button', { name: 'Start a session' })[0],
+        screen.getByRole('button', { name: 'Use this agent' }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),

@@ -5,7 +5,7 @@ import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
 
 /**
  * Why sessions cannot be started with this agent, in place of the header's
- * **Start a session**, which is offered only for a ready agent — on every tab,
+ * **Use this agent**, which is offered only for a ready agent — on every tab,
  * because the reason is true on every tab.
  *
  * A failed agent names the root cause and, when the viewer may edit the agent

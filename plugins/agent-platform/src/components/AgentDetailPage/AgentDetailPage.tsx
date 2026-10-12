@@ -592,7 +592,9 @@ function AgentDetailPageContent() {
   );
   const isReady = agentRow?.readiness === 'ready';
   // The shell header's actions, per the prototype: Edit beside the primary
-  // "Start a session" (one verb for it everywhere, T98), the rest in the menu.
+  // "Use this agent", the rest in the menu. The header is the one place it
+  // reads so (PO decision); everywhere else starting from an agent is
+  // "Start a session" (T98).
   const shellActions =
     agent && (canEditAgent || isReady) ? (
       <>
@@ -603,7 +605,7 @@ function AgentDetailPageContent() {
         )}
         {isReady && (
           <Button variant="primary" onPress={openNewSession}>
-            Start a session
+            Use this agent
           </Button>
         )}
       </>
@@ -676,7 +678,7 @@ function AgentDetailPageContent() {
     // created under and its avatar — and agent-manager's own summary of where
     // the release stands, until the Agent read finds it (polled at the fast
     // tier, see `refetchInterval`) and the page switches to the rendered agent
-    // in place. No "Start a session": there is nothing to start one on yet.
+    // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
       // A release Flux has not installed yet is `failed` to agent-manager
       // too; until the grace period is over it is still deploying.

@@ -1704,7 +1704,7 @@ switching tabs refetches nothing; the toolset's muster queries run only on
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
   (consumed once) and polls `get_agent_status` until the Harness reports ready
   or failed.
-- **Header** — Edit and Start a session are buttons; the actions menu offers
+- **Header** — Edit and Use this agent are buttons; the actions menu offers
   `Update all skills to latest…` and `Delete agent…` where agent-manager is
   available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the
   `last-applied-configuration` annotation. It shows what the page does not

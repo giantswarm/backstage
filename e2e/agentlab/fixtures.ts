@@ -549,15 +549,11 @@ async function rosterPathOf(
 
 /**
  * The agent detail page's header button that starts a session with the agent:
- * **Start a session**, the one verb for it (T98), offered once the agent is
- * ready.
+ * **Use this agent**, offered once the agent is ready. Everywhere else the verb
+ * is "Start a session" (T98), including the Sessions tab's empty state.
  */
 export function startSessionButton(page: Page): Locator {
-  // First: the header's; an agent with no sessions offers the same verb again
-  // in its sessions card further down.
-  return page
-    .getByRole('button', { name: 'Start a session', exact: true })
-    .first();
+  return page.getByRole('button', { name: 'Use this agent', exact: true });
 }
 
 /**
@@ -621,7 +617,7 @@ export async function startSessionOnReadyAgent(
       await route.continue();
     });
   }
-  // Exact: the page header's "Start a session" is a button too.
+  // Exact: the dialog's own Start, not a longer button name.
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   if (whileStarting) {
     try {
