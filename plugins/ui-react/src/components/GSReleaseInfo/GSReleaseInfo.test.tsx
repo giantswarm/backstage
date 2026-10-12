@@ -1,32 +1,11 @@
-import { configApiRef } from '@backstage/core-plugin-api';
-import {
-  mockApis,
-  renderInTestApp,
-  TestApiProvider,
-} from '@backstage/test-utils';
+import { renderInTestApp } from '@backstage/test-utils';
 import { screen } from '@testing-library/react';
-import { ReleaseInfo } from './ReleaseInfo';
+import { ShellScopeProvider } from '../ShellScope';
+import { GSReleaseInfo } from './GSReleaseInfo';
 
-function renderReleaseInfo(releaseVersion?: string) {
-  return renderInTestApp(
-    <TestApiProvider
-      apis={[
-        [
-          configApiRef,
-          mockApis.config({
-            data: releaseVersion ? { app: { releaseVersion } } : {},
-          }),
-        ],
-      ]}
-    >
-      <ReleaseInfo />
-    </TestApiProvider>,
-  );
-}
-
-describe('ReleaseInfo', () => {
+describe('GSReleaseInfo', () => {
   it('links the repository and the release tag', async () => {
-    await renderReleaseInfo('2.81.5');
+    await renderInTestApp(<GSReleaseInfo version="2.81.5" />);
 
     expect(
       screen.getByText(/provided by Giant Swarm, release/).textContent,
@@ -42,7 +21,7 @@ describe('ReleaseInfo', () => {
   });
 
   it('links a release candidate to its tag', async () => {
-    await renderReleaseInfo('v2.81.6-rc.2');
+    await renderInTestApp(<GSReleaseInfo version="v2.81.6-rc.2" />);
 
     expect(screen.getByRole('link', { name: 'v2.81.6-rc.2' })).toHaveAttribute(
       'href',
@@ -51,7 +30,7 @@ describe('ReleaseInfo', () => {
   });
 
   it('shows a version without a tag as it is, unlinked', async () => {
-    await renderReleaseInfo('2.81.5-3f2a9c1');
+    await renderInTestApp(<GSReleaseInfo version="2.81.5-3f2a9c1" />);
 
     expect(
       screen.getByText(/provided by Giant Swarm, release 2\.81\.5-3f2a9c1$/),
@@ -59,11 +38,17 @@ describe('ReleaseInfo', () => {
     expect(screen.getAllByRole('link')).toHaveLength(1);
   });
 
-  it('renders nothing when the release version is unset', async () => {
-    await renderReleaseInfo();
+  it('marks both new-tab links with an arrow inside the shell', async () => {
+    await renderInTestApp(
+      <ShellScopeProvider>
+        <GSReleaseInfo version="2.81.5" />
+      </ShellScopeProvider>,
+    );
 
-    expect(
-      screen.queryByText(/provided by Giant Swarm/),
-    ).not.toBeInTheDocument();
+    for (const name of ['backstage ↗', 'v2.81.5 ↗']) {
+      const link = screen.getByRole('link', { name });
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
   });
 });

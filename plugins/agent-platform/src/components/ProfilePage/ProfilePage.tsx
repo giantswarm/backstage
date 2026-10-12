@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  configApiRef,
   identityApiRef,
   ProfileInfo,
   useApi,
@@ -10,8 +11,8 @@ import ExitToAppIcon from '@material-ui/icons/ExitToApp';
 import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import {
   PageHeaderActionsProvider,
+  GSReleaseInfo,
   LoadingIndicator,
-  ReleaseInfo,
   SectionHeader,
   ShellPage,
   ShowMore,
@@ -60,7 +61,9 @@ function useProfileInfo(): ProfileInfo | undefined {
  * The shell's minimal "Profile and settings" page
  * (`/agent-platform/profile`): who is signed in, the installations this
  * portal talks to, and Sign out — so the rail's profile menu stays in the
- * shell instead of jumping into the classic Settings chrome.
+ * shell instead of jumping into the classic Settings chrome. The page's
+ * footer names the running release (`app.releaseVersion`), the same line as
+ * the classic home page's, where a settings page usually keeps it.
  *
  * Deliberately minimal, carrying only what has data behind it. Everything
  * else (feature flags, auth providers, the classic settings tabs) stays in
@@ -71,6 +74,8 @@ function useProfileInfo(): ProfileInfo | undefined {
 export function ProfilePage() {
   const classes = useStyles();
   const identityApi = useApi(identityApiRef);
+  const releaseVersion =
+    useApi(configApiRef).getOptionalString('app.releaseVersion');
   const profile = useProfileInfo();
   const { installations, isLoading: installationsLoading } = useInstallations();
 
@@ -80,7 +85,15 @@ export function ProfilePage() {
 
   return (
     <PageHeaderActionsProvider>
-      <ShellPage title="Profile and settings">
+      <ShellPage
+        title="Profile and settings"
+        // No version, no footer: the slot then renders nothing at all.
+        footer={
+          releaseVersion ? (
+            <GSReleaseInfo version={releaseVersion} />
+          ) : undefined
+        }
+      >
         <section aria-label="Profile" className={classes.section}>
           <Flex align="center" gap="4">
             <Avatar
@@ -165,11 +178,6 @@ export function ProfilePage() {
           >
             All portal settings ↗
           </Link>
-        </Flex>
-        {/* Which release is running, where a settings page keeps it: last,
-            quiet, the same line as the classic home page's footer. */}
-        <Flex pt="4">
-          <ReleaseInfo />
         </Flex>
       </ShellPage>
     </PageHeaderActionsProvider>

@@ -1,4 +1,5 @@
 import { Content, Page } from '@backstage/core-components';
+import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   HomePageRecentlyVisited,
   HomePageStarredEntities,
@@ -8,7 +9,7 @@ import { HomePageSearchBar } from '@backstage/plugin-search';
 import { SearchContextProvider } from '@backstage/plugin-search-react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { GSHomePageResources } from '@giantswarm/backstage-plugin-gs';
-import { ReleaseInfo } from '@giantswarm/backstage-plugin-ui-react';
+import { GSReleaseInfo } from '@giantswarm/backstage-plugin-ui-react';
 import { HomeLogo } from './HomeLogo';
 
 const useStyles = makeStyles(theme => ({
@@ -26,6 +27,8 @@ const useStyles = makeStyles(theme => ({
 
 export const HomePage = () => {
   const classes = useStyles();
+  const releaseVersion =
+    useApi(configApiRef).getOptionalString('app.releaseVersion');
 
   return (
     <SearchContextProvider>
@@ -58,7 +61,7 @@ export const HomePage = () => {
                 <GSHomePageResources />
               </Grid>
               <Grid item xs={12}>
-                <ReleaseInfo />
+                {releaseVersion && <GSReleaseInfo version={releaseVersion} />}
               </Grid>
             </Grid>
           </Grid>

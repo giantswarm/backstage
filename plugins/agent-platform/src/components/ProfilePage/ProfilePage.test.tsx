@@ -3,6 +3,7 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { InstallationConfig } from '@giantswarm/backstage-plugin-gs';
+import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { ProfilePage } from './ProfilePage';
 
 let mockInstallations: Pick<InstallationConfig, 'name' | 'pipeline'>[] = [];
@@ -22,18 +23,24 @@ async function renderPage(
   },
   config: { app?: { releaseVersion?: string } } = {},
 ) {
-  await renderInTestApp(<ProfilePage />, {
-    config,
-    apis: [
-      [
-        identityApiRef,
-        mockApis.identity.mock({
-          getProfileInfo: async () => profile,
-          signOut,
-        }),
+  // The app mounts the shell's pages inside `ShellScopeProvider`.
+  await renderInTestApp(
+    <ShellScopeProvider>
+      <ProfilePage />
+    </ShellScopeProvider>,
+    {
+      config,
+      apis: [
+        [
+          identityApiRef,
+          mockApis.identity.mock({
+            getProfileInfo: async () => profile,
+            signOut,
+          }),
+        ],
       ],
-    ],
-  });
+    },
+  );
   // Wait for the identity to land, so the profile's state update stays
   // inside the test instead of warning after it.
   await screen.findByText(
@@ -141,24 +148,29 @@ describe('ProfilePage', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  it('closes with the running release, linked to its tag', async () => {
+  it('closes with the running release in the page footer, linked to its tag', async () => {
     await renderPage(undefined, { app: { releaseVersion: '0.220.3' } });
 
-    expect(
-      screen.getByText(/provided by Giant Swarm, release/).textContent,
-    ).toBe('This is backstage provided by Giant Swarm, release v0.220.3');
-    expect(screen.getByRole('link', { name: 'v0.220.3' })).toHaveAttribute(
+    const line = screen.getByText(/provided by Giant Swarm, release/);
+    expect(line.textContent).toBe(
+      'This is backstage ↗ provided by Giant Swarm, release v0.220.3 ↗',
+    );
+    expect(line.closest('[class*="footer"]')).not.toBeNull();
+    const tag = screen.getByRole('link', { name: 'v0.220.3 ↗' });
+    expect(tag).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/backstage/releases/tag/v0.220.3',
     );
+    expect(tag).toHaveAttribute('target', '_blank');
   });
 
-  it('leaves the release line out when the version is unset', async () => {
+  it('renders no footer at all when the version is unset', async () => {
     await renderPage();
 
     expect(
       screen.queryByText(/provided by Giant Swarm/),
     ).not.toBeInTheDocument();
+    expect(document.querySelector('[class*="footer"]')).toBeNull();
   });
 
   it('wraps a long address beside the avatar instead of widening the page (T22 C6)', async () => {
