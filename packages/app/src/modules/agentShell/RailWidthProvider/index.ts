@@ -5,6 +5,7 @@ export {
   RAIL_MIN_WIDTH,
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
+  useContentOffset,
   useRailInset,
   useRailWidth,
 } from './RailWidthProvider';

@@ -277,19 +277,6 @@ html[data-agent-shell]
 }
 
 /*
- * The content region's left edge. SidebarPage pads the page by the classic
- * sidebar's fixed widths (pinned or collapsed); the shell's rail can be
- * resized and collapses narrower, so in the shell ShellMain (`#content`) starts the content where
- * the rail ends, from the same value the rail is drawn at (`useRailInset`),
- * and SidebarPage's padding is lifted. Matched as the parent of `#content`
- * rather than by class: MUI v4's production class names carry no component
- * name. Its phone-width bottom padding for the bar is left alone.
- */
-html[data-agent-shell] div:has(> #content) {
-  padding-left: 0;
-}
-
-/*
  * Responsive rules for the shell at phone width.
  *
  * How much of the viewport's bottom edge the shell's own chrome covers. Zero

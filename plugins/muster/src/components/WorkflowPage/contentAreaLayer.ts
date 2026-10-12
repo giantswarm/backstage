@@ -3,9 +3,11 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 /**
  * The id of the agent shell's content region — the app's `ShellMain`
  * (`SHELL_CONTENT_ID`, the skip link's target), which sits beside the nav
- * rail: the layout pads it by the rail's width, expanded or collapsed. muster
- * cannot import the app, so it is matched by this id, as the skip link and
- * the shell's stylesheet (`#content`) do.
+ * rail and starts where the rail ends, whatever its width: collapsed,
+ * expanded or resized. The app sets that edge (SidebarPage's padding plus the
+ * region's own offset); here it is measured, not computed. muster cannot
+ * import the app, so it is matched by this id, as the skip link and the
+ * shell's stylesheet (`#content`) do.
  */
 export const SHELL_CONTENT_ID = 'content';
 
@@ -15,8 +17,8 @@ function contentArea(): HTMLElement | null {
 
 /**
  * Where the shell's content area starts on the left, in px — the rail's
- * width. Kept current while `active`: the rail collapsing or expanding
- * resizes the content area, as does the window. 0 without a shell content
+ * width. Kept current while `active`: the rail collapsing, expanding or
+ * being resized resizes the content area, as does the window. 0 without a shell content
  * area (and at phone width, where the rail is the bottom bar and the
  * content starts at the screen's edge).
  */

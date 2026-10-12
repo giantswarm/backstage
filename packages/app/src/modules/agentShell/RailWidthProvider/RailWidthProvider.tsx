@@ -23,12 +23,19 @@ export const RAIL_MAX_WIDTH = 480;
 const RAIL_MAX_SHARE = 0.4;
 
 /**
- * The collapsed rail's width: one icon item (a 20px icon in 8px of padding),
- * the rail's 8px padding either side and its 1px border. Narrower than
- * core-components' collapsed sidebar (72), which is laid out for its own
- * items; with the same padding on both sides every icon centres on one axis.
+ * The collapsed rail's width: one icon item, the rail's padding either side
+ * and its 1px border. The parts are the tokens the rail is drawn with, in px:
+ * the item is MUI's small icon (`fontSize="small"`, 20px) in RailLink's
+ * `--bui-space-2` padding, and the rail's own padding is `px="2"`, also
+ * `--bui-space-2` (8px while bui's `--bui-space` is 0.25rem; a test checks
+ * it). Narrower than core-components' collapsed sidebar (72), which is laid
+ * out for its own items; with the same padding on both sides every icon
+ * centres on one axis.
  */
-export const RAIL_COLLAPSED_WIDTH = 36 + 2 * 8 + 1;
+const RAIL_ICON_SIZE = 20;
+const RAIL_SPACE_2 = 8;
+export const RAIL_COLLAPSED_WIDTH =
+  RAIL_ICON_SIZE + 2 * RAIL_SPACE_2 + 2 * RAIL_SPACE_2 + 1;
 
 /**
  * Per browser, as core-components keeps the rail's pinned state: the width
@@ -76,8 +83,6 @@ type RailWidth = {
   width: number;
   minWidth: number;
   maxWidth: number;
-  /** While a drag previews a width that is not set yet. */
-  resizing: boolean;
   /**
    * Shows a width without setting or remembering it, for a drag in
    * progress; `undefined` ends the preview.
@@ -97,7 +102,6 @@ const RailWidthContext = createContext<RailWidth>({
   width: RAIL_DEFAULT_WIDTH,
   minWidth: RAIL_MIN_WIDTH,
   maxWidth: RAIL_MIN_WIDTH,
-  resizing: false,
   previewWidth: () => {},
   setWidth: () => {},
   resetWidth: () => {},
@@ -108,57 +112,78 @@ const RailWidthContext = createContext<RailWidth>({
  * content region beside it. The remembered width is kept as chosen; a window
  * too narrow for it shows the widest it allows, and the chosen width returns
  * once the window is wide enough again.
+ *
+ * Mounted on every page by the layout, because a provider that came and went
+ * with the shell would remount the page on each move between the two; off
+ * the shell (`active` false) it does no work: no storage read, no window
+ * listener. Storage is written only when the width really changes.
  */
-export function RailWidthProvider({ children }: { children: ReactNode }) {
-  const [preferred, setPreferred] = useState(readStoredWidth);
-  const [preview, setPreview] = useState<number>();
-  const [maxWidth, setMaxWidth] = useState(() =>
-    maxWidthFor(window.innerWidth),
+export function RailWidthProvider({
+  active = true,
+  children,
+}: {
+  active?: boolean;
+  children: ReactNode;
+}) {
+  // Read once the shell first renders, during that render, so its first
+  // frame already has the remembered width.
+  const [preferred, setPreferred] = useState(() =>
+    active ? readStoredWidth() : undefined,
   );
+  if (active && preferred === undefined) {
+    setPreferred(readStoredWidth());
+  }
+  const [preview, setPreview] = useState<number>();
+  // Re-renders on a window resize; the bound itself is read in render, so it
+  // is current even after the window changed while the shell was not shown.
+  const [, setWindowWidth] = useState(0);
+  const maxWidth = maxWidthFor(window.innerWidth);
 
   useEffect(() => {
-    const update = () => setMaxWidth(maxWidthFor(window.innerWidth));
+    if (!active) {
+      return undefined;
+    }
+    const update = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
-  }, []);
+  }, [active]);
 
-  // Once per set width, never per frame of a drag: a preview does not reach
-  // `preferred`.
-  useEffect(() => {
-    storeWidth(preferred);
-  }, [preferred]);
-
+  const current = preferred ?? RAIL_DEFAULT_WIDTH;
   const previewWidth = useCallback(
     (width: number | undefined) =>
       setPreview(width === undefined ? undefined : clamp(width, maxWidth)),
     [maxWidth],
   );
+  // Once per set width, never per frame of a drag: a preview is not stored.
   const setWidth = useCallback(
     (width: number) => {
       const next = clamp(width, maxWidth);
       setPreview(undefined);
-      setPreferred(current =>
-        next === clamp(current, maxWidth) ? current : next,
-      );
+      if (next !== clamp(current, maxWidth)) {
+        setPreferred(next);
+        storeWidth(next);
+      }
     },
-    [maxWidth],
+    [current, maxWidth],
   );
   const resetWidth = useCallback(() => {
     setPreview(undefined);
-    setPreferred(RAIL_DEFAULT_WIDTH);
-  }, []);
+    if (current !== RAIL_DEFAULT_WIDTH) {
+      setPreferred(RAIL_DEFAULT_WIDTH);
+      storeWidth(RAIL_DEFAULT_WIDTH);
+    }
+  }, [current]);
 
   const value = useMemo(
     () => ({
-      width: preview ?? clamp(preferred, maxWidth),
+      width: preview ?? clamp(current, maxWidth),
       minWidth: RAIL_MIN_WIDTH,
       maxWidth,
-      resizing: preview !== undefined,
       previewWidth,
       setWidth,
       resetWidth,
     }),
-    [preferred, preview, maxWidth, previewWidth, setWidth, resetWidth],
+    [current, preview, maxWidth, previewWidth, setWidth, resetWidth],
   );
   return (
     <RailWidthContext.Provider value={value}>
@@ -184,4 +209,30 @@ export function useRailInset(): number {
     return 0;
   }
   return isPinned ? width : RAIL_COLLAPSED_WIDTH;
+}
+
+/**
+ * How far SidebarPage pads the page from the left, as core-components' Page
+ * does it: the classic sidebar's width, pinned or collapsed, and nothing at
+ * phone width. The shell keeps that padding, the same on classic pages and
+ * in the shell, so moving between the two changes nothing it animates.
+ */
+function sidebarPagePadding(isPinned: boolean, isMobile?: boolean): number {
+  if (isMobile) {
+    return 0;
+  }
+  return isPinned
+    ? sidebarConfig.drawerWidthOpen
+    : sidebarConfig.drawerWidthClosed;
+}
+
+/**
+ * How far the content region moves from where SidebarPage's padding puts
+ * it, so that it starts where the rail ends: the rail's inset less the
+ * padding. Negative for the collapsed rail, which is narrower than the
+ * classic collapsed sidebar; positive for a rail widened past the default.
+ */
+export function useContentOffset(): number {
+  const { isPinned, isMobile } = useSidebarPinState();
+  return useRailInset() - sidebarPagePadding(isPinned, isMobile);
 }
