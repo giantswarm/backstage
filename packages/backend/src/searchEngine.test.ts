@@ -12,6 +12,9 @@ import request from 'supertest';
 
 jest.setTimeout(60_000);
 
+// The features are imported statically, not with import() as in index.ts:
+// jest refuses a dynamic import() here (docs/development.md, "Unit tests").
+
 // The search plugin with the engine module the backend wires, on the databases
 // the backend runs on: sqlite always; Postgres where
 // BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING names one (no container
