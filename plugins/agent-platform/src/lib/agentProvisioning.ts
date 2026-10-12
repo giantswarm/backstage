@@ -1,24 +1,22 @@
 import {
   Agent,
   AgentConditionType,
-  getAgentStatusChangedAt,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type { AgentStatus } from './agentManager';
 
 /**
- * How long a failure that can still resolve on its own is read as the agent
- * being set up rather than as broken.
+ * How long after its creation a new agent's missing reference is read as the
+ * agent being set up rather than as broken — and how long the agent list keeps
+ * a non-ready agent on its fast poll.
  *
  * A new agent is several objects reconciled by several controllers: Flux
- * fetches the chart and installs the release, and the release renders the
- * Agent beside the objects it references — the RemoteMCPServer named after
- * the agent among them. Until each of those exists, kagent reports
- * `ResolvedRefs=False` (`resolve RemoteMCPServer "<agent>": not found`) and
- * helm-controller may report the release not ready, both of which clear
- * within seconds to a minute. Three minutes is comfortably past that, and the
- * same window the agent list treats as "still converging"; past it, waiting
- * longer would only hide a real failure.
+ * installs the release, and the release renders the Agent beside the objects
+ * it references — the RemoteMCPServer named after the agent among them. Until
+ * that exists, kagent reports `ResolvedRefs=False` (`resolve RemoteMCPServer
+ * "<agent>": not found`), which clears within seconds to a minute. Three
+ * minutes is comfortably past that; a healthy agent converges well inside it,
+ * and past it waiting longer would only hide a real failure.
  */
 export const PROVISIONING_GRACE_MS = 3 * 60_000;
 
@@ -39,48 +37,60 @@ export function backoffRefetchInterval(
   return Math.min(maxMs, initialMs * 2 ** doublings);
 }
 
+/** A controller message about an object that does not exist (yet). */
+const NOT_FOUND = /\bnot found\b/;
+
 /**
  * Until when a failed agent reads as being set up, as epoch milliseconds;
  * `undefined` when it does not at all.
  *
- * Only an unresolved reference qualifies: `ResolvedRefs=False` as the root
- * cause, which is what an agent whose referenced objects are still being
- * created reports. `Accepted=False` (the Harness does not run this kind of
- * agent) and `Compatible=False` (the configuration does not fit the Harness)
- * are about the spec itself, and no amount of waiting changes them, so they
- * are failures at once.
+ * Narrow on purpose, and closed when in doubt: only a **new** agent, and only
+ * a reference to an object that does not exist yet — `ResolvedRefs=False` as
+ * the root cause with a message that says `not found`, which is what an agent
+ * whose release has not created the objects it uses yet reports. Every other
+ * failure is shown at once: a rejected or incompatible configuration, a
+ * reference that exists but does not resolve, and any failure of an agent
+ * that is not new, such as an edit pointing at a ModelConfig that does not
+ * exist or a server someone deleted.
  *
- * The window runs from the agent's last status change — its creation, or the
- * edit that made a reference fail — so an agent stuck for longer than that
- * shows its failure, and a fresh one gets the whole window.
+ * The window runs from the Agent's `creationTimestamp`, so no later condition
+ * change restarts it; without one there is no window.
  */
 export function agentSettingUpUntil(agent: Agent): number | undefined {
-  if (agent.getFailure()?.condition !== AgentConditionType.ResolvedRefs) {
+  const failure = agent.getFailure();
+  if (
+    failure?.condition !== AgentConditionType.ResolvedRefs ||
+    !NOT_FOUND.test(failure.message ?? '')
+  ) {
     return undefined;
   }
-  const changedAt = getAgentStatusChangedAt(agent.jsonData);
-  return changedAt === undefined
+  const createdAt = Date.parse(
+    agent.jsonData.metadata?.creationTimestamp ?? '',
+  );
+  return Number.isNaN(createdAt)
     ? undefined
-    : changedAt + PROVISIONING_GRACE_MS;
+    : createdAt + PROVISIONING_GRACE_MS;
 }
 
 /**
- * Whether agent-manager's `failed` verdict is one that cannot resolve by
- * waiting: a suspended or deleting release, or an Agent the Harness does not
- * accept or whose configuration does not fit it. A release not ready yet, an
- * Agent not rendered yet and unresolved references are not.
+ * Whether agent-manager's verdict is the same missing reference
+ * {@link agentSettingUpUntil} gives a new agent time for — for the moment
+ * before the page has the Agent object itself.
  *
- * `compatible: false` counts only while the references resolve: the
- * controller marks every stage after a failing one `False` as well, so with
- * `resolvedRefs: false` it says nothing of its own.
+ * It has to say so positively: `failed`, the Agent rendered and accepted, its
+ * references unresolved, a summary that says `not found`, and a release that
+ * is neither suspended nor being deleted. A verdict without that breakdown,
+ * or failed for any other reason, is a failure.
  */
-export function isTerminalAgentStatus(status: AgentStatus): boolean {
-  const { helmRelease, agent } = status;
-  if (helmRelease?.suspended || helmRelease?.deleting) {
-    return true;
-  }
-  if (agent?.accepted === false) {
-    return true;
-  }
-  return agent?.compatible === false && agent.resolvedRefs !== false;
+export function isMissingReferenceStatus(status: AgentStatus): boolean {
+  const { verdict, summary, agent, helmRelease } = status;
+  return (
+    verdict === 'failed' &&
+    agent?.exists === true &&
+    agent.accepted !== false &&
+    agent.resolvedRefs === false &&
+    !helmRelease?.suspended &&
+    !helmRelease?.deleting &&
+    NOT_FOUND.test(summary)
+  );
 }

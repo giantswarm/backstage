@@ -16,7 +16,10 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
-import { backoffRefetchInterval } from '../../lib/agentProvisioning';
+import {
+  backoffRefetchInterval,
+  PROVISIONING_GRACE_MS,
+} from '../../lib/agentProvisioning';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -46,7 +49,8 @@ export const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
 
 /**
  * How long an agent may sit in a non-ready state before we stop treating it as
- * "converging" and let its installation fall back to the baseline.
+ * "converging" and let its installation fall back to the baseline — the same
+ * window the detail page gives a new agent to be set up in.
  *
  * Without this bound a *permanently* broken agent — an unpullable image, a spec
  * the controller keeps rejecting — is transitional forever and would pin its
@@ -55,7 +59,18 @@ export const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
  * window, and past it polling faster cannot help: the fix is a spec change,
  * which bumps the generation and starts the window again.
  */
-const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
+const TRANSITIONAL_MAX_AGE_MS = PROVISIONING_GRACE_MS;
+
+/**
+ * How long since the agent's status last changed (see
+ * `getAgentStatusChangedAt`). An agent with no usable timestamp counts as just
+ * changed rather than as stuck, so a genuinely new agent is still picked up
+ * quickly.
+ */
+function msSinceStatusChange(json: AgentInterface, now: number): number {
+  const changedAt = getAgentStatusChangedAt(json);
+  return changedAt === undefined ? 0 : now - changedAt;
+}
 
 /**
  * Whether one agent is worth re-checking sooner than the rest: not settled into a
@@ -66,15 +81,10 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * backs off gradually instead (see {@link getAgentRefetchInterval}).
  */
 function isAgentConverging(json: AgentInterface, now: number): boolean {
-  if (!isAgentTransitional(deriveAgentReadiness(json))) {
-    return false;
-  }
-
-  const changedAt = getAgentStatusChangedAt(json);
-
-  // No usable timestamp: treat the agent as just-changed rather than as stuck,
-  // so a genuinely new agent is still picked up quickly.
-  return changedAt === undefined || now - changedAt < TRANSITIONAL_MAX_AGE_MS;
+  return (
+    isAgentTransitional(deriveAgentReadiness(json)) &&
+    msSinceStatusChange(json, now) < TRANSITIONAL_MAX_AGE_MS
+  );
 }
 
 /**
@@ -95,11 +105,8 @@ export function getAgentRefetchInterval(
     return BASELINE_REFETCH_INTERVAL_MS;
   }
 
-  const changedAt = getAgentStatusChangedAt(json);
-  // No usable timestamp: treat the agent as just-changed, as the list does.
-  const elapsed = changedAt === undefined ? 0 : Date.now() - changedAt;
   return backoffRefetchInterval(
-    elapsed,
+    msSinceStatusChange(json, Date.now()),
     TRANSITIONAL_REFETCH_INTERVAL_MS,
     BASELINE_REFETCH_INTERVAL_MS,
   );

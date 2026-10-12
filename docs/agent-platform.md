@@ -539,10 +539,12 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
 Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
 derives the same verdict from `status.harnesses[]`. A `not_found` right after
-the create is polled through. Polling stops at `ready`; `failed` is re-read,
-backing off from 3 s to 60 s, so the page follows a failure that clears to
-`ready` without a reload (see "Setting up" below). The installation's cached `kagent.dev` lists are
-invalidated after the write.
+the create is polled through. Polling stops at `ready`, and at `failed` unless
+it is a new agent's missing reference (see "Setting up" below), which is
+re-read, backing off from 3 s, until its grace period is over. After that the
+page's own Agent read, which keeps polling, turns the alert Ready if the
+failure clears. The installation's cached `kagent.dev` lists are invalidated
+after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -1621,23 +1623,28 @@ broken agent does not pin the fast tier.
 
 #### Setting up
 
-A new agent reads `failed` for a moment on its way to `ready`: helm-controller
-reports the release not ready until it is installed, and the release renders
-the Agent before the RemoteMCPServer it is bound to exists, so kagent reports
-`ResolvedRefs=False` (`resolve RemoteMCPServer "<agent>": not found`). The
-detail page shows such a failure as **Setting up** (neutral) for
-`PROVISIONING_GRACE_MS` (three minutes), and as the failure after that
-(`lib/agentProvisioning.ts`):
+A new agent can read `failed` for a moment on its way to `ready`: the release
+renders the Agent before the RemoteMCPServer it is bound to exists, so kagent
+reports `ResolvedRefs=False` (`resolve RemoteMCPServer "<agent>": not found`)
+until it does. The detail page shows that one failure as **Setting up**
+(neutral) for `PROVISIONING_GRACE_MS` (three minutes, the same window the list
+gives a converging agent), and as the failure after that
+(`lib/agentProvisioning.ts`). It is deliberately narrow, and fails closed:
 
-- on the Agent, only `ResolvedRefs=False` as the root cause qualifies, and the
-  window runs from its last status change (`useAgentSettingUp`);
-- on agent-manager's verdict, which has no timestamps, the window runs from
-  when the page started watching, and a suspended or deleting release,
-  `accepted: false`, or `compatible: false` with the references resolved is a
-  failure at once (`useAgentStatus`'s `isSettingUp`).
+- only `ResolvedRefs=False` as the root cause, with a message that says
+  `not found`;
+- only a new agent: the window runs from the Agent's `creationTimestamp`, so
+  no later condition change restarts it, and an agent without one gets none;
+- before the page has the Agent, agent-manager's verdict has to show the same
+  positively (`isMissingReferenceStatus`), on the page's first sight of the
+  agent, since the status carries no timestamp; never for a write with a
+  generation baseline.
 
-`Accepted=False` and `Compatible=False` are about the spec, which waiting does
-not change, so they are shown at once.
+Everything else is shown at once: `Accepted=False`, `Compatible=False`, a
+reference that exists but does not resolve, a release that is not ready, a
+verdict without a breakdown, and any failure of an agent that is not new.
+Once the page has the Agent, its clock decides for the header, the session
+blocker, the facts and the creation progress alike (`useAgentSettingUp`).
 
 ### Absence
 

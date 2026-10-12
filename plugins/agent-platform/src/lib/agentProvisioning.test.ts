@@ -8,11 +8,11 @@ import type { AgentStatus } from './agentManager';
 import {
   agentSettingUpUntil,
   backoffRefetchInterval,
-  isTerminalAgentStatus,
+  isMissingReferenceStatus,
   PROVISIONING_GRACE_MS,
 } from './agentProvisioning';
 
-const CHANGED_AT = '2026-07-31T12:00:00Z';
+const CREATED_AT = '2026-07-31T12:00:00Z';
 
 function condition(
   type: string,
@@ -20,10 +20,14 @@ function condition(
   reason: string,
   message = '',
 ): AgentCondition {
-  return { type, status, reason, message, lastTransitionTime: CHANGED_AT };
+  return { type, status, reason, message, lastTransitionTime: CREATED_AT };
 }
 
-function agentWith(conditions: AgentCondition[]): Agent {
+function agentWith(
+  conditions: AgentCondition[],
+  /** `null` leaves the timestamp out. */
+  creationTimestamp: string | null = CREATED_AT,
+): Agent {
   return new Agent(
     {
       apiVersion: 'api.kagent.dev/v1alpha3',
@@ -32,7 +36,7 @@ function agentWith(conditions: AgentCondition[]): Agent {
         name: 'adhoc',
         namespace: 'kagent',
         generation: 1,
-        creationTimestamp: CHANGED_AT,
+        creationTimestamp: creationTimestamp ?? undefined,
       },
       spec: { harnessRef: { name: 'kagent' }, template: {} },
       status: { observedGeneration: 1, conditions },
@@ -57,21 +61,59 @@ describe('backoffRefetchInterval', () => {
 });
 
 describe('agentSettingUpUntil', () => {
-  it('gives an unresolved reference the grace period from its last change', () => {
+  const NOT_FOUND = 'resolve RemoteMCPServer "adhoc": not found';
+
+  it('gives a new agent with a missing reference the grace period from its creation', () => {
     const agent = agentWith([
       condition('Accepted', 'True', 'Admitted'),
       condition(
         'ResolvedRefs',
         'False',
         'ReferenceResolutionFailed',
-        'resolve RemoteMCPServer "adhoc": not found',
+        NOT_FOUND,
       ),
       condition('Compatible', 'False', 'Blocked', 'blocked by ResolvedRefs'),
     ]);
 
     expect(agentSettingUpUntil(agent)).toBe(
-      Date.parse(CHANGED_AT) + PROVISIONING_GRACE_MS,
+      Date.parse(CREATED_AT) + PROVISIONING_GRACE_MS,
     );
+  });
+
+  // The window is the agent's age, not its activity: a condition flipping
+  // later does not move it.
+  it('does not restart the window on a later condition change', () => {
+    const agent = agentWith([
+      condition('Accepted', 'True', 'Admitted'),
+      condition(
+        'ResolvedRefs',
+        'False',
+        'ReferenceResolutionFailed',
+        NOT_FOUND,
+      ),
+      {
+        ...condition('Ready', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+        lastTransitionTime: '2026-07-31T13:00:00Z',
+      },
+    ]);
+
+    expect(agentSettingUpUntil(agent)).toBe(
+      Date.parse(CREATED_AT) + PROVISIONING_GRACE_MS,
+    );
+  });
+
+  it('gives an unresolved reference that is not missing none', () => {
+    const agent = agentWith([
+      condition('Accepted', 'True', 'Admitted'),
+      condition(
+        'ResolvedRefs',
+        'False',
+        'ReferenceResolutionFailed',
+        'resolve ModelConfig "opus": secret "llm" has no key "apiKey"',
+      ),
+    ]);
+
+    expect(agentSettingUpUntil(agent)).toBeUndefined();
   });
 
   it('gives a configuration the Harness rejects none: waiting does not fix it', () => {
@@ -86,9 +128,31 @@ describe('agentSettingUpUntil', () => {
 
   it('gives a template the Harness does not accept none', () => {
     const agent = agentWith([
-      condition('Accepted', 'False', 'UnsupportedKind'),
+      condition(
+        'Accepted',
+        'False',
+        'UnsupportedKind',
+        'Harness "x" not found',
+      ),
       condition('ResolvedRefs', 'False', 'Blocked', 'blocked by Accepted'),
     ]);
+
+    expect(agentSettingUpUntil(agent)).toBeUndefined();
+  });
+
+  it('gives an agent without a creation timestamp none', () => {
+    const agent = agentWith(
+      [
+        condition('Accepted', 'True', 'Admitted'),
+        condition(
+          'ResolvedRefs',
+          'False',
+          'ReferenceResolutionFailed',
+          NOT_FOUND,
+        ),
+      ],
+      null,
+    );
 
     expect(agentSettingUpUntil(agent)).toBeUndefined();
   });
@@ -103,65 +167,85 @@ describe('agentSettingUpUntil', () => {
   });
 });
 
-describe('isTerminalAgentStatus', () => {
+describe('isMissingReferenceStatus', () => {
+  const MISSING =
+    'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "adhoc": not found)';
   const status = (extra: Partial<AgentStatus>): AgentStatus => ({
     name: 'adhoc',
     namespace: 'kagent',
     verdict: 'failed',
-    summary: '',
-    ...extra,
-  });
-  const agent = (
-    extra: Partial<NonNullable<AgentStatus['agent']>>,
-  ): AgentStatus['agent'] => ({
-    exists: true,
-    ready: false,
-    accepted: true,
-    resolvedRefs: true,
-    compatible: true,
-    ...extra,
-  });
-  const release = (
-    extra: Partial<NonNullable<AgentStatus['helmRelease']>>,
-  ): AgentStatus['helmRelease'] => ({
-    exists: true,
-    ready: false,
-    suspended: false,
-    gitOpsOwned: false,
-    deleting: false,
+    summary: MISSING,
+    agent: {
+      exists: true,
+      ready: false,
+      accepted: true,
+      resolvedRefs: false,
+      compatible: false,
+    },
+    helmRelease: {
+      exists: true,
+      ready: false,
+      suspended: false,
+      gitOpsOwned: false,
+      deleting: false,
+    },
     ...extra,
   });
 
-  it('reads a release not ready yet, and unresolved references, as not terminal', () => {
-    expect(isTerminalAgentStatus(status({ helmRelease: release({}) }))).toBe(
-      false,
-    );
+  it('recognises a missing reference', () => {
+    expect(isMissingReferenceStatus(status({}))).toBe(true);
+  });
+
+  it('reads a verdict without the breakdown as a failure', () => {
     expect(
-      isTerminalAgentStatus(
-        status({ agent: agent({ resolvedRefs: false, compatible: false }) }),
+      isMissingReferenceStatus(
+        status({ agent: undefined, helmRelease: undefined }),
       ),
     ).toBe(false);
   });
 
-  it('reads a suspended or deleting release as terminal', () => {
+  it('reads a release that is not ready, without a missing reference, as a failure', () => {
     expect(
-      isTerminalAgentStatus(
-        status({ helmRelease: release({ suspended: true }) }),
+      isMissingReferenceStatus(
+        status({
+          summary: 'HelmRelease is not ready: install retries exhausted',
+          agent: {
+            exists: false,
+            ready: null,
+            accepted: null,
+            resolvedRefs: null,
+            compatible: null,
+          },
+        }),
       ),
-    ).toBe(true);
-    expect(
-      isTerminalAgentStatus(
-        status({ helmRelease: release({ deleting: true }) }),
-      ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it('reads a rejection by the Harness as terminal', () => {
+  it('reads an unresolved reference that is not missing as a failure', () => {
     expect(
-      isTerminalAgentStatus(status({ agent: agent({ accepted: false }) })),
-    ).toBe(true);
+      isMissingReferenceStatus(
+        status({ summary: 'ResolvedRefs is False (secret has no key)' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('reads a suspended or deleting release as a failure', () => {
+    const release = status({}).helmRelease!;
     expect(
-      isTerminalAgentStatus(status({ agent: agent({ compatible: false }) })),
-    ).toBe(true);
+      isMissingReferenceStatus(
+        status({ helmRelease: { ...release, suspended: true } }),
+      ),
+    ).toBe(false);
+    expect(
+      isMissingReferenceStatus(
+        status({ helmRelease: { ...release, deleting: true } }),
+      ),
+    ).toBe(false);
+  });
+
+  it('reads a verdict other than failed as no missing reference', () => {
+    expect(isMissingReferenceStatus(status({ verdict: 'progressing' }))).toBe(
+      false,
+    );
   });
 });

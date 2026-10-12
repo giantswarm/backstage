@@ -44,11 +44,27 @@ const WORDING: Record<
 };
 
 /**
+ * What the page's own Agent read says about the agent, which decides how a
+ * `failed` verdict is shown: the page judges "still being set up" on one
+ * clock, so this alert, the header and the session blocker agree.
+ */
+type AgentReadState = {
+  /** The Agent read finds the agent ready. */
+  isAgentReady: boolean;
+  /** The Agent read finds the agent failed, but still being set up. */
+  isSettingUp: boolean;
+};
+
+/**
  * The polling half, mounted only for the agent that was just written: the
  * verdict from agent-manager's `get_agent_status`, re-read until the platform
- * Harness reports `ready` (and, backing off, while it reports `failed`).
+ * Harness reports `ready` or `failed`.
  */
-function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
+function CreatedAgentVerdict({
+  handoff,
+  isAgentReady,
+  isSettingUp,
+}: { handoff: AgentCreatedHandoff } & AgentReadState) {
   const {
     installation,
     namespace,
@@ -61,7 +77,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   // Scoped to the write: the verdict counts once the Agent's generation has
   // moved past what it was before it, so an agent that was already `ready` is
   // not reported as done before the Harness has compiled anything.
-  const { status, isSettling, isSettingUp, error } = useAgentStatus(
+  const { status, isSettling, error } = useAgentStatus(
     installation,
     namespace,
     name,
@@ -104,12 +120,12 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     );
   }
 
-  if (isSettingUp) {
-    // `failed`, but for a reason a new agent goes through on its way to ready
-    // — a release Flux has not installed yet, a reference to an object not
-    // created yet. Its summary reads as a failure, so it is not shown; the
-    // status is still re-read, and a failure that outlasts the grace period
-    // is shown below as one.
+  const isFailed = status?.verdict === 'failed';
+
+  if (isFailed && isSettingUp) {
+    // A new agent's reference to an object not created yet. Its summary reads
+    // as a failure, so it is not shown; once the grace period is over the
+    // page stops calling it setting up, and it is shown below as one.
     return (
       <Alert
         status="info"
@@ -119,7 +135,9 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     );
   }
 
-  if (status?.verdict === 'ready') {
+  // The verdict is not re-read once it is `failed`, but the page's Agent read
+  // goes on polling, so a failure that clears still turns this alert Ready.
+  if (status?.verdict === 'ready' || (isFailed && isAgentReady)) {
     const harness = harnessOf(status);
     return (
       <Alert
@@ -154,20 +172,22 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
  * so with agent-manager's summary; once the verdict is `ready` it names the
  * Harness the agent runs on, and a `failed` verdict carries agent-manager's
  * reason — the same verdict the page's own status card derives from
- * `status.conditions`, so the two never disagree. A `failed` verdict that a
- * new agent passes through while it is set up reads as still deploying until
- * the grace period is over, and the verdict is re-read either way, so the
- * alert turns to Ready without a reload.
+ * `status.conditions`, so the two never disagree. A `failed` verdict on a new
+ * agent the page reads as still being set up reads as still deploying, and
+ * one the page's Agent read has since found ready reads as Ready, so the alert
+ * follows the agent without a reload.
  */
 export function AgentCreationProgress({
   installation,
   namespace,
   name,
+  isAgentReady,
+  isSettingUp,
 }: {
   installation: string;
   namespace: string;
   name: string;
-}) {
+} & AgentReadState) {
   const handoff = useAgentCreatedHandoff();
   if (
     !handoff ||
@@ -177,5 +197,11 @@ export function AgentCreationProgress({
   ) {
     return null;
   }
-  return <CreatedAgentVerdict handoff={handoff} />;
+  return (
+    <CreatedAgentVerdict
+      handoff={handoff}
+      isAgentReady={isAgentReady}
+      isSettingUp={isSettingUp}
+    />
+  );
 }

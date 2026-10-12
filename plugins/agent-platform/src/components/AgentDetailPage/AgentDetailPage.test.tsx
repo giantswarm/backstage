@@ -1786,15 +1786,25 @@ describe('AgentDetailPage', () => {
   describe('an agent still being set up', () => {
     const UNRESOLVED = 'resolve RemoteMCPServer "pr-reviewer": not found';
 
-    /** Failed on the unresolved carrier, `ageMs` after the status last changed. */
-    const unresolvedAgent = (ageMs: number) => {
-      const changedAt = new Date(Date.now() - ageMs).toISOString();
+    /**
+     * Failed on an unresolved reference (the missing carrier by default),
+     * created `ageMs` ago; the failure dates from `failedAgoMs` ago.
+     */
+    const unresolvedAgent = (
+      ageMs: number,
+      {
+        message = UNRESOLVED,
+        failedAgoMs = ageMs,
+      }: { message?: string; failedAgoMs?: number } = {},
+    ) => {
+      const createdAt = new Date(Date.now() - ageMs).toISOString();
+      const changedAt = new Date(Date.now() - failedAgoMs).toISOString();
       return makeAgent({
         metadata: {
           name: 'pr-reviewer',
           namespace: 'agent-platform',
           generation: 1,
-          creationTimestamp: changedAt,
+          creationTimestamp: createdAt,
         },
         status: reported(
           [
@@ -1803,7 +1813,7 @@ describe('AgentDetailPage', () => {
               type: 'ResolvedRefs',
               status: 'False',
               reason: 'ReferenceResolutionFailed',
-              message: UNRESOLVED,
+              message,
               lastTransitionTime: changedAt,
             },
             {
@@ -1901,6 +1911,46 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByRole('button', { name: 'Start a session' }),
       ).toBeInTheDocument();
+    });
+
+    it('marks nothing as failing while a new agent’s model is still being set up', async () => {
+      stubResources({
+        resource: unresolvedAgent(10_000, {
+          message: 'resolve ModelConfig "opus-4-7": not found',
+        }),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Setting up');
+      // Neither the facts beside the Overview nor the configuration.
+      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
+    });
+
+    // The grace period is for a new agent only: an edit that points at a
+    // missing object, or a server deleted from under an agent, is a failure.
+    it('shows a missing reference on an agent that is not new as failed at once', async () => {
+      stubResources({
+        resource: unresolvedAgent(60 * 60_000, { failedAgoMs: 10_000 }),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+    });
+
+    it('shows an unresolved reference that is not missing as failed at once', async () => {
+      stubResources({
+        resource: unresolvedAgent(10_000, {
+          message: 'resolve ModelConfig "opus-4-7": secret "llm" has no key',
+        }),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
     });
 
     it('shows a failure that outlasts the grace period as failed', async () => {

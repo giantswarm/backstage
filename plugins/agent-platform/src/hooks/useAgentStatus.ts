@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -9,9 +8,10 @@ import {
 } from '../lib/agentManager';
 import {
   backoffRefetchInterval,
-  isTerminalAgentStatus,
+  isMissingReferenceStatus,
   PROVISIONING_GRACE_MS,
 } from '../lib/agentProvisioning';
+import { useDeadlinePassed, useWatchStartedAt } from './useDeadlinePassed';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -24,10 +24,10 @@ import { useAgentManagerClient } from './useAgentManager';
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
 
 /**
- * The longest interval a `failed` verdict is re-read at. A failure is re-read
- * rather than taken as final — the agent may still be being set up, or be fixed
- * by hand — starting at {@link AGENT_STATUS_POLL_INTERVAL_MS} and backing off
- * to this.
+ * The longest interval a `failed` verdict that may still be the agent being
+ * set up ({@link AgentStatusState.isSettingUp}) is re-read at, backing off from
+ * {@link AGENT_STATUS_POLL_INTERVAL_MS}. Any other `failed` verdict is not
+ * re-read: the detail page's own Agent read follows a failure that clears.
  */
 export const FAILED_STATUS_MAX_POLL_INTERVAL_MS = 60_000;
 
@@ -59,11 +59,14 @@ export type AgentStatusState = {
    */
   isNotFound: boolean;
   /**
-   * The verdict is `failed`, but for a reason that resolves on its own while
-   * the agent is provisioned — a release not ready yet, an unresolved
-   * reference — and the watch is younger than {@link PROVISIONING_GRACE_MS}.
-   * Shown as the agent being set up rather than as a failure. The verdict is
-   * still re-read, so the page follows it to `ready` without a reload.
+   * The verdict is `failed` on a reference to an object not created yet (see
+   * `isMissingReferenceStatus`), for a read with no write baseline (a create,
+   * or the detail page's own check), within {@link PROVISIONING_GRACE_MS} of
+   * when this watch started: agent-manager's status carries no creation
+   * timestamp, so the page's first sight of the agent stands in for it. Shown
+   * as the agent being set up rather than as a failure, and re-read meanwhile.
+   * Once the page has the Agent object, its own creation timestamp decides
+   * instead (`useAgentSettingUp`).
    */
   isSettingUp: boolean;
   error: Error | null;
@@ -76,8 +79,9 @@ export type AgentStatusState = {
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
  * Agent yet, and is polled through like `progressing`. Polling stops at
- * `ready`; a `failed` verdict is re-read with a backoff, since it may still
- * turn `ready` (see {@link AgentStatusState.isSettingUp}).
+ * `ready`, and at `failed` unless the failure may still be the agent being set
+ * up (see {@link AgentStatusState.isSettingUp}), which is re-read with a
+ * backoff while it may.
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -101,44 +105,38 @@ export function useAgentStatus(
   // still share one entry.
   const { fromGeneration, watchId } = options;
 
-  // The deadline has to schedule its own render, not be a clock read taken
-  // whenever one happens anyway. This query is destructured to `{ data, error }`,
-  // so react-query tracks those two props, and an unchanged status is
-  // structurally shared — a poll that answers byte-identically keeps `data`'s
-  // reference and notifies nobody. In exactly the case the bound exists for (a
-  // release that cannot reconcile, so the generation never moves and every
-  // answer is identical) the component would render once and never again, and
-  // comparing `Date.now()` on that one render would leave the waiting alert up
-  // for good.
-  const [givenUpWaiting, setGivenUpWaiting] = useState(false);
-  useEffect(() => {
-    if (fromGeneration === undefined) {
-      // No revision to wait for, so nothing to give up on.
-      return undefined;
-    }
-    setGivenUpWaiting(false);
-    const timer = setTimeout(
-      () => setGivenUpWaiting(true),
-      MAX_REVISION_WAIT_MS,
-    );
-    return () => clearTimeout(timer);
-  }, [fromGeneration, watchId, installation, namespace, name]);
+  // One clock for this watch, keyed by what is being watched: started on the
+  // render that first sees the watch enabled, and kept while it is disabled
+  // and re-enabled (the detail page's check turns off while the Agent read
+  // finds the object and back on if it 404s again), so neither deadline below
+  // restarts for the same agent.
+  const watchStartedAt = useWatchStartedAt(
+    enabled
+      ? [installation, namespace, name, watchId, fromGeneration].join('/')
+      : undefined,
+  );
 
-  // When this watch started, for the grace a `failed` verdict gets and the
-  // backoff it is re-read at. agent-manager's status carries no timestamps, so
-  // the watch is the clock: right after a write it starts with the write. Its
-  // end schedules a render for the same reason the revision wait above does.
-  const watchStartedAt = useRef(Date.now());
-  const [isPastGrace, setPastGrace] = useState(false);
-  useEffect(() => {
-    if (!enabled) {
-      return undefined;
-    }
-    watchStartedAt.current = Date.now();
-    setPastGrace(false);
-    const timer = setTimeout(() => setPastGrace(true), PROVISIONING_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [enabled, watchId, installation, namespace, name]);
+  // Both deadlines schedule their own render, not a clock read taken whenever
+  // one happens anyway (`useDeadlinePassed`): this query is destructured to
+  // `{ data, error }`, so react-query tracks those two props, and an unchanged
+  // status is structurally shared — a poll that answers byte-identically keeps
+  // `data`'s reference and notifies nobody. In exactly the case the revision
+  // bound exists for (a release that cannot reconcile, so the generation never
+  // moves and every answer is identical) the component would render once and
+  // never again.
+  const givenUpWaiting = useDeadlinePassed(
+    // No revision to wait for, so nothing to give up on.
+    fromGeneration !== undefined && watchStartedAt !== undefined
+      ? watchStartedAt + MAX_REVISION_WAIT_MS
+      : undefined,
+  );
+  // A write with a baseline is on an agent that already existed, so it gets
+  // no grace: only a create, or a read with no write behind it, does.
+  const graceUntil =
+    fromGeneration === undefined && watchStartedAt !== undefined
+      ? watchStartedAt + PROVISIONING_GRACE_MS
+      : undefined;
+  const isPastGrace = useDeadlinePassed(graceUntil);
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
@@ -161,17 +159,24 @@ export function useAgentStatus(
         ) {
           return AGENT_STATUS_POLL_INTERVAL_MS;
         }
-        // `ready` is the answer. `failed` is the answer for now: right after a
-        // create it is often the agent still being set up, and a failure fixed
-        // by hand turns `ready` too, so it is re-read, less often the longer it
-        // stands.
-        return verdict === 'ready'
-          ? false
-          : backoffRefetchInterval(
-              Date.now() - watchStartedAt.current,
-              AGENT_STATUS_POLL_INTERVAL_MS,
-              FAILED_STATUS_MAX_POLL_INTERVAL_MS,
-            );
+        // `ready` is the answer, and so is any `failed` but a new agent's
+        // missing reference, which is re-read, less often the longer it
+        // stands, until its grace is over.
+        const now = Date.now();
+        if (
+          verdict === 'failed' &&
+          graceUntil !== undefined &&
+          watchStartedAt !== undefined &&
+          now < graceUntil &&
+          isMissingReferenceStatus(query.state.data!)
+        ) {
+          return backoffRefetchInterval(
+            now - watchStartedAt,
+            AGENT_STATUS_POLL_INTERVAL_MS,
+            FAILED_STATUS_MAX_POLL_INTERVAL_MS,
+          );
+        }
+        return false;
       }
       const lastError = query.state.error;
       if (
@@ -209,9 +214,10 @@ export function useAgentStatus(
       enabled &&
       !isSettling &&
       !error &&
-      data?.verdict === 'failed' &&
+      graceUntil !== undefined &&
       !isPastGrace &&
-      !isTerminalAgentStatus(data),
+      data !== undefined &&
+      isMissingReferenceStatus(data),
     error: error && !notFoundYet ? (error as Error) : null,
   };
 }

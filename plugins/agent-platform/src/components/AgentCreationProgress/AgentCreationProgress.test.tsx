@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -44,20 +45,52 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
   };
 }
 
-async function render() {
+/** What the detail page's own Agent read says, as the page passes it in. */
+type AgentRead = { isAgentReady: boolean; isSettingUp: boolean };
+
+/**
+ * The page's Agent read as a store the test answers polls through, so the
+ * progress re-renders with the page's new word the way the page would.
+ */
+let agentRead: AgentRead;
+const agentReadListeners = new Set<() => void>();
+function subscribeAgentRead(listener: () => void) {
+  agentReadListeners.add(listener);
+  return () => {
+    agentReadListeners.delete(listener);
+  };
+}
+function answerAgentRead(next: AgentRead) {
+  act(() => {
+    agentRead = next;
+    agentReadListeners.forEach(listener => listener());
+  });
+}
+
+function Host() {
+  const read = useSyncExternalStore(subscribeAgentRead, () => agentRead);
+  return (
+    <div data-testid="host">
+      <AgentCreationProgress
+        installation="gazelle"
+        namespace="kagent"
+        name="pr-reviewer"
+        isAgentReady={read.isAgentReady}
+        isSettingUp={read.isSettingUp}
+      />
+    </div>
+  );
+}
+
+async function render(read: Partial<AgentRead> = {}) {
+  agentRead = { isAgentReady: false, isSettingUp: false, ...read };
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
-        <div data-testid="host">
-          <AgentCreationProgress
-            installation="gazelle"
-            namespace="kagent"
-            name="pr-reviewer"
-          />
-        </div>
+        <Host />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -291,7 +324,9 @@ describe('AgentCreationProgress', () => {
 
   // What a fresh agent goes through: the release renders the Agent before the
   // RemoteMCPServer it is bound to exists, so kagent reports the reference
-  // unresolved for a moment, and agent-manager's verdict is `failed`.
+  // unresolved for a moment, and agent-manager's verdict is `failed`. Whether
+  // that is still the agent being set up is the page's call, on the clock the
+  // header and the session blocker use too.
   describe('a failure the agent passes through while it is set up', () => {
     const UNRESOLVED_SUMMARY =
       'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "pr-reviewer": not found)';
@@ -308,11 +343,11 @@ describe('AgentCreationProgress', () => {
       summary: UNRESOLVED_SUMMARY,
     };
 
-    it('shows the agent as still being set up, not as failed', async () => {
+    it('shows the agent as still being set up while the page says so', async () => {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
       callTool.mockResolvedValue(unresolved);
 
-      await render();
+      await render({ isSettingUp: true });
 
       expect(
         await screen.findByText(/the agent is still being set up/),
@@ -332,7 +367,7 @@ describe('AgentCreationProgress', () => {
           status('ready', { agent: { exists: true, harness: 'kagent' } }),
         );
 
-      await render();
+      await render({ isSettingUp: true });
 
       expect(
         await screen.findByText(/the agent is still being set up/),
@@ -344,34 +379,81 @@ describe('AgentCreationProgress', () => {
       expect(callTool.mock.calls.length).toBeGreaterThan(1);
     }, 10_000);
 
-    it('shows the failure once it outlasts the grace period, and keeps reading', async () => {
+    // The verdict is no longer re-read by then; the page's Agent read is.
+    it('turns ready when the page finds the agent ready', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+      callTool.mockResolvedValue(unresolved);
+
+      await render({ isSettingUp: false });
+      expect(
+        await screen.findByText('The agent did not become ready'),
+      ).toBeInTheDocument();
+
+      answerAgentRead({ isAgentReady: true, isSettingUp: false });
+
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The agent did not become ready'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('shows the failure once the page no longer calls it setting up', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+      callTool.mockResolvedValue(unresolved);
+
+      await render({ isSettingUp: true });
+      expect(
+        await screen.findByText(/the agent is still being set up/),
+      ).toBeInTheDocument();
+
+      answerAgentRead({ isAgentReady: false, isSettingUp: false });
+
+      expect(
+        screen.getByText('The agent did not become ready'),
+      ).toBeInTheDocument();
+      expect(screen.getByText(UNRESOLVED_SUMMARY)).toBeInTheDocument();
+    });
+
+    it('stops reading a failed verdict once its grace period is over', async () => {
       jest.useFakeTimers();
       try {
         mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
         callTool.mockResolvedValue(unresolved);
 
-        await render();
-        await waitFor(() =>
-          expect(
-            screen.getByText(/the agent is still being set up/),
-          ).toBeInTheDocument(),
-        );
+        await render({ isSettingUp: true });
+        await waitFor(() => expect(callTool).toHaveBeenCalled());
 
         await act(async () => {
-          jest.advanceTimersByTime(PROVISIONING_GRACE_MS);
+          jest.advanceTimersByTime(PROVISIONING_GRACE_MS + 60_000);
         });
-
-        expect(
-          screen.getByText('The agent did not become ready'),
-        ).toBeInTheDocument();
-        expect(screen.getByText(UNRESOLVED_SUMMARY)).toBeInTheDocument();
-
-        // Still read, backed off, so a fix made by hand turns the alert ready.
         const reads = callTool.mock.calls.length;
+        expect(reads).toBeGreaterThan(1);
+
         await act(async () => {
-          jest.advanceTimersByTime(60_000);
+          jest.advanceTimersByTime(10 * 60_000);
         });
-        expect(callTool.mock.calls.length).toBeGreaterThan(reads);
+        expect(callTool.mock.calls.length).toBe(reads);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('does not re-read a failure that is not a missing reference', async () => {
+      jest.useFakeTimers();
+      try {
+        mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+        callTool.mockResolvedValue({
+          ...status('failed'),
+          summary: 'HelmRelease is not ready: install retries exhausted',
+        });
+
+        await render();
+        await waitFor(() => expect(callTool).toHaveBeenCalledTimes(1));
+
+        await act(async () => {
+          jest.advanceTimersByTime(5 * 60_000);
+        });
+        expect(callTool).toHaveBeenCalledTimes(1);
       } finally {
         jest.useRealTimers();
       }

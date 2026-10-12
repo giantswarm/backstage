@@ -601,16 +601,19 @@ function ModelFact({
 /** The facts beside the overview: the model, where it runs, since when. */
 export function agentFacts({
   agent,
+  isSettingUp = false,
   installation,
   modelConfig,
   modelServing,
 }: {
   agent: Agent;
+  /** Nothing is marked as failing while the agent is still being set up. */
+  isSettingUp?: boolean;
   installation: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
 }): Fact[] {
-  const failure = agent.getFailure();
+  const failure = isSettingUp ? undefined : agent.getFailure();
   const created = agent.getCreatedTimestamp();
   const facts: Fact[] = [
     {

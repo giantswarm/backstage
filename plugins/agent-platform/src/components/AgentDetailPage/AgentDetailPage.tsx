@@ -206,9 +206,10 @@ function AgentDetailPageContent() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
-  // Same two tiers as the list: tighten while the agent is converging, relax
-  // once it settles or stays broken. This page is where someone watches an
-  // agent come up, so the fast tier earns its keep here — and it starts before
+  // The baseline once the agent is ready; until then the fast tier, backing
+  // off the longer its status does not change (`getAgentRefetchInterval`).
+  // This page is where someone watches an agent come up, and where a failure
+  // that clears should turn it ready without a reload — and it starts before
   // the Agent exists: while agent-manager says the agent's HelmRelease is
   // there (`isDeploying` below), the read that will eventually find the
   // Agent polls at the fast tier too, instead of the 60 s the helper gives
@@ -256,9 +257,10 @@ function AgentDetailPageContent() {
     (release.status?.helmRelease?.exists === true ||
       release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
-  // A `failed` agent whose failure is one a new agent passes through — an
-  // object it refers to not created yet — shows as being set up for a grace
-  // period, not as broken. The read above keeps polling it, backing off.
+  // A new agent failing only on a reference to an object not created yet
+  // shows as being set up for a grace period, not as broken. One clock for the
+  // whole page: the header, the session blocker, the facts and the creation
+  // progress all take this. The read above keeps polling it, backing off.
   const isSettingUp = useAgentSettingUp(agent);
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
@@ -756,6 +758,8 @@ function AgentDetailPageContent() {
         installation={installation}
         namespace={namespace}
         name={name}
+        isAgentReady={isReady}
+        isSettingUp={isSettingUp}
       />
 
       <AgentSessionBlocker
@@ -855,6 +859,7 @@ function AgentDetailPageContent() {
             aria-label="About this agent"
             facts={agentFacts({
               agent,
+              isSettingUp,
               installation,
               modelConfig,
               modelServing: agentRow?.modelServing,
