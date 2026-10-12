@@ -66,7 +66,7 @@ const useStyles = makeStyles({
       background: 'var(--bui-bg-neutral-2)',
     },
     // The current session keeps its highlight under the pointer.
-    '&$active, &$active:hover': {
+    '&$active:hover': {
       background: 'var(--bui-bg-neutral-3)',
     },
     '&:hover $pin, &:focus-within $pin': {
