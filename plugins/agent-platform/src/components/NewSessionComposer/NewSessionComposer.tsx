@@ -1,6 +1,5 @@
 import {
   FormEvent,
-  Key,
   KeyboardEvent,
   ReactNode,
   useCallback,
@@ -21,6 +20,7 @@ import { makeStyles } from '@material-ui/core';
 import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
+  matchesQuery,
   SEARCH_MIN,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -257,44 +257,68 @@ export function agentOptionLabel(
     : agent.name;
 }
 
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * One line, bounded: a description is free text and a couple on an internal
  * installation run to several sentences, which would push the other options
  * off the screen.
  */
 function oneShortLine(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
+  const collapsed = collapseWhitespace(text);
   return collapsed.length > DESCRIPTION_MAX_LENGTH
     ? `${collapsed.slice(0, DESCRIPTION_MAX_LENGTH).trimEnd()}…`
     : collapsed;
 }
 
-function labelMatches(label: string | undefined, query: string): boolean {
-  return (label ?? '').toLowerCase().includes(query.trim().toLowerCase());
-}
-
-/**
- * The picker's search, by label. The footer action stays in view while some
- * agent matches, so a search that matches none shows the empty state.
- */
-function pickerSearchFilter(agentLabels: string[]) {
-  return (option: { id: Key; label?: string }, query: string): boolean =>
-    option.id === FOOTER_ACTION_ID
-      ? agentLabels.some(label => labelMatches(label, query))
-      : labelMatches(option.label, query);
-}
-
 /**
  * What to say about an agent under its name in the picker: for one that cannot
- * be started, why not.
+ * be started, why not. `shorten` bounds the free text; the search reads it
+ * whole, with only its whitespace collapsed.
  */
-function describeAgent(agent: AgentRow): string | undefined {
+function describeAgent(
+  agent: AgentRow,
+  shorten: (text: string) => string = oneShortLine,
+): string | undefined {
   if (!isStartableAgent(agent)) {
     return agent.readinessMessage
-      ? `Unavailable: ${oneShortLine(agent.readinessMessage)}`
+      ? `Unavailable: ${shorten(agent.readinessMessage)}`
       : 'Unavailable right now';
   }
-  return agent.description ? oneShortLine(agent.description) : undefined;
+  return agent.description ? shorten(agent.description) : undefined;
+}
+
+/**
+ * The agents a picker search finds, in display order with those whose label
+ * matches ahead of those found by what their option says under it. That is the
+ * text each option shows (the description, or why an unavailable agent cannot
+ * be started), so every match can be seen in the list. Token-prefix and
+ * accent-insensitive (`matchesQuery`): "question" finds "Answers questions",
+ * "re" does not match inside "measures". A blank query keeps every agent.
+ */
+function searchPickerAgents(
+  agents: AgentRow[],
+  query: string,
+  multipleInstallations: boolean,
+): AgentRow[] {
+  const byLabel: AgentRow[] = [];
+  const byDescription: AgentRow[] = [];
+  for (const agent of agents) {
+    const label = agentOptionLabel(agent, multipleInstallations);
+    if (matchesQuery(query, label)) {
+      byLabel.push(agent);
+    } else if (
+      matchesQuery(
+        query,
+        `${label} ${describeAgent(agent, collapseWhitespace) ?? ''}`,
+      )
+    ) {
+      byDescription.push(agent);
+    }
+  }
+  return [...byLabel, ...byDescription];
 }
 
 /**
@@ -444,16 +468,39 @@ export function NewSessionComposer({
   // on one installation from its namesake on another.
   const isSearchable = searchable ?? listed.length > SEARCH_MIN;
   const isSearching = searchText.trim() !== '';
+  const installations = useMemo(
+    () => [...new Set(listed.map(agent => agent.installation))],
+    [listed],
+  );
+  const multipleInstallations = installations.length > 1;
+  // Built once per list, not per keystroke: a search only picks and orders them.
+  const optionsByAgentId = useMemo(
+    () =>
+      new Map(
+        listed.map(agent => [
+          agent.id,
+          {
+            id: agent.id,
+            label: agentOptionLabel(agent, multipleInstallations),
+            description: describeAgent(agent),
+            leadingIcon: renderAvatar(agent),
+            disabled: !isStartableAgent(agent),
+          },
+        ]),
+      ),
+    [listed, multipleInstallations, renderAvatar],
+  );
+  // The one decision about what a search matches: the options are built from
+  // it, and bui's own filter lets them all through.
+  const matched = useMemo(
+    () =>
+      isSearching
+        ? searchPickerAgents(listed, searchText, multipleInstallations)
+        : listed,
+    [listed, isSearching, searchText, multipleInstallations],
+  );
   const options = useMemo(() => {
-    const installations = [...new Set(listed.map(agent => agent.installation))];
-    const multipleInstallations = installations.length > 1;
-    const toOption = (agent: AgentRow, idPrefix = '') => ({
-      id: `${idPrefix}${agent.id}`,
-      label: agentOptionLabel(agent, multipleInstallations),
-      description: describeAgent(agent),
-      leadingIcon: renderAvatar(agent),
-      disabled: !isStartableAgent(agent),
-    });
+    const toOption = (agent: AgentRow) => optionsByAgentId.get(agent.id)!;
 
     if (groupByNamespace) {
       const recent = isSearching
@@ -465,21 +512,22 @@ export function NewSessionComposer({
         ...new Set(listed.map(agent => agent.namespace)),
       ].sort((a, b) => a.localeCompare(b));
       if (isSearching || (recent.length === 0 && namespaces.length <= 1)) {
-        return listed.map(agent => toOption(agent));
+        return matched.map(toOption);
       }
       const groups = namespaces.map(namespace => ({
         title: namespace,
         options: listed
           .filter(agent => agent.namespace === namespace)
-          .map(agent => toOption(agent)),
+          .map(toOption),
       }));
       return recent.length > 0
         ? [
             {
               title: 'Recent',
-              options: recent.map(agent =>
-                toOption(agent, RECENT_OPTION_PREFIX),
-              ),
+              options: recent.map(agent => ({
+                ...toOption(agent),
+                id: `${RECENT_OPTION_PREFIX}${agent.id}`,
+              })),
             },
             ...groups,
           ]
@@ -487,39 +535,39 @@ export function NewSessionComposer({
     }
 
     if (!multipleInstallations) {
-      return listed.map(agent => toOption(agent));
+      return matched.map(toOption);
     }
 
-    return installations.map(installation => ({
-      title: installation,
-      options: listed
-        .filter(agent => agent.installation === installation)
-        .map(agent => toOption(agent)),
-    }));
-  }, [listed, renderAvatar, groupByNamespace, recentAgentIds, isSearching]);
+    return installations
+      .map(installation => ({
+        title: installation,
+        options: matched
+          .filter(agent => agent.installation === installation)
+          .map(toOption),
+      }))
+      .filter(group => group.options.length > 0);
+  }, [
+    listed,
+    matched,
+    installations,
+    multipleInstallations,
+    optionsByAgentId,
+    groupByNamespace,
+    recentAgentIds,
+    isSearching,
+  ]);
 
-  const searchFilter = useMemo(
-    () =>
-      pickerSearchFilter(
-        listed.map(agent =>
-          agentOptionLabel(
-            agent,
-            new Set(listed.map(each => each.installation)).size > 1,
-          ),
-        ),
-      ),
-    [listed],
-  );
-
+  // The footer action stays in view while some agent matches, so a search
+  // that matches none shows the empty state.
   const pickerOptions = useMemo(
     () =>
-      pickerFooterAction
+      pickerFooterAction && matched.length > 0
         ? [
             ...options,
             { id: FOOTER_ACTION_ID, label: pickerFooterAction.label },
           ]
         : options,
-    [options, pickerFooterAction],
+    [options, matched, pickerFooterAction],
   );
 
   useEffect(() => {
@@ -661,18 +709,21 @@ export function NewSessionComposer({
           }
         }}
         placeholder={pickerPlaceholder}
-        // Grouped by namespace, the search text is held here so the
-        // Recent group can step aside while a search is typed.
-        {...(groupByNamespace
-          ? isSearchable && {
-              search: {
-                inputValue: searchText,
-                onInputChange: setSearchText,
-                placeholder: `Search ${listed.length} agents`,
-                filter: searchFilter,
-              },
-            }
-          : { searchable: isSearchable })}
+        // The search text is held here so the options can be the matches,
+        // agents found by name first, and so the Recent group can step aside
+        // while a search is typed. Without `groupByNamespace` the box keeps bui's
+        // own placeholder.
+        {...(isSearchable && {
+          search: {
+            inputValue: searchText,
+            onInputChange: setSearchText,
+            placeholder: groupByNamespace
+              ? `Search ${listed.length} agents`
+              : undefined,
+            // `matched` already is the search's result.
+            filter: () => true,
+          },
+        })}
         // A sole startable agent is no choice, unless unavailable ones
         // are listed beside it with their reasons or the picker also
         // holds its footer action.

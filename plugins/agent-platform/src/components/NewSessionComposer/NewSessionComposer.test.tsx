@@ -683,6 +683,138 @@ describe('opt-in picker options', () => {
     ]);
   });
 
+  it('finds an agent by its description', async () => {
+    const analyst = agentRow({
+      id: 'gazelle/kagent/factory-analyst',
+      name: 'Factory Analyst',
+      technicalName: 'factory-analyst',
+      description: 'Answers questions about production line output',
+    });
+    renderComposer({
+      agents: [sre, research, analyst, issues],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 4 agents' }),
+      'question',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Factory Analyst')]);
+  });
+
+  it('lists agents found by name before those found by description', async () => {
+    const librarian = agentRow({
+      id: 'gazelle/kagent/librarian',
+      name: 'Librarian',
+      technicalName: 'librarian',
+      description: 'Summarises research papers',
+    });
+    renderComposer({
+      agents: [librarian, sre, research],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 3 agents' }),
+      'research',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('Research Agent'),
+      expect.stringContaining('Librarian'),
+    ]);
+  });
+
+  it('matches the start of a word, not the middle of one', async () => {
+    const meter = agentRow({
+      id: 'gazelle/kagent/meter',
+      name: 'Meter',
+      technicalName: 'meter',
+      description: 'Measures throughput',
+    });
+    renderComposer({
+      agents: [meter, sre],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 2 agents' }),
+      'sure',
+    );
+
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+  });
+
+  it('matches a description written across lines as the option shows it', async () => {
+    const analyst = agentRow({
+      id: 'gazelle/kagent/factory-analyst',
+      name: 'Factory Analyst',
+      technicalName: 'factory-analyst',
+      description: 'Reports production line\n  output',
+    });
+    renderComposer({
+      agents: [sre, analyst],
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search 2 agents' }),
+      'line output',
+    );
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Factory Analyst')]);
+  });
+
+  it('matches an unavailable agent by the reason it shows, not its hidden description', async () => {
+    const down = agentRow({
+      ...broken,
+      description: 'Answers questions about production line output',
+    });
+    renderComposer({
+      agents: [sre, down],
+      showUnavailable: true,
+      groupByNamespace: true,
+      searchable: true,
+    });
+
+    await userEvent.click(agentPicker());
+    const search = screen.getByRole('searchbox', { name: 'Search 2 agents' });
+    await userEvent.type(search, 'question');
+    expect(screen.getByText('No results found.')).toBeInTheDocument();
+
+    await userEvent.clear(search);
+    await userEvent.type(search, 'pods');
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Broken Agent')]);
+  });
+
+  it('finds an agent by its description without namespace groups', async () => {
+    renderComposer({ agents: [sre, issues], searchable: true });
+
+    await userEvent.click(agentPicker());
+    await userEvent.type(screen.getByRole('searchbox'), 'github');
+
+    expect(
+      screen.getAllByRole('option').map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Issue Tracker')]);
+  });
+
   it('shows Recent again when the picker reopens after a search', async () => {
     renderComposer({
       agents: [sre, research, issues],
