@@ -11,6 +11,7 @@ import { useInstallations } from '@giantswarm/backstage-plugin-gs';
 import {
   PageHeaderActionsProvider,
   LoadingIndicator,
+  ReleaseInfo,
   SectionHeader,
   ShellPage,
   ShowMore,
@@ -164,6 +165,11 @@ export function ProfilePage() {
           >
             All portal settings ↗
           </Link>
+        </Flex>
+        {/* Which release is running, where a settings page keeps it: last,
+            quiet, the same line as the classic home page's footer. */}
+        <Flex pt="4">
+          <ReleaseInfo />
         </Flex>
       </ShellPage>
     </PageHeaderActionsProvider>

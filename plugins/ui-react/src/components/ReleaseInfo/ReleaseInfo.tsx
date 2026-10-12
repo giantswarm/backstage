@@ -7,6 +7,12 @@ const REPOSITORY_URL = 'https://github.com/giantswarm/backstage';
 // branch build, `development` locally) is shown as it is, without a link.
 const RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
 
+/**
+ * The portal's own release (`app.releaseVersion`), linked to the repository
+ * and its release tag: a quiet footer line at the bottom of the classic home
+ * page and of the shell's Profile and settings page. Renders nothing when the
+ * version is unset.
+ */
 export const ReleaseInfo = () => {
   const configApi = useApi(configApiRef);
   const releaseVersion = configApi.getOptionalString('app.releaseVersion');

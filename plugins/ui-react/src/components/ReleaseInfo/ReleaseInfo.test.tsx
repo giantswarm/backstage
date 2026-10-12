@@ -1,11 +1,27 @@
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { configApiRef } from '@backstage/core-plugin-api';
+import {
+  mockApis,
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/test-utils';
 import { screen } from '@testing-library/react';
 import { ReleaseInfo } from './ReleaseInfo';
 
 function renderReleaseInfo(releaseVersion?: string) {
-  return renderInTestApp(<ReleaseInfo />, {
-    config: releaseVersion ? { app: { releaseVersion } } : {},
-  });
+  return renderInTestApp(
+    <TestApiProvider
+      apis={[
+        [
+          configApiRef,
+          mockApis.config({
+            data: releaseVersion ? { app: { releaseVersion } } : {},
+          }),
+        ],
+      ]}
+    >
+      <ReleaseInfo />
+    </TestApiProvider>,
+  );
 }
 
 describe('ReleaseInfo', () => {

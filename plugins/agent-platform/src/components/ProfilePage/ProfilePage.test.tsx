@@ -20,8 +20,10 @@ async function renderPage(
     displayName: 'Jane Doe',
     email: 'jane@example.com',
   },
+  config: { app?: { releaseVersion?: string } } = {},
 ) {
   await renderInTestApp(<ProfilePage />, {
+    config,
     apis: [
       [
         identityApiRef,
@@ -137,6 +139,26 @@ describe('ProfilePage', () => {
     expect(link).toHaveAttribute('href', '/settings');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('closes with the running release, linked to its tag', async () => {
+    await renderPage(undefined, { app: { releaseVersion: '0.220.3' } });
+
+    expect(
+      screen.getByText(/provided by Giant Swarm, release/).textContent,
+    ).toBe('This is backstage provided by Giant Swarm, release v0.220.3');
+    expect(screen.getByRole('link', { name: 'v0.220.3' })).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/backstage/releases/tag/v0.220.3',
+    );
+  });
+
+  it('leaves the release line out when the version is unset', async () => {
+    await renderPage();
+
+    expect(
+      screen.queryByText(/provided by Giant Swarm/),
+    ).not.toBeInTheDocument();
   });
 
   it('wraps a long address beside the avatar instead of widening the page (T22 C6)', async () => {
