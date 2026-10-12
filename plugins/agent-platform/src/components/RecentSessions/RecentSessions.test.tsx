@@ -414,6 +414,36 @@ describe('RecentSessions', () => {
       ).toHaveAttribute('aria-current', 'page');
     });
 
+    it('highlights the current session across its whole row, pin included', async () => {
+      await renderRecent({
+        shellRail: true,
+        limit: 8,
+        path: '/agent-platform/sessions/gazelle/mid',
+      });
+
+      // Middle waits for input: its row settles under "Waiting for you".
+      const waiting = await screen.findByRole('list', {
+        name: 'Waiting for you',
+      });
+      const link = within(waiting).getByRole('link', { name: /Middle/ });
+      const row = link.closest('li') as HTMLElement;
+      // The row carries the highlight, so it spans the rail's width rather
+      // than stopping short of the pin beside the link.
+      expect(window.getComputedStyle(row).background).toBe(
+        'var(--bui-bg-neutral-3)',
+      );
+      expect(window.getComputedStyle(link).background).toBe('');
+      expect(
+        within(row).getByRole('button', { name: 'Pin “Middle”' }),
+      ).toBeInTheDocument();
+      const other = screen.getByText('Newest').closest('li') as HTMLElement;
+      expect(window.getComputedStyle(other).background).toBe('');
+      // The dot sits above the row's stretched hit area, so its tooltip is
+      // reached by hovering it.
+      const dot = within(link).getByRole('img', { name: 'Needs your input' });
+      expect(window.getComputedStyle(dot.parentElement!).zIndex).toBe('1');
+    });
+
     it('puts a dot before the sessions whose agent is working', async () => {
       await renderRecent({ shellRail: true });
 

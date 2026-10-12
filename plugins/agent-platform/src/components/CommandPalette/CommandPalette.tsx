@@ -1,10 +1,13 @@
 import {
   KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
   ReactNode,
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -545,11 +548,6 @@ function PaletteDialog({
     [groups],
   );
 
-  // A new query or chip starts the selection over at the top.
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [trimmedQuery, filter]);
-
   const boundedIndex = Math.min(
     activeIndex,
     Math.max(0, flatEntries.length - 1),
@@ -557,6 +555,75 @@ function PaletteDialog({
   const activeEntry: PaletteEntry | undefined = flatEntries[boundedIndex];
 
   const optionId = (entry: PaletteEntry) => `${baseId}-${entry.id}`;
+
+  const listboxRef = useRef<HTMLUListElement>(null);
+  // Set when the pointer picked the active row: that row is under the
+  // pointer, so in view already, and scrolling would move the list under it.
+  const selectedByPointer = useRef(false);
+  const lastPointer = useRef<{ x: number; y: number }>();
+
+  // Keeps the active row in view after a keyboard move, and when results
+  // that arrive late shift what the active index points at (the active id
+  // changes then too). Not on every new page of results: that would pull a
+  // list the person scrolled with the wheel back to the highlight. Focus
+  // stays in the input, so the browser never scrolls to the row by itself.
+  // Before paint, so the list does not flash at the old offset.
+  const activeId = activeEntry?.id;
+  useLayoutEffect(() => {
+    if (selectedByPointer.current) {
+      selectedByPointer.current = false;
+      return;
+    }
+    const listbox = listboxRef.current;
+    const row = listbox?.querySelector('[role="option"][aria-selected="true"]');
+    if (!listbox || !row) {
+      return;
+    }
+    // A group's first row brings its heading along.
+    const heading = row.previousElementSibling
+      ? null
+      : row.parentElement?.previousElementSibling;
+    scrollListTo(listbox, heading ?? row, row);
+  }, [activeId]);
+
+  // A new query or chip starts the selection, and the list, over at the
+  // top. In the handlers rather than an effect, so the new results paint
+  // once, already reset.
+  const resetSelection = () => {
+    setActiveIndex(0);
+    selectedByPointer.current = false;
+    if (listboxRef.current) {
+      listboxRef.current.scrollTop = 0;
+    }
+  };
+
+  const onQueryChange = (value: string) => {
+    setQuery(value);
+    if (value.trim() !== trimmedQuery) {
+      resetSelection();
+    }
+  };
+
+  const onFilterChange = (next: PaletteFilter) => {
+    setFilter(next);
+    if (next !== filter) {
+      resetSelection();
+    }
+  };
+
+  // Hover selects too, but only when the pointer itself moved: browsers send
+  // a mousemove when the list scrolls under a resting pointer, and that must
+  // not take the highlight back from the keyboard.
+  const onPointerOver = (index: number, event: ReactMouseEvent) => {
+    const { clientX: x, clientY: y } = event;
+    const last = lastPointer.current;
+    lastPointer.current = { x, y };
+    if ((last && last.x === x && last.y === y) || index === boundedIndex) {
+      return;
+    }
+    selectedByPointer.current = true;
+    setActiveIndex(index);
+  };
 
   const openEntry = useCallback(
     (entry: PaletteEntry) => {
@@ -569,14 +636,12 @@ function PaletteDialog({
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActiveIndex(index =>
-        Math.min(index + 1, Math.max(0, flatEntries.length - 1)),
-      );
+      setActiveIndex(Math.min(boundedIndex + 1, flatEntries.length - 1));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setActiveIndex(index => Math.max(0, index - 1));
+      setActiveIndex(Math.max(0, boundedIndex - 1));
       return;
     }
     if (event.key === 'Enter') {
@@ -651,7 +716,7 @@ function PaletteDialog({
             }
             placeholder="Search the agent platform…"
             value={query}
-            onChange={event => setQuery(event.target.value)}
+            onChange={event => onQueryChange(event.target.value)}
             onKeyDown={onInputKeyDown}
             // The dialog exists to type into; react-aria focuses the dialog
             // container, so without this the field has to be clicked first.
@@ -674,7 +739,7 @@ function PaletteDialog({
                 type="button"
                 className={classes.chip}
                 aria-pressed={filter === chip.id}
-                onClick={() => setFilter(chip.id)}
+                onClick={() => onFilterChange(chip.id)}
               >
                 {chip.label}
               </button>
@@ -690,6 +755,7 @@ function PaletteDialog({
         )}
         {flatEntries.length > 0 && (
           <ul
+            ref={listboxRef}
             id={listboxId}
             role="listbox"
             aria-label="Results"
@@ -719,9 +785,10 @@ function PaletteDialog({
                         entry={entry}
                         id={optionId(entry)}
                         isActive={activeEntry?.id === entry.id}
-                        onActivate={() =>
-                          setActiveIndex(
+                        onPointerOver={event =>
+                          onPointerOver(
                             flatEntries.findIndex(each => each.id === entry.id),
+                            event,
                           )
                         }
                         onOpen={() => openEntry(entry)}
@@ -772,6 +839,23 @@ function PaletteDialog({
 }
 
 /**
+ * Scrolls `list`, and only it, by as little as it takes to show the span from
+ * the top of `from` to the bottom of `to`. `Element.scrollIntoView` would
+ * scroll every scrollable ancestor too: the dialog, and on iOS the viewport.
+ */
+function scrollListTo(list: HTMLElement, from: Element, to: Element) {
+  const origin =
+    list.getBoundingClientRect().top + list.clientTop - list.scrollTop;
+  const top = from.getBoundingClientRect().top - origin;
+  const bottom = to.getBoundingClientRect().bottom - origin;
+  if (top < list.scrollTop) {
+    list.scrollTop = top;
+  } else if (bottom > list.scrollTop + list.clientHeight) {
+    list.scrollTop = bottom - list.clientHeight;
+  }
+}
+
+/**
  * A group's "+N more": the kind's own list with the query, or plain text
  * when there is no such list to open.
  */
@@ -809,14 +893,14 @@ function PaletteOption({
   entry,
   id,
   isActive,
-  onActivate,
+  onPointerOver,
   onOpen,
   onStartSession,
 }: {
   entry: PaletteEntry;
   id: string;
   isActive: boolean;
-  onActivate: () => void;
+  onPointerOver: (event: ReactMouseEvent) => void;
   onOpen: () => void;
   /** Offered on an agent's row on touch input: start a session with it. */
   onStartSession?: () => void;
@@ -837,7 +921,7 @@ function PaletteOption({
           onOpen();
         }
       }}
-      onMouseMove={onActivate}
+      onMouseMove={onPointerOver}
     >
       <span className={classes.optionText}>
         <Text variant="body-medium" className={classes.truncated}>
