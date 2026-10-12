@@ -250,7 +250,7 @@ describe('MusterMcpClient', () => {
     ).resolves.toEqual({ workspaces: [{ name: 'platform' }] });
   });
 
-  it('keeps a JSON text block over structuredContent', async () => {
+  it('answers structuredContent over a JSON text block', async () => {
     const execute = jest.fn().mockResolvedValue(
       callToolEnvelope({
         content: [{ type: 'text', text: '{"from":"text"}' }],
@@ -260,8 +260,46 @@ describe('MusterMcpClient', () => {
     const { client } = buildClient(execute);
 
     await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
-      from: 'text',
+      from: 'structuredContent',
     });
+  });
+
+  it('answers structuredContent over a text block that is a JSON scalar', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '3' }],
+        structuredContent: { count: 3 },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      count: 3,
+    });
+  });
+
+  it('answers structuredContent where there is no text block', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [], structuredContent: { count: 3 } }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      count: 3,
+    });
+  });
+
+  it('answers the parsed JSON text where there is no structuredContent', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: '{"a":1}' }] }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({ a: 1 });
   });
 
   it('answers the prose where there is no structuredContent', async () => {
