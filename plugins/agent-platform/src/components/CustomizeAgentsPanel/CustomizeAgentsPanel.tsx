@@ -1,4 +1,4 @@
-import { ReactNode, useId, useMemo } from 'react';
+import { ReactNode, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
@@ -19,7 +19,13 @@ import {
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useFavoriteAgents } from '../../hooks/useFavoriteAgents';
 import type { AvatarSize } from '../../lib/agentAvatar';
-import { agentParts, agentStatus, searchAgents } from '../../lib/customize';
+import {
+  agentHarnesses,
+  agentParts,
+  agentStatus,
+  harnessLabel,
+  searchAgents,
+} from '../../lib/customize';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
@@ -171,17 +177,36 @@ export type CustomizeAgentsPanelProps = {
 };
 
 /**
- * The Agents tab's facets (T49): the model an agent runs on, and the person's
- * favorites. The environment is not one of them: the page's Environment
- * select already scopes the tab to one installation, and shows only where
- * there is more than one — a second control for the same thing would be two
- * answers to one question.
+ * The Agents tab's facets (T49): the model an agent runs on, its Harness, and
+ * the person's favorites. The environment is not one of them: the page's
+ * Environment select already scopes the tab to one installation, and shows
+ * only where there is more than one — a second control for the same thing
+ * would be two answers to one question.
+ *
+ * @param harnesses the fleet's Harnesses ({@link agentHarnesses}); the
+ *   Harness facet is offered only when there are two or more.
  */
 export function agentFacets(
   isFavorite: (id: string) => boolean,
+  harnesses: ReadonlyMap<string, string | undefined>,
 ): CatalogFacet<AgentRow>[] {
   return [
     { id: 'model', label: 'Model', value: row => row.model || undefined },
+    // Sanctioned exception to the bar's dropdown-of-one (T64): main's
+    // `singleHarness` rule (#2858) — most fleets run every agent on one
+    // Harness, so the Harness filter, like its per-agent fact, appears only
+    // from two Harnesses on.
+    ...(harnesses.size > 1
+      ? [
+          {
+            id: 'harness',
+            label: 'Harness',
+            value: (row: AgentRow) => row.harness,
+            optionLabel: (name: string) =>
+              harnessLabel(name, harnesses.get(name)),
+          },
+        ]
+      : []),
     {
       id: 'favorites',
       label: 'Favorites',
@@ -193,13 +218,15 @@ export function agentFacets(
 
 /**
  * One agent as the prototype's list row: avatar, name — with its state inline
- * only when it is not Ready — and what it is for, then its model, its skills
- * and connectors, and the environment when there is more than one.
+ * only when it is not Ready — and what it is for, then its model, its Harness
+ * and the environment when there is more than one of each, and its skills
+ * and connectors.
  */
 function AgentListItem({
   row,
   href,
   avatarUrl,
+  showHarness,
   showInstallation,
   isFavorite,
   onToggleFavorite,
@@ -208,6 +235,7 @@ function AgentListItem({
   row: AgentRow;
   href?: string;
   avatarUrl?: string;
+  showHarness: boolean;
   showInstallation: boolean;
   /** The phone layout: texts wrap rather than truncate behind a `title`. */
   isPhone: boolean;
@@ -220,8 +248,26 @@ function AgentListItem({
   // `undefined`, never `false`, on a phone: bui writes `truncate={false}` as
   // `data-truncate="false"`, which its stylesheet still truncates.
   const truncate = isPhone ? undefined : true;
-  const facts: { key: string; text: string; label: string }[] = [
+  const facts: {
+    key: string;
+    text: string;
+    label: string;
+    /** The tooltip's fuller wording of `text`; `text` itself by default. */
+    detail?: string;
+  }[] = [
     { key: 'model', text: row.model ?? '', label: 'Model' },
+    // The title, as main's Harness column led with; the name joins it in the
+    // tooltip.
+    ...(showHarness
+      ? [
+          {
+            key: 'harness',
+            text: row.harnessTitle ?? row.harness ?? '',
+            label: 'Harness',
+            detail: row.harness && harnessLabel(row.harness, row.harnessTitle),
+          },
+        ]
+      : []),
     { key: 'parts', text: parts, label: 'Skills and connectors' },
     ...(showInstallation
       ? [{ key: 'installation', text: row.installation, label: 'Environment' }]
@@ -293,7 +339,11 @@ function AgentListItem({
               color="secondary"
               truncate={truncate}
               className={classes.fact}
-              title={fact.text ? `${fact.label}: ${fact.text}` : undefined}
+              title={
+                fact.text
+                  ? `${fact.label}: ${fact.detail ?? fact.text}`
+                  : undefined
+              }
             >
               {fact.text}
             </Text>
@@ -403,8 +453,24 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     useFavoriteAgents();
 
   const searched = useMemo(() => searchAgents(rows, search), [rows, search]);
-  const facets = useMemo(() => agentFacets(isFavorite), [isFavorite]);
+  const harnesses = useMemo(() => agentHarnesses(rows), [rows]);
+  // Main's `singleHarness` rule (#2858): one Harness for every agent shows
+  // neither the Harness fact nor its filter.
+  const showHarness = harnesses.size > 1;
+  const facets = useMemo(
+    () => agentFacets(isFavorite, harnesses),
+    [isFavorite, harnesses],
+  );
   const filters = useCatalogFilters({ items: rows, searched, facets });
+  // A Harness pick outlives its dropdown when the fleet settles on one
+  // Harness; it would filter nothing yet still count as a filter in force.
+  const { selection, select } = filters;
+  const harnessPicked = (selection.harness?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!showHarness && harnessPicked) {
+      select('harness', []);
+    }
+  }, [showHarness, harnessPicked, select]);
   const visible = filters.filtered;
   const favorites = useMemo(
     () => visible.filter(row => isFavorite(row.id)),
@@ -431,6 +497,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       avatarUrl={buildAvatarUrl(row.installation, row.technicalName, {
         size: ROW_AVATAR_SIZE,
       })}
+      showHarness={showHarness}
       showInstallation={showInstallation}
       isPhone={isPhone}
       isFavorite={isFavorite(row.id)}

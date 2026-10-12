@@ -114,11 +114,11 @@ export function ByAgentTable({
       cost: columnMax(rows, row =>
         estimateCost(row.inputTokens, row.outputTokens, rates),
       ),
-      reportedCostUsd: columnMax(rows, row => row.reportedCostUsd),
+      costUsd: columnMax(rows, row => row.costUsd),
     }),
     [rows, rates],
   );
-  const anyReported = rows.some(row => row.reportedCostUsd !== undefined);
+  const anyReported = rows.some(row => row.costUsd !== undefined);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
@@ -133,8 +133,8 @@ export function ByAgentTable({
           title={row.agentName}
           href={row.href}
           description={
-            isPhone && row.reportedCostUsd !== undefined
-              ? `${formatUsd(row.reportedCostUsd)} reported by its runtime`
+            isPhone && row.costUsd !== undefined
+              ? `${formatUsd(row.costUsd)} reported by its runtime`
               : undefined
           }
         />
@@ -237,12 +237,12 @@ export function ByAgentTable({
     ...(anyReported
       ? [
           {
-            id: 'reportedCostUsd',
+            id: 'costUsd',
             label: 'Reported cost',
             isSortable: true,
             cell: (row: ByAgentRow) => (
               <Cell>
-                {row.reportedCostUsd === undefined ? (
+                {row.costUsd === undefined ? (
                   // Words, not an em dash: beside a priced estimate a dash
                   // reads as "zero-ish", and the fact is "this runtime does
                   // not report costs".
@@ -258,9 +258,9 @@ export function ByAgentTable({
                   <DataBar
                     // USD on purpose: it is what the runtime said, not a
                     // figure we price or convert.
-                    label={formatUsd(row.reportedCostUsd)}
-                    value={row.reportedCostUsd}
-                    max={max.reportedCostUsd}
+                    label={formatUsd(row.costUsd)}
+                    value={row.costUsd}
+                    max={max.costUsd}
                     color={colorFor('cost')}
                   />
                 )}
@@ -334,8 +334,6 @@ export function ByAgentTable({
             — <strong>a blend across every model</strong>, not each agent&apos;s
             own. Session pages use each session&apos;s own model rate, so the
             figures differ. It is not a billed figure.
-            {anyReported &&
-              ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
           </>
         ) : (
           <>
@@ -343,6 +341,8 @@ export function ByAgentTable({
             gateway metrics yield no rate. Token counts are unaffected.
           </>
         )}
+        {anyReported &&
+          ' Reported cost comes from the agent’s runtime, in USD; not every runtime reports one.'}
       </div>
     </Paper>
   );

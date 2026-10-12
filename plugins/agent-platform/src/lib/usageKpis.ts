@@ -9,7 +9,7 @@ import { estimateCost, type TokenRates } from './costEstimate';
  *
  * - **Estimated**: token counts priced at an observed $/token rate
  *   (`estimateCost`). An estimate, labeled as one everywhere it renders.
- * - **Reported**: what a runtime said its own work cost (`reportedCostUsd`
+ * - **Reported**: what a runtime said its own work cost (`costUsd`
  *   from the kagent fan-out — the claude harness reports it, ADK does not).
  *
  * `undefined` consistently means "not knowable", never zero.
@@ -63,14 +63,11 @@ export type SessionSpend = {
  * and "Reported cost") for exactly that reason.
  */
 export function sessionSpend(
-  totals: Pick<
-    SessionUsageTotals,
-    'inputTokens' | 'outputTokens' | 'reportedCostUsd'
-  >,
+  totals: Pick<SessionUsageTotals, 'inputTokens' | 'outputTokens' | 'costUsd'>,
   rates: TokenRates | undefined,
 ): SessionSpend {
   return {
     estimatedUsd: estimateCost(totals.inputTokens, totals.outputTokens, rates),
-    reportedUsd: totals.reportedCostUsd,
+    reportedUsd: totals.costUsd,
   };
 }

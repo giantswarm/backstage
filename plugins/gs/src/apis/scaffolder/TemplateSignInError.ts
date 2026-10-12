@@ -7,9 +7,11 @@
 export type TemplateSignInFailure = 'session-expired' | 'declined';
 
 /**
- * Thrown by `scaffold` before the task is created when a cluster token the
- * template needs could not be minted because a sign-in did not complete.
- * Every sign-in the submit asked for has settled by the time it is thrown.
+ * Thrown by `scaffold` before the task is created when a sign-in the submit
+ * asked for did not complete: the portal's own session is gone and the
+ * re-login was declined or failed, or a cluster token the template needs could
+ * not be minted. Every sign-in the submit asked for has settled by the time it
+ * is thrown.
  */
 export class TemplateSignInError extends Error {
   readonly name = 'TemplateSignInError';

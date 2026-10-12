@@ -229,7 +229,7 @@ export interface McpServerRuntime {
   name: string;
   /**
    * `spec.toolPrefix`: the segment muster puts in this server's exposed tool
-   * names, which is not its name. A server named `gazelle-mcp-marge` with
+   * names, which is not its name. A server named `mcp-marge` with
    * prefix `marge` exposes `x_marge_<tool>`.
    */
   toolPrefix?: string;

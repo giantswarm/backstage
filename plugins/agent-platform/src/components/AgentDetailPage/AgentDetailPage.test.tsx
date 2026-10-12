@@ -2441,7 +2441,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
               turns: 9,
               inputTokens: 1,
               outputTokens: 1,
-              reportedCostUsd: 1.25,
+              costUsd: 1.25,
             },
           ],
         },

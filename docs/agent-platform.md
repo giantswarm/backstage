@@ -56,7 +56,8 @@ environment.
 ### Agents
 
 Favorites follow the person across browsers. A `generalInformation` meta-agent
-adds a helper banner.
+adds a helper banner. Each agent's Harness, and a Harness filter, appear only
+when the agents run on more than one Harness.
 
 **New agent** (`/agent-platform/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
@@ -1564,8 +1565,9 @@ offers "Recent" instead of favourites first.
 ## The agents list
 
 The list is Customize → Agents (`CustomizeAgentsPanel`;
-`/agent-platform/agents` redirects there), showing 25 rows at a time; its search
-matches name, technical name, description and model.
+`/agent-platform/agents` redirects there, and the short `/agents` and anything
+below it redirect to `/agent-platform/agents`), showing 25 rows at a time; its
+search matches name, technical name, description and model.
 
 The list reads kagent **API v2** objects only (`api.kagent.dev/v1alpha3`). This
 is a hard cut (bumblebee-plans#51 D12): an installation still on the

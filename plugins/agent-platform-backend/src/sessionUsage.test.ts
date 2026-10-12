@@ -140,14 +140,10 @@ describe('SessionUsageReader', () => {
 
     const result = await reader().read('tok');
 
-    expect(result.totals.reportedCostUsd).toBeCloseTo(0.25);
+    expect(result.totals.costUsd).toBeCloseTo(0.25);
     const byId = new Map(result.byAgent.map(entry => [entry.agentId, entry]));
-    expect(byId.get('kagent__NS__claude_agent')?.reportedCostUsd).toBeCloseTo(
-      0.25,
-    );
-    expect(byId.get('kagent__NS__adk_agent')).not.toHaveProperty(
-      'reportedCostUsd',
-    );
+    expect(byId.get('kagent__NS__claude_agent')?.costUsd).toBeCloseTo(0.25);
+    expect(byId.get('kagent__NS__adk_agent')).not.toHaveProperty('costUsd');
   });
 
   it('carries no reported cost when no runtime reported one', async () => {
@@ -156,7 +152,7 @@ describe('SessionUsageReader', () => {
 
     const result = await reader().read('tok');
 
-    expect(result.totals).not.toHaveProperty('reportedCostUsd');
+    expect(result.totals).not.toHaveProperty('costUsd');
   });
 
   it('never reads tasks for an A2A subagent session', async () => {
@@ -215,6 +211,41 @@ describe('SessionUsageReader', () => {
       inputTokens: 1_000,
     });
     expect(result.byAgent.map(a => a.agentId)).toContain(null);
+  });
+
+  it('sums the reported cost over the sessions that reported one', async () => {
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('a', { agent_id: 'kagent__NS__coder' }),
+        wireSession('b', { agent_id: 'kagent__NS__coder' }),
+        wireSession('c', { agent_id: 'kagent__NS__sre_agent' }),
+      ],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      wireTasks({
+        prompt: 1_000,
+        costUsd: { a: 0.5, b: 0.25 }[id as 'a' | 'b'],
+      }),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.totals.costUsd).toBe(0.75);
+    const coder = result.byAgent.find(a => a.agentId === 'kagent__NS__coder');
+    const sre = result.byAgent.find(a => a.agentId === 'kagent__NS__sre_agent');
+    expect(coder?.costUsd).toBe(0.75);
+    expect(sre).not.toHaveProperty('costUsd');
+  });
+
+  it('reports no cost, rather than zero, when no turn reported one', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks());
+
+    const result = await reader().read('tok');
+
+    expect(result.totals).not.toHaveProperty('costUsd');
+    expect(result.byAgent[0]).not.toHaveProperty('costUsd');
   });
 
   it('returns a dense day series across the whole window', async () => {

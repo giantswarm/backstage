@@ -3,6 +3,7 @@ import {
   AgentCondition,
   AgentInterface,
   AgentStatus,
+  Harness,
   ModelConfig,
   ModelConfigInterface,
   RemoteMCPServer,
@@ -24,6 +25,8 @@ function makeAgent(
     displayName?: string;
     description?: string;
     modelConfig?: string;
+    /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
+    harness?: string | null;
     skills?: number;
     /** Bindings to same-namespace RemoteMCPServers, by name. */
     servers?: string[];
@@ -41,6 +44,7 @@ function makeAgent(
     displayName,
     description,
     modelConfig,
+    harness = 'kagent',
     skills = 0,
     servers = [],
     status,
@@ -63,7 +67,7 @@ function makeAgent(
     },
     status: status ? { ...status, observedGeneration } : undefined,
     spec: {
-      harnessRef: { name: 'kagent' },
+      ...(harness !== null && { harnessRef: { name: harness } }),
       template: {
         description,
         modelConfig: modelConfig ? { name: modelConfig } : undefined,
@@ -262,6 +266,7 @@ describe('toAgentRow', () => {
       // fields: only `modelName` matches what the gateway calls the model
       // (`gen_ai_response_model`), so only it can price a session.
       modelName: 'claude-sonnet-4-6',
+      harness: 'kagent',
       skillCount: 3,
       skillIds: Array.from(
         { length: 3 },
@@ -359,6 +364,49 @@ describe('toAgentRow', () => {
     expect(row.readinessMessage).toBe(
       'Harness "kagent" runs no Claude templates',
     );
+  });
+
+  it('carries the Harness the agent runs on', () => {
+    expect(toAgentRow(makeAgent({ harness: 'claude-go' }), []).harness).toBe(
+      'claude-go',
+    );
+    expect(
+      toAgentRow(makeAgent({ harness: null }), []).harness,
+    ).toBeUndefined();
+  });
+
+  it('carries the title of the Harness it runs on, once that is read', () => {
+    const harness = (name: string, namespace: string, displayName?: string) =>
+      new Harness(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'Harness',
+          metadata: {
+            name,
+            namespace,
+            ...(displayName && {
+              annotations: { 'ui.giantswarm.io/display-name': displayName },
+            }),
+          },
+          spec: { claude: {}, workload: { image: 'registry.example/h' } },
+        } as never,
+        'inst-1',
+      );
+    const agent = makeAgent({ harness: 'claude-go' });
+    const namespace = agent.getNamespace();
+
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', 'elsewhere', 'Not this one'),
+        harness('claude-go', namespace!),
+      ]).harnessTitle,
+    ).toBe('Claude Code');
+    expect(
+      toAgentRow(agent, [], undefined, undefined, [
+        harness('claude-go', namespace!, 'Go coder Harness'),
+      ]).harnessTitle,
+    ).toBe('Go coder Harness');
+    expect(toAgentRow(agent, []).harnessTitle).toBeUndefined();
   });
 
   it('carries the Harness warnings', () => {

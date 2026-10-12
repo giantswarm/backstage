@@ -323,7 +323,7 @@ function UsageBody({
         <DataBar
           label={formatCount(errors)}
           value={errors}
-          max={maxErrors}
+          max={maxErrors ?? errors}
           color={barColors.errors}
         />
       </span>

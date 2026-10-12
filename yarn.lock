@@ -9173,6 +9173,7 @@ __metadata:
     "@testing-library/react": "npm:^16.0.0"
     "@testing-library/user-event": "npm:^14.0.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+    react-aria: "npm:~3.48.0"
     react-markdown: "npm:^10.1.0"
     remark-gfm: "npm:^4.0.1"
   peerDependencies:
@@ -21666,11 +21667,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@yarnpkg/cli@npm:4.18.0":
-  version: 4.18.0
-  resolution: "@yarnpkg/cli@npm:4.18.0"
+"@yarnpkg/cli@npm:4.18.1":
+  version: 4.18.1
+  resolution: "@yarnpkg/cli@npm:4.18.1"
   dependencies:
-    "@yarnpkg/core": "npm:^4.9.1"
+    "@yarnpkg/core": "npm:^4.9.2"
     "@yarnpkg/fslib": "npm:^3.1.5"
     "@yarnpkg/libzip": "npm:^3.2.2"
     "@yarnpkg/parsers": "npm:^3.1.0"
@@ -21706,14 +21707,14 @@ __metadata:
     tslib: "npm:^2.4.0"
     typanion: "npm:^3.14.0"
   peerDependencies:
-    "@yarnpkg/core": ^4.9.1
-  checksum: 10c0/d58213e49dc8c09f2bfc2c4d07d8ecae5a32036988f6f110aa77b2f4ec50edc6930bb2e1245ba63ca084c4a5b3143a7debd86187189572e1201bec195c3fd749
+    "@yarnpkg/core": ^4.9.2
+  checksum: 10c0/d25a5bb6a36e42777e1ac94fe7efce00f25a36bff6830d1e3e1a992229658a634cbc53e418baebf14eb7e112795979d353b6aee21d634fd3c96113d918c2cdcc
   languageName: node
   linkType: hard
 
-"@yarnpkg/core@npm:4.9.1":
-  version: 4.9.1
-  resolution: "@yarnpkg/core@npm:4.9.1"
+"@yarnpkg/core@npm:4.9.2, @yarnpkg/core@npm:^4.9.2":
+  version: 4.9.2
+  resolution: "@yarnpkg/core@npm:4.9.2"
   dependencies:
     "@arcanis/slice-ansi": "npm:^1.1.1"
     "@types/semver": "npm:^7.1.0"
@@ -21731,7 +21732,7 @@ __metadata:
     dotenv: "npm:^16.3.1"
     es-toolkit: "npm:^1.39.7"
     fast-glob: "npm:^3.2.2"
-    got: "npm:^11.7.0"
+    got: "patch:got@npm%3A11.8.2#~/.yarn/patches/got-npm-11.8.2-c1eb105458.patch"
     hpagent: "npm:^1.2.0"
     micromatch: "npm:^4.0.2"
     p-limit: "npm:^2.2.0"
@@ -21741,7 +21742,7 @@ __metadata:
     tinylogic: "npm:^2.0.0"
     treeify: "npm:^1.1.0"
     tslib: "npm:^2.4.0"
-  checksum: 10c0/625deb5cd7fb96eb0b8bdcfd77e0291da8a560a2c7bbbafe3a7f7703799e0b4470d4b9bd6dabb865c909c15352d7502c077693d2ef8d0c6da19117a5f0e04051
+  checksum: 10c0/d64bbad999ab878a0abf8fa4b9ba3989c8fc120581720bb8c8f9161fcef9965d33cdc7f70451591bffcc75c5b232ee8aa1ec4beab423d94d7b7ebf5ca9204f10
   languageName: node
   linkType: hard
 

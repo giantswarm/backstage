@@ -102,7 +102,7 @@ describe('UsageCostPage without gateway metrics (mimirEnabled: false)', () => {
 
   it('adds the kagent-reported cost when the runtimes reported one', async () => {
     sessionUsageState.usage = {
-      totals: { reportedCostUsd: 12.5 },
+      totals: { costUsd: 12.5 },
       windowDays: 30,
     };
 
@@ -118,7 +118,7 @@ describe('UsageCostPage without gateway metrics (mimirEnabled: false)', () => {
   it('shows no reported cost when kagent is absent', async () => {
     sessionUsageState.isNotDeployed = true;
     sessionUsageState.usage = {
-      totals: { reportedCostUsd: 12.5 },
+      totals: { costUsd: 12.5 },
       windowDays: 30,
     };
 

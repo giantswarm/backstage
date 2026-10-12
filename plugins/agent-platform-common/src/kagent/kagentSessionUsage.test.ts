@@ -101,7 +101,7 @@ describe('normalizeSessionUsage', () => {
           outputTokens: 5,
           totalTokens: 15,
           toolCalls: 0,
-          reportedCostUsd: 1.25,
+          costUsd: 1.25,
         },
         byAgent: [
           {
@@ -110,27 +110,25 @@ describe('normalizeSessionUsage', () => {
             turns: 2,
             inputTokens: 10,
             outputTokens: 5,
-            reportedCostUsd: 1.25,
+            costUsd: 1.25,
           },
         ],
       }),
     );
 
-    expect(usage.totals.reportedCostUsd).toBeCloseTo(1.25);
-    expect(usage.byAgent[0].reportedCostUsd).toBeCloseTo(1.25);
+    expect(usage.totals.costUsd).toBeCloseTo(1.25);
+    expect(usage.byAgent[0].costUsd).toBeCloseTo(1.25);
   });
 
   it('keeps an absent reported cost absent, and drops an unusable one', () => {
     // "No runtime reported a cost" must stay distinguishable from "$0", so
     // the field is never coerced to zero the way the counts are.
-    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty(
-      'reportedCostUsd',
-    );
+    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty('costUsd');
     expect(normalizeSessionUsage(body()).byAgent[0]).not.toHaveProperty(
-      'reportedCostUsd',
+      'costUsd',
     );
 
-    for (const reportedCostUsd of [-1, Number.NaN, 'free', null]) {
+    for (const costUsd of [-1, Number.NaN, 'free', null]) {
       const usage = normalizeSessionUsage(
         body({
           totals: {
@@ -140,11 +138,11 @@ describe('normalizeSessionUsage', () => {
             outputTokens: 1,
             totalTokens: 2,
             toolCalls: 0,
-            reportedCostUsd,
+            costUsd,
           },
         }),
       );
-      expect(usage.totals).not.toHaveProperty('reportedCostUsd');
+      expect(usage.totals).not.toHaveProperty('costUsd');
     }
   });
 
@@ -158,12 +156,12 @@ describe('normalizeSessionUsage', () => {
           outputTokens: 1,
           totalTokens: 2,
           toolCalls: 0,
-          reportedCostUsd: 0,
+          costUsd: 0,
         },
       }),
     );
 
-    expect(usage.totals.reportedCostUsd).toBe(0);
+    expect(usage.totals.costUsd).toBe(0);
   });
 
   it('yields a zeroed summary for a body that is not an object', () => {
@@ -294,5 +292,36 @@ describe('normalizeSessionUsage', () => {
     );
     expect(usage.otherTools).toEqual({ count: 0, calls: 0 });
     expect(usage.otherMcpServers).toEqual({ count: 0, calls: 0 });
+  });
+
+  it('carries a reported cost on the totals and each agent', () => {
+    const usage = normalizeSessionUsage(
+      body({
+        totals: { ...body().totals, costUsd: 1.25 },
+        byAgent: [
+          { agentId: 'kagent__NS__coder', inputTokens: 10, costUsd: 1.25 },
+          { agentId: 'kagent__NS__sre_agent', inputTokens: 5 },
+        ],
+      }),
+    );
+
+    expect(usage.totals.costUsd).toBe(1.25);
+    expect(usage.byAgent[0].costUsd).toBe(1.25);
+    expect(usage.byAgent[1]).not.toHaveProperty('costUsd');
+  });
+
+  it('leaves an absent or unusable reported cost undefined, never zero', () => {
+    expect(normalizeSessionUsage(body()).totals).not.toHaveProperty('costUsd');
+
+    for (const costUsd of [null, 'one dollar', -1, Number.NaN]) {
+      const usage = normalizeSessionUsage(
+        body({
+          totals: { ...body().totals, costUsd },
+          byAgent: [{ agentId: 'kagent__NS__coder', costUsd }],
+        }),
+      );
+      expect(usage.totals.costUsd).toBeUndefined();
+      expect(usage.byAgent[0].costUsd).toBeUndefined();
+    }
   });
 });

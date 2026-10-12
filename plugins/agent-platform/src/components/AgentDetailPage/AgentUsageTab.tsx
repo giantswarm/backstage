@@ -122,12 +122,12 @@ function AgentUsageContent({
           />
         )}
         {/* Only when a runtime reported one: "not reported" is not "$0.00". */}
-        {sessionRow?.reportedCostUsd !== undefined && (
+        {sessionRow?.costUsd !== undefined && (
           <Stat
             variant="tile"
             label="Reported cost"
             hint="Shows what the agent's runtime reported for your turns. Only some runtimes report a cost."
-            value={formatUsd(sessionRow.reportedCostUsd)}
+            value={formatUsd(sessionRow.costUsd)}
             sub="yours, from the agent's runtime"
           />
         )}

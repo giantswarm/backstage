@@ -36,16 +36,8 @@ export type UsageTally = {
    */
   totalTokens: number;
   toolCalls: number;
-  /**
-   * The cost the runtime itself reported for these turns, in USD, summed over
-   * the turns that reported one (`TokenUsage.costUsd` — the claude harness
-   * does, ADK does not).
-   *
-   * `undefined` when **no** turn reported a cost, which is a different fact
-   * from `0`: "this runtime does not price its own work" must not render as
-   * "this work was free". Same semantics as `addTokenUsage`.
-   */
-  reportedCostUsd?: number;
+  /** USD the runtime reported, summed over those turns. Absent if none did. */
+  costUsd?: number;
 };
 
 export type SessionUsage = {
@@ -117,6 +109,17 @@ function bump<K>(counts: Map<K, number>, key: K): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
 }
 
+export function addTally(target: UsageTally, source: UsageTally): void {
+  target.turns += source.turns;
+  target.inputTokens += source.inputTokens;
+  target.outputTokens += source.outputTokens;
+  target.totalTokens += source.totalTokens;
+  target.toolCalls += source.toolCalls;
+  if (source.costUsd !== undefined) {
+    target.costUsd = (target.costUsd ?? 0) + source.costUsd;
+  }
+}
+
 function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
   if (!usage) {
     return;
@@ -126,11 +129,7 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
       total: tally.totalTokens,
       prompt: tally.inputTokens,
       completion: tally.outputTokens,
-      // Only set when something has been reported, so `addTokenUsage`'s
-      // undefined-preserving sum keeps "nothing reported" distinct from `$0`.
-      ...(tally.reportedCostUsd !== undefined && {
-        costUsd: tally.reportedCostUsd,
-      }),
+      ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
     },
     usage,
   );
@@ -138,7 +137,7 @@ function addUsage(tally: UsageTally, usage: TokenUsage | undefined): void {
   tally.inputTokens = summed.prompt;
   tally.outputTokens = summed.completion;
   if (summed.costUsd !== undefined) {
-    tally.reportedCostUsd = summed.costUsd;
+    tally.costUsd = summed.costUsd;
   }
 }
 
@@ -288,16 +287,7 @@ export function reduceSessionUsage(
       bump(tools, name);
       bump(servers, mcpServerOf(name));
     }
-    tally.turns += turn.turns;
-    tally.toolCalls += turn.toolCalls;
-    addUsage(tally, {
-      total: turn.totalTokens,
-      prompt: turn.inputTokens,
-      completion: turn.outputTokens,
-      ...(turn.reportedCostUsd !== undefined && {
-        costUsd: turn.reportedCostUsd,
-      }),
-    });
+    addTally(tally, turn);
 
     if (atMs === undefined) {
       undatedTurns += 1;
@@ -306,16 +296,7 @@ export function reduceSessionUsage(
 
     const key = utcDayKey(atMs);
     const day = days.get(key) ?? emptyTally();
-    day.turns += turn.turns;
-    day.toolCalls += turn.toolCalls;
-    addUsage(day, {
-      total: turn.totalTokens,
-      prompt: turn.inputTokens,
-      completion: turn.outputTokens,
-      ...(turn.reportedCostUsd !== undefined && {
-        costUsd: turn.reportedCostUsd,
-      }),
-    });
+    addTally(day, turn);
     days.set(key, day);
   }
 

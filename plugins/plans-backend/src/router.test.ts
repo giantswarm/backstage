@@ -10,7 +10,7 @@ import express from 'express';
 import request from 'supertest';
 import { createRouter, RouterOptions } from './router';
 
-const REPO = 'giantswarm/bumblebee-plans';
+const REPO = 'giantswarm/meadow-plans';
 const TOKEN_HEADER = 'backstage-muster-authorization';
 
 type Call = { tool: string; args: Record<string, unknown>; authToken: string };
@@ -284,7 +284,7 @@ describe('createRouter', () => {
         tool: 'list_pull_requests',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           state: 'open',
           perPage: 100,
         },
@@ -422,7 +422,7 @@ describe('createRouter', () => {
         tool: 'add_issue_comment',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           issue_number: 44,
           body: 'Looks good',
         },
@@ -452,7 +452,7 @@ describe('createRouter', () => {
               author: 'alice',
               created_at: 't1',
               html_url:
-                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+                'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r100',
             },
             {
               body: 'reply',
@@ -462,7 +462,7 @@ describe('createRouter', () => {
               author: 'bob',
               created_at: 't2',
               html_url:
-                'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+                'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r101',
             },
           ],
         },
@@ -484,7 +484,7 @@ describe('createRouter', () => {
             body: 'root',
             createdAt: 't1',
             htmlUrl:
-              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r100',
+              'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r100',
             path: 'plan/PRD.md',
             line: 51,
             side: 'RIGHT',
@@ -495,7 +495,7 @@ describe('createRouter', () => {
             body: 'reply',
             createdAt: 't2',
             htmlUrl:
-              'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r101',
+              'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r101',
             path: 'plan/PRD.md',
             line: 51,
             side: 'RIGHT',
@@ -549,7 +549,7 @@ describe('createRouter', () => {
                 author: 'alice',
                 created_at: 't3',
                 html_url:
-                  'https://github.com/giantswarm/bumblebee-plans/pull/44#discussion_r200',
+                  'https://github.com/giantswarm/meadow-plans/pull/44#discussion_r200',
               },
             ],
           },
@@ -613,7 +613,7 @@ describe('createRouter', () => {
         tool: 'add_reply_to_pull_request_comment',
         args: {
           owner: 'giantswarm',
-          repo: 'bumblebee-plans',
+          repo: 'meadow-plans',
           pullNumber: 44,
           commentId: 100,
           body: 'Agreed',
@@ -702,7 +702,7 @@ describe('createRouter', () => {
           tool: 'get_repository_tree',
           args: {
             owner: 'giantswarm',
-            repo: 'bumblebee-plans',
+            repo: 'meadow-plans',
             recursive: true,
           },
           authToken: 'dex-id-token',
@@ -808,7 +808,7 @@ describe('createRouter', () => {
       });
       expect(github.calls[0].args).toEqual({
         owner: 'giantswarm',
-        repo: 'bumblebee-plans',
+        repo: 'meadow-plans',
         path: 'plan-a/PRD.md',
         ref: 'refs/heads/main',
       });

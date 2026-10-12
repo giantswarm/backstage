@@ -17,7 +17,7 @@ type Call = { tool: string; args: Record<string, unknown>; authToken: string };
 
 /** pro-through-muster stand-in: answers keyed by tool, every call recorded. */
 class FakePro implements MusterServerGateway {
-  readonly server = 'gazelle-mcp-pro';
+  readonly server = 'mcp-pro';
   calls: Call[] = [];
   answers = new Map<
     string,
@@ -152,14 +152,14 @@ describe('createRouter', () => {
       pro.loginResult = {
         status: 'auth_required',
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
-        message: 'Authentication required for gazelle-mcp-pro.',
+        message: 'Authentication required for mcp-pro.',
       };
       const res = await request(app).get('/connection');
       expect(res.status).toBe(200);
       expect(res.body).toEqual({
         connected: false,
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
-        message: 'Authentication required for gazelle-mcp-pro.',
+        message: 'Authentication required for mcp-pro.',
       });
     });
   });
@@ -193,8 +193,8 @@ describe('createRouter', () => {
       expect(res.status).toBe(401);
       expect(res.body.error).toEqual({
         name: 'MusterServerNotConnectedError',
-        message: expect.stringContaining("Connect 'gazelle-mcp-pro'"),
-        server: 'gazelle-mcp-pro',
+        message: expect.stringContaining("Connect 'mcp-pro'"),
+        server: 'mcp-pro',
         authUrl: 'https://muster.example/oauth/proxy/start?state=x',
       });
     });

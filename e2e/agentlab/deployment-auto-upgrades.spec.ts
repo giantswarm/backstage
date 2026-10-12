@@ -13,12 +13,21 @@ const run = promisify(execFile);
 const KUBECONFIG = process.env.AGENTLAB_KUBECONFIG;
 const NAMESPACE = 'agent-platform';
 
+type Scenario = {
+  name: string;
+  semver?: string;
+  semverFilter?: string;
+  /** The version Flux resolved the range to, written to the fixture's status */
+  revision?: string;
+  label: string;
+};
+
 /**
  * The release-stage scenarios of the SemVer automatic upgrades guide, plus a
- * filter it does not document, each with the label the deployment page shows
- * for its Automatic upgrades.
+ * filter it does not document, and ranges with an upper bound, each with the
+ * label the deployment page shows for its Automatic upgrades.
  */
-const SCENARIOS = [
+const SCENARIOS: Scenario[] = [
   {
     name: 'auto-upgrades-dev',
     semverFilter: '^.*-r[0-9a-f]{8}t[0-9]{14}h[0-9a-f]{7}$',
@@ -41,19 +50,53 @@ const SCENARIOS = [
   },
   {
     name: 'auto-upgrades-any',
-    semverFilter: undefined,
     label: 'Any, including pre-releases',
   },
+  {
+    name: 'auto-upgrades-minor-bounded',
+    semver: '>=5.12.0 <6.0.0',
+    label: 'Minor and patch',
+  },
+  {
+    name: 'auto-upgrades-minor-zero',
+    semver: '>=0.2.0 <1.0.0',
+    label: 'Minor and patch',
+  },
+  {
+    name: 'auto-upgrades-caret-zero',
+    semver: '^0.7.1',
+    label: 'Patch',
+  },
+  // Read from the current version: minor and patch from 1.0.0, patch at 1.4.x
+  {
+    name: 'auto-upgrades-bounded-current',
+    semver: '>=1.0.0 <1.5.0',
+    revision: '1.4.2',
+    label: 'Patch',
+  },
+  // Any from 1.0.0-0, minor and patch at 2.x
+  {
+    name: 'auto-upgrades-bounded-prerelease',
+    semver: '>=1.0.0-0 <3.0.0',
+    revision: '2.4.1',
+    label: 'Minor and patch, including pre-releases',
+  },
 ];
+
+/** A value as a single-quoted YAML scalar. */
+function quoted(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
 
 /**
  * A suspended HelmRelease and OCIRepository per scenario, so the lab's
  * controllers never fetch or install anything: the objects exist for the
- * portal to read.
+ * portal to read. A scenario's revision is written to the OCIRepository's
+ * status afterwards, where Flux records the version it resolved.
  */
-function fixture(name: string, semverFilter?: string) {
+function fixture({ name, semver = '>=0.0.0-0', semverFilter }: Scenario) {
   const filter = semverFilter
-    ? `\n    semverFilter: '${semverFilter.replace(/'/g, "''")}'`
+    ? `\n    semverFilter: ${quoted(semverFilter)}`
     : '';
   return `
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -66,7 +109,7 @@ spec:
   interval: 10m
   url: oci://gsoci.azurecr.io/charts/giantswarm/hello-world
   ref:
-    semver: '>=0.0.0-0'${filter}
+    semver: ${quoted(semver)}${filter}
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -93,17 +136,35 @@ async function kubectl(args: string[], input?: string) {
   return child;
 }
 
-test.describe("a deployment's automatic upgrades with a semver filter", () => {
+test.describe("a deployment's automatic upgrades", () => {
   test.skip(
     !KUBECONFIG,
     "needs kubectl access to the lab; set AGENTLAB_KUBECONFIG to the lab's state/kubeconfig",
   );
 
   test.beforeAll(async () => {
-    await kubectl(
-      ['apply', '-f', '-'],
-      SCENARIOS.map(s => fixture(s.name, s.semverFilter)).join('\n---\n'),
-    );
+    await kubectl(['apply', '-f', '-'], SCENARIOS.map(fixture).join('\n---\n'));
+    for (const { name, revision } of SCENARIOS) {
+      if (!revision) continue;
+      const artifact = {
+        revision: `${revision}@sha256:${'0'.repeat(64)}`,
+        digest: `sha256:${'0'.repeat(64)}`,
+        lastUpdateTime: new Date().toISOString(),
+        path: `ocirepository/${NAMESPACE}/${name}.tar.gz`,
+        url: `http://source-controller.invalid/${name}.tar.gz`,
+      };
+      await kubectl([
+        '-n',
+        NAMESPACE,
+        'patch',
+        'ocirepository',
+        name,
+        '--subresource=status',
+        '--type=merge',
+        '-p',
+        JSON.stringify({ status: { artifact } }),
+      ]);
+    }
   });
 
   test.afterAll(async () => {

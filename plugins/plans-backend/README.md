@@ -1,7 +1,7 @@
 # @giantswarm/backstage-plugin-plans-backend
 
 Backend plugin (`pluginId: plans`) that exposes a small REST API over the
-GitHub API for plan repositories (e.g. `giantswarm/bumblebee-plans`). It is
+GitHub API for plan repositories (e.g. `<owner>/<plans-repo>`). It is
 consumed by the `@giantswarm/backstage-plugin-plans` frontend plugin to render
 proposed (open PR) and merged plan documents.
 
@@ -43,7 +43,7 @@ parameter can be omitted.
 ```yaml
 plans:
   repositories:
-    - giantswarm/bumblebee-plans
+    - <owner>/<plans-repo>
   muster:
     installation: golem # a name from muster.installations
     server: github # the GitHub MCPServer in that muster

@@ -1,11 +1,13 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import {
+  agentHarnesses,
   agentParts,
   agentsByModel,
   agentsBySkill,
   agentStatus,
   connectorCount,
+  harnessLabel,
   modelStatus,
   rankSkills,
   searchAgents,
@@ -236,9 +238,38 @@ describe('search', () => {
   it('searches what a reader looks things up by', () => {
     expect(searchAgents([agent()], 'TICKETS')).toHaveLength(1);
     expect(searchAgents([agent()], 'nothing')).toHaveLength(0);
+    const onCodex = agent({ harness: 'codex', harnessTitle: 'Codex CLI' });
+    expect(searchAgents([onCodex], 'codex')).toHaveLength(1);
+    expect(searchAgents([onCodex], 'cli')).toHaveLength(1);
     expect(searchModels([model()], 'anthropic')).toHaveLength(1);
     expect(searchSkills([skill('triage')], 'giantswarm/skills')).toHaveLength(
       1,
     );
+  });
+});
+
+describe('Harnesses', () => {
+  it('collects the named Harnesses with the first title read', () => {
+    expect(
+      agentHarnesses([
+        agent({ harness: 'claude-code' }),
+        agent({ harness: 'claude-code', harnessTitle: 'Claude Code' }),
+        agent({ harness: 'codex' }),
+        // An inline Harness has no name.
+        agent(),
+      ]),
+    ).toEqual(
+      new Map([
+        ['claude-code', 'Claude Code'],
+        ['codex', undefined],
+      ]),
+    );
+  });
+
+  it('labels a Harness by title and name, or name alone', () => {
+    expect(harnessLabel('claude-code', 'Claude Code')).toBe(
+      'Claude Code (claude-code)',
+    );
+    expect(harnessLabel('codex')).toBe('codex');
   });
 });

@@ -16,7 +16,7 @@ import {
 import express from 'express';
 import Router from 'express-promise-router';
 
-/** `owner/repo` slug, e.g. `giantswarm/bumblebee-plans`. */
+/** `owner/repo` slug, e.g. `<owner>/<plans-repo>`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 
 /**

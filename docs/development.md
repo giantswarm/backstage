@@ -258,6 +258,45 @@ environment variables set.)
 - `yarn start backend` to start the backend
 - `yarn start app` to start the frontend
 
+## Unit tests
+
+`yarn test` runs jest through `backstage-cli repo test` once and exits. To run
+one test file, name it:
+
+```bash
+yarn test packages/backend/src/searchEngine.test.ts
+```
+
+Each change gets one such bounded run. `yarn test:watch` keeps jest running in
+watch mode and never exits: it is for a person at a terminal, never for a
+script, CI or an agent.
+
+### Backend wiring tests import features statically
+
+A backend wiring test starts the features it proves with `startTestBackend`
+from `@backstage/backend-test-utils`, the way `packages/backend/src/index.ts`
+adds them to the real backend. The backend adds features with a dynamic
+`import('…')`; a test cannot: jest runs as CommonJS, and Node lets it load an
+ES module with `import()` only under `--experimental-vm-modules`, which
+`backstage-cli repo test` does not pass. A dynamic `import()` in a test fails
+with "A dynamic import callback was invoked without
+--experimental-vm-modules".
+
+A new wiring test therefore:
+
+- imports each plugin and module it starts statically, as their default
+  export (`import searchPlugin from '@backstage/plugin-search-backend';`);
+- passes them to `startTestBackend({ features: [...] })`, together with the
+  `mockServices` factories it replaces (a database, config) and any test
+  module of its own;
+- for a module alone, hands its extension points to
+  `startTestBackend({ extensionPoints: [...] })` instead of starting the
+  plugin.
+
+`packages/backend/src/searchEngine.test.ts` (a plugin with its engine module
+on real databases) and `plugins/scaffolder-backend-module-gs/src/module.test.ts`
+(a module against mocked extension points) are the examples.
+
 ## End-to-end tests in a browser, against agentlab
 
 `e2e/agentlab/` is a Playwright suite that drives the portal the way a person
