@@ -236,6 +236,7 @@ function AgentPlatformHomeContent({
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}
             resourceName="Agents"
+            isLoading={isLoading}
           />
           <SlackPromoBanner />
         </Flex>

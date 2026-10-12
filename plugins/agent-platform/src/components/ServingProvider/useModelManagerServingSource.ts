@@ -367,6 +367,12 @@ export function useModelManagerServingSource(
         backendQueries.some(query => isAwaitingData(query)) ||
         modelQueries.some(query => isAwaitingData(query)) ||
         nodeQueries.some(query => isAwaitingData(query)),
+      // The backends too: a backend serving nothing yet is a group of its own
+      // in the served-models list.
+      isLoadingServedModels:
+        isListing ||
+        backendQueries.some(query => isAwaitingData(query)) ||
+        modelQueries.some(query => isAwaitingData(query)),
       installations: active,
       backends: backendByInstallation,
       sourceBackends,

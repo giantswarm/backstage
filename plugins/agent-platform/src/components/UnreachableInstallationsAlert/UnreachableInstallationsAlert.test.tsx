@@ -124,7 +124,38 @@ describe('UnreachableInstallationsAlert', () => {
     expect(screen.getByText('inst-300 (permission denied)')).toBeVisible();
   });
 
+  it('waits while the list it reports on is loading', async () => {
+    const { rerender } = await renderInTestApp(
+      <UnreachableInstallationsAlert installations={['gremlin']} isLoading />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    rerender(
+      <UnreachableInstallationsAlert
+        installations={['gremlin']}
+        isLoading={false}
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+  });
+
   describe('closing', () => {
+    it('stays closed when the list loads again and fails the same way', async () => {
+      const { rerender } = await renderInTestApp(
+        <UnreachableInstallationsAlert installations={['gremlin']} />,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      rerender(
+        <UnreachableInstallationsAlert installations={['gremlin']} isLoading />,
+      );
+      rerender(<UnreachableInstallationsAlert installations={[]} />);
+      rerender(<UnreachableInstallationsAlert installations={['gremlin']} />);
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
     it('announces as an alert and closes with its close button', async () => {
       await renderInTestApp(
         <UnreachableInstallationsAlert installations={['gremlin', 'gauss']} />,

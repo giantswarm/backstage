@@ -199,13 +199,15 @@ function SessionsIndexPageContent() {
           />
         )}
 
-        {/* Rendered regardless of the loading branch so a fleet whose only
-            reachable installations all error still surfaces the failure instead
-            of an indefinite progress bar. */}
+        {/* Waits for the list: a failure shows once no other installation
+            is still being read, or once rows are on screen. A failed query
+            is not one awaiting data, so a fleet whose every read failed still
+            ends `isLoading`; one paused offline does not. */}
         <UnreachableInstallationsAlert
           installations={unreachableInstallations}
           resourceName="Sessions"
           failures={readFailures}
+          isLoading={isLoading}
         />
 
         {/* Installations that run kagent but whose endpoint the portal cannot
