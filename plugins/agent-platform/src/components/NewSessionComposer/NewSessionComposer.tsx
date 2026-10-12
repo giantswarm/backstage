@@ -269,19 +269,63 @@ function oneShortLine(text: string): string {
     : collapsed;
 }
 
-function labelMatches(label: string | undefined, query: string): boolean {
-  return (label ?? '').toLowerCase().includes(query.trim().toLowerCase());
+function textMatches(text: string | undefined, query: string): boolean {
+  return (text ?? '').toLowerCase().includes(query.trim().toLowerCase());
 }
 
 /**
- * The picker's search, by label. The footer action stays in view while some
- * agent matches, so a search that matches none shows the empty state.
+ * Whether an agent answers the picker's search: by its label, or by its
+ * description, so a search for what an agent does ("question") finds it as
+ * well as one for its name. The full description, not the one short line the
+ * option shows.
  */
-function pickerSearchFilter(agentLabels: string[]) {
-  return (option: { id: Key; label?: string }, query: string): boolean =>
-    option.id === FOOTER_ACTION_ID
-      ? agentLabels.some(label => labelMatches(label, query))
-      : labelMatches(option.label, query);
+function agentMatches(
+  agent: AgentRow,
+  multipleInstallations: boolean,
+  query: string,
+): boolean {
+  return (
+    textMatches(agentOptionLabel(agent, multipleInstallations), query) ||
+    textMatches(agent.description, query)
+  );
+}
+
+/**
+ * The agents in display order, those whose label matches the search ahead of
+ * those found only by their description.
+ */
+function labelMatchesFirst(
+  agents: AgentRow[],
+  multipleInstallations: boolean,
+  query: string,
+): AgentRow[] {
+  const byLabel = agents.filter(agent =>
+    textMatches(agentOptionLabel(agent, multipleInstallations), query),
+  );
+  return [...byLabel, ...agents.filter(agent => !byLabel.includes(agent))];
+}
+
+/**
+ * The picker's search, by label or description ({@link agentMatches}). The
+ * footer action stays in view while some agent matches, so a search that
+ * matches none shows the empty state.
+ */
+function pickerSearchFilter(
+  agents: AgentRow[],
+  multipleInstallations: boolean,
+) {
+  const byId = new Map(agents.map(agent => [agent.id, agent]));
+  return (option: { id: Key; label?: string }, query: string): boolean => {
+    if (option.id === FOOTER_ACTION_ID) {
+      return agents.some(agent =>
+        agentMatches(agent, multipleInstallations, query),
+      );
+    }
+    const agent = byId.get(String(option.id).replace(RECENT_OPTION_PREFIX, ''));
+    return agent
+      ? agentMatches(agent, multipleInstallations, query)
+      : textMatches(option.label, query);
+  };
 }
 
 /**
@@ -444,9 +488,17 @@ export function NewSessionComposer({
   // on one installation from its namesake on another.
   const isSearchable = searchable ?? listed.length > SEARCH_MIN;
   const isSearching = searchText.trim() !== '';
+  const multipleInstallations = useMemo(
+    () => new Set(listed.map(agent => agent.installation)).size > 1,
+    [listed],
+  );
   const options = useMemo(() => {
     const installations = [...new Set(listed.map(agent => agent.installation))];
-    const multipleInstallations = installations.length > 1;
+    // While a search is typed, agents found by name come before those found
+    // only by their description, within each group.
+    const ordered = isSearching
+      ? labelMatchesFirst(listed, multipleInstallations, searchText)
+      : listed;
     const toOption = (agent: AgentRow, idPrefix = '') => ({
       id: `${idPrefix}${agent.id}`,
       label: agentOptionLabel(agent, multipleInstallations),
@@ -465,7 +517,7 @@ export function NewSessionComposer({
         ...new Set(listed.map(agent => agent.namespace)),
       ].sort((a, b) => a.localeCompare(b));
       if (isSearching || (recent.length === 0 && namespaces.length <= 1)) {
-        return listed.map(agent => toOption(agent));
+        return ordered.map(agent => toOption(agent));
       }
       const groups = namespaces.map(namespace => ({
         title: namespace,
@@ -487,28 +539,28 @@ export function NewSessionComposer({
     }
 
     if (!multipleInstallations) {
-      return listed.map(agent => toOption(agent));
+      return ordered.map(agent => toOption(agent));
     }
 
     return installations.map(installation => ({
       title: installation,
-      options: listed
+      options: ordered
         .filter(agent => agent.installation === installation)
         .map(agent => toOption(agent)),
     }));
-  }, [listed, renderAvatar, groupByNamespace, recentAgentIds, isSearching]);
+  }, [
+    listed,
+    multipleInstallations,
+    renderAvatar,
+    groupByNamespace,
+    recentAgentIds,
+    isSearching,
+    searchText,
+  ]);
 
   const searchFilter = useMemo(
-    () =>
-      pickerSearchFilter(
-        listed.map(agent =>
-          agentOptionLabel(
-            agent,
-            new Set(listed.map(each => each.installation)).size > 1,
-          ),
-        ),
-      ),
-    [listed],
+    () => pickerSearchFilter(listed, multipleInstallations),
+    [listed, multipleInstallations],
   );
 
   const pickerOptions = useMemo(
@@ -661,18 +713,20 @@ export function NewSessionComposer({
           }
         }}
         placeholder={pickerPlaceholder}
-        // Grouped by namespace, the search text is held here so the
-        // Recent group can step aside while a search is typed.
-        {...(groupByNamespace
-          ? isSearchable && {
-              search: {
-                inputValue: searchText,
-                onInputChange: setSearchText,
-                placeholder: `Search ${listed.length} agents`,
-                filter: searchFilter,
-              },
-            }
-          : { searchable: isSearchable })}
+        // The search text is held here so the options can put agents found
+        // by name first, and so the Recent group can step aside while a
+        // search is typed. Without `groupByNamespace` the box keeps bui's
+        // own placeholder.
+        {...(isSearchable && {
+          search: {
+            inputValue: searchText,
+            onInputChange: setSearchText,
+            placeholder: groupByNamespace
+              ? `Search ${listed.length} agents`
+              : undefined,
+            filter: searchFilter,
+          },
+        })}
         // A sole startable agent is no choice, unless unavailable ones
         // are listed beside it with their reasons or the picker also
         // holds its footer action.
