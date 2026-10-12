@@ -1,5 +1,5 @@
 import type { BrowserContext, Page, Response } from '@playwright/test';
-import { completeDexLogin, expect, signIn, test as base } from './fixtures';
+import { expect, signIn, test as base } from './fixtures';
 import { contextOptionsFor, lab, type LabUser } from './lab';
 
 /**
@@ -196,11 +196,14 @@ export class WorkspaceTools {
     });
   }
 
-  /** Signs the page in as {@link user}, reading the tokens on the way. */
+  /**
+   * Signs the page in as {@link user}, then reads the tokens from the next
+   * page load: the sign-in popup hands its result to the page by message,
+   * not through a refresh the page could read.
+   */
   async signIn(): Promise<void> {
-    this.tokens = await capturePortalTokens(this.page, () =>
-      signIn(this.page, this.user),
-    );
+    await signIn(this.page, this.user);
+    await this.refreshTokens();
   }
 
   private async post(path: string, data: unknown) {
@@ -459,7 +462,10 @@ async function connectToLabGitHub(tools: WorkspaceTools): Promise<void> {
   const page = tools.page;
   await page.goto(callback!);
   if (new URL(page.url()).pathname.includes('/dex/')) {
-    await completeDexLogin(page, tools.user);
+    // The manager's own sign-in, in this tab (not a popup to close).
+    await page.locator('input[name="login"]').fill(tools.user.email);
+    await page.locator('input[name="password"]').fill(lab.password);
+    await page.getByRole('button', { name: 'Login' }).click();
   }
   await expect(
     page.getByText(`${lab.workspaces.provider} connected`).first(),
