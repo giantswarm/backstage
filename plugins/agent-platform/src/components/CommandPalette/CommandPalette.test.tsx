@@ -392,6 +392,75 @@ describe('CommandPalette', () => {
     );
   });
 
+  describe('scrolling', () => {
+    // jsdom does not lay out or scroll; record which elements were asked to.
+    const scrolled: Element[] = [];
+    const scrollIntoView = jest.fn(function record(this: Element) {
+      scrolled.push(this);
+    });
+
+    beforeEach(() => {
+      scrolled.length = 0;
+      scrollIntoView.mockClear();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+
+    afterEach(() => {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
+
+    const activeOption = (input: HTMLElement) =>
+      document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+
+    it('keeps the row the arrow keys move to in view', async () => {
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+      scrolled.length = 0;
+      scrollIntoView.mockClear();
+
+      // Onto the agent, the first row of its group: the heading comes along.
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+      expect(scrolled).toEqual([
+        within(screen.getByRole('listbox', { name: 'Results' }))
+          .getByText('Agents')
+          .closest('div'),
+        activeOption(input),
+      ]);
+      // "nearest": the list moves only when the row is not fully in view.
+      expect(scrollIntoView.mock.calls).toEqual([
+        [{ block: 'nearest' }],
+        [{ block: 'nearest' }],
+      ]);
+
+      scrolled.length = 0;
+      fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(activeOption(input)).toHaveTextContent(
+        'Which customers asked about SSO this month?',
+      );
+      expect(scrolled).toContain(activeOption(input));
+    });
+
+    it('does not scroll when the pointer selects a row', async () => {
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+      scrollIntoView.mockClear();
+
+      fireEvent.mouseMove(screen.getByText('Support Triage'));
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it('scrolls the list back to the top on a new query', async () => {
+      const input = await openPalette();
+      const listbox = screen.getByRole('listbox', { name: 'Results' });
+      listbox.scrollTop = 120;
+
+      await userEvent.type(input, 's');
+      expect(listbox.scrollTop).toBe(0);
+    });
+  });
+
   it('opens a clicked result', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'confluence');

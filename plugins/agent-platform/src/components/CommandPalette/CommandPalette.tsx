@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -552,9 +553,15 @@ function PaletteDialog({
     [groups],
   );
 
-  // A new query or chip starts the selection over at the top.
+  const listboxRef = useRef<HTMLUListElement>(null);
+
+  // A new query or chip starts the selection over at the top, and the list
+  // with it, so the active row is not left scrolled out of sight.
   useEffect(() => {
     setActiveIndex(0);
+    if (listboxRef.current) {
+      listboxRef.current.scrollTop = 0;
+    }
   }, [trimmedQuery, filter]);
 
   const boundedIndex = Math.min(
@@ -564,6 +571,29 @@ function PaletteDialog({
   const activeEntry: PaletteEntry | undefined = flatEntries[boundedIndex];
 
   const optionId = (entry: PaletteEntry) => `${baseId}-${entry.id}`;
+  const groupLabelId = (group: PaletteGroupId) => `${baseId}-group-${group}`;
+
+  // Moves the selection from the keyboard and keeps the row in view. Focus
+  // stays in the input, so the browser does not scroll to the row by itself.
+  // "nearest" moves the list only when the row is (partly) outside it, and a
+  // group's first row brings its heading along. Hover selects too, but does
+  // not scroll: a row under the pointer is in view already.
+  const moveTo = (index: number) => {
+    const entry = flatEntries[index];
+    if (!entry) {
+      return;
+    }
+    setActiveIndex(index);
+    const group = groups.find(each => each.entries[0]?.id === entry.id);
+    if (group) {
+      document
+        .getElementById(groupLabelId(group.id))
+        ?.scrollIntoView?.({ block: 'nearest' });
+    }
+    document
+      .getElementById(optionId(entry))
+      ?.scrollIntoView?.({ block: 'nearest' });
+  };
 
   const openEntry = useCallback(
     (entry: PaletteEntry) => {
@@ -576,14 +606,12 @@ function PaletteDialog({
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActiveIndex(index =>
-        Math.min(index + 1, Math.max(0, flatEntries.length - 1)),
-      );
+      moveTo(Math.min(boundedIndex + 1, flatEntries.length - 1));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setActiveIndex(index => Math.max(0, index - 1));
+      moveTo(Math.max(0, boundedIndex - 1));
       return;
     }
     if (event.key === 'Enter') {
@@ -697,6 +725,7 @@ function PaletteDialog({
         )}
         {flatEntries.length > 0 && (
           <ul
+            ref={listboxRef}
             id={listboxId}
             role="listbox"
             aria-label="Results"
@@ -704,7 +733,7 @@ function PaletteDialog({
           >
             {groups.map(group => (
               <li key={group.id} role="presentation">
-                <div className={classes.groupLabel}>
+                <div id={groupLabelId(group.id)} className={classes.groupLabel}>
                   <Text variant="body-x-small" weight="bold" color="secondary">
                     {group.label}
                   </Text>
