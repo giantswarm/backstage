@@ -83,6 +83,27 @@ export function agentParts(row: AgentRow): string {
 }
 
 /**
+ * The Harnesses the agents run on, by name, each with the title the first of
+ * its agents carries. An inline Harness has no name and is not counted.
+ */
+export function agentHarnesses(
+  rows: readonly AgentRow[],
+): Map<string, string | undefined> {
+  const titles = new Map<string, string | undefined>();
+  for (const row of rows) {
+    if (row.harness !== undefined && !titles.get(row.harness)) {
+      titles.set(row.harness, row.harnessTitle);
+    }
+  }
+  return titles;
+}
+
+/** "Claude Code (claude-code)", or the name alone before the title is read. */
+export function harnessLabel(name: string, title?: string): string {
+  return title ? `${title} (${name})` : name;
+}
+
+/**
  * A model's state: the controller's verdict on the ModelConfig first, then
  * what the serving layer says about the model behind it — in the Running
  * models table's words, so one served model reads the same everywhere (UX
@@ -147,6 +168,8 @@ export function searchAgents(rows: AgentRow[], search: string): AgentRow[] {
           row.technicalName,
           row.description,
           row.model,
+          row.harness,
+          row.harnessTitle,
         ]),
       )
     : rows;

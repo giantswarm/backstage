@@ -17,9 +17,8 @@ import {
  * Deploy writes the agent's HelmRelease; the roster lists the Agent once Flux
  * has rendered it, polling every 5 s until then (the tab remembers the
  * deploy). Until then a lab without other agents shows the "No agents yet"
- * empty state, without search or table, so the fixture agent's row comes
- * first; the wait covers a slow Flux render, and the test's budget outlasts
- * the config's 90 s.
+ * empty state, so the fixture agent's row comes first; the wait covers a slow
+ * Flux render, and the test's budget outlasts the config's 90 s.
  */
 const rosterWait = 2 * 60_000;
 
@@ -47,6 +46,11 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
   );
   await expect(row).toContainText(/claude-/);
   await expect(row).toContainText('0 skills · 0 connectors');
+  // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
+  // shows neither a Harness filter nor a Harness per row.
+  await expect(
+    admin.getByRole('button', { name: /^Filter by harness/ }),
+  ).toHaveCount(0);
   await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
     '/agent-platform/agents/new',

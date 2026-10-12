@@ -715,6 +715,107 @@ describe('CustomizeAgentsPanel filters (T49, T64)', () => {
     ).not.toBeInTheDocument();
   });
 
+  describe('Harness (main #2858)', () => {
+    const onHarness = (harness: string, harnessTitle?: string) => ({
+      harness,
+      ...(harnessTitle && { harnessTitle }),
+    });
+
+    it('shows neither the Harness nor its filter while every agent shares one', async () => {
+      mockAgents = {
+        rows: [
+          row({ name: 'A', technicalName: 'a', model: 'Sonnet 4.5' }),
+          row({ name: 'B', technicalName: 'b', model: 'Sonnet 4.5' }),
+          row({ name: 'C', technicalName: 'c', model: 'Sonnet 4.5' }),
+        ].map(each => ({
+          ...each,
+          ...onHarness('claude-code', 'Claude Code'),
+        })),
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(3);
+      // The singleHarness rule: no dropdown of one, unlike Model.
+      expect(filterDropdown('model')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Filter by harness/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Claude Code')).not.toBeInTheDocument();
+    });
+
+    it('shows the Harness of each agent and filters three agents by it', async () => {
+      mockAgents = {
+        rows: [
+          { ...triage, ...onHarness('claude-code', 'Claude Code') },
+          { ...notes, ...onHarness('claude-code', 'Claude Code') },
+          // Its Harness not read yet: the name stands in for the title.
+          row({ name: 'Coder', technicalName: 'coder', ...onHarness('codex') }),
+        ],
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      const [first, , third] = listed();
+      expect(within(first).getByText('Claude Code')).toHaveAttribute(
+        'title',
+        'Harness: Claude Code (claude-code)',
+      );
+      expect(within(third).getByText('codex')).toHaveAttribute(
+        'title',
+        'Harness: codex',
+      );
+      expect(await filterOptions('harness')).toEqual([
+        'Claude Code (claude-code) 2',
+        'codex 1',
+      ]);
+
+      await pickFilter('harness', 'codex 1');
+      expect(listed().map(item => item.textContent)).toEqual([
+        expect.stringContaining('Coder'),
+      ]);
+      expect(filterDropdown('harness')).toHaveTextContent('codex');
+    });
+
+    it('picks a Harness at 300 agents, paging from the first page', async () => {
+      const titles = ['Claude Code', 'Codex', 'Gemini'];
+      mockAgents = {
+        rows: manyAgents(300).map((each, index) => ({
+          ...each,
+          ...onHarness(
+            titles[index % 3].toLowerCase().replace(' ', '-'),
+            titles[index % 3],
+          ),
+        })),
+        isLoading: false,
+        hasInstallations: true,
+        unreachableInstallations: [],
+      };
+      await renderPanel();
+
+      expect(listed()).toHaveLength(25);
+      expect(await filterOptions('harness')).toEqual([
+        'Claude Code (claude-code) 100',
+        'Codex (codex) 100',
+        'Gemini (gemini) 100',
+      ]);
+
+      await pickFilter('harness', 'Gemini (gemini) 100');
+      expect(listed()).toHaveLength(25);
+      expect(
+        listed().every(item => within(item).queryByText('Gemini') !== null),
+      ).toBe(true);
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 25 more agents' }),
+      );
+      expect(listed()).toHaveLength(50);
+    });
+  });
+
   it('picks several of many models at 300 agents, paging from the first page', async () => {
     mockAgents = {
       rows: manyAgents(300).map((each, index) => ({

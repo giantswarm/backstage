@@ -56,7 +56,8 @@ environment.
 ### Agents
 
 Favorites follow the person across browsers. A `generalInformation` meta-agent
-adds a helper banner.
+adds a helper banner. Each agent's Harness, and a Harness filter, appear only
+when the agents run on more than one Harness.
 
 **New agent** (`/agent-platform/agents/new`) is a wizard: Details, Skills,
 Tools, Review. The Skills step exists only when skill repositories are
