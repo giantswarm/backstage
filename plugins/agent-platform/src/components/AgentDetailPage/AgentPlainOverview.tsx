@@ -26,6 +26,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import type { ClientServingSummary } from '../../lib/serving';
@@ -36,8 +37,9 @@ import {
   skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { bindsGateway } from '../../lib/toolset';
+import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
-import { describeReach } from '../AgentReachLine';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
@@ -316,26 +318,27 @@ function SkillsSection({
 
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares — with the exact tools one link away.
+ * read from the toolset it declares; the exact tools are the Tools tab.
  * Servers bound directly rather than through the gateway, and agents it calls
  * as tools, follow by name.
  */
 function ConnectorsSection({
   agent,
-  toolsHref,
   isFailing,
 }: {
   agent: Agent;
-  toolsHref?: string;
   isFailing: boolean;
 }) {
   const classes = useStyles();
   const { declared, isReading, isUnreadable } = useAgentToolset(agent);
-  const bindings = agent.getMcpBindings();
-  const direct = bindings.filter(
-    binding => !isGatewayServerBinding(agent, binding),
+  const groups = useReachCatalogue(
+    agent.cluster,
+    reachNeedsCatalogue(declared),
   );
-  const hasGateway = direct.length < bindings.length;
+  const direct = agent
+    .getMcpBindings()
+    .filter(binding => !isGatewayServerBinding(agent, binding));
+  const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
   let reach: string;
@@ -348,21 +351,14 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared) ??
+      describeReach(declared, groups) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
   }
 
   return (
-    <Section
-      title="Connectors"
-      action={
-        hasGateway && toolsHref ? (
-          <Link to={toolsHref}>See which tools</Link>
-        ) : undefined
-      }
-    >
+    <Section title="Connectors">
       <Text variant="body-medium">{reach}</Text>
       {(direct.length > 0 || subAgents.length > 0) && (
         <div className={classes.rows}>
@@ -446,7 +442,7 @@ export type AgentPlainOverviewProps = {
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
-  /** The agent's tools view, which resolves the toolset to exact tools. */
+  /** The Tools tab, which resolves the toolset to exact tools. */
   toolsHref?: string;
   /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
   onUpdateSkills?: () => void;
@@ -506,11 +502,7 @@ export function AgentPlainOverview({
         isGitOpsOwned={isGitOpsOwned}
       />
 
-      <ConnectorsSection
-        agent={agent}
-        toolsHref={toolsHref}
-        isFailing={failure?.field === 'tools'}
-      />
+      <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
 
       <TechnicalDetailsFoldOut
         defaultExpanded={agent.getReadiness() !== 'ready'}

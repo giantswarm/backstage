@@ -6,6 +6,7 @@ import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { countNoun, parseSelector } from '../../lib/toolset';
+import { presetPhrase } from '../../lib/toolsetReach';
 
 // The pieces the create and the edit review share: the plain summary rows,
 // the technical fold-out's styles and items, and agent-manager's verdicts.
@@ -96,15 +97,6 @@ export const useReviewStyles = makeStyles(theme => ({
 // lineWidth: -1 keeps prompts and URLs unfolded; noRefs avoids YAML anchors.
 export const YAML_OPTS = { lineWidth: -1, noRefs: true } as const;
 
-/** How a shipped preset reads in the plain summary; `none` adds nothing. */
-const PRESET_PHRASES: Record<string, string> = {
-  'read-only': 'read-only tools',
-  none: '',
-  full: 'every tool the gateway exposes',
-  infrastructure: 'the Infrastructure tools',
-  'agent-platform': 'the Agent Platform tools',
-};
-
 /**
  * The one-line Tools summary in words (QA R2-2): the loud labels, else each
  * preset and whole connector by name, and the rest counted, the way the Tools
@@ -125,7 +117,8 @@ export function toolsetSummaryLabel(
   for (const selector of declared) {
     const parsed = parseSelector(selector);
     if (parsed?.kind === 'preset') {
-      parts.push(PRESET_PHRASES[parsed.name] ?? `the ${parsed.name} preset`);
+      // Preset phrases are shared with the composer's reach line.
+      parts.push(presetPhrase(parsed.name));
     } else if (parsed?.kind === 'server') {
       parts.push(`all ${parsed.name} tools`);
     } else if (parsed?.kind === 'tool' || parsed?.kind === 'workflow') {
