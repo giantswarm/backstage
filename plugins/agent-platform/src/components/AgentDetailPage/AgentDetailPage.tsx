@@ -785,6 +785,7 @@ function AgentDetailPageContent() {
         displayName={agent.getDisplayName()}
         isOpen={isUpdateSkillsOpen}
         onOpenChange={setUpdateSkillsOpen}
+        skillCount={agent.getSkills().length}
         mode={updateSkillsMode}
         updating={updating}
         onUpdated={onSkillsUpdated}

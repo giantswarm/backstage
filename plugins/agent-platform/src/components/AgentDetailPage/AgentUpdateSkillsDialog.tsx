@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Alert, Flex, Skeleton, Text } from '@backstage/ui';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   ConfirmDialog,
@@ -23,16 +23,19 @@ import {
   skillRefreshPlan,
   type SkillRefreshEntry,
 } from '../../lib/skillRefresh';
+import { CellSkeleton } from './CellSkeleton';
+import { SkillRefreshSkeletonRow } from './SkillRefreshSkeletonRow';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { shortPin } from './helpers';
 
 /**
- * Rows the table shows while the agent's skills are still being read: enough
- * to read as a table, few enough not to promise a long list.
+ * Rows the table shows while the agent's skills are still being read, when the
+ * page did not say how many it has: enough to read as a table, few enough not
+ * to promise a long list.
  */
-const SKELETON_ROWS = 3;
+const DEFAULT_SKELETON_ROWS = 3;
 
 const useStyles = makeStyles(theme => ({
   // At phone width the table scrolls inside the dialog rather than squeezing
@@ -59,8 +62,9 @@ const useStyles = makeStyles(theme => ({
       fontSize: '0.75rem',
     },
   },
-  // A git commit (12 characters) fits; a digest (19) fits Pinned. Anything
-  // longer is cut, and its title carries the whole pin.
+  // A git commit (12 characters) fits, and so does an OCI pin's digest
+  // (`sha256:` and 12). Anything longer is cut, and its title carries the
+  // whole pin.
   colPinned: { width: '10.5rem' },
   colHead: { width: '8rem' },
   colOutcome: { width: '11rem' },
@@ -76,9 +80,9 @@ const useStyles = makeStyles(theme => ({
     fontFamily: 'monospace',
     fontSize: '0.8rem',
   },
-  // Holds the line under the table at the loading indicator's height, so the
-  // indicator's delayed label and the note that replaces it do not push the
-  // dialog around.
+  // Holds the line under the table at the loading indicator's height in every
+  // state, so the indicator's delayed label, the note that replaces it, or
+  // nothing at all do not push the dialog around.
   status: {
     minHeight: theme.spacing(5),
   },
@@ -88,9 +92,15 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-/** The cell of a value the dry run has not answered yet. */
-function CellSkeleton({ width }: { width: string }) {
-  return <Skeleton width={width} height="1rem" rounded />;
+/**
+ * The pin as the Pinned column shows it: a short commit, or an OCI reference's
+ * digest without the repository the Skill column already names.
+ */
+function pinLabel(entry: SkillRefreshEntry): string {
+  if (entry.kind === 'oci') {
+    return shortPin(entry.pinned.slice(entry.pinned.indexOf('@') + 1));
+  }
+  return shortPin(entry.pinned);
 }
 
 /**
@@ -123,6 +133,25 @@ function PlanRow({
     outcome = 'Already at the head';
   }
 
+  let headCell: ReactNode;
+  if (awaitsHead) {
+    headCell = <CellSkeleton width="80%" />;
+  } else if (entry.kind === 'git' && entry.head) {
+    headCell = (
+      <span className={classes.code} title={entry.head}>
+        {shortPin(entry.head)}
+      </span>
+    );
+  } else {
+    // No head: a digest pin has none, and a git skill whose dry run failed or
+    // matched no head has none to show either.
+    headCell = (
+      <Text variant="body-x-small" color="secondary">
+        {entry.kind === 'oci' ? 'n/a' : '—'}
+      </Text>
+    );
+  }
+
   return (
     <tr data-testid={`skill-refresh-${entry.name}`}>
       <td className={classes.skill}>
@@ -138,25 +167,13 @@ function PlanRow({
       </td>
       <td className={classes.pin}>
         <span className={classes.code} title={entry.pinned}>
-          {shortPin(entry.pinned)}
+          {pinLabel(entry)}
         </span>
       </td>
-      <td className={classes.pin}>
-        {awaitsHead && <CellSkeleton width="6rem" />}
-        {!awaitsHead && entry.kind === 'git' && entry.head && (
-          <span className={classes.code} title={entry.head}>
-            {shortPin(entry.head)}
-          </span>
-        )}
-        {!awaitsHead && !(entry.kind === 'git' && entry.head) && (
-          <Text variant="body-x-small" color="secondary">
-            {entry.kind === 'oci' ? 'n/a' : '…'}
-          </Text>
-        )}
-      </td>
+      <td className={classes.pin}>{headCell}</td>
       <td>
         {awaitsHead ? (
-          <CellSkeleton width="7rem" />
+          <CellSkeleton width="70%" />
         ) : (
           <Text
             variant="body-small"
@@ -165,29 +182,6 @@ function PlanRow({
             {outcome}
           </Text>
         )}
-      </td>
-    </tr>
-  );
-}
-
-/** A row of the table before the agent's skills are read. */
-function SkeletonRow() {
-  return (
-    <tr aria-hidden>
-      <td>
-        <Flex direction="column" gap="1">
-          <CellSkeleton width="7rem" />
-          <CellSkeleton width="11rem" />
-        </Flex>
-      </td>
-      <td>
-        <CellSkeleton width="6rem" />
-      </td>
-      <td>
-        <CellSkeleton width="6rem" />
-      </td>
-      <td>
-        <CellSkeleton width="7rem" />
       </td>
     </tr>
   );
@@ -203,6 +197,11 @@ export type AgentUpdateSkillsDialogProps = {
   displayName: string;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  /**
+   * How many skills the page already shows for the agent, so the table holds
+   * that many placeholder rows while agent-manager's reading of them loads.
+   */
+  skillCount?: number;
   /**
    * `apply` re-pins live. `commit` is for an agent applied from git, which
    * agent-manager refuses to write live: the only action is then a pull request
@@ -258,6 +257,7 @@ export function AgentUpdateSkillsDialog({
   displayName,
   isOpen,
   onOpenChange,
+  skillCount,
   mode = 'apply',
   updating,
   onUpdated,
@@ -322,22 +322,16 @@ export function AgentUpdateSkillsDialog({
     updating.failure?.kind === 'not-connected';
   const isReadingPlan = isLoadingAgent || validated.isLoading;
   const isLoading = isReadingPlan || commitDryRun.isLoading;
-  // No skills to list yet: the table shows placeholder rows.
-  const isAwaitingSkills = !agent && isLoadingAgent;
+  // No skills to list yet: the table shows placeholder rows, as many as the
+  // page knows of, so the table keeps its height when the real ones arrive.
+  const isAwaitingSkills = isLoadingAgent;
+  const skeletonRows =
+    skillCount && skillCount > 0 ? skillCount : DEFAULT_SKELETON_ROWS;
   const changesAnything = refreshChangesAnything(plan);
 
   const confirmNote = viaPullRequest
     ? 'Confirming opens a pull request re-pinning the skills marked above; once merged, the Harness compiles a new revision.'
     : 'Confirming re-pins the skills marked above; its Harness then compiles a new revision.';
-
-  const canConfirm =
-    !isCommitted &&
-    !isLoading &&
-    !failure &&
-    !missing &&
-    violations.length === 0 &&
-    Boolean(validated.result) &&
-    changesAnything;
 
   const showsNote =
     Boolean(validated.result) &&
@@ -346,6 +340,7 @@ export function AgentUpdateSkillsDialog({
     !missing &&
     violations.length === 0 &&
     !isCommitted;
+  const canConfirm = showsNote && changesAnything;
 
   const onConfirm = async () => {
     if (!canConfirm) {
@@ -481,14 +476,14 @@ export function AgentUpdateSkillsDialog({
               </thead>
               <tbody>
                 {isAwaitingSkills
-                  ? Array.from({ length: SKELETON_ROWS }, (_, index) => (
-                      <SkeletonRow key={index} />
+                  ? Array.from({ length: skeletonRows }, (_, index) => (
+                      <SkillRefreshSkeletonRow key={index} />
                     ))
                   : plan.map((entry, index) => (
                       <PlanRow
                         key={`${entry.name}#${index}`}
                         entry={entry}
-                        isReading={isReadingPlan}
+                        isReading={isLoading}
                       />
                     ))}
               </tbody>
@@ -497,25 +492,25 @@ export function AgentUpdateSkillsDialog({
         )}
 
         {/* One line under the table: what is being asked, then what confirming
-            does. The indicator stays mounted from the first question to the
-            last, so it does not restart between them. */}
-        {(isLoading || showsNote) && (
-          <div className={classes.status}>
-            {isLoading ? (
-              <LoadingIndicator
-                label={
-                  isReadingPlan
-                    ? 'Asking agent-manager which skills would move…'
-                    : 'Asking agent-manager whether it can open the pull request…'
-                }
-              />
-            ) : (
-              <Text variant="body-small" color="secondary">
-                {changesAnything ? confirmNote : ALREADY_AT_HEAD}
-              </Text>
-            )}
-          </div>
-        )}
+            does, or nothing; its height is held either way. The indicator
+            stays mounted from the first question to the last, so it does not
+            restart between them. */}
+        <div className={classes.status}>
+          {isLoading && (
+            <LoadingIndicator
+              label={
+                isReadingPlan
+                  ? 'Asking agent-manager which skills would move…'
+                  : 'Asking agent-manager whether it can open the pull request…'
+              }
+            />
+          )}
+          {showsNote && (
+            <Text variant="body-small" color="secondary">
+              {changesAnything ? confirmNote : ALREADY_AT_HEAD}
+            </Text>
+          )}
+        </div>
 
         {commitResult && <CommitOutcome result={commitResult} />}
       </Flex>

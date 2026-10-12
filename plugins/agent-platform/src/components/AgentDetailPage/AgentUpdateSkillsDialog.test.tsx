@@ -59,6 +59,8 @@ type Scenario = {
   commitDryRunHeld?: Promise<void>;
   /** validate_agent's violations. */
   violations?: string[];
+  /** How many skills the page shows for the agent. */
+  skillCount?: number;
   /** The dialog is open in commit mode: an agent applied from git. */
   commit?: boolean;
 };
@@ -158,7 +160,13 @@ const analyticsApi = mockApis.analytics.mock();
 const onUpdated = jest.fn();
 const onOpenChange = jest.fn();
 
-function Host({ mode }: { mode?: 'apply' | 'commit' }) {
+function Host({
+  mode,
+  skillCount,
+}: {
+  mode?: 'apply' | 'commit';
+  skillCount?: number;
+}) {
   const updating = useUpdateAgent('gazelle');
   return (
     <AgentUpdateSkillsDialog
@@ -168,6 +176,7 @@ function Host({ mode }: { mode?: 'apply' | 'commit' }) {
       displayName="PR reviewer"
       isOpen
       mode={mode}
+      skillCount={skillCount}
       onOpenChange={onOpenChange}
       updating={updating}
       onUpdated={onUpdated}
@@ -188,7 +197,10 @@ async function renderDialog(scenario: Scenario = {}) {
       ]}
     >
       <QueryClientProvider client={queryClient}>
-        <Host mode={scenario.commit ? 'commit' : 'apply'} />
+        <Host
+          mode={scenario.commit ? 'commit' : 'apply'}
+          skillCount={scenario.skillCount}
+        />
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -228,16 +240,20 @@ describe('AgentUpdateSkillsDialog', () => {
     const digest = screen.getByTestId('skill-refresh-runbooks');
     expect(digest).toHaveTextContent('Pinned by digest — left alone');
     expect(digest).toHaveTextContent('n/a');
+    // The digest, not the repository the Skill column already names.
+    expect(within(digest).getByTitle(OCI)).toHaveTextContent(
+      'sha256:0123456789ab',
+    );
   });
 
-  it('shows placeholder rows and a progress line until the skills are read, with the confirm locked', async () => {
+  it('shows a placeholder row per skill the page knows of and a progress line until the skills are read, with the confirm locked', async () => {
     let settle: () => void = () => {};
     const held = new Promise<void>(resolve => (settle = resolve));
-    await renderDialog({ agentHeld: held });
+    await renderDialog({ agentHeld: held, skillCount: CURRENT.length });
 
     const table = screen.getByRole('table', { name: 'Skills and their pins' });
     expect(table).toHaveAttribute('aria-busy', 'true');
-    expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(CURRENT.length);
     expect(
       await screen.findByText('Asking agent-manager which skills would move…'),
     ).toBeInTheDocument();
@@ -253,6 +269,19 @@ describe('AgentUpdateSkillsDialog', () => {
     expect(
       screen.queryByText('Asking agent-manager which skills would move…'),
     ).not.toBeInTheDocument();
+    // The real rows took the placeholders' place, one for one.
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(CURRENT.length);
+    expect(screen.queryAllByTestId('cell-skeleton')).toHaveLength(0);
+  });
+
+  it('shows three placeholder rows when the page did not say how many skills there are', async () => {
+    await renderDialog({ agentHeld: new Promise(() => {}) });
+
+    expect(
+      screen
+        .getByRole('table', { name: 'Skills and their pins' })
+        .querySelectorAll('tbody tr'),
+    ).toHaveLength(3);
   });
 
   it('lists the pins while the dry run runs, holding the head and outcome cells in place', async () => {
@@ -264,7 +293,7 @@ describe('AgentUpdateSkillsDialog', () => {
     expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
     expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
     expect(moving).not.toHaveTextContent('Moves to the head');
-    expect(moving.querySelectorAll('.bui-Skeleton')).toHaveLength(2);
+    expect(within(moving).getAllByTestId('cell-skeleton')).toHaveLength(2);
     // A digest pin never moves, so it has nothing to wait for.
     expect(screen.getByTestId('skill-refresh-runbooks')).toHaveTextContent(
       'Pinned by digest — left alone',
@@ -284,7 +313,7 @@ describe('AgentUpdateSkillsDialog', () => {
       await within(moving).findByText('Moves to the head'),
     ).toBeInTheDocument();
     expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
-    expect(moving.querySelectorAll('.bui-Skeleton')).toHaveLength(0);
+    expect(within(moving).queryAllByTestId('cell-skeleton')).toHaveLength(0);
   });
 
   it('confirms with update_agent and refreshSkills only, then hands the result over', async () => {
@@ -332,7 +361,8 @@ describe('AgentUpdateSkillsDialog', () => {
 
       const moving = await screen.findByTestId('skill-refresh-pr-review');
       expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
-      expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
+      // The head shows once the commit dry run has answered too.
+      expect(await within(moving).findByTitle(HEAD)).toBeInTheDocument();
       expect(moving).toHaveTextContent('Moves to the head');
       expect(
         screen.getByText(/opens a pull request as you with the new pins/),
@@ -515,6 +545,10 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(
         screen.queryByText(/Confirming opens a pull request/),
       ).not.toBeInTheDocument();
+      // validate_agent's head is not final yet: the cells wait for the plan.
+      const moving = screen.getByTestId('skill-refresh-pr-review');
+      expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
+      expect(within(moving).getAllByTestId('cell-skeleton')).toHaveLength(2);
 
       settle();
       expect(
@@ -583,6 +617,10 @@ describe('AgentUpdateSkillsDialog', () => {
     expect(
       screen.getByText(/GitHub answered 404 — the repository does not exist/),
     ).toBeInTheDocument();
+    // No head will come: the row says so rather than looking pending.
+    const row = screen.getByTestId('skill-refresh-pr-review');
+    expect(row).not.toHaveTextContent('…');
+    expect(within(row).queryAllByTestId('cell-skeleton')).toHaveLength(0);
     expect(
       screen.getByRole('button', { name: 'Update all skills' }),
     ).toBeDisabled();
