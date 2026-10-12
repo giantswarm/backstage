@@ -139,7 +139,7 @@ export type SessionComposerProps = {
   isStopping?: boolean;
   /**
    * A compact, always-visible session detail beside the submit control — the
-   * cost/memory chip, per the prototype's composer. Rendered inside the box's
+   * cost/context chip, per the prototype's composer. Rendered inside the box's
    * own controls row so it stays on screen with the docked composer, whatever
    * the conversation's length. Presentation only; the caller owns it.
    */

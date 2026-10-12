@@ -4,7 +4,7 @@ import { makeStyles } from '@material-ui/core';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import type { TokenUsage } from '@giantswarm/backstage-plugin-agent-platform-common';
 
-import { contextWindowFor, memoryUsage } from '../../lib/contextWindows';
+import { contextWindowFor, contextUsage } from '../../lib/contextWindows';
 import {
   formatCount,
   formatMoney,
@@ -33,7 +33,7 @@ const useStyles = makeStyles(theme => ({
     height: 12,
     background: `var(--bui-border-2, ${theme.palette.divider})`,
   },
-  memory: {
+  context: {
     display: 'inline-flex',
     alignItems: 'center',
     gap: theme.spacing(0.75),
@@ -78,7 +78,7 @@ const useStyles = makeStyles(theme => ({
 }));
 
 /** The ring in the trigger: how full the context window is, at a glance. */
-function MemoryRing({ percent }: { percent: number }) {
+function ContextRing({ percent }: { percent: number }) {
   const circumference = 2 * Math.PI * 7.5;
   const filled = (Math.min(100, Math.max(0, percent)) / 100) * circumference;
   return (
@@ -170,7 +170,7 @@ export function SessionCostPopover({
   const windows = config?.getOptional<Record<string, unknown>>(
     'agentPlatform.models.contextWindows',
   );
-  const memory = memoryUsage(
+  const context = contextUsage(
     lastTurnTokens?.prompt ?? 0,
     contextWindowFor(model, windows),
   );
@@ -180,25 +180,29 @@ export function SessionCostPopover({
   // when it reported one, the estimate otherwise.
   const chipCost = formatMoney(reportedCostUsd ?? estimatedCostUsd, currency);
 
-  let memoryChip: ReactNode = null;
-  let memoryValue: ReactNode = '—';
-  if (memory.percent !== undefined && memory.windowTokens !== undefined) {
-    memoryChip = (
-      <span className={classes.memory}>
-        <MemoryRing percent={memory.percent} />
-        {formatPercent(memory.percent)}
+  let contextChip: ReactNode = null;
+  let contextValue: ReactNode = '—';
+  // What the chip shows of the context, said for a screen reader.
+  let contextLabel = '';
+  if (context.percent !== undefined && context.windowTokens !== undefined) {
+    contextChip = (
+      <span className={classes.context}>
+        <ContextRing percent={context.percent} />
+        {formatPercent(context.percent)}
       </span>
     );
-    memoryValue = `${formatTokens(memory.usedTokens)} of ${formatTokens(
-      memory.windowTokens,
-    )} · ${formatPercent(memory.percent)}`;
-  } else if (memory.usedTokens > 0) {
-    memoryChip = (
-      <span className={classes.memory}>
-        {formatTokens(memory.usedTokens)} ctx
+    contextValue = `${formatTokens(context.usedTokens)} of ${formatTokens(
+      context.windowTokens,
+    )} · ${formatPercent(context.percent)}`;
+    contextLabel = `, ${formatPercent(context.percent)} of context used`;
+  } else if (context.usedTokens > 0) {
+    contextChip = (
+      <span className={classes.context}>
+        {formatTokens(context.usedTokens)} ctx
       </span>
     );
-    memoryValue = `${formatTokens(memory.usedTokens)} tokens`;
+    contextValue = `${formatTokens(context.usedTokens)} tokens`;
+    contextLabel = `, ${formatTokens(context.usedTokens)} tokens of context`;
   }
 
   return (
@@ -207,17 +211,13 @@ export function SessionCostPopover({
         variant="tertiary"
         size="small"
         className={classes.trigger}
-        aria-label={`Session cost and context: ${chipCost}${
-          memory.percent !== undefined
-            ? `, ${formatPercent(memory.percent)} of context used`
-            : ''
-        }`}
+        aria-label={`Session cost and context: ${chipCost}${contextLabel}`}
       >
         <span>{chipCost}</span>
-        {memoryChip && (
+        {contextChip && (
           <>
             <span className={classes.divider} aria-hidden="true" />
-            {memoryChip}
+            {contextChip}
           </>
         )}
       </Button>
@@ -251,16 +251,16 @@ export function SessionCostPopover({
             )}`}
           />
           <Row label="Turns" value={formatCount(taskCount)} />
-          <Row label="Context used" value={memoryValue} />
-          {memory.percent !== undefined && (
+          <Row label="Context used" value={contextValue} />
+          {context.percent !== undefined && (
             <div
               className={classes.bar}
               role="img"
-              aria-label={`Context ${formatPercent(memory.percent)} full`}
+              aria-label={`Context ${formatPercent(context.percent)} full`}
             >
               <div
                 className={classes.barFill}
-                style={{ width: `${memory.percent}%` }}
+                style={{ width: `${context.percent}%` }}
               />
             </div>
           )}

@@ -127,6 +127,13 @@ describe('SessionCostPopover', () => {
     publishConfig({ contextWindows: { 'gpt-5': 400000 } });
     await render();
 
+    // The chip's name carries the same count, not a bare cost.
+    expect(
+      screen.getByRole('button', {
+        name: 'Session cost and context: $0.210, 24.0k tokens of context',
+      }),
+    ).toBeInTheDocument();
+
     const dialog = await open();
 
     // The count without a share: claiming a percentage of an unknown window

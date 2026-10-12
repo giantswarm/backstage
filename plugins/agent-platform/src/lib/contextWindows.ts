@@ -1,5 +1,5 @@
 /**
- * Context-window sizes for the chat's memory indicator.
+ * Context-window sizes for the chat's context indicator.
  *
  * Nothing in the platform reports a hosted model's context window — kagent's
  * ModelConfig has no such field and model-manager only knows it for self-hosted
@@ -56,7 +56,7 @@ export function contextWindowFor(
   return best?.tokens;
 }
 
-export type MemoryUsage = {
+export type ContextUsage = {
   /** Tokens in the context — the newest turn's prompt tokens. */
   usedTokens: number;
   /** The model's window, when the config names it. */
@@ -71,15 +71,15 @@ export type MemoryUsage = {
 };
 
 /**
- * How full the model's memory is, from the newest turn's prompt tokens and the
+ * How full the model's context window is, from the newest turn's prompt tokens and the
  * configured window. The numerator is the closest measurement that exists:
  * kagent records tokens per turn (summed over the turn's model calls), not per
  * call, so treat the figure as an approximation and say so wherever it shows.
  */
-export function memoryUsage(
+export function contextUsage(
   usedTokens: number,
   windowTokens: number | undefined,
-): MemoryUsage {
+): ContextUsage {
   const used = Number.isFinite(usedTokens) && usedTokens > 0 ? usedTokens : 0;
   if (
     windowTokens === undefined ||
