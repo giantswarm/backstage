@@ -584,6 +584,7 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Agents"
+        isLoading={isLoading}
       />
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search

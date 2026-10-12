@@ -978,6 +978,52 @@ describe('ServingPage', () => {
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
 
+  it('holds the read warnings while the served models are read, not while the GPU nodes are', async () => {
+    mockUsePullJobs.mockReturnValue({
+      ...noJobs,
+      errors: [
+        { installation: 'inst-1', error: new Error('502 from the gateway') },
+      ],
+    });
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: true,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+
+    // The served-model reads have settled; the GPU node and pod reads, which
+    // the warning is not about, are still going.
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: false,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+    act(() => rerenderSection());
+
+    expect(
+      await screen.findByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read the downloads'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('progressbar', { name: 'Reading the served models…' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('surfaces installations whose LLMInferenceServices could not be read', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,

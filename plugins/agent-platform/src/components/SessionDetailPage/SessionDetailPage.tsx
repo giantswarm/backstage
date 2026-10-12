@@ -89,7 +89,8 @@ import { describeCostBasis } from '../../lib/costBasis';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { AgentAvatar } from '../AgentAvatar';
-import { sendKeyCaption } from '../../lib/sendKey';
+import { SEND_KEY_CAPTIONS } from '../../lib/sendKey';
+import { SendKeyHint } from '../SendKeyHint';
 
 /** Matches the list's row avatar: one line of text, 2× for hi-dpi. */
 const AVATAR_SIZE: AvatarSize = 48;
@@ -945,10 +946,10 @@ export function SessionDetailPage() {
     );
   }
 
-  /* Cost and memory, per the prototype: one chip in the composer's own
+  /* Cost and context, per the prototype: one chip in the composer's own
      controls, so it stays on screen with the docked box however long the
      conversation gets. Estimated cost is labeled as one and names its basis;
-     reported cost appears only when the runtime reported any; memory is a
+     reported cost appears only when the runtime reported any; context is a
      share only when the model's context window is configured. The details
      popover opens above the chip. */
   const costChip = (
@@ -1153,15 +1154,18 @@ export function SessionDetailPage() {
                   },
                   isStarting: creation.isCreating,
                   replacesSend: runtimeLoss!.reported,
-                  caption: runtimeLoss!.reported
-                    ? `This session cannot continue; your message starts a new one with the same agent. ${sendKeyCaption(
-                        {
-                          key: 'Enter starts it',
-                          tap: 'Tap the button below to start it',
-                        },
-                        touch,
-                      )}`
-                    : 'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.',
+                  caption: runtimeLoss!.reported ? (
+                    <>
+                      This session cannot continue; your message starts a new
+                      one with the same agent.{' '}
+                      <SendKeyHint
+                        options={SEND_KEY_CAPTIONS.runtimeLost}
+                        touch={touch}
+                      />
+                    </>
+                  ) : (
+                    'Sending again retries the runtime. If it fails again, start a new session with the same agent — your message goes with it.'
+                  ),
                 }
               : undefined
           }

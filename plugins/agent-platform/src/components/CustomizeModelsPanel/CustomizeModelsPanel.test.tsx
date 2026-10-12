@@ -1,4 +1,5 @@
-import { screen, within } from '@testing-library/react';
+import { useState } from 'react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
@@ -41,6 +42,7 @@ const qwen: ModelRow = {
 
 let mockModelRows: ModelRow[];
 let mockModelsLoading = false;
+let mockUnreachableInstallations: string[] = [];
 let mockServingInstallations: string[] = [];
 const agents = [
   { id: 'a', modelConfigId: 'golem/support/sonnet' },
@@ -54,7 +56,7 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
     isLoading: mockModelsLoading,
     hasInstallations: true,
-    unreachableInstallations: [],
+    unreachableInstallations: mockUnreachableInstallations,
   }),
 }));
 jest.mock('../AgentsDataProvider', () => ({
@@ -75,10 +77,27 @@ function renderPanel(search = '') {
   });
 }
 
+// Re-render the panel from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what the mocked providers answer
+// and watch one mounted panel follow.
+let rerenderPanel: () => void = () => {};
+function RerenderablePanel() {
+  const [, setTick] = useState(0);
+  rerenderPanel = () => setTick(tick => tick + 1);
+  return <CustomizeModelsPanel search="" />;
+}
+
+function renderRerenderablePanel() {
+  return renderInTestApp(<RerenderablePanel />, {
+    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+  });
+}
+
 describe('CustomizeModelsPanel', () => {
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
     mockModelsLoading = false;
+    mockUnreachableInstallations = [];
     mockServingInstallations = [];
   });
 
@@ -190,6 +209,24 @@ describe('CustomizeModelsPanel', () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+  });
+
+  it('holds the read warning until the read settles', async () => {
+    mockModelRows = [];
+    mockModelsLoading = true;
+    mockUnreachableInstallations = ['lab'];
+    await renderRerenderablePanel();
+    expect(
+      await screen.findByLabelText('Reading your models…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    mockModelsLoading = false;
+    act(() => rerenderPanel());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
+    expect(screen.queryByText('No models yet')).not.toBeInTheDocument();
   });
 });
 

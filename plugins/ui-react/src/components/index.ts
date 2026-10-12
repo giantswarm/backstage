@@ -27,6 +27,7 @@ export * from './SelectableCard';
 export * from './Gate';
 export * from './GitOpsManagedLabel';
 export * from './GSMarkdownContent';
+export * from './GSReleaseInfo';
 export * from './InfoCard';
 export * from './InfoHint';
 export * from './JsonHighlight';

@@ -21,8 +21,10 @@ export interface Config {
     /**
      * The portal's own release, e.g. `2.81.5`: the chart's app version, set
      * by the chart as `APP_CONFIG_app_releaseVersion`; locally `${VERSION}`
-     * in `app-config.yaml`. Shown on the home page and reported to Sentry and
-     * TelemetryDeck, both of which start before sign-in, so it is public.
+     * in `app-config.yaml`. Shown at the bottom of the classic home page and
+     * of the shell's Profile and settings page (`GSReleaseInfo`), and reported
+     * to Sentry and TelemetryDeck, both of which start before sign-in, so it
+     * is public.
      * Optional like the Sentry fields below: unset in local development
      * when `VERSION` is.
      * @visibility frontend
