@@ -945,10 +945,10 @@ export function SessionDetailPage() {
     );
   }
 
-  /* Cost and memory, per the prototype: one chip in the composer's own
+  /* Cost and context, per the prototype: one chip in the composer's own
      controls, so it stays on screen with the docked box however long the
      conversation gets. Estimated cost is labeled as one and names its basis;
-     reported cost appears only when the runtime reported any; memory is a
+     reported cost appears only when the runtime reported any; context is a
      share only when the model's context window is configured. The details
      popover opens above the chip. */
   const costChip = (

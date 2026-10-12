@@ -377,7 +377,7 @@ describe('SessionComposer', () => {
   });
 
   it('renders the details slot inside the box, next to the action', async () => {
-    // The cost/memory chip docks here so it stays on screen with the composer.
+    // The cost/context chip docks here so it stays on screen with the composer.
     // It must survive every trailing state: beside Send, beside Stop, and when
     // a lost runtime removes Send entirely.
     renderComposer({ details: <span data-testid="details-chip" /> });

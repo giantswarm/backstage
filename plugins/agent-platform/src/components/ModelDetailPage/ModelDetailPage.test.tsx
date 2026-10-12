@@ -329,7 +329,7 @@ describe('ModelDetailPage', () => {
   it('leaves the context window out when the table does not name the model', async () => {
     await renderPage();
 
-    expect(screen.queryByText('Memory (context)')).toBeNull();
+    expect(screen.queryByText('Context window')).toBeNull();
   });
 
   it('opens the Connect-a-model flow, prefilled, on Edit', async () => {

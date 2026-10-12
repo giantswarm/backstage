@@ -1,4 +1,4 @@
-import { contextWindowFor, memoryUsage } from './contextWindows';
+import { contextWindowFor, contextUsage } from './contextWindows';
 
 describe('contextWindowFor', () => {
   const table = {
@@ -49,9 +49,9 @@ describe('contextWindowFor', () => {
   });
 });
 
-describe('memoryUsage', () => {
+describe('contextUsage', () => {
   it('computes the share of a known window', () => {
-    expect(memoryUsage(24000, 200000)).toEqual({
+    expect(contextUsage(24000, 200000)).toEqual({
       usedTokens: 24000,
       windowTokens: 200000,
       percent: 12,
@@ -59,26 +59,26 @@ describe('memoryUsage', () => {
   });
 
   it('reports only the raw count when the window is unknown', () => {
-    expect(memoryUsage(24000, undefined)).toEqual({ usedTokens: 24000 });
+    expect(contextUsage(24000, undefined)).toEqual({ usedTokens: 24000 });
   });
 
   it('caps the share at 100%', () => {
     // The numerator is a per-turn sum over the turn's model calls, so it can
     // exceed the window without the context ever having done so.
-    expect(memoryUsage(500000, 200000).percent).toBe(100);
+    expect(contextUsage(500000, 200000).percent).toBe(100);
   });
 
   it('treats a negative or non-finite count as zero', () => {
-    expect(memoryUsage(-5, 200000)).toEqual({
+    expect(contextUsage(-5, 200000)).toEqual({
       usedTokens: 0,
       windowTokens: 200000,
       percent: 0,
     });
-    expect(memoryUsage(NaN, 200000).usedTokens).toBe(0);
+    expect(contextUsage(NaN, 200000).usedTokens).toBe(0);
   });
 
   it('ignores a nonsensical window', () => {
-    expect(memoryUsage(100, 0)).toEqual({ usedTokens: 100 });
-    expect(memoryUsage(100, -1)).toEqual({ usedTokens: 100 });
+    expect(contextUsage(100, 0)).toEqual({ usedTokens: 100 });
+    expect(contextUsage(100, -1)).toEqual({ usedTokens: 100 });
   });
 });
