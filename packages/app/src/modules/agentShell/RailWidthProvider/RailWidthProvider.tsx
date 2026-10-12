@@ -23,6 +23,14 @@ export const RAIL_MAX_WIDTH = 480;
 const RAIL_MAX_SHARE = 0.4;
 
 /**
+ * The collapsed rail's width: one icon item (a 20px icon in 8px of padding),
+ * the rail's 8px padding either side and its 1px border. Narrower than
+ * core-components' collapsed sidebar (72), which is laid out for its own
+ * items; with the same padding on both sides every icon centres on one axis.
+ */
+export const RAIL_COLLAPSED_WIDTH = 36 + 2 * 8 + 1;
+
+/**
  * Per browser, as core-components keeps the rail's pinned state: the width
  * that suits a screen is not the one that suits another.
  */
@@ -175,5 +183,5 @@ export function useRailInset(): number {
   if (isMobile) {
     return 0;
   }
-  return isPinned ? width : sidebarConfig.drawerWidthClosed;
+  return isPinned ? width : RAIL_COLLAPSED_WIDTH;
 }

@@ -1,9 +1,7 @@
-import {
-  SidebarPinStateProvider,
-  sidebarConfig,
-} from '@backstage/core-components';
+import { SidebarPinStateProvider } from '@backstage/core-components';
 import { render, screen } from '@testing-library/react';
 import {
+  RAIL_COLLAPSED_WIDTH,
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
 } from '../RailWidthProvider';
@@ -71,7 +69,7 @@ describe('ShellMain', () => {
 
     it('starts where the collapsed rail ends, whatever the expanded width', () => {
       expect(inset(renderBesideRail({ isPinned: false }))).toBe(
-        `${sidebarConfig.drawerWidthClosed}px`,
+        `${RAIL_COLLAPSED_WIDTH}px`,
       );
     });
 

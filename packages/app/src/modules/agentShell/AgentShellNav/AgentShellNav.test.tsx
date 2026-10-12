@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { SidebarPinStateProvider } from '@backstage/core-components';
+import {
+  SidebarPinStateProvider,
+  sidebarConfig,
+} from '@backstage/core-components';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import {
@@ -11,6 +14,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import {
+  RAIL_COLLAPSED_WIDTH,
   RAIL_DEFAULT_WIDTH,
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
@@ -573,6 +577,39 @@ describe('AgentShellNav', () => {
     expect(screen.queryByText('Customize')).not.toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
     expect(screen.queryByTestId('recent-sessions')).not.toBeInTheDocument();
+  });
+
+  it('collapses narrower than the classic sidebar, every icon on one axis', async () => {
+    await renderNav({ isPinned: false });
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    expect(nav).toHaveStyle({ width: `${RAIL_COLLAPSED_WIDTH}px` });
+    expect(RAIL_COLLAPSED_WIDTH).toBeLessThan(sidebarConfig.drawerWidthClosed);
+
+    // Menu items, Search and the profile trigger, which is narrower than the
+    // rest: each centred in its row, as the logo and expand button are.
+    const rows = nav.querySelectorAll('ul > li');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of Array.from(rows)) {
+      const style = window.getComputedStyle(row);
+      expect(style.display).toBe('flex');
+      expect(style.justifyContent).toBe('center');
+    }
+    expect(
+      within(nav).getByRole('button', { name: 'Profile and settings' }),
+    ).toBeInTheDocument();
+    expect(
+      within(nav).getByRole('button', { name: 'Search' }),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the expanded rail items left-aligned', async () => {
+    await renderNav();
+
+    const nav = screen.getByRole('navigation', { name: 'Main' });
+    const row = screen.getByRole('link', { name: 'Customize' }).parentElement!;
+    expect(nav).toContainElement(row);
+    expect(window.getComputedStyle(row).justifyContent).not.toBe('center');
   });
 
   describe('resizing the rail', () => {

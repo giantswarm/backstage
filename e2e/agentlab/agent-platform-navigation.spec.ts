@@ -122,6 +122,47 @@ test('the rail resizes from its edge, remembers the width, and the page follows'
   await expect.poll(contentLeft).toBe(initial);
 });
 
+test('the collapsed rail is narrow, with every icon on one vertical axis', async ({
+  admin,
+}) => {
+  await open(admin, '/agent-platform/sessions');
+  const nav = rail(admin);
+  await nav.getByRole('button', { name: 'Collapse sidebar' }).click();
+  const expand = nav.getByRole('button', { name: 'Expand sidebar' });
+  await expect(expand).toBeVisible();
+
+  // RAIL_COLLAPSED_WIDTH: one 36px icon item, 8px either side, the border.
+  await expect.poll(async () => (await nav.boundingBox())?.width).toBe(53);
+  await expect
+    .poll(async () => (await admin.locator('#content').boundingBox())?.x)
+    .toBe(53);
+  await expect(admin.getByRole('separator')).toHaveCount(0);
+
+  // The axis is the rail's inner width's middle, left of the 1px border.
+  const box = (await nav.boundingBox())!;
+  const axis = box.x + (box.width - 1) / 2;
+  // The logo, the expand button and every item's icon are SVGs; the profile
+  // trigger holds an avatar instead.
+  const marks = [
+    ...(await nav.locator('svg').all()),
+    nav.getByRole('button', { name: 'Profile and settings' }),
+  ];
+  expect(marks.length).toBeGreaterThan(4);
+  for (const mark of marks) {
+    const markBox = (await mark.boundingBox())!;
+    expect(
+      Math.abs(markBox.x + markBox.width / 2 - axis),
+      await mark.evaluate(element => element.outerHTML.slice(0, 120)),
+    ).toBeLessThanOrEqual(1);
+  }
+
+  // Pinned again, so the next test finds the expanded rail.
+  await expand.click();
+  await expect(
+    nav.getByRole('button', { name: 'Collapse sidebar' }),
+  ).toBeVisible();
+});
+
 test('the shell and the classic portal cross-link in new tabs', async ({
   admin,
 }) => {

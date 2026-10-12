@@ -63,6 +63,15 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 2,
   },
+  // The collapsed rail centres each item on the rail's one axis, the axis
+  // the logo and the expand button sit on: links and Search fill the rail's
+  // inner width, the profile trigger is narrower and would sit left.
+  compactList: {
+    '& > li': {
+      display: 'flex',
+      justifyContent: 'center',
+    },
+  },
   mobileList: {
     height: '100%',
     flexDirection: 'row',
@@ -258,6 +267,9 @@ function AgentShellRail() {
   const compact = !isPinned;
   const layout: RailLayout = compact ? 'collapsed' : 'expanded';
   const desktopTop = top.filter(item => !item.mobileOnly);
+  const listClassName = compact
+    ? `${classes.list} ${classes.compactList}`
+    : classes.list;
 
   return (
     <>
@@ -296,7 +308,7 @@ function AgentShellRail() {
               onPress={toggleSidebarPinState}
             />
           </Flex>
-          <ul className={classes.list}>
+          <ul className={listClassName}>
             {desktopTop.map(item => (
               <Fragment key={item.id}>
                 <RailItem item={item} layout={layout} />
@@ -316,7 +328,7 @@ function AgentShellRail() {
             </div>
           )}
           <Box pt="2" className={classes.bottom}>
-            <ul className={classes.list}>
+            <ul className={listClassName}>
               {bottom.map(item => (
                 <RailItem key={item.id} item={item} layout={layout} />
               ))}

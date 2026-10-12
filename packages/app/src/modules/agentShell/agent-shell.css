@@ -279,7 +279,7 @@ html[data-agent-shell]
 /*
  * The content region's left edge. SidebarPage pads the page by the classic
  * sidebar's fixed widths (pinned or collapsed); the shell's rail can be
- * resized, so in the shell ShellMain (`#content`) starts the content where
+ * resized and collapses narrower, so in the shell ShellMain (`#content`) starts the content where
  * the rail ends, from the same value the rail is drawn at (`useRailInset`),
  * and SidebarPage's padding is lifted. Matched as the parent of `#content`
  * rather than by class: MUI v4's production class names carry no component
