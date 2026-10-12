@@ -7,10 +7,8 @@ import {
   ModelConfig,
   type ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import {
-  mockPhoneLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import type { LlmUsageView } from '../../hooks/useLlmUsage';
 import type { LlmUsage } from '../../lib/llmUsage';

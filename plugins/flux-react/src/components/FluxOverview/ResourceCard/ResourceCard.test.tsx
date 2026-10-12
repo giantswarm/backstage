@@ -11,9 +11,15 @@ import { ResourceManifestDialogProvider } from '../ResourceManifestDialogProvide
 
 // A textarea stands in for the CodeMirror editor, so a test can read the
 // manifest as the textbox's value. It replaces the module ManifestDialog
-// imports, so the real dialog renders around it.
+// imports, so the real dialog renders around it. ui-react's `exports` keeps
+// its source private, so the module is addressed by its file path.
 jest.mock(
-  '@giantswarm/backstage-plugin-ui-react/src/components/YamlEditorFormField',
+  require('path').join(
+    require('path').dirname(
+      require.resolve('@giantswarm/backstage-plugin-ui-react/package.json'),
+    ),
+    'src/components/YamlEditorFormField',
+  ),
   () => ({
     YamlEditorFormField: ({
       value,

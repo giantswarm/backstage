@@ -1,29 +1,45 @@
+import { createContext, type ReactNode, useContext } from 'react';
 import { Helmet } from 'react-helmet';
 import type { BreadcrumbItem } from '../Breadcrumbs';
 
-/** What every agent-platform shell page's document title ends with. */
-export const SHELL_DOCUMENT_TITLE_SUFFIX = 'Agent Platform';
-
 const SEPARATOR = ' · ';
+
+const SuffixContext = createContext<string | undefined>(undefined);
+
+/**
+ * Names the product every shell page's document title ends with, e.g.
+ * "Agent Platform". The app mounts it around the shell's pages; without one,
+ * titles carry no suffix.
+ */
+export function ShellDocumentTitleProvider({
+  suffix,
+  children,
+}: {
+  suffix: string;
+  children?: ReactNode;
+}) {
+  return (
+    <SuffixContext.Provider value={suffix}>{children}</SuffixContext.Provider>
+  );
+}
 
 /**
  * A shell page's document title: its parts, most specific first, then the
- * product — "Lab Helper · Agents · Agent Platform". Empty parts are dropped,
+ * suffix — "Lab Helper · Agents · Agent Platform". Empty parts are dropped,
  * and so is a part repeating the one before it, or the suffix.
  */
-export function shellDocumentTitle(parts: ReadonlyArray<string | undefined>) {
+export function shellDocumentTitle(
+  parts: ReadonlyArray<string | undefined>,
+  suffix?: string,
+) {
   const kept: string[] = [];
   for (const part of parts) {
     const trimmed = part?.trim();
-    if (
-      trimmed &&
-      trimmed !== SHELL_DOCUMENT_TITLE_SUFFIX &&
-      trimmed !== kept[kept.length - 1]
-    ) {
+    if (trimmed && trimmed !== suffix && trimmed !== kept[kept.length - 1]) {
       kept.push(trimmed);
     }
   }
-  return [...kept, SHELL_DOCUMENT_TITLE_SUFFIX].join(SEPARATOR);
+  return (suffix ? [...kept, suffix] : kept).join(SEPARATOR);
 }
 
 /**
@@ -53,7 +69,7 @@ export function shellTitleParts(
  * The title is whole: it also sets the template to `%s`, so a template from
  * an outer page layout ("%s | <app title>") cannot append the product a
  * second time. The innermost one mounted wins, so a page frame's title can be
- * sharpened by its content.
+ * sharpened by its content. An empty title sets nothing.
  */
 export function ShellDocumentTitle({
   title,
@@ -61,6 +77,13 @@ export function ShellDocumentTitle({
   /** The page's parts, most specific first, e.g. `['Lab Helper', 'Agents']`. */
   title: string | ReadonlyArray<string | undefined>;
 }) {
+  const suffix = useContext(SuffixContext);
   const parts = typeof title === 'string' ? [title] : title;
-  return <Helmet title={shellDocumentTitle(parts)} titleTemplate="%s" />;
+  const documentTitle = shellDocumentTitle(parts, suffix);
+  // Nothing to name yet (a session's name still loading, no suffix): leave
+  // the title to the layout rather than blanking it.
+  if (!documentTitle) {
+    return null;
+  }
+  return <Helmet title={documentTitle} titleTemplate="%s" />;
 }

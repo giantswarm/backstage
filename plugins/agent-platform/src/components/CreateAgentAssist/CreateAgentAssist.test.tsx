@@ -4,7 +4,7 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { sessionsRouteRef } from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';

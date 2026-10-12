@@ -6,7 +6,7 @@ import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
-} from '../../utils/mockPhoneLayout';
+} from '../../testUtils/mockPhoneLayout';
 import { ShowMore } from '../ShowMore';
 import { StackedRowItem, StackedRowList } from './StackedRowList';
 

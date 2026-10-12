@@ -8,9 +8,10 @@ Mobile primitives for the agent shell at 375px (T22 wave 1A):
   the shell swaps its rail for the bottom bar), `TWO_COLUMN_MIN_WIDTH` (768px)
   and touch input, as `matchMedia` queries (`PHONE_QUERY`, …) and JSS media
   keys (`PHONE_MEDIA`, …). `usePhoneLayout()` and `useTouchInput()` answer
-  live. `mockPhoneLayout()` / `mockDesktopLayout()` install a `matchMedia` for
-  jsdom tests, so a component's phone branch is tested and MUI's
-  `useMediaQuery` agrees.
+  live. `mockPhoneLayout()` / `mockDesktopLayout()` (from the `testUtils`
+  entry point, `@giantswarm/backstage-plugin-ui-react/testUtils`) install a
+  `matchMedia` for jsdom tests, so a component's phone branch is tested and
+  MUI's `useMediaQuery` agrees.
 - **`StackedRowList`**: the phone layout of a list a person opens or acts on —
   title (a link whose hit area is the row), status and actions on line 1,
   secondary facts joined by " · " on line 2. Actions are always reachable.
