@@ -79,8 +79,13 @@ test('avatars are requested from the portal’s origin with the backend’s cook
   );
   expect(csp, 'no installation host in the policy').not.toMatch(/avatars\./);
 
-  // Cancel leaves for the agents list, which in the shell is Customize's
-  // Agents tab.
+  // Cancel on a dirty form asks first, then leaves for the agents list,
+  // which in the shell is Customize's Agents tab.
   await admin.getByRole('link', { name: 'Cancel' }).click();
+  await admin
+    .getByRole('dialog')
+    .filter({ hasText: 'Discard your changes?' })
+    .getByRole('button', { name: 'Discard changes' })
+    .click();
   await expect(admin).toHaveURL(/\/customize\/agents$/);
 });

@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -395,8 +395,26 @@ function ToolsetProbe() {
   return <output data-testid="toolset">{state.toolset.join(' | ')}</output>;
 }
 
+/**
+ * The step with a way to leave it and come back, as Back and a stepper link
+ * do: the step unmounts while the form provider above it stays.
+ */
+function RoundTrip() {
+  const [shown, setShown] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setShown(value => !value)}>
+        {shown ? 'Leave the step' : 'Return to the step'}
+      </button>
+      {shown && <NewAgentToolsPage />}
+    </>
+  );
+}
+
 async function renderStep(
   options: {
+    /** Renders a control that unmounts the step and mounts it again. */
+    roundTrip?: boolean;
     api?: MusterApi;
     agents?: Agent[];
     /** The wizard's state when it opens, for the edit-mode round trip. */
@@ -442,7 +460,7 @@ async function renderStep(
           }
         >
           <Seed>
-            <NewAgentToolsPage />
+            {options.roundTrip ? <RoundTrip /> : <NewAgentToolsPage />}
             <ToolsetProbe />
           </Seed>
         </NewAgentFormProvider>
@@ -990,6 +1008,34 @@ describe('NewAgentToolsPage', () => {
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).toBe('preset:read-only');
       expect(level('Read-only tools')).toBeChecked();
+      expect(continueButton()).toBeEnabled();
+    });
+
+    it('collapses back to the preset after a round trip through another step (N2)', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: MANY_READ_ONLY,
+      });
+      await renderStep({ api, roundTrip: true });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await user.click(level('Read-only tools'));
+      await waitFor(() =>
+        expect(access('kubernetes', 'Read-only')).toBeChecked(),
+      );
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
+
+      // Back to another step and here again: the step mounts afresh.
+      await user.click(screen.getByRole('button', { name: 'Leave the step' }));
+      await user.click(
+        screen.getByRole('button', { name: 'Return to the step' }),
+      );
+      await connectorsListed();
+
+      await user.click(access('kubernetes', 'Read-only'));
+      await waitFor(() => expect(toolsetOutput()).toBe('preset:read-only'));
       expect(continueButton()).toBeEnabled();
     });
 

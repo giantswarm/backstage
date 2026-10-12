@@ -134,7 +134,12 @@ test('the New agent wizard opens on Details, derives the technical name and list
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 
-  // Cancel goes back to the list it came from.
+  // Cancel on a dirty form asks first, then goes back to the list it came from.
   await admin.getByRole('link', { name: 'Cancel' }).click();
+  await admin
+    .getByRole('dialog')
+    .filter({ hasText: 'Discard your changes?' })
+    .getByRole('button', { name: 'Discard changes' })
+    .click();
   await expect(admin).toHaveURL(/\/customize\/agents$/);
 });

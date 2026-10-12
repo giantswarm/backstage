@@ -211,6 +211,7 @@ export function NewAgentToolsPage() {
     edit,
     setToolset,
     setToolsChatOnly,
+    setToolsetBase: setKeptBase,
     isComplete,
     isToolsetValid,
     toolsetProblems,
@@ -252,12 +253,13 @@ export function NewAgentToolsPage() {
   const presetLevel = isPresetLevel(level);
   // The preset the toolset holds, alone or with more beside it (B1).
   const ownBase = presetBaseOf(state.toolset, offered);
-  // The preset every change compacts against, kept for the life of the step
-  // (R2-1): a change that takes part of it away writes it out, and without the
-  // base kept here, undoing that change could never collapse back to it.
+  // The preset every change compacts against, kept as long as the draft
+  // (R2-1, N2): a change that takes part of it away writes it out, and without
+  // the base kept in the form, undoing that change — on this visit to the step
+  // or after a round trip through another — could never collapse back to it.
   // Picking an access level, copying a toolset or removing the preset itself
   // replaces it.
-  const [keptBase, setKeptBase] = useState<string | undefined>();
+  const keptBase = state.toolsetBase;
   const presetBase = ownBase ?? keptBase;
   // Its own resolution is the toolset's while it stands alone (one query).
   const presetResolution = useToolsetResolution(
@@ -330,7 +332,14 @@ export function NewAgentToolsPage() {
         ),
       );
     },
-    [setToolset, presetResolved, presetBase, presetResolution.tools, groups],
+    [
+      setToolset,
+      setKeptBase,
+      presetResolved,
+      presetBase,
+      presetResolution.tools,
+      groups,
+    ],
   );
   // Over the cap, the step can say which connectors to reduce.
   const problems = useMemo(
@@ -482,7 +491,15 @@ export function NewAgentToolsPage() {
         setToolset([next]);
       }
     },
-    [setToolsChatOnly, setToolset, state.toolset, level, derived, offered],
+    [
+      setToolsChatOnly,
+      setToolset,
+      setKeptBase,
+      state.toolset,
+      level,
+      derived,
+      offered,
+    ],
   );
   // Every change below starts from `base`, what the grid shows; unless it
   // lands back on the preset alone, the radio then reads Only the tools I
@@ -511,7 +528,7 @@ export function NewAgentToolsPage() {
       }
       setToolset(state.toolset.filter(entry => !selectors.includes(entry)));
     },
-    [setToolset, commit, state.toolset, base, presetBase],
+    [setToolset, setKeptBase, commit, state.toolset, base, presetBase],
   );
   // A copied toolset replaces the selection, and with it the base.
   const copyToolset = useCallback(
@@ -519,7 +536,7 @@ export function NewAgentToolsPage() {
       setKeptBase(undefined);
       setToolset(toolset);
     },
-    [setToolset],
+    [setToolset, setKeptBase],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.

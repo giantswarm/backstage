@@ -83,9 +83,42 @@ export interface GitClient {
  * isomorphic-git's Node client with every request bound to `signal`:
  * `git.clone` takes no signal, but its client passes one to `http.request`,
  * which destroys the request — and a response being read — on abort.
+ *
+ * The response body is wrapped too. The client's body iterator passes a
+ * stream error only to a read that is waiting at that moment. An abort that
+ * lands while the clone is processing a chunk is dropped, and the next read
+ * waits forever for an end a destroyed response never sends. The clone would
+ * then never settle, and its checkout would never be removed. Every read
+ * therefore races the signal and fails at once after the abort.
  */
-function abortableHttp(signal: AbortSignal): HttpClient {
-  return { request: request => http.request({ ...request, signal }) };
+export function abortableHttp(signal: AbortSignal): HttpClient {
+  return {
+    async request(request) {
+      const response = await http.request({ ...request, signal });
+      return response.body
+        ? { ...response, body: abortableBody(response.body, signal) }
+        : response;
+    },
+  };
+}
+
+/** `body`, each read rejecting with the abort reason once `signal` aborts. */
+function abortableBody(
+  body: AsyncIterableIterator<Uint8Array>,
+  signal: AbortSignal,
+): AsyncIterableIterator<Uint8Array> {
+  const reads = body[Symbol.asyncIterator]();
+  return {
+    next: () => untilAborted(reads.next(), signal),
+    async return(value?: unknown) {
+      // Releases the response stream, as the client's own iterator does.
+      await reads.return?.(value);
+      return { done: true, value: undefined };
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
 }
 
 /** The real client: isomorphic-git over Node's http(s), no git binary. */

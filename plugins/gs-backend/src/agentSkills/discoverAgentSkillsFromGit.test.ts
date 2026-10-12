@@ -2,6 +2,7 @@ import {
   access,
   mkdtemp,
   mkdir,
+  readdir,
   rm,
   symlink,
   writeFile,
@@ -11,6 +12,7 @@ import { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  abortableHttp,
   discoverAgentSkillsFromGit,
   GitClient,
   GitFetchError,
@@ -436,6 +438,83 @@ describe('discoverAgentSkillsFromGit', () => {
       } finally {
         server.closeAllConnections();
         await new Promise(resolve => server.close(resolve));
+      }
+    });
+
+    /** A git host that answers 200 and then trickles bytes, never ending. */
+    async function tricklingServer() {
+      const server = http.createServer((_req, res) => {
+        res.writeHead(200, {
+          'content-type': 'application/x-git-upload-pack-advertisement',
+        });
+        const timer = setInterval(() => res.write('0000'), 10);
+        res.on('close', () => clearInterval(timer));
+      });
+      await new Promise<void>(resolve =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const { port } = server.address() as AddressInfo;
+      return {
+        url: `http://127.0.0.1:${port}`,
+        stop: async () => {
+          server.closeAllConnections();
+          await new Promise(resolve => server.close(resolve));
+        },
+      };
+    }
+
+    it('fails the next body read of an abort that came while no read was waiting', async () => {
+      // The probe of review N1: the abort lands between two reads. The
+      // client's own iterator drops that error, and the next read hung.
+      const server = await tricklingServer();
+      const controller = new AbortController();
+      const reason = new GitFetchError(504, 'deadline');
+      try {
+        const response = await abortableHttp(controller.signal).request({
+          url: `${server.url}/skills.git/info/refs?service=git-upload-pack`,
+          method: 'GET',
+          headers: {},
+        });
+        const body = response.body!;
+        expect((await body.next()).done).toBe(false);
+
+        // No read is waiting now.
+        controller.abort(reason);
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Whatever was queued before the abort, a read fails at once.
+        await expect(body.next()).rejects.toBe(reason);
+      } finally {
+        await server.stop();
+      }
+    });
+
+    it('removes the checkout of a real clone aborted while data keeps flowing', async () => {
+      const server = await tricklingServer();
+      const tmp = await mkdtemp(path.join(os.tmpdir(), 'clone-abort-test-'));
+      // The clone's checkout lands in `tmp`, where the test can see it.
+      const tmpdir = jest.spyOn(os, 'tmpdir').mockReturnValue(tmp);
+      const controller = new AbortController();
+      try {
+        const read = discoverAgentSkillsFromGit({
+          repoUrl: `${server.url}/skills.git`,
+          signal: controller.signal,
+        });
+        while ((await readdir(tmp)).length === 0) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+        controller.abort(new GitFetchError(504, 'deadline'));
+
+        await expect(read).rejects.toMatchObject({ status: 504 });
+        for (let i = 0; i < 100 && (await readdir(tmp)).length > 0; i++) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(await readdir(tmp)).toEqual([]);
+      } finally {
+        tmpdir.mockRestore();
+        await server.stop();
+        await rm(tmp, { recursive: true, force: true });
       }
     });
 

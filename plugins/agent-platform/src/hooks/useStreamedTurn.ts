@@ -19,7 +19,7 @@ import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
  * Opens the stream for one turn, handing each event to `onEvent`; resolves
  * when the stream ends, which is not necessarily when the turn does. `signal`
  * aborts the stream — pulled when the poll shows the turn over while the stream
- * is still open, and when the hook's page unmounts.
+ * is still open, and when the hook's page unmounts once the turn is dispatched.
  */
 export type OpenTurnStream = (
   onEvent: (result: unknown) => void,
@@ -119,14 +119,20 @@ export function useStreamedTurn(installation: string, sessionId: string) {
   const abortRef = useRef<AbortController | null>(null);
   // Leaving the page (the rail, the palette, Back) ends the stream in flight
   // (R2-3): nothing reads it any more, and left open it holds one of the
-  // browser's few connections per host until the gateway cuts it. The turn
-  // survives a client abort, and the next visit's poll follows it.
+  // browser's few connections per host until the gateway cuts it. Only once
+  // the turn is dispatched, though: the turn survives a client abort from
+  // then on, and the next visit's poll follows it, but before its first event
+  // the backend relay aborts its upstream request too, and the message may
+  // never reach kagent. A stream left before that is ended by `run` at its
+  // first event instead.
   const unmountedRef = useRef(false);
   useEffect(() => {
     unmountedRef.current = false;
     return () => {
       unmountedRef.current = true;
-      abortRef.current?.abort();
+      if (streamRef.current?.dispatched) {
+        abortRef.current?.abort();
+      }
     };
   }, []);
 
@@ -189,6 +195,12 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         await open(result => {
           const carriedFile = turn.carriesFile;
           turn = applyStreamEvent(turn, result);
+          if (unmountedRef.current) {
+            // Left before the first event: dispatched now, so the stream can
+            // go without taking the message with it.
+            control.abort();
+            return;
+          }
           setStreamTurn(turn);
           if (turn.carriesFile && !carriedFile) {
             // Not awaited: the stream keeps flowing while the poll catches up.
@@ -199,9 +211,10 @@ export function useStreamedTurn(installation: string, sessionId: string) {
         }, control.signal);
       } catch (error) {
         // Any event at all means the turn exists — a later failure only cut
-        // the preview short, and the poll finishes the job. An abort because
-        // the page went away is no failure either: no one is left to tell.
-        if (!turn.dispatched && !unmountedRef.current) {
+        // the preview short, and the poll finishes the job (an abort because
+        // the page went away comes only after one). A failure before any
+        // event is reported even after the page went away: it is not ours.
+        if (!turn.dispatched) {
           if (
             !isStreamTransportError(error) ||
             !(await messageLanded(messageId))

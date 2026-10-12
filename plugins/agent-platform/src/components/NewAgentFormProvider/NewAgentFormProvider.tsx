@@ -82,6 +82,14 @@ export type NewAgentFormState = {
    * it also counts as a change for an agent that declares no toolset.
    */
   toolsChatOnly?: boolean;
+  /**
+   * The preset the Tools step compacts the toolset against (B1, R2-1): the
+   * one the toolset was built on, kept once a change wrote it out, so undoing
+   * that change collapses back to it. Held here rather than in the step, so a
+   * step round trip keeps it as long as the draft (R2 re-review N2). Not part
+   * of the agent: nothing saves it.
+   */
+  toolsetBase?: string;
 };
 
 /**
@@ -136,6 +144,8 @@ export type NewAgentFormContextValue = {
    * again.
    */
   setToolsChatOnly: () => void;
+  /** Sets or clears {@link NewAgentFormState.toolsetBase}. */
+  setToolsetBase: (base: string | undefined) => void;
   /**
    * True when the toolset can be applied: none of the selectors malformed and
    * no more than the inline cap. The empty selection is valid — it is no tools.
@@ -359,6 +369,10 @@ export function NewAgentFormProvider({
         })),
       setToolsChatOnly: () =>
         setState(prev => ({ ...prev, toolset: [], toolsChatOnly: true })),
+      setToolsetBase: toolsetBase =>
+        setState(prev =>
+          prev.toolsetBase === toolsetBase ? prev : { ...prev, toolsetBase },
+        ),
       isToolsetValid,
       toolsetProblems: problems,
       toggleSkill: skill =>

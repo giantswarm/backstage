@@ -76,9 +76,9 @@ describe('useStreamedTurn', () => {
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
-  it('does not report a stream aborted by the unmount before any event as failed', async () => {
+  it('keeps a stream left before its first event open until that event, so the message is dispatched (R2-3)', async () => {
     const { handle, open } = hangingStream();
-    const { result, unmount } = renderTurn();
+    const { result, unmount, invalidateQueries } = renderTurn();
 
     let outcome: Promise<void> = Promise.resolve();
     act(() => {
@@ -88,9 +88,36 @@ describe('useStreamedTurn', () => {
 
     unmount();
 
+    // Aborted now, the relay would abort its upstream request too, and the
+    // message might never reach kagent.
+    expect(handle.signal?.aborted).toBe(false);
+
+    handle.emit({ kind: 'task', id: 'task-1', status: { state: 'working' } });
+
+    expect(handle.signal?.aborted).toBe(true);
     await expect(outcome).resolves.toBeUndefined();
-    // Not verified against the history either: no one is left to tell.
     expect(listSessionTasks).not.toHaveBeenCalled();
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('still reports a failure before any event after the page went away', async () => {
+    let fail: (error: Error) => void = () => {};
+    const { result, unmount } = renderTurn();
+
+    let outcome: Promise<void> = Promise.resolve();
+    act(() => {
+      outcome = result.current.run(
+        'message-1',
+        () =>
+          new Promise<void>((_, reject) => {
+            fail = reject;
+          }),
+      );
+    });
+    unmount();
+    fail(new Error('rejected by the relay'));
+
+    await expect(outcome).rejects.toThrow('rejected by the relay');
   });
 
   it('still reports a transport failure before any event while mounted', async () => {
