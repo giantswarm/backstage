@@ -1,6 +1,12 @@
-import { SidebarPinStateProvider } from '@backstage/core-components';
+import {
+  SidebarPinStateProvider,
+  sidebarConfig,
+} from '@backstage/core-components';
 import { render, screen } from '@testing-library/react';
-import { RAIL_WIDTH_STORAGE_KEY, RailWidthProvider } from '../railWidth';
+import {
+  RAIL_WIDTH_STORAGE_KEY,
+  RailWidthProvider,
+} from '../RailWidthProvider';
 import { ShellMain } from './ShellMain';
 
 function renderBesideRail({
@@ -48,7 +54,10 @@ describe('ShellMain', () => {
     expect(document.getElementById('content')).not.toHaveAttribute('role');
   });
 
-  describe('beside a resized rail', () => {
+  describe('beside the rail', () => {
+    const inset = (content: HTMLElement) =>
+      content.style.getPropertyValue('--agent-shell-rail-inset');
+
     beforeEach(() => {
       window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '300');
     });
@@ -56,27 +65,18 @@ describe('ShellMain', () => {
       window.localStorage.clear();
     });
 
-    it('moves its left edge by what the rail is wider than SidebarPage pads for', () => {
-      const content = renderBesideRail();
-      expect(content.style.getPropertyValue('--agent-shell-rail-offset')).toBe(
-        '76px',
+    it('starts where the resized rail ends', () => {
+      expect(inset(renderBesideRail())).toBe('300px');
+    });
+
+    it('starts where the collapsed rail ends, whatever the expanded width', () => {
+      expect(inset(renderBesideRail({ isPinned: false }))).toBe(
+        `${sidebarConfig.drawerWidthClosed}px`,
       );
     });
 
-    it('stays put beside the collapsed rail', () => {
-      expect(
-        renderBesideRail({ isPinned: false }).style.getPropertyValue(
-          '--agent-shell-rail-offset',
-        ),
-      ).toBe('');
-    });
-
-    it('stays put above the phone bar', () => {
-      expect(
-        renderBesideRail({ isMobile: true }).style.getPropertyValue(
-          '--agent-shell-rail-offset',
-        ),
-      ).toBe('');
+    it('starts at the screen edge above the phone bar', () => {
+      expect(inset(renderBesideRail({ isMobile: true }))).toBe('0px');
     });
   });
 });

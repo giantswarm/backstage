@@ -7,13 +7,13 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { sidebarConfig } from '@backstage/core-components';
+import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 
 /**
- * The expanded rail's default width: core-components' pinned sidebar width,
- * the one `SidebarPage` pads the page by. Also the narrowest the rail goes,
- * because it is what the rail's header (logo, name and collapse button) was
- * laid out for; narrower is the collapsed rail.
+ * The expanded rail's default width: core-components' pinned sidebar width.
+ * Also the narrowest the rail goes, because it is what the rail's header
+ * (logo, name and collapse button) was laid out for; narrower is the
+ * collapsed rail.
  */
 export const RAIL_DEFAULT_WIDTH = sidebarConfig.drawerWidthOpen;
 export const RAIL_MIN_WIDTH = RAIL_DEFAULT_WIDTH;
@@ -64,11 +64,22 @@ function storeWidth(width: number) {
 }
 
 type RailWidth = {
-  /** The expanded rail's width in px, within the window's bounds. */
+  /** The expanded rail's width in px as shown, within the window's bounds. */
   width: number;
   minWidth: number;
   maxWidth: number;
-  /** Sets and remembers the width, clamped to the bounds. */
+  /** While a drag previews a width that is not set yet. */
+  resizing: boolean;
+  /**
+   * Shows a width without setting or remembering it, for a drag in
+   * progress; `undefined` ends the preview.
+   */
+  previewWidth: (width: number | undefined) => void;
+  /**
+   * Sets and remembers the width, clamped to the bounds, and ends a preview.
+   * A width that leaves the rail as it was shown is not remembered, so a
+   * press on the edge in a narrow window keeps a wider remembered width.
+   */
   setWidth: (width: number) => void;
   /** Back to the default width. */
   resetWidth: () => void;
@@ -78,6 +89,8 @@ const RailWidthContext = createContext<RailWidth>({
   width: RAIL_DEFAULT_WIDTH,
   minWidth: RAIL_MIN_WIDTH,
   maxWidth: RAIL_MIN_WIDTH,
+  resizing: false,
+  previewWidth: () => {},
   setWidth: () => {},
   resetWidth: () => {},
 });
@@ -90,6 +103,7 @@ const RailWidthContext = createContext<RailWidth>({
  */
 export function RailWidthProvider({ children }: { children: ReactNode }) {
   const [preferred, setPreferred] = useState(readStoredWidth);
+  const [preview, setPreview] = useState<number>();
   const [maxWidth, setMaxWidth] = useState(() =>
     maxWidthFor(window.innerWidth),
   );
@@ -100,25 +114,43 @@ export function RailWidthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('resize', update);
   }, []);
 
+  // Once per set width, never per frame of a drag: a preview does not reach
+  // `preferred`.
   useEffect(() => {
     storeWidth(preferred);
   }, [preferred]);
 
-  const setWidth = useCallback(
-    (width: number) => setPreferred(clamp(width, maxWidth)),
+  const previewWidth = useCallback(
+    (width: number | undefined) =>
+      setPreview(width === undefined ? undefined : clamp(width, maxWidth)),
     [maxWidth],
   );
-  const resetWidth = useCallback(() => setPreferred(RAIL_DEFAULT_WIDTH), []);
+  const setWidth = useCallback(
+    (width: number) => {
+      const next = clamp(width, maxWidth);
+      setPreview(undefined);
+      setPreferred(current =>
+        next === clamp(current, maxWidth) ? current : next,
+      );
+    },
+    [maxWidth],
+  );
+  const resetWidth = useCallback(() => {
+    setPreview(undefined);
+    setPreferred(RAIL_DEFAULT_WIDTH);
+  }, []);
 
   const value = useMemo(
     () => ({
-      width: clamp(preferred, maxWidth),
+      width: preview ?? clamp(preferred, maxWidth),
       minWidth: RAIL_MIN_WIDTH,
       maxWidth,
+      resizing: preview !== undefined,
+      previewWidth,
       setWidth,
       resetWidth,
     }),
-    [preferred, maxWidth, setWidth, resetWidth],
+    [preferred, preview, maxWidth, previewWidth, setWidth, resetWidth],
   );
   return (
     <RailWidthContext.Provider value={value}>
@@ -129,4 +161,19 @@ export function RailWidthProvider({ children }: { children: ReactNode }) {
 
 export function useRailWidth(): RailWidth {
   return useContext(RailWidthContext);
+}
+
+/**
+ * How much of the viewport's left edge the rail covers: the expanded rail's
+ * width while pinned, the collapsed rail's otherwise, nothing at phone width
+ * (the rail is the bottom bar there). The one definition the rail's width and
+ * the content region's left edge both read.
+ */
+export function useRailInset(): number {
+  const { isPinned, isMobile } = useSidebarPinState();
+  const { width } = useRailWidth();
+  if (isMobile) {
+    return 0;
+  }
+  return isPinned ? width : sidebarConfig.drawerWidthClosed;
 }

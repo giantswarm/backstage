@@ -7,14 +7,20 @@ import {
 } from 'react';
 import { makeStyles } from '@material-ui/core/styles';
 import { TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
-import { useRailWidth } from '../../railWidth';
+import { useRailWidth } from '../../RailWidthProvider';
 
 /** How far one arrow key press moves the edge; with Shift, four times as far. */
 export const RAIL_RESIZE_STEP = 16;
 
-/** The grab area's width, centred on the rail's border; wider under touch. */
+/** The grab area's width for a pointer, centred on the rail's border. */
 const HIT_WIDTH = 8;
-const TOUCH_HIT_WIDTH = 20;
+/**
+ * Under touch, wider for a finger, and all of it over the rail but the
+ * border's own pixel, so it takes no taps meant for the page beside it. 12px
+ * is the rail's right padding plus the session rows' pin inset, so it covers
+ * no control of the rail's either.
+ */
+const TOUCH_HIT_WIDTH = 12;
 
 const useStyles = makeStyles({
   // Invisible at rest, so the rail's border is the only line there; the
@@ -53,7 +59,12 @@ const useStyles = makeStyles({
     },
     [TOUCH_MEDIA]: {
       width: TOUCH_HIT_WIDTH,
-      marginLeft: -TOUCH_HIT_WIDTH / 2,
+      marginLeft: 1 - TOUCH_HIT_WIDTH,
+      '&::after': {
+        left: 'auto',
+        right: 0,
+        marginLeft: 0,
+      },
     },
   },
   dragging: {
@@ -69,12 +80,39 @@ const useStyles = makeStyles({
  * pattern): drag it, or focus it and press the arrow keys, Home (narrowest)
  * or End (widest). A double click returns the default width. The rail's
  * width lives in `RailWidthProvider`, so the content beside it follows.
+ *
+ * A drag previews the width at most once a frame and sets (and remembers) it
+ * on release; only the rail's frame and the content's edge re-render meanwhile.
  */
 export function RailResizeHandle({ controls }: { controls: string }) {
   const classes = useStyles();
-  const { width, minWidth, maxWidth, setWidth, resetWidth } = useRailWidth();
-  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+  const { width, minWidth, maxWidth, previewWidth, setWidth, resetWidth } =
+    useRailWidth();
+  const drag = useRef<{
+    startX: number;
+    startWidth: number;
+    /** The width the latest move asks for; none until the pointer moves. */
+    next?: number;
+    frame?: number;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  // A rail collapsed or unmounted mid-drag must not leave its preview behind.
+  // Through a ref, so the cleanup runs on unmount only, not whenever the
+  // window's bounds give `previewWidth` a new identity.
+  const endPreview = useRef(previewWidth);
+  endPreview.current = previewWidth;
+  useEffect(
+    () => () => {
+      if (drag.current?.frame !== undefined) {
+        cancelAnimationFrame(drag.current.frame);
+      }
+      if (drag.current) {
+        endPreview.current(undefined);
+      }
+    },
+    [],
+  );
 
   // Text under the pointer must not get selected while the edge moves.
   useEffect(() => {
@@ -98,13 +136,33 @@ export function RailResizeHandle({ controls }: { controls: string }) {
     setDragging(true);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (drag.current) {
-      setWidth(drag.current.startWidth + event.clientX - drag.current.startX);
+    const current = drag.current;
+    if (!current) {
+      return;
+    }
+    current.next = current.startWidth + event.clientX - current.startX;
+    if (current.frame === undefined) {
+      current.frame = requestAnimationFrame(() => {
+        current.frame = undefined;
+        previewWidth(current.next);
+      });
     }
   };
+  // Up, cancel and lost capture all end it; the first one to arrive sets the
+  // width, the rest find no drag.
   const endDrag = () => {
+    const current = drag.current;
+    if (!current) {
+      return;
+    }
     drag.current = null;
+    if (current.frame !== undefined) {
+      cancelAnimationFrame(current.frame);
+    }
     setDragging(false);
+    if (current.next !== undefined) {
+      setWidth(current.next);
+    }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {

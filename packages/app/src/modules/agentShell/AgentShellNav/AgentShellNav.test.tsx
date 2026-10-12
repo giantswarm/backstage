@@ -7,14 +7,14 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import {
   RAIL_DEFAULT_WIDTH,
   RAIL_WIDTH_STORAGE_KEY,
   RailWidthProvider,
-} from '../railWidth';
+} from '../RailWidthProvider';
 import { customizeRouteRef } from '../routes';
 import { AgentShellNav } from './AgentShellNav';
 
@@ -635,17 +635,28 @@ describe('AgentShellNav', () => {
 
     it('follows a drag of its edge and returns to the default on a double click', async () => {
       await renderNav();
+      const setItem = jest.spyOn(Storage.prototype, 'setItem');
 
       fireEvent.pointerDown(handle(), { button: 0, clientX: 224 });
       fireEvent.pointerMove(handle(), { clientX: 300 });
-      expect(rail()).toHaveStyle({ width: '300px' });
+      await waitFor(() => expect(rail()).toHaveStyle({ width: '300px' }));
       fireEvent.pointerMove(handle(), { clientX: 2000 });
-      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      await waitFor(() =>
+        expect(rail()).toHaveStyle({ width: `${maxWidth}px` }),
+      );
       fireEvent.pointerMove(handle(), { clientX: 280 });
+      // Remembered on release, not on every frame of the drag.
+      expect(setItem).not.toHaveBeenCalledWith(
+        RAIL_WIDTH_STORAGE_KEY,
+        expect.anything(),
+      );
       fireEvent.pointerUp(handle(), { clientX: 280 });
       expect(rail()).toHaveStyle({ width: '280px' });
+      expect(setItem.mock.calls).toEqual([[RAIL_WIDTH_STORAGE_KEY, '280']]);
+      setItem.mockRestore();
       // Released: moving the pointer no longer resizes.
       fireEvent.pointerMove(handle(), { clientX: 350 });
+      await new Promise(resolve => requestAnimationFrame(resolve));
       expect(rail()).toHaveStyle({ width: '280px' });
 
       fireEvent.doubleClick(handle());
@@ -664,6 +675,25 @@ describe('AgentShellNav', () => {
       expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
       // The choice itself is kept for a wider window.
       expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe('470');
+    });
+
+    it('keeps a remembered width too wide for the window through a press, a release and End', async () => {
+      window.localStorage.setItem(RAIL_WIDTH_STORAGE_KEY, '470');
+      await renderNav();
+
+      fireEvent.pointerDown(handle(), { button: 0, clientX: maxWidth });
+      fireEvent.pointerMove(handle(), { clientX: maxWidth + 0.4 });
+      fireEvent.pointerUp(handle(), { clientX: maxWidth + 0.4 });
+      handle().focus();
+      await userEvent.keyboard('{End}{ArrowRight}');
+      expect(rail()).toHaveStyle({ width: `${maxWidth}px` });
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe('470');
+
+      // A real change is remembered.
+      await userEvent.keyboard('{ArrowLeft}');
+      expect(window.localStorage.getItem(RAIL_WIDTH_STORAGE_KEY)).toBe(
+        String(maxWidth - 16),
+      );
     });
 
     it('has no handle on the collapsed rail, which keeps its own width', async () => {

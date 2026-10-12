@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
@@ -14,7 +14,7 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
-import { useRailWidth } from '../railWidth';
+import { useRailInset } from '../RailWidthProvider';
 import { RailItem } from './RailItem';
 import { RailResizeHandle } from './RailResizeHandle';
 import { type RailLayout, useBarItemStyles } from './railLayout';
@@ -204,7 +204,6 @@ export function AgentShellNav() {
 function AgentShellRail() {
   const classes = useStyles();
   const { isPinned, toggleSidebarPinState, isMobile } = useSidebarPinState();
-  const { width: expandedWidth } = useRailWidth();
   const portals = usePortals();
   // A cross-link into the other portal only while the deployment serves it.
   const items = agentShellNavItems.filter(
@@ -256,23 +255,14 @@ function AgentShellRail() {
     );
   }
 
-  // SidebarPage pads the content by the classic sidebar's width for the same
-  // pin state. Collapsed, the rail takes exactly that width; expanded, the
-  // person can resize it, and ShellMain makes up the difference.
   const compact = !isPinned;
   const layout: RailLayout = compact ? 'collapsed' : 'expanded';
   const desktopTop = top.filter(item => !item.mobileOnly);
-  const width = isPinned ? expandedWidth : sidebarConfig.drawerWidthClosed;
 
   return (
     <>
       <SkipLink />
-      <nav
-        id={RAIL_ID}
-        aria-label="Main"
-        className={classes.rail}
-        style={{ width }}
-      >
+      <RailFrame resizable={!compact}>
         <Flex
           direction="column"
           gap="4"
@@ -333,8 +323,37 @@ function AgentShellRail() {
             </ul>
           </Box>
         </Flex>
+      </RailFrame>
+    </>
+  );
+}
+
+/**
+ * The desktop rail's landmark, as wide as `useRailInset` says, which is also
+ * where the content region starts, and the handle that resizes it. The only
+ * part of the rail that reads the width, so a drag re-renders the frame and
+ * not the items and session lists it holds.
+ */
+function RailFrame({
+  resizable,
+  children,
+}: {
+  resizable: boolean;
+  children: ReactNode;
+}) {
+  const classes = useStyles();
+  const width = useRailInset();
+  return (
+    <>
+      <nav
+        id={RAIL_ID}
+        aria-label="Main"
+        className={classes.rail}
+        style={{ width }}
+      >
+        {children}
       </nav>
-      {!compact && <RailResizeHandle controls={RAIL_ID} />}
+      {resizable && <RailResizeHandle controls={RAIL_ID} />}
     </>
   );
 }

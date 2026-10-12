@@ -5,23 +5,29 @@ import {
   useRef,
   useState,
 } from 'react';
-import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
-import { useRailWidth } from '../railWidth';
+import { useRailInset, useRailWidth } from '../RailWidthProvider';
 import { useKeyboardTapHold } from './keyboardTapHold';
 
 export const SHELL_CONTENT_ID = 'content';
 
 const useStyles = makeStyles({
+  // The region starts where the rail ends (the layout lifts SidebarPage's
+  // own padding in the shell), easing as SidebarPage's padding did when the
+  // rail collapses or expands.
   root: {
-    marginLeft: 'var(--agent-shell-rail-offset, 0px)',
+    marginLeft: 'var(--agent-shell-rail-inset, 0px)',
+    transition: 'margin-left 0.1s ease-out',
     '&:focus': {
       outline: 'none',
     },
-    // SidebarPage drops its rail padding for print; so does the offset.
     '@media print': {
       marginLeft: 0,
     },
+  },
+  // A drag moves the edge under the pointer, so nothing eases behind it.
+  resizing: {
+    transition: 'none',
   },
 });
 
@@ -33,16 +39,14 @@ const useStyles = makeStyles({
  * Mounted once per shell, it also holds the phone's keyboard layout while a
  * tap is in progress (`useKeyboardTapHold`).
  *
- * SidebarPage pads the page by the default rail width; a rail the person
- * resized (`useRailWidth`) moves the region's left edge by the difference.
+ * Its left edge is the rail's width, expanded (and resizable) or collapsed,
+ * from `useRailInset`: the same value the rail is drawn at.
  */
 export function ShellMain({ children }: { children: ReactNode }) {
   const classes = useStyles();
   useKeyboardTapHold();
-  const { isPinned, isMobile } = useSidebarPinState();
-  const { width: railWidth } = useRailWidth();
-  const railOffset =
-    isPinned && !isMobile ? railWidth - sidebarConfig.drawerWidthOpen : 0;
+  const railInset = useRailInset();
+  const { resizing } = useRailWidth();
   const ref = useRef<HTMLDivElement>(null);
   const [hasOwnMain, setHasOwnMain] = useState(false);
 
@@ -64,14 +68,8 @@ export function ShellMain({ children }: { children: ReactNode }) {
       id={SHELL_CONTENT_ID}
       tabIndex={-1}
       role={hasOwnMain ? undefined : 'main'}
-      className={classes.root}
-      style={
-        railOffset
-          ? ({
-              '--agent-shell-rail-offset': `${railOffset}px`,
-            } as CSSProperties)
-          : undefined
-      }
+      className={`${classes.root} ${resizing ? classes.resizing : ''}`}
+      style={{ '--agent-shell-rail-inset': `${railInset}px` } as CSSProperties}
     >
       {children}
     </div>

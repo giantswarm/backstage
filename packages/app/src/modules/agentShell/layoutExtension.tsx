@@ -10,7 +10,7 @@ import {
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentShellArea } from './agentArea';
-import { RailWidthProvider } from './railWidth';
+import { RailWidthProvider } from './RailWidthProvider';
 import { ShellMain } from './ShellMain';
 
 /**
