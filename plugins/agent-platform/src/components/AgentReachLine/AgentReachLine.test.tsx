@@ -1,54 +1,96 @@
 import { render, screen } from '@testing-library/react';
-import { AgentReachLine, describeReach } from './AgentReachLine';
+import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-describe('describeReach', () => {
-  it('names the declared servers, workflows and tools', () => {
-    expect(
-      describeReach({
-        state: 'declared',
-        carrier: 'sre-agent',
-        selectors: ['server:jira', 'server:slack', 'workflow:triage'],
-      }),
-    ).toBe('Can use jira, slack and triage');
-  });
+import { buildCatalogue, type CatalogueGroup } from '../../lib/toolset';
+import { AgentReachLine } from './AgentReachLine';
 
-  it('names a labelled preset by its label', () => {
-    expect(
-      describeReach({
-        state: 'declared',
-        carrier: 'sre-agent',
-        selectors: ['preset:read-only'],
-      }),
-    ).toBe('Can use read-only tools');
-  });
+let mockGroups: CatalogueGroup[] | undefined;
+const mockUseReachCatalogue = jest.fn(
+  (_installation: string | undefined, _needed: boolean) => mockGroups,
+);
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: (installation: string | undefined, needed: boolean) =>
+    mockUseReachCatalogue(installation, needed),
+}));
 
-  it('says when the agent has no connectors', () => {
-    expect(describeReach({ state: 'no-gateway' })).toBe('Has no connectors');
-    expect(
-      describeReach({
-        state: 'declared',
-        carrier: 'sre-agent',
-        selectors: ['preset:none'],
-      }),
-    ).toBe('Has no connectors');
-  });
+const reads = (name: string): ToolSummary => ({
+  name,
+  kind: 'tool',
+  annotations: { readOnlyHint: true },
+});
 
-  it('says when the agent reaches everything its invoker can', () => {
-    expect(describeReach({ state: 'implicit-full', carrier: 'muster' })).toBe(
-      'Can use every connector you can',
-    );
-  });
+const GROUPS = buildCatalogue(
+  [
+    reads('x_cluster-manager_get_info'),
+    reads('x_cluster-manager_list_clusters'),
+    { name: 'x_cluster-manager_delete_cluster', kind: 'tool' },
+    { name: 'core_auth_login', kind: 'core' },
+    { name: 'core_service_list', kind: 'core' },
+  ],
+  [
+    {
+      name: 'cluster-manager',
+      group: 'infrastructure',
+      toolNamePrefix: 'x_cluster-manager',
+      oauth: false,
+    },
+  ],
+  [],
+);
 
-  it('says nothing when the toolset is not known', () => {
-    expect(describeReach(undefined)).toBeUndefined();
-    expect(
-      describeReach({ state: 'unresolved', carrier: 'sre-agent' }),
-    ).toBeUndefined();
-  });
+// The PO's example: two tools of cluster manager and one of muster's own.
+const PICKED = {
+  state: 'declared' as const,
+  carrier: 'sre-agent',
+  selectors: [
+    'tool:x_cluster-manager_get_info',
+    'tool:x_cluster-manager_delete_cluster',
+    'tool:core_auth_login',
+  ],
+};
+
+beforeEach(() => {
+  mockGroups = GROUPS;
+  mockUseReachCatalogue.mockClear();
 });
 
 describe('AgentReachLine', () => {
-  it('renders the sentence', () => {
+  it('names connectors instead of tool ids, and links to the agent’s tools', () => {
+    render(
+      <AgentReachLine
+        toolset={PICKED}
+        installation="gazelle"
+        toolsHref="/agent-platform/agents/gazelle/kagent/sre-agent/tools"
+      />,
+    );
+
+    expect(mockUseReachCatalogue).toHaveBeenCalledWith('gazelle', true);
+    expect(
+      screen.getByText(
+        'Can use some tools from cluster-manager and some platform tools.',
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/x_cluster-manager/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'See which tools' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+    );
+  });
+
+  it('counts the picked tools while the catalogue is not known', () => {
+    mockGroups = undefined;
+    render(<AgentReachLine toolset={PICKED} installation="gazelle" />);
+
+    expect(screen.getByText('Can use 3 selected tools.')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'See which tools' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not read the catalogue for whole connectors', () => {
     render(
       <AgentReachLine
         toolset={{
@@ -56,10 +98,24 @@ describe('AgentReachLine', () => {
           carrier: 'sre-agent',
           selectors: ['server:github'],
         }}
+        installation="gazelle"
       />,
     );
 
-    expect(screen.getByText('Can use github')).toBeInTheDocument();
+    expect(mockUseReachCatalogue).toHaveBeenCalledWith('gazelle', false);
+    expect(screen.getByText('Can use github.')).toBeInTheDocument();
+  });
+
+  it('offers no tools link for an agent without connectors', () => {
+    render(
+      <AgentReachLine
+        toolset={{ state: 'no-gateway' }}
+        toolsHref="/agent-platform/agents/gazelle/kagent/chat/tools"
+      />,
+    );
+
+    expect(screen.getByText('Has no connectors.')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('renders nothing for an unknown toolset', () => {

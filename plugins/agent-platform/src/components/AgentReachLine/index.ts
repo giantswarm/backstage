@@ -1,2 +1,2 @@
-export { AgentReachLine, describeReach } from './AgentReachLine';
+export { AgentReachLine } from './AgentReachLine';
 export type { AgentReachLineProps } from './AgentReachLine';
