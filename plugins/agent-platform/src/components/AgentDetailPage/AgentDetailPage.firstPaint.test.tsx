@@ -163,6 +163,7 @@ const AGENT_JSON = {
   },
   spec: {
     harnessRef: { name: 'kagent' },
+    // A chat-only agent: no Tools tab, before the read or after it.
     template: { description: 'Reviews pull requests in depth.' },
   },
   status: {
@@ -185,6 +186,27 @@ const AGENT_JSON = {
         lastTransitionTime: '2026-07-31T10:02:00Z',
       },
     ],
+  },
+};
+
+/**
+ * An agent with tools: bound to the gateway's carrier, named after it. A
+ * second agent rather than a variant of the first, because the plugin's query
+ * client outlives a test and holds the first by its address.
+ */
+const TOOLS_AGENT_PATH =
+  '/agent-platform/agents/gazelle/agent-platform/code-helper';
+const TOOLS_AGENT_JSON = {
+  ...AGENT_JSON,
+  metadata: { ...AGENT_JSON.metadata, name: 'code-helper' },
+  spec: {
+    ...AGENT_JSON.spec,
+    template: {
+      ...AGENT_JSON.spec.template,
+      tools: [
+        { mcp: { server: { kind: 'RemoteMCPServer', name: 'code-helper' } } },
+      ],
+    },
   },
 };
 
@@ -214,11 +236,14 @@ function okJson(body: unknown) {
 /** The Agent read, held open until the test lets it answer. */
 let releaseAgent: () => void = () => {};
 const proxy = jest.fn(async ({ path }: { path: string }) => {
-  if (path.includes('/agents/pr-reviewer')) {
+  const agent = [AGENT_JSON, TOOLS_AGENT_JSON].find(({ metadata }) =>
+    path.includes(`/agents/${metadata.name}`),
+  );
+  if (agent) {
     await new Promise<void>(resolve => {
       releaseAgent = resolve;
     });
-    return okJson(AGENT_JSON);
+    return okJson(agent);
   }
   return notFound();
 });
@@ -298,13 +323,21 @@ function paintedH1s(): Element[] {
   return h1s;
 }
 
-/** Somewhere else in the app, and the way to the agent from there. */
+/** Somewhere else in the app, and the ways to the agent from there. */
 function Elsewhere() {
   const navigate = useNavigate();
   return (
-    <button type="button" onClick={() => navigate(AGENT_PATH)}>
-      Open the agent
-    </button>
+    <>
+      <button type="button" onClick={() => navigate(AGENT_PATH)}>
+        Open the agent
+      </button>
+      <button
+        type="button"
+        onClick={() => navigate(`${TOOLS_AGENT_PATH}/tools`)}
+      >
+        Open an agent's tools
+      </button>
+    </>
   );
 }
 
@@ -418,7 +451,10 @@ async function renderThroughThePage() {
   return { releaseChunk: () => releaseChunk() };
 }
 
-/** The final header: avatar, title, badge row, the three tabs, the trail. */
+/**
+ * The final header: avatar, title, badge row, the tabs, the trail. Three tabs
+ * for the chat-only agent; four on a deep link to the Tools tab.
+ */
 const FINAL_FRAME = {
   leading: true,
   badgeRow: true,
@@ -426,13 +462,13 @@ const FINAL_FRAME = {
   breadcrumbs: true,
 };
 
-function expectEveryPaintInFinalFrame() {
+function expectEveryPaintInFinalFrame(tabs = FINAL_FRAME.tabs) {
   const shapes = paintedShapes();
   expect(shapes.length).toBeGreaterThan(0);
   for (const shape of shapes) {
     expect({ shape, frame: shape }).toEqual({
       shape,
-      frame: expect.objectContaining(FINAL_FRAME),
+      frame: expect.objectContaining({ ...FINAL_FRAME, tabs }),
     });
   }
 }
@@ -465,6 +501,29 @@ describe('AgentDetailPage — the first paint', () => {
     // The skeleton title and the name are the one h1 element: the same type
     // scale, the same place after the avatar.
     expect(paintedH1s()).toHaveLength(1);
+  });
+
+  it('keeps a deep link to the Tools tab on its tab while the agent is read', async () => {
+    await renderApp();
+    await userEvent.click(
+      screen.getByRole('button', { name: "Open an agent's tools" }),
+    );
+
+    expect(await screen.findByTestId('progress')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Tools',
+    );
+
+    await act(async () => releaseAgent());
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'PR reviewer' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
+      'Tools',
+    );
+
+    // Four tabs from the first paint to the read agent.
+    expectEveryPaintInFinalFrame(4);
   });
 
   it('opens an agent read before straight at its page, not a loading frame', async () => {

@@ -85,7 +85,8 @@ test('an agent in the roster opens its detail page', async ({
       // Exact: the back arrow's "Back to Agents" also contains the name.
       .getByRole('link', { name: 'Agents', exact: true }),
   ).toHaveAttribute('href', '/customize/agents');
-  // The shell's tabs, Overview's sections and the facts beside them.
+  // The shell's tabs, Overview's sections and the facts beside them. No
+  // Tools tab: the fixture agent has no tools.
   await expect(
     admin.getByRole('main').getByRole('tablist').getByRole('tab'),
   ).toHaveText(['Overview', 'Sessions', 'Usage']);
@@ -105,6 +106,14 @@ test('an agent in the roster opens its detail page', async ({
   await expect(
     admin.getByRole('button', { name: 'Agent actions' }),
   ).toBeVisible();
+
+  // An agent without tools has no Tools tab, so its address lands on the
+  // Overview.
+  await open(admin, `${href}/tools`);
+  await expect(admin).toHaveURL(new RegExp(`${href}$`));
+  await expect(
+    admin.getByRole('tab', { name: 'Overview', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the New agent wizard opens on Details, derives the technical name and lists the ModelConfigs', async ({
