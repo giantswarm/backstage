@@ -1,75 +1,53 @@
-import { Flex, Text } from '@backstage/ui';
+import { Flex, Link, Text } from '@backstage/ui';
 import LinkIcon from '@material-ui/icons/Link';
-import {
-  parseSelector,
-  PRESET_READ_ONLY,
-  selectorLabel,
-  toolsetShape,
-  type DeclaredToolset,
-} from '../../lib/toolset';
 
-/** `A`, `A and B`, `A, B and C`. */
-function joinNames(names: string[]): string {
-  if (names.length <= 1) {
-    return names.join('');
-  }
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
-/** A selector as a reader names it: a labelled preset by its label, anything else by its name. */
-function reachName(selector: string): string {
-  const label = selectorLabel(selector);
-  if (selector === PRESET_READ_ONLY) {
-    // Mid-sentence: "Can use read-only tools", the preset's label in lower case.
-    return label.toLowerCase();
-  }
-  if (label !== selector) {
-    return label;
-  }
-  return parseSelector(selector)?.name ?? selector;
-}
-
-/**
- * What an agent's declared toolset lets it reach, as one sentence, or
- * `undefined` when the toolset is not known.
- */
-export function describeReach(
-  toolset: DeclaredToolset | undefined,
-): string | undefined {
-  if (!toolset || toolset.state === 'unresolved') {
-    return undefined;
-  }
-  if (toolset.state === 'no-gateway') {
-    return 'Has no connectors';
-  }
-  if (toolset.state === 'implicit-full') {
-    return 'Can use every connector you can';
-  }
-  switch (toolsetShape(toolset.selectors)) {
-    case 'none':
-      return 'Has no connectors';
-    case 'full':
-      return 'Can use every connector you can';
-    default:
-      return `Can use ${joinNames(toolset.selectors.map(reachName))}`;
-  }
-}
+import { useReachCatalogue } from '../../hooks/useReachCatalogue';
+import { type DeclaredToolset, toolsetShape } from '../../lib/toolset';
+import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 
 export type AgentReachLineProps = {
   toolset?: DeclaredToolset;
+  /** Where the agent runs, to read the catalogue its picked tools belong to. */
+  installation?: string;
+  /** The agent's own tools view, linked after the sentence when there is one. */
+  toolsHref?: string;
 };
 
-/** One line under the composer on what the chosen agent can reach. */
-export function AgentReachLine({ toolset }: AgentReachLineProps) {
-  const reach = describeReach(toolset);
+/**
+ * One line under the composer on what the chosen agent can reach, by
+ * connector, with a link to its tools; the tool ids themselves are on that
+ * page.
+ */
+export function AgentReachLine({
+  toolset,
+  installation,
+  toolsHref,
+}: AgentReachLineProps) {
+  const groups = useReachCatalogue(installation, reachNeedsCatalogue(toolset));
+  const reach = describeReach(toolset, groups);
   if (!reach) {
     return null;
   }
+  // An agent without tools has nothing to see there.
+  const hasTools =
+    toolset?.state === 'implicit-full' ||
+    (toolset?.state === 'declared' &&
+      toolsetShape(toolset.selectors) !== 'none');
   return (
     <Flex justify="center" align="center" gap="1">
       <LinkIcon fontSize="small" color="disabled" aria-hidden />
+      {/* The link sits in the sentence's line, so both wrap together at
+          phone width. */}
       <Text variant="body-small" color="secondary">
         {reach}
+        {toolsHref && hasTools && (
+          <>
+            {' '}
+            <Link href={toolsHref} variant="body-small">
+              See which tools
+            </Link>
+          </>
+        )}
       </Text>
     </Flex>
   );

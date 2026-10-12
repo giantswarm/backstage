@@ -235,6 +235,11 @@ const mockUseAgentToolset = jest.fn();
 jest.mock('../../hooks/useAgentToolset', () => ({
   useAgentToolset: (...args: unknown[]) => mockUseAgentToolset(...args),
 }));
+// The catalogue that names individually picked tools by connector (T103);
+// `lib/toolsetReach` covers the words.
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
+}));
 const READ_ONLY_TOOLSET = {
   declared: {
     state: 'declared',
@@ -2260,7 +2265,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(
         screen.getByRole('heading', { name: 'Connectors' }),
       ).toBeInTheDocument();
-      expect(screen.getByText('Can use read-only tools')).toBeInTheDocument();
+      expect(screen.getByText('Can use read-only tools.')).toBeInTheDocument();
       // The exact tools are the Tools tab, not a link from the section.
       expect(
         screen.queryByRole('link', { name: 'See which tools' }),

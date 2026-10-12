@@ -18,7 +18,7 @@ import { makeStyles } from '@material-ui/core/styles';
 
 import { NEW_SESSION_AGENT_PARAM } from '../../lib/newSessionLink';
 import { recentAgents } from '../../lib/recentAgents';
-import { sessionDetailRouteRef } from '../../routes';
+import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
 import { SESSION_NAME_MAX_LENGTH } from '../SessionDetailPage/SessionRenameDialog';
 import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
@@ -153,6 +153,7 @@ function AgentPlatformHomeContent({
     [sessions, agents],
   );
   const recentAgentIds = useMemo(() => recent.map(agent => agent.id), [recent]);
+  const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
   // The chips stand in for a choice not yet made; once an agent is chosen the
   // line says what it can reach.
@@ -163,13 +164,26 @@ function AgentPlatformHomeContent({
     }: NewSessionComposerFooterContext) => (
       <Flex direction="column" align="center" gap="3" mt="2">
         {agent ? (
-          <AgentReachLine toolset={agent.toolset} />
+          <AgentReachLine
+            toolset={agent.toolset}
+            installation={agent.installation}
+            // The agent page's Tools view lists every tool by id.
+            toolsHref={
+              agentDetailRoute
+                ? `${agentDetailRoute({
+                    installation: agent.installation,
+                    namespace: agent.namespace,
+                    name: agent.technicalName,
+                  })}/tools`
+                : undefined
+            }
+          />
         ) : (
           <RecentAgentChips agents={recent} onPick={selectAgent} />
         )}
       </Flex>
     ),
-    [recent],
+    [recent, agentDetailRoute],
   );
   const manageAgents = useMemo<NewSessionComposerPickerAction | undefined>(
     () =>
