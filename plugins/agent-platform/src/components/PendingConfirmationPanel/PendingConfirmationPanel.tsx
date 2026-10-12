@@ -152,17 +152,23 @@ const useStyles = makeStyles(theme => ({
       overflowY: 'visible',
     },
   },
-  // bui's form controls are sized for dense forms — 12px labels against the
-  // conversation's 16px/24px. A question's options *are* conversation, so they are
-  // brought up to match rather than left looking like fine print.
   conversationText: {
-    '& label': {
-      fontSize: '1rem',
-      lineHeight: 1.5,
-    },
     '& textarea': {
       fontSize: '1rem',
       lineHeight: 1.5,
+    },
+  },
+  // A question's options *are* conversation, so their labels take the message
+  // text's size and leading (MessageMarkdown's paragraphs) rather than bui's
+  // dense-form 12px. The inline padding keeps the focus ring — 2px drawn 2px
+  // outside the control — inside the body, which scrolls and so clips it; the
+  // block margin sets the list apart from the question and the answer box.
+  choices: {
+    margin: 'var(--bui-space-2) 0',
+    paddingLeft: 'var(--bui-space-2)',
+    '& label': {
+      fontSize: 'var(--bui-font-size-3)',
+      lineHeight: 1.6,
     },
   },
 }));
@@ -634,6 +640,7 @@ export function PendingConfirmationPanel({
               (question.multiple ? (
                 <CheckboxGroup
                   aria-label="Choices"
+                  className={classes.choices}
                   value={chosen[pageIndex] ?? []}
                   onChange={values => setChoices(pageIndex, values)}
                   isDisabled={isAnswering}
@@ -651,6 +658,7 @@ export function PendingConfirmationPanel({
               ) : (
                 <RadioGroup
                   aria-label="Choices"
+                  className={classes.choices}
                   value={chosen[pageIndex]?.[0] ?? null}
                   onChange={value =>
                     setChoices(pageIndex, value ? [value] : [])

@@ -14,7 +14,7 @@ import {
 } from '../../lib/formatNumbers';
 
 const useStyles = makeStyles(theme => ({
-  // The prototype's chip: cost, a divider, the memory ring — one quiet bui
+  // The prototype's chip: cost, a divider, the context ring — one quiet bui
   // button that opens the details, on the neutral ground of a chip rather
   // than a tertiary button's bare one.
   trigger: {
@@ -77,7 +77,7 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-/** The ring in the trigger: how full the memory is, at a glance. */
+/** The ring in the trigger: how full the context window is, at a glance. */
 function MemoryRing({ percent }: { percent: number }) {
   const circumference = 2 * Math.PI * 7.5;
   const filled = (Math.min(100, Math.max(0, percent)) / 100) * circumference;
@@ -125,7 +125,7 @@ export type SessionCostPopoverProps = {
   model?: string;
   /** Session totals from the timeline. */
   tokens: TokenUsage;
-  /** The newest turn's own usage — the memory numerator. */
+  /** The newest turn's own usage — the context numerator. */
   lastTurnTokens?: TokenUsage;
   /** The session's turn count. */
   taskCount: number;
@@ -136,7 +136,7 @@ export type SessionCostPopoverProps = {
 };
 
 /**
- * The session's cost and memory, behind one chip in the composer's controls —
+ * The session's cost and context use, behind one chip in the composer's controls —
  * always on screen, like the prototype's, rather than scrolled away with the
  * page header. The popover opens upward for the same reason.
  *
@@ -146,7 +146,7 @@ export type SessionCostPopoverProps = {
  * - **Reported cost** appears only when the agent's runtime reported one per
  *   turn (the claude Harness does, ADK does not) — absent means not reported,
  *   never zero.
- * - **Memory** is the newest turn's prompt tokens against the model's context
+ * - **Context used** is the newest turn's prompt tokens against the model's context
  *   window from app-config (`agentPlatform.models.contextWindows`). A model
  *   the table does not name shows the raw token count instead of a share —
  *   claiming a percentage of an unknown window would be invented precision.
@@ -207,9 +207,9 @@ export function SessionCostPopover({
         variant="tertiary"
         size="small"
         className={classes.trigger}
-        aria-label={`Session cost and memory: ${chipCost}${
+        aria-label={`Session cost and context: ${chipCost}${
           memory.percent !== undefined
-            ? `, ${formatPercent(memory.percent)} of memory used`
+            ? `, ${formatPercent(memory.percent)} of context used`
             : ''
         }`}
       >
@@ -227,7 +227,7 @@ export function SessionCostPopover({
         <div
           className={classes.content}
           role="dialog"
-          aria-label="Session cost and memory"
+          aria-label="Session cost and context"
         >
           <Text variant="body-small" weight="bold">
             This session
@@ -251,12 +251,12 @@ export function SessionCostPopover({
             )}`}
           />
           <Row label="Turns" value={formatCount(taskCount)} />
-          <Row label="Memory used" value={memoryValue} />
+          <Row label="Context used" value={memoryValue} />
           {memory.percent !== undefined && (
             <div
               className={classes.bar}
               role="img"
-              aria-label={`Memory ${formatPercent(memory.percent)} full`}
+              aria-label={`Context ${formatPercent(memory.percent)} full`}
             >
               <div
                 className={classes.barFill}
