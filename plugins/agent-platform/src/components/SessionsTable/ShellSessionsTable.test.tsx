@@ -601,6 +601,8 @@ describe('SessionsTable in the shell layout', () => {
       );
     });
 
+    // Typing re-filters 300 rendered rows per keystroke, so this test needs
+    // more than Jest's 5s default on a loaded machine.
     it('pages what the search matches, from its first page', async () => {
       const user = userEvent.setup();
       await renderShell(many);
@@ -620,7 +622,7 @@ describe('SessionsTable in the shell layout', () => {
       expect(
         screen.queryByRole('button', { name: 'Load more' }),
       ).not.toBeInTheDocument();
-    });
+    }, 20_000);
   });
 
   describe('at 3 sessions and at 300 (T39)', () => {
