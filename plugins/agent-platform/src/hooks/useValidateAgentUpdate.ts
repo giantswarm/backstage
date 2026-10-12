@@ -1,10 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
-
 import type { AgentUpdate, WriteMode } from '../lib/agentManager';
 import { musterValidateAgentUpdateQueryKey } from '../lib/queryKeys';
-import { useAgentManagerClient } from './useAgentManager';
-import { classifyReadFailure } from './useAgentManagerAgent';
+import { useAgentManagerDryRun } from './useAgentManagerDryRun';
 import type { ValidateAgentState } from './useValidateAgent';
 
 /**
@@ -22,22 +18,10 @@ export function useValidateAgentUpdate(
   update: AgentUpdate | undefined,
   mode: WriteMode = 'apply',
 ): ValidateAgentState {
-  const client = useAgentManagerClient(installation);
   const signature = update ? JSON.stringify({ mode, update }) : '';
-  const enabled = Boolean(client) && Boolean(update);
-
-  const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: musterValidateAgentUpdateQueryKey(installation ?? '', signature),
-    enabled,
-    queryFn: () => client!.validateUpdate(update!, mode),
-    // A refused dry run stays refused; retrying only delays the message.
-    retry: false,
-  });
-  const isLoading = isAwaitingData({ isPending, fetchStatus });
-
-  return {
-    result: data,
-    isLoading: enabled && isLoading,
-    failure: error ? classifyReadFailure(error) : undefined,
-  };
+  return useAgentManagerDryRun(
+    installation,
+    musterValidateAgentUpdateQueryKey(installation ?? '', signature),
+    update ? client => client.validateUpdate(update, mode) : undefined,
+  );
 }

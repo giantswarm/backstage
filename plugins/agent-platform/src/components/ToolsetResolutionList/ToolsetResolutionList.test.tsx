@@ -92,6 +92,15 @@ describe('ToolsetResolutionList', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('introduces the platform tools as information, not as a warning', async () => {
+    await renderList(resolved([tool('core_service_list', { kind: 'core' })]));
+
+    const intro = screen
+      .getByText(/These are the Agent Platform's own tools/)
+      .closest('[data-status]');
+    expect(intro).toHaveAttribute('data-status', 'info');
+  });
+
   it('opens a large resolution as its counts, with every tool row collapsed away', async () => {
     await renderList(resolved(BIG));
 

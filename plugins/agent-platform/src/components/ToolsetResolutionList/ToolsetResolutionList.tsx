@@ -169,7 +169,7 @@ function groupEntries(
                 panel: () => (
                   <>
                     <Alert
-                      status="warning"
+                      status="info"
                       title="Platform tools"
                       description="These are the Agent Platform's own tools. They act on its connectors, workflows and configuration."
                     />
