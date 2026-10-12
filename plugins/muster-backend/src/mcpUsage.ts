@@ -225,6 +225,20 @@ function unavailable(hours: number, reason: string): McpUsageResponse {
   };
 }
 
+/**
+ * The prometheus tool's prose, which {@link parsePromToolText} reads. A tool
+ * that answers structured data instead fails here, naming the tool, rather
+ * than parsing to no series and reading as zero calls.
+ */
+function promToolText(tool: string, answer: unknown): string {
+  if (typeof answer !== 'string') {
+    throw new Error(
+      `${tool} answered structured data, not the text the usage query parses`,
+    );
+  }
+  return answer;
+}
+
 export async function getMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
@@ -261,20 +275,20 @@ export async function getMcpUsage(
   ): Promise<PromSeries[]> => {
     // Family naming first (the GS deployment shape), plain prefix fallback.
     try {
-      const text = (await client.callTool(
+      const text = await client.callTool(
         `${FAMILY_PREFIX}${tool}`,
         { ...args, management_cluster: promServer },
         callOptions,
-      )) as string;
-      return parsePromToolText(String(text));
+      );
+      return parsePromToolText(promToolText(tool, text));
     } catch (familyError) {
       try {
-        const text = (await client.callTool(
+        const text = await client.callTool(
           `x_${promServer}_${tool}`,
           args,
           callOptions,
-        )) as string;
-        return parsePromToolText(String(text));
+        );
+        return parsePromToolText(promToolText(tool, text));
       } catch {
         throw familyError;
       }

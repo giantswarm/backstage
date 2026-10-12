@@ -183,6 +183,20 @@ export interface McpContentItem {
 
 type ContentItem = McpContentItem;
 
+/**
+ * A `call_tool` result taken apart: no text at all, the envelope's own
+ * payload (`value` where it is JSON), or the wrapped tool's MCP result.
+ */
+type CallToolUnwrap =
+  | { kind: 'empty' }
+  | { kind: 'direct'; envelope: string; value?: unknown }
+  | {
+      kind: 'wrapped';
+      text?: string;
+      content: McpContentItem[];
+      structuredContent?: unknown;
+    };
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -424,14 +438,11 @@ export class MusterMcpClient {
   }
 
   /**
-   * Like {@link callTool}, but preserves the wrapped tool's MCP
-   * `structuredContent` alongside its text payload. `call_tool` serialises the
-   * target tool's full result (`{isError, content, structuredContent}`) as a
-   * JSON envelope, which {@link callTool}'s parsing reduces to the text alone —
-   * fine for tools whose payload IS that JSON text, lossy for tools like
-   * `core_auth_login` that put the machine-readable part (the sign-in URL) in
-   * `structuredContent` (muster#1025). Tool-level errors throw, same as
-   * callTool.
+   * Like {@link callTool}, but returns the wrapped tool's text and its MCP
+   * `structuredContent` both, where {@link callTool} answers one of them: for
+   * a tool whose text is meant for the person next to the data, such as
+   * `core_auth_login`'s challenge with its sign-in URL in `structuredContent`
+   * (muster#1025). Tool-level errors throw, same as callTool.
    */
   async callToolWithStructured(
     toolName: string,
@@ -443,31 +454,18 @@ export class MusterMcpClient {
       { name: toolName, arguments: args },
       options,
     );
-
-    const envelope = this.unwrapTextContent(result, toolName);
-    if (envelope === undefined) {
-      return {};
+    const unwrapped = this.unwrapCallTool(result, toolName);
+    switch (unwrapped.kind) {
+      case 'empty':
+        return {};
+      case 'direct':
+        return { text: unwrapped.envelope };
+      default:
+        return {
+          text: unwrapped.text,
+          structuredContent: unwrapped.structuredContent,
+        };
     }
-
-    let inner: unknown;
-    try {
-      inner = JSON.parse(envelope);
-    } catch {
-      return { text: envelope };
-    }
-    if (
-      inner === null ||
-      typeof inner !== 'object' ||
-      !Array.isArray((inner as { content?: unknown }).content)
-    ) {
-      return { text: envelope };
-    }
-
-    return {
-      text: this.unwrapTextContent(inner, toolName),
-      structuredContent: (inner as { structuredContent?: unknown })
-        .structuredContent,
-    };
   }
 
   /**
@@ -487,23 +485,15 @@ export class MusterMcpClient {
       { name: toolName, arguments: args },
       options,
     );
-    const envelope = this.unwrapTextContent(result, toolName);
-    if (envelope === undefined) {
-      return [];
+    const unwrapped = this.unwrapCallTool(result, toolName);
+    switch (unwrapped.kind) {
+      case 'empty':
+        return [];
+      case 'direct':
+        return [{ type: 'text', text: unwrapped.envelope }];
+      default:
+        return unwrapped.content;
     }
-    let inner: unknown;
-    try {
-      inner = JSON.parse(envelope);
-    } catch {
-      return [{ type: 'text', text: envelope }];
-    }
-    const content = (inner as { content?: unknown } | null)?.content;
-    if (!Array.isArray(content)) {
-      return [{ type: 'text', text: envelope }];
-    }
-    // Surfaces an errored inner result the same way callTool does.
-    this.unwrapTextContent(inner, toolName);
-    return content as McpContentItem[];
   }
 
   async listTools(options?: { authToken?: string }): Promise<unknown> {
@@ -625,38 +615,67 @@ export class MusterMcpClient {
    * Discovery meta-tools return their payload as a single JSON text block
    * (one unwrap), while `call_tool` wraps the target tool's MCP result as a
    * JSON string inside its own text block (two unwraps). This unwraps the
-   * outer envelope, and when the inner value is itself a `{ content: [...] }`
-   * MCP result it unwraps once more — covering both shapes with one path.
+   * outer envelope and, when the inner value is itself a `{ content: [...] }`
+   * MCP result, takes it apart once more ({@link unwrapCallTool}); errors
+   * throw on either level.
    */
-  private parseResult(result: unknown, toolName: string): unknown {
+  private unwrapCallTool(result: unknown, toolName: string): CallToolUnwrap {
     const envelope = this.unwrapTextContent(result, toolName);
     if (envelope === undefined) {
-      return undefined;
+      return { kind: 'empty' };
     }
-
     let inner: unknown;
     try {
       inner = JSON.parse(envelope);
     } catch {
-      // Not a JSON envelope; treat it as the tool's direct payload.
-      return envelope;
+      // Not a JSON envelope; the tool's direct payload.
+      return { kind: 'direct', envelope };
     }
-
     if (
       inner === null ||
       typeof inner !== 'object' ||
       !Array.isArray((inner as { content?: unknown }).content)
     ) {
-      // Direct JSON payload (discovery meta-tools, or a server that exposes
+      // A direct JSON payload (discovery meta-tools, or a server that exposes
       // tools without the call_tool envelope).
-      return inner;
+      return { kind: 'direct', envelope, value: inner };
     }
+    const { content, structuredContent } = inner as {
+      content: McpContentItem[];
+      structuredContent?: unknown;
+    };
+    return {
+      kind: 'wrapped',
+      text: this.unwrapTextContent(inner, toolName),
+      content,
+      structuredContent,
+    };
+  }
 
-    const text = this.unwrapTextContent(inner, toolName);
+  /**
+   * The tool's machine-readable answer. MCP makes `structuredContent` the
+   * result and the text block its rendering, so an object
+   * `structuredContent` wins wherever a tool answers one (mcp-go's
+   * `NewToolResultStructured(data, "3 workspaces")`, or no text block at
+   * all); the text, parsed as JSON where it is JSON, otherwise.
+   */
+  private parseResult(result: unknown, toolName: string): unknown {
+    const unwrapped = this.unwrapCallTool(result, toolName);
+    switch (unwrapped.kind) {
+      case 'empty':
+        return undefined;
+      case 'direct':
+        return 'value' in unwrapped ? unwrapped.value : unwrapped.envelope;
+      default:
+        break;
+    }
+    const { text, structuredContent } = unwrapped;
+    if (structuredContent !== null && typeof structuredContent === 'object') {
+      return structuredContent;
+    }
     if (text === undefined) {
       return undefined;
     }
-
     try {
       return JSON.parse(text);
     } catch {
