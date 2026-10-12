@@ -51,6 +51,10 @@ type Scenario = {
   commitError?: Error;
   /** What the commit dry run would write; default: what validate_agent answered. */
   committed?: AgentSkillEntry[];
+  /** Holds the agent's read until it settles. */
+  agentHeld?: Promise<void>;
+  /** Holds validate_agent's answer until it settles. */
+  validateHeld?: Promise<void>;
   /** Holds the commit dry run's answer until it settles. */
   commitDryRunHeld?: Promise<void>;
   /** validate_agent's violations. */
@@ -83,8 +87,10 @@ function makeMusterApi(scenario: Scenario = {}) {
     async (name: string, args: Record<string, unknown>) => {
       switch (name) {
         case 'x_agent-manager_get_agent':
+          await scenario.agentHeld;
           return AGENT;
         case 'x_agent-manager_validate_agent':
+          await scenario.validateHeld;
           if (scenario.validateError) {
             throw scenario.validateError;
           }
@@ -222,6 +228,63 @@ describe('AgentUpdateSkillsDialog', () => {
     const digest = screen.getByTestId('skill-refresh-runbooks');
     expect(digest).toHaveTextContent('Pinned by digest — left alone');
     expect(digest).toHaveTextContent('n/a');
+  });
+
+  it('shows placeholder rows and a progress line until the skills are read, with the confirm locked', async () => {
+    let settle: () => void = () => {};
+    const held = new Promise<void>(resolve => (settle = resolve));
+    await renderDialog({ agentHeld: held });
+
+    const table = screen.getByRole('table', { name: 'Skills and their pins' });
+    expect(table).toHaveAttribute('aria-busy', 'true');
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(
+      await screen.findByText('Asking agent-manager which skills would move…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Update all skills' }),
+    ).toBeDisabled();
+
+    settle();
+    expect(
+      await screen.findByText(/Confirming re-pins the skills marked above/),
+    ).toBeInTheDocument();
+    expect(table).toHaveAttribute('aria-busy', 'false');
+    expect(
+      screen.queryByText('Asking agent-manager which skills would move…'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('lists the pins while the dry run runs, holding the head and outcome cells in place', async () => {
+    let settle: () => void = () => {};
+    const held = new Promise<void>(resolve => (settle = resolve));
+    await renderDialog({ validateHeld: held });
+
+    const moving = await screen.findByTestId('skill-refresh-pr-review');
+    expect(within(moving).getByTitle(PINNED)).toBeInTheDocument();
+    expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
+    expect(moving).not.toHaveTextContent('Moves to the head');
+    expect(moving.querySelectorAll('.bui-Skeleton')).toHaveLength(2);
+    // A digest pin never moves, so it has nothing to wait for.
+    expect(screen.getByTestId('skill-refresh-runbooks')).toHaveTextContent(
+      'Pinned by digest — left alone',
+    );
+    // The columns are sized up front, not by what arrives.
+    expect(
+      screen
+        .getByRole('table', { name: 'Skills and their pins' })
+        .querySelectorAll('colgroup col'),
+    ).toHaveLength(4);
+    expect(
+      screen.getByRole('button', { name: 'Update all skills' }),
+    ).toBeDisabled();
+
+    settle();
+    expect(
+      await within(moving).findByText('Moves to the head'),
+    ).toBeInTheDocument();
+    expect(within(moving).getByTitle(HEAD)).toBeInTheDocument();
+    expect(moving.querySelectorAll('.bui-Skeleton')).toHaveLength(0);
   });
 
   it('confirms with update_agent and refreshSkills only, then hands the result over', async () => {
