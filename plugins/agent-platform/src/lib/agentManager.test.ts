@@ -6,6 +6,7 @@ import {
   helmInstallCommand,
   isSettledVerdict,
   looksNotConnected,
+  missingReleaseFile,
 } from './agentManager';
 
 describe('agentManagerToolName', () => {
@@ -54,6 +55,46 @@ describe('classifyAgentManagerError', () => {
       new Error('Note: the request failed'),
     );
     expect(error).not.toBeInstanceOf(AgentManagerError);
+  });
+});
+
+describe('missingReleaseFile', () => {
+  // agent-manager's exact answer over MCP (internal/agents/commit.go
+  // requireReleaseFile, wrapped by internal/api/mcp.go errResult) as of
+  // giantswarm/agent-manager@334d94f. The portal recognises this refusal only
+  // by its wording: when agent-manager rewords it, this test is where to update
+  // the pattern, and the dialog falls back to showing the raw conflict.
+  const WIRE =
+    "conflict: conflict: HelmRelease flux-giantswarm/cluster-manager-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/cluster-manager-agent.yaml there): change it in the file that defines it";
+
+  it("reads the release, directory, repository and checked path from agent-manager's answer", () => {
+    const error = classifyAgentManagerError(new Error(WIRE));
+    expect(error).toBeInstanceOf(AgentManagerError);
+    expect(
+      missingReleaseFile({
+        code: (error as AgentManagerError).code,
+        message: error.message,
+      }),
+    ).toEqual({
+      release: 'flux-giantswarm/cluster-manager-agent',
+      directory: 'management-clusters/gazelle/extras/agent-manager',
+      repository: 'giantswarm/giantswarm-management-clusters',
+      path: 'management-clusters/gazelle/extras/agent-manager/cluster-manager-agent.yaml',
+    });
+  });
+
+  it('is undefined for any other refusal', () => {
+    const message = WIRE.replace(/^conflict: /, '');
+    expect(missingReleaseFile(undefined)).toBeUndefined();
+    expect(
+      missingReleaseFile({ code: 'invalid_request', message }),
+    ).toBeUndefined();
+    expect(
+      missingReleaseFile({
+        code: 'conflict',
+        message: 'HelmRelease kagent/x is suspended',
+      }),
+    ).toBeUndefined();
   });
 });
 

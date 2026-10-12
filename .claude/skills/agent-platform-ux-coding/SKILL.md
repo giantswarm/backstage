@@ -195,22 +195,22 @@ them and never invent a palette.
 
 ### One vocabulary
 
-| Concept                         | Use                                                                                 | Not                                                     |
-| ------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| An MCP server a person sees     | **connector**, named as Customize lists it                                          | app, server, "via Muster" outside technical rows        |
-| Tool presets                    | **Read-only tools**, **Full gateway**                                               | "Look things up", "Read-only tools everywhere"          |
-| Muster's own tools              | **Platform tools**                                                                  | platform administration tools                           |
-| Gateway-priced money            | **Spend** ("Est. spend" when converted); every tile says whose                      | Cost, Spend (estimated)                                 |
-| Token-based estimate            | **Est. cost**                                                                       | Estimated cost                                          |
-| Runtime-reported money          | **Reported cost**                                                                   |                                                         |
-| Served-model readiness          | `SERVED_MODEL_READINESS` labels: Ready, Not serving, Pending, Idle                  | Serving already, Not running, Available (on Customize)  |
-| A session with no turn running  | **Idle**                                                                            | Finished                                                |
-| Starting from an agent          | **Start a session** ("New session" stays the nav, home and Sessions entry)          | Use this agent                                          |
-| Interrupting the agent          | **Stop the turn**                                                                   | Stop, Cancel the turn                                   |
-| Owned things                    | **Delete** (agent, session, model)                                                  |                                                         |
-| Infrastructure registrations    | **Remove** (pool, cache, backend, connector, a running model's model config)        |                                                         |
-| A catalogue skill's commit      | **Latest commit**                                                                   | Pinned commit                                           |
-| "Used by"                       | agents only                                                                         | model config, mount state                               |
+| Concept                        | Use                                                                                                                                       | Not                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| An MCP server a person sees    | **connector**, named as Customize lists it                                                                                                | app, server, "via Muster" outside technical rows       |
+| Tool presets                   | **Read-only tools**, **Full gateway**                                                                                                     | "Look things up", "Read-only tools everywhere"         |
+| Muster's own tools             | **Platform tools**                                                                                                                        | platform administration tools                          |
+| Gateway-priced money           | **Spend** ("Est. spend" when converted); every tile says whose                                                                            | Cost, Spend (estimated)                                |
+| Token-based estimate           | **Est. cost**                                                                                                                             | Estimated cost                                         |
+| Runtime-reported money         | **Reported cost**                                                                                                                         |                                                        |
+| Served-model readiness         | `SERVED_MODEL_READINESS` labels: Ready, Not serving, Pending, Idle                                                                        | Serving already, Not running, Available (on Customize) |
+| A session with no turn running | **Idle**                                                                                                                                  | Finished                                               |
+| Starting from an agent         | **Start a session** ("New session" stays the nav, home and Sessions entry); the agent page's header button alone reads **Use this agent** | Use this agent anywhere else                           |
+| Interrupting the agent         | **Stop the turn**                                                                                                                         | Stop, Cancel the turn                                  |
+| Owned things                   | **Delete** (agent, session, model)                                                                                                        |                                                        |
+| Infrastructure registrations   | **Remove** (pool, cache, backend, connector, a running model's model config)                                                              |                                                        |
+| A catalogue skill's commit     | **Latest commit**                                                                                                                         | Pinned commit                                          |
+| "Used by"                      | agents only                                                                                                                               | model config, mount state                              |
 
 ## 4. Interaction rules
 
