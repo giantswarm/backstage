@@ -76,6 +76,12 @@ jest.mock('../SessionsDataProvider', () => ({
   useSessions: () => ({ rows: mockSessions() }),
 }));
 
+// The catalogue that names individually picked tools by connector; the reach
+// line's own suite covers the coverage words (T103).
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
+}));
+
 const mockUseCreateSession = jest.fn();
 jest.mock('../../hooks/useCreateSession', () => ({
   useCreateSession: (entryPoint: string) => mockUseCreateSession(entryPoint),
@@ -402,13 +408,56 @@ describe('AgentPlatformHome', () => {
       // detail page's information, not part of starting a session.
       expect(screen.queryByText('Sonnet 4.5')).not.toBeInTheDocument();
       expect(
-        screen.getByText('Can use confluence and slack'),
+        screen.getByText('Can use confluence and slack.', { exact: false }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('group', {
           name: 'Or pick one of your recent agents',
         }),
       ).not.toBeInTheDocument();
+    });
+
+    it('links the chosen agent to its tools, and nothing before a choice', async () => {
+      await render();
+
+      expect(
+        screen.queryByRole('link', { name: 'See which tools' }),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+      expect(
+        screen.getByRole('link', { name: 'See which tools' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/agents/gazelle/research/research-agent/tools',
+      );
+    });
+
+    it('links whichever agent is chosen to its own tools', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [
+          {
+            ...sre,
+            toolset: {
+              state: 'declared',
+              carrier: 'sre-agent',
+              selectors: ['server:github'],
+            },
+          },
+          research,
+        ],
+      });
+      await render({ url: `/?agent=${encodeURIComponent(sre.id)}` });
+
+      expect(
+        screen.getByRole('link', { name: 'See which tools' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+      );
     });
 
     it('keeps the prompt and Start disabled until an agent is chosen', async () => {

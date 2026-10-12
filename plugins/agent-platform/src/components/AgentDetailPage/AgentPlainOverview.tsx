@@ -26,6 +26,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import type { ClientServingSummary } from '../../lib/serving';
@@ -36,8 +37,8 @@ import {
   skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
 import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
-import { describeReach } from '../AgentReachLine';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
@@ -331,6 +332,10 @@ function ConnectorsSection({
 }) {
   const classes = useStyles();
   const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  const groups = useReachCatalogue(
+    agent.cluster,
+    reachNeedsCatalogue(declared),
+  );
   const bindings = agent.getMcpBindings();
   const direct = bindings.filter(
     binding => !isGatewayServerBinding(agent, binding),
@@ -348,7 +353,7 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared) ??
+      describeReach(declared, groups) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
