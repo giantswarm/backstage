@@ -710,14 +710,13 @@ kagent-dev/kagent#2397 exposes it.
 
 #### Session ids come in two shapes, and neither is ours
 
-The controller assigns ids in `SessionService/CreateSession`; sessions started
-from Slack by klaus-gateway have another shape. An id is **opaque**: never
+The controller assigns ids when agent-manager's `start_session` creates the
+Session; sessions started from Slack by klaus-gateway have another shape. An id is **opaque**: never
 parse it or assume hex or a UUID. The code only `encodeURIComponent`s it.
 
-Creates carry a browser `request_id`, and the controller is idempotent on
-(creator, request id), so a lost create answer returns the existing session on
-retry (see "Create, navigate, then send"). An answer without an id fails
-loudly and says to check the list.
+Starts carry a browser `requestId`, and the controller is idempotent on
+(creator, request id), so a lost start answer returns the existing session on
+retry (see "Start, then navigate"). An answer without an id fails loudly.
 
 ### Fleet behaviour
 
@@ -1230,7 +1229,7 @@ text as evidence only; the failed-turn entry does the same.
 `newSession` prop). It is secondary while the loss is suspected, since a cold
 worker can time out once, and primary once kagent reports it, replacing Send and
 the answer panel. It takes the box's text, else the failed send's text, else
-the person's last message in this session, and follows create, navigate, send
+the person's last message in this session, and follows start, then navigate
 (see "Starting a session"). `SessionDetailRoute` keys the page on the session,
 so the new one mounts fresh.
 
@@ -1477,43 +1476,58 @@ no task id), the panel is withheld and the page says so.
 
 A session starts from a **composer** with a prompt and an agent; there is no
 separate new-session form. Both composers use `ComposerFrame` from `ui-react`.
-Every entry point creates through `useCreateSession`: the home screen at `/`
+Every entry point starts through `useCreateSession`: the home screen at `/`
 (`AgentPlatformHome`), the command palette (`NewSessionDialog`), the sessions
 list's first-run card (`StartNewSession`), the agent page's dialog, a lost
 runtime's new-session action, the meta-agent hand-offs ("<verb> with
 <agent>", `useMetaAgentHandoff`) and `CreateAgentAssist`.
 The composer grows with its content and never shrinks back. Enter starts.
 
-#### Create, navigate, then send — in that order
+#### Start, then navigate — in that order
 
-1. `POST /kagent/sessions` with the agent, the title and a **`requestId`**: one
-   `CreateSession` on the Agent, which names its Harness, so the backend
-   depends on nothing the browser read.
-2. Navigate to the session's page with the prompt in the router state.
-3. The **detail page** sends the prompt as the first message.
+1. **agent-manager's `start_session`**, through muster as the person
+   (`AgentManagerClient.startSession`, `musterApi.callTool(…, installation)`)
+   with the agent's namespace and technical name, the prompt as `message`, the
+   derived title as `sessionName` and a **`requestId`**. agent-manager creates
+   the Session (`CreateSession` on the Agent, which names its Harness) and
+   sends the prompt as its first message, then answers with the session and
+   the first event of the turn once the agent has accepted it.
+2. Navigate to the session's page with the prompt in the router state. The
+   page sends **nothing**: it shows the prompt as the first message, with
+   "Working…", until its first read of the conversation has the person's
+   message, and from then on the poll follows the turn.
 
-**The create is idempotent.** `useCreateSession` mints one `requestId` per
-submission and reuses it when the same prompt to the same agent is retried; the
-controller answers the existing instance for a repeated `(creator, request_id)`
-and 409 for a repeat with other parameters.
+**One way to start a session.** Every surface (the portal, Slack, any MCP
+client) starts sessions through `start_session`, the one place where an agent
+and, optionally, a workspace grant meet, so no surface can skip a workspace's
+access check. The portal sends no grant yet: an absent grant is the plain
+session. The backend has no create route; reads, sends, rename and delete
+stay on the kagent proxy.
 
-The composer does not send because a send lasts the whole turn (see "Continuing
-a session"): awaiting it would hold the person on the list for up to
-`turnTimeoutMs`, and not awaiting it would lose the optimistic echo, which lives
-in the unmounted component. Handing the prompt over reuses the reply machinery:
-the optimistic message, "Working…" and failure handling. The agent's namespace
-and name travel with the prompt, so the send goes out on the first render.
+**The start is idempotent.** `useCreateSession` mints one `requestId` per
+submission and reuses it when the same prompt to the same agent is retried; a
+repeated `requestId` answers the session the first attempt created. A retry
+after agent-manager reported "created but its first message was not
+accepted" sends the message to that session.
+
+Refusals are agent-manager's and classified as its other tools' are
+(`AgentManagerError` with its code): `conflict` for an agent without a ready
+revision, `invalid_request` for a message over 32,000 characters (the composer
+bounds it first), `unsupported` on an installation whose agent-manager has no
+kagent controller target. A portal without the muster plugin cannot start a
+session.
+
+**The first turn is not streamed.** agent-manager sends it, so the detail page
+follows it through the conversation poll (10 s while active, see
+"Refreshing") rather than token by token; a reply typed afterwards streams as
+before (see "Streaming the turn").
 
 The router state is consumed once and cleared with a replacing navigation
-(`useNewSessionHandoff`), because router state survives reload and Back and
-would otherwise start a second paid turn.
+(`useNewSessionHandoff`), because router state survives reload and Back.
 
 A meta-agent hand-off marks its prompt `prepared`, and the detail page captions
 that first message "Prepared by the portal". kagent stores no such flag, so a
 later visit shows the message plain.
-
-A tab closed between create and send leaves an empty but working session in
-the list.
 
 #### Titles are ours to derive
 
@@ -1526,8 +1540,9 @@ most 200 characters).
 #### The agent implies the installation
 
 An agent's identity is installation/namespace/name, so picking one picks the
-installation. The create sends the namespace and the **technical** name (the
-`Agent` resource name) as `CreateSession.agent`, never the display name.
+installation. The start sends the namespace and the **technical** name (the
+`Agent` resource name) as `start_session`'s `namespace` and `name`, never the
+display name.
 
 The picker offers **ready agents only**, grouped by installation when there is
 more than one, with search past eight agents. Non-ready agents are omitted,
@@ -2201,8 +2216,6 @@ The portal does not carry the values shape.
 - **Skills.** Private skill repositories need a platform answer (the create
   contract has no per-skill credential). Discovery reads the **default branch**
   and offers no per-skill `ref`.
-- **An empty session is possible** between create and send. Avoiding it needs
-  a server-side route that dispatches a turn without waiting.
 - **The agent version is not pinned to the session.** The prototype's
   `model-session.md` requires it, but kagent's record has only `agent_ref`, so
   upgrading an agent changes every existing session. Raise upstream.

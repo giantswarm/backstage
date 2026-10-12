@@ -1833,38 +1833,20 @@ describe('SessionDetailPage', () => {
       agentName: 'issue-tracker',
     };
 
-    it('sends it on arrival, so the user watches the reply appear', async () => {
-      // Created on the previous screen, sent here: `message/send` blocks for the
-      // whole turn, so awaiting it before navigating would have meant staring at
-      // the sessions list for up to half a minute.
+    it('sends nothing: start_session sent it before the page opened', async () => {
+      // agent-manager's start_session created the session and sent the prompt
+      // as its first message. A send from here would be a second paid turn
+      // with the same prompt, however often the page re-renders.
       mockUseNewSessionHandoff.mockReturnValue(handoff);
       await render();
-
-      await waitFor(() => {
-        expect(mockSendMessage).toHaveBeenCalledWith(
-          'why is the ingress failing?',
-        );
-      });
-    });
-
-    it('sends it exactly once, however often the page re-renders', async () => {
-      // This page polls, so it re-renders constantly. A second dispatch would be
-      // a second paid turn with the same prompt.
-      mockUseNewSessionHandoff.mockReturnValue(handoff);
-      await render();
-
-      await waitFor(() => {
-        expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      });
 
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
         taskCount: loadedView.taskCount + 1,
       });
+      await render();
 
-      await waitFor(() => {
-        expect(mockSendMessage).toHaveBeenCalledTimes(1);
-      });
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('sends nothing when the session was merely opened', async () => {
@@ -1887,44 +1869,31 @@ describe('SessionDetailPage', () => {
       expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus();
     });
 
-    it('dispatches even before the session read has resolved its agent', async () => {
-      // The agent travels with the prompt precisely so the send does not have to
-      // wait for the session read and its join against the fleet-wide Agent list.
+    it('shows the prompt, working, until the conversation read has it', async () => {
+      // The session read landed, its conversation not yet: without the
+      // stand-in a new session would open empty for a beat.
       mockUseNewSessionHandoff.mockReturnValue(handoff);
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
-        detail: undefined,
         timeline: emptyTimeline,
-        state: undefined,
+        isAgentWorking: false,
         taskCount: 0,
-        hasConversation: false,
-        isLoading: true,
       });
       await render();
 
-      await waitFor(() => {
-        expect(mockSendMessage).toHaveBeenCalledWith(
-          'why is the ingress failing?',
-        );
-      });
+      expect(
+        screen.getByText('why is the ingress failing?'),
+      ).toBeInTheDocument();
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
-    it('keeps the prompt recoverable when the send fails', async () => {
-      // The composer's `restore` is the only place the text still exists — the
-      // same path a failed reply takes.
+    it('drops the stand-in once the read holds the person’s message', async () => {
       mockUseNewSessionHandoff.mockReturnValue(handoff);
-      mockUseSendMessage.mockReturnValue(
-        idleSend({
-          error: new Error('the agent could not be reached'),
-          failed: { messageId: 'msg-1', text: 'why is the ingress failing?' },
-        }),
-      );
       await render();
 
-      expect(screen.getByText('Message not sent')).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue(
-        'why is the ingress failing?',
-      );
+      expect(
+        screen.queryByText('why is the ingress failing?'),
+      ).not.toBeInTheDocument();
     });
 
     it('captions the first message as the portal’s when a hand-off prepared it', async () => {
@@ -2041,8 +2010,8 @@ describe('SessionDetailPage', () => {
     });
 
     it('starts a new session with the box’s text and hands the message over', async () => {
-      // Create, navigate, then send — the order every entry point keeps; the
-      // new page dispatches the text it finds in the router state.
+      // Start, then navigate — the order every entry point keeps; the
+      // new page shows the text it finds in the router state.
       mockUseSessionDetail.mockReturnValue(suspectedView);
       await render();
 

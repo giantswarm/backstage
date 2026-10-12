@@ -338,8 +338,9 @@ function PaletteSessionComposer({
         onClose();
         return;
       }
-      // The prompt travels with the navigation and is sent by the session
-      // detail page — see "Starting a session" in docs/agent-platform.md.
+      // `start_session` already sent the prompt; it travels with the navigation
+      // so the session detail page shows it at once — see "Starting a session"
+      // in docs/agent-platform.md.
       navigate(href, {
         state: {
           [NEW_SESSION_STATE_KEY]: {

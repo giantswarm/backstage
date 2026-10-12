@@ -24,6 +24,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  startSession: 'start_session',
 } as const;
 
 export type AgentManagerTool =
@@ -198,6 +199,33 @@ export type CreateAgentResult = {
   status?: AgentStatus;
   /** The authenticated caller the write ran as. */
   requestedBy?: string;
+};
+
+/**
+ * `start_session`'s input: the Agent by namespace and technical name, the first
+ * message, which agent-manager sends as the session's first turn, and the
+ * idempotency key of the submission. `workspaceGrant` starts the session in a
+ * workspace; absent, it is the plain session.
+ */
+export type StartSessionRequest = {
+  namespace: string;
+  name: string;
+  message: string;
+  requestId: string;
+  sessionName?: string;
+  workspaceGrant?: string;
+};
+
+/**
+ * `start_session`'s answer: the new session and the first event of its first
+ * turn (proto3 JSON of kagent's `Session` and A2A's `StreamResponse`), and the
+ * workspace when it was started with a grant. The turn keeps running; the
+ * conversation reads it back.
+ */
+export type StartSessionResult = {
+  session: { id?: string; contextId?: string; name?: string };
+  turn?: unknown;
+  workspace?: string;
 };
 
 /**

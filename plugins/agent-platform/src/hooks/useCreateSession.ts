@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useRef } from 'react';
-import { useApi } from '@backstage/core-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useTrackedMutation,
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
-import { kagentApiRef } from '../apis';
+import { AgentManagerClient } from '../apis/AgentManagerClient';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
+import { useMusterPluginApi } from './useMusterPluginApi';
 
 /** What the composer submits: an agent, and the prompt to open the session with. */
 export type NewSession = {
@@ -21,8 +21,8 @@ export type NewSession = {
  *
  * The key is minted **once per submission**, outside the mutation, so every
  * retry of that submission — the mutation's own, or the user pressing Start
- * again on the same prompt after a lost answer — carries the same one and the
- * controller answers the same instance instead of creating a second.
+ * again on the same prompt after a lost answer — carries the same one and
+ * agent-manager answers the same session instead of creating a second.
  */
 type NewSessionRequest = NewSession & { requestId: string };
 
@@ -36,13 +36,15 @@ export type UseCreateSessionOptions = {
 };
 
 /**
- * Start a session with an agent: create its Session.
+ * Start a session with an agent: agent-manager's `start_session`, through
+ * muster as the person, which creates the Session and sends the prompt as its
+ * first message.
  *
- * **Creating the instance says nothing to the agent.** The prompt has to be
- * sent separately, as an A2A turn on the new instance. This hook does only the
- * create — the send happens on the session detail page, which the caller
- * navigates to with the prompt in hand. See "Starting a session" in
- * docs/agent-platform.md for why it is split that way rather than done here.
+ * It is the only way a session starts, on every entry point, so every surface
+ * passes the same checks. The call answers once the agent has accepted the
+ * turn; the turn keeps running and the session detail page, which the caller
+ * navigates to, reads it back. See "Starting a session" in
+ * docs/agent-platform.md.
  *
  * The installation is not a parameter: an agent's identity *is*
  * installation/namespace/name, so picking the agent picks the installation, and
@@ -56,7 +58,7 @@ export function useCreateSession(
   entryPoint: SessionEntryPoint,
   { titleMaxLength }: UseCreateSessionOptions = {},
 ) {
-  const kagentApi = useApi(kagentApiRef);
+  const musterApi = useMusterPluginApi();
   const queryClient = useQueryClient();
 
   const mutation = useTrackedMutation({
@@ -65,14 +67,25 @@ export function useCreateSession(
       attributes: { entryPoint },
     }),
     mutationFn: async ({ agent, prompt, requestId }: NewSessionRequest) => {
-      const { sessionId } = await kagentApi.createSession(
+      if (!musterApi) {
+        // agent-manager is reached through muster only; a portal without the
+        // muster plugin has no way to start a session.
+        throw new Error(
+          'Starting a session needs the muster plugin, which this portal does not have.',
+        );
+      }
+      const { sessionId } = await new AgentManagerClient(
+        musterApi,
         agent.installation,
+      ).startSession({
         // The agent's *technical* name, the `Agent` object's name. `name` is
         // the display annotation and would not match anything.
-        { namespace: agent.namespace, name: agent.technicalName },
-        deriveSessionTitle(prompt, titleMaxLength),
+        namespace: agent.namespace,
+        name: agent.technicalName,
+        message: prompt,
         requestId,
-      );
+        sessionName: deriveSessionTitle(prompt, titleMaxLength),
+      });
 
       return { sessionId };
     },
@@ -113,7 +126,7 @@ export function useCreateSession(
           : { ...newSession, requestId: crypto.randomUUID() };
       lastRequest.current = request;
       const { sessionId } = await mutateAsync(request);
-      // Created: the next identical prompt is a new conversation, not a retry.
+      // Started: the next identical prompt is a new conversation, not a retry.
       lastRequest.current = undefined;
       return sessionId;
     },

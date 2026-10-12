@@ -48,7 +48,6 @@ describe('createRouter', () => {
   const revokeSessionShare = jest.fn();
   const sendMessage = jest.fn();
   const streamMessage = jest.fn();
-  const createSession = jest.fn();
   const answerConfirmation = jest.fn();
   const streamAnswer = jest.fn();
   const cancelTask = jest.fn();
@@ -65,7 +64,6 @@ describe('createRouter', () => {
     revokeSessionShare,
     sendMessage,
     streamMessage,
-    createSession,
     answerConfirmation,
     streamAnswer,
     cancelTask,
@@ -107,7 +105,6 @@ describe('createRouter', () => {
     revokeSessionShare.mockReset();
     sendMessage.mockReset();
     streamMessage.mockReset();
-    createSession.mockReset();
     answerConfirmation.mockReset();
     streamAnswer.mockReset();
     cancelTask.mockReset();
@@ -782,150 +779,16 @@ describe('createRouter', () => {
   });
 
   describe('POST /kagent/sessions', () => {
-    const createdBody = {
-      error: false,
-      data: { id: 'new-session-id', name: 'Why is the ingress failing?' },
-    };
-
-    const validBody = {
-      agentNamespace: 'kagent',
-      agentName: 'issue-tracker',
-      name: 'Why is the ingress failing?',
-    };
-
-    function post(body: unknown = validBody, installation = 'gazelle') {
-      return request(app)
-        .post('/kagent/sessions')
-        .query({ installation })
-        .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send(body as object);
-    }
-
-    it('forwards the agent, title and token, answering 201 with kagent’s body', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      const response = await post();
-
-      expect(response.status).toBe(201);
-      expect(response.body).toEqual(createdBody);
-      expect(createSession).toHaveBeenCalledWith(
-        { namespace: 'kagent', name: 'issue-tracker' },
-        'Why is the ingress failing?',
-        // No requestId in the body: the route mints one, so the create is not
-        // silently non-idempotent but the body stays an addition.
-        expect.stringMatching(/^[0-9a-f-]{36}$/),
-        { userToken: 'user-token' },
-      );
-    });
-
-    it('forwards the caller’s requestId verbatim, so a retry is the same create', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      await post({ ...validBody, requestId: 'submission-7' });
-      await post({ ...validBody, requestId: 'submission-7' });
-
-      expect(createSession).toHaveBeenNthCalledWith(
-        1,
-        expect.anything(),
-        expect.anything(),
-        'submission-7',
-        expect.anything(),
-      );
-      expect(createSession).toHaveBeenNthCalledWith(
-        2,
-        expect.anything(),
-        expect.anything(),
-        'submission-7',
-        expect.anything(),
-      );
-    });
-
-    it.each([
-      ['an empty requestId', ''],
-      ['a requestId over the limit', 'x'.repeat(129)],
-      ['a requestId that is not a string', 42],
-    ])('rejects %s as a 400', async (_, requestId) => {
-      const response = await post({ ...validBody, requestId });
-
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('does not shadow the sessions list route', async () => {
-      // `GET /kagent/sessions` and `POST /kagent/sessions` share a path; only the
-      // method separates them, and a mix-up would make the list unreachable.
-      listSessions.mockResolvedValue({ error: false, data: [] });
-
-      const response = await request(app)
-        .get('/kagent/sessions')
-        .query({ installation: 'gazelle' })
-        .set(KAGENT_AUTH_HEADER, 'user-token');
-
-      expect(response.status).toBe(200);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      ['missing agentNamespace', { ...validBody, agentNamespace: undefined }],
-      ['agentNamespace not a string', { ...validBody, agentNamespace: 42 }],
-      ['empty agentName', { ...validBody, agentName: '  ' }],
-      ['missing name', { ...validBody, name: undefined }],
-      ['whitespace-only name', { ...validBody, name: '   ' }],
-      ['name over the limit', { ...validBody, name: 'x'.repeat(256) }],
-    ])('rejects a body with %s as a 400', async (_, body) => {
-      const response = await post(body);
-
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('trims the title', async () => {
-      createSession.mockResolvedValue(createdBody);
-
-      await post({ ...validBody, name: '  Padded title  ' });
-
-      expect(createSession).toHaveBeenCalledWith(
-        expect.anything(),
-        'Padded title',
-        expect.anything(),
-        expect.anything(),
-      );
-    });
-
-    it('requires a forwarded user token', async () => {
-      // kagent reads the session's owner from this token alone. Without it, a
-      // controller in `unsecure` mode would create a session for the shared
-      // default user on behalf of nobody in particular.
+    it('is not a route: every session starts through agent-manager', async () => {
+      // `start_session` is the one way a session starts, so a workspace's
+      // access check cannot be skipped by a surface that creates directly.
       const response = await request(app)
         .post('/kagent/sessions')
         .query({ installation: 'gazelle' })
-        .send(validBody);
-
-      expect(response.status).toBe(401);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('requires the installation query parameter', async () => {
-      const response = await request(app)
-        .post('/kagent/sessions')
         .set(KAGENT_AUTH_HEADER, 'user-token')
-        .send(validBody);
+        .send({ agentNamespace: 'kagent', agentName: 'issue-tracker' });
 
-      expect(response.status).toBe(400);
-      expect(createSession).not.toHaveBeenCalled();
-    });
-
-    it('reports an agent kagent cannot resolve as a 409, not a 5xx', async () => {
-      // A stale picker, not a fault. MiddlewareFactory.error() forwards anything
-      // >= 500 to Sentry, and nobody can act on this one.
-      const conflict = new Error('kagent did not accept the agent');
-      conflict.name = 'ConflictError';
-      createSession.mockRejectedValue(conflict);
-
-      const response = await post();
-
-      expect(response.status).toBe(409);
-      expect(response.status).toBeLessThan(500);
+      expect(response.status).toBe(404);
     });
   });
 

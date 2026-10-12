@@ -536,9 +536,10 @@ function AgentDetailPageContent() {
         return;
       }
 
-      // The prompt travels with the navigation and is sent by the session detail
-      // page — see "Starting a session" in docs/agent-platform.md. Navigating
-      // unmounts this dialog, which is how it closes.
+      // `start_session` already sent the prompt; it travels with the navigation
+      // so the session detail page shows it at once — see "Starting a session"
+      // in docs/agent-platform.md. Navigating unmounts this dialog, which is
+      // how it closes.
       navigate(href, {
         state: {
           [NEW_SESSION_STATE_KEY]: {

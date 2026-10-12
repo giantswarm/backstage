@@ -115,9 +115,9 @@ export function StartNewSession({
         return;
       }
 
-      // The prompt is **not** sent here. It travels with the navigation and is
-      // dispatched by the session detail page, so the user lands on the
-      // conversation immediately instead of waiting out a turn on this screen.
+      // `start_session` sent the prompt as the first message and answered once
+      // the agent accepted the turn. It travels with the navigation so the
+      // session detail page shows it at once, while its first read lands.
       // See "Starting a session" in docs/agent-platform.md.
       navigate(href, {
         state: {

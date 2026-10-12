@@ -30,9 +30,10 @@ export type MetaAgentHandoff = {
 
 /**
  * A hand-off to a meta agent (decision G13): one press creates a session with
- * the agent serving `role` and opens it, the prompt travelling with the
- * navigation as its first message — the session detail page sends it (see
- * "Starting a session" in docs/agent-platform.md), marked `prepared` so the
+ * the agent serving `role` and opens it, the prompt its first message —
+ * `start_session` sends it and it travels with the navigation for the session
+ * detail page to show (see "Starting a session" in docs/agent-platform.md),
+ * marked `prepared` so the
  * session page captions it as the portal's, not the person's. The machinery
  * of every "<verb> with X" hand-off (`MetaAgentBanner`'s naming contract). The start reports
  * `AgentPlatform.sessionStarted` with `entryPoint`.

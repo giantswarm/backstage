@@ -7,8 +7,10 @@ import {
   QueryClient,
   QueryClientProvider,
 } from '@tanstack/react-query';
-import { kagentApiRef } from '../apis';
-import { KagentApi } from '../apis/types';
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import {
   useCreateSession,
@@ -16,9 +18,39 @@ import {
   type UseCreateSessionOptions,
 } from './useCreateSession';
 
-const createSession = jest.fn();
+/**
+ * agent-manager's `start_session` behind muster, as the controller keys it: a
+ * repeated `requestId` answers the session the first call created.
+ */
+const sessionsByRequest = new Map<string, string>();
+const callTool = jest.fn(
+  async (
+    _name: string,
+    args: Record<string, unknown>,
+    _installation?: string,
+  ): Promise<unknown> => {
+    const requestId = String(args.requestId);
+    if (!sessionsByRequest.has(requestId)) {
+      sessionsByRequest.set(
+        requestId,
+        sessionsByRequest.size === 0
+          ? 'new-session-id'
+          : `session-${sessionsByRequest.size + 1}`,
+      );
+    }
+    return { session: { id: sessionsByRequest.get(requestId) } };
+  },
+);
+const musterApi = { callTool } as unknown as MusterApi;
 
-const kagentApi = { createSession } as unknown as KagentApi;
+/** The arguments of each `start_session` call, in order. */
+function startCalls() {
+  return callTool.mock.calls.map(([name, args, installation]) => ({
+    name,
+    args,
+    installation,
+  }));
+}
 
 const SESSIONS_KEY = ['agent-platform', 'kagent', 'sessions', 'gazelle'];
 
@@ -47,7 +79,7 @@ function renderWith(
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
-        [kagentApiRef, kagentApi],
+        [musterApiRef, musterApi],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -74,12 +106,12 @@ function invalidationFor(
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
-  createSession.mockReset();
-  createSession.mockResolvedValue({ sessionId: 'new-session-id' });
+  callTool.mockClear();
+  sessionsByRequest.clear();
 });
 
 describe('useCreateSession', () => {
-  it('creates the session on the agent’s own installation and returns its id', async () => {
+  it('starts the session through start_session on the agent’s own installation and returns its id', async () => {
     const { result } = renderWith();
 
     let sessionId: string | undefined;
@@ -91,12 +123,18 @@ describe('useCreateSession', () => {
     });
 
     expect(sessionId).toBe('new-session-id');
-    expect(createSession).toHaveBeenCalledWith(
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_start_session',
+      {
+        namespace: 'kagent',
+        name: 'sre-agent',
+        // agent-manager sends the prompt as the session's first message.
+        message: 'Why is the ingress failing?',
+        // One idempotency key per submission, so a retried start is the same start.
+        requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        sessionName: 'Why is the ingress failing?',
+      },
       'gazelle',
-      { namespace: 'kagent', name: 'sre-agent' },
-      'Why is the ingress failing?',
-      // One idempotency key per submission, so a retried create is the same create.
-      expect.stringMatching(/^[0-9a-f-]{36}$/),
     );
   });
 
@@ -108,12 +146,7 @@ describe('useCreateSession', () => {
       await result.current.createSession({ agent, prompt });
     });
 
-    expect(createSession).toHaveBeenCalledWith(
-      'gazelle',
-      { namespace: 'kagent', name: 'sre-agent' },
-      prompt.trim(),
-      expect.any(String),
-    );
+    expect(startCalls()[0].args.sessionName).toBe(prompt.trim());
   });
 
   it('reports the started session with its entry point', async () => {
@@ -225,7 +258,7 @@ describe('useCreateSession', () => {
       });
     });
 
-    expect(createSession.mock.calls[0][1]).toEqual({
+    expect(startCalls()[0].args).toMatchObject({
       namespace: 'kagent',
       name: 'sre-agent',
     });
@@ -242,7 +275,7 @@ describe('useCreateSession', () => {
       });
     });
 
-    expect(createSession.mock.calls[0][2]).toBe(
+    expect(startCalls()[0].args.sessionName).toBe(
       'Investigate why the ingress controller keeps restarting on…',
     );
   });
@@ -280,8 +313,8 @@ describe('useCreateSession', () => {
     expect(invalidation).not.toMatchObject({ refetchType: 'none' });
   });
 
-  it('does not invalidate anything when the create fails', async () => {
-    createSession.mockRejectedValue(new Error('kagent is down'));
+  it('does not invalidate anything when the start fails', async () => {
+    callTool.mockRejectedValueOnce(new Error('kagent is down'));
     const { result, invalidateQueries } = renderWith();
 
     await act(async () => {
@@ -294,7 +327,7 @@ describe('useCreateSession', () => {
   });
 
   it('surfaces a failure without inventing a session id', async () => {
-    createSession.mockRejectedValue(
+    callTool.mockRejectedValueOnce(
       new Error('kagent did not accept the agent'),
     );
     const { result } = renderWith();
@@ -325,7 +358,7 @@ describe('useCreateSession', () => {
   });
 
   it('reuses the idempotency key when the same prompt is retried after a failure', async () => {
-    createSession.mockRejectedValueOnce(new Error('network down'));
+    callTool.mockRejectedValueOnce(new Error('network down'));
     const { result } = renderWith();
 
     await act(async () => {
@@ -340,7 +373,7 @@ describe('useCreateSession', () => {
       });
     });
 
-    const keys = createSession.mock.calls.map(call => call[3]);
+    const keys = startCalls().map(call => call.args.requestId);
     expect(keys).toHaveLength(2);
     expect(keys[0]).toBe(keys[1]);
   });
@@ -358,7 +391,57 @@ describe('useCreateSession', () => {
       await result.current.createSession({ agent, prompt: 'second' });
     });
 
-    const keys = createSession.mock.calls.map(call => call[3]);
+    const keys = startCalls().map(call => call.args.requestId);
     expect(new Set(keys).size).toBe(3);
+  });
+
+  it('starts one session, not two, when a submission is retried with its key', async () => {
+    // The first answer is lost on its way back: agent-manager started the
+    // session, the browser saw a failure. The retry carries the same key and
+    // lands on that session.
+    callTool.mockImplementationOnce(async (_name, args) => {
+      sessionsByRequest.set(String(args.requestId), 'new-session-id');
+      throw new Error('network down');
+    });
+    const { result } = renderWith();
+
+    await act(async () => {
+      await result.current
+        .createSession({ agent, prompt: 'Why is the ingress failing?' })
+        .catch(() => {});
+    });
+    let sessionId: string | undefined;
+    await act(async () => {
+      sessionId = await result.current.createSession({
+        agent,
+        prompt: 'Why is the ingress failing?',
+      });
+    });
+
+    expect(callTool).toHaveBeenCalledTimes(2);
+    expect(sessionsByRequest.size).toBe(1);
+    expect(sessionId).toBe('new-session-id');
+  });
+
+  it('fails without the muster plugin, the only way to reach agent-manager', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    const { result } = renderHook(() => useCreateSession('agentDetail'), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.createSession({ agent, prompt: 'Check' }),
+      ).rejects.toThrow(/muster plugin/);
+    });
   });
 });

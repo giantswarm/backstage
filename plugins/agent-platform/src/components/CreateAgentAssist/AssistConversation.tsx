@@ -59,10 +59,10 @@ export type AssistConversationProps = {
   agentName: string;
   agentAvatarUrl?: string;
   /**
-   * The prompt the session was started with. The create and the send are two
-   * kagent calls and only the create happened before this mounted (see
-   * "Starting a session" in docs/agent-platform.md) — this component
-   * dispatches it, once, exactly as the session detail page does on a handoff.
+   * The prompt the session was started with. agent-manager's `start_session`
+   * sent it before this mounted (see "Starting a session" in
+   * docs/agent-platform.md); it is shown until the conversation's read has it,
+   * exactly as the session detail page does on a handoff.
    */
   firstMessage: string;
 };
@@ -97,33 +97,30 @@ export function AssistConversation({
   const { isUserScoped } = useKagentCapabilities(installation);
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
 
-  // Dispatch the session's first message, once — the composer that created the
-  // session could not send it, since `message/send` blocks for the whole turn.
-  const { sendMessage } = send;
-  const dispatched = useRef(false);
-  useEffect(() => {
-    if (dispatched.current) {
-      return;
-    }
-    dispatched.current = true;
-    // Errors surface through `send.error` and `send.failed`, exactly as for a
-    // reply typed into the composer — which also hands the text back.
-    sendMessage(firstMessage).catch(() => {});
-  }, [firstMessage, sendMessage]);
+  // The first message, until the read holds one of the person's.
+  const opener = useMemo(
+    () =>
+      view.timeline.items.some(item => item.kind === 'user-message')
+        ? undefined
+        : { messageId: `opener:${sessionId}`, text: firstMessage },
+    [view.timeline.items, sessionId, firstMessage],
+  );
 
   // At most one of the two streams is in flight: the answer panel replaces the
   // composer while a question is open.
   const stream = send.stream ?? confirmation.stream;
   const timeline = useMemo(
-    () => mergeLiveTimeline(view.timeline, send.pending, stream),
-    [view.timeline, send.pending, stream],
+    () =>
+      mergeLiveTimeline(view.timeline, send.pending ?? opener ?? null, stream),
+    [view.timeline, send.pending, opener, stream],
   );
 
   const answerDispatched = Boolean(confirmation.stream?.dispatched);
   const showWorking =
     send.isSending ||
     (confirmation.isAnswering && answerDispatched) ||
-    view.isAgentWorking;
+    view.isAgentWorking ||
+    Boolean(opener);
 
   // Follow the reply as it arrives — but only when already reading the end,
   // and only this panel's own scroller, never the page.

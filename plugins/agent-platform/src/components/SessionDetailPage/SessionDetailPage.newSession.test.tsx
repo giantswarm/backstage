@@ -12,6 +12,11 @@ import {
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
 
+import {
+  musterApiRef,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
+
 import { kagentApiRef } from '../../apis';
 import type { KagentApi } from '../../apis/types';
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
@@ -26,7 +31,7 @@ import { StartNewSession } from '../StartNewSession';
  * the page loading — never an error the next read takes back. The flow is
  * driven end to end here, through the real query client and its persistence
  * (whose restore on mount is one of the two windows that flashed an error),
- * with kagent as the only fake.
+ * with agent-manager (behind muster) and kagent as the only fakes.
  */
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
@@ -100,14 +105,15 @@ function namedError(name: string, message: string): Error {
   return error;
 }
 
-const createSession = jest.fn();
+/** agent-manager's `start_session`, which also sends the first message. */
+const callTool = jest.fn();
+const musterApi = { callTool } as unknown as MusterApi;
 const getSessionDetail = jest.fn();
 const listSessionTasks = jest.fn();
-// The first message's turn: left running, it is not what this test watches.
+// Never expected: start_session sent the first message, the page sends none.
 const streamMessage = jest.fn(() => new Promise<void>(() => {}));
 
 const kagentApi = {
-  createSession,
   getSessionDetail,
   listSessionTasks,
   streamMessage,
@@ -138,7 +144,7 @@ function recordCommit() {
  * than reconciling it with the home screen's.
  */
 async function startSession(sessionId: string) {
-  createSession.mockResolvedValue({ sessionId });
+  callTool.mockResolvedValue({ session: { id: sessionId } });
   await renderInTestApp(
     <Profiler id="new-session" onRender={recordCommit}>
       <Routes>
@@ -161,7 +167,10 @@ async function startSession(sessionId: string) {
       </Routes>
     </Profiler>,
     {
-      apis: [[kagentApiRef, kagentApi]],
+      apis: [
+        [kagentApiRef, kagentApi],
+        [musterApiRef, musterApi],
+      ],
       mountedRoutes: {
         '/agent-platform/sessions': sessionsRouteRef,
         '/agent-platform/agents': agentsRouteRef,
@@ -179,7 +188,7 @@ async function startSession(sessionId: string) {
 beforeEach(() => {
   window.localStorage.clear();
   seenErrors.clear();
-  createSession.mockReset();
+  callTool.mockReset();
   getSessionDetail.mockReset();
   listSessionTasks.mockReset();
   streamMessage.mockClear();
@@ -201,11 +210,17 @@ describe('SessionDetailPage — a session started a moment ago', () => {
 
     await startSession('new-1');
 
-    // The conversation, with the first message dispatched from the handoff.
+    // The conversation. start_session sent the first message, so the page
+    // sends nothing of its own.
     expect(
       await screen.findByRole('button', { name: /^Rename session/ }),
     ).toBeInTheDocument();
-    expect(streamMessage).toHaveBeenCalledTimes(1);
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_start_session',
+      expect.objectContaining({ message: 'Why is the ingress failing?' }),
+      expect.any(String),
+    );
+    expect(streamMessage).not.toHaveBeenCalled();
     expect(getSessionDetail).toHaveBeenCalledTimes(2);
     expect(listSessionTasks).toHaveBeenCalledTimes(2);
 
