@@ -17,7 +17,7 @@ export type MusterServerPresence = 'available' | 'missing' | 'unknown';
  * The segment muster puts in a server's exposed names, which is what a caller
  * addresses it by: `family.name ?? toolPrefix ?? name` (registry.go). The CR
  * name differs from it whenever the server is declared with a `toolPrefix` --
- * `gazelle-mcp-marge` exposes `x_marge_<tool>` -- so the name alone is not the
+ * `mcp-marge` exposes `x_marge_<tool>` -- so the name alone is not the
  * thing to match.
  */
 function exposedNameOf(server: McpServerRuntime): string {

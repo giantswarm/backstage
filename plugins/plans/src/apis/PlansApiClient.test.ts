@@ -84,7 +84,7 @@ describe('PlansApiClient', () => {
   });
 
   it('lists repositories', async () => {
-    const payload = { repositories: ['giantswarm/bumblebee-plans'] };
+    const payload = { repositories: ['giantswarm/meadow-plans'] };
     fetchMock.mockResolvedValue(jsonResponse(payload));
 
     await expect(client.listRepos()).resolves.toEqual(payload);
@@ -112,10 +112,10 @@ describe('PlansApiClient', () => {
   it('passes the repo parameter URL-encoded', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ pulls: [] }));
 
-    await client.listPulls('giantswarm/bumblebee-plans');
+    await client.listPulls('giantswarm/meadow-plans');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${BASE_URL}/pulls?repo=giantswarm%2Fbumblebee-plans`,
+      `${BASE_URL}/pulls?repo=giantswarm%2Fmeadow-plans`,
       AUTHED,
     );
   });

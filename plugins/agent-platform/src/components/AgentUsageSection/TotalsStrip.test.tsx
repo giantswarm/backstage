@@ -66,7 +66,7 @@ describe('TotalsStrip', () => {
     // stat is absent — not "$0.00".
     const { rerender } = render(
       <TotalsStrip
-        totals={{ ...TOTALS, reportedCostUsd: 3.21 }}
+        totals={{ ...TOTALS, costUsd: 3.21 }}
         windowDays={30}
         rates={{ blended: 3 / 1_000_000 }}
       />,
@@ -91,7 +91,7 @@ describe('TotalsStrip', () => {
     // what the runtime said.
     render(
       <TotalsStrip
-        totals={{ ...TOTALS, reportedCostUsd: 3.21 }}
+        totals={{ ...TOTALS, costUsd: 3.21 }}
         windowDays={30}
         rates={{ blended: 3 / 1_000_000 }}
         currency={{ code: 'EUR', usdRate: 0.5 }}
@@ -116,7 +116,7 @@ describe('TotalsStrip', () => {
           turns: 4,
           inputTokens: 1_000_000,
           outputTokens: 10_000,
-          reportedCostUsd: 3.21,
+          costUsd: 3.21,
         }}
         windowDays={7}
         narrowedFromDays={30}
@@ -196,5 +196,26 @@ describe('TotalsStrip', () => {
     expect(
       await screen.findByText(/gazelle's observed cost per token/),
     ).toBeInTheDocument();
+  });
+
+  it('shows the reported cost beside the estimate when turns reported one', () => {
+    render(
+      <TotalsStrip
+        totals={{ ...TOTALS, costUsd: 1.5 }}
+        windowDays={30}
+        rates={{ blended: 3 / 1_000_000 }}
+      />,
+    );
+
+    expect(screen.getByText('Est. cost')).toBeInTheDocument();
+    expect(screen.getByText('Reported cost')).toBeInTheDocument();
+    expect(screen.getByText('$1.50')).toBeInTheDocument();
+  });
+
+  it('shows no reported cost, not $0.00, when no turn reported one', () => {
+    render(<TotalsStrip totals={TOTALS} windowDays={30} />);
+
+    expect(screen.queryByText('Reported cost')).toBeNull();
+    expect(screen.queryByText('$0.00')).toBeNull();
   });
 });

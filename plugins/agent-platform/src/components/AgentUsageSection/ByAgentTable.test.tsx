@@ -119,7 +119,7 @@ describe('ByAgentTable', () => {
 
     rerender(
       <ByAgentTable
-        rows={[{ ...ROWS[0], reportedCostUsd: 1.23 }, ROWS[1], ROWS[2]]}
+        rows={[{ ...ROWS[0], costUsd: 1.23 }, ROWS[1], ROWS[2]]}
         emptyMessage="none"
       />,
     );
@@ -135,7 +135,7 @@ describe('ByAgentTable', () => {
   it('shows the estimate in the installation currency, the reported cost in USD', () => {
     render(
       <ByAgentTable
-        rows={[{ ...ROWS[0], reportedCostUsd: 1.23 }]}
+        rows={[{ ...ROWS[0], costUsd: 1.23 }]}
         emptyMessage="none"
         rates={{ blended: 3 / 1_000_000 }}
         currency={{ code: 'EUR', usdRate: 0.5 }}
@@ -224,7 +224,7 @@ describe('ByAgentTable at phone width', () => {
     layout = mockPhoneLayout();
     render(
       <ByAgentTable
-        rows={[{ ...ROWS[0], reportedCostUsd: 3.25 }, ROWS[1]]}
+        rows={[{ ...ROWS[0], costUsd: 3.25 }, ROWS[1]]}
         rates={RATES}
         emptyMessage="none"
       />,
@@ -238,7 +238,7 @@ describe('ByAgentTable at phone width', () => {
     layout = mockDesktopLayout();
     render(
       <ByAgentTable
-        rows={[{ ...ROWS[0], reportedCostUsd: 3.25 }, ROWS[1]]}
+        rows={[{ ...ROWS[0], costUsd: 3.25 }, ROWS[1]]}
         rates={RATES}
         emptyMessage="none"
       />,

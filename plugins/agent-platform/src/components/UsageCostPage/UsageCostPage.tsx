@@ -67,9 +67,9 @@ export function UsageCostPage() {
   // Only read for the gateway-less fallback below; the query key is shared
   // with the Overview and the Your sessions tab, so this costs no extra round.
   const sessionUsage = useSessionUsage(installation);
-  const reportedCostUsd =
+  const costUsd =
     !sessionUsage.isNotDeployed && !sessionUsage.isError
-      ? sessionUsage.usage?.totals.reportedCostUsd
+      ? sessionUsage.usage?.totals.costUsd
       : undefined;
   const sessionWindowDays = sessionUsage.usage?.windowDays || 30;
 
@@ -97,13 +97,13 @@ export function UsageCostPage() {
 
         <LlmUsageState view={view} />
 
-        {view.state === 'unavailable' && reportedCostUsd !== undefined && (
+        {view.state === 'unavailable' && costUsd !== undefined && (
           <>
             <div className={classes.row}>
               <KpiTile
                 label="Reported cost"
                 hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
-                value={formatUsd(reportedCostUsd)}
+                value={formatUsd(costUsd)}
                 sub={`your sessions, over the last ${sessionWindowDays} days`}
               />
             </div>

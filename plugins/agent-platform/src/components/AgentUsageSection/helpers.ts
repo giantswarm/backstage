@@ -19,7 +19,7 @@ export type ByAgentRow = {
    * The cost this agent's runtime reported for these turns, in USD, when any
    * turn reported one. `undefined` means "not reported", not "free".
    */
-  reportedCostUsd?: number;
+  costUsd?: number;
 };
 
 /**
@@ -46,9 +46,7 @@ export function toByAgentRows(
 
   return byAgent.map((entry, position) => {
     const reported =
-      entry.reportedCostUsd !== undefined
-        ? { reportedCostUsd: entry.reportedCostUsd }
-        : {};
+      entry.costUsd !== undefined ? { costUsd: entry.costUsd } : {};
     if (entry.agentId === null) {
       return {
         id: `unknown-${position}`,

@@ -42,7 +42,7 @@ describe('sessionSpend', () => {
   const totals = {
     inputTokens: 1_000_000,
     outputTokens: 500_000,
-    reportedCostUsd: 3.21,
+    costUsd: 3.21,
   };
 
   it('carries the estimate and the reported figure side by side', () => {
@@ -69,7 +69,7 @@ describe('sessionSpend', () => {
 
   it('reports a genuine zero as zero', () => {
     const spend = sessionSpend(
-      { inputTokens: 0, outputTokens: 0, reportedCostUsd: 0 },
+      { inputTokens: 0, outputTokens: 0, costUsd: 0 },
       { blended: 0.000002 },
     );
 

@@ -633,6 +633,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/agent-platform/profile',
       '/agent-platform/usage',
       '/agent-platform/usage/overview',
+      '/agents',
+      '/agents/new',
       '/agent-platform/usage/cost',
       '/agent-platform/usage/connectors',
       '/agent-platform/usage/conversations',

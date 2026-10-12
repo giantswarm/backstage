@@ -125,8 +125,8 @@ export function historyForTeam(
 
 /**
  * A team's plans repositories: each team keeps its plans in `<team>-plans`,
- * its name in lower case without spaces ("Honey Badger 🦡" →
- * `honeybadger-plans`). All teams: every repository.
+ * its name in lower case without spaces ("Apple Orchard 🍎" →
+ * `appleorchard-plans`). All teams: every repository.
  */
 export function plansRepositoriesForTeam(
   repositories: string[],

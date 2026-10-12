@@ -1,5 +1,7 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
+  addTally,
+  emptyTally,
   isListableSession,
   KagentSession,
   normalizeSessionList,
@@ -94,31 +96,6 @@ export type SessionUsageOptions = {
   budgetMs?: number;
   cacheTtlMs?: number;
 };
-
-function emptyTally(): UsageTally {
-  return {
-    turns: 0,
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    toolCalls: 0,
-  };
-}
-
-function addInto(target: UsageTally, source: UsageTally): void {
-  target.turns += source.turns;
-  target.inputTokens += source.inputTokens;
-  target.outputTokens += source.outputTokens;
-  target.totalTokens += source.totalTokens;
-  target.toolCalls += source.toolCalls;
-  // Undefined-preserving, like `addTokenUsage`: only a tally that actually
-  // reported a cost contributes, so "no runtime reported one" stays absent
-  // rather than becoming `$0`.
-  if (source.reportedCostUsd !== undefined) {
-    target.reportedCostUsd =
-      (target.reportedCostUsd ?? 0) + source.reportedCostUsd;
-  }
-}
 
 /**
  * The top entries by count, and what the cap left out.
@@ -262,14 +239,14 @@ export class SessionUsageReader {
           }
           sessionsWithActivity += 1;
 
-          addInto(totals, usage.tally);
+          addTally(totals, usage.tally);
           undatedTurns += usage.undatedTurns;
           unparseableMessages += usage.unparseableMessages;
 
           let newestDay: string | undefined;
           for (const [day, tally] of usage.days) {
             const existing = days.get(day) ?? emptyTally();
-            addInto(existing, tally);
+            addTally(existing, tally);
             days.set(day, existing);
             if (tally.turns > 0 && (!newestDay || day > newestDay)) {
               newestDay = day;
@@ -292,7 +269,7 @@ export class SessionUsageReader {
           const agentId = session.agentId ?? null;
           const agent =
             agents.get(agentId) ?? Object.assign(emptyTally(), { sessions: 0 });
-          addInto(agent, usage.tally);
+          addTally(agent, usage.tally);
           agent.sessions += 1;
           agents.set(agentId, agent);
         },
@@ -389,9 +366,7 @@ export class SessionUsageReader {
         turns: tally.turns,
         inputTokens: tally.inputTokens,
         outputTokens: tally.outputTokens,
-        ...(tally.reportedCostUsd !== undefined && {
-          reportedCostUsd: tally.reportedCostUsd,
-        }),
+        ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
       }))
       .sort(
         (a, b) =>

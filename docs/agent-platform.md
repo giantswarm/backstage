@@ -1564,8 +1564,9 @@ offers "Recent" instead of favourites first.
 ## The agents list
 
 The list is Customize → Agents (`CustomizeAgentsPanel`;
-`/agent-platform/agents` redirects there), showing 25 rows at a time; its search
-matches name, technical name, description and model.
+`/agent-platform/agents` redirects there, and the short `/agents` and anything
+below it redirect to `/agent-platform/agents`), showing 25 rows at a time; its
+search matches name, technical name, description and model.
 
 The list reads kagent **API v2** objects only (`api.kagent.dev/v1alpha3`). This
 is a hard cut (bumblebee-plans#51 D12): an installation still on the

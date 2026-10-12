@@ -414,7 +414,7 @@ describe('UsageOverviewPage', () => {
       sessionUsageState.usage = sessionUsage({
         totals: {
           ...sessionUsage().totals,
-          reportedCostUsd: 12.5,
+          costUsd: 12.5,
         },
       });
 

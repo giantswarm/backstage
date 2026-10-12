@@ -3,7 +3,7 @@ import {
   KubeObjectInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-/** Optional category label used to group workflows (klaus-lab convention). */
+/** Optional category label used to group workflows (a workflow-grouping convention). */
 export const WORKFLOW_CATEGORY_LABEL = 'klaus-lab.giantswarm.io/category';
 
 export interface WorkflowArgDefinition {

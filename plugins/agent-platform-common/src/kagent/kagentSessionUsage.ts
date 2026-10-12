@@ -19,13 +19,8 @@ export type SessionUsageTotals = {
    */
   totalTokens: number;
   toolCalls: number;
-  /**
-   * The cost the runtimes themselves reported, in USD, summed over the turns
-   * that reported one (the claude harness does, ADK does not). Absent when no
-   * turn reported a cost — which is "not reported", not "free", so the UI
-   * renders no figure rather than `$0.00`.
-   */
-  reportedCostUsd?: number;
+  /** USD the runtimes reported, summed over those turns. Absent if none did. */
+  costUsd?: number;
 };
 
 export type UsageDayEntry = {
@@ -63,8 +58,8 @@ export type UsageAgentEntry = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
-  /** As {@link SessionUsageTotals.reportedCostUsd}, for this agent's turns. */
-  reportedCostUsd?: number;
+  /** As {@link SessionUsageTotals.costUsd}, for this agent's turns. */
+  costUsd?: number;
 };
 
 export type UsageToolEntry = { tool: string; calls: number };
@@ -146,14 +141,19 @@ function finite(value: unknown): number {
 /**
  * A finite non-negative number, or `undefined`.
  *
- * For the reported-cost fields, where absence is meaningful: coercing a missing
- * value to `0` (as {@link finite} does for counts) would turn "no runtime
- * reported a cost" into "this cost nothing".
+ * For fields where absence is meaningful: coercing a missing value to `0` (as
+ * {@link finite} does for counts) would turn "not reported" into "none".
  */
 function finiteOptional(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? value
     : undefined;
+}
+
+/** Like {@link finite}, but a missing or invalid cost stays absent, not 0. */
+function reportedCost(value: unknown): { costUsd?: number } {
+  const costUsd = finiteOptional(value);
+  return costUsd === undefined ? {} : { costUsd };
 }
 
 const totalsSchema = z.looseObject({
@@ -163,7 +163,7 @@ const totalsSchema = z.looseObject({
   outputTokens: z.unknown().optional(),
   totalTokens: z.unknown().optional(),
   toolCalls: z.unknown().optional(),
-  reportedCostUsd: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const dayEntrySchema = z.looseObject({
@@ -181,7 +181,7 @@ const agentEntrySchema = z.looseObject({
   turns: z.unknown().optional(),
   inputTokens: z.unknown().optional(),
   outputTokens: z.unknown().optional(),
-  reportedCostUsd: z.unknown().optional(),
+  costUsd: z.unknown().optional(),
 });
 
 const toolEntrySchema = z.looseObject({
@@ -283,9 +283,7 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
         outputTokens: finite(totalsParsed.data.outputTokens),
         totalTokens: finite(totalsParsed.data.totalTokens),
         toolCalls: finite(totalsParsed.data.toolCalls),
-        ...(finiteOptional(totalsParsed.data.reportedCostUsd) !== undefined && {
-          reportedCostUsd: finiteOptional(totalsParsed.data.reportedCostUsd),
-        }),
+        ...reportedCost(totalsParsed.data.costUsd),
       }
     : empty.totals;
 
@@ -313,14 +311,13 @@ export function normalizeSessionUsage(raw: unknown): SessionUsageResponse {
     if (!entry.success) {
       continue;
     }
-    const reportedCostUsd = finiteOptional(entry.data.reportedCostUsd);
     byAgent.push({
       agentId: entry.data.agentId ?? null,
       sessions: finite(entry.data.sessions),
       turns: finite(entry.data.turns),
       inputTokens: finite(entry.data.inputTokens),
       outputTokens: finite(entry.data.outputTokens),
-      ...(reportedCostUsd !== undefined && { reportedCostUsd }),
+      ...reportedCost(entry.data.costUsd),
     });
   }
 
