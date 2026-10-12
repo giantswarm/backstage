@@ -199,14 +199,17 @@ function SessionsIndexPageContent() {
           />
         )}
 
-        {/* Rendered regardless of the loading branch so a fleet whose only
-            reachable installations all error still surfaces the failure instead
-            of an indefinite progress bar. */}
-        <UnreachableInstallationsAlert
-          installations={unreachableInstallations}
-          resourceName="Sessions"
-          failures={readFailures}
-        />
+        {/* Once the read has settled: one environment failing while the others
+            are still being read is not yet the list's answer. A fleet whose
+            every installation fails still gets here — a failed query is not
+            one awaiting data, so it ends `isLoading`. */}
+        {!isLoading && (
+          <UnreachableInstallationsAlert
+            installations={unreachableInstallations}
+            resourceName="Sessions"
+            failures={readFailures}
+          />
+        )}
 
         {/* Installations that run kagent but whose endpoint the portal cannot
             reach (the backend's unauthenticated probe says so). Never queried,

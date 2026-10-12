@@ -288,6 +288,31 @@ describe('AgentPlatformHome', () => {
     ).toBeTruthy();
   });
 
+  it('holds the read warning while the other environments are still being read', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      isLoading: true,
+      unreachableInstallations: ['gazelle'],
+    });
+    const { unmount } = await render();
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+    unmount();
+
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+    });
+    await render();
+    expect(
+      screen.getByText(/Could not read 1 environment/),
+    ).toBeInTheDocument();
+  });
+
   it('says why no session can be started when the agents could not be read', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,

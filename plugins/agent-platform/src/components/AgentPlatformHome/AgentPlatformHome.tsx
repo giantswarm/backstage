@@ -233,10 +233,12 @@ function AgentPlatformHomeContent({
               the composer, whose empty state points at "the warning below". */}
           <InstallationScopeNote component="kagent" />
           <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
-          <UnreachableInstallationsAlert
-            installations={unreachableInstallations}
-            resourceName="Agents"
-          />
+          {!isLoading && (
+            <UnreachableInstallationsAlert
+              installations={unreachableInstallations}
+              resourceName="Agents"
+            />
+          )}
           <SlackPromoBanner />
         </Flex>
       </Box>

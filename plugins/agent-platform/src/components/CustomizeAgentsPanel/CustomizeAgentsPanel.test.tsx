@@ -253,6 +253,34 @@ describe('CustomizeAgentsPanel', () => {
     expect(screen.getByText(/lab/)).toBeInTheDocument();
   });
 
+  it('holds the read warning while the other environments are still being read', async () => {
+    // One environment has failed already, the rest are still being read.
+    mockAgents = {
+      ...mockAgents,
+      rows: [],
+      isLoading: true,
+      unreachableInstallations: ['lab'],
+    };
+    const { unmount } = await renderPanel();
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not read 1 environment'),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    // The read settles, with that failure as its answer.
+    mockAgents = { ...mockAgents, isLoading: false };
+    await renderPanel();
+    expect(
+      screen.queryByLabelText('Reading your agents…'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+  });
+
   describe('favorites', () => {
     it('stars an agent into a Favorites group above the others, and back', async () => {
       await renderPanel();

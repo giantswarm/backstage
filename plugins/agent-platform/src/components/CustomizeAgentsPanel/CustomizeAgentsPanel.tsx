@@ -581,10 +581,14 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
           onClear={filters.clear}
         />
       )}
-      <UnreachableInstallationsAlert
-        installations={unreachableInstallations}
-        resourceName="Agents"
-      />
+      {/* Once the read has settled: one environment failing while the others
+          are still being read is not yet the list's answer. */}
+      {!isLoading && (
+        <UnreachableInstallationsAlert
+          installations={unreachableInstallations}
+          resourceName="Agents"
+        />
+      )}
       <AgentsHelperBanner />
       {/* The person's recent agents, while the tab shows everything: a search
           or a filter narrows the list below, and the cards would not follow. */}

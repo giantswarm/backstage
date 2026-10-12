@@ -527,6 +527,10 @@ export function ServingPage() {
     emptyGroups.length === 0 &&
     serving.unreachableInstallations.length === 0 &&
     installations.every(name => backendsOn(serving, name).length === 0);
+  // The table's own loading state. The read warning waits for it: one
+  // environment failing while the others are still being read is not yet the
+  // page's answer.
+  const isReadingServedModels = serving.isLoading && rows.length === 0;
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -582,17 +586,19 @@ export function ServingPage() {
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
 
-          {serving.isLoading && rows.length === 0 ? (
+          {isReadingServedModels ? (
             <LoadingIndicator label="Reading the served models…" />
           ) : (
             servedModelsTable
           )}
           {!openedRow && lifecyclePanel}
 
-          <UnreachableInstallationsAlert
-            installations={serving.unreachableInstallations}
-            resourceName="served models"
-          />
+          {!isReadingServedModels && (
+            <UnreachableInstallationsAlert
+              installations={serving.unreachableInstallations}
+              resourceName="served models"
+            />
+          )}
 
           {downloadRows.errors.length > 0 && (
             <Alert

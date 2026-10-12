@@ -162,6 +162,27 @@ describe('SessionsIndexPage', () => {
     expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
   });
 
+  it('holds the read warning while the other environments are still being read', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      isLoading: true,
+      unreachableInstallations: ['gazelle'],
+    });
+    const { unmount } = await render();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+    unmount();
+
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      unreachableInstallations: ['gazelle'],
+    });
+    await render();
+    expect(
+      screen.getByText(/Could not read 1 environment/),
+    ).toBeInTheDocument();
+  });
+
   describe('with no session on the fleet yet', () => {
     beforeEach(() => {
       mockUseSessions.mockReturnValue(loadedSessions);

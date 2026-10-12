@@ -41,6 +41,7 @@ const qwen: ModelRow = {
 
 let mockModelRows: ModelRow[];
 let mockModelsLoading = false;
+let mockUnreachableInstallations: string[] = [];
 let mockServingInstallations: string[] = [];
 const agents = [
   { id: 'a', modelConfigId: 'golem/support/sonnet' },
@@ -54,7 +55,7 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
     isLoading: mockModelsLoading,
     hasInstallations: true,
-    unreachableInstallations: [],
+    unreachableInstallations: mockUnreachableInstallations,
   }),
 }));
 jest.mock('../AgentsDataProvider', () => ({
@@ -79,6 +80,7 @@ describe('CustomizeModelsPanel', () => {
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
     mockModelsLoading = false;
+    mockUnreachableInstallations = [];
     mockServingInstallations = [];
   });
 
@@ -190,6 +192,27 @@ describe('CustomizeModelsPanel', () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+  });
+
+  it('holds the read warning while the other environments are still being read', async () => {
+    mockModelRows = [];
+    mockModelsLoading = true;
+    mockUnreachableInstallations = ['lab'];
+    const { unmount } = await renderPanel();
+    expect(
+      await screen.findByLabelText('Reading your models…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not read 1 environment'),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    mockModelsLoading = false;
+    await renderPanel();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No models yet')).not.toBeInTheDocument();
   });
 });
 

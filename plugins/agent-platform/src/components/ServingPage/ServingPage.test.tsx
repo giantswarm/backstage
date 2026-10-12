@@ -976,6 +976,35 @@ describe('ServingPage', () => {
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
   });
 
+  it('holds the read warning while the other environments are still being read', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+    act(() => rerenderSection());
+
+    expect(
+      await screen.findByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+  });
+
   it('surfaces installations whose LLMInferenceServices could not be read', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
