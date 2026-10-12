@@ -42,6 +42,7 @@ import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
+import { useAgentSettingUp } from '../../hooks/useAgentSettingUp';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
 import {
   useAgentManagerAvailability,
@@ -99,6 +100,17 @@ const AVATAR_SIZE: AvatarSize = 96;
  */
 const DEPLOYING_PRESENTATION: ReadinessPresentation = {
   label: 'Deploying',
+  intent: 'neutral',
+  icon: READINESS_PRESENTATION.pending.icon,
+};
+
+/**
+ * The header label for an agent that reads `failed` for a reason it passes
+ * through while it is provisioned (see `useAgentSettingUp`): neutral, not the
+ * red "Failed" the same conditions read as once the grace period is over.
+ */
+const SETTING_UP_PRESENTATION: ReadinessPresentation = {
+  label: 'Setting up',
   intent: 'neutral',
   icon: READINESS_PRESENTATION.pending.icon,
 };
@@ -244,6 +256,10 @@ function AgentDetailPageContent() {
     (release.status?.helmRelease?.exists === true ||
       release.status?.agent?.exists === true);
   isDeployingRef.current = isDeploying;
+  // A `failed` agent whose failure is one a new agent passes through — an
+  // object it refers to not created yet — shows as being set up for a grace
+  // period, not as broken. The read above keeps polling it, backing off.
+  const isSettingUp = useAgentSettingUp(agent);
   // The status read is still in flight: neither verdict is known, so neither
   // is shown.
   const isAskingAgentManager =
@@ -660,7 +676,10 @@ function AgentDetailPageContent() {
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Start a session": there is nothing to start one on yet.
     if (isDeploying) {
-      const failed = release.status?.verdict === 'failed';
+      // A release Flux has not installed yet is `failed` to agent-manager
+      // too; until the grace period is over it is still deploying.
+      const failed =
+        release.status?.verdict === 'failed' && !release.isSettingUp;
       return (
         <AgentFrame
           title={name}
@@ -683,7 +702,7 @@ function AgentDetailPageContent() {
                   : 'Deploying — waiting for kagent to render the agent'
               }
               description={
-                release.status?.summary ??
+                (release.isSettingUp ? undefined : release.status?.summary) ??
                 'agent-manager applied the Helm release.'
               }
             />
@@ -741,6 +760,7 @@ function AgentDetailPageContent() {
 
       <AgentSessionBlocker
         agent={agent}
+        isSettingUp={isSettingUp}
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
@@ -809,7 +829,11 @@ function AgentDetailPageContent() {
       }
       badges={
         <ReadinessBadge
-          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
+          readiness={
+            isSettingUp
+              ? SETTING_UP_PRESENTATION
+              : READINESS_PRESENTATION[agent.getReadiness()]
+          }
         />
       }
       meta={
@@ -854,6 +878,7 @@ function AgentDetailPageContent() {
                 installation={installation}
                 modelConfig={modelConfig}
                 modelServing={agentRow?.modelServing}
+                isSettingUp={isSettingUp}
                 toolsHref={toolsHref}
                 onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
                 onAddSkills={canEditAgent ? openEdit : undefined}

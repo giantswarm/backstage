@@ -539,7 +539,9 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
 Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
 derives the same verdict from `status.harnesses[]`. A `not_found` right after
-the create is polled through. The installation's cached `kagent.dev` lists are
+the create is polled through. Polling stops at `ready`; `failed` is re-read,
+backing off from 3 s to 60 s, so the page follows a failure that clears to
+`ready` without a reload (see "Setting up" below). The installation's cached `kagent.dev` lists are
 invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
@@ -1617,6 +1619,26 @@ Polling (`getAgentsRefetchInterval`) is 5 s for an installation with a
 converging agent and 60 s otherwise, with a three-minute bound so a durably
 broken agent does not pin the fast tier.
 
+#### Setting up
+
+A new agent reads `failed` for a moment on its way to `ready`: helm-controller
+reports the release not ready until it is installed, and the release renders
+the Agent before the RemoteMCPServer it is bound to exists, so kagent reports
+`ResolvedRefs=False` (`resolve RemoteMCPServer "<agent>": not found`). The
+detail page shows such a failure as **Setting up** (neutral) for
+`PROVISIONING_GRACE_MS` (three minutes), and as the failure after that
+(`lib/agentProvisioning.ts`):
+
+- on the Agent, only `ResolvedRefs=False` as the root cause qualifies, and the
+  window runs from its last status change (`useAgentSettingUp`);
+- on agent-manager's verdict, which has no timestamps, the window runs from
+  when the page started watching, and a suspended or deleting release,
+  `accepted: false`, or `compatible: false` with the references resolved is a
+  failure at once (`useAgentStatus`'s `isSettingUp`).
+
+`Accepted=False` and `Compatible=False` are about the spec, which waiting does
+not change, so they are shown at once.
+
 ### Absence
 
 Only installations whose inventory has `api.kagent.dev`
@@ -1658,8 +1680,11 @@ Every write goes through agent-manager over muster as the person (see the
 sections below); the plugin performs no Kubernetes write for agents.
 
 The agent is fetched with **one targeted `useResource`**, so a deep link works
-without the list. It polls 5 s while converging and 60 s otherwise
-(`isAgentConverging`, shared with the list).
+without the list. It polls 60 s once the agent is ready; until then it starts
+at 5 s and doubles every minute its status does not change, up to 60 s
+(`getAgentRefetchInterval`), so a failure that clears turns the page ready
+without a reload. Like every interval refetch it pauses while the tab is
+hidden.
 
 ### Layout
 

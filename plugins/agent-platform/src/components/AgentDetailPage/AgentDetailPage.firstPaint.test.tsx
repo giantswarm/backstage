@@ -73,6 +73,7 @@ const NO_STATUS: AgentStatusState = {
   status: undefined,
   isSettling: false,
   isNotFound: false,
+  isSettingUp: false,
   error: null,
 };
 jest.mock('../../hooks/useAgentStatus', () => ({

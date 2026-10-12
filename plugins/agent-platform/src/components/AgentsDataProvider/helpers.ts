@@ -16,6 +16,7 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
+import { backoffRefetchInterval } from '../../lib/agentProvisioning';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -60,9 +61,9 @@ const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
  * Whether one agent is worth re-checking sooner than the rest: not settled into a
  * healthy state, and its status still moving (or too new to tell).
  *
- * Shared by the fleet list and the single-agent detail page so both back off from
- * a *permanently* broken agent on the same terms — see
- * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
+ * The fleet list's test, so it backs off from a *permanently* broken agent — see
+ * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists. The detail page
+ * backs off gradually instead (see {@link getAgentRefetchInterval}).
  */
 function isAgentConverging(json: AgentInterface, now: number): boolean {
   if (!isAgentTransitional(deriveAgentReadiness(json))) {
@@ -79,22 +80,29 @@ function isAgentConverging(json: AgentInterface, now: number): boolean {
 /**
  * Refetch interval for a single agent, for the detail page.
  *
- * Same two tiers as the list below, decided from this one agent's own status: it
- * tightens while the agent is converging and relaxes once it settles or stays
- * broken. The detail page is exactly where someone watches an agent come up, so
- * the fast tier matters more here than in the list.
+ * The baseline once the agent is ready. Until then it starts at the fast tier
+ * and backs off from there, doubling every minute the agent's status does not
+ * change, up to the baseline: the detail page is exactly where someone watches
+ * an agent come up, including one that reads as failed while it is still being
+ * set up, and where a failure fixed elsewhere should turn the page ready
+ * without a reload. A status change restarts the backoff.
  */
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
   const json = query.state.data as AgentInterface | undefined;
-  if (!json) {
+  if (!json || !isAgentTransitional(deriveAgentReadiness(json))) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
 
-  return isAgentConverging(json, Date.now())
-    ? TRANSITIONAL_REFETCH_INTERVAL_MS
-    : BASELINE_REFETCH_INTERVAL_MS;
+  const changedAt = getAgentStatusChangedAt(json);
+  // No usable timestamp: treat the agent as just-changed, as the list does.
+  const elapsed = changedAt === undefined ? 0 : Date.now() - changedAt;
+  return backoffRefetchInterval(
+    elapsed,
+    TRANSITIONAL_REFETCH_INTERVAL_MS,
+    BASELINE_REFETCH_INTERVAL_MS,
+  );
 }
 
 /**

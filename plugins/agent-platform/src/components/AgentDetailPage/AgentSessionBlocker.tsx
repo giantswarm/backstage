@@ -12,14 +12,19 @@ import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
  * and the cause is in its spec, offers **Edit agent**; a platform cause (the
  * Harness's WorkerPool) is not the author's to fix, so it offers nothing. An
  * agent still converging says so — unless the page is already following a
- * write to it, which `AgentCreationProgress` narrates.
+ * write to it, which `AgentCreationProgress` narrates. So does a failed agent
+ * that is still being set up (`isSettingUp`): its failure is shown once the
+ * grace period is over, not before.
  */
 export function AgentSessionBlocker({
   agent,
+  isSettingUp = false,
   onEdit,
   isGitOpsOwned = false,
 }: {
   agent: Agent;
+  /** The agent is `failed` for a reason it passes through while provisioned. */
+  isSettingUp?: boolean;
   /**
    * Opens the edit page. Absent when the viewer cannot write the agent; for an
    * agent applied from git, present only when the edit page can commit.
@@ -35,7 +40,7 @@ export function AgentSessionBlocker({
     return null;
   }
 
-  if (readiness === 'failed') {
+  if (readiness === 'failed' && !isSettingUp) {
     const failure = agent.getFailure();
     const isPlatform = failure?.field === 'platform';
     const reason = failure?.message ?? agent.getReadinessMessage();
@@ -82,7 +87,9 @@ export function AgentSessionBlocker({
       icon
       title="Sessions can start once the agent is ready"
       description={
-        agent.getReadinessMessage() ??
+        (isSettingUp
+          ? 'The agent is still being set up: the objects it uses are being created.'
+          : agent.getReadinessMessage()) ??
         (readiness === 'pending'
           ? 'The controller has not reported on the current version of this agent yet.'
           : 'The Harness is preparing the current revision.')

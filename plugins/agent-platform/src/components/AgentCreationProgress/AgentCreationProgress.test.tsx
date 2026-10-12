@@ -9,6 +9,7 @@ import {
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { MAX_REVISION_WAIT_MS } from '../../hooks/useAgentStatus';
+import { PROVISIONING_GRACE_MS } from '../../lib/agentProvisioning';
 import { AgentCreationProgress } from './AgentCreationProgress';
 
 let mockLocationState: unknown;
@@ -262,10 +263,18 @@ describe('AgentCreationProgress', () => {
     });
   });
 
-  it("shows agent-manager's reason when the agent fails", async () => {
+  it("shows agent-manager's reason at once when the Harness rejects the agent", async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValue({
-      ...status('failed'),
+      ...status('failed', {
+        agent: {
+          exists: true,
+          ready: false,
+          accepted: true,
+          resolvedRefs: true,
+          compatible: false,
+        },
+      }),
       summary:
         'Harness kagent rejected the template: Compatible=False (skill source unreachable).',
     });
@@ -278,5 +287,94 @@ describe('AgentCreationProgress', () => {
     expect(
       screen.getByText(/Harness kagent rejected the template/),
     ).toBeInTheDocument();
+  });
+
+  // What a fresh agent goes through: the release renders the Agent before the
+  // RemoteMCPServer it is bound to exists, so kagent reports the reference
+  // unresolved for a moment, and agent-manager's verdict is `failed`.
+  describe('a failure the agent passes through while it is set up', () => {
+    const UNRESOLVED_SUMMARY =
+      'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "pr-reviewer": not found)';
+    const unresolved = {
+      ...status('failed', {
+        agent: {
+          exists: true,
+          ready: false,
+          accepted: true,
+          resolvedRefs: false,
+          compatible: false,
+        },
+      }),
+      summary: UNRESOLVED_SUMMARY,
+    };
+
+    it('shows the agent as still being set up, not as failed', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+      callTool.mockResolvedValue(unresolved);
+
+      await render();
+
+      expect(
+        await screen.findByText(/the agent is still being set up/),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Deploying…')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The agent did not become ready'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(UNRESOLVED_SUMMARY)).not.toBeInTheDocument();
+    });
+
+    it('keeps reading the status, and turns ready without a reload', async () => {
+      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+      callTool
+        .mockResolvedValueOnce(unresolved)
+        .mockResolvedValue(
+          status('ready', { agent: { exists: true, harness: 'kagent' } }),
+        );
+
+      await render();
+
+      expect(
+        await screen.findByText(/the agent is still being set up/),
+      ).toBeInTheDocument();
+      await waitFor(
+        () => expect(screen.getByText('Ready')).toBeInTheDocument(),
+        { timeout: 6_000 },
+      );
+      expect(callTool.mock.calls.length).toBeGreaterThan(1);
+    }, 10_000);
+
+    it('shows the failure once it outlasts the grace period, and keeps reading', async () => {
+      jest.useFakeTimers();
+      try {
+        mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
+        callTool.mockResolvedValue(unresolved);
+
+        await render();
+        await waitFor(() =>
+          expect(
+            screen.getByText(/the agent is still being set up/),
+          ).toBeInTheDocument(),
+        );
+
+        await act(async () => {
+          jest.advanceTimersByTime(PROVISIONING_GRACE_MS);
+        });
+
+        expect(
+          screen.getByText('The agent did not become ready'),
+        ).toBeInTheDocument();
+        expect(screen.getByText(UNRESOLVED_SUMMARY)).toBeInTheDocument();
+
+        // Still read, backed off, so a fix made by hand turns the alert ready.
+        const reads = callTool.mock.calls.length;
+        await act(async () => {
+          jest.advanceTimersByTime(60_000);
+        });
+        expect(callTool.mock.calls.length).toBeGreaterThan(reads);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

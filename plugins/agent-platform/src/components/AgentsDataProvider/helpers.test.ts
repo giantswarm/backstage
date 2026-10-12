@@ -11,6 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
 import {
+  getAgentRefetchInterval,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
@@ -600,6 +601,67 @@ describe('getAgentsRefetchInterval', () => {
     const converging = notReadyAgent('converging', 5_000);
 
     expect(getAgentsRefetchInterval(query([stuck, converging]))).toBe(FAST);
+  });
+});
+
+describe('getAgentRefetchInterval', () => {
+  const BASELINE = 60_000;
+  const FAST = 5_000;
+  const NOW = Date.parse('2026-07-31T12:00:00Z');
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  function query(agent: Agent | undefined) {
+    return {
+      state: { data: agent?.jsonData },
+    } as Parameters<typeof getAgentRefetchInterval>[0];
+  }
+
+  /** Failed on an unresolved reference, `ageMs` after its last status change. */
+  const unresolvedAgent = (ageMs: number) =>
+    makeAgent({
+      status: reported([
+        condition('Accepted', 'True', 'Admitted', '', ageMs),
+        condition(
+          'ResolvedRefs',
+          'False',
+          'ReferenceResolutionFailed',
+          'resolve RemoteMCPServer "agent-1": not found',
+          ageMs,
+        ),
+      ]),
+    });
+
+  it('uses the baseline for a ready agent', () => {
+    expect(
+      getAgentRefetchInterval(query(makeAgent({ status: readyStatus() }))),
+    ).toBe(BASELINE);
+  });
+
+  it('uses the baseline before the first fetch resolves', () => {
+    expect(getAgentRefetchInterval(query(undefined))).toBe(BASELINE);
+  });
+
+  // A failed agent is polled too, not only a compiling one: right after a
+  // create it is often the agent still being set up, and the page should turn
+  // ready on its own once it is.
+  it('backs off from the fast tier while a failed agent does not change', () => {
+    expect(getAgentRefetchInterval(query(unresolvedAgent(0)))).toBe(FAST);
+    expect(getAgentRefetchInterval(query(unresolvedAgent(70_000)))).toBe(
+      2 * FAST,
+    );
+    expect(getAgentRefetchInterval(query(unresolvedAgent(150_000)))).toBe(
+      4 * FAST,
+    );
+    expect(getAgentRefetchInterval(query(unresolvedAgent(30 * 60_000)))).toBe(
+      BASELINE,
+    );
   });
 });
 

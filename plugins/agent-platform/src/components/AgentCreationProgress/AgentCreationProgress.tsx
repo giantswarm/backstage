@@ -46,7 +46,7 @@ const WORDING: Record<
 /**
  * The polling half, mounted only for the agent that was just written: the
  * verdict from agent-manager's `get_agent_status`, re-read until the platform
- * Harness reports `ready` or `failed`.
+ * Harness reports `ready` (and, backing off, while it reports `failed`).
  */
 function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   const {
@@ -61,7 +61,7 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
   // Scoped to the write: the verdict counts once the Agent's generation has
   // moved past what it was before it, so an agent that was already `ready` is
   // not reported as done before the Harness has compiled anything.
-  const { status, isSettling, error } = useAgentStatus(
+  const { status, isSettling, isSettingUp, error } = useAgentStatus(
     installation,
     namespace,
     name,
@@ -104,6 +104,21 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
     );
   }
 
+  if (isSettingUp) {
+    // `failed`, but for a reason a new agent goes through on its way to ready
+    // — a release Flux has not installed yet, a reference to an object not
+    // created yet. Its summary reads as a failure, so it is not shown; the
+    // status is still re-read, and a failure that outlasts the grace period
+    // is shown below as one.
+    return (
+      <Alert
+        status="info"
+        title={wording.doing}
+        description={`agent-manager ${wording.wrote}${as}; the agent is still being set up.`}
+      />
+    );
+  }
+
   if (status?.verdict === 'ready') {
     const harness = harnessOf(status);
     return (
@@ -139,7 +154,10 @@ function CreatedAgentVerdict({ handoff }: { handoff: AgentCreatedHandoff }) {
  * so with agent-manager's summary; once the verdict is `ready` it names the
  * Harness the agent runs on, and a `failed` verdict carries agent-manager's
  * reason — the same verdict the page's own status card derives from
- * `status.conditions`, so the two never disagree.
+ * `status.conditions`, so the two never disagree. A `failed` verdict that a
+ * new agent passes through while it is set up reads as still deploying until
+ * the grace period is over, and the verdict is re-read either way, so the
+ * alert turns to Ready without a reload.
  */
 export function AgentCreationProgress({
   installation,

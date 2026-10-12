@@ -446,6 +446,11 @@ export type AgentPlainOverviewProps = {
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
+  /**
+   * The agent is `failed` for a reason it passes through while it is
+   * provisioned, so nothing is marked as failing yet.
+   */
+  isSettingUp?: boolean;
   /** The agent's tools view, which resolves the toolset to exact tools. */
   toolsHref?: string;
   /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
@@ -471,13 +476,14 @@ export function AgentPlainOverview({
   installation,
   modelConfig,
   modelServing,
+  isSettingUp = false,
   toolsHref,
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
-  const failure = agent.getFailure();
+  const failure = isSettingUp ? undefined : agent.getFailure();
   const description = agent.getDescription();
 
   return (

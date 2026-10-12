@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -7,6 +7,11 @@ import {
   isSettledVerdict,
   type AgentStatus,
 } from '../lib/agentManager';
+import {
+  backoffRefetchInterval,
+  isTerminalAgentStatus,
+  PROVISIONING_GRACE_MS,
+} from '../lib/agentProvisioning';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -17,6 +22,14 @@ import { useAgentManagerClient } from './useAgentManager';
  * watching the page notices without hammering agent-manager.
  */
 export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
+
+/**
+ * The longest interval a `failed` verdict is re-read at. A failure is re-read
+ * rather than taken as final — the agent may still be being set up, or be fixed
+ * by hand — starting at {@link AGENT_STATUS_POLL_INTERVAL_MS} and backing off
+ * to this.
+ */
+export const FAILED_STATUS_MAX_POLL_INTERVAL_MS = 60_000;
 
 /**
  * How long to wait for a write's revision to appear before taking the verdict
@@ -45,6 +58,14 @@ export type AgentStatusState = {
    * there".
    */
   isNotFound: boolean;
+  /**
+   * The verdict is `failed`, but for a reason that resolves on its own while
+   * the agent is provisioned — a release not ready yet, an unresolved
+   * reference — and the watch is younger than {@link PROVISIONING_GRACE_MS}.
+   * Shown as the agent being set up rather than as a failure. The verdict is
+   * still re-read, so the page follows it to `ready` without a reload.
+   */
+  isSettingUp: boolean;
   error: Error | null;
 };
 
@@ -54,7 +75,9 @@ export type AgentStatusState = {
  * from the Agent object's `status.conditions` —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
- * Agent yet, and is polled through like `progressing`.
+ * Agent yet, and is polled through like `progressing`. Polling stops at
+ * `ready`; a `failed` verdict is re-read with a backoff, since it may still
+ * turn `ready` (see {@link AgentStatusState.isSettingUp}).
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -101,6 +124,22 @@ export function useAgentStatus(
     return () => clearTimeout(timer);
   }, [fromGeneration, watchId, installation, namespace, name]);
 
+  // When this watch started, for the grace a `failed` verdict gets and the
+  // backoff it is re-read at. agent-manager's status carries no timestamps, so
+  // the watch is the clock: right after a write it starts with the write. Its
+  // end schedules a render for the same reason the revision wait above does.
+  const watchStartedAt = useRef(Date.now());
+  const [isPastGrace, setPastGrace] = useState(false);
+  useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
+    watchStartedAt.current = Date.now();
+    setPastGrace(false);
+    const timer = setTimeout(() => setPastGrace(true), PROVISIONING_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [enabled, watchId, installation, namespace, name]);
+
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
       installation ?? '',
@@ -117,12 +156,22 @@ export function useAgentStatus(
         // not this write's answer; keep polling until the new one shows up, or
         // until the wait has gone on long enough to be the wrong thing to do.
         if (
-          hasReachedWrittenRevision(query.state.data, fromGeneration) ||
-          givenUpWaiting
+          !hasReachedWrittenRevision(query.state.data, fromGeneration) &&
+          !givenUpWaiting
         ) {
-          return false;
+          return AGENT_STATUS_POLL_INTERVAL_MS;
         }
-        return AGENT_STATUS_POLL_INTERVAL_MS;
+        // `ready` is the answer. `failed` is the answer for now: right after a
+        // create it is often the agent still being set up, and a failure fixed
+        // by hand turns `ready` too, so it is re-read, less often the longer it
+        // stands.
+        return verdict === 'ready'
+          ? false
+          : backoffRefetchInterval(
+              Date.now() - watchStartedAt.current,
+              AGENT_STATUS_POLL_INTERVAL_MS,
+              FAILED_STATUS_MAX_POLL_INTERVAL_MS,
+            );
       }
       const lastError = query.state.error;
       if (
@@ -144,17 +193,25 @@ export function useAgentStatus(
   const notFoundYet =
     error instanceof AgentManagerError && error.code === 'not_found';
 
+  const isSettling =
+    enabled &&
+    (notFoundYet ||
+      !data ||
+      !isSettledVerdict(data.verdict) ||
+      (!hasReachedWrittenRevision(data, fromGeneration) && !givenUpWaiting)) &&
+    (!error || notFoundYet);
+
   return {
     status: data,
     isNotFound: notFoundYet,
-    isSettling:
+    isSettling,
+    isSettingUp:
       enabled &&
-      (notFoundYet ||
-        !data ||
-        !isSettledVerdict(data.verdict) ||
-        (!hasReachedWrittenRevision(data, fromGeneration) &&
-          !givenUpWaiting)) &&
-      (!error || notFoundYet),
+      !isSettling &&
+      !error &&
+      data?.verdict === 'failed' &&
+      !isPastGrace &&
+      !isTerminalAgentStatus(data),
     error: error && !notFoundYet ? (error as Error) : null,
   };
 }

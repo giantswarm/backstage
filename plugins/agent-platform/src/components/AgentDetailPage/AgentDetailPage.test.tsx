@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useSyncExternalStore } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AgentCondition,
@@ -21,6 +21,7 @@ import {
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
+import { PROVISIONING_GRACE_MS } from '../../lib/agentProvisioning';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
@@ -171,6 +172,7 @@ const NO_STATUS: AgentStatusState = {
   status: undefined,
   isSettling: false,
   isNotFound: false,
+  isSettingUp: false,
   error: null,
 };
 
@@ -671,6 +673,7 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
+        isSettingUp: false,
         error: null,
       });
 
@@ -694,6 +697,7 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
+        isSettingUp: false,
         error: null,
       });
 
@@ -1776,6 +1780,201 @@ describe('AgentDetailPage', () => {
     });
   });
 
+  // Right after a create the release renders the Agent before the
+  // RemoteMCPServer it is bound to exists, and kagent reports the reference
+  // unresolved until it does. That is the agent being set up, not broken.
+  describe('an agent still being set up', () => {
+    const UNRESOLVED = 'resolve RemoteMCPServer "pr-reviewer": not found';
+
+    /** Failed on the unresolved carrier, `ageMs` after the status last changed. */
+    const unresolvedAgent = (ageMs: number) => {
+      const changedAt = new Date(Date.now() - ageMs).toISOString();
+      return makeAgent({
+        metadata: {
+          name: 'pr-reviewer',
+          namespace: 'agent-platform',
+          generation: 1,
+          creationTimestamp: changedAt,
+        },
+        status: reported(
+          [
+            { ...READY_CONDITIONS[0], lastTransitionTime: changedAt },
+            {
+              type: 'ResolvedRefs',
+              status: 'False',
+              reason: 'ReferenceResolutionFailed',
+              message: UNRESOLVED,
+              lastTransitionTime: changedAt,
+            },
+            {
+              type: 'Compatible',
+              status: 'False',
+              reason: 'Blocked',
+              message: 'blocked by ResolvedRefs',
+              lastTransitionTime: changedAt,
+            },
+          ],
+          { latestSuccessfulRevision: undefined },
+        ),
+      } as Partial<AgentInterface>);
+    };
+
+    /**
+     * The Agent read as a store the test answers polls through, so the page
+     * re-renders with the new answer the way a react-query refetch makes it.
+     */
+    function stubPolledAgent(initial: unknown) {
+      let current = initial;
+      const listeners = new Set<() => void>();
+      const subscribe = (listener: () => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      };
+      stubResources({ resource: initial });
+      const stubbed = mockUseResource.getMockImplementation()!;
+      mockUseResource.mockImplementation(function useStubbedResource(
+        ...args: unknown[]
+      ) {
+        const resource = useSyncExternalStore(subscribe, () => current);
+        const outcome = stubbed(...args);
+        return args[1] === Agent ? { ...outcome, resource } : outcome;
+      });
+      return (next: unknown) =>
+        act(() => {
+          current = next;
+          listeners.forEach(listener => listener());
+        });
+    }
+
+    /** The interval the page hands the Agent read, for the agent it has. */
+    const agentPollInterval = (agent: { jsonData: unknown }) => {
+      const call = mockUseResource.mock.calls.find(
+        ([, ResourceClass]) => ResourceClass === Agent,
+      );
+      const options = call?.[3] as {
+        refetchInterval: (query: { state: { data: unknown } }) => number;
+      };
+      return options.refetchInterval({ state: { data: agent.jsonData } });
+    };
+
+    it('shows a fresh agent with an unresolved reference as setting up, not failed', async () => {
+      withAgentManager();
+      stubResources({ resource: unresolvedAgent(10_000) });
+
+      await renderPage();
+
+      expectHeaderReadiness('Setting up');
+      expect(
+        screen.getByText('Sessions can start once the agent is ready'),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/still being set up/)).toBeInTheDocument();
+      expect(
+        screen.queryByText('Sessions cannot start'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Edit agent' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('keeps polling, and turns ready without a reload', async () => {
+      const settingUp = unresolvedAgent(10_000);
+      const answerPoll = stubPolledAgent(settingUp);
+
+      await renderPage();
+
+      expectHeaderReadiness('Setting up');
+      // Still re-read at the fast tier, not left for the 60 s baseline.
+      expect(agentPollInterval(settingUp)).toBe(5_000);
+      expect(
+        screen.queryByRole('button', { name: 'Start a session' }),
+      ).not.toBeInTheDocument();
+
+      await answerPoll(makeAgent());
+
+      expectHeaderReadiness('Ready');
+      expect(
+        screen.queryByText('Sessions can start once the agent is ready'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Start a session' }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows a failure that outlasts the grace period as failed', async () => {
+      stubResources({
+        resource: unresolvedAgent(PROVISIONING_GRACE_MS + 60_000),
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Failed');
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+      expect(screen.getAllByText(UNRESOLVED).length).toBeGreaterThan(0);
+    });
+
+    // Nothing about the agent changes when the grace period ends, so no poll
+    // re-renders the page; the end of the window has to.
+    it('turns failed on its own when the grace period ends', async () => {
+      stubResources({ resource: unresolvedAgent(PROVISIONING_GRACE_MS - 500) });
+
+      await renderPage();
+
+      expectHeaderReadiness('Setting up');
+      await waitFor(() => expectHeaderReadiness('Failed'), { timeout: 3_000 });
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+    });
+
+    it('shows a release agent-manager calls failed as still deploying while it is set up', async () => {
+      stubResources({
+        error: new Error('not found'),
+        errors: [
+          {
+            type: 'error',
+            cluster: 'gazelle',
+            error: Object.assign(new Error('not found'), {
+              name: 'NotFoundError',
+            }),
+          },
+        ],
+      });
+      mockUseAgentStatus.mockReturnValue({
+        status: {
+          name: mockParams.name,
+          namespace: mockParams.namespace,
+          verdict: 'failed',
+          summary: 'HelmRelease is not ready: chart not fetched yet',
+          helmRelease: {
+            exists: true,
+            ready: false,
+            suspended: false,
+            gitOpsOwned: false,
+            deleting: false,
+          },
+        },
+        isSettling: false,
+        isNotFound: false,
+        isSettingUp: true,
+        error: null,
+      });
+
+      await renderPage();
+
+      expectHeaderReadiness('Deploying');
+      expect(
+        screen.getByText('Deploying — waiting for kagent to render the agent'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('The agent’s release did not become ready'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('HelmRelease is not ready: chart not fetched yet'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
   // and the create flow navigated here before helm-controller rendered the
   // Agent, so the Agent read 404s. The page must tell that "not yet"
@@ -1822,6 +2021,7 @@ describe('AgentDetailPage', () => {
       },
       isSettling: true,
       isNotFound: false,
+      isSettingUp: false,
       error: null,
     });
 
@@ -1892,6 +2092,7 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: false,
+        isSettingUp: false,
         error: null,
       });
 
@@ -1907,6 +2108,7 @@ describe('AgentDetailPage', () => {
         status: undefined,
         isSettling: true,
         isNotFound: true,
+        isSettingUp: false,
         error: null,
       });
 
