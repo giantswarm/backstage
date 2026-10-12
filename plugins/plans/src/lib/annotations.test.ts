@@ -4,7 +4,6 @@ import {
   firstCommentableLine,
   frontmatterOffset,
   groupThreads,
-  isCommentable,
   threadsForBlock,
 } from './annotations';
 
@@ -26,8 +25,6 @@ describe('commentableLines', () => {
   it('accepts every line for added files', () => {
     const lines = commentableLines(file({ status: 'added' }));
     expect(lines).toBe('all');
-    expect(isCommentable(lines, 1)).toBe(true);
-    expect(isCommentable(lines, 9999)).toBe(true);
   });
 
   it('accepts only RIGHT-side hunk lines for modified files', () => {
@@ -48,15 +45,10 @@ describe('commentableLines', () => {
     expect([...(lines as Set<number>)].sort((a, b) => a - b)).toEqual([
       1, 2, 3, 4, 11, 12,
     ]);
-    expect(isCommentable(lines, 4)).toBe(true);
-    expect(isCommentable(lines, 5)).toBe(false);
-    expect(isCommentable(lines, 10)).toBe(false);
-    expect(isCommentable(lines, 12)).toBe(true);
   });
 
   it('accepts nothing when the patch is missing', () => {
-    const lines = commentableLines(file({}));
-    expect(isCommentable(lines, 1)).toBe(false);
+    expect(commentableLines(file({}))).toEqual(new Set());
   });
 });
 

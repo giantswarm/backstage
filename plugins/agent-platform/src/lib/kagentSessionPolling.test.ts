@@ -1,6 +1,6 @@
 import {
   A2aTaskWire,
-  deriveSessionState,
+  readNewestTaskState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   ACTIVE_MAX_AGE_MS,
@@ -76,7 +76,7 @@ describe('getSessionTasksRefetchInterval', () => {
 
   it('decides from the newest task, not from any earlier one', () => {
     // An earlier turn having been `working` says nothing about now — the same rule
-    // `deriveSessionState` applies.
+    // `readNewestTaskState` applies.
     const tasks = [task('working', { ageMs: 60_000 }), task('completed')];
 
     expect(getSessionTasksRefetchInterval(query(tasks))).toBe(BASELINE);
@@ -165,12 +165,12 @@ describe('getSessionTasksRefetchInterval', () => {
     );
   });
 
-  it('agrees with deriveSessionState about which task decides', () => {
+  it('agrees with readNewestTaskState about which task decides', () => {
     // The backwards walk is duplicated here rather than shared, so this guards the
     // two copies against drifting apart.
     const tasks = [task('completed', { ageMs: 60_000 }), task('working')];
 
-    expect(deriveSessionState(tasks)?.raw).toBe('working');
+    expect(readNewestTaskState(tasks)?.state.raw).toBe('working');
     expect(getSessionTasksRefetchInterval(query(tasks))).toBe(FAST);
   });
 });

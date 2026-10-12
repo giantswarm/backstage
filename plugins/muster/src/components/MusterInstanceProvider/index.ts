@@ -4,7 +4,7 @@ export {
   useMusterInstance,
 } from './MusterInstanceProvider';
 export type { MusterInstance } from './MusterInstanceProvider';
-export { selectMusterInstallations, homeFirst } from './selectInstallations';
+export { selectMusterInstallations } from './selectInstallations';
 export {
   useMusterInstallations,
   musterInstallationsQueryKey,

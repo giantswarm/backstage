@@ -66,9 +66,8 @@ const HEALTHY_AGAIN_FROM = new Set<AccessState | 'absent'>([
 /**
  * Home first, then the installations whose access probes settled (their first
  * state other than `connecting`) in that order, then the rest in config order.
- * Exported for tests.
  */
-export function orderInstallations(
+function orderInstallations(
   names: string[],
   home: string | undefined,
   settledSequence: ReadonlyMap<string, number>,

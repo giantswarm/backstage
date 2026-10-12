@@ -1,6 +1,5 @@
 import {
   ACTIVE_MAX_AGE_MS,
-  deriveSessionState,
   describeSessionState,
   isAgentWorking,
   readNewestTaskState,
@@ -13,7 +12,7 @@ import unknownState from './__fixtures__/tasks.unknown-state.json';
 import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 
 function stateFor(fixture: unknown) {
-  return deriveSessionState(normalizeTaskList(fixture).tasks);
+  return readNewestTaskState(normalizeTaskList(fixture).tasks)?.state;
 }
 
 describe('describeSessionState', () => {
@@ -69,7 +68,7 @@ describe('describeSessionState', () => {
   );
 });
 
-describe('deriveSessionState', () => {
+describe('the session state, from readNewestTaskState', () => {
   it('takes the state of the most recent task', () => {
     // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
     // An earlier turn having completed says nothing about whether the session is
@@ -91,7 +90,7 @@ describe('deriveSessionState', () => {
     const tasks = normalizeTaskList(kagentPrefixed).tasks;
     const stateless = { ...tasks[tasks.length - 1], status: undefined };
 
-    expect(deriveSessionState([...tasks, stateless])).toMatchObject({
+    expect(readNewestTaskState([...tasks, stateless])?.state).toMatchObject({
       raw: 'working',
     });
   });
@@ -100,7 +99,7 @@ describe('deriveSessionState', () => {
     // A real condition — created but never run — and distinct from every state
     // kagent could report, so it must not be flattened into one of them.
     expect(stateFor(emptyNoData)).toBeUndefined();
-    expect(deriveSessionState([])).toBeUndefined();
+    expect(readNewestTaskState([])).toBeUndefined();
   });
 });
 
