@@ -236,6 +236,45 @@ describe('MusterMcpClient', () => {
     );
   });
 
+  it('answers structuredContent where the text block is prose', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '1 workspaces' }],
+        structuredContent: { workspaces: [{ name: 'platform' }] },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(
+      client.callTool('x_workspace-manager_list_workspaces', {}),
+    ).resolves.toEqual({ workspaces: [{ name: 'platform' }] });
+  });
+
+  it('keeps a JSON text block over structuredContent', async () => {
+    const execute = jest.fn().mockResolvedValue(
+      callToolEnvelope({
+        content: [{ type: 'text', text: '{"from":"text"}' }],
+        structuredContent: { from: 'structuredContent' },
+      }),
+    );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toEqual({
+      from: 'text',
+    });
+  });
+
+  it('answers the prose where there is no structuredContent', async () => {
+    const execute = jest
+      .fn()
+      .mockResolvedValue(
+        callToolEnvelope({ content: [{ type: 'text', text: 'done' }] }),
+      );
+    const { client } = buildClient(execute);
+
+    await expect(client.callTool('x_some_tool', {})).resolves.toBe('done');
+  });
+
   /**
    * auth://status lives on the aggregator's own MCP server, so it must be read
    * with a native resources/read. The `get_resource` meta-tool only aggregates

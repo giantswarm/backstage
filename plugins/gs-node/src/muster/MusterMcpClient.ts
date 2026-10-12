@@ -660,6 +660,13 @@ export class MusterMcpClient {
     try {
       return JSON.parse(text);
     } catch {
+      // A tool that answers its data in `structuredContent` with a prose
+      // text block next to it (mcp-go's NewToolResultStructured): the data,
+      // not the prose.
+      const { structuredContent } = inner as { structuredContent?: unknown };
+      if (structuredContent !== null && typeof structuredContent === 'object') {
+        return structuredContent;
+      }
       return text;
     }
   }
