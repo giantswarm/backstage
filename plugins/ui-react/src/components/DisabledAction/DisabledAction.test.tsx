@@ -4,7 +4,7 @@ import { renderInTestApp } from '@backstage/test-utils';
 import {
   mockPhoneLayout,
   type MockedLayout,
-} from '../../utils/mockPhoneLayout';
+} from '../../testUtils/mockPhoneLayout';
 import { DisabledAction } from './DisabledAction';
 
 const REASON = 'Applied from Git — change it there.';

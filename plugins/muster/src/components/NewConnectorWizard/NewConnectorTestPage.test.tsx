@@ -6,10 +6,8 @@ import {
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import {
-  mockPhoneLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { musterApiRef, type ToolSummary } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';

@@ -48,6 +48,8 @@ export * from './SimpleAccordion';
 export * from './StackedRowList';
 export * from './SingleSelect';
 export * from './Stat';
+export * from './StatDelta';
+export * from './StatGrid';
 export * from './StackedBarChart';
 export * from './StatusDot';
 export * from './StatusLabel';

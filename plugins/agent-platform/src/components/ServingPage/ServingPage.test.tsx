@@ -16,12 +16,14 @@ import {
   type ServedModelGroup,
 } from './ServedModelsTable';
 import {
-  mockDesktopLayout,
-  mockPhoneLayout,
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
-  type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';

@@ -5,7 +5,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import {

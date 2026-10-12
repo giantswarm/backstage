@@ -1,4 +1,5 @@
 import { Link, Skeleton } from '@backstage/ui';
+import { Stat, StatGrid } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmUsage } from '../../../lib/llmUsage';
 import {
   formatCount,
@@ -8,7 +9,6 @@ import {
   USD,
   type Currency,
 } from '../../../lib/formatNumbers';
-import { KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type UsageKpiSessions = {
   /**
@@ -73,8 +73,9 @@ export function UsageKpiTiles({
   const modelsNoun = totals.models === 1 ? 'model' : 'models';
 
   return (
-    <KpiTileGrid>
-      <KpiTile
+    <StatGrid>
+      <Stat
+        variant="tile"
         label={converted ? 'Est. spend' : 'Spend'}
         hint={
           converted
@@ -95,14 +96,16 @@ export function UsageKpiTiles({
           )
         }
       />
-      <KpiTile
+      <Stat
+        variant="tile"
         label="Tokens"
         hint={`Counts all tokens the gateway proxied over ${windowNote}: input, output and both cache types.`}
         value={formatTokens(totals.tokens)}
         sub={`every user's, across ${formatCount(totals.calls)} model calls`}
       />
       {sessions && (
-        <KpiTile
+        <Stat
+          variant="tile"
           label="Your sessions"
           hint="Counts your sessions with at least one turn in the window, from kagent. Other users' sessions cannot be counted here, and the gateway figures beside it are everyone's."
           value={
@@ -119,12 +122,13 @@ export function UsageKpiTiles({
           }
         />
       )}
-      <KpiTile
+      <Stat
+        variant="tile"
         label="Active agents"
         hint={`Counts the distinct callers the gateway attributed a model call to over ${windowNote}, including any it could not name.`}
         value={formatCount(totals.agents)}
         sub={`every user's, ${formatCount(totals.models)} ${modelsNoun} answered`}
       />
-    </KpiTileGrid>
+    </StatGrid>
   );
 }

@@ -5,7 +5,7 @@ import {
   mockPhoneLayout,
   mockViewport,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { GpuNode } from '../../lib/serving';
 import {
   columnsForNodes,

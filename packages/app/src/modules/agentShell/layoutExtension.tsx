@@ -7,6 +7,7 @@ import {
 import { SidebarPage } from '@backstage/core-components';
 import {
   DateTimeZoneProvider,
+  ShellDocumentTitleProvider,
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentShellArea } from './agentArea';
@@ -38,10 +39,12 @@ function AgentShellLayout({
   return (
     <DateTimeZoneProvider timeZone={shellActive ? 'local' : 'utc'}>
       <ShellScopeProvider inShell={shellActive}>
-        <SidebarPage>
-          {nav}
-          {shellActive ? <ShellMain>{content}</ShellMain> : content}
-        </SidebarPage>
+        <ShellDocumentTitleProvider suffix="Agent Platform">
+          <SidebarPage>
+            {nav}
+            {shellActive ? <ShellMain>{content}</ShellMain> : content}
+          </SidebarPage>
+        </ShellDocumentTitleProvider>
       </ShellScopeProvider>
     </DateTimeZoneProvider>
   );

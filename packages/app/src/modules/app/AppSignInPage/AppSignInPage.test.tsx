@@ -113,6 +113,17 @@ describe('AppSignInPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('leaves the default message out of the shell-style sign-in', async () => {
+    renderSignIn({
+      gs: { authProvider: 'oidc-gazelle' },
+      app: { title: 'Giant Swarm Portal', portals: { agentPlatform: true } },
+    });
+    expect(
+      await screen.findByRole('button', { name: 'Sign in with Dex' }),
+    ).not.toHaveAccessibleDescription();
+    expect(screen.queryByText('Sign in using Dex')).not.toBeInTheDocument();
+  });
+
   it('uses the shell style for an Agent-Platform-only deployment too', async () => {
     renderSignIn({
       gs,
