@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  Stat,
+  StatGrid,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { useLlmUsage } from '../../hooks/useLlmUsage';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
@@ -15,7 +19,6 @@ import {
 } from '../../lib/formatNumbers';
 import { usageCostRouteRef } from '../../routes';
 import { AgentsDataProvider } from '../AgentsDataProvider';
-import { KpiTile, KpiTileGrid } from '../LlmUsage';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { toAgentIdentifier } from '../SessionsDataProvider/helpers';
 
@@ -77,10 +80,11 @@ function AgentUsageContent({
         This agent over the last {WINDOW_DAYS} days on {installation}.
       </Text>
 
-      <KpiTileGrid>
+      <StatGrid>
         {hasGateway && (
           <>
-            <KpiTile
+            <Stat
+              variant="tile"
               label="Spend"
               hint="Shows the gateway's price for every user's calls to this agent's model. Models missing from its catalogue add nothing."
               // No row is no calls, which is zero spend; a row without a
@@ -92,13 +96,15 @@ function AgentUsageContent({
               }
               sub="every user's"
             />
-            <KpiTile
+            <Stat
+              variant="tile"
               label="Tokens"
               hint="Counts the tokens this agent's model calls used, as the gateway counted them."
               value={formatTokens(gatewayRow?.tokens ?? 0)}
               sub="every user's"
             />
-            <KpiTile
+            <Stat
+              variant="tile"
               label="Model calls"
               hint="Counts how often this agent called its model."
               value={formatCount(gatewayRow?.calls ?? 0)}
@@ -107,7 +113,8 @@ function AgentUsageContent({
           </>
         )}
         {hasSessions && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="Your sessions"
             hint={`Counts the sessions you started with this agent in the last ${sessionWindow} days. Other users' sessions cannot be counted here.`}
             value={formatCount(sessionRow?.sessions ?? 0)}
@@ -116,14 +123,15 @@ function AgentUsageContent({
         )}
         {/* Only when a runtime reported one: "not reported" is not "$0.00". */}
         {sessionRow?.reportedCostUsd !== undefined && (
-          <KpiTile
+          <Stat
+            variant="tile"
             label="Reported cost"
             hint="Shows what the agent's runtime reported for your turns. Only some runtimes report a cost."
             value={formatUsd(sessionRow.reportedCostUsd)}
             sub="yours, from the agent's runtime"
           />
         )}
-      </KpiTileGrid>
+      </StatGrid>
 
       {!hasGateway && (
         <Text as="p" variant="body-small" color="secondary">

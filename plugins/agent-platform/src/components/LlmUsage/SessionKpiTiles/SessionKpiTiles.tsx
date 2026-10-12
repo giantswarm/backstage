@@ -1,6 +1,6 @@
 import type { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { Stat, StatGrid } from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount, formatTokens } from '../../../lib/formatNumbers';
-import { KpiTile, KpiTileGrid } from '../KpiTile';
 
 export type SessionKpiTilesProps = {
   /** The kagent fan-out's answer for the resolved installation. */
@@ -32,25 +32,28 @@ export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
   const windowNote = `the last ${windowDays} days`;
 
   return (
-    <KpiTileGrid>
-      <KpiTile
+    <StatGrid>
+      <Stat
+        variant="tile"
         label="Your sessions"
         hint={`Counts your sessions with at least one turn over ${windowNote}, from kagent. Other users' sessions cannot be counted here.`}
         value={formatCount(totals.sessions)}
         sub="yours — see Your sessions for the breakdown"
       />
-      <KpiTile
+      <Stat
+        variant="tile"
         label="Your tokens"
         hint={`Shows kagent's token total for your turns over ${windowNote}. It can exceed input + output because thinking tokens count only in the total.`}
         value={formatTokens(totals.totalTokens)}
         sub={`across ${formatCount(totals.turns)} turns`}
       />
-      <KpiTile
+      <Stat
+        variant="tile"
         label="Your agents"
         hint={`Counts the distinct agents in your sessions over ${windowNote}. Other users' agents need the gateway metrics.`}
         value={formatCount(agents)}
         sub="agents your sessions used"
       />
-    </KpiTileGrid>
+    </StatGrid>
   );
 }
