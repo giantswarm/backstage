@@ -325,7 +325,7 @@ describe('AgentCreationProgress', () => {
       jest.useRealTimers();
     });
 
-    it('is re-read every 15 s until it turns ready', async () => {
+    it('is re-read every 5 s until it turns ready', async () => {
       answer(status('failed'), READY);
 
       await render();
@@ -350,21 +350,33 @@ describe('AgentCreationProgress', () => {
       expect(readAt).toHaveLength(2);
     });
 
-    // A read error is handled as it always was: shown, while the settled
-    // verdict keeps the poll going.
-    it('shows a read error after it as any read error, and reads on', async () => {
+    // A read error is handled as it always was: shown, and the poll stops.
+    it('shows a read error after it as any read error, and stops', async () => {
       answer(status('failed'), new Error('muster: session expired'), READY);
 
       await render();
-      await wait(FAILED_STATUS_POLL_INTERVAL_MS + 1);
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
+
       expect(readAt).toHaveLength(2);
       expect(
         screen.getByText(/could not read the agent's readiness/),
       ).toBeInTheDocument();
+    });
 
-      await wait(FAILED_STATUS_POLL_INTERVAL_MS);
-      expect(readAt).toHaveLength(3);
-      expect(screen.getByText('Ready')).toBeInTheDocument();
+    // The agent was deleted while the alert was up: not "not there yet".
+    it('stops at a not_found after it, without going back to waiting', async () => {
+      answer(
+        status('failed'),
+        new Error('not_found: agent kagent/pr-reviewer not found'),
+        READY,
+      );
+
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_INTERVAL_MS);
+
+      expect(readAt).toHaveLength(2);
+      expect(screen.queryByText('Deploying…')).not.toBeInTheDocument();
+      expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
     });
   });
 });

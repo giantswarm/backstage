@@ -539,12 +539,14 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
 Harness (`status.agent.harness`) has a verdict. The status card derives the
 same verdict from `status.harnesses[]`. A `not_found` right after the create is
-polled through. Only `ready` ends the poll: a `failed` verdict is shown but
-still re-read every 15 s, because right after a create kagent can briefly
-report the agent's own tool server as an unresolved reference, and that clears
-to Ready without a reload. agent-manager reporting the transient state as
-`progressing` is the proper fix (giantswarm/agent-manager#145). The
-installation's cached `kagent.dev` lists are invalidated after the write.
+polled through. `ready` ends the poll. A `failed` verdict is shown but still
+re-read every 5 s, the pace the page reads a converging Agent at, because right
+after a create kagent can briefly report the agent's own tool server as an
+unresolved reference, and that clears to Ready without a reload. A read error
+ends the poll as before, and so does a `not_found` after a `failed` verdict:
+the agent is gone. agent-manager reporting the transient state as `progressing`
+is the proper fix (giantswarm/agent-manager#145). The installation's cached
+`kagent.dev` lists are invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -1685,7 +1687,7 @@ switching tabs refetches nothing; the toolset's muster queries run only on
 
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
   (consumed once) and polls `get_agent_status` until the Harness reports
-  ready, re-reading a failed verdict every 15 s.
+  ready, re-reading a failed verdict every 5 s.
 - **Header** — Edit and Use this agent are buttons; the actions menu offers
   `Update all skills to latest…` and `Delete agent…` where agent-manager is
   available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the

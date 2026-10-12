@@ -156,7 +156,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     }
     if (detailHref) {
       // The detail page shows the new revision converging on its Harness
-      // (get_agent_status until ready or failed).
+      // (get_agent_status until ready).
       navigate(detailHref, {
         state: {
           [AGENT_CREATED_STATE_KEY]: {
