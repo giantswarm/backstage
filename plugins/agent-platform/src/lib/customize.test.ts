@@ -66,14 +66,6 @@ describe('agentStatus', () => {
     });
   });
 
-  // The Customize list says what the detail page says.
-  it('shows an agent still being set up as neutral, not failed', () => {
-    expect(agentStatus(agent({ readiness: 'settingUp' }))).toEqual({
-      label: 'Setting up',
-      tone: 'neutral',
-    });
-  });
-
   it('says when nothing answers for the model', () => {
     expect(
       agentStatus(

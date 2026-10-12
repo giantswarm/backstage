@@ -442,11 +442,6 @@ export type AgentPlainOverviewProps = {
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
-  /**
-   * The agent is `failed` for a reason it passes through while it is
-   * provisioned, so nothing is marked as failing yet.
-   */
-  isSettingUp?: boolean;
   /** The Tools tab, which resolves the toolset to exact tools. */
   toolsHref?: string;
   /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
@@ -472,14 +467,13 @@ export function AgentPlainOverview({
   installation,
   modelConfig,
   modelServing,
-  isSettingUp = false,
   toolsHref,
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
-  const failure = isSettingUp ? undefined : agent.getFailure();
+  const failure = agent.getFailure();
   const description = agent.getDescription();
 
   return (
@@ -593,19 +587,16 @@ function ModelFact({
 /** The facts beside the overview: the model, where it runs, since when. */
 export function agentFacts({
   agent,
-  isSettingUp = false,
   installation,
   modelConfig,
   modelServing,
 }: {
   agent: Agent;
-  /** Nothing is marked as failing while the agent is still being set up. */
-  isSettingUp?: boolean;
   installation: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
 }): Fact[] {
-  const failure = isSettingUp ? undefined : agent.getFailure();
+  const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
   const facts: Fact[] = [
     {

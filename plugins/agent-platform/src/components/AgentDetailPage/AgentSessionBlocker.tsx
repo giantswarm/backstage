@@ -2,7 +2,6 @@ import { Alert, Button } from '@backstage/ui';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
-import { SETTING_UP_MESSAGE } from '../../lib/agentProvisioning';
 
 /**
  * Why sessions cannot be started with this agent, in place of the header's
@@ -13,19 +12,14 @@ import { SETTING_UP_MESSAGE } from '../../lib/agentProvisioning';
  * and the cause is in its spec, offers **Edit agent**; a platform cause (the
  * Harness's WorkerPool) is not the author's to fix, so it offers nothing. An
  * agent still converging says so — unless the page is already following a
- * write to it, which `AgentCreationProgress` narrates. So does a failed agent
- * that is still being set up (`isSettingUp`): its failure is shown once the
- * grace period is over, not before.
+ * write to it, which `AgentCreationProgress` narrates.
  */
 export function AgentSessionBlocker({
   agent,
-  isSettingUp = false,
   onEdit,
   isGitOpsOwned = false,
 }: {
   agent: Agent;
-  /** The agent is `failed` for a reason it passes through while provisioned. */
-  isSettingUp?: boolean;
   /**
    * Opens the edit page. Absent when the viewer cannot write the agent; for an
    * agent applied from git, present only when the edit page can commit.
@@ -41,7 +35,7 @@ export function AgentSessionBlocker({
     return null;
   }
 
-  if (readiness === 'failed' && !isSettingUp) {
+  if (readiness === 'failed') {
     const failure = agent.getFailure();
     const isPlatform = failure?.field === 'platform';
     const reason = failure?.message ?? agent.getReadinessMessage();
@@ -88,7 +82,7 @@ export function AgentSessionBlocker({
       icon
       title="Sessions can start once the agent is ready"
       description={
-        (isSettingUp ? SETTING_UP_MESSAGE : agent.getReadinessMessage()) ??
+        agent.getReadinessMessage() ??
         (readiness === 'pending'
           ? 'The controller has not reported on the current version of this agent yet.'
           : 'The Harness is preparing the current revision.')

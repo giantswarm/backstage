@@ -1,6 +1,7 @@
 import type { Query } from '@tanstack/react-query';
 import {
   Agent,
+  AgentReadiness,
   AgentInterface,
   deriveAgentReadiness,
   getAgentStatusChangedAt,
@@ -15,13 +16,6 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
-import {
-  type AgentDisplayReadiness,
-  backoffRefetchInterval,
-  displayReadinessOf,
-  PROVISIONING_GRACE_MS,
-  SETTING_UP_MESSAGE,
-} from '../../lib/agentProvisioning';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -51,8 +45,7 @@ export const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
 
 /**
  * How long an agent may sit in a non-ready state before we stop treating it as
- * "converging" and let its installation fall back to the baseline — the same
- * window the detail page gives a new agent to be set up in.
+ * "converging" and let its installation fall back to the baseline.
  *
  * Without this bound a *permanently* broken agent — an unpullable image, a spec
  * the controller keeps rejecting — is transitional forever and would pin its
@@ -61,58 +54,47 @@ export const TRANSITIONAL_REFETCH_INTERVAL_MS = 5_000;
  * window, and past it polling faster cannot help: the fix is a spec change,
  * which bumps the generation and starts the window again.
  */
-const TRANSITIONAL_MAX_AGE_MS = PROVISIONING_GRACE_MS;
-
-/**
- * How long since the agent's status last changed (see
- * `getAgentStatusChangedAt`). An agent with no usable timestamp counts as just
- * changed rather than as stuck, so a genuinely new agent is still picked up
- * quickly.
- */
-function msSinceStatusChange(json: AgentInterface, now: number): number {
-  const changedAt = getAgentStatusChangedAt(json);
-  return changedAt === undefined ? 0 : now - changedAt;
-}
+const TRANSITIONAL_MAX_AGE_MS = 3 * 60_000;
 
 /**
  * Whether one agent is worth re-checking sooner than the rest: not settled into a
  * healthy state, and its status still moving (or too new to tell).
  *
- * The fleet list's test, so it backs off from a *permanently* broken agent — see
- * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists. The detail page
- * backs off gradually after it instead (see {@link getAgentRefetchInterval}).
+ * Shared by the fleet list and the single-agent detail page so both back off from
+ * a *permanently* broken agent on the same terms — see
+ * {@link TRANSITIONAL_MAX_AGE_MS} for why that bound exists.
  */
 function isAgentConverging(json: AgentInterface, now: number): boolean {
-  return (
-    isAgentTransitional(deriveAgentReadiness(json)) &&
-    msSinceStatusChange(json, now) < TRANSITIONAL_MAX_AGE_MS
-  );
+  if (!isAgentTransitional(deriveAgentReadiness(json))) {
+    return false;
+  }
+
+  const changedAt = getAgentStatusChangedAt(json);
+
+  // No usable timestamp: treat the agent as just-changed rather than as stuck,
+  // so a genuinely new agent is still picked up quickly.
+  return changedAt === undefined || now - changedAt < TRANSITIONAL_MAX_AGE_MS;
 }
 
 /**
  * Refetch interval for a single agent, for the detail page.
  *
- * The baseline once the agent is ready. Until then the fast tier for as long
- * as the list's converging window ({@link TRANSITIONAL_MAX_AGE_MS}) lasts from
- * the agent's last status change — the window a new agent is set up in, which
- * is not to be slowed — and then backing off, doubling every minute up to the
- * baseline: the detail page is exactly where someone watches an agent come
- * up, and where a failure fixed elsewhere should turn the page ready without a
- * reload. A status change restarts the window.
+ * Same two tiers as the list below, decided from this one agent's own status: it
+ * tightens while the agent is converging and relaxes once it settles or stays
+ * broken. The detail page is exactly where someone watches an agent come up, so
+ * the fast tier matters more here than in the list.
  */
 export function getAgentRefetchInterval(
   query: Query<KubeObjectInterface>,
 ): number {
   const json = query.state.data as AgentInterface | undefined;
-  if (!json || !isAgentTransitional(deriveAgentReadiness(json))) {
+  if (!json) {
     return BASELINE_REFETCH_INTERVAL_MS;
   }
 
-  return backoffRefetchInterval(
-    msSinceStatusChange(json, Date.now()) - TRANSITIONAL_MAX_AGE_MS,
-    TRANSITIONAL_REFETCH_INTERVAL_MS,
-    BASELINE_REFETCH_INTERVAL_MS,
-  );
+  return isAgentConverging(json, Date.now())
+    ? TRANSITIONAL_REFETCH_INTERVAL_MS
+    : BASELINE_REFETCH_INTERVAL_MS;
 }
 
 /**
@@ -217,11 +199,8 @@ export type AgentRow = {
    * a model row carries. `undefined` when the agent references no model.
    */
   modelConfigId?: string;
-  /**
-   * Readiness derived from the Agent's conditions, `settingUp` for a failed
-   * agent the caller judged still being set up (`settingUpUntil`).
-   */
-  readiness: AgentDisplayReadiness;
+  /** Readiness derived from the Agent's conditions. */
+  readiness: AgentReadiness;
   /**
    * Detail explaining a non-ready readiness (the Harness's reconcile error or
    * the unresolved reference), for the
@@ -327,12 +306,6 @@ export function toAgentRow(
   resolveServing?: ResolveModelServing,
   carriers?: readonly ToolsetCarrier[],
   harnesses?: readonly Harness[],
-  /**
-   * The caller's verdict from `settingUpUntil` on its server clock. Passed
-   * in, not judged here, so a row never reads a clock of its own and cannot
-   * disagree with the header or the list that built it.
-   */
-  isSettingUp: boolean = false,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -344,7 +317,6 @@ export function toAgentRow(
       candidate.getName() === harnessName,
   );
   const modelConfig = resolveModelConfig(agent, modelConfigs);
-  const readiness = displayReadinessOf(agent, isSettingUp);
   const serving =
     modelConfig && resolveServing ? resolveServing(modelConfig) : undefined;
   const warnings = agent.getHarnessWarnings();
@@ -377,11 +349,8 @@ export function toAgentRow(
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),
-    readiness,
-    readinessMessage:
-      readiness === 'settingUp'
-        ? SETTING_UP_MESSAGE
-        : agent.getReadinessMessage(),
+    readiness: agent.getReadiness(),
+    readinessMessage: agent.getReadinessMessage(),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
     ...(carriers

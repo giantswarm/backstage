@@ -75,12 +75,6 @@ const NO_STATUS: AgentStatusState = {
   isNotFound: false,
   error: null,
 };
-// The server's clock reads the backend through react-query, which this page
-// test leaves out; the browser's stands in for it.
-jest.mock('../../hooks/useServerClock', () => ({
-  useServerClock: () => Date.now,
-}));
-
 jest.mock('../../hooks/useAgentStatus', () => ({
   useAgentStatus: () => NO_STATUS,
 }));

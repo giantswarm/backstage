@@ -42,10 +42,7 @@ import { useAgentSessions } from '../../hooks/useAgentSessions';
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
-import { useAgentRelease } from '../../hooks/useAgentRelease';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
-import { useServerClock } from '../../hooks/useServerClock';
-import { useSettingUp } from '../../hooks/useSettingUp';
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import {
   useAgentManagerAvailability,
@@ -187,10 +184,9 @@ function AgentDetailPageContent() {
   const { installation = '', namespace = '', name = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
 
-  // The baseline once the agent is ready; until then the fast tier, backing
-  // off the longer its status does not change (`getAgentRefetchInterval`).
-  // This page is where someone watches an agent come up, and where a failure
-  // that clears should turn it ready without a reload — and it starts before
+  // Same two tiers as the list: tighten while the agent is converging, relax
+  // once it settles or stays broken. This page is where someone watches an
+  // agent come up, so the fast tier earns its keep here — and it starts before
   // the Agent exists: while agent-manager says the agent's HelmRelease is
   // there (`isDeploying` below), the read that will eventually find the
   // Agent polls at the fast tier too, instead of the 60 s the helper gives
@@ -230,25 +226,8 @@ function AgentDetailPageContent() {
   // without agent-manager on the installation nothing is asked and a 404 stays
   // "not found".
   const isAgentMissing = !isLoading && !agent && errors.some(isNotFoundError);
-  // Whether the agent is still being set up: one definition
-  // (`settingUpUntil`), one clock (the server's), from the Agent and its
-  // HelmRelease — read whether or not the Agent exists yet, since a release
-  // can still be reconciling after it has rendered the Agent. The header, the
-  // session blocker, the facts, the row and the creation progress all take
-  // this one answer.
-  const now = useServerClock();
-  const agentRelease = useAgentRelease(installation, namespace, name, now);
-  const isSettingUp = useSettingUp(
-    { agent, release: agentRelease.release },
-    now,
-  );
-  // agent-manager's verdict is `failed` for such an agent too; re-read while
-  // it may still clear, or while the release read has not answered and so
-  // whether it may is not known yet.
-  const keepReadingFailed = isSettingUp || agentRelease.isDeciding;
   const release = useAgentStatus(installation, namespace, name, {
     enabled: isAgentMissing,
-    keepReadingFailed,
   });
   const isDeploying =
     isAgentMissing &&
@@ -288,16 +267,9 @@ function AgentDetailPageContent() {
   const agentRow = useMemo(
     () =>
       agent
-        ? toAgentRow(
-            agent,
-            modelConfig ? [modelConfig] : [],
-            resolveServing,
-            undefined,
-            undefined,
-            isSettingUp,
-          )
+        ? toAgentRow(agent, modelConfig ? [modelConfig] : [], resolveServing)
         : undefined,
-    [agent, modelConfig, resolveServing, isSettingUp],
+    [agent, modelConfig, resolveServing],
   );
   const sessions = useAgentSessions(installation, namespace, name, agentRow);
 
@@ -683,10 +655,7 @@ function AgentDetailPageContent() {
     // tier, see `refetchInterval`) and the page switches to the rendered agent
     // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
-      // A new release still reconciling is still deploying until its window
-      // is over; so is one whose read has not answered, since neither a
-      // failure nor a window is known yet.
-      const failed = release.status?.verdict === 'failed' && !keepReadingFailed;
+      const failed = release.status?.verdict === 'failed';
       return (
         <AgentFrame
           title={name}
@@ -709,10 +678,7 @@ function AgentDetailPageContent() {
                   : 'Deploying — waiting for kagent to render the agent'
               }
               description={
-                // A failure's summary reads as one, so not under "Deploying".
-                (release.status?.verdict === 'failed' && !failed
-                  ? undefined
-                  : release.status?.summary) ??
+                release.status?.summary ??
                 'agent-manager applied the Helm release.'
               }
             />
@@ -769,22 +735,10 @@ function AgentDetailPageContent() {
         installation={installation}
         namespace={namespace}
         name={name}
-        agentReady={
-          isReady
-            ? {
-                generation: agent.jsonData.metadata?.generation,
-                since: Date.parse(
-                  agent.getCondition('Ready')?.lastTransitionTime ?? '',
-                ),
-              }
-            : undefined
-        }
-        isSettingUp={isSettingUp}
       />
 
       <AgentSessionBlocker
         agent={agent}
-        isSettingUp={isSettingUp}
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
@@ -850,11 +804,7 @@ function AgentDetailPageContent() {
       }
       badges={
         <ReadinessBadge
-          readiness={
-            isSettingUp
-              ? READINESS_PRESENTATION.settingUp
-              : READINESS_PRESENTATION[agent.getReadiness()]
-          }
+          readiness={READINESS_PRESENTATION[agent.getReadiness()]}
         />
       }
       meta={
@@ -876,7 +826,6 @@ function AgentDetailPageContent() {
             aria-label="About this agent"
             facts={agentFacts({
               agent,
-              isSettingUp,
               installation,
               modelConfig,
               modelServing: agentRow?.modelServing,
@@ -901,7 +850,6 @@ function AgentDetailPageContent() {
                 installation={installation}
                 modelConfig={modelConfig}
                 modelServing={agentRow?.modelServing}
-                isSettingUp={isSettingUp}
                 toolsHref={toolsHref}
                 onUpdateSkills={canEditAgent ? openUpdateSkills : undefined}
                 onAddSkills={canEditAgent ? openEdit : undefined}

@@ -11,7 +11,6 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
 import {
-  getAgentRefetchInterval,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
@@ -601,110 +600,6 @@ describe('getAgentsRefetchInterval', () => {
     const converging = notReadyAgent('converging', 5_000);
 
     expect(getAgentsRefetchInterval(query([stuck, converging]))).toBe(FAST);
-  });
-});
-
-describe('getAgentRefetchInterval', () => {
-  const BASELINE = 60_000;
-  const FAST = 5_000;
-  const NOW = Date.parse('2026-07-31T12:00:00Z');
-
-  beforeEach(() => {
-    jest.useFakeTimers().setSystemTime(NOW);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  function query(agent: Agent | undefined) {
-    return {
-      state: { data: agent?.jsonData },
-    } as Parameters<typeof getAgentRefetchInterval>[0];
-  }
-
-  /** Failed on an unresolved reference, `ageMs` after its last status change. */
-  const unresolvedAgent = (ageMs: number) =>
-    makeAgent({
-      status: reported([
-        condition('Accepted', 'True', 'Admitted', '', ageMs),
-        condition(
-          'ResolvedRefs',
-          'False',
-          'ReferenceResolutionFailed',
-          'resolve RemoteMCPServer "agent-1": not found',
-          ageMs,
-        ),
-      ]),
-    });
-
-  it('uses the baseline for a ready agent', () => {
-    expect(
-      getAgentRefetchInterval(query(makeAgent({ status: readyStatus() }))),
-    ).toBe(BASELINE);
-  });
-
-  it('uses the baseline before the first fetch resolves', () => {
-    expect(getAgentRefetchInterval(query(undefined))).toBe(BASELINE);
-  });
-
-  // A failed agent is polled too, not only a compiling one: right after a
-  // create it is often the agent still being set up, and the page should turn
-  // ready on its own once it is. The fast tier holds for the whole window a
-  // new agent is set up in, and only then backs off.
-  it('holds the fast tier through the window, then backs off', () => {
-    expect(getAgentRefetchInterval(query(unresolvedAgent(0)))).toBe(FAST);
-    expect(getAgentRefetchInterval(query(unresolvedAgent(150_000)))).toBe(FAST);
-    expect(getAgentRefetchInterval(query(unresolvedAgent(200_000)))).toBe(FAST);
-    expect(getAgentRefetchInterval(query(unresolvedAgent(250_000)))).toBe(
-      2 * FAST,
-    );
-    expect(getAgentRefetchInterval(query(unresolvedAgent(30 * 60_000)))).toBe(
-      BASELINE,
-    );
-  });
-});
-
-// One rule for every view: the list, the composer's picker and the detail page
-// all judge "setting up" with `settingUpUntil` on the server's clock, and hand
-// the verdict to the row, which never reads a clock of its own.
-describe('toAgentRow: an agent still being set up', () => {
-  const missingCarrier = (name: string) =>
-    makeAgent({
-      name,
-      creationTimestamp: '2026-07-31T12:00:00Z',
-      status: reported([
-        condition('Accepted', 'True', 'Admitted'),
-        condition(
-          'ResolvedRefs',
-          'False',
-          'ReferenceResolutionFailed',
-          `resolve RemoteMCPServer "${name}": not found`,
-        ),
-      ]),
-    });
-
-  it('reads as setting up, with a neutral message, when judged so', () => {
-    const row = toAgentRow(
-      missingCarrier('fresh'),
-      [],
-      undefined,
-      undefined,
-      undefined,
-      true,
-    );
-
-    expect(row.readiness).toBe('settingUp');
-    expect(row.readinessMessage).toMatch(/still being set up/);
-  });
-
-  it('reads as failed, with the controller’s message, otherwise', () => {
-    const row = toAgentRow(missingCarrier('stuck'), []);
-
-    expect(row.readiness).toBe('failed');
-    expect(row.readinessMessage).toBe(
-      'resolve RemoteMCPServer "stuck": not found',
-    );
   });
 });
 

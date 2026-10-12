@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,7 +8,11 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
-import { MAX_REVISION_WAIT_MS } from '../../hooks/useAgentStatus';
+import {
+  FAILED_STATUS_POLL_INITIAL_MS,
+  FAILED_STATUS_POLL_MAX_MS,
+  MAX_REVISION_WAIT_MS,
+} from '../../hooks/useAgentStatus';
 import { AgentCreationProgress } from './AgentCreationProgress';
 
 let mockLocationState: unknown;
@@ -44,55 +47,20 @@ function status(verdict: string, extra: Record<string, unknown> = {}) {
   };
 }
 
-/** What the detail page's own Agent read says, as the page passes it in. */
-type AgentRead = {
-  agentReady?: { generation?: number; since?: number };
-  isSettingUp: boolean;
-};
-
-/**
- * The page's Agent read as a store the test answers polls through, so the
- * progress re-renders with the page's new word the way the page would.
- */
-let agentRead: AgentRead;
-const agentReadListeners = new Set<() => void>();
-function subscribeAgentRead(listener: () => void) {
-  agentReadListeners.add(listener);
-  return () => {
-    agentReadListeners.delete(listener);
-  };
-}
-function answerAgentRead(next: AgentRead) {
-  act(() => {
-    agentRead = next;
-    agentReadListeners.forEach(listener => listener());
-  });
-}
-
-function Host() {
-  const read = useSyncExternalStore(subscribeAgentRead, () => agentRead);
-  return (
-    <div data-testid="host">
-      <AgentCreationProgress
-        installation="gazelle"
-        namespace="kagent"
-        name="pr-reviewer"
-        agentReady={read.agentReady}
-        isSettingUp={read.isSettingUp}
-      />
-    </div>
-  );
-}
-
-async function render(read: Partial<AgentRead> = {}) {
-  agentRead = { isSettingUp: false, ...read };
+async function render() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, musterApi]]}>
       <QueryClientProvider client={queryClient}>
-        <Host />
+        <div data-testid="host">
+          <AgentCreationProgress
+            installation="gazelle"
+            namespace="kagent"
+            name="pr-reviewer"
+          />
+        </div>
       </QueryClientProvider>
     </TestApiProvider>,
   );
@@ -249,87 +217,6 @@ describe('AgentCreationProgress', () => {
       expect(await screen.findByText('Ready')).toBeInTheDocument();
     });
 
-    // Right after an update the page's Agent read can still hold the ready
-    // Agent from before the write, and that "ready" is not this write's.
-    it('does not report a failed update as ready from the Agent before it', async () => {
-      mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
-      callTool.mockResolvedValue({
-        ...status('failed', {
-          agent: {
-            exists: true,
-            generation: 5,
-            observedGeneration: 5,
-            ready: false,
-            accepted: true,
-            resolvedRefs: false,
-            compatible: false,
-          },
-        }),
-        summary: 'resolve ModelConfig "typo": not found',
-      });
-
-      // Ready since well before the write, at the generation before it.
-      await render({
-        agentReady: { generation: 4, since: Date.now() - 60 * 60_000 },
-      });
-
-      expect(
-        await screen.findByText('The updated agent did not become ready'),
-      ).toBeInTheDocument();
-      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
-
-      // The read catches up with the written revision, and it is ready.
-      answerAgentRead({
-        agentReady: { generation: 5, since: Date.now() - 60 * 60_000 },
-        isSettingUp: false,
-      });
-
-      expect(screen.getByText('Ready')).toBeInTheDocument();
-    });
-
-    // A write that changes nothing the chart renders leaves the generation
-    // where it was; a failure fixed elsewhere afterwards still turns the
-    // alert Ready, since the Agent's `Ready` turned after the write.
-    it('turns a failed update Ready when the Agent turns ready after it, without a generation bump', async () => {
-      jest.useFakeTimers();
-      try {
-        mockLocationState = { [AGENT_CREATED_STATE_KEY]: UPDATED };
-        callTool.mockResolvedValue({
-          ...status('failed', {
-            agent: {
-              exists: true,
-              generation: 4,
-              observedGeneration: 4,
-              ready: false,
-              accepted: true,
-              resolvedRefs: false,
-              compatible: false,
-            },
-          }),
-          summary: 'resolve ModelConfig "opus": not found',
-        });
-
-        await render();
-        await waitFor(() => expect(callTool).toHaveBeenCalled());
-        await act(async () => {
-          jest.advanceTimersByTime(MAX_REVISION_WAIT_MS);
-        });
-        expect(
-          screen.getByText('The updated agent did not become ready'),
-        ).toBeInTheDocument();
-
-        // The ModelConfig is created; the Agent turns ready at generation 4.
-        answerAgentRead({
-          agentReady: { generation: 4, since: Date.now() },
-          isSettingUp: false,
-        });
-
-        expect(screen.getByText('Ready')).toBeInTheDocument();
-      } finally {
-        jest.useRealTimers();
-      }
-    });
-
     // The bound exists for a write whose generation never moves — a release
     // that cannot be reconciled, or an update that changes nothing the chart
     // renders.
@@ -379,18 +266,10 @@ describe('AgentCreationProgress', () => {
     });
   });
 
-  it("shows agent-manager's reason at once when the Harness rejects the agent", async () => {
+  it("shows agent-manager's reason when the agent fails", async () => {
     mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
     callTool.mockResolvedValue({
-      ...status('failed', {
-        agent: {
-          exists: true,
-          ready: false,
-          accepted: true,
-          resolvedRefs: true,
-          compatible: false,
-        },
-      }),
+      ...status('failed'),
       summary:
         'Harness kagent rejected the template: Compatible=False (skill source unreachable).',
     });
@@ -405,158 +284,50 @@ describe('AgentCreationProgress', () => {
     ).toBeInTheDocument();
   });
 
-  // What a fresh agent goes through: the release renders the Agent before the
-  // RemoteMCPServer it is bound to exists, so kagent reports the reference
-  // unresolved for a moment, and agent-manager's verdict is `failed`. Whether
-  // that is still the agent being set up is the page's call, on the clock the
-  // header and the session blocker use too.
-  describe('a failure the agent passes through while it is set up', () => {
-    const UNRESOLVED_SUMMARY =
-      'Harness kagent: ResolvedRefs is False (ReferenceResolutionFailed: resolve RemoteMCPServer "pr-reviewer": not found)';
-    const unresolved = {
-      ...status('failed', {
-        agent: {
-          exists: true,
-          ready: false,
-          accepted: true,
-          resolvedRefs: false,
-          compatible: false,
-        },
-      }),
-      summary: UNRESOLVED_SUMMARY,
+  // Right after a create kagent can report the agent's own tool server as an
+  // unresolved reference for a few seconds; that `failed` is not final.
+  it('keeps re-reading a failed verdict, less and less often, until it turns ready', async () => {
+    jest.useFakeTimers();
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
     };
-
-    it('shows the agent as still being set up while the page says so', async () => {
-      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-      callTool.mockResolvedValue(unresolved);
-
-      await render({ isSettingUp: true });
-
-      expect(
-        await screen.findByText(/the agent is still being set up/),
-      ).toBeInTheDocument();
-      expect(screen.getByText('Deploying…')).toBeInTheDocument();
-      expect(
-        screen.queryByText('The agent did not become ready'),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText(UNRESOLVED_SUMMARY)).not.toBeInTheDocument();
-    });
-
-    it('keeps reading the status, and turns ready without a reload', async () => {
+    try {
       mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
       callTool
-        .mockResolvedValueOnce(unresolved)
+        .mockResolvedValueOnce(status('failed'))
+        .mockResolvedValueOnce(status('failed'))
         .mockResolvedValue(
           status('ready', { agent: { exists: true, harness: 'kagent' } }),
         );
 
-      await render({ isSettingUp: true });
-
-      expect(
-        await screen.findByText(/the agent is still being set up/),
-      ).toBeInTheDocument();
-      await waitFor(
-        () => expect(screen.getByText('Ready')).toBeInTheDocument(),
-        { timeout: 6_000 },
-      );
-      expect(callTool.mock.calls.length).toBeGreaterThan(1);
-    }, 10_000);
-
-    // The verdict is no longer re-read by then; the page's Agent read is.
-    it('turns ready when the page finds the agent ready', async () => {
-      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-      callTool.mockResolvedValue(unresolved);
-
-      await render({ isSettingUp: false });
-      expect(
-        await screen.findByText('The agent did not become ready'),
-      ).toBeInTheDocument();
-
-      answerAgentRead({
-        agentReady: { since: Date.now() },
-        isSettingUp: false,
-      });
-
-      expect(screen.getByText('Ready')).toBeInTheDocument();
-      expect(
-        screen.queryByText('The agent did not become ready'),
-      ).not.toBeInTheDocument();
-    });
-
-    it('shows the failure once the page no longer calls it setting up', async () => {
-      mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-      callTool.mockResolvedValue(unresolved);
-
-      await render({ isSettingUp: true });
-      expect(
-        await screen.findByText(/the agent is still being set up/),
-      ).toBeInTheDocument();
-
-      answerAgentRead({ isSettingUp: false });
-
-      expect(
-        screen.getByText('The agent did not become ready'),
-      ).toBeInTheDocument();
-      expect(screen.getByText(UNRESOLVED_SUMMARY)).toBeInTheDocument();
-    });
-
-    // The page's one decision drives the re-read too: a `failed` verdict is
-    // read again while the page calls the agent setting up (a release still
-    // reconciling under a rendered Agent among it), and no longer after.
-    it('re-reads a failed verdict while the page calls it setting up, and only then', async () => {
-      jest.useFakeTimers();
-      try {
-        mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-        callTool.mockResolvedValue({
-          ...status('failed'),
-          summary: 'HelmRelease is not ready',
-        });
-
-        await render({ isSettingUp: true });
-        await waitFor(() =>
-          expect(
-            screen.getByText(/the agent is still being set up/),
-          ).toBeInTheDocument(),
-        );
-
-        await act(async () => {
-          jest.advanceTimersByTime(60_000);
-        });
-        const reads = callTool.mock.calls.length;
-        expect(reads).toBeGreaterThan(1);
-
-        answerAgentRead({ isSettingUp: false });
-        await act(async () => {
-          jest.advanceTimersByTime(10 * 60_000);
-        });
-        expect(callTool.mock.calls.length).toBeLessThanOrEqual(reads + 1);
+      await render();
+      await waitFor(() =>
         expect(
           screen.getByText('The agent did not become ready'),
-        ).toBeInTheDocument();
-      } finally {
-        jest.useRealTimers();
-      }
-    });
+        ).toBeInTheDocument(),
+      );
+      expect(callTool).toHaveBeenCalledTimes(1);
 
-    it('does not re-read a failed verdict the page does not call setting up', async () => {
-      jest.useFakeTimers();
-      try {
-        mockLocationState = { [AGENT_CREATED_STATE_KEY]: HANDOFF };
-        callTool.mockResolvedValue({
-          ...status('failed'),
-          summary: 'HelmRelease is not ready: install retries exhausted',
-        });
+      await advance(FAILED_STATUS_POLL_INITIAL_MS);
+      expect(callTool).toHaveBeenCalledTimes(2);
 
-        await render();
-        await waitFor(() => expect(callTool).toHaveBeenCalledTimes(1));
+      // The next wait is twice as long (and a little more: it is as long as
+      // the verdict has been failed, which the `waitFor` above stretched).
+      await advance(FAILED_STATUS_POLL_INITIAL_MS);
+      expect(callTool).toHaveBeenCalledTimes(2);
+      await advance(FAILED_STATUS_POLL_INITIAL_MS + 1_000);
+      expect(callTool).toHaveBeenCalledTimes(3);
+      await waitFor(() =>
+        expect(screen.getByText('Ready')).toBeInTheDocument(),
+      );
 
-        await act(async () => {
-          jest.advanceTimersByTime(5 * 60_000);
-        });
-        expect(callTool).toHaveBeenCalledTimes(1);
-      } finally {
-        jest.useRealTimers();
-      }
-    });
+      // `ready` ends the poll.
+      await advance(2 * FAILED_STATUS_POLL_MAX_MS);
+      expect(callTool).toHaveBeenCalledTimes(3);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

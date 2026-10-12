@@ -23,9 +23,6 @@ import {
   useInstallationScope,
   type InstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
-import { useDeadlinePassed } from '../../hooks/useDeadlinePassed';
-import { useServerClock } from '../../hooks/useServerClock';
-import { settingUpUntil } from '../../lib/agentProvisioning';
 import { awaitsDeployedAgent } from '../../lib/pendingAgentCreations';
 import { clientLookupOf } from '../../lib/serving';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -400,35 +397,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedInstallationsKey]);
 
-  // A new agent reads "Setting up" until its window closes (`settingUpUntil`,
-  // on the server's clock), and nothing about the data changes then. The
-  // windows are worked out once per answer, not per render; the rows are
-  // rebuilt when the earliest open one closes, so the list and the composer's
-  // picker turn the agent into the failure on time.
-  const now = useServerClock();
-  const settingUpUntils = useMemo(() => {
-    const untils = new Map<Agent, number>();
-    for (const agent of Object.values(agentsByInstallation).flat()) {
-      const until = settingUpUntil({ agent });
-      if (until !== undefined) {
-        untils.set(agent, until);
-      }
-    }
-    return untils;
-  }, [agentsByInstallation]);
-  let nextSettingUpDeadline: number | undefined;
-  for (const until of settingUpUntils.values()) {
-    if (
-      until > now() &&
-      (nextSettingUpDeadline === undefined || until < nextSettingUpDeadline)
-    ) {
-      nextSettingUpDeadline = until;
-    }
-  }
-  const isPastSettingUpDeadline = useDeadlinePassed(nextSettingUpDeadline, now);
-
   const value = useMemo<AgentsContextValue>(() => {
-    const at = now();
     const rows = sortAgentRows(
       Object.entries(agentsByInstallation).flatMap(([cluster, agents]) =>
         agents.map(agent =>
@@ -440,7 +409,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
-            (settingUpUntils.get(agent) ?? 0) > at,
           ),
         ),
       ),
@@ -515,10 +483,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     resolveServing,
     allInstallationsKey,
     scopedInstallationsKey,
-    now,
-    settingUpUntils,
-    nextSettingUpDeadline,
-    isPastSettingUpDeadline,
   ]);
 
   return (

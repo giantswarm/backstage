@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -6,7 +7,6 @@ import {
   isSettledVerdict,
   type AgentStatus,
 } from '../lib/agentManager';
-import { useDeadlinePassed, useWatchStartedAt } from './useDeadlinePassed';
 import { musterAgentStatusQueryKey } from '../lib/queryKeys';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -33,6 +33,21 @@ export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
  */
 export const MAX_REVISION_WAIT_MS = 60_000;
 
+/**
+ * How soon a `failed` verdict is re-read first, and how far apart the re-reads
+ * get: each wait is as long as the verdict has been `failed` so far, so the
+ * interval doubles from 5 s up to a minute.
+ *
+ * A `failed` right after a create is often not final. The release renders the
+ * Agent beside the tool server it references, and until that server exists
+ * kagent reports the reference unresolved; it clears within seconds. Only
+ * `ready` ends the poll, so that failure turns into Ready without a reload. A
+ * stopgap until agent-manager reports such a state as `progressing`
+ * (giantswarm/agent-manager#145).
+ */
+export const FAILED_STATUS_POLL_INITIAL_MS = 5_000;
+export const FAILED_STATUS_POLL_MAX_MS = 60_000;
+
 export type AgentStatusState = {
   status: AgentStatus | undefined;
   /** True until the verdict is `ready` or `failed`. */
@@ -50,14 +65,13 @@ export type AgentStatusState = {
 
 /**
  * `get_agent_status` for one agent, polled until the agent's Harness has a
- * verdict: `ready`, or `failed` with the reason. On API v2 that verdict comes
- * from the Agent object's `status.conditions` —
+ * verdict: `ready`, or `failed` with the reason. A `failed` verdict is still
+ * re-read, less and less often, in case it clears (see
+ * {@link FAILED_STATUS_POLL_INITIAL_MS}); only `ready` stops the poll. On API
+ * v2 that verdict comes from the Agent object's `status.conditions` —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
- * Agent yet, and is polled through like `progressing`. Polling stops at
- * `ready`, and at `failed` unless the caller says the failure may still clear
- * (`keepReadingFailed`: the agent is still being set up), which is re-read
- * while it may.
+ * Agent yet, and is polled through like `progressing`.
  */
 export function useAgentStatus(
   installation: string | undefined,
@@ -72,12 +86,6 @@ export function useAgentStatus(
      * entry, and the second is served the first's settled result.
      */
     watchId?: string;
-    /**
-     * The caller knows a `failed` verdict may still clear — the detail page,
-     * while the agent is still being set up (`settingUpUntil`) or its release
-     * has not been read yet — so it is re-read for as long as this is true.
-     */
-    keepReadingFailed?: boolean;
   } = {},
 ): AgentStatusState {
   const client = useAgentManagerClient(installation);
@@ -85,33 +93,36 @@ export function useAgentStatus(
   // A read with no write behind it passes no `watchId` and keeps the plain key,
   // so the detail page's own existence check and the create flow's progress
   // still share one entry.
-  const { fromGeneration, watchId, keepReadingFailed = false } = options;
+  const { fromGeneration, watchId } = options;
 
-  // When this watch started, for how long a write's revision is waited for:
-  // started on the render that first sees the watch enabled, and kept while
-  // it is disabled and re-enabled, so the wait does not restart for the same
-  // write. A duration on the browser's own clock, never compared with a
-  // cluster timestamp.
-  const watchStartedAt = useWatchStartedAt(
-    enabled
-      ? [installation, namespace, name, watchId, fromGeneration].join('/')
-      : undefined,
-  );
+  // The deadline has to schedule its own render, not be a clock read taken
+  // whenever one happens anyway. This query is destructured to `{ data, error }`,
+  // so react-query tracks those two props, and an unchanged status is
+  // structurally shared — a poll that answers byte-identically keeps `data`'s
+  // reference and notifies nobody. In exactly the case the bound exists for (a
+  // release that cannot reconcile, so the generation never moves and every
+  // answer is identical) the component would render once and never again, and
+  // comparing `Date.now()` on that one render would leave the waiting alert up
+  // for good.
+  const [givenUpWaiting, setGivenUpWaiting] = useState(false);
+  useEffect(() => {
+    if (fromGeneration === undefined) {
+      // No revision to wait for, so nothing to give up on.
+      return undefined;
+    }
+    setGivenUpWaiting(false);
+    const timer = setTimeout(
+      () => setGivenUpWaiting(true),
+      MAX_REVISION_WAIT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [fromGeneration, watchId, installation, namespace, name]);
 
-  // The deadline schedules its own render, not a clock read taken whenever
-  // one happens anyway (`useDeadlinePassed`): this query is destructured to
-  // `{ data, error }`, so react-query tracks those two props, and an unchanged
-  // status is structurally shared — a poll that answers byte-identically keeps
-  // `data`'s reference and notifies nobody. In exactly the case the revision
-  // bound exists for (a release that cannot reconcile, so the generation never
-  // moves and every answer is identical) the component would render once and
-  // never again.
-  const givenUpWaiting = useDeadlinePassed(
-    // No revision to wait for, so nothing to give up on.
-    fromGeneration !== undefined && watchStartedAt !== undefined
-      ? watchStartedAt + MAX_REVISION_WAIT_MS
-      : undefined,
-  );
+  // When the current run of `failed` answers began, on the clock of the reads
+  // themselves (`dataUpdatedAt`): an interval computed from it holds still
+  // between two reads, where one from `Date.now()` would change on every render
+  // and restart react-query's timer each time.
+  const failedSince = useRef<number>();
 
   const { data, error } = useQuery({
     queryKey: musterAgentStatusQueryKey(
@@ -124,6 +135,9 @@ export function useAgentStatus(
     queryFn: () => client!.getAgentStatus(namespace, name),
     refetchInterval: query => {
       const verdict = query.state.data?.verdict;
+      if (verdict !== 'failed') {
+        failedSince.current = undefined;
+      }
       if (verdict && isSettledVerdict(verdict)) {
         // A settled verdict for the revision that was there before the write is
         // not this write's answer; keep polling until the new one shows up, or
@@ -134,13 +148,15 @@ export function useAgentStatus(
         ) {
           return AGENT_STATUS_POLL_INTERVAL_MS;
         }
-        // `ready` is the answer, and so is `failed`, unless the caller says it
-        // may still clear. That window is short — three minutes at most — and
-        // the common case clears inside it, so it is re-read at the same pace
-        // throughout, not backing off.
-        return verdict === 'failed' && keepReadingFailed
-          ? AGENT_STATUS_POLL_INTERVAL_MS
-          : false;
+        if (verdict === 'ready') {
+          return false;
+        }
+        failedSince.current ??= query.state.dataUpdatedAt;
+        return Math.min(
+          FAILED_STATUS_POLL_MAX_MS,
+          FAILED_STATUS_POLL_INITIAL_MS +
+            (query.state.dataUpdatedAt - failedSince.current),
+        );
       }
       const lastError = query.state.error;
       if (
@@ -162,18 +178,17 @@ export function useAgentStatus(
   const notFoundYet =
     error instanceof AgentManagerError && error.code === 'not_found';
 
-  const isSettling =
-    enabled &&
-    (notFoundYet ||
-      !data ||
-      !isSettledVerdict(data.verdict) ||
-      (!hasReachedWrittenRevision(data, fromGeneration) && !givenUpWaiting)) &&
-    (!error || notFoundYet);
-
   return {
     status: data,
     isNotFound: notFoundYet,
-    isSettling,
+    isSettling:
+      enabled &&
+      (notFoundYet ||
+        !data ||
+        !isSettledVerdict(data.verdict) ||
+        (!hasReachedWrittenRevision(data, fromGeneration) &&
+          !givenUpWaiting)) &&
+      (!error || notFoundYet),
     error: error && !notFoundYet ? (error as Error) : null,
   };
 }

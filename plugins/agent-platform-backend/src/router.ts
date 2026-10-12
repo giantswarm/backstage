@@ -574,14 +574,8 @@ export async function createRouter(
   // proxy considers valid would be refused with a 413 that explains nothing.
   router.use(express.json({ limit: '256kb' }));
 
-  /**
-   * Also the server's clock (`now`, epoch milliseconds): the frontend judges
-   * how old an agent is by comparing its `creationTimestamp`, written by the
-   * cluster, with server time rather than with a browser clock that can be
-   * minutes off.
-   */
   router.get('/health', (_, res) => {
-    res.json({ status: 'ok', configured: clients.size, now: Date.now() });
+    res.json({ status: 'ok', configured: clients.size });
   });
 
   /**

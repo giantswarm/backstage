@@ -539,15 +539,13 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
 Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
 derives the same verdict from `status.harnesses[]`. A `not_found` right after
-the create is polled through. Polling stops at `ready`, and at `failed` unless
-the page reads the agent as still being set up (see "Setting up" below), which
-is re-read every 3 s while it does. After that the page's own Agent read,
-which keeps polling, turns the alert Ready if the failure clears — once that
-"ready" is the write's: the Agent's generation moved past the write's, or its
-`Ready` turned after the alert started following it (a write that changed
-nothing the generation counts). A ready Agent from before an update is not
-taken for the update's success. The installation's cached `kagent.dev` lists
-are invalidated after the write.
+the create is polled through. A `failed` verdict is shown but still re-read, 5 s
+after it first appears and then at doubling intervals up to 60 s, and only
+`ready` stops the poll: right after a create kagent can briefly report the
+agent's own tool server as an unresolved reference, and that clears to Ready
+without a reload. agent-manager reporting it as `progressing` is the proper fix
+(giantswarm/agent-manager#145). The installation's cached `kagent.dev` lists are
+invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -1624,59 +1622,6 @@ Polling (`getAgentsRefetchInterval`) is 5 s for an installation with a
 converging agent and 60 s otherwise, with a three-minute bound so a durably
 broken agent does not pin the fast tier.
 
-#### Setting up
-
-A new agent can read `failed` for a moment on its way to `ready`: Flux fetches
-the chart and installs the release, and the release renders the Agent before
-the RemoteMCPServer it is bound to exists, so helm-controller reports the
-release not ready and kagent reports `ResolvedRefs=False` (`resolve
-RemoteMCPServer "<agent>": not found`) until it does. Every view shows that as
-**Setting up** (neutral) for `PROVISIONING_GRACE_MS` (three minutes), and as the
-failure after that. It is a stopgap until agent-manager reports `progressing`
-for it (giantswarm/agent-manager#145).
-
-There is one definition, `settingUpUntil` in `lib/agentProvisioning.ts`, over
-whichever of the Agent and its HelmRelease is at hand. None may have failed and
-one must still be on its way:
-
-- the HelmRelease has no `Ready` condition yet, or one that is not `True` with
-  reason `Progressing`, `DependencyNotReady`, `SourceNotReady` or
-  `ArtifactFailed` (still fetching the chart), and is neither suspended nor
-  stalled;
-- the Agent fails only on its own RemoteMCPServer — the whole `ResolvedRefs`
-  message is `resolve RemoteMCPServer "<agent>": not found`
-  (`isOwnCarrierMissing`); a message naming any other missing reference, a
-  ModelConfig, a Secret, another server, alone or beside it, is a failure.
-
-And only while the agent is new: the window runs from the earliest
-`creationTimestamp` at hand (the release's, normally), so no later change
-restarts it. Any other failure is shown at once.
-
-There is one clock: the server's (`useServerClock`). A cluster timestamp is
-compared with the backend's time — read from the agent-platform backend's
-`/health`, which carries `now` — not with a browser clock that can be minutes
-off; until the first reading, the browser's stands in. Deadlines re-arm when
-their timer fires before that clock reaches them, so whoever reads it then
-agrees (`useDeadlinePassed`).
-
-Who reads it:
-
-- the Customize list and the composer's agent picker, from the Agent alone:
-  `AgentsDataProvider` works out each agent's window once per answer and
-  passes the verdict to `toAgentRow` (`displayReadinessOf`), rebuilding the
-  rows when the earliest window closes;
-- the detail page, from the Agent and the HelmRelease (`useAgentRelease`, read
-  whether or not the Agent exists yet, since a release can still be
-  reconciling after it renders the Agent; agent-manager names it after the
-  agent). Only an answer read since mount counts — the persisted query cache
-  can hold the release of an agent deleted and created again under the same
-  name — and until it has answered the release is undecided: shown as
-  deploying, not as failed. It is polled every 5 s only while it can still
-  open a window, and a refused or failed read gives none. The page's one
-  answer goes to the header, the session blocker, the facts, the row and the
-  creation progress, and keeps agent-manager's `failed` verdict being re-read
-  while it lasts.
-
 ### Absence
 
 Only installations whose inventory has `api.kagent.dev`
@@ -1728,11 +1673,8 @@ Every write goes through agent-manager over muster as the person (see the
 sections below); the plugin performs no Kubernetes write for agents.
 
 The agent is fetched with **one targeted `useResource`**, so a deep link works
-without the list. It polls 60 s once the agent is ready; until then 5 s for
-the three minutes after its status last changed (the window a new agent is set
-up in), then doubling every minute up to 60 s (`getAgentRefetchInterval`), so
-a failure that clears turns the page ready without a reload. Like every
-interval refetch it pauses while the tab is hidden.
+without the list. It polls 5 s while converging and 60 s otherwise
+(`isAgentConverging`, shared with the list).
 
 ### Layout
 
@@ -1743,8 +1685,8 @@ switching tabs refetches nothing; the toolset's muster queries run only on
 ### Sections
 
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
-  (consumed once) and polls `get_agent_status` until the Harness reports ready
-  or failed.
+  (consumed once) and polls `get_agent_status` until the Harness reports
+  ready, backing off while it reports failed.
 - **Header** — Edit and Use this agent are buttons; the actions menu offers
   `Update all skills to latest…` and `Delete agent…` where agent-manager is
   available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the

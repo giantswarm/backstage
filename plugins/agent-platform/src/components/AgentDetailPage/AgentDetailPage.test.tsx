@@ -1,6 +1,6 @@
-import { type ReactNode, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   AgentCondition,
@@ -21,7 +21,6 @@ import {
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
-import { PROVISIONING_GRACE_MS } from '../../lib/agentProvisioning';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The real Agent/ModelConfig classes are used to build fixtures — only the fetch
@@ -174,12 +173,6 @@ const NO_STATUS: AgentStatusState = {
   isNotFound: false,
   error: null,
 };
-
-// The server's clock reads the backend through react-query, which this page
-// test leaves out; the browser's stands in for it.
-jest.mock('../../hooks/useServerClock', () => ({
-  useServerClock: () => Date.now,
-}));
 
 jest.mock('../../hooks/useAgentStatus', () => ({
   useAgentStatus: (...args: unknown[]) => mockUseAgentStatus(...args),
@@ -479,8 +472,6 @@ const ONE_SESSION: AgentSessionsView = {
 /** Every `useResource` outcome the page can see, per resource class. */
 type ResourceOutcome = {
   resource?: unknown;
-  /** Answered since mount; the page decides on nothing older. Default: yes. */
-  isFetchedAfterMount?: boolean;
   isLoading?: boolean;
   error?: Error | null;
   errors?: unknown[];
@@ -493,8 +484,6 @@ type ResourceOutcome = {
  */
 type FluxChain = {
   helmRelease?: unknown;
-  /** The HelmRelease read has not answered since mount yet. */
-  helmReleasePending?: boolean;
   kustomization?: unknown;
   gitRepository?: unknown;
 };
@@ -509,7 +498,6 @@ function stubResources(
     isLoading: outcome.isLoading ?? false,
     error: outcome.error ?? null,
     errors: outcome.errors ?? [],
-    isFetchedAfterMount: outcome.isFetchedAfterMount ?? true,
     // Part of `useResource`'s real shape, and read by GitOpsCard.
     incompatibilities: [],
     discoveryErrors: [],
@@ -526,10 +514,7 @@ function stubResources(
         case ModelConfig:
           return fill(modelConfig);
         case HelmRelease:
-          return fill({
-            resource: flux.helmRelease,
-            isFetchedAfterMount: !flux.helmReleasePending,
-          });
+          return fill({ resource: flux.helmRelease });
         case Kustomization:
           return fill({ resource: flux.kustomization });
         case GitRepository:
@@ -1818,293 +1803,6 @@ describe('AgentDetailPage', () => {
     });
   });
 
-  // Right after a create the release renders the Agent before the
-  // RemoteMCPServer it is bound to exists, and kagent reports the reference
-  // unresolved until it does. That is the agent being set up, not broken.
-  describe('an agent still being set up', () => {
-    const UNRESOLVED = 'resolve RemoteMCPServer "pr-reviewer": not found';
-
-    /**
-     * Failed on an unresolved reference (the missing carrier by default),
-     * created `ageMs` ago; the failure dates from `failedAgoMs` ago.
-     */
-    const unresolvedAgent = (
-      ageMs: number,
-      {
-        message = UNRESOLVED,
-        failedAgoMs = ageMs,
-      }: { message?: string; failedAgoMs?: number } = {},
-    ) => {
-      const createdAt = new Date(Date.now() - ageMs).toISOString();
-      const changedAt = new Date(Date.now() - failedAgoMs).toISOString();
-      return makeAgent({
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agent-platform',
-          generation: 1,
-          creationTimestamp: createdAt,
-        },
-        status: reported(
-          [
-            { ...READY_CONDITIONS[0], lastTransitionTime: changedAt },
-            {
-              type: 'ResolvedRefs',
-              status: 'False',
-              reason: 'ReferenceResolutionFailed',
-              message,
-              lastTransitionTime: changedAt,
-            },
-            {
-              type: 'Compatible',
-              status: 'False',
-              reason: 'Blocked',
-              message: 'blocked by ResolvedRefs',
-              lastTransitionTime: changedAt,
-            },
-          ],
-          { latestSuccessfulRevision: undefined },
-        ),
-      } as Partial<AgentInterface>);
-    };
-
-    /**
-     * The Agent read as a store the test answers polls through, so the page
-     * re-renders with the new answer the way a react-query refetch makes it.
-     */
-    function stubPolledAgent(initial: unknown) {
-      let current = initial;
-      const listeners = new Set<() => void>();
-      const subscribe = (listener: () => void) => {
-        listeners.add(listener);
-        return () => {
-          listeners.delete(listener);
-        };
-      };
-      stubResources({ resource: initial });
-      const stubbed = mockUseResource.getMockImplementation()!;
-      mockUseResource.mockImplementation(function useStubbedResource(
-        ...args: unknown[]
-      ) {
-        const resource = useSyncExternalStore(subscribe, () => current);
-        const outcome = stubbed(...args);
-        return args[1] === Agent ? { ...outcome, resource } : outcome;
-      });
-      return (next: unknown) =>
-        act(() => {
-          current = next;
-          listeners.forEach(listener => listener());
-        });
-    }
-
-    /** The interval the page hands the Agent read, for the agent it has. */
-    const agentPollInterval = (agent: { jsonData: unknown }) => {
-      const call = mockUseResource.mock.calls.find(
-        ([, ResourceClass]) => ResourceClass === Agent,
-      );
-      const options = call?.[3] as {
-        refetchInterval: (query: { state: { data: unknown } }) => number;
-      };
-      return options.refetchInterval({ state: { data: agent.jsonData } });
-    };
-
-    it('shows a fresh agent with an unresolved reference as setting up, not failed', async () => {
-      withAgentManager();
-      stubResources({ resource: unresolvedAgent(10_000) });
-
-      await renderPage();
-
-      expectHeaderReadiness('Setting up');
-      expect(
-        screen.getByText('Sessions can start once the agent is ready'),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/still being set up/)).toBeInTheDocument();
-      expect(
-        screen.queryByText('Sessions cannot start'),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: 'Edit agent' }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('keeps polling, and turns ready without a reload', async () => {
-      const settingUp = unresolvedAgent(10_000);
-      const answerPoll = stubPolledAgent(settingUp);
-
-      await renderPage();
-
-      expectHeaderReadiness('Setting up');
-      // Still re-read at the fast tier, not left for the 60 s baseline.
-      expect(agentPollInterval(settingUp)).toBe(5_000);
-      expect(
-        screen.queryByRole('button', { name: 'Use this agent' }),
-      ).not.toBeInTheDocument();
-
-      await answerPoll(makeAgent());
-
-      expectHeaderReadiness('Ready');
-      expect(
-        screen.queryByText('Sessions can start once the agent is ready'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole('button', { name: 'Use this agent' }),
-      ).toBeInTheDocument();
-    });
-
-    it('marks nothing as failing while a new agent’s tool server is still being created', async () => {
-      stubResources({ resource: unresolvedAgent(10_000) });
-
-      await renderPage();
-
-      expectHeaderReadiness('Setting up');
-      // Neither the connectors on the Overview nor the facts beside it.
-      expect(screen.queryByText('Cannot be resolved')).not.toBeInTheDocument();
-    });
-
-    // Only the agent's own tool server is created by its release. A missing
-    // ModelConfig, Secret or other server is a mistake, shown at once.
-    it('shows a new agent’s missing model as failed at once', async () => {
-      stubResources({
-        resource: unresolvedAgent(10_000, {
-          message: 'resolve ModelConfig "opus-4-7": not found',
-        }),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Failed');
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-      expect(configurationModelRow()).toContain('Cannot be resolved');
-    });
-
-    it('shows a new agent’s missing other tool server as failed at once', async () => {
-      stubResources({
-        resource: unresolvedAgent(10_000, {
-          message: 'resolve RemoteMCPServer "someone-else": not found',
-        }),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Failed');
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-    });
-
-    // The grace period is for a new agent only: an edit that points at a
-    // missing object, or a server deleted from under an agent, is a failure.
-    it('shows a missing reference on an agent that is not new as failed at once', async () => {
-      stubResources({
-        resource: unresolvedAgent(60 * 60_000, { failedAgoMs: 10_000 }),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Failed');
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-    });
-
-    it('shows an unresolved reference that is not missing as failed at once', async () => {
-      stubResources({
-        resource: unresolvedAgent(10_000, {
-          message: 'resolve ModelConfig "opus-4-7": secret "llm" has no key',
-        }),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Failed');
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-    });
-
-    // After the release renders the Agent, helm-controller can still be
-    // waiting on the release's resources, and agent-manager calls that
-    // `failed` too; the page keeps it in the window and its verdict re-read.
-    it('keeps the window while the release still reconciles under a rendered Agent', async () => {
-      const createdAt = new Date(Date.now() - 20_000).toISOString();
-      const compiling = makeAgent({
-        metadata: {
-          name: 'pr-reviewer',
-          namespace: 'agent-platform',
-          generation: 1,
-          creationTimestamp: createdAt,
-        },
-        status: reported(
-          [
-            { ...READY_CONDITIONS[0], lastTransitionTime: createdAt },
-            {
-              type: 'Ready',
-              status: 'False',
-              reason: 'Compiling',
-              message: 'Compiling revision rev-1',
-              lastTransitionTime: createdAt,
-            },
-          ],
-          { latestSuccessfulRevision: undefined },
-        ),
-      } as Partial<AgentInterface>);
-      const reconciling = new HelmRelease(
-        {
-          apiVersion: 'helm.toolkit.fluxcd.io/v2',
-          kind: 'HelmRelease',
-          metadata: {
-            name: mockParams.name,
-            namespace: mockParams.namespace,
-            creationTimestamp: createdAt,
-          },
-          spec: {},
-          status: {
-            conditions: [
-              {
-                type: 'Ready',
-                status: 'Unknown',
-                reason: 'Progressing',
-                message: 'Running install',
-                lastTransitionTime: createdAt,
-              },
-            ],
-          },
-        },
-        'gazelle',
-      );
-      stubResources({ resource: compiling }, undefined, {
-        helmRelease: reconciling,
-      });
-
-      await renderPage();
-
-      expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
-        mockParams.installation,
-        mockParams.namespace,
-        mockParams.name,
-        { enabled: false, keepReadingFailed: true },
-      );
-    });
-
-    it('shows a failure that outlasts the grace period as failed', async () => {
-      stubResources({
-        resource: unresolvedAgent(PROVISIONING_GRACE_MS + 60_000),
-      });
-
-      await renderPage();
-
-      expectHeaderReadiness('Failed');
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-      expect(screen.getAllByText(UNRESOLVED).length).toBeGreaterThan(0);
-    });
-
-    // Nothing about the agent changes when the grace period ends, so no poll
-    // re-renders the page; the end of the window has to.
-    it('turns failed on its own when the grace period ends', async () => {
-      stubResources({ resource: unresolvedAgent(PROVISIONING_GRACE_MS - 500) });
-
-      await renderPage();
-
-      expectHeaderReadiness('Setting up');
-      await waitFor(() => expectHeaderReadiness('Failed'), { timeout: 3_000 });
-      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
-    });
-  });
-
   // Right after Deploy: agent-manager's `create_agent` applied the HelmRelease
   // and the create flow navigated here before helm-controller rendered the
   // Agent, so the Agent read 404s. The page must tell that "not yet"
@@ -2186,7 +1884,7 @@ describe('AgentDetailPage', () => {
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: true, keepReadingFailed: false },
+        { enabled: true },
       );
       // … and while the release is there, the template is re-read at the fast
       // tier, so the page switches to the rendered agent within one poll of it
@@ -2195,49 +1893,7 @@ describe('AgentDetailPage', () => {
     });
 
     it('carries agent-manager’s failure when the release itself does not become ready', async () => {
-      // The release read has answered: the install failed, which no grace
-      // period covers.
-      stubResources(
-        {
-          error: new Error('not found'),
-          errors: [
-            {
-              type: 'error',
-              cluster: 'gazelle',
-              error: Object.assign(new Error('not found'), {
-                name: 'NotFoundError',
-              }),
-            },
-          ],
-        },
-        undefined,
-        {
-          helmRelease: new HelmRelease(
-            {
-              apiVersion: 'helm.toolkit.fluxcd.io/v2',
-              kind: 'HelmRelease',
-              metadata: {
-                name: mockParams.name,
-                namespace: mockParams.namespace,
-                creationTimestamp: new Date().toISOString(),
-              },
-              spec: {},
-              status: {
-                conditions: [
-                  {
-                    type: 'Ready',
-                    status: 'False',
-                    reason: 'InstallFailed',
-                    message: 'install retries exhausted',
-                    lastTransitionTime: new Date().toISOString(),
-                  },
-                ],
-              },
-            },
-            'gazelle',
-          ),
-        },
-      );
+      templateNotFound();
       mockUseAgentStatus.mockReturnValue(
         releaseOnly({
           verdict: 'failed',
@@ -2255,242 +1911,6 @@ describe('AgentDetailPage', () => {
         screen.getByText('HelmRelease is not ready: install retries exhausted'),
       ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
-    });
-
-    // A new release that has not reconciled yet is `failed` to agent-manager
-    // as well; read from the HelmRelease itself, it is still deploying.
-    describe('a new release that has not reconciled yet', () => {
-      const failedRelease = () =>
-        mockUseAgentStatus.mockReturnValue(
-          releaseOnly({
-            verdict: 'failed',
-            summary: 'HelmRelease is not ready',
-            helmRelease: {
-              exists: true,
-              ready: false,
-              suspended: false,
-              gitOpsOwned: false,
-              deleting: false,
-            },
-          }),
-        );
-
-      /** The agent's HelmRelease, created `ageMs` ago, with this `Ready`. */
-      const helmRelease = (
-        ageMs: number,
-        ready?: { status: 'True' | 'False' | 'Unknown'; reason: string },
-      ) =>
-        new HelmRelease(
-          {
-            apiVersion: 'helm.toolkit.fluxcd.io/v2',
-            kind: 'HelmRelease',
-            metadata: {
-              name: mockParams.name,
-              namespace: mockParams.namespace,
-              creationTimestamp: new Date(Date.now() - ageMs).toISOString(),
-            },
-            spec: {},
-            status: ready
-              ? {
-                  conditions: [
-                    {
-                      type: 'Ready',
-                      ...ready,
-                      message: '',
-                      lastTransitionTime: new Date().toISOString(),
-                    },
-                  ],
-                }
-              : {},
-          },
-          'gazelle',
-        );
-
-      const withRelease = (release: unknown, { pending = false } = {}) =>
-        stubResources(
-          {
-            error: new Error('not found'),
-            errors: [
-              {
-                type: 'error',
-                cluster: 'gazelle',
-                error: Object.assign(new Error('not found'), {
-                  name: 'NotFoundError',
-                }),
-              },
-            ],
-          },
-          undefined,
-          { helmRelease: release, helmReleasePending: pending },
-        );
-
-      it('shows it as deploying, not as a release that did not become ready', async () => {
-        withRelease(
-          helmRelease(30_000, { status: 'Unknown', reason: 'Progressing' }),
-        );
-        failedRelease();
-
-        await renderPage();
-
-        expectHeaderReadiness('Deploying');
-        expect(
-          screen.getByText(
-            'Deploying — waiting for kagent to render the agent',
-          ),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByText('The agent’s release did not become ready'),
-        ).not.toBeInTheDocument();
-        // The stale verdict is re-read meanwhile.
-        expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
-          mockParams.installation,
-          mockParams.namespace,
-          mockParams.name,
-          { enabled: true, keepReadingFailed: true },
-        );
-      });
-
-      // Until the release read answers, whether it is being set up is not
-      // known, and a `failed` verdict is not shown as final meanwhile.
-      it('treats the release as undecided until its read answers', async () => {
-        withRelease(undefined, { pending: true });
-        failedRelease();
-
-        await renderPage();
-
-        expectHeaderReadiness('Deploying');
-        expect(
-          screen.getByText(
-            'Deploying — waiting for kagent to render the agent',
-          ),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByText('The agent’s release did not become ready'),
-        ).not.toBeInTheDocument();
-        expect(mockUseAgentStatus).toHaveBeenLastCalledWith(
-          mockParams.installation,
-          mockParams.namespace,
-          mockParams.name,
-          { enabled: true, keepReadingFailed: true },
-        );
-      });
-
-      // The release is polled only while it can still open a window.
-      it('stops polling the release once it cannot open a window', async () => {
-        withRelease(undefined, { pending: true });
-        failedRelease();
-
-        await renderPage();
-
-        const call = mockUseResource.mock.calls.find(
-          ([, ResourceClass]) => ResourceClass === HelmRelease,
-        );
-        const { refetchInterval } = call?.[3] as {
-          refetchInterval: (query: {
-            state: { data?: unknown; error?: unknown };
-          }) => number | false;
-        };
-        const json = (
-          ready?: { status: 'True' | 'False' | 'Unknown'; reason: string },
-          ageMs = 30_000,
-        ) => helmRelease(ageMs, ready).jsonData;
-
-        // Not answered yet, or answered and still in its window: polled.
-        expect(refetchInterval({ state: {} })).toBe(5_000);
-        expect(
-          refetchInterval({
-            state: { data: json({ status: 'Unknown', reason: 'Progressing' }) },
-          }),
-        ).toBe(5_000);
-        // Refused, failed, ready or past its window: stopped.
-        expect(
-          refetchInterval({ state: { error: new Error('forbidden') } }),
-        ).toBe(false);
-        expect(
-          refetchInterval({
-            state: { data: json({ status: 'False', reason: 'InstallFailed' }) },
-          }),
-        ).toBe(false);
-        expect(
-          refetchInterval({
-            state: {
-              data: json({ status: 'True', reason: 'InstallSucceeded' }),
-            },
-          }),
-        ).toBe(false);
-        expect(
-          refetchInterval({
-            state: {
-              data: json(
-                { status: 'Unknown', reason: 'Progressing' },
-                PROVISIONING_GRACE_MS + 1_000,
-              ),
-            },
-          }),
-        ).toBe(false);
-      });
-
-      // The cache (persisted across reloads) can hold the release of an agent
-      // deleted and created again under the same name; only an answer read
-      // since mount decides.
-      it('does not decide on a cached release before its read since mount answers', async () => {
-        withRelease(
-          helmRelease(30_000, { status: 'False', reason: 'InstallFailed' }),
-          { pending: true },
-        );
-        failedRelease();
-
-        await renderPage();
-
-        expect(
-          screen.queryByText('The agent’s release did not become ready'),
-        ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(
-            'Deploying — waiting for kagent to render the agent',
-          ),
-        ).toBeInTheDocument();
-      });
-
-      it('gives a release with no Ready condition yet the same grace', async () => {
-        withRelease(helmRelease(30_000));
-        failedRelease();
-
-        await renderPage();
-
-        expect(
-          screen.queryByText('The agent’s release did not become ready'),
-        ).not.toBeInTheDocument();
-      });
-
-      it('shows a failed install at once', async () => {
-        withRelease(
-          helmRelease(30_000, { status: 'False', reason: 'InstallFailed' }),
-        );
-        failedRelease();
-
-        await renderPage();
-
-        expect(
-          screen.getByText('The agent’s release did not become ready'),
-        ).toBeInTheDocument();
-      });
-
-      it('shows a release past its grace period as failed', async () => {
-        withRelease(
-          helmRelease(PROVISIONING_GRACE_MS + 60_000, {
-            status: 'Unknown',
-            reason: 'Progressing',
-          }),
-        );
-        failedRelease();
-
-        await renderPage();
-
-        expect(
-          screen.getByText('The agent’s release did not become ready'),
-        ).toBeInTheDocument();
-      });
     });
 
     it('waits for agent-manager’s answer before choosing between deploying and not found', async () => {
@@ -2533,7 +1953,7 @@ describe('AgentDetailPage', () => {
         mockParams.installation,
         mockParams.namespace,
         mockParams.name,
-        { enabled: false, keepReadingFailed: false },
+        { enabled: false },
       );
     });
   });
