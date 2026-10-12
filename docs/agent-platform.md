@@ -684,8 +684,9 @@ probe reports (see "User scoping").
 
 ### Earlier conversations are not here
 
-Conversations were **not migrated** to the API v2 line (plan decision D9).
-`SessionsMigrationNotice` says so above the list until dismissed (per browser).
+Conversations were **not migrated** to the API v2 line (plan decision D9). The
+Sessions tab no longer says so: the notice that did was removed once the
+migration was old news.
 
 ### What the list can and cannot show
 
