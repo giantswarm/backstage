@@ -289,8 +289,9 @@ describe('AgentCreationProgress', () => {
   });
 
   // Right after a create kagent can report the agent's own tool server as an
-  // unresolved reference for a few seconds; that `failed` is not final.
-  describe('a failed verdict', () => {
+  // unresolved reference for a few seconds; that `failed` is not final. Every
+  // other path polls as it did before the failed verdict was re-read.
+  describe('re-reading the verdict', () => {
     const FAILED_TITLE = 'The agent did not become ready';
     const READY = status('ready', {
       agent: { exists: true, harness: 'kagent' },
@@ -333,7 +334,7 @@ describe('AgentCreationProgress', () => {
       jest.useRealTimers();
     });
 
-    it('is re-read less and less often until it turns ready, which ends the poll', async () => {
+    it('re-reads a failed verdict less and less often until it turns ready, which ends the poll', async () => {
       answer(status('failed'), status('failed'), status('failed'), READY);
 
       await render();
@@ -373,7 +374,7 @@ describe('AgentCreationProgress', () => {
       ]);
     });
 
-    it('is taken as final after ten minutes, and no longer read', async () => {
+    it('takes a failed verdict as final after ten minutes, and no longer reads it', async () => {
       answer(status('failed'));
 
       await render();
@@ -391,17 +392,76 @@ describe('AgentCreationProgress', () => {
       expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
     });
 
-    it('stays on screen when a re-read errors, and the poll stops', async () => {
-      answer(status('failed'), new Error('muster: session expired'));
+    it('keeps a failed verdict on screen and backs off on through a read error', async () => {
+      answer(
+        status('failed'),
+        new Error('muster: session expired'),
+        status('failed'),
+        READY,
+      );
 
       await render();
-      await wait(10 * FAILED_STATUS_POLL_MAX_MS);
-
+      await wait(FAILED_STATUS_POLL_INITIAL_MS + 1);
       expect(readAt).toHaveLength(2);
       expect(screen.getByText(FAILED_TITLE)).toBeInTheDocument();
       expect(
         screen.queryByText(/could not read the agent's readiness/),
       ).not.toBeInTheDocument();
+
+      // The error was one more unsuccessful read: the waits go on doubling.
+      await wait(2 * FAILED_STATUS_POLL_MAX_MS);
+      expect(gaps()).toEqual([
+        FAILED_STATUS_POLL_INITIAL_MS,
+        2 * FAILED_STATUS_POLL_INITIAL_MS,
+        4 * FAILED_STATUS_POLL_INITIAL_MS,
+      ]);
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+    });
+
+    it('stops when a failed agent is gone, without going back to waiting', async () => {
+      answer(status('failed'), new Error('not_found: no agent pr-reviewer'));
+
+      await render();
+      await wait(10 * FAILED_STATUS_POLL_MAX_MS);
+
+      expect(readAt).toHaveLength(2);
+      expect(screen.queryByText('Deploying…')).not.toBeInTheDocument();
+    });
+
+    // As before the failed verdict was re-read: while the status still
+    // describes the revision before an update, an error does not stop the
+    // wait for the new one.
+    it('keeps waiting for an update through a read error', async () => {
+      mockLocationState = {
+        [AGENT_CREATED_STATE_KEY]: {
+          ...HANDOFF,
+          action: 'updated',
+          fromGeneration: 4,
+        },
+      };
+      const atGeneration = (generation: number) =>
+        status('ready', {
+          agent: {
+            exists: true,
+            generation,
+            observedGeneration: generation,
+            harness: 'kagent',
+          },
+        });
+      answer(
+        atGeneration(4),
+        new Error('backend_error: agent-manager restarting'),
+        atGeneration(5),
+      );
+
+      await render();
+      await wait(2 * FAILED_STATUS_POLL_MAX_MS);
+
+      expect(gaps()).toEqual([
+        AGENT_STATUS_POLL_INTERVAL_MS,
+        AGENT_STATUS_POLL_INTERVAL_MS,
+      ]);
+      expect(screen.getByText('Ready')).toBeInTheDocument();
     });
 
     it('does not count a failure cached from before the page was opened', async () => {

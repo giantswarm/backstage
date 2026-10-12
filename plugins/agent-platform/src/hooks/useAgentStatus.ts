@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import {
@@ -34,15 +34,16 @@ export const AGENT_STATUS_POLL_INTERVAL_MS = 3_000;
 export const MAX_REVISION_WAIT_MS = 60_000;
 
 /**
- * How soon a `failed` verdict is re-read first, and how far apart the re-reads
- * get: each wait is as long as the verdict has been `failed` so far, so the
- * interval doubles from 5 s up to a minute.
+ * How soon a `failed` verdict is re-read, and how far apart the re-reads get:
+ * each wait is 5 s longer than the verdict has been failed so far, so the
+ * waits double from 5 s up to a minute.
  *
  * A `failed` right after a create is often not final. The release renders the
  * Agent beside the tool server it references, and until that server exists
- * kagent reports the reference unresolved; it clears within seconds. Re-reading
- * turns that failure into Ready without a reload. A stopgap until agent-manager
- * reports such a state as `progressing` (giantswarm/agent-manager#145).
+ * kagent reports the reference unresolved; it clears within seconds.
+ * Re-reading turns that failure into Ready without a reload. A stopgap until
+ * agent-manager reports such a state as `progressing`
+ * (giantswarm/agent-manager#145).
  */
 export const FAILED_STATUS_POLL_INITIAL_MS = 5_000;
 export const FAILED_STATUS_POLL_MAX_MS = 60_000;
@@ -50,63 +51,66 @@ export const FAILED_STATUS_POLL_MAX_MS = 60_000;
 /**
  * How long a `failed` verdict is re-read before it is taken as final. A failure
  * that clears does so within seconds; one still there after ten minutes needs
- * a change to the agent, so reading it again cannot help (the agent list bounds
- * its fast poll of a broken agent the same way, `TRANSITIONAL_MAX_AGE_MS`).
+ * a change to the agent, so reading it again cannot help.
  */
 export const FAILED_STATUS_POLL_MAX_AGE_MS = 10 * 60_000;
 
-/** The part of a react-query `Query` the backoff reads. */
-type StatusQuery = { state: { dataUpdatedAt: number } };
-
 /**
- * When each status query's current run of `failed` answers began: the
- * `dataUpdatedAt` of the first one. Kept per query, not per hook, so a hook
- * that moves on to another agent never measures that agent's failure from the
- * previous one's, and dropped along with the query.
+ * What the failed-verdict backoff knows about the agent being watched: since
+ * when (`watchedSince`), and since when its verdict has been `failed`
+ * (`failedSince`), both on the clock of the reads (`dataUpdatedAt`).
  */
-const failedSinceByQuery = new WeakMap<StatusQuery, number>();
+type FailedBackoff = {
+  key: string;
+  watchedSince: number;
+  failedSince?: number;
+};
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof AgentManagerError && error.code === 'not_found';
+}
 
 /**
- * The wait before re-reading a `failed` verdict, or `false` once it has been
- * failed for {@link FAILED_STATUS_POLL_MAX_AGE_MS}.
+ * The wait before re-reading a `failed` verdict for this write; `false` to stop
+ * (the agent is gone, or has been failed for
+ * {@link FAILED_STATUS_POLL_MAX_AGE_MS}); `undefined` when the backoff does not
+ * apply and the read stops as it always did.
  *
- * Measured on the clock of the reads themselves (`dataUpdatedAt`), so the
- * interval holds still between two reads; one from `Date.now()` would change
- * on every render and restart react-query's timer each time. Only answers
- * fetched since `watchedSince` count: a `failed` left in the cache by an
- * earlier visit, or by an agent of the same name since deleted, says nothing
- * about how long this one has been failing.
+ * Only a verdict fetched since the watch began counts: one left in the cache by
+ * an earlier visit, or by an agent of the same name since deleted, says nothing
+ * about how long this one has been failing, so it is re-read at the first step
+ * without starting the clock. A read error after a counted `failed` is one more
+ * unsuccessful read: the backoff carries on from its time. The waits are
+ * measured between reads, not from `Date.now()`, so the interval holds still
+ * between two reads; react-query restarts its timer whenever it changes.
  */
 function failedRefetchInterval(
-  query: StatusQuery,
-  watchedSince: number,
-): number | false {
-  const fetchedAt = query.state.dataUpdatedAt;
-  let since = failedSinceByQuery.get(query);
-  if (since === undefined || since < watchedSince) {
-    if (fetchedAt < watchedSince) {
-      return FAILED_STATUS_POLL_INITIAL_MS;
-    }
-    since = fetchedAt;
-    failedSinceByQuery.set(query, since);
+  state: { dataUpdatedAt: number; errorUpdatedAt: number; error: unknown },
+  backoff: FailedBackoff,
+): number | false | undefined {
+  if (state.dataUpdatedAt < backoff.watchedSince) {
+    return state.error ? undefined : FAILED_STATUS_POLL_INITIAL_MS;
   }
-  const failedFor = fetchedAt - since;
+  if (isNotFound(state.error)) {
+    return false;
+  }
+  backoff.failedSince ??= state.dataUpdatedAt;
+  const lastReadAt = state.error
+    ? Math.max(state.dataUpdatedAt, state.errorUpdatedAt)
+    : state.dataUpdatedAt;
+  const failedFor = lastReadAt - backoff.failedSince;
   if (failedFor >= FAILED_STATUS_POLL_MAX_AGE_MS) {
     return false;
   }
   return Math.min(
     FAILED_STATUS_POLL_MAX_MS,
-    FAILED_STATUS_POLL_INITIAL_MS + Math.max(0, failedFor),
+    FAILED_STATUS_POLL_INITIAL_MS + failedFor,
   );
 }
 
 export type AgentStatusState = {
   status: AgentStatus | undefined;
-  /**
-   * True until the verdict is `ready` or `failed`. A `failed` one is still
-   * re-read for a while (see {@link FAILED_STATUS_POLL_INITIAL_MS}) and may
-   * turn `ready`.
-   */
+  /** True until the verdict is `ready` or `failed`. */
   isSettling: boolean;
   /**
    * agent-manager answered `not_found`: by its contract, neither an
@@ -122,10 +126,11 @@ export type AgentStatusState = {
 /**
  * `get_agent_status` for one agent, polled until the agent's Harness has a
  * verdict: `ready`, or `failed` with the reason. A `failed` verdict is still
- * re-read, less and less often, in case it clears, and for at most
- * {@link FAILED_STATUS_POLL_MAX_AGE_MS}. A read error stops the poll; after a
- * `failed` verdict it keeps showing that verdict rather than the error. On API
- * v2 that verdict comes from the Agent object's `status.conditions` —
+ * re-read, backing off, until it turns `ready`, the agent is gone
+ * (`not_found`), or it has been failed for {@link FAILED_STATUS_POLL_MAX_AGE_MS};
+ * meanwhile the failure is what is shown, whatever a re-read answers. On API v2
+ * that verdict comes
+ * from the Agent object's `status.conditions` —
  * the same rules the detail page's own readiness reads, so the two agree. A
  * `not_found` right after the create is the release not having rendered the
  * Agent yet, and is polled through like `progressing`.
@@ -175,11 +180,17 @@ export function useAgentStatus(
     return () => clearTimeout(timer);
   }, [fromGeneration, watchId, installation, namespace, name]);
 
-  // Since when this hook has been reading: a `failed` answer fetched earlier
-  // does not start the clock of `failedRefetchInterval`.
-  const [watchedSince] = useState(Date.now);
+  // Per agent watched: another agent, or another write, starts over.
+  const watchKey = JSON.stringify([installation, namespace, name, watchId]);
+  const backoff = useRef<FailedBackoff>({
+    key: watchKey,
+    watchedSince: Date.now(),
+  });
+  if (backoff.current.key !== watchKey) {
+    backoff.current = { key: watchKey, watchedSince: Date.now() };
+  }
 
-  const { data, error } = useQuery({
+  const { data, error, dataUpdatedAt } = useQuery({
     queryKey: musterAgentStatusQueryKey(
       installation ?? '',
       namespace,
@@ -191,10 +202,22 @@ export function useAgentStatus(
     refetchInterval: query => {
       const verdict = query.state.data?.verdict;
       if (verdict !== 'failed') {
-        failedSinceByQuery.delete(query);
+        backoff.current.failedSince = undefined;
       }
-      // Checked first: a re-read of a settled verdict can fail too, and the
-      // query keeps the verdict it had.
+      if (verdict && isSettledVerdict(verdict)) {
+        // A settled verdict for the revision that was there before the write is
+        // not this write's answer; keep polling until the new one shows up, or
+        // until the wait has gone on long enough to be the wrong thing to do.
+        if (
+          hasReachedWrittenRevision(query.state.data, fromGeneration) ||
+          givenUpWaiting
+        ) {
+          return verdict === 'failed'
+            ? (failedRefetchInterval(query.state, backoff.current) ?? false)
+            : false;
+        }
+        return AGENT_STATUS_POLL_INTERVAL_MS;
+      }
       const lastError = query.state.error;
       if (
         lastError &&
@@ -205,36 +228,28 @@ export function useAgentStatus(
       ) {
         return false;
       }
-      if (verdict && isSettledVerdict(verdict)) {
-        // A settled verdict for the revision that was there before the write is
-        // not this write's answer; keep polling until the new one shows up, or
-        // until the wait has gone on long enough to be the wrong thing to do.
-        if (
-          !hasReachedWrittenRevision(query.state.data, fromGeneration) &&
-          !givenUpWaiting
-        ) {
-          return AGENT_STATUS_POLL_INTERVAL_MS;
-        }
-        if (verdict === 'ready') {
-          return false;
-        }
-        return failedRefetchInterval(query, watchedSince);
-      }
       return AGENT_STATUS_POLL_INTERVAL_MS;
     },
     // The interval above is the retry: an error other than not_found stops
-    // it and is shown, unless it came while re-reading a `failed` verdict (see
-    // `error` below); a not_found keeps polling.
+    // it and is shown; a not_found keeps polling.
     retry: false,
   });
 
   const notFoundYet =
     error instanceof AgentManagerError && error.code === 'not_found';
-  // The verdict for this write is `failed`. An error re-reading it says
-  // nothing new about the agent, so the failure stays what is shown.
-  const hasFailed =
+
+  // Re-reading a `failed` verdict for this write (see `failedRefetchInterval`):
+  // a read error is not news about the agent, and a `not_found` means it is
+  // gone, which is shown as on any other `not_found`, just not as settling.
+  const isBackingOff =
     data?.verdict === 'failed' &&
-    (hasReachedWrittenRevision(data, fromGeneration) || givenUpWaiting);
+    (hasReachedWrittenRevision(data, fromGeneration) || givenUpWaiting) &&
+    dataUpdatedAt >= backoff.current.watchedSince;
+  if (isBackingOff && error) {
+    return notFoundYet
+      ? { status: undefined, isNotFound: true, isSettling: false, error: null }
+      : { status: data, isNotFound: false, isSettling: false, error: null };
+  }
 
   return {
     status: data,
@@ -247,6 +262,6 @@ export function useAgentStatus(
         (!hasReachedWrittenRevision(data, fromGeneration) &&
           !givenUpWaiting)) &&
       (!error || notFoundYet),
-    error: error && !notFoundYet && !hasFailed ? (error as Error) : null,
+    error: error && !notFoundYet ? (error as Error) : null,
   };
 }

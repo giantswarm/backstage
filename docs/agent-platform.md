@@ -540,12 +540,13 @@ On success the agent's page takes over (`useAgentCreatedHandoff`), and
 Harness (`status.agent.harness`) has a verdict. The status card derives the
 same verdict from `status.harnesses[]`. A `not_found` right after the create is
 polled through. `ready` ends the poll. A `failed` verdict is shown but still
-re-read, 5 s after it first appears and then at doubling intervals up to 60 s,
-for at most ten minutes: right after a create kagent can briefly report the
-agent's own tool server as an unresolved reference, and that clears to Ready
-without a reload. A read error stops the poll; after a `failed` verdict the
-failure stays on screen rather than the error. agent-manager reporting the
-transient state as `progressing` is the proper fix
+re-read, 5 s after it first appears and then at doubling intervals up to 60 s:
+right after a create kagent can briefly report the agent's own tool server as
+an unresolved reference, and that clears to Ready without a reload. The
+re-reading stops at `ready`, at `not_found` (the agent is gone) or after ten
+minutes of failure. A read error meanwhile counts as one more unsuccessful read
+and the failure stays on screen. agent-manager reporting the transient state as
+`progressing` is the proper fix
 (giantswarm/agent-manager#145). The installation's cached `kagent.dev` lists are
 invalidated after the write.
 
@@ -1813,7 +1814,7 @@ The review lists the changes and asks **`validate_agent` with `update: true`**.
 **Save changes** calls **`x_agent-manager_update_agent`** with the changed
 fields (`useUpdateAgent`, reported as `AgentPlatform.agentUpdated`) and returns
 with `action: 'updated'`, so the progress element polls `get_agent_status`
-until the new revision is ready, or has stayed failed for ten minutes.
+until the new revision is ready, is gone, or has stayed failed for ten minutes.
 agent-manager stamps the person into the HelmRelease's `requestedBy`
 annotation. A suspended agent's dry run returns
 `conflict:` and locks Save; a viewer gets `forbidden:`. A git-applied agent,
