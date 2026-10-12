@@ -189,10 +189,11 @@ export class AgentManagerClient {
   }
 
   /**
-   * Starts a session with an agent and sends its first message, as the person:
-   * one `start_session`, the only way a session starts, so every surface
-   * passes the same checks (a workspace grant's among them). `requestId` makes
-   * a retry answer the session the first attempt created.
+   * Starts a session with an agent, as the person: one `start_session`, the
+   * only way a session starts, so every surface passes the same checks (a
+   * workspace grant's among them). Without `message` it only creates the
+   * session. `requestId` makes a retry answer the session the first attempt
+   * created.
    */
   async startSession(
     request: StartSessionRequest,
@@ -202,7 +203,7 @@ export class AgentManagerClient {
       {
         namespace: request.namespace,
         name: request.name,
-        message: request.message,
+        ...(request.message ? { message: request.message } : {}),
         requestId: request.requestId,
         ...(request.sessionName ? { sessionName: request.sessionName } : {}),
         ...(request.workspaceGrant

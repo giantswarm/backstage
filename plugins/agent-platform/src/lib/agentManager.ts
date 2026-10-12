@@ -202,25 +202,25 @@ export type CreateAgentResult = {
 };
 
 /**
- * `start_session`'s input: the Agent by namespace and technical name, the first
- * message, which agent-manager sends as the session's first turn, and the
- * idempotency key of the submission. `workspaceGrant` starts the session in a
- * workspace; absent, it is the plain session.
+ * `start_session`'s input: the Agent by namespace and technical name and the
+ * idempotency key of the submission. Without `message` agent-manager only
+ * creates the session, and the caller sends the first message itself; with
+ * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
+ * session in a workspace; absent, it is the plain session.
  */
 export type StartSessionRequest = {
   namespace: string;
   name: string;
-  message: string;
+  message?: string;
   requestId: string;
   sessionName?: string;
   workspaceGrant?: string;
 };
 
 /**
- * `start_session`'s answer: the new session and the first event of its first
- * turn (proto3 JSON of kagent's `Session` and A2A's `StreamResponse`), and the
- * workspace when it was started with a grant. The turn keeps running; the
- * conversation reads it back.
+ * `start_session`'s answer: the new session (proto3 JSON of kagent's
+ * `Session`), the first event of its first turn when a message was sent (A2A's
+ * `StreamResponse`), and the workspace when it was started with a grant.
  */
 export type StartSessionResult = {
   session: { id?: string; contextId?: string; name?: string };

@@ -267,10 +267,10 @@ function describeStopFailure(error: Error | null): string | undefined {
  * "Continuing a session" in docs/agent-platform.md), **renamed** — from the header's
  * actions menu or by clicking the title — and **deleted** from that menu.
  *
- * A session's **first** message is not sent here: agent-manager's `start_session`
- * sent it on the previous screen, and the prompt arrives through the router state
- * only to be shown until the conversation's read has it; see "Starting a session"
- * in the same document.
+ * It is also where a session's **first** message is sent. Starting a session creates it
+ * on the previous screen and hands the prompt over through the router state, because
+ * `message/send` blocks for the whole turn; see "Starting a session" in the same
+ * document for why the send lands here rather than there.
  *
  * What the prototype shows and this cannot, because kagent stores none of it:
  * tokens-per-second, the owning team, the trigger that started the session, a
@@ -425,19 +425,26 @@ export function SessionDetailPage() {
     rates,
   );
 
-  // The prompt the session was started with, shown as its first message until
-  // the conversation's read has it. agent-manager's `start_session` sent it
-  // before the person got here (see "Starting a session" in
-  // docs/agent-platform.md), so the page sends nothing; the stand-in only
-  // keeps a new conversation from looking empty for the beat before its first
-  // read lands. It goes once the read holds any message of the person's.
-  const opener = useMemo(
-    () =>
-      handoff && !timeline.items.some(item => item.kind === 'user-message')
-        ? { messageId: `opener:${sessionId}`, text: handoff.text }
-        : undefined,
-    [handoff, timeline.items, sessionId],
-  );
+  // Dispatch the session's first message, once.
+  //
+  // The create and the send are two kagent calls, and only the create happened
+  // before we got here: a session is a shell, and `message/send` blocks for the
+  // whole turn — so making the composer wait for it would have meant staring at
+  // the list for up to half a minute. Sending from here instead means the
+  // optimistic echo, the "Working…" row and the failure path are all the ones that
+  // already exist for a reply.
+  const { sendMessage } = send;
+  const dispatched = useRef(false);
+  useEffect(() => {
+    if (!handoff || dispatched.current) {
+      return;
+    }
+    dispatched.current = true;
+    // Errors surface through `send.error` and `send.failed`, exactly as they do
+    // for a reply typed into the composer — which is also what hands the text
+    // back so it is not lost.
+    sendMessage(handoff.text).catch(() => {});
+  }, [handoff, sendMessage]);
 
   // The message the user just sent, shown as the newest turn before kagent's copy
   // of it has been read back — a turn can run for minutes, and a conversation that
@@ -465,7 +472,7 @@ export function SessionDetailPage() {
   // question is open.
   const answerStream = confirmation.stream;
   const timelineWithLive = useMemo(() => {
-    const pending = send.pending ?? opener;
+    const pending = send.pending;
     const stream = send.stream ?? answerStream;
 
     const pendingVisible =
@@ -555,7 +562,7 @@ export function SessionDetailPage() {
     }
 
     return { ...timeline, items };
-  }, [timeline, send.pending, opener, send.stream, answerStream]);
+  }, [timeline, send.pending, send.stream, answerStream]);
 
   // Owned by the page, unlike the delete dialog's state, because two things open
   // this one: the menu item and the title.
@@ -673,10 +680,7 @@ export function SessionDetailPage() {
     !isStalled &&
     (send.isSending ||
       (confirmation.isAnswering && answerDispatched) ||
-      agentIsWorking ||
-      // The first turn runs from the start: until the read shows it, it is
-      // the turn the stand-in opened.
-      Boolean(opener));
+      agentIsWorking);
 
   /**
    * How the turn is being followed once its live stream ended before it did.
@@ -736,14 +740,14 @@ export function SessionDetailPage() {
    * The way out of a lost runtime: a new session with the same agent, opened
    * on the message that never got its answer.
    *
-   * Start, then navigate — the order every entry point keeps, see "Starting a
-   * session" in docs/agent-platform.md. The text is what the box holds, else
-   * the message that failed (handed back by the send), else the last message
-   * the person sent into this session: the one the runtime never read.
-   * `start_session` sends it as the new session's first message; it is carried
-   * through the router state exactly as the list's composer carries one, so
-   * the new page shows it on arrival — a different page instance, since
-   * `SessionDetailRoute` keys the page on the session.
+   * Create, navigate, then send — the order every entry point keeps, see
+   * "Starting a session" in docs/agent-platform.md. The text is what the box
+   * holds, else the message that failed (handed back by the send), else the
+   * last message the person sent into this session: the one the runtime never
+   * read. Carried through the router state exactly as the list's composer
+   * carries a first message, so the new page dispatches it on arrival — a
+   * different page instance, since `SessionDetailRoute` keys the page on the
+   * session.
    */
   const creation = useCreateSession('sessionDetail');
   const navigate = useNavigate();

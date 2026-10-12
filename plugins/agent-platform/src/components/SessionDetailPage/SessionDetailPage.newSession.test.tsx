@@ -105,12 +105,12 @@ function namedError(name: string, message: string): Error {
   return error;
 }
 
-/** agent-manager's `start_session`, which also sends the first message. */
+/** agent-manager's `start_session`, creating the session only. */
 const callTool = jest.fn();
 const musterApi = { callTool } as unknown as MusterApi;
 const getSessionDetail = jest.fn();
 const listSessionTasks = jest.fn();
-// Never expected: start_session sent the first message, the page sends none.
+// The first message's turn: left running, it is not what this test watches.
 const streamMessage = jest.fn(() => new Promise<void>(() => {}));
 
 const kagentApi = {
@@ -210,17 +210,17 @@ describe('SessionDetailPage — a session started a moment ago', () => {
 
     await startSession('new-1');
 
-    // The conversation. start_session sent the first message, so the page
-    // sends nothing of its own.
+    // The conversation, with the first message dispatched from the handoff:
+    // start_session created the session without one.
     expect(
       await screen.findByRole('button', { name: /^Rename session/ }),
     ).toBeInTheDocument();
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_start_session',
-      expect.objectContaining({ message: 'Why is the ingress failing?' }),
+      expect.not.objectContaining({ message: expect.anything() }),
       expect.any(String),
     );
-    expect(streamMessage).not.toHaveBeenCalled();
+    expect(streamMessage).toHaveBeenCalledTimes(1);
     expect(getSessionDetail).toHaveBeenCalledTimes(2);
     expect(listSessionTasks).toHaveBeenCalledTimes(2);
 

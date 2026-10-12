@@ -43,6 +43,17 @@ describe('AgentManagerClient.startSession', () => {
     expect(result.sessionId).toBe('sess-1');
   });
 
+  it('creates only, without a message, when none is given', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({
+      session: { id: 'sess-1' },
+    }));
+    await new AgentManagerClient(api, 'inst-1').startSession({
+      ...REQUEST,
+      message: undefined,
+    });
+    expect(callTool.mock.calls[0][1]).not.toHaveProperty('message');
+  });
+
   it('sends no workspaceGrant when there is none: the plain session', async () => {
     const { api, callTool } = makeMusterApi(async () => ({
       session: { id: 'sess-1' },

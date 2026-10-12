@@ -2,16 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 /**
- * The first message of a session that was just started, carried from whichever
- * composer started it to the session detail page. agent-manager's
- * `start_session` already sent it; the page shows it until its first read of the
- * conversation has it, so the prompt appears immediately rather than after a
- * beat of empty conversation.
+ * The first message of a session that was just created, carried from whichever
+ * composer created it to the session detail page that has to send it.
  *
  * The agent travels with the prompt on purpose. The detail page can resolve a
  * session's agent on its own, but only after the session read has landed *and*
- * joined against the fleet-wide `Agent` list — two renders later at best.
- * Carrying it means the composer is addressed from the first render.
+ * joined against the fleet-wide `Agent` list — two renders later at best. Carrying
+ * it means the send can be dispatched on the first render, which is what makes the
+ * prompt appear immediately rather than after a beat of empty conversation.
  */
 export type NewSessionHandoff = {
   text: string;
@@ -66,9 +64,9 @@ function readHandoff(state: unknown): NewSessionHandoff | undefined {
  * The state is cleared with a replacing navigation as soon as it has been read,
  * and that is the whole reason this is a hook rather than a `useLocation()` call
  * at the use site. Router state survives a reload and a Back navigation, so a
- * page that read it on every render would, on every return to the session,
- * caption a message as the portal's or show a stand-in for one that is long in
- * the conversation.
+ * page that read it on every render would re-send the first message every time
+ * the user came back to the session — silently starting a second paid turn with
+ * the same prompt.
  *
  * The value is held in local state rather than read from the location, so it
  * stays available to the caller after the location has been rewritten.

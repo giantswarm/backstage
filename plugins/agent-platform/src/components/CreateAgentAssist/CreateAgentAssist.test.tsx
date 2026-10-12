@@ -287,12 +287,11 @@ describe('CreateAgentAssist', () => {
     expect(usedAgent.technicalName).toBe('swarm-operator');
     expect(prompt).toContain('fenced code block');
 
-    // The conversation mounts in the panel and sends nothing itself:
-    // start_session sent the prompt as the first message.
+    // The conversation mounts in the panel and sends the first message itself —
+    // the create said nothing to the agent.
     await waitFor(() => {
-      expect(screen.getByTestId('timeline')).toBeInTheDocument();
+      expect(sendMessage).toHaveBeenCalledWith(prompt);
     });
-    expect(sendMessage).not.toHaveBeenCalled();
     expect(screen.getByTestId('timeline')).toHaveTextContent(
       'Here is a draft:',
     );
@@ -347,7 +346,7 @@ describe('CreateAgentAssist', () => {
       name: 'Swarm Operator assist',
     });
     await userEvent.click(within(panel).getByRole('button', { name: 'Start' }));
-    await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
 
     await userEvent.click(
       within(panel).getByRole('button', { name: 'Close assistant' }),
@@ -359,7 +358,8 @@ describe('CreateAgentAssist', () => {
     expect(open).toHaveFocus();
 
     await userEvent.click(open);
-    // The same conversation, not a new start: no second session.
+    // The same conversation, not a new start: no second session, no second
+    // first message.
     const reopened = screen.getByRole('complementary', {
       name: 'Swarm Operator assist',
     });
@@ -370,7 +370,7 @@ describe('CreateAgentAssist', () => {
       within(reopened).queryByRole('button', { name: 'Start' }),
     ).toBeNull();
     expect(createSession).toHaveBeenCalledTimes(1);
-    expect(sendMessage).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 
   describe('at phone width', () => {
@@ -418,7 +418,7 @@ describe('CreateAgentAssist', () => {
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Start' }),
       );
-      await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
 
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Back to form' }),
@@ -436,7 +436,7 @@ describe('CreateAgentAssist', () => {
         ).getByTestId('timeline'),
       ).toHaveTextContent('Here is a draft:');
       expect(createSession).toHaveBeenCalledTimes(1);
-      expect(sendMessage).not.toHaveBeenCalled();
+      expect(sendMessage).toHaveBeenCalledTimes(1);
     });
 
     it('closes on Escape, keeping the draft prompt', async () => {

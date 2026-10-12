@@ -128,8 +128,7 @@ describe('useCreateSession', () => {
       {
         namespace: 'kagent',
         name: 'sre-agent',
-        // agent-manager sends the prompt as the session's first message.
-        message: 'Why is the ingress failing?',
+        // No message: the session detail page sends the prompt, streamed.
         // One idempotency key per submission, so a retried start is the same start.
         requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
         sessionName: 'Why is the ingress failing?',

@@ -37,14 +37,15 @@ export type UseCreateSessionOptions = {
 
 /**
  * Start a session with an agent: agent-manager's `start_session`, through
- * muster as the person, which creates the Session and sends the prompt as its
- * first message.
+ * muster as the person, without a message — it creates the Session only.
  *
  * It is the only way a session starts, on every entry point, so every surface
- * passes the same checks. The call answers once the agent has accepted the
- * turn; the turn keeps running and the session detail page, which the caller
- * navigates to, reads it back. See "Starting a session" in
- * docs/agent-platform.md.
+ * passes the same checks. **Creating it says nothing to the agent.** The
+ * prompt is sent separately, as an A2A turn on the new session: the session
+ * detail page, which the caller navigates to with the prompt in hand, sends
+ * it streamed and with the human-in-the-loop extension requested, as every
+ * reply. See "Starting a session" in docs/agent-platform.md for why it is
+ * split that way rather than done here.
  *
  * The installation is not a parameter: an agent's identity *is*
  * installation/namespace/name, so picking the agent picks the installation, and
@@ -82,7 +83,6 @@ export function useCreateSession(
         // the display annotation and would not match anything.
         namespace: agent.namespace,
         name: agent.technicalName,
-        message: prompt,
         requestId,
         sessionName: deriveSessionTitle(prompt, titleMaxLength),
       });
