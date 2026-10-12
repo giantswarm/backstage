@@ -506,6 +506,22 @@ describe('AgentShellNav', () => {
     expect(logo).toHaveTextContent('');
   });
 
+  it('scales the logo down to fit the collapsed rail rather than cutting it off', async () => {
+    await renderNav({ isPinned: false });
+
+    const logo = screen.getByRole('link', { name: 'Agent Platform' });
+    expect(window.getComputedStyle(logo).maxWidth).toBe('100%');
+    // The ant here; a branding logo icon is an <img> under the same rule.
+    const mark = await waitFor(() => {
+      const element = logo.querySelector('svg, img');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    const style = window.getComputedStyle(mark);
+    expect(style.maxWidth).toBe('100%');
+    expect(style.objectFit).toBe('contain');
+  });
+
   it('highlights the item of the current location', async () => {
     await renderNav({ path: '/agent-platform/usage/cost' });
 

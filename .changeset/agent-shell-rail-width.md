@@ -1,5 +1,5 @@
 ---
-'app': patch
+'app': minor
 ---
 
 Agent shell rail: the expanded rail is resizable from its right edge, by drag

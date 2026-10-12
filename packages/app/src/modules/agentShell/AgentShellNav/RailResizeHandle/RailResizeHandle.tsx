@@ -15,12 +15,12 @@ export const RAIL_RESIZE_STEP = 16;
 /** The grab area's width for a pointer, centred on the rail's border. */
 const HIT_WIDTH = 8;
 /**
- * Under touch, wider for a finger, and all of it over the rail but the
- * border's own pixel, so it takes no taps meant for the page beside it. 12px
- * is the rail's right padding plus the session rows' pin inset, so it covers
- * no control of the rail's either.
+ * Under touch, wider for a finger, yet clear of both sides' controls: the
+ * rail's right padding (8px, where its rows end) and its 1px border, plus
+ * one pixel of the page, so it takes no taps meant for a row, the pin or
+ * the page.
  */
-const TOUCH_HIT_WIDTH = 12;
+const TOUCH_HIT_WIDTH = 10;
 
 const useStyles = makeStyles({
   // Invisible at rest, so the rail's border is the only line there; the

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment } from 'react';
 import { sidebarConfig, useSidebarPinState } from '@backstage/core-components';
 import { Box, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import {
@@ -14,27 +14,12 @@ import SearchIcon from '@material-ui/icons/Search';
 import { LogoIcon } from '../../nav/LogoIcon';
 import { usePortals } from '../agentArea';
 import { agentShellNavItems, SEARCH_FOLLOWS } from '../navItems';
-import { useRailInset } from '../RailWidthProvider';
+import { RailFrame } from './RailFrame';
 import { RailItem } from './RailItem';
-import { RailResizeHandle } from './RailResizeHandle';
 import { type RailLayout, useBarItemStyles } from './railLayout';
 import { SkipLink } from './SkipLink';
 
-/** The rail's id, which its resize handle names as what it resizes. */
-const RAIL_ID = 'agent-shell-rail';
-
 const useStyles = makeStyles({
-  rail: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    zIndex: 1000,
-    background: 'var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
-    borderRight: '1px solid var(--bui-border-1)',
-    overflow: 'hidden',
-    boxSizing: 'border-box',
-  },
   column: {
     height: '100%',
     boxSizing: 'border-box',
@@ -85,6 +70,23 @@ const useStyles = makeStyles({
     '&:hover': {
       color: 'var(--bui-fg-primary)',
       textDecoration: 'none',
+    },
+  },
+  // The collapsed rail has one icon item's width for the logo. A branding
+  // logo icon (`logo-icon.svg/png`, at `app.branding.logo.height`) can be
+  // wider than that: it scales down to fit, keeping its proportions, rather
+  // than being cut off by the rail's edge.
+  compactLogo: {
+    display: 'flex',
+    justifyContent: 'center',
+    maxWidth: '100%',
+    '& > *': {
+      minWidth: 0,
+      maxWidth: '100%',
+    },
+    '& img, & svg': {
+      maxWidth: '100%',
+      objectFit: 'contain',
     },
   },
   recent: {
@@ -290,7 +292,15 @@ function AgentShellRail() {
             pl={compact ? undefined : '2'}
             pr={compact ? undefined : '1'}
           >
-            <Link href="/" aria-label="Agent Platform" className={classes.logo}>
+            <Link
+              href="/"
+              aria-label="Agent Platform"
+              className={
+                compact
+                  ? `${classes.logo} ${classes.compactLogo}`
+                  : classes.logo
+              }
+            >
               <Flex align="center" gap="2">
                 <LogoIcon />
                 {!compact && (
@@ -336,36 +346,6 @@ function AgentShellRail() {
           </Box>
         </Flex>
       </RailFrame>
-    </>
-  );
-}
-
-/**
- * The desktop rail's landmark, as wide as `useRailInset` says, which is also
- * where the content region starts, and the handle that resizes it. The only
- * part of the rail that reads the width, so a drag re-renders the frame and
- * not the items and session lists it holds.
- */
-function RailFrame({
-  resizable,
-  children,
-}: {
-  resizable: boolean;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  const width = useRailInset();
-  return (
-    <>
-      <nav
-        id={RAIL_ID}
-        aria-label="Main"
-        className={classes.rail}
-        style={{ width }}
-      >
-        {children}
-      </nav>
-      {resizable && <RailResizeHandle controls={RAIL_ID} />}
     </>
   );
 }
