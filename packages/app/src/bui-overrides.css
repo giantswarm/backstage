@@ -27,13 +27,14 @@
 
 /*
  * bui declares `--bui-bg-inherit: var(--bui-bg-app)` on `:root`, so the value
- * is resolved there, before the theme's own tokens apply: bui's dark palette,
- * the agent shell's white app background and a configured `backgroundColor`
- * are all set on `body[data-theme-mode]`. Outside a bg provider (`Card`, `Box`
+ * is resolved there, before the theme's own tokens apply: bui's palettes, the
+ * agent shell's white app background and a configured `backgroundColor` are
+ * set on the element carrying `data-theme-mode` (the body, or a subtree themed
+ * on its own, such as the toast region). Outside a bg provider (`Card`, `Box`
  * with `bg`, …) it stayed bui's light default, #f5f5f5, in every theme, so a
  * fade into it (CollapsibleMarkdown's "Show all …") showed a grey band on a
- * white page. Resolve it again where the theme's tokens live.
+ * white page. Resolve it again wherever a theme is applied.
  */
-body[data-theme-mode] {
+[data-theme-mode] {
   --bui-bg-inherit: var(--bui-bg-app);
 }
