@@ -177,8 +177,12 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   // the status label was clipped. On a phone: the model and its status.
   const shownColumns = usePhoneColumns(columns, ['name', 'status']);
 
+  // The provider reads on behind rows already in; the list is still loading
+  // only while it has none.
+  const isReading = isLoading && modelRows.length === 0;
+
   let body;
-  if (isLoading && modelRows.length === 0) {
+  if (isReading) {
     body = <LoadingIndicator label="Reading your models…" />;
   } else if (!hasInstallations) {
     body = (
@@ -238,6 +242,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="Models"
+        isLoading={isReading}
       />
       {body}
       <ModelHostingBanner />

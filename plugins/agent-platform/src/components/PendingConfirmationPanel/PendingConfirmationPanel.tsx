@@ -1,4 +1,11 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   Alert,
   Button,
@@ -29,7 +36,12 @@ import type {
 } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
-import { isSendKey, sendEnterKeyHint, sendKeyCaption } from '../../lib/sendKey';
+import {
+  isSendKey,
+  SEND_KEY_CAPTIONS,
+  sendEnterKeyHint,
+} from '../../lib/sendKey';
+import { SendKeyHint } from '../SendKeyHint';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -98,6 +110,9 @@ const useStyles = makeStyles(theme => ({
   },
   // Everything between the header and the actions. Scrolls on its own when a
   // long question or a large proposed call would push the dock past the view.
+  // A scroller clips on both axes, so the padding gives focus rings — bui's
+  // and the markdown's, 2px drawn 2px outside their control — room inside it,
+  // and the matching negative margin keeps the content where it was.
   body: {
     flex: '1 1 auto',
     minHeight: 0,
@@ -105,6 +120,8 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1.5),
+    padding: 'var(--bui-space-1)',
+    margin: 'calc(-1 * var(--bui-space-1))',
   },
   actions: {
     flex: 'none',
@@ -152,17 +169,30 @@ const useStyles = makeStyles(theme => ({
       overflowY: 'visible',
     },
   },
-  // bui's form controls are sized for dense forms — 12px labels against the
-  // conversation's 16px/24px. A question's options *are* conversation, so they are
-  // brought up to match rather than left looking like fine print.
+  // 16px, never less: iOS Safari zooms the page into a focused field below
+  // that. agent-shell.css sets the same at phone width; this covers tablets.
   conversationText: {
-    '& label': {
-      fontSize: '1rem',
-      lineHeight: 1.5,
-    },
     '& textarea': {
       fontSize: '1rem',
       lineHeight: 1.5,
+    },
+  },
+  // A question's options *are* conversation, so their labels take the message
+  // text's size and leading (MessageMarkdown's paragraphs). That raises bui's
+  // radio labels from 12px; its checkbox labels are 14px already, so for them
+  // only the leading changes. The margin sets the list apart from the question
+  // and the answer box.
+  choices: {
+    margin: 'var(--bui-space-2) 0',
+    '& label': {
+      fontSize: 'var(--bui-font-size-3)',
+      lineHeight: 1.6,
+    },
+    // bui tops the checkbox against its label (the radio is centred), so on
+    // the taller line it sat above the text. Centred on the first line
+    // instead, which keeps it there when a long choice wraps.
+    '& .bui-CheckboxIndicator': {
+      marginTop: 'calc((1.6em - 1rem) / 2)',
     },
   },
 }));
@@ -445,7 +475,7 @@ export function PendingConfirmationPanel({
   // A permission request carries no resting caption: its reassurance ("Nothing
   // is sent until you allow it.") stands under its title, as the prototype
   // places it, and its buttons sit at the card's end.
-  let caption: string | undefined;
+  let caption: ReactNode;
   if (isAnswerTooLong) {
     caption = `That answer is ${answerText.length} characters; the limit is ${MESSAGE_TEXT_MAX_LENGTH}.`;
   } else if (isReasonTooLong) {
@@ -454,15 +484,16 @@ export function PendingConfirmationPanel({
     // Send was refused, and on the last page the reason is out of sight.
     caption = `Question ${firstUnanswered + 1} still needs an answer.`;
   } else if (isQuestion && !isLastPage) {
-    caption = sendKeyCaption(
-      { key: 'Enter goes to the next question', tap: 'Tap Next to go on' },
-      touch,
+    caption = (
+      <SendKeyHint options={SEND_KEY_CAPTIONS.nextQuestion} touch={touch} />
     );
   } else if (isQuestion) {
-    caption = `Answering resumes the agent where it stopped. ${sendKeyCaption(
-      { key: 'Enter sends', tap: 'Tap Send answer to send it' },
-      touch,
-    )}`;
+    caption = (
+      <>
+        Answering resumes the agent where it stopped.{' '}
+        <SendKeyHint options={SEND_KEY_CAPTIONS.answer} touch={touch} />
+      </>
+    );
   }
 
   const send = () => {
@@ -634,6 +665,7 @@ export function PendingConfirmationPanel({
               (question.multiple ? (
                 <CheckboxGroup
                   aria-label="Choices"
+                  className={classes.choices}
                   value={chosen[pageIndex] ?? []}
                   onChange={values => setChoices(pageIndex, values)}
                   isDisabled={isAnswering}
@@ -651,6 +683,7 @@ export function PendingConfirmationPanel({
               ) : (
                 <RadioGroup
                   aria-label="Choices"
+                  className={classes.choices}
                   value={chosen[pageIndex]?.[0] ?? null}
                   onChange={value =>
                     setChoices(pageIndex, value ? [value] : [])

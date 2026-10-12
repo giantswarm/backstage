@@ -684,8 +684,9 @@ probe reports (see "User scoping").
 
 ### Earlier conversations are not here
 
-Conversations were **not migrated** to the API v2 line (plan decision D9).
-`SessionsMigrationNotice` says so above the list until dismissed (per browser).
+Conversations were **not migrated** to the API v2 line (plan decision D9), and
+the Sessions tab does not say so: a person whose sessions predate the migration
+sees only newer ones, or the empty state.
 
 ### What the list can and cannot show
 
@@ -1055,7 +1056,7 @@ item**, **results** or **evaluation**; do not re-add them speculatively.
 Delegation entries are inert, because the child session id is unreliable and
 subagent sessions are filtered out.
 
-### The cost + memory popover (`SessionCostPopover`)
+### The cost + context popover (`SessionCostPopover`)
 
 Costs use `gs.installations.<name>.currency`, USD otherwise.
 
@@ -1063,7 +1064,7 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Memory is the newest turn's prompt tokens against a configured window.** No
+**Context used is the newest turn's prompt tokens against a configured window.** No
 platform component reports a hosted model's context window, so the denominator
 is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
 specific match wins, served through the signed-in config). An unmatched model

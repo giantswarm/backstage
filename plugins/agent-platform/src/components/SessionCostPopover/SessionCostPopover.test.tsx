@@ -48,9 +48,9 @@ async function render(overrides: Partial<SessionCostPopoverProps> = {}) {
 /** The opened popover's dialog. */
 async function open() {
   await userEvent.click(
-    screen.getByRole('button', { name: /Session cost and memory/ }),
+    screen.getByRole('button', { name: /Session cost and context/ }),
   );
-  return screen.getByRole('dialog', { name: 'Session cost and memory' });
+  return screen.getByRole('dialog', { name: 'Session cost and context' });
 }
 
 describe('SessionCostPopover', () => {
@@ -107,19 +107,19 @@ describe('SessionCostPopover', () => {
     expect(within(row).getByText('—')).toBeInTheDocument();
   });
 
-  it('shows memory as a share of a configured context window', async () => {
+  it('shows context used as a share of a configured context window', async () => {
     publishConfig({ contextWindows: { 'claude-*': 200000 } });
     await render();
 
     const dialog = await open();
 
     // 24k of the newest turn against the 200k window.
-    expect(within(dialog).getByText('Memory used')).toBeInTheDocument();
+    expect(within(dialog).getByText('Context used')).toBeInTheDocument();
     expect(
       within(dialog).getByText('24.0k of 200.0k · 12%'),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByRole('img', { name: 'Memory 12% full' }),
+      within(dialog).getByRole('img', { name: 'Context 12% full' }),
     ).toBeInTheDocument();
   });
 
@@ -127,20 +127,27 @@ describe('SessionCostPopover', () => {
     publishConfig({ contextWindows: { 'gpt-5': 400000 } });
     await render();
 
+    // The chip's name carries the same count, not a bare cost.
+    expect(
+      screen.getByRole('button', {
+        name: 'Session cost and context: $0.210, 24.0k tokens of context',
+      }),
+    ).toBeInTheDocument();
+
     const dialog = await open();
 
     // The count without a share: claiming a percentage of an unknown window
     // would be invented precision.
     expect(within(dialog).getByText('24.0k tokens')).toBeInTheDocument();
     expect(
-      within(dialog).queryByRole('img', { name: /Memory/ }),
+      within(dialog).queryByRole('img', { name: /Context/ }),
     ).not.toBeInTheDocument();
   });
 
   it('keeps the footnote to the one basis sentence', async () => {
     // The popover's explanatory text is a single minimal sentence — the
     // disclosure that keeps the estimate honest. The paragraphs about
-    // reported costs and the memory approximation are gone.
+    // reported costs and the context approximation are gone.
     publishConfig({ contextWindows: { 'claude-*': 200000 } });
     await render({ tokens: { ...baseProps.tokens, costUsd: 0.13148115 } });
 
@@ -176,7 +183,9 @@ describe('SessionCostPopover', () => {
     });
 
     expect(
-      screen.getByRole('button', { name: /Session cost and memory: \$0\.500/ }),
+      screen.getByRole('button', {
+        name: /Session cost and context: \$0\.500/,
+      }),
     ).toBeInTheDocument();
   });
 

@@ -113,7 +113,7 @@ export function modelFacts({
   ];
   if (contextWindow !== undefined) {
     facts.push({
-      label: 'Memory (context)',
+      label: 'Context window',
       value: describeContextWindow(contextWindow),
     });
   }

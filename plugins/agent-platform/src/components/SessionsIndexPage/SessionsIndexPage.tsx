@@ -18,7 +18,6 @@ import {
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
-import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -30,7 +29,7 @@ function SessionsFrame({ children }: { children: ReactNode }) {
   return (
     <ShellPage
       title="Sessions"
-      description="Find every conversation you have had with an agent."
+      description="Find your conversations with agents."
       actions={
         <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
           New session
@@ -141,13 +140,6 @@ function SessionsIndexPageContent() {
   return (
     <SessionsFrame>
       <Flex direction="column" gap="3">
-        {/* Conversations from before the move to kagent API v2 are not here
-            (plan decision D9). Said before the list, so an empty or short one
-            is explained rather than puzzled over; dismissible, because it is
-            true forever and interesting once. Withheld while loading, like the
-            composer, so the tab does not flash it over a spinner. */}
-        {!isLoading && <SessionsMigrationNotice />}
-
         <InstallationScopeNote component="kagent" />
 
         {/* Same gate as the Agents tab: the installation this tab reads could
@@ -199,13 +191,15 @@ function SessionsIndexPageContent() {
           />
         )}
 
-        {/* Rendered regardless of the loading branch so a fleet whose only
-            reachable installations all error still surfaces the failure instead
-            of an indefinite progress bar. */}
+        {/* Waits for the list: a failure shows once no other installation
+            is still being read, or once rows are on screen. A failed query
+            is not one awaiting data, so a fleet whose every read failed still
+            ends `isLoading`; one paused offline does not. */}
         <UnreachableInstallationsAlert
           installations={unreachableInstallations}
           resourceName="Sessions"
           failures={readFailures}
+          isLoading={isLoading}
         />
 
         {/* Installations that run kagent but whose endpoint the portal cannot

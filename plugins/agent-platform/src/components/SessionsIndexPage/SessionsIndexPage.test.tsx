@@ -136,7 +136,7 @@ describe('SessionsIndexPage', () => {
       screen.getByRole('heading', { level: 1, name: 'Sessions' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Find every conversation you have had with an agent.'),
+      screen.getByText('Find your conversations with agents.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
       'href',
@@ -160,6 +160,26 @@ describe('SessionsIndexPage', () => {
 
     expect(screen.getByTestId('progress')).toBeInTheDocument();
     expect(screen.queryByTestId('sessions-table')).not.toBeInTheDocument();
+  });
+
+  it('holds the read warning until the sessions are read', async () => {
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      isLoading: true,
+      unreachableInstallations: ['gazelle'],
+    });
+    await renderRerenderable();
+    expect(screen.getByTestId('progress')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    mockUseSessions.mockReturnValue({
+      ...loadedSessions,
+      unreachableInstallations: ['gazelle'],
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'rerender' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
   });
 
   describe('with no session on the fleet yet', () => {

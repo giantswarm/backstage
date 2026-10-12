@@ -138,6 +138,7 @@ describe('useModelManagerServingSource', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current).toEqual({
       isLoading: false,
+      isLoadingServedModels: false,
       installations: [],
       backends: {},
       sourceBackends: {},

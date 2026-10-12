@@ -42,7 +42,7 @@ A key works only in the channel it is meant for:
 | `agentPlatform.metaAgents.<role>`                         | unset      | No                                             | The feature that role lights up stays hidden                             |
 | `agentPlatform.integrations.slack`                        | `false`    | No                                             | No Slack banner on the new-session home                                  |
 | `agentPlatform.integrations.slackDocsUrl`                 | GS docs    | No                                             | The Slack banner links to docs.giantswarm.io                             |
-| `agentPlatform.models.contextWindows`                     | `{}`       | No                                             | The memory indicator shows raw token counts instead of a percentage      |
+| `agentPlatform.models.contextWindows`                     | `{}`       | No                                             | The context indicator shows raw token counts instead of a percentage     |
 | `@backstage/plugin-user-settings-backend` + persistent DB | registered | Yes, for roaming pins, favorites, dismissals   | State is lost on backend restart (in-memory SQLite) or stays per browser |
 
 ## Production requirements
@@ -361,7 +361,7 @@ agentPlatform:
 
 ## Context windows: `agentPlatform.models.contextWindows`
 
-No platform component reports a hosted model's context window, so the memory
+No platform component reports a hosted model's context window, so the context
 indicator (`SessionCostPopover`) takes it from here. Keys are model-name
 patterns matched case-insensitively against the ModelConfig's `spec.model` (`*`
 matches any run of characters; the most specific pattern wins); values are

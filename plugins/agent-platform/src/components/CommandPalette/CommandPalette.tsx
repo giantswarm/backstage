@@ -46,6 +46,8 @@ import {
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { EnterKey } from '../EnterKey';
+import { Kbd } from '../Kbd';
 import {
   buildPaletteGroups,
   isEditableTarget,
@@ -184,15 +186,6 @@ const useStyles = makeStyles({
     gap: 'var(--bui-space-4)',
     padding: 'var(--bui-space-2) var(--bui-space-4)',
     borderTop: '1px solid var(--bui-border-1)',
-  },
-  kbd: {
-    font: 'inherit',
-    fontSize: '0.71875rem',
-    border: '1px solid var(--bui-border-1)',
-    borderRadius: 5,
-    padding: '1px 5px',
-    background: 'var(--bui-bg-neutral-1)',
-    color: 'var(--bui-fg-secondary)',
   },
 });
 
@@ -820,17 +813,15 @@ function PaletteDialog({
             {!touch && (
               <>
                 <Text variant="body-x-small" color="secondary">
-                  <kbd className={classes.kbd}>↑</kbd>{' '}
-                  <kbd className={classes.kbd}>↓</kbd> move
+                  <Kbd>↑</Kbd> <Kbd>↓</Kbd> move
                 </Text>
                 <Text variant="body-x-small" color="secondary">
-                  <kbd className={classes.kbd}>↵</kbd> open
+                  <EnterKey /> open
                 </Text>
                 {activeEntry?.agent && (
                   <Text variant="body-x-small" color="secondary">
-                    <kbd className={classes.kbd}>{mod}</kbd>{' '}
-                    <kbd className={classes.kbd}>↵</kbd> start a session with
-                    this agent
+                    <Kbd>{mod}</Kbd> <EnterKey /> start a session with this
+                    agent
                   </Text>
                 )}
               </>

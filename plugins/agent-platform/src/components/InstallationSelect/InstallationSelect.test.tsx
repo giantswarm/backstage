@@ -573,6 +573,36 @@ describe('InstallationSelect', () => {
     });
   });
 
+  it('holds the read warning until an environment is offered or the fleet settles', () => {
+    // gamma failed already; alpha and beta are still being read.
+    mockModelConfigs = {
+      ...mockModelConfigs,
+      isLoading: true,
+      availableInstallations: [],
+      unreachableInstallations: ['gamma'],
+    };
+    const { rerender } = render(<InstallationSelect />);
+    expect(
+      screen.getByText(/Finding environments with models/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+
+    // alpha is offered while beta is still being read: the warning joins it,
+    // as on a list showing its first rows.
+    mockModelConfigs = {
+      ...mockModelConfigs,
+      availableInstallations: ['alpha'],
+    };
+    mockPresence = { alpha: 'available' };
+    rerender(<InstallationSelect />);
+    expect(
+      screen.getByText(/Still checking the remaining/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+  });
+
   it('renders nothing until the installations config resolves', () => {
     mockIsLoadingInstallations = true;
     mockInstallations = [];
