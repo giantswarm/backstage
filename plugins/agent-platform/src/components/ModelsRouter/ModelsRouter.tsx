@@ -6,7 +6,7 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { Box, Flex, Tab, TabList, Tabs } from '@backstage/ui';
+import { Flex } from '@backstage/ui';
 import {
   ShellPage,
   useSplatBasePath,
@@ -20,7 +20,6 @@ import {
   useServing,
 } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
-import { ModelConfigsPage } from '../ModelConfigsPage';
 import { NewModelPage } from '../NewModelPage';
 import { EditModelPage } from '../EditModelPage';
 import { ModelDetailPage } from '../ModelDetailPage';
@@ -42,16 +41,7 @@ import {
   SHELL_CUSTOMIZE_PATH,
   ShellCustomizeRedirect,
 } from '../ShellCustomizeRedirect';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
-
-// The serving layer's two views, as a second-level tab row under the Agent
-// Platform page's "Models" tab. The ModelConfigs list is not among them: it is
-// the tab's own page, at `/agent-platform/models`.
-const SERVING_VIEWS = [
-  { path: 'serving', title: 'Serving' },
-  { path: 'capacity', title: 'GPU capacity' },
-] as const;
 
 /**
  * The ModelConfigs list, its create flow and one model used to live under a
@@ -134,9 +124,9 @@ const HostingView = ({
 );
 
 /**
- * Model hosting inside the agent-platform shell: the serving layer's views
- * under the platform-standard page frame (`ShellPage`) — breadcrumbs
- * "Customize / Models / Model hosting", the screen's title at the standard
+ * Model hosting: the serving layer's views under the platform-standard page
+ * frame (`ShellPage`) — breadcrumbs "Customize / Models / Model hosting", the
+ * screen's title at the standard
  * scale, the views as its routed tabs and, above each view, the headline
  * figures about what it lists (`ModelHostingKpis`: the whole row on Running
  * models, the GPU tiles on GPU pools, the cache tile on Model cache). The
@@ -182,7 +172,7 @@ const ShellModelHosting = () => {
           path="capacity"
           element={
             <HostingView kpis={servingLayer ? 'gpu' : undefined}>
-              <GpuCapacityPage showModelCache={false} />
+              <GpuCapacityPage />
             </HostingView>
           }
         />
@@ -236,11 +226,10 @@ const hostingFlowRoutes = [
 ];
 
 /**
- * The tab's views inside the agent-platform shell. The list is the Customize
- * screen's Models tab, so the index sends there; the create and edit flows and
+ * The tab's views. The list is the Customize screen's Models tab, so the index sends there; the create and edit flows and
  * one model's page frame themselves; everything else is model hosting.
  */
-const ShellModelsViews = () => (
+const ModelsViews = () => (
   <Routes>
     <Route index element={<ShellCustomizeRedirect tab="models" />} />
     <Route path="new" element={<NewModelPage />} />
@@ -256,89 +245,6 @@ const ShellModelsViews = () => (
     <Route path="*" element={<ShellModelHosting />} />
   </Routes>
 );
-
-// The routed view, and the tab strip above it — in classic chrome, under the
-// Agent Platform page's header. Inside the shell the frame is
-// `ShellModelsViews` instead.
-//
-// The two serving views only exist once a reachable installation has a serving
-// layer this portal can see (or could not be asked). A model-manager that
-// answers counts, backends or not: it ships with none, and the Serving view is
-// where one is registered. Their routes stay mounted regardless, so a deep
-// link renders the view's own empty state.
-//
-// The strip is dropped in exactly one case: the list, on a portal with no
-// serving layer. That is the only place a lone "Model configs" tab would lead
-// back to the page it is already on. It is kept everywhere else, including a
-// deep-linked Serving page on such a portal -- that tab is then the only way
-// back to the list, and hiding it would strand the reader on a page whose own
-// empty state tells them nothing is served here.
-const ModelsViews = () => {
-  const basePath = useSplatBasePath();
-  const { pathname } = useLocation();
-  const servingLayer = hasServingLayer(useServing());
-  const onList = pathname.replace(/\/$/, '') === basePath;
-  const agentShell = useAgentShell();
-  if (agentShell) {
-    return <ShellModelsViews />;
-  }
-  const showTabs = servingLayer || !onList;
-
-  return (
-    <>
-      {/* Inset the tab strip by the page gutter so it lines up with the level-1
-          header tabs and the content below. `px="5"` is hand-matched to the
-          horizontal padding the bui PluginHeader / Content apply (bui space-5 =
-          20px), the same value UsageRouter uses; if bui ever changes that
-          gutter both have to follow. */}
-      {showTabs && (
-        <Box px="5">
-          <Tabs>
-            <TabList>
-              {/* `prefix`, though this tab's href is the root every other
-                  view hangs off: bui picks the active tab by the *most* path
-                  segments matched, so Serving still wins on its own path. What
-                  prefix buys is the create and detail pages, which are the
-                  list's own sub-routes and keep it highlighted. */}
-              <Tab id="configs" href={basePath} matchStrategy="prefix">
-                Model configs
-              </Tab>
-              {servingLayer &&
-                SERVING_VIEWS.map(view => (
-                  <Tab
-                    key={view.path}
-                    id={view.path}
-                    href={`${basePath}/${view.path}`}
-                    matchStrategy="prefix"
-                  >
-                    {view.title}
-                  </Tab>
-                ))}
-            </TabList>
-          </Tabs>
-        </Box>
-      )}
-      <Routes>
-        <Route index element={<ModelConfigsPage />} />
-        <Route path="new" element={<NewModelPage />} />
-        {/* `new` (one segment) and the four-segment edit path can never be
-            swallowed by the three-segment detail path: react-router matches
-            on segment count. */}
-        <Route
-          path="edit/:installation/:namespace/:name"
-          element={<EditModelPage />}
-        />
-        <Route
-          path=":installation/:namespace/:name"
-          element={<ModelDetailPage />}
-        />
-        <Route path="serving" element={<ServingPage />} />
-        <Route path="capacity" element={<GpuCapacityPage />} />
-        {hostingFlowRoutes}
-      </Routes>
-    </>
-  );
-};
 
 /**
  * Content of the "Models" tab. Mounted as the tab's content (a descendant

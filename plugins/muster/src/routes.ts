@@ -30,11 +30,6 @@ export const newMcpServerAuthRouteRef = createSubRouteRef({
   parent: mcpServersRouteRef,
 });
 
-export const newMcpServerReviewRouteRef = createSubRouteRef({
-  path: '/new/review',
-  parent: mcpServersRouteRef,
-});
-
 export const newMcpServerVerifyRouteRef = createSubRouteRef({
   path: '/new/verify',
   parent: mcpServersRouteRef,

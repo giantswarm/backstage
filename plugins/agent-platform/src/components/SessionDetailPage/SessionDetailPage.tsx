@@ -8,10 +8,10 @@ import {
   useState,
 } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Content, Link } from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Badge, Button, Flex, Text } from '@backstage/ui';
-import { makeStyles, useMediaQuery, useTheme } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core';
 import {
   DateComponent,
   EmptyStateCard,
@@ -40,7 +40,6 @@ import { useSendMessage } from '../../hooks/useSendMessage';
 import { useSessionDetail } from '../../hooks/useSessionDetail';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import { useAgentIndex } from '../../hooks/useAgentIndex';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -51,7 +50,6 @@ import {
   isRuntimeLostFailureText,
   RuntimeLoss,
   SessionState,
-  SessionStateEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   agentDetailRouteRef,
@@ -61,7 +59,6 @@ import {
 import { InstallationChip } from '../InstallationChip';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { SessionComposer } from '../SessionComposer';
-import { SessionSwitcherRail } from '../SessionSwitcherRail';
 import {
   RUNTIME_LOST_LABEL,
   RUNTIME_LOST_TITLE,
@@ -98,17 +95,6 @@ import { sendKeyCaption } from '../../lib/sendKey';
 const AVATAR_SIZE: AvatarSize = 48;
 
 const useStyles = makeStyles(theme => ({
-  // Rail beside content. `alignItems` must stay at its `stretch` default — a
-  // `flex-start` here would content-size the rail and stop it sticking past its
-  // own height, which is the bug that makes a sticky flex child look broken.
-  page: {
-    display: 'flex',
-    gap: theme.spacing(3),
-  },
-  main: {
-    flex: 1,
-    minWidth: 0,
-  },
   // One readable column, like any chat surface: full-bleed prose is hard to
   // scan, and the conversation is what this page is for.
   //
@@ -153,9 +139,8 @@ const useStyles = makeStyles(theme => ({
     marginTop: 'auto',
     position: 'sticky',
     // At phone width the agent shell draws a fixed bottom bar; the variable
-    // (agent-shell.css) is its height there and 0px everywhere else — the
-    // fallback keeps classic chrome, where the shell never defines it, at the
-    // viewport's edge. Without the offset the bar covered the composer.
+    // (agent-shell.css) is its height there and 0px everywhere else. Without
+    // the offset the bar covered the composer.
     bottom: 'var(--agent-shell-mobile-bar-height, 0px)',
     zIndex: 1,
     backgroundColor: `var(--bui-bg-app, ${theme.palette.background.default})`,
@@ -208,40 +193,22 @@ function BackToSessions({ children }: { children: ReactNode }) {
 }
 
 /**
- * The page's outer frame.
- *
- * Inside the agent-platform shell it is the platform-standard page frame
- * (`ShellPage`, the one All Sessions and Customize use): breadcrumbs reading
+ * The page's outer frame: the platform-standard page frame (`ShellPage`, the
+ * one All Sessions and Customize use) — breadcrumbs reading
  * "Sessions / Session", the session's name as the h1 at the standard scale,
  * and the badges beside it. The actions the page registers land in that
  * header's slot.
  *
- * In classic chrome it is the switcher rail, then the conversation column.
- *
  * A separate component so every one of the page's exits gets it — loading,
- * not-found, unreadable, and the real thing. A session that has been deleted is
- * *precisely* when the switcher is wanted, and a rail that vanished on the error
- * states would strand the reader on a dead page with only the back link.
- *
- * The rail is not rendered below `sm`, rather than hidden with CSS, so a narrow
- * viewport does not pay for its two queries and their polling. Nor is it
- * rendered inside the agent-platform shell, whose own rail lists the recent
- * sessions.
+ * not-found, unreadable, and the real thing.
  */
 function Shell({
-  installation,
-  sessionId,
-  currentSessionState,
   title,
   documentTitle,
   badges,
   meta,
   children,
 }: {
-  installation: string;
-  sessionId: string;
-  /** Only the loaded path knows this; the early returns leave it undefined. */
-  currentSessionState?: SessionStateEntry;
   /** The shell header's h1; the exits leave it to the fallback "Session". */
   title?: ReactNode;
   /** The session's name for the document title, as the h1 is a button. */
@@ -252,44 +219,25 @@ function Shell({
   meta?: ReactNode;
   children: ReactNode;
 }) {
-  const classes = useStyles();
-  const theme = useTheme();
-  const agentShell = useAgentShell();
-  const showRail = useMediaQuery(theme.breakpoints.up('sm')) && !agentShell;
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
-  if (agentShell) {
-    return (
-      <ShellPage
-        // The exits (loading, not found, unreadable) have no name to show;
-        // "Session" keeps the frame honest about where the reader is.
-        title={title ?? 'Session'}
-        documentTitle={[documentTitle || 'Session', 'Sessions']}
-        // Singular "Session" last: this page is one conversation, and the
-        // linked "Sessions" ancestor is the way back to the list.
-        breadcrumbs={[
-          { label: 'Sessions', href: sessionsRoute?.() },
-          { label: 'Session' },
-        ]}
-        badges={badges}
-        meta={meta}
-      >
-        {children}
-      </ShellPage>
-    );
-  }
-
   return (
-    <Content className={classes.page}>
-      {showRail && (
-        <SessionSwitcherRail
-          installation={installation}
-          currentSessionId={sessionId}
-          currentSessionState={currentSessionState}
-        />
-      )}
-      <div className={classes.main}>{children}</div>
-    </Content>
+    <ShellPage
+      // The exits (loading, not found, unreadable) have no name to show;
+      // "Session" keeps the frame honest about where the reader is.
+      title={title ?? 'Session'}
+      documentTitle={[documentTitle || 'Session', 'Sessions']}
+      // Singular "Session" last: this page is one conversation, and the
+      // linked "Sessions" ancestor is the way back to the list.
+      breadcrumbs={[
+        { label: 'Sessions', href: sessionsRoute?.() },
+        { label: 'Session' },
+      ]}
+      badges={badges}
+      meta={meta}
+    >
+      {children}
+    </ShellPage>
   );
 }
 
@@ -335,10 +283,6 @@ export function SessionDetailPage() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
-  // Which frame this page renders in — see `Shell`. Read here too because the
-  // header's parts live in the `ShellPage` header inside the shell and in the
-  // conversation column in classic chrome.
-  const agentShell = useAgentShell();
   const touch = useTouchInput();
 
   // Before the reads, because it gates them: a delete is in flight from this very
@@ -365,7 +309,6 @@ export function SessionDetailPage() {
     timeline,
     state,
     currentTaskId,
-    stateChangedAt,
     isAgentWorking: agentIsWorking,
     turnProgress,
     pendingConfirmation,
@@ -639,15 +582,14 @@ export function SessionDetailPage() {
   // `openRename` is stable, so this element's identity only changes when one of them
   // actually does — which is what keeps the header slot from re-registering (and
   // re-rendering) on every poll.
-  // The header's pin, inside the shell only: pins are what order the shell's
-  // rail and sessions list, and classic chrome shows them nowhere. Storage
-  // backed rather than react-query backed, so it works from the shared header.
+  // The header's pin: pins are what order the shell's rail and sessions
+  // list. Storage backed rather than react-query backed, so it works from the shared header.
   const { isPinned, togglePin } = usePinnedSessions();
   const rowId = row?.id;
   const pinned = rowId ? isPinned(rowId) : false;
   const pin = useMemo(
     () =>
-      agentShell && rowId
+      rowId
         ? {
             isPinned: pinned,
             onToggle: () => {
@@ -657,7 +599,7 @@ export function SessionDetailPage() {
             },
           }
         : undefined,
-    [agentShell, rowId, pinned, togglePin],
+    [rowId, pinned, togglePin],
   );
 
   const actions = useMemo(
@@ -915,37 +857,6 @@ export function SessionDetailPage() {
     return state;
   }, [showWorking, isStalled, state]);
 
-  /**
-   * What the rail should believe about *this* session.
-   *
-   * The rail's own source is a summary the backend caches for 15 s, so it is
-   * structurally behind this page — which polls the session's tasks directly and
-   * additionally knows about a send still in flight. Left to the summary, a
-   * message appended to an idle session would leave it filed as idle while the
-   * agent is visibly working beside it.
-   *
-   * Built from {@link shownState}, so the rail, the header and the "Working…"
-   * row cannot disagree about whether the agent is busy. When nothing is in
-   * flight this still overrides, with the state and timestamp read from the
-   * same task — a fresher copy of what the summary would eventually say. A
-   * stalled turn stays under the rail's Running group with the age of its last
-   * progress, as every session stuck in an active state does there
-   * (`groupActiveSessions`); the rail has no word per session to change.
-   */
-  const currentSessionState = useMemo<SessionStateEntry | undefined>(() => {
-    if (showWorking) {
-      return { sessionId, state: 'working', changedAt: Date.now() };
-    }
-    if (!shownState) {
-      return undefined;
-    }
-    return {
-      sessionId,
-      state: shownState.raw,
-      ...(stateChangedAt === undefined ? {} : { changedAt: stateChangedAt }),
-    };
-  }, [showWorking, sessionId, shownState, stateChangedAt]);
-
   // The conversation column and the chat bar docked at its end, held as state
   // through callback refs: both exist only on the loaded path (and the dock
   // only while a composer is offered), and the layout hook re-measures when
@@ -982,8 +893,6 @@ export function SessionDetailPage() {
   if (isLoading) {
     return (
       <Shell
-        installation={installation}
-        sessionId={sessionId}
         title={<ShellPageTitleSkeleton label="Loading session" />}
         badges={<ShellPageBadgeSkeleton />}
       >
@@ -994,7 +903,7 @@ export function SessionDetailPage() {
 
   if (isNotFound) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
+      <Shell>
         <EmptyStateCard
           title="Session not found"
           description={`No session with this id on ${
@@ -1020,7 +929,7 @@ export function SessionDetailPage() {
   // over a session that has a full conversation. Absent is not empty.
   if (!detail || !row || !hasConversation) {
     return (
-      <Shell installation={installation} sessionId={sessionId}>
+      <Shell>
         <Flex direction="column" gap="3">
           <Alert
             status="danger"
@@ -1292,10 +1201,8 @@ export function SessionDetailPage() {
         })
       : undefined;
 
-  /* The header's parts, built once and placed by the frame: in the shell they
-     are the `ShellPage` header's title, badges and meta — the same scale and
-     position every platform page uses — and in classic chrome the conversation
-     column's own header below. */
+  /* The header's parts, placed by the frame: the `ShellPage` header's title,
+     badges and meta — the same scale and position every platform page uses. */
 
   /* The underline on hover says "this does something"; it does not say what.
      Everything else up here is inert text, so without a label the affordance is
@@ -1304,8 +1211,8 @@ export function SessionDetailPage() {
      A real <button>, stripped of its chrome, rather than a click handler on
      the heading: the title is an editing affordance, and only a button is
      reachable by keyboard and announced as actionable. Everything visual is
-     inherited — in the shell from `ShellPage`'s h1, in classic chrome from the
-     `Text` inside — so it still reads as the heading it replaces.
+     inherited from `ShellPage`'s h1, so it still reads as the heading it
+     replaces.
 
      A native `title` rather than a tooltip component, as `DateComponent`
      does: bui's wraps react-aria's `TooltipTrigger`, which only wires up its
@@ -1323,17 +1230,9 @@ export function SessionDetailPage() {
       aria-label={`Rename session "${sessionTitle}"`}
       title="Rename session"
     >
-      {agentShell ? (
-        // Bare text, so the button inherits ShellPage's h1 typography — the
-        // platform-standard title scale.
-        sessionTitle
-      ) : (
-        // `as="span"`: Text renders a <p> by default, which is not valid
-        // inside a button.
-        <Text as="span" variant="title-medium">
-          {sessionTitle}
-        </Text>
-      )}
+      {/* Bare text, so the button inherits ShellPage's h1 typography — the
+          platform-standard title scale. */}
+      {sessionTitle}
     </button>
   );
 
@@ -1414,9 +1313,6 @@ export function SessionDetailPage() {
 
   return (
     <Shell
-      installation={installation}
-      sessionId={sessionId}
-      currentSessionState={currentSessionState}
       title={titleButton}
       documentTitle={row.title}
       badges={
@@ -1442,26 +1338,6 @@ export function SessionDetailPage() {
             title="This session may be out of date"
             description={`The last refresh failed: ${error.message}`}
           />
-        )}
-
-        {/* In the shell the header above already carries all of this at the
-            platform-standard scale; repeating it here would double the title. */}
-        {!agentShell && (
-          <Flex direction="column" gap="2">
-            <BackToSessions>← Sessions</BackToSessions>
-            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-              {titleButton}
-              {stateBadges}
-            </Flex>
-
-            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-              {agentIdentity}
-            </Flex>
-
-            <Text variant="body-small" color="secondary">
-              {startedMeta}
-            </Text>
-          </Flex>
         )}
 
         <SessionTimeline

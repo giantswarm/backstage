@@ -1,5 +1,4 @@
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState, type ReactNode } from 'react';
@@ -18,7 +17,6 @@ import {
   normalizeSessionDetail,
   normalizeTaskList,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockDesktopLayout,
@@ -58,37 +56,6 @@ jest.mock('../AgentsDataProvider', () => ({
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
-}));
-
-// The rail runs its own queries and this test mounts no query client, so it is
-// stubbed — its own suite covers what it renders. What matters here is *where*
-// the page puts it, and that it survives every one of the page's exits.
-jest.mock('../SessionSwitcherRail', () => ({
-  SessionSwitcherRail: ({
-    installation,
-    currentSessionId,
-    currentSessionState,
-  }: {
-    installation: string;
-    currentSessionId?: string;
-    currentSessionState?: { state: string | null };
-  }) => (
-    <div
-      data-testid="session-switcher-rail"
-      data-current-state={currentSessionState?.state ?? ''}
-    >
-      {installation}/{currentSessionId}
-    </div>
-  ),
-}));
-
-// jsdom implements no matchMedia, so MUI's useMediaQuery answers false and the
-// rail would never render. Driven explicitly instead, so both branches are real
-// tests rather than an accident of the environment.
-const mockMatchesUpSm = jest.fn(() => true);
-jest.mock('@material-ui/core', () => ({
-  ...jest.requireActual('@material-ui/core'),
-  useMediaQuery: () => mockMatchesUpSm(),
 }));
 
 // The page calls all of these on the menu's behalf, because the menu renders in
@@ -282,15 +249,8 @@ const emptyTimeline = {
   skippedMessages: 0,
 };
 
-async function render({
-  agentShell = FeatureFlagState.None,
-}: { agentShell?: FeatureFlagState } = {}) {
+async function render() {
   return renderInTestApp(<SessionDetailPage />, {
-    apis: [
-      mockApis.featureFlags({
-        initialStates: { [AGENT_SHELL_FLAG]: agentShell },
-      }),
-    ],
     // `agentsRouteRef` is here for the link on the agent's name, which resolves
     // through `agentDetailRouteRef` — a SubRouteRef, which `mountedRoutes` does not
     // take, so its parent is what gets mounted.
@@ -2228,113 +2188,8 @@ describe('SessionDetailPage', () => {
     });
   });
 
-  describe('the session switcher rail', () => {
-    it('renders beside the conversation', async () => {
-      await render();
-
-      expect(screen.getByTestId('session-switcher-rail')).toHaveTextContent(
-        'gazelle/abc',
-      );
-    });
-
-    it.each([
-      ['loading', { isLoading: true }],
-      ['not found', { detail: undefined, isNotFound: true }],
-      [
-        'unreadable',
-        { detail: undefined, hasConversation: false, error: new Error('nope') },
-      ],
-    ])('still renders when the session is %s', async (_label, overrides) => {
-      // A dead session is precisely when the switcher is wanted: without it the
-      // reader is stranded on a page whose only way out is the back link.
-      mockUseSessionDetail.mockReturnValue({
-        ...loadedView,
-        timeline: emptyTimeline,
-        ...overrides,
-      } as never);
-
-      await render();
-
-      expect(screen.getByTestId('session-switcher-rail')).toBeInTheDocument();
-    });
-
-    it('tells the rail the agent is working while a send is in flight', async () => {
-      // The reported bug: appending a message to a finished session left it in
-      // the rail's "Recently finished" group, because the rail's only source is
-      // a summary the backend caches for 15s. The page owns the fresher answer
-      // for its own session, and `showWorking` is the same signal the
-      // "Working…" indicator uses, so the two cannot disagree.
-      mockUseSessionDetail.mockReturnValue({
-        ...loadedView,
-        state: { ...loadedView.state, raw: 'completed', isActive: false },
-        // false, so the assertion can only pass because of the in-flight send —
-        // which is the gap the conversation's own verdict cannot cover.
-        isAgentWorking: false,
-      } as never);
-      mockUseSendMessage.mockReturnValue(idleSend({ isSending: true }));
-
-      await render();
-
-      expect(screen.getByTestId('session-switcher-rail')).toHaveAttribute(
-        'data-current-state',
-        'working',
-      );
-    });
-
-    it('otherwise reports the state read from the conversation', async () => {
-      mockUseSessionDetail.mockReturnValue({
-        ...loadedView,
-        state: { ...loadedView.state, raw: 'completed', isActive: false },
-        isAgentWorking: false,
-      } as never);
-
-      await render();
-
-      expect(screen.getByTestId('session-switcher-rail')).toHaveAttribute(
-        'data-current-state',
-        'completed',
-      );
-    });
-
-    it('renders while the agent shell flag is off', async () => {
-      await render({ agentShell: FeatureFlagState.None });
-
-      expect(screen.getByTestId('session-switcher-rail')).toBeInTheDocument();
-    });
-
-    it('offers no header pin outside the shell, where pins show nowhere', async () => {
-      await render({ agentShell: FeatureFlagState.None });
-
-      expect(lastProvidedActions().props.pin).toBeUndefined();
-    });
-
-    it('is not rendered inside the agent shell, whose rail lists the sessions', async () => {
-      await render({ agentShell: FeatureFlagState.Active });
-
-      expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
-      expect(screen.getByTestId('installation-chip')).toHaveTextContent(
-        'gazelle',
-      );
-    });
-
-    it('is not rendered at all on a narrow viewport', async () => {
-      // Not merely hidden: a narrow viewport should not pay for the rail's two
-      // queries and their polling.
-      // For every render, not just the first: the page re-renders once after
-      // mount (the docked composer's layout measures the column, T40).
-      mockMatchesUpSm.mockReturnValue(false);
-      try {
-        await render();
-
-        expect(screen.queryByTestId('session-switcher-rail')).toBeNull();
-      } finally {
-        mockMatchesUpSm.mockReturnValue(true);
-      }
-    });
-  });
-
-  describe('the header inside the agent shell', () => {
-    const renderShell = () => render({ agentShell: FeatureFlagState.Active });
+  describe('the header', () => {
+    const renderShell = render;
 
     it('heads the page with the platform-standard frame', async () => {
       // The ShellPage idiom every platform page uses (All Sessions, Customize):

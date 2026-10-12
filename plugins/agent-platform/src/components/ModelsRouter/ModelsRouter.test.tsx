@@ -9,11 +9,8 @@ import { modelsRouteRef } from '../../routes';
 import { ModelsRouter } from './ModelsRouter';
 
 // The views are irrelevant here — this is about the tab's routing and which
-// second-level tabs it offers — and stubbing them keeps the tree free of the
+// tabs model hosting offers — and stubbing them keeps the tree free of the
 // kubernetes reads they do.
-jest.mock('../ModelConfigsPage', () => ({
-  ModelConfigsPage: () => <div>configs-view</div>,
-}));
 jest.mock('../NewModelPage', () => ({
   NewModelPage: () => <div>new-model-view</div>,
 }));
@@ -24,9 +21,7 @@ jest.mock('../ServingPage', () => ({
   ServingPage: () => <div>serving-view</div>,
 }));
 jest.mock('../GpuCapacityPage', () => ({
-  GpuCapacityPage: ({ showModelCache }: { showModelCache?: boolean }) => (
-    <div>capacity-view{showModelCache === false ? ' without cache' : ''}</div>
-  ),
+  GpuCapacityPage: () => <div>capacity-view</div>,
 }));
 jest.mock('../ModelCachePage', () => ({
   ModelCachePage: () => <div>cache-view</div>,
@@ -65,11 +60,6 @@ jest.mock('../ServedModelRowsProvider', () => ({
   ServedModelRowsProvider: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
-}));
-
-let mockAgentShell = false;
-jest.mock('../../hooks/useAgentShell', () => ({
-  useAgentShell: () => mockAgentShell,
 }));
 
 const CurrentPath = () => {
@@ -112,14 +102,12 @@ const withServingLayer: Partial<ServingContextValue> = {
 
 describe('ModelsRouter', () => {
   beforeEach(() => {
-    mockAgentShell = false;
     mockClusterManager = [];
     mockUseServing.mockReset();
     mockUseServing.mockReturnValue(noServingLayer);
   });
 
-  it('sends the tab root to the Customize screen inside the agent shell', async () => {
-    mockAgentShell = true;
+  it('sends the tab root to the Customize screen', async () => {
     mockUseServing.mockReturnValue(withServingLayer);
     renderTab('/agent-platform/models?installation=alpha');
 
@@ -128,20 +116,10 @@ describe('ModelsRouter', () => {
         '/customize/models?installation=alpha',
       );
     });
-    expect(screen.queryByText('configs-view')).not.toBeInTheDocument();
   });
 
-  it('keeps the Serving view inside the agent shell', async () => {
-    mockAgentShell = true;
-    mockUseServing.mockReturnValue(withServingLayer);
-    renderTab('/agent-platform/models/serving');
-
-    expect(await screen.findByText('serving-view')).toBeInTheDocument();
-  });
-
-  describe('model hosting inside the agent shell', () => {
+  describe('model hosting', () => {
     beforeEach(() => {
-      mockAgentShell = true;
       mockUseServing.mockReturnValue(withServingLayer);
     });
 
@@ -191,9 +169,7 @@ describe('ModelsRouter', () => {
       mockClusterManager = ['inst-1'];
       renderTab('/agent-platform/models/capacity');
 
-      expect(
-        await screen.findByText('capacity-view without cache'),
-      ).toBeInTheDocument();
+      expect(await screen.findByText('capacity-view')).toBeInTheDocument();
       expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([
         'Running models',
         'GPU pools',
@@ -214,7 +190,7 @@ describe('ModelsRouter', () => {
 
     it.each([
       ['serving', 'serving-view', 'all'],
-      ['capacity', 'capacity-view without cache', 'gpu'],
+      ['capacity', 'capacity-view', 'gpu'],
       ['cache', 'cache-view', 'cache'],
     ])(
       'heads the %s view with the figures about what it lists',
@@ -246,138 +222,6 @@ describe('ModelsRouter', () => {
     });
   });
 
-  it('renders the ModelConfigs list at the tab root, with no redirect', async () => {
-    renderTab('/agent-platform/models?installation=alpha');
-
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    // The list is the tab's own page now, so the location is left alone —
-    // query string included.
-    await waitFor(() => {
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models?installation=alpha',
-      );
-    });
-  });
-
-  it('links the second-level tabs to absolute view paths', async () => {
-    mockUseServing.mockReturnValue(withServingLayer);
-    renderTab('/agent-platform/models');
-
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
-      'href',
-      '/agent-platform/models',
-    );
-    expect(screen.getByRole('tab', { name: 'Serving' })).toHaveAttribute(
-      'href',
-      '/agent-platform/models/serving',
-    );
-    expect(screen.getByRole('tab', { name: 'GPU capacity' })).toHaveAttribute(
-      'href',
-      '/agent-platform/models/capacity',
-    );
-  });
-
-  it('keeps the right tab selected, though they all hang off the same root', async () => {
-    // The Model configs tab's href *is* the root the other two hang off, so it
-    // matches their paths too. bui resolves that by most segments matched, and
-    // this is the assertion that says so: break it and Serving would open with
-    // Model configs highlighted.
-    mockUseServing.mockReturnValue(withServingLayer);
-    const first = renderTab('/agent-platform/models/serving');
-    expect(await screen.findByText('serving-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Serving' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
-      'aria-selected',
-      'false',
-    );
-    first.unmount();
-
-    // And the create page is the list's own sub-route, so its tab stays lit.
-    renderTab('/agent-platform/models/new');
-    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-  });
-
-  it('renders no tab strip on the list while no installation has a serving layer', async () => {
-    // There is one view, so there is nothing to switch between: a lone tab
-    // would only lead back to the page it is on.
-    renderTab('/agent-platform/models');
-
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    expect(screen.queryAllByRole('tab')).toHaveLength(0);
-  });
-
-  it('offers the serving tabs when an installation with a serving layer could not be read', async () => {
-    mockUseServing.mockReturnValue({
-      ...noServingLayer,
-      unreachableInstallations: ['inst-3'],
-    });
-    renderTab('/agent-platform/models');
-
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Serving' })).toBeInTheDocument();
-  });
-
-  it('offers the serving tabs for a model-manager that runs no backend yet', async () => {
-    // model-manager ships with zero backends; registering one happens on the
-    // Serving view, so the views are offered as soon as it answers.
-    mockUseServing.mockReturnValue({
-      ...withServingLayer,
-      backends: {},
-      sourceBackends: { 'inst-1': [] },
-    });
-    renderTab('/agent-platform/models');
-
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Serving' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('tab', { name: 'GPU capacity' }),
-    ).toBeInTheDocument();
-  });
-
-  it('routes the Serving and GPU capacity views', async () => {
-    mockUseServing.mockReturnValue(withServingLayer);
-    const first = renderTab('/agent-platform/models/serving');
-    expect(await screen.findByText('serving-view')).toBeInTheDocument();
-    first.unmount();
-
-    renderTab('/agent-platform/models/capacity');
-    expect(await screen.findByText(/^capacity-view/)).toBeInTheDocument();
-  });
-
-  it('keeps a way back on a deep-linked Serving view without a serving layer', async () => {
-    // The route stays mounted, so the page renders its own empty state — and
-    // there would be nothing on it leading anywhere. The Model configs tab is
-    // the way out, so the strip is kept here even though it holds one tab.
-    renderTab('/agent-platform/models/serving');
-
-    expect(await screen.findByText('serving-view')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Model configs' })).toHaveAttribute(
-      'href',
-      '/agent-platform/models',
-    );
-    // The view exists nowhere on this fleet, so it is still not offered.
-    expect(
-      screen.queryByRole('tab', { name: 'Serving' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('keeps a way back from the create page without a serving layer', async () => {
-    renderTab('/agent-platform/models/new');
-
-    expect(await screen.findByText('new-model-view')).toBeInTheDocument();
-    expect(
-      screen.getByRole('tab', { name: 'Model configs' }),
-    ).toBeInTheDocument();
-  });
-
   it('routes the create and detail flows directly under the tab', async () => {
     const first = renderTab('/agent-platform/models/new');
     expect(await screen.findByText('new-model-view')).toBeInTheDocument();
@@ -387,13 +231,12 @@ describe('ModelsRouter', () => {
     expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
   });
 
-  it('redirects the legacy configs view to the tab root, keeping the query string', async () => {
+  it('redirects the legacy configs view through the tab root, keeping the query string', async () => {
     renderTab('/agent-platform/models/configs?installation=alpha');
 
-    expect(await screen.findByText('configs-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models?installation=alpha',
+        '/customize/models?installation=alpha',
       );
     });
   });

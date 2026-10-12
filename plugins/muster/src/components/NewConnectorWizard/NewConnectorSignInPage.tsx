@@ -251,7 +251,7 @@ export function NewConnectorSignInPage() {
     }
   }, [connectLink, navigate, registeredName]);
 
-  // Guarded like the classic steps: when this render only redirects, pushing
+  // Guarded: when this render only redirects, pushing
   // actions into the footer slot would flash controls for an unseen page.
   const isRedirecting = detailsErrors.length > 0;
   useProvidePageHeaderActions(isRedirecting ? null : actions);

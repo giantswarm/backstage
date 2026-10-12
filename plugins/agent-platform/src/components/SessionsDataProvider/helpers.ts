@@ -274,38 +274,6 @@ export function sortSessionRows(
   });
 }
 
-/**
- * Sort rows for the table, by column id and direction.
- *
- * Timestamp columns compare parsed times so string ordering can't mislead, and
- * rows with an unknown timestamp always sort last — in *both* directions, since
- * "unknown" is not "oldest".
- */
-export function sortSessionsBy<T extends SessionRow>(
-  rows: T[],
-  sort: { column: unknown; direction: 'ascending' | 'descending' },
-): T[] {
-  const column = String(sort.column);
-  const factor = sort.direction === 'ascending' ? 1 : -1;
-
-  return [...rows].sort((a, b) => {
-    if (column === 'createdAt') {
-      const aTime = timestampValue(a[column]);
-      const bTime = timestampValue(b[column]);
-      if (aTime === bTime) {
-        return a.title.localeCompare(b.title);
-      }
-      if (aTime === undefined) return 1;
-      if (bTime === undefined) return -1;
-      return (aTime - bTime) * factor;
-    }
-
-    const aValue = String(a[column as keyof T] ?? '');
-    const bValue = String(b[column as keyof T] ?? '');
-    return aValue.localeCompare(bValue) * factor;
-  });
-}
-
 /** Free-text search over the title and the agent name. */
 export function sessionSearchFn<T extends SessionRow>(
   rows: T[],

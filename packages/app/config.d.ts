@@ -50,9 +50,8 @@ export interface Config {
      *   `agentPlatform` is on.
      *
      * The shell's Sessions, Agents, Models and Usage screens live on the
-     * `page:agent-platform` extension, which is disabled by default: enable it
-     * in `app.extensions` wherever `agentPlatform` is on. Both off reads as
-     * the default.
+     * `page:agent-platform` extension, which is enabled by default and
+     * mounted only where the shell is on. Both off reads as the default.
      */
     portals?: {
       /**

@@ -1,6 +1,5 @@
 import { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { Box, Flex, Tab, TabList, Tabs } from '@backstage/ui';
 import {
   ShellPage,
   useSplatBasePath,
@@ -13,8 +12,6 @@ import { UsageOverviewPage } from '../UsageOverviewPage';
 import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
 import { UsageConnectorsPage } from '../UsageConnectorsPage';
-import { UsageColumn } from '../UsageColumn';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { UsageScopeBar } from './UsageScopeBar';
 
 // The Usage screen's views: Overview · Cost · Your sessions · Connectors.
@@ -72,7 +69,7 @@ const IndexRedirect = () => {
  * lands on Connectors, `/usage/technical` (the Technical details view) on
  * Overview, and the catch-all handles a guess or a typo.
  *
- * The routed views alone, shared by both frames below.
+ * The routed views.
  */
 const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
   const basePath = useSplatBasePath();
@@ -121,13 +118,12 @@ const UsageViewRoutes = ({ sections }: { sections?: ReactNode[] }) => {
 };
 
 /**
- * Inside the agent-platform shell: the platform-standard page frame
- * (`ShellPage`, the one Sessions and Customize use) — "Usage" as the h1 at the
+ * The platform-standard page frame (`ShellPage`, the one Sessions and Customize use) — "Usage" as the h1 at the
  * standard scale with its one-line description, the scope controls at the
  * header's right, and the views as the page's routed tabs. The screen has one
  * title; each view adds none of its own.
  */
-const ShellUsageViews = ({ sections }: { sections?: ReactNode[] }) => {
+const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
   const { search, pathname } = useLocation();
   const views = usageViews(hasSectionsIn(sections));
   // The open view names the document: "Cost · Usage · Agent Platform".
@@ -151,72 +147,6 @@ const ShellUsageViews = ({ sections }: { sections?: ReactNode[] }) => {
     >
       <UsageViewRoutes sections={sections} />
     </ShellPage>
-  );
-};
-
-/**
- * The tab strip plus the routed view. The tabs are navigation links whose
- * active state follows the route (`matchStrategy`); the content is driven by
- * the router, not by TabPanels. Beside the strip sit the scope controls: the
- * Environment selector (only when more than one installation is configured)
- * and the time window, both URL state so they survive the tab switch — which
- * is also why each tab's href carries the current search.
- *
- * In classic chrome the Agent Platform page's header titles the screen and
- * this draws the second-level strip under it; inside the shell the frame is
- * `ShellUsageViews`.
- */
-const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
-  const basePath = useSplatBasePath();
-  const { search } = useLocation();
-  const agentShell = useAgentShell();
-
-  if (agentShell) {
-    return <ShellUsageViews sections={sections} />;
-  }
-
-  return (
-    <>
-      {/* Inset the controls and the tab strip by the page gutter so they line
-          up with the level-1 header tabs and the content below. `px="5"` is
-          hand-matched to the horizontal padding the bui PluginHeader / Content
-          apply (bui space-5 = 20px), the same value ModelsRouter uses; if bui
-          ever changes that gutter both have to follow. Inside the gutter the
-          strip sits in the same centered column as the content below it, so
-          the two stay aligned on wide screens. */}
-      <Box px="5">
-        <UsageColumn>
-          <Flex
-            justify="between"
-            align="end"
-            gap="3"
-            style={{ flexWrap: 'wrap' }}
-          >
-            <Tabs>
-              <TabList>
-                {usageViews(hasSectionsIn(sections)).map(view => (
-                  <Tab
-                    key={view.path}
-                    id={view.path}
-                    // Absolute, from the splat base path. A *relative* bui href
-                    // inside a splat route resolves against the whole current
-                    // pathname, so it appends the active segment instead of
-                    // replacing it. The search keeps the scope (installation,
-                    // window) across the switch.
-                    href={`${basePath}/${view.path}${search}`}
-                    matchStrategy="prefix"
-                  >
-                    {view.title}
-                  </Tab>
-                ))}
-              </TabList>
-            </Tabs>
-            <UsageScopeBar />
-          </Flex>
-        </UsageColumn>
-      </Box>
-      <UsageViewRoutes sections={sections} />
-    </>
   );
 };
 

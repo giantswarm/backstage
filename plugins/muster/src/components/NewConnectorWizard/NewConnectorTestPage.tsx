@@ -138,8 +138,11 @@ export function NewConnectorTestPage() {
   );
 
   // After an update the CR keeps the previous configuration's status until
-  // muster reconciles the new spec — hold the verdict back until the
-  // generations agree (see NewMcpServerVerifyPage for the long form).
+  // muster reconciles the new spec, so a "Connected" read would confirm a
+  // change not yet applied. The Ready condition's observedGeneration trailing
+  // metadata.generation says so; the verdict waits until they agree. Until
+  // the server list is read again after the update, the CR in hand is the
+  // pre-update one (its generations agree), so that counts as applying too.
   const isPreUpdateRead =
     lastSave === 'update' &&
     lastSaveAt !== undefined &&

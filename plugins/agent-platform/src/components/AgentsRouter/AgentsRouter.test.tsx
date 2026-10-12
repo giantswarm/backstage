@@ -10,9 +10,6 @@ import { AgentsRouter } from './AgentsRouter';
 // The pages are irrelevant here — this is about which route claims which URL —
 // and stubbing them keeps the tree free of the kubernetes and muster reads they
 // do.
-jest.mock('../AgentsIndexPage', () => ({
-  AgentsIndexPage: () => <div>agents-index</div>,
-}));
 jest.mock('../AgentDetailPage', () => ({
   AgentDetailPage: () => <div>agent-detail</div>,
 }));
@@ -47,11 +44,6 @@ jest.mock('../NewAgentFormProvider', () => ({
   ),
 }));
 
-let mockAgentShell = false;
-jest.mock('../../hooks/useAgentShell', () => ({
-  useAgentShell: () => mockAgentShell,
-}));
-
 function LocationProbe() {
   const { pathname, search } = useLocation();
   return <div>{`at ${pathname}${search}`}</div>;
@@ -73,29 +65,15 @@ function renderTab(path: string) {
 const AGENT = '/agent-platform/agents/gazelle/agent-platform/pr-reviewer';
 
 describe('AgentsRouter', () => {
-  beforeEach(() => {
-    mockAgentShell = false;
-  });
-
-  it('renders the list at the tab index', async () => {
-    renderTab('/agent-platform/agents');
-
-    expect(await screen.findByText('agents-index')).toBeInTheDocument();
-    expect(screen.queryByText(/^at \/customize/)).not.toBeInTheDocument();
-  });
-
-  it('sends the tab index to the Customize screen inside the agent shell', async () => {
-    mockAgentShell = true;
+  it('sends the tab index to the Customize screen', async () => {
     renderTab('/agent-platform/agents?installation=gazelle');
 
     expect(
       await screen.findByText('at /customize/agents?installation=gazelle'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('agents-index')).not.toBeInTheDocument();
   });
 
-  it('keeps an agent page inside the agent shell', async () => {
-    mockAgentShell = true;
+  it('routes an agent page', async () => {
     renderTab(AGENT);
 
     expect(await screen.findByText('agent-detail')).toBeInTheDocument();

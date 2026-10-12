@@ -1,15 +1,13 @@
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useGpuNodePoolControls } from '../GpuNodePools';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { useServing } from '../ServingProvider';
 
 /**
  * The "Model cache" view of Model hosting: the volumes model weights are
  * cached on, per cluster, as cluster-manager lists them — their size, price
  * and since when, with **Remove cache** where the installation's
- * cluster-manager offers it. The same card the GPU capacity view shows in
- * classic chrome, as a tab of its own inside the shell, per the prototype.
+ * cluster-manager offers it. A tab of its own, per the prototype.
  *
  * Where no reachable installation runs cluster-manager there are no claims to
  * list and the empty state says so. Must be mounted inside a ServingProvider
@@ -24,7 +22,7 @@ export function ModelCachePage() {
   );
 
   return (
-    <ShellAwareContent>
+    <>
       {pools.dialogs}
       {pools.cachePanel ?? (
         <EmptyStateCard
@@ -32,6 +30,6 @@ export function ModelCachePage() {
           description="The model cache keeps model weights between serves. cluster-manager lists it per cluster, and no environment in reach runs cluster-manager."
         />
       )}
-    </ShellAwareContent>
+    </>
   );
 }

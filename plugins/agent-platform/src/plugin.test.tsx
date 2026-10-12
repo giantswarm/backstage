@@ -12,7 +12,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
+import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { agentPlatformPlugin } from './plugin';
 
 function RegistersHeaderAction() {
@@ -78,7 +78,11 @@ const musterLikePlugin = createFrontendPlugin({
   ],
 });
 
-function renderPage(agentShell: FeatureFlagState, path: string) {
+function renderPage(
+  agentShell: FeatureFlagState,
+  path: string,
+  extensions: Array<string | Record<string, boolean>> = [],
+) {
   return renderTestApp({
     features: [
       musterLikePlugin,
@@ -100,7 +104,9 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
         ],
       }),
     ],
-    config: { app: { extensions: ['page:agent-platform'] } },
+    // No `page:agent-platform` entry: the page is enabled by default, and the
+    // shell flag alone decides whether it is mounted.
+    config: { app: { extensions } },
     initialRouteEntries: [path],
     apis: [
       mockApis.featureFlags({
@@ -113,7 +119,9 @@ function renderPage(agentShell: FeatureFlagState, path: string) {
 describe('the Agent Platform page', () => {
   describe('while the agent shell flag is off', () => {
     it('is not mounted: no route, no header, no tabs, whatever app.extensions lists', async () => {
-      renderPage(FeatureFlagState.None, '/agent-platform/agents');
+      renderPage(FeatureFlagState.None, '/agent-platform/agents', [
+        'page:agent-platform',
+      ]);
 
       expect(await screen.findByText(/not found/i)).toBeInTheDocument();
       expect(screen.queryByText('Agents content')).not.toBeInTheDocument();
@@ -139,6 +147,21 @@ describe('the Agent Platform page', () => {
   });
 
   describe('inside the agent shell', () => {
+    it('is mounted by default, with no app.extensions entry', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents');
+
+      expect(await screen.findByText('Agents content')).toBeInTheDocument();
+    });
+
+    it('stays off where app.extensions disables it', async () => {
+      renderPage(FeatureFlagState.Active, '/agent-platform/agents', [
+        { 'page:agent-platform': false },
+      ]);
+
+      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+      expect(screen.queryByText('Agents content')).not.toBeInTheDocument();
+    });
+
     it('reads the flag when the page is built and drops the header and tab strip', async () => {
       renderPage(FeatureFlagState.Active, '/agent-platform/agents');
 

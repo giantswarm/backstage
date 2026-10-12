@@ -27,7 +27,6 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
-import { ShellAwareContent } from '../ShellAwareContent';
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
 import {
   useHostingFlowOutcome,
@@ -578,7 +577,7 @@ export function ServingPage() {
   }
 
   return (
-    <ShellAwareContent>
+    <>
       {emptyBody ?? (
         <Flex direction="column" gap="3">
           <Text color="secondary">{description}</Text>
@@ -626,6 +625,6 @@ export function ServingPage() {
       )}
       {backends.dialogs}
       {pools.dialogs}
-    </ShellAwareContent>
+    </>
   );
 }

@@ -33,7 +33,6 @@ import {
   type TopAgentsRow,
   type UsageKpiSessions,
 } from '../LlmUsage';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 import { sessionCountForWindow } from '../AgentUsageSection/helpers';
 
@@ -197,107 +196,105 @@ export function UsageOverviewPage() {
   const windowNote = `The last ${days} days.`;
 
   return (
-    <ShellAwareContent>
-      <UsageColumn>
-        {/* gap 4, not the 6 the other views use: the whole view is budgeted
-            to one desktop viewport (~800px tall with the page header). */}
-        <Flex direction="column" gap="4">
-          {/* One short caption, not a heading: the tab above already names
-              the view, and the screen's title is the page's h1. The
-              resolved-from-all hint shares its line, for the same budget. */}
-          <Text as="p" variant="body-medium" color="secondary">
-            {installation ? (
-              <>
-                Shows everyone's model use on <strong>{installation}</strong>{' '}
-                over the last {days} days.
-                {isResolvedFromAll &&
-                  ' It shows one environment at a time; switch it in the Environment control.'}
-              </>
-            ) : (
-              `Shows everyone's model use over the last ${days} days.`
-            )}
-          </Text>
-
-          <LlmUsageState view={view} />
-
-          {/* The gateway metrics are configured away, but kagent answered —
-              so show what it answered instead of leaving the paragraph above
-              as the whole page. `LlmUsageState` already said why the
-              fleet-wide figures are missing; this adds the figures that are
-              not. */}
-          {view.state === 'unavailable' && hasSessionUsage && (
+    <UsageColumn>
+      {/* gap 4, not the 6 the other views use: the whole view is budgeted
+          to one desktop viewport (~800px tall with the page header). */}
+      <Flex direction="column" gap="4">
+        {/* One short caption, not a heading: the tab above already names
+            the view, and the screen's title is the page's h1. The
+            resolved-from-all hint shares its line, for the same budget. */}
+        <Text as="p" variant="body-medium" color="secondary">
+          {installation ? (
             <>
-              <SessionKpiTiles
-                usage={sessionUsage.usage!}
-                windowDays={
-                  sessionUsage.usage!.windowDays || FALLBACK_SESSION_WINDOW_DAYS
-                }
-              />
-              <Text variant="body-small" color="secondary">
-                These figures come from kagent and cover your own sessions only.
-                Fleet-wide tokens, spend and gateway health need the gateway's
-                gen_ai metrics, which this environment does not publish where
-                this portal can query them.
-              </Text>
+              Shows everyone's model use on <strong>{installation}</strong> over
+              the last {days} days.
+              {isResolvedFromAll &&
+                ' It shows one environment at a time; switch it in the Environment control.'}
             </>
+          ) : (
+            `Shows everyone's model use over the last ${days} days.`
           )}
+        </Text>
 
-          {view.state === 'ready' && usage && (
-            <>
-              <UsageKpiTiles
-                usage={usage}
-                currency={currency}
-                windowDays={days}
-                sessions={sessions}
-                costHref={costRoute?.()}
+        <LlmUsageState view={view} />
+
+        {/* The gateway metrics are configured away, but kagent answered —
+            so show what it answered instead of leaving the paragraph above
+            as the whole page. `LlmUsageState` already said why the
+            fleet-wide figures are missing; this adds the figures that are
+            not. */}
+        {view.state === 'unavailable' && hasSessionUsage && (
+          <>
+            <SessionKpiTiles
+              usage={sessionUsage.usage!}
+              windowDays={
+                sessionUsage.usage!.windowDays || FALLBACK_SESSION_WINDOW_DAYS
+              }
+            />
+            <Text variant="body-small" color="secondary">
+              These figures come from kagent and cover your own sessions only.
+              Fleet-wide tokens, spend and gateway health need the gateway's
+              gen_ai metrics, which this environment does not publish where this
+              portal can query them.
+            </Text>
+          </>
+        )}
+
+        {view.state === 'ready' && usage && (
+          <>
+            <UsageKpiTiles
+              usage={usage}
+              currency={currency}
+              windowDays={days}
+              sessions={sessions}
+              costHref={costRoute?.()}
+            />
+
+            {/* The headline trend beside who drives it. */}
+            <div className={classes.row}>
+              {usage.callsPerDay === null ? (
+                <ActivityHeatmapUnavailable title={HEATMAP_TITLE} />
+              ) : (
+                callDays && (
+                  <ActivityHeatmap
+                    title={HEATMAP_TITLE}
+                    days={callDays}
+                    partialLast
+                    note="Every user's calls through the gateway, by UTC day; today's so far."
+                  />
+                )
+              )}
+              <TopAgentsCard
+                title="Top agents"
+                rows={agentRows}
+                limit={TOP_AGENTS_SHOWN}
+                emptyMessage="The gateway attributed no calls to an agent in this window."
+                note="Shows the share of every user's model calls. Cost ranks agents by spend."
               />
+            </div>
 
-              {/* The headline trend beside who drives it. */}
+            <UsageCard
+              title="Gateway health"
+              wide
+              // Each figure explains its own arithmetic in its hint, so the
+              // note carries only what none of them says: these are the model
+              // calls, not the turns that made them.
+              note="This counts model calls only, not the agent turns around them, which spend most of their time in tool calls."
+            >
+              <ReliabilityStrip reliability={usage.reliability} />
+            </UsageCard>
+
+            <TokenBreakdownFoldOut>
               <div className={classes.row}>
-                {usage.callsPerDay === null ? (
-                  <ActivityHeatmapUnavailable title={HEATMAP_TITLE} />
-                ) : (
-                  callDays && (
-                    <ActivityHeatmap
-                      title={HEATMAP_TITLE}
-                      days={callDays}
-                      partialLast
-                      note="Every user's calls through the gateway, by UTC day; today's so far."
-                    />
-                  )
-                )}
-                <TopAgentsCard
-                  title="Top agents"
-                  rows={agentRows}
-                  limit={TOP_AGENTS_SHOWN}
-                  emptyMessage="The gateway attributed no calls to an agent in this window."
-                  note="Shows the share of every user's model calls. Cost ranks agents by spend."
+                <TokensByTypeCard
+                  daily={usage.tokensPerDay}
+                  note={windowNote}
                 />
               </div>
-
-              <UsageCard
-                title="Gateway health"
-                wide
-                // Each figure explains its own arithmetic in its hint, so the
-                // note carries only what none of them says: these are the model
-                // calls, not the turns that made them.
-                note="This counts model calls only, not the agent turns around them, which spend most of their time in tool calls."
-              >
-                <ReliabilityStrip reliability={usage.reliability} />
-              </UsageCard>
-
-              <TokenBreakdownFoldOut>
-                <div className={classes.row}>
-                  <TokensByTypeCard
-                    daily={usage.tokensPerDay}
-                    note={windowNote}
-                  />
-                </div>
-              </TokenBreakdownFoldOut>
-            </>
-          )}
-        </Flex>
-      </UsageColumn>
-    </ShellAwareContent>
+            </TokenBreakdownFoldOut>
+          </>
+        )}
+      </Flex>
+    </UsageColumn>
   );
 }

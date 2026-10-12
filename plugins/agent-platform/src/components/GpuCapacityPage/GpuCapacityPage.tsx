@@ -7,7 +7,6 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { ModelHostingActions } from '../ModelHostingActions';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { NO_SERVING_CAPABILITIES, backendsOn } from '../../lib/serving';
 import {
   HIDE_INSTALLATION,
@@ -46,18 +45,11 @@ function emptyStateDescription(
   return 'The visible serving layers do not report their nodes. KServe-backed layers do, and Ollama-backed model-manager from 0.7 on.';
 }
 
-export type GpuCapacityPageProps = {
-  /**
-   * Whether the Model cache card closes the view. Inside the shell Model
-   * hosting gives the cache a tab of its own (ModelCachePage), so it is left
-   * out here; classic chrome keeps it on this view.
-   */
-  showModelCache?: boolean;
-};
-
-export function GpuCapacityPage({
-  showModelCache = true,
-}: GpuCapacityPageProps = {}) {
+/**
+ * The GPU capacity view of Model hosting. The model cache is a tab of its own
+ * (ModelCachePage), so it is not shown here.
+ */
+export function GpuCapacityPage() {
   const serving = useServing();
   const pools = useGpuNodePoolControls(
     serving.reachableInstallations,
@@ -84,7 +76,6 @@ export function GpuCapacityPage({
     [addAction],
   );
   useProvidePageHeaderActions(headerActions);
-  const cachePanel = showModelCache ? pools.cachePanel : undefined;
 
   const nodeInventoryInstallations = useMemo(
     () =>
@@ -115,7 +106,7 @@ export function GpuCapacityPage({
   });
   if (!reading && nodeInventoryInstallations.length === 0) {
     return (
-      <ShellAwareContent>
+      <>
         {pools.dialogs}
         {pools.panel}
         <EmptyStateCard
@@ -126,28 +117,24 @@ export function GpuCapacityPage({
           )}
           actions={pools.addButton}
         />
-        {cachePanel}
-      </ShellAwareContent>
+      </>
     );
   }
 
   return (
-    <ShellAwareContent>
-      <Flex direction="column" gap="3">
-        {pools.dialogs}
-        {pools.panel}
-        <Text color="secondary">
-          Served models run on these nodes, listed per environment.
-        </Text>
-        <GpuCapacityPanel
-          nodes={serving.gpuNodes}
-          installations={nodeInventoryInstallations}
-          unavailable={serving.gpuCapacityUnavailable}
-          isLoading={reading}
-          hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
-        />
-        {cachePanel}
-      </Flex>
-    </ShellAwareContent>
+    <Flex direction="column" gap="3">
+      {pools.dialogs}
+      {pools.panel}
+      <Text color="secondary">
+        Served models run on these nodes, listed per environment.
+      </Text>
+      <GpuCapacityPanel
+        nodes={serving.gpuNodes}
+        installations={nodeInventoryInstallations}
+        unavailable={serving.gpuCapacityUnavailable}
+        isLoading={reading}
+        hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
+      />
+    </Flex>
   );
 }

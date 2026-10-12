@@ -4,8 +4,6 @@ export { StateBadge } from './StateBadge';
 export type { StateBadgeProps } from './StateBadge';
 export { EffectBadge } from './EffectBadge';
 export type { EffectBadgeProps } from './EffectBadge';
-export { AvailabilityBadge } from './AvailabilityBadge';
-export type { AvailabilityBadgeProps } from './AvailabilityBadge';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
 // Re-exported from here so muster's own call sites and its public
 // `src/index.ts` surface stay unchanged.
@@ -43,7 +41,7 @@ export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
 export type { ServerPageLinks, ServerPageTab } from './useServerPageLinks';
 export { ServerStateBadge, serverStateLabel } from './ServerStateBadge';
-export { FamilyHealthBadge, familyHealthLabel } from './FamilyHealthBadge';
+export { familyHealthLabel } from './familyHealth';
 export { useToolCatalogue, TOOL_CATALOGUE_LIMIT } from './useToolCatalogue';
 export { useToolDescription } from './useToolDescription';
 export { DefinitionEditorDialog } from './DefinitionEditorDialog';

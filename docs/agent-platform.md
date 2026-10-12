@@ -592,10 +592,8 @@ module store in the `gs` plugin (`useInstallationScope`,
 not a React context, because the muster tabs are a different plugin with their
 own providers.
 
-In the shell the scope is set by `EnvironmentSelect` (and `UsageScopeBar` on
-Usage), shown only with more than one environment; in classic chrome by
-`InstallationScopeSelect`, a plugin header action (`PluginHeaderActionBlueprint`
-in `plugin.tsx`, `InstallationScopeHeaderControl`). It offers every
+The scope is set by `EnvironmentSelect` (and `UsageScopeBar` on Usage), shown
+only with more than one environment. It offers every
 installation whose inventory has kagent, muster or KServe, home first, with
 its state; a portal with one installation renders no selector. "Not reachable
 from this portal" comes from the kagent backend's probe on kagent-backed lists
@@ -630,40 +628,21 @@ load.
 
 ## The Sessions tab
 
-`/agent-platform/sessions` lists the person's kagent sessions across the fleet:
-`ShellSessionsTable` in the shell, `SessionsTable` in classic chrome, where a
-composer above the list starts sessions (see "Starting a session"). Renaming and
-deleting are described below.
+`/agent-platform/sessions` lists the person's kagent sessions across the fleet
+(`SessionsTable`); a session starts on the shell's start screen (see "Starting
+a session"). Renaming and deleting are described below.
 
 ### The first-run state
 
-Neither Sessions nor Agents renders an empty table. The shell shows
-`ShellSessionsEmpty`. The classic tab has three states, shared through
-`FirstAgentCard` and `EmptyStateCard` (`ui-react`):
+Neither Sessions nor Agents renders an empty table. Sessions shows
+`ShellSessionsEmpty` only when the empty answer is final:
 
-- **No agents on the fleet** — an invitation to create the first agent.
-- **Agents but no sessions** — the composer, grown, as the invitation.
-- **Nothing could be read** — not an invitation: the "couldn't read" warning
-  stays, and a fleet whose agents are all unready points to the Agents tab.
-  This is why the branch tests `unreachableInstallations`, not only
-  `rows.length`.
-
-Two further gates:
-
-- **Somewhere to deploy to.** The agent invitation also requires a non-empty
-  `installations` (scoped, running kagent, reachable). Pinned to an installation
-  without kagent, the table and `InstallationScopeNote` stay instead.
-- **Something actually queried.** The session invitation requires at least one
-  scoped installation not in `notReachableInstallations`. It does not require
-  every installation to be reachable, since a local portal almost always has
-  unreachable ones.
-
-`isLoading` is true only while no rows exist, so `!isLoading && rows.length ===
-0` is final. In `SessionsIndexPageContent`, the composer waits until the list
-settles and its container is latched at that answer: switching between the card
-root and the `Flex` root would remount `NewSessionComposer` and discard a
-half-typed prompt. The `Progress` also covers `isEmpty && useAgents().isLoading`,
-so the tab is never blank.
+- **Nothing could be read** is not an empty history: the "couldn't read"
+  warning stays. This is why the branch tests `unreachableInstallations`, not
+  only `rows.length`.
+- **Something must have been queried.** At least one scoped installation must
+  be outside `notReachableInstallations`. Every installation need not be
+  reachable, since a local portal almost always has unreachable ones.
 
 ### Why it needs a backend
 
@@ -992,108 +971,14 @@ The Sessions tab and an agent's sessions card show the same summary as a
 **State** column, through the `describeSessionState` map the rail and the page
 use.
 
-- **Fetched per installation that has a visible row**, under the rail's query
-  key, so a list and a session page share one entry.
+- **Fetched per installation that has a visible row**, under one query key
+  per installation, so the lists and the shell's rail share one entry.
 - **Polls on the baseline tier (60 s)**, because the list spans the fleet and
   is not read for progress.
 - **Four outcomes, never a blank:** a state; `No activity yet`; `Unknown`
   (unreadable, or the installation's summary failed); `Not loaded` (past the
   window or cap, with a tooltip pointing to the session page). Merging the last
   three would let "we could not tell" read as "nothing is waiting".
-- **Sorting is by urgency** (classic table): waiting, running, failed,
-  finished, then the three no-answer kinds, each newest first.
-
-### The session switcher rail
-
-**Classic chrome only.** In the shell, `RecentSessions` and `NeedsInputToasts`
-do its job.
-
-The rail lists the operator's live sessions beside the open one. It is ported
-from the prototype's `session-switcher` (reasoning in that repository's
-`.grill/session-detail-sidebar.md`).
-
-- **Three groups:** WAITING (`input-required`, `auth-required`), RUNNING
-  (`submitted`, `working`) and RECENTLY FINISHED. The prototype's Queued has no
-  kagent state.
-- **A finished session stays for an hour** (`RECENTLY_FINISHED_GRACE_MS`), in a
-  separate group so the rail never calls it working, and outside the header's
-  "N non-terminal" count. A terminal session without `changedAt` is dropped.
-  This bound is independent of `ACTIVE_MAX_AGE_MS`, which limits how long an
-  active state is believed.
-- **Scoped to the URL's installation**, not the fleet: `SessionsDataProvider`
-  is local to the list page, so the rail runs one `useQuery` on the shared
-  `sessionsQueryKey`. The list tab stays the fleet-wide surface.
-- **No `ACTIVE_MAX_AGE_MS` here.** That five-minute bound stops the composer's
-  "Working…" from promising progress now. A session stuck in `working` for
-  three days is exactly what an operator needs to see, so it stays in RUNNING.
-  A session with no state is excluded.
-- **Sorting per group:** Waiting longest-blocked first, Running most recently
-  active first. Unknown `changedAt` sorts last in both, matching
-  `sortSessionRows`.
-- **Polling** is on the fast tier unconditionally, because this read is what
-  tells the page that anything moves; the backend's 15 s cache keeps the cost
-  flat. The session list beside it stays on the baseline tier
-  (`refetchInterval` is per observer).
-- **The page overrides its own session** (`withCurrentSessionState`) with
-  `showWorking` (`send.isSending || isAgentWorking`, as the "Working…"
-  indicator), because the summary lags up to 10 s behind a send.
-
-#### Layout
-
-The rail is sticky, and the conversation keeps the **document** scroller,
-because the composer's dock (`position: sticky; bottom: 0`), `scrollToBottom()`
-and streaming auto-follow all measure `document.scrollingElement`.
-
-The rail scrolls itself, capped at
-`calc(100dvh - PLUGIN_CONTENT_VIEWPORT_OFFSET)` (89 px of `PluginHeader` plus
-24 px of `Content` padding, a shared constant in `ui-react`). **If
-`PluginHeader` changes height, every panel using the constant overflows.** An
-unbounded sticky rail would force document scrolling, and flux's
-measured-offset approach re-measures per streamed token. The flex container
-must keep `align-items: stretch`, or the rail stops sticking. Below `sm` the
-rail is not rendered, so it costs no queries.
-
-#### The cards are anchors, deliberately
-
-Not bui `List`/`ListRow` or `Card` with `onPress`:
-
-- Navigation is expressed with `aria-current="page"`; `List` is a react-aria
-  `GridList` whose `aria-selected` makes a different, untrue claim.
-- An anchor supports cmd- and middle-click and link previews.
-- bui has no sections, so two groups would need two `GridList`s and two focus
-  scopes.
-
-This also adds no `.bui-*` overrides to `packages/app/src/bui-overrides.css`.
-Cards show a compact age (`formatCompactAge`, `lib/duration`), the title (two
-lines) and the agent. The current card is marked by more than colour.
-
-#### States, and what the rail refuses to do
-
-| session list  | states              | rail                                                           |
-| ------------- | ------------------- | -------------------------------------------------------------- |
-| loading       | loading             | placeholders, `aria-busy`                                      |
-| loaded        | loading             | **ungrouped** placeholders — no headings, no counts, no titles |
-| either failed |                     | "Couldn't load active sessions." and a Retry, **no cards**     |
-| loaded        | loaded, none active | "All caught up."                                               |
-
-Titles before states would appear and vanish, and a "recent sessions"
-fallback would present finished sessions as active. A failed refetch keeps the
-previous states.
-
-**"All caught up." is said only when the summary was complete.** With
-`unreadable` or `skipped` non-zero and nothing to show, the rail says it cannot
-tell, with the counts and a Retry; with groups to show, it footnotes the
-shortfall, and the header count reads `N+`. Both cases are common: every read
-failing still answers 200, and a long-blocked session is the first to fall past
-`maxSessions`.
-
-#### Collapsing
-
-The collapsed state is stored under `gs-agent-platform-session-rail-collapsed`,
-not per installation. Collapsed is a **48 px strip** of tone dots and counts:
-there is no toolbar for a re-open control, and the strip still answers "is
-anything waiting on me?". Its counts use MUI's `Tooltip`, because bui's wires
-only its own focusable components.
 
 ### What the timeline shows
 
@@ -1228,11 +1113,10 @@ the person is elsewhere. Nothing persists; sessions already waiting are left to
 the rail's dots, a toast closes when its session stops waiting or is opened,
 and the session on screen never raises one.
 
-### Timestamps are absolute here, relative in the list
+### Timestamps are absolute here
 
 The detail page shows absolute times (`28 Jul 2026, 10:07 UTC`), because
-relative times printed "1 day ago" on every turn of a three-minute session. The
-classic list stays relative.
+relative times printed "1 day ago" on every turn of a three-minute session.
 
 ### Renaming a session
 
@@ -1655,7 +1539,7 @@ A single offered agent is preselected and the control disabled, but still named
 to confirm the target. `InstallationSelect` does the same for one installation.
 A lone non-ready agent is never preselected.
 
-The sessions list tells apart three reasons for having no composer: nothing
+The start screen tells apart three reasons for having no composer: nothing
 could be read, nothing is deployed, or nothing deployed is ready.
 
 **Only agents appear here.** `AgentsDataProvider` lists `Agent`s only; on kagent
@@ -1679,10 +1563,9 @@ offers "Recent" instead of favourites first.
 
 ## The agents list
 
-In the shell the list is Customize → Agents (`CustomizeAgentsPanel`;
+The list is Customize → Agents (`CustomizeAgentsPanel`;
 `/agent-platform/agents` redirects there), showing 25 rows at a time; its search
-matches name, technical name, description and model. The classic tab
-(`AgentsIndexPage`) renders the table under "Columns".
+matches name, technical name, description and model.
 
 The list reads kagent **API v2** objects only (`api.kagent.dev/v1alpha3`). This
 is a hard cut (bumblebee-plans#51 D12): an installation still on the
@@ -1711,17 +1594,6 @@ and `getTemplateRef` names an `AgentTemplate` used by reference.
 from a Secret is never guessed). `ModelConfig` is `v1alpha3` with `Accepted` and
 `ResolvedRefs`. There is no `spec.type`: a bring-your-own runtime is a Harness
 on API v2.
-
-### Columns
-
-Agent, **Status** (tooltip with the readiness message and Harness warnings),
-Environment, Namespace, Model (resolved by name in the agent's namespace),
-**Toolset** (the selectors, `No tools`, `Full gateway access`, or a dash while
-the carrier is unreadable) and Skills (count). Status sorts by severity, failed
-first. Environment is dropped for a single installation and Namespace while all
-rows share one. Search matches name, technical name, description and
-installation. A pinned installation without kagent links to the Installations
-page and disables "New agent".
 
 ### Readiness
 
@@ -1755,16 +1627,7 @@ reads as empty. Chat reachability is the sessions side's
 `/agent-platform/agents/<installation>/<namespace>/<name>`; all three segments
 are the agent's identity.
 
-Each tab is its own URL. Classic chrome:
-
-| Tab      | Path                 | What it holds                                    |
-| -------- | -------------------- | ------------------------------------------------ |
-| Overview | the agent URL itself | GitOps provenance, configuration, status, prompt |
-| Tools    | `…/<name>/tools`     | the toolset and what it resolves to for you      |
-| Skills   | `…/<name>/skills`    | the skills mounted into the agent                |
-| Sessions | `…/<name>/sessions`  | your sessions with this agent                    |
-
-The shell (`ShellPage`):
+Each tab is its own URL, in a `ShellPage`:
 
 | Tab      | Path                 | What it holds                                                                 |
 | -------- | -------------------- | ----------------------------------------------------------------------------- |
@@ -1772,9 +1635,9 @@ The shell (`ShellPage`):
 | Sessions | `…/<name>/sessions`  | your sessions with this agent                                                 |
 | Usage    | `…/<name>/usage`     | its spend, tokens and model calls; your sessions with it                      |
 
-In the shell, Tools and Skills fold into the Overview (`…/<name>/tools` still
-shows the toolset; `…/skills` lands on the Overview), and the classic cards sit
-in a Technical details fold-out that starts open for an agent that is not
+Tools and Skills fold into the Overview (`…/<name>/tools` shows the toolset;
+`…/skills` lands on the Overview), and the GitOps, configuration and status
+cards sit in a Technical details fold-out that starts open for an agent that is not
 ready. The Usage tab reads the Usage screen's sources for 30 days: the
 gateway's by-agent figures (everyone's calls) and kagent's session summary
 (yours, with any runtime-reported cost).
@@ -1797,21 +1660,18 @@ without the list. It polls 5 s while converging and 60 s otherwise
 
 ### Layout
 
-Header and creation progress sit above the tabs. On Overview, from `lg`
-(1024px), the status card takes a third of the width beside the configuration,
-because controller messages (admission-webhook output can run to hundreds of
-words) need a short line length. Reads live in the page component, so switching
-tabs refetches nothing; the toolset's muster queries run only on the Tools tab.
+Creation progress sits above the tabs. Reads live in the page component, so
+switching tabs refetches nothing; the toolset's muster queries run only on
+`…/tools`.
 
 ### Sections
 
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
   (consumed once) and polls `get_agent_status` until the Harness reports ready
   or failed.
-- **Header** — the actions menu offers `Update all skills to latest…` and
-  `Delete agent…` where agent-manager is available (`Edit agent…` too outside the shell, whose
-  header has its own Edit button), and always the **manifest
-  dialog**: the `Agent` as YAML without `metadata.managedFields` and the
+- **Header** — Edit and Start a session are buttons; the actions menu offers
+  `Update all skills to latest…` and `Delete agent…` where agent-manager is
+  available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the
   `last-applied-configuration` annotation. It shows what the page does not
   (`plugins`, `promptTemplate`, labels, raw `status`).
 - **GitOps** — `GitOpsCard` from `flux-react`, only when the desired state is in
@@ -1825,8 +1685,8 @@ tabs refetches nothing; the toolset's muster queries run only on the Tools tab.
   `requireApproval`, the gateway carrier, and each sub-agent
   (`subAgent.templateRef`, a same-namespace `AgentTemplate` compiled into the
   agent's runtime).
-- **System prompt** — `spec.systemPrompt`; when unset, the ConfigMap key from
-  `spec.systemPromptFrom` is named.
+- **Instructions** — `spec.systemPrompt`; when it comes from
+  `spec.systemPromptFrom`, Technical details names the ConfigMap key.
 - **Toolset** — the carrier's declaration and what it resolves to for the
   viewer: declared, implicit full access (carrier without header), no gateway
   (`preset:none`), **not readable** (the `RemoteMCPServer`s could not be read)
@@ -2348,10 +2208,6 @@ The portal does not carry the values shape.
   past eight.
 - **The composer cannot offer to create an agent** when the fleet has none. A
   link would help.
-- **The classic switcher rail shows one installation.** Fleet-wide would
-  multiply the backend fan-out per kagent installation.
-- **Classic session list row actions.** Row delete is deliberately absent (easy
-  to hit by accident); row rename is unbuilt and would be reasonable.
 - **Batch decisions are not supported.** Answers send the uniform
   `decision_type: 'approve'|'reject'`, never `'batch'` with a `decisions` map,
   because kagent suspends on one confirmation at a time and a batch key that

@@ -92,8 +92,8 @@ export interface KagentApi {
   ): Promise<A2aTaskWire[]>;
 
   /**
-   * Derived state for this installation's sessions — what the switcher rail
-   * groups by. Computed by the backend, because a session's state lives in its
+   * Derived state for this installation's sessions — what the session lists
+   * group by. Computed by the backend, because a session's state lives in its
    * whole conversation and reading every one of them in the browser is not
    * affordable.
    */

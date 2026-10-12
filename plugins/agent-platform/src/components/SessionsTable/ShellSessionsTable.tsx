@@ -647,7 +647,7 @@ export function ShellSessionsTable({
   searchDebounceMs = 150,
   hideColumns,
   emptyMessage = 'No sessions found.',
-}: Omit<SessionsTableProps, 'layout'>) {
+}: SessionsTableProps) {
   const buildAvatarUrl = useAgentAvatarUrl();
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);

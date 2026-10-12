@@ -95,7 +95,6 @@ export type {
   Tone,
   ToneColors,
 } from './components/shared';
-export { useAgentShell } from './hooks/useAgentShell';
 export {
   CustomizeMusterProvider,
   useMusterCustomizeCounts,

@@ -1,25 +1,8 @@
-import { ReactNode } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
-
-/** The card around the list, or nothing for the plain variant. */
-function SessionsFrame({
-  plain,
-  children,
-}: {
-  plain: boolean;
-  children: ReactNode;
-}) {
-  return plain ? (
-    <>{children}</>
-  ) : (
-    <InfoCard title="Sessions">{children}</InfoCard>
-  );
-}
 
 /**
  * The signed-in user's sessions with this agent.
@@ -37,22 +20,18 @@ function SessionsFrame({
  * With no sessions there is nothing to search, sort or page, so the table gives
  * way to the one thing to do next: start one, when the agent is ready.
  *
- * Inside the agent-platform shell the list is a tab of its own named
- * "Sessions", so it drops the card and its heading (`plain`) and says whose
- * sessions these are in the prototype's words.
+ * The list is a tab of its own named "Sessions", so it has no card or heading
+ * and says whose sessions these are in the prototype's words.
  */
 export function AgentSessionsCard({
   sessions,
   onStartSession,
-  plain = false,
   agentName,
 }: {
   sessions: AgentSessionsView;
   /** Opens the new-session dialog. Absent while the agent is not ready. */
   onStartSession?: () => void;
-  /** Without the card and its heading, for a tab that already names it. */
-  plain?: boolean;
-  /** The agent's name, for the plain variant's caption. */
+  /** The agent's name, for the caption. */
   agentName?: string;
 }) {
   const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
@@ -65,32 +44,28 @@ export function AgentSessionsCard({
 
   if (isUnavailable) {
     return (
-      <SessionsFrame plain={plain}>
-        <Text variant="body-medium" color="secondary">
-          Sessions could not be read from this environment.
-        </Text>
-      </SessionsFrame>
+      <Text variant="body-medium" color="secondary">
+        Sessions could not be read from this environment.
+      </Text>
     );
   }
 
   if (!isLoading && rows.length === 0) {
     return (
-      <SessionsFrame plain={plain}>
-        <Flex direction="column" gap="3" align="start">
-          <Text variant="body-medium" color="secondary">
-            {/* "No sessions", not "none started": a runtime upgrade or kagent's
+      <Flex direction="column" gap="3" align="start">
+        <Text variant="body-medium" color="secondary">
+          {/* "No sessions", not "none started": a runtime upgrade or kagent's
                 retention can remove sessions people did have. */}
-            {isNotUserScoped
-              ? 'There are no sessions with this agent.'
-              : 'You have no sessions with this agent.'}
-          </Text>
-          {onStartSession && (
-            <Button variant="primary" onPress={onStartSession}>
-              Start a session
-            </Button>
-          )}
-        </Flex>
-      </SessionsFrame>
+          {isNotUserScoped
+            ? 'There are no sessions with this agent.'
+            : 'You have no sessions with this agent.'}
+        </Text>
+        {onStartSession && (
+          <Button variant="primary" onPress={onStartSession}>
+            Start a session
+          </Button>
+        )}
+      </Flex>
     );
   }
 
@@ -101,32 +76,26 @@ export function AgentSessionsCard({
     // a lie in the other direction.
     caption =
       "These are everyone's sessions with this agent, because kagent here does not scope sessions to users.";
-  } else if (plain) {
-    caption = `These are your sessions with ${agentName || 'this agent'}.`;
   } else {
-    caption =
-      'These are only your sessions with this agent, not a usage total.';
+    caption = `These are your sessions with ${agentName || 'this agent'}.`;
   }
 
   return (
-    <SessionsFrame plain={plain}>
-      <Flex direction="column" gap="3">
-        <Text variant="body-small" color="secondary">
-          {caption}
-        </Text>
+    <Flex direction="column" gap="3">
+      <Text variant="body-small" color="secondary">
+        {caption}
+      </Text>
 
-        {/* In the shell, the Sessions page's own list (T46b): its state
+      {/* The Sessions page's own list (T46b): its state
             words, day groups and windowed Load more instead of pagination
             chrome, with search and filters only once there is something to
             narrow down. */}
-        <SessionsTable
-          rows={rows}
-          sessionStates={sessionStates}
-          isLoading={isLoading}
-          hideColumns={['agentName', 'installation']}
-          layout={plain ? 'shell' : undefined}
-        />
-      </Flex>
-    </SessionsFrame>
+      <SessionsTable
+        rows={rows}
+        sessionStates={sessionStates}
+        isLoading={isLoading}
+        hideColumns={['agentName', 'installation']}
+      />
+    </Flex>
   );
 }

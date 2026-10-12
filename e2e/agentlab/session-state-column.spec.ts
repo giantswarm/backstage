@@ -15,8 +15,7 @@ import type { Page } from '@playwright/test';
  * request per row, so the list could say nothing about what a session was
  * doing. On kagent API v2 the backend reads each session's task list **status
  * only** and answers one summary for the caller (`GET /kagent/session-states`),
- * which the switcher rail already groups by; this column renders the same
- * summary as a sortable cell.
+ * which this column renders.
  *
  * **The first test is entirely real** — a session started through the portal on
  * the lab's kagent, and the state the backend derives for it. **The second

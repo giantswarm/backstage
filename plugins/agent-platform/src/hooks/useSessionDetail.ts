@@ -50,14 +50,6 @@ export type SessionDetailView = {
    */
   currentTaskId?: string;
   /**
-   * Epoch ms {@link state} last moved, when anything in the conversation says.
-   *
-   * Exposed so the switcher rail can prefer this page's reading of its *own*
-   * session over the backend's cached summary — this poll is always the fresher
-   * of the two.
-   */
-  stateChangedAt?: number;
-  /**
    * Whether the agent is working on a reply, as of the last successful read.
    *
    * Narrower than `state.isActive`: it excludes waiting on a human, and expires
@@ -393,7 +385,6 @@ export function useSessionDetail(
     timeline,
     state,
     currentTaskId,
-    stateChangedAt: newest?.changedAt,
     isAgentWorking: turnProgress?.kind === 'working',
     turnProgress,
     pendingConfirmation,

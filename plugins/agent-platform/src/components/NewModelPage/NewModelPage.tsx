@@ -33,7 +33,6 @@ import {
 } from '@giantswarm/backstage-plugin-gs';
 
 import { modelsRouteRef, servingRouteRef } from '../../routes';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { hasServingLayer, useOptionalServing } from '../ServingProvider';
 import {
@@ -192,14 +191,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const isChanged = !edit || modelConfigFormChanged(values, initialValues);
 
   // Where Close and Cancel leave to: the model itself when editing; else the
-  // shell's Customize screen's Models tab, or the classic chrome's list.
-  const agentShell = useAgentShell();
-  let closeHref = modelsLink?.() ?? '/';
-  if (edit) {
-    closeHref = edit.detailHref;
-  } else if (agentShell) {
-    closeHref = `${SHELL_CUSTOMIZE_PATH}/models`;
-  }
+  // shell's Customize screen's Models tab.
+  const closeHref = edit ? edit.detailHref : `${SHELL_CUSTOMIZE_PATH}/models`;
 
   const onSubmit = useCallback(async () => {
     if (errorCount > 0) {

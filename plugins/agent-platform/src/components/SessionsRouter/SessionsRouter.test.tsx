@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
-import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { SessionsRouter } from './SessionsRouter';
 
 function mockPassThrough({ children }: { children: ReactNode }) {
@@ -27,34 +25,23 @@ jest.mock('./SessionDetailRoute', () => ({
   SessionDetailRoute: () => <p>Session detail</p>,
 }));
 
-function renderAt(path: string, flag: FeatureFlagState) {
+function renderAt(path: string) {
   return renderInTestApp(
     <Routes>
       <Route path="/agent-platform/sessions/*" element={<SessionsRouter />} />
     </Routes>,
-    {
-      initialRouteEntries: [path],
-      apis: [
-        mockApis.featureFlags({ initialStates: { [AGENT_SHELL_FLAG]: flag } }),
-      ],
-    },
+    { initialRouteEntries: [path] },
   );
 }
 
 describe('SessionsRouter', () => {
-  it.each([
-    ['outside', FeatureFlagState.None],
-    ['inside', FeatureFlagState.Active],
-  ])('routes the list %s the shell', async (_, flag) => {
-    await renderAt('/agent-platform/sessions', flag);
+  it('routes the list', async () => {
+    await renderAt('/agent-platform/sessions');
     expect(screen.getByText('Sessions list')).toBeInTheDocument();
   });
 
-  it.each([
-    ['outside', FeatureFlagState.None],
-    ['inside', FeatureFlagState.Active],
-  ])('routes one session %s the shell', async (_, flag) => {
-    await renderAt('/agent-platform/sessions/gazelle/abc', flag);
+  it('routes one session', async () => {
+    await renderAt('/agent-platform/sessions/gazelle/abc');
     expect(screen.getByText('Session detail')).toBeInTheDocument();
   });
 });

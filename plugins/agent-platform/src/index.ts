@@ -10,7 +10,7 @@ export type {
   StartNewSessionLayout,
   StartNewSessionProps,
 } from './components/StartNewSession';
-export { AGENT_SHELL_FLAG } from './hooks/useAgentShell';
+export { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 export { usePinnedSessions } from './hooks/usePinnedSessions';
 export type { PinnedSession } from './hooks/usePinnedSessions';
 export { useFavoriteAgents } from './hooks/useFavoriteAgents';

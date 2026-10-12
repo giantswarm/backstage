@@ -282,9 +282,11 @@ describe('the app layout', () => {
 
 describe('the Agent Platform per portal mode', () => {
   // The real `page:agent-platform` (the module mock above stands in for the
-  // package everywhere else), with one stubbed section, enabled as the base
-  // app-config enables it. No mocked FeatureFlagsApi: the deployment's
-  // `app.portals` decides, through the shell module's own one.
+  // package everywhere else), with one stubbed section. Enabled by default, so
+  // the portal mode alone decides; the off cases also list it in
+  // `app.extensions`, as the base app-config does, to show that changes
+  // nothing. No mocked FeatureFlagsApi: the deployment's `app.portals`
+  // decides, through the shell module's own one.
   const { agentPlatformPlugin: realAgentPlatformPlugin } = jest.requireActual(
     '@giantswarm/backstage-plugin-agent-platform',
   );
@@ -321,6 +323,7 @@ describe('the Agent Platform per portal mode', () => {
   function renderPortal(
     portals: { platformPortal?: boolean; agentPlatform?: boolean },
     route: string,
+    extensions: string[] = [],
   ) {
     return renderTestApp({
       features: [navModule, agentShellModule, classicPagePlugin, agentPlatform],
@@ -329,7 +332,7 @@ describe('the Agent Platform per portal mode', () => {
         app: {
           baseUrl: 'http://localhost:3000',
           portals,
-          extensions: ['page:agent-platform'],
+          extensions,
         },
         backend: { baseUrl: 'http://localhost:7007' },
       },
@@ -337,10 +340,14 @@ describe('the Agent Platform per portal mode', () => {
   }
 
   describe('with the Agent Platform off (unset or false)', () => {
-    it.each([{}, { agentPlatform: false }])(
-      'draws nothing of it in the classic portal (%j)',
-      async portals => {
-        renderPortal(portals, '/stub');
+    it.each([
+      [{}, []],
+      [{ agentPlatform: false }, []],
+      [{}, ['page:agent-platform']],
+    ])(
+      'draws nothing of it in the classic portal (%j, extensions %j)',
+      async (portals, extensions) => {
+        renderPortal(portals, '/stub', extensions);
 
         expect(await screen.findByTestId('stub-page')).toBeInTheDocument();
         expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
@@ -348,15 +355,18 @@ describe('the Agent Platform per portal mode', () => {
       },
     );
 
-    it('routes none of its pages, in classic chrome or any other', async () => {
-      renderPortal({}, '/agent-platform/sessions');
+    it.each([[[]], [['page:agent-platform']]])(
+      'routes none of its pages, in classic chrome or any other (extensions %j)',
+      async extensions => {
+        renderPortal({}, '/agent-platform/sessions', extensions);
 
-      expect(await screen.findByText(/not found/i)).toBeInTheDocument();
-      expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
-      expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
-      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-      expect(screen.queryByText(/Agent Platform/)).not.toBeInTheDocument();
-    });
+        expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+        expect(screen.queryByText('Sessions content')).not.toBeInTheDocument();
+        expect(screen.getByTestId('cluster-access-item')).toBeInTheDocument();
+        expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+        expect(screen.queryByText(/Agent Platform/)).not.toBeInTheDocument();
+      },
+    );
   });
 
   describe('with the Agent Platform on', () => {
@@ -370,7 +380,7 @@ describe('the Agent Platform per portal mode', () => {
       expect(links[0]).toHaveAttribute('target', '_blank');
     });
 
-    it('renders its pages in the shell only, never in classic chrome', async () => {
+    it('renders its pages in the shell only, never in classic chrome, with no app.extensions entry', async () => {
       renderPortal(
         { platformPortal: true, agentPlatform: true },
         '/agent-platform/sessions',

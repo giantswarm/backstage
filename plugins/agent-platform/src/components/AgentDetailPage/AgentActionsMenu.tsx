@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
-import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import UpdateIcon from '@material-ui/icons/Update';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -121,17 +120,11 @@ export function agentManagerAbsenceReason(
 export function AgentActionsMenu({
   agent,
   agentManager,
-  onEdit,
   onUpdateSkills,
   onDelete,
 }: {
   agent: Agent;
   agentManager: AgentManagerGate;
-  /**
-   * Opens Edit agent. Left out where the header already offers Edit beside
-   * the menu (the shell), so the same action is not listed twice.
-   */
-  onEdit?: () => void;
   onUpdateSkills: () => void;
   onDelete: () => void;
 }) {
@@ -150,13 +143,9 @@ export function AgentActionsMenu({
           <MenuItem onAction={() => setManifestOpen(true)}>
             View manifest
           </MenuItem>
-          {/* Three separate conditionals rather than one fragment: react-aria
-              builds the menu's collection from its direct children. */}
-          {writeMode !== undefined && onEdit ? (
-            <MenuItem iconStart={<EditOutlinedIcon />} onAction={onEdit}>
-              Edit agent…
-            </MenuItem>
-          ) : null}
+          {/* Separate conditionals rather than one fragment: react-aria
+              builds the menu's collection from its direct children. Edit is
+              the page header's own button, so it is not listed here. */}
           {writeMode !== undefined ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
               Update all skills to latest…

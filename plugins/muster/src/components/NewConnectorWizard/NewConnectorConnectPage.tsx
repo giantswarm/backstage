@@ -106,7 +106,7 @@ function DetectionStatus({
 }
 
 /**
- * The shared validator words its problems for the classic wizard's fields
+ * The shared validator words its problems for the definition's fields
  * ("URL", "installation"); this step labels them "Server address" and, in the
  * agent area, "Environment". Say them in this step's words.
  */
@@ -120,8 +120,7 @@ function inStepWords(message: string | undefined): string | undefined {
  * Step 1 (Connect) of the shell's connector wizard: the server address with a
  * live probe through muster's `core_mcpserver_detect` (the "Server found"
  * state), the connector's name and an optional description. The transport is
- * taken from the probe rather than asked — manual transport choice stays a
- * classic-wizard affair.
+ * taken from the probe rather than asked.
  *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
@@ -144,8 +143,8 @@ export function NewConnectorConnectPage() {
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation, mirrored into
-  // the form state so validation and the composed definition see it — same
-  // rule as the classic details step. Not while editing: that server lives
+  // the form state so validation and the composed definition see it. Not
+  // while editing: that server lives
   // where it lives (NewMcpServerEditGate ends the edit on a switch).
   useEffect(() => {
     if (!registeredName && state.installation !== activeInstallation) {
@@ -180,7 +179,7 @@ export function NewConnectorConnectPage() {
     }
   }, [errorCount, reveal, signInLink, navigate, registeredName]);
   // Problems no field on this step can show: the installation comes from the
-  // section, request metadata is the classic wizard's. Named in a summary.
+  // section, request metadata has no field in this wizard. Named in a summary.
   const unanchoredErrors = [
     inStepWords(fieldErrors.installation),
     fieldErrors.meta,

@@ -8,7 +8,6 @@ import {
   discoveryApiRef,
   fetchApiRef,
   PageBlueprint,
-  PluginHeaderActionBlueprint,
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import {
@@ -69,8 +68,10 @@ import {
 // links here. The predicate is evaluated once, at app start, like the shell's
 // own extensions.
 //
-// Disabled by default and enabled per installation via app-config
-// (`app.extensions: [page:agent-platform]`) as well.
+// Enabled by default, like the skills and profile pages below: `if` already
+// gates it, so `app.portals.agentPlatform` alone switches the Agent Platform
+// on, and a deployment that replaces `app.extensions` wholesale does not drop
+// it. `page:agent-platform: false` still turns it off.
 //
 // The page sorts its sub-pages by `AGENT_PLATFORM_TAB_ORDER`
 // (lib/tabOrder.ts): Sessions · Agents · Models · Connectors · Workflows ·
@@ -78,7 +79,6 @@ import {
 // extension a deployment names in its own `app.extensions` attaches first. The
 // first one is where a bare `/agent-platform` lands.
 const agentPlatformPage = PageBlueprint.makeWithOverrides({
-  disabled: true,
   if: AGENT_SHELL_ON,
   factory(originalFactory, { inputs }) {
     const title = 'Agent Platform';
@@ -264,24 +264,6 @@ const profilePage = PageBlueprint.make({
   },
 });
 
-// The section's installation scope selector, in the page header next to the
-// tabs' own actions: "All installations" (home first) or
-// one pinned installation, for the three tabs above and the muster plugin's
-// "MCP Servers" tab alike. A header action rather than part of a tab, so it
-// stays put while the tabs change underneath it; the scope itself lives in the
-// gs plugin (`useInstallationScope`), URL `?installation=` plus localStorage.
-// Renders nothing on a portal that knows one installation.
-const installationScopeHeaderAction = PluginHeaderActionBlueprint.make({
-  name: 'installation-scope',
-  params: {
-    loader: async () => {
-      const { InstallationScopeHeaderControl } =
-        await import('./components/InstallationScopeHeaderControl');
-      return <InstallationScopeHeaderControl />;
-    },
-  },
-});
-
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -434,7 +416,6 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skillsPage,
     profilePage,
     usageSubPage,
-    installationScopeHeaderAction,
     createClusterAction,
     deleteClusterAction,
     connectorUsedBy,

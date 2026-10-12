@@ -2,9 +2,15 @@ import { useState } from 'react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Link, Routes, Route } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { mcpServersRouteRef } from '../../routes';
+import { musterApiRef } from '../../apis';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import {
   MusterInstance,
@@ -12,10 +18,6 @@ import {
 } from '../MusterInstanceProvider';
 import { McpServersRouter } from '../McpServersRouter';
 import { withEditParam } from './NewMcpServerEditGate';
-
-jest.mock('../McpServersPage', () => ({
-  McpServersPage: () => <div>servers-list</div>,
-}));
 
 jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
   useTransportDetection: () => ({ detected: undefined, probing: false }),
@@ -84,24 +86,45 @@ function Section({ isLoading }: { isLoading?: boolean }) {
           path="/agent-platform/connectors/*"
           element={<McpServersRouter />}
         />
+        {/* The list is the Customize screen's Connectors tab. */}
+        <Route path="/customize/*" element={<div>servers-list</div>} />
       </Routes>
     </MusterInstanceContext.Provider>
   );
 }
 
 function renderSection(path: string, isLoading?: boolean) {
-  return renderInTestApp(<Section isLoading={isLoading} />, {
-    initialRouteEntries: [path],
-    mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
   });
+  return renderInTestApp(
+    <TestApiProvider apis={[[musterApiRef, { callTool: jest.fn() } as never]]}>
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>
+          <Section isLoading={isLoading} />
+        </PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </TestApiProvider>,
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
+    },
+  );
 }
 
 describe('NewMcpServerEditGate', () => {
   it('seeds the wizard from ?edit on the active installation', async () => {
     await renderSection('/agent-platform/connectors/new?edit=miro');
 
-    expect(await screen.findByText('Edit connector: miro')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^URL/)).toHaveValue('https://mcp.miro.com/');
+    expect(
+      await screen.findByRole('heading', { name: 'Edit connector' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+      'https://mcp.miro.com/',
+    );
   });
 
   it('never opens the wizard for a GitOps-managed server, even by link', async () => {
@@ -110,7 +133,7 @@ describe('NewMcpServerEditGate', () => {
     expect(
       await screen.findByText('This connector is managed in Git'),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to connectors' }),
     ).toBeInTheDocument();
@@ -120,13 +143,13 @@ describe('NewMcpServerEditGate', () => {
     await renderSection('/agent-platform/connectors/new?edit=miro', true);
 
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
-    expect(screen.queryByText('Step 1 of 4: Details')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Server address/)).not.toBeInTheDocument();
     expect(screen.queryByText('Connector not found')).not.toBeInTheDocument();
   });
 
   it('ends the edit when the header switches installation', async () => {
     await renderSection('/agent-platform/connectors/new?edit=miro');
-    await screen.findByText('Edit connector: miro');
+    await screen.findByRole('heading', { name: 'Edit connector' });
 
     await userEvent.click(
       screen.getByRole('button', { name: 'switch to golem' }),
@@ -137,27 +160,33 @@ describe('NewMcpServerEditGate', () => {
     await userEvent.click(
       screen.getByRole('link', { name: 'new registration' }),
     );
-    expect(await screen.findByText('Register a connector')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^URL/)).toHaveValue('');
+    expect(
+      await screen.findByRole('heading', { name: 'Add connector' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue('');
   });
 
   it('brings a draft back once the edit is left', async () => {
     await renderSection('/agent-platform/connectors/new');
     await userEvent.type(
-      screen.getByLabelText(/^URL/),
+      screen.getByLabelText(/^Server address/),
       'https://draft.example.com/mcp',
     );
 
     await userEvent.click(screen.getByRole('link', { name: 'edit miro' }));
-    expect(screen.getByLabelText(/^URL/)).toHaveValue('https://mcp.miro.com/');
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
+      'https://mcp.miro.com/',
+    );
 
     // A /new without ?edit is a registration again: the edit ends and the
     // draft it set aside is back.
     await userEvent.click(
       screen.getByRole('link', { name: 'new registration' }),
     );
-    expect(await screen.findByText('Register a connector')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^URL/)).toHaveValue(
+    expect(
+      await screen.findByRole('heading', { name: 'Add connector' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Server address/)).toHaveValue(
       'https://draft.example.com/mcp',
     );
   });

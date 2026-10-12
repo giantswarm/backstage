@@ -24,7 +24,6 @@ import type {
   MCPServerClientCredentialsSecretRef,
   MCPServerSigV4,
 } from './k8s';
-import { toYaml } from './gitops';
 import {
   AUTH_MODE_LABELS,
   serverAuthMode,
@@ -74,31 +73,6 @@ export const SIGV4_SHARED_IDENTITY_WARNING =
 
 /** One `spec.meta` entry, kept as a list so the editor can round-trip order. */
 export type McpServerMetaEntry = { key: string; value: string };
-
-/**
- * `NAME=value` lines → metadata entries, the shape the Details step's textarea
- * edits. A line without `=` is a name with no value yet, so a half-typed entry
- * survives the round trip instead of vanishing under the cursor.
- */
-export function parseMetaEntries(text: string): McpServerMetaEntry[] {
-  return text
-    .split('\n')
-    .filter(line => line.trim())
-    .map(line => {
-      const separator = line.indexOf('=');
-      return separator === -1
-        ? { key: line.trim(), value: '' }
-        : {
-            key: line.slice(0, separator).trim(),
-            value: line.slice(separator + 1).trim(),
-          };
-    });
-}
-
-/** Metadata entries → the `NAME=value` lines they were parsed from. */
-export function formatMetaEntries(entries: McpServerMetaEntry[]): string {
-  return entries.map(({ key, value }) => `${key}=${value}`).join('\n');
-}
 
 export type NewMcpServerFormState = {
   /** Display name; the slug derives from it. */
@@ -700,95 +674,6 @@ export function validateNewMcpServerForm(
   state: NewMcpServerFormState,
 ): string[] {
   return [...validateMcpServerDetails(state), ...validateMcpServerAuth(state)];
-}
-
-/**
- * The composed definition as an MCPServer manifest — the review step's manual
- * fallback for users who prefer to commit the CR to a GitOps repo instead of
- * registering live. Same namespace default as the GitOps dialog's
- * `toManifestYaml`.
- */
-export function toMcpServerManifestYaml(
-  definition: McpServerDefinition,
-  namespace = 'agent-platform',
-): string {
-  const { name, ...spec } = definition;
-  return toYaml({
-    apiVersion: 'muster.giantswarm.io/v1alpha1',
-    kind: 'MCPServer',
-    metadata: { name, namespace },
-    spec,
-  });
-}
-
-// Quote a CLI argument value for a POSIX shell when it needs it.
-function shellQuote(value: string): string {
-  if (/^[A-Za-z0-9@%+=:,./_-]+$/.test(value)) {
-    return value;
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * The composed definition as a `muster create mcpserver` invocation — the
- * review step's CLI fallback. Flag names follow muster's cmd/create.go
- * (auth flags landed with muster#1026).
- *
- * Returns undefined for a definition the CLI cannot express. `muster create
- * mcpserver` has no flags for `auth.sigv4` or `meta` (cmd/create.go as of
- * muster v5.4.0), and `--auth-type=sigv4` alone composes a CR the CRD rejects —
- * so the caller must offer the manifest instead of a command that looks right
- * and fails. The advanced authorization-server settings (pinned endpoints,
- * client-credentials Secret, grant scope) have no flags either.
- */
-export function toMusterCliCommand(
-  definition: McpServerDefinition,
-): string | undefined {
-  if (definition.auth?.sigv4 || definition.meta) {
-    return undefined;
-  }
-  const authorizationServer = definition.auth?.authorizationServer;
-  if (
-    authorizationServer &&
-    Object.keys(authorizationServer).some(
-      key => key !== 'issuer' && key !== 'scopes',
-    )
-  ) {
-    return undefined;
-  }
-  const parts = [
-    'muster create mcpserver',
-    definition.name,
-    `--type=${definition.type}`,
-    `--url=${shellQuote(definition.url)}`,
-    `--auto-start=${definition.autoStart}`,
-  ];
-  if (definition.description) {
-    parts.push(`--description=${shellQuote(definition.description)}`);
-  }
-  const auth = definition.auth;
-  if (auth?.type === 'oauth') {
-    parts.push('--auth-type=oauth');
-    if (auth.authorizationServer) {
-      parts.push(
-        `--auth-issuer=${shellQuote(auth.authorizationServer.issuer)}`,
-      );
-      if (auth.authorizationServer.scopes) {
-        parts.push(
-          `--auth-scopes=${shellQuote(auth.authorizationServer.scopes)}`,
-        );
-      }
-    }
-  }
-  if (auth?.forwardToken) {
-    parts.push('--forward-token');
-    if (auth.requiredAudiences?.length) {
-      parts.push(
-        `--required-audiences=${shellQuote(auth.requiredAudiences.join(','))}`,
-      );
-    }
-  }
-  return parts.join(' ');
 }
 
 export type FieldAvailability = {

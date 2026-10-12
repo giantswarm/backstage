@@ -5,7 +5,6 @@ import {
   composeMcpServerDefinition,
   deriveSlug,
   emptyFormState,
-  formatMetaEntries,
   formStateFromServer,
   hasUserInput,
   mergeOntoExisting,
@@ -13,10 +12,7 @@ import {
   wizardAuthModeLabel,
   WIZARD_ANSWER_MODES,
   WIZARD_AUTH_MODES,
-  parseMetaEntries,
   sigv4Advisories,
-  toMcpServerManifestYaml,
-  toMusterCliCommand,
   validateNewMcpServerForm,
   type NewMcpServerFormState,
 } from './mcpServerDefinition';
@@ -494,31 +490,6 @@ describe('sigv4Advisories', () => {
     const advised = sigv4State();
     expect(sigv4Advisories(advised).length).toBeGreaterThan(0);
     expect(validateNewMcpServerForm(advised)).toEqual([]);
-  });
-});
-
-describe('request metadata text round trip', () => {
-  it.each([
-    ['AWS_REGION=eu-central-1', [{ key: 'AWS_REGION', value: 'eu-central-1' }]],
-    // A value containing '=' keeps everything after the first separator.
-    ['A=b=c', [{ key: 'A', value: 'b=c' }]],
-    // Half-typed entries survive, so the field doesn't fight the cursor.
-    ['AWS_REGION', [{ key: 'AWS_REGION', value: '' }]],
-    ['  ', []],
-  ])('parses %j', (text, entries) => {
-    expect(parseMetaEntries(text)).toEqual(entries);
-  });
-
-  it('drops blank lines but keeps order', () => {
-    expect(parseMetaEntries('A=1\n\nB=2')).toEqual([
-      { key: 'A', value: '1' },
-      { key: 'B', value: '2' },
-    ]);
-  });
-
-  it('renders entries back to the lines they came from', () => {
-    const text = 'AWS_REGION=eu-central-1\nAWS_PROFILE=default';
-    expect(formatMetaEntries(parseMetaEntries(text))).toBe(text);
   });
 });
 
@@ -1019,133 +990,6 @@ describe('CRD conformance', () => {
     expect(validateNewMcpServerForm(state({ url: 'mcp.example.com' }))).toEqual(
       [expect.stringContaining('URL must be an http(s) URL')],
     );
-  });
-});
-
-describe('toMcpServerManifestYaml', () => {
-  it('renders the definition as an MCPServer manifest', () => {
-    const yaml = toMcpServerManifestYaml(
-      composeMcpServerDefinition(
-        state({ authMode: 'own-account', issuer: 'https://auth.example.com' }),
-      ),
-    );
-
-    expect(yaml).toContain('apiVersion: muster.giantswarm.io/v1alpha1');
-    expect(yaml).toContain('kind: MCPServer');
-    expect(yaml).toContain('name: weather-mcp');
-    expect(yaml).toContain('namespace: agent-platform');
-    expect(yaml).toContain('type: streamable-http');
-    // toYaml quotes scalars containing YAML-special characters (the colon).
-    expect(yaml).toContain('url: "https://weather.example.com/mcp"');
-    expect(yaml).toContain('issuer: "https://auth.example.com"');
-    // The name lives in metadata, not the spec (unlike the tool argument shape).
-    expect(yaml).not.toMatch(/spec:[\s\S]*name: weather-mcp/);
-  });
-
-  it('renders the sigv4 block and request metadata for the GitOps path', () => {
-    const yaml = toMcpServerManifestYaml(
-      composeMcpServerDefinition(
-        sigv4State({
-          sigv4RoleArn: ROLE_ARN,
-          meta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
-        }),
-      ),
-    );
-
-    expect(yaml).toContain('type: sigv4');
-    expect(yaml).toContain('region: eu-central-1');
-    expect(yaml).toContain(`roleArn: "${ROLE_ARN}"`);
-    expect(yaml).toContain('AWS_REGION: eu-central-1');
-  });
-});
-
-describe('toMusterCliCommand', () => {
-  it('renders a create command for a no-auth server', () => {
-    expect(toMusterCliCommand(composeMcpServerDefinition(state()))).toBe(
-      'muster create mcpserver weather-mcp --type=streamable-http ' +
-        '--url=https://weather.example.com/mcp --auto-start=true ' +
-        "--description='Forecasts and observations'",
-    );
-  });
-
-  it('adds the oauth flags for an own-account server with issuer override', () => {
-    const cmd = toMusterCliCommand(
-      composeMcpServerDefinition(
-        state({
-          description: '',
-          authMode: 'own-account',
-          issuer: 'https://auth.example.com',
-          scopes: 'read write',
-        }),
-      ),
-    );
-
-    expect(cmd).toContain('--auth-type=oauth');
-    expect(cmd).toContain('--auth-issuer=https://auth.example.com');
-    expect(cmd).toContain("--auth-scopes='read write'");
-  });
-
-  it('adds the forward-token flags for a platform-sso server', () => {
-    const cmd = toMusterCliCommand(
-      composeMcpServerDefinition(
-        state({
-          description: '',
-          authMode: 'platform-sso',
-          requiredAudiences: ['aud-a', 'aud-b'],
-        }),
-      ),
-    );
-
-    expect(cmd).toContain('--forward-token');
-    expect(cmd).toContain('--required-audiences=aud-a,aud-b');
-    expect(cmd).not.toContain('--auth-type');
-  });
-
-  it('shell-quotes values that need it', () => {
-    const cmd = toMusterCliCommand(
-      composeMcpServerDefinition(state({ description: "it's; rm -rf /" })),
-    );
-
-    expect(cmd).toContain(`--description='it'\\''s; rm -rf /'`);
-  });
-  it('has no command for a definition the CLI cannot express', () => {
-    // `muster create mcpserver` has no sigv4 or meta flags (cmd/create.go as of
-    // muster v5.4.0). `--auth-type=sigv4` alone would compose a CR the CRD
-    // rejects, so the review step must offer the manifest instead.
-    expect(
-      toMusterCliCommand(composeMcpServerDefinition(sigv4State())),
-    ).toBeUndefined();
-    expect(
-      toMusterCliCommand(
-        composeMcpServerDefinition(
-          state({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
-        ),
-      ),
-    ).toBeUndefined();
-    // ...and no flags for the advanced authorization-server settings either.
-    expect(
-      toMusterCliCommand(
-        composeMcpServerDefinition(
-          state({
-            authMode: 'own-account',
-            issuer: 'https://github.com',
-            authorizationEndpoint: 'https://github.com/login/oauth/authorize',
-            tokenEndpoint: 'https://github.com/login/oauth/access_token',
-          }),
-        ),
-      ),
-    ).toBeUndefined();
-    expect(
-      toMusterCliCommand(
-        composeMcpServerDefinition(
-          state({
-            authMode: 'own-account',
-            issuer: 'https://auth.example.com',
-            grantScope: 'subject',
-          }),
-        ),
-      ),
-    ).toBeUndefined();
   });
 });
 

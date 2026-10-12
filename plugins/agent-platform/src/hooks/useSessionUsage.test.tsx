@@ -92,7 +92,7 @@ describe('useSessionUsage', () => {
   });
 
   it('does not poll', async () => {
-    // Unlike `useSessionStates` next door. This reports on a 30-day window whose
+    // Unlike `useFleetSessionStates`. This reports on a 30-day window whose
     // buckets are days, and it is the most expensive read in the plugin.
     jest.useFakeTimers();
     try {

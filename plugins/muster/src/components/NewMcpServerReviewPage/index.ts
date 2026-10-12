@@ -1,5 +1,3 @@
-export { NewMcpServerReviewPage } from './NewMcpServerReviewPage';
-// The write both wizards share: the classic review step and the shell
-// wizard's Sign-in step register through the same tracked mutation.
+// The write the connector wizard's Sign-in step registers through.
 export { useRegisterMcpServer } from './useRegisterMcpServer';
 export type { McpServerRegistration } from './useRegisterMcpServer';

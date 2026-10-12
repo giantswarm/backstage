@@ -1,7 +1,5 @@
 import {
-  AWAITING_INPUT_STATES,
   describeSessionState,
-  FAILED_STATES,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
@@ -36,13 +34,10 @@ export type SessionStateCell =
 /** A session row with the state column's answer joined onto it. */
 export type SessionTableRow = SessionRow & {
   stateCell: SessionStateCell;
-  /** Sort key for the State column — see {@link stateRank}. */
-  stateRank: number;
   /**
    * Whether the user pinned this session (`usePinnedSessions`). Joined onto the
-   * row by the shell table so the Pinned chip and group can run through the
-   * same filter and grouping code as the states; the classic table never sets
-   * it.
+   * row by the table so the Pinned filter and group run through the same
+   * filter and grouping code as the states.
    */
   pinned?: boolean;
   /**
@@ -52,74 +47,15 @@ export type SessionTableRow = SessionRow & {
   lastActiveAt?: number;
 };
 
-/**
- * Order the State column sorts in, ascending: what needs a person first.
- *
- * Alphabetical labels would put "Failed" above "Waiting for you", which
- * inverts the only reason to sort by state at all. Descending still reverses
- * this, so both directions are useful — most urgent first, or everything
- * settled first.
- */
-export const STATE_RANKS = {
-  waiting: 0,
-  running: 1,
-  failed: 2,
-  finished: 3,
-  idle: 4,
-  unreadable: 5,
-  unevaluated: 6,
-} as const;
-
 /** The State cell's words for a session that could not be read. */
 export const STATE_UNKNOWN_LABEL = 'Unknown';
 /** The State cell's words for a session no turn reported a state for. */
 export const STATE_IDLE_LABEL = 'No activity yet';
 
-/** The rank a cell sorts at. */
-export function stateRank(cell: SessionStateCell): number {
-  switch (cell.kind) {
-    case 'idle':
-      return STATE_RANKS.idle;
-    case 'unreadable':
-      return STATE_RANKS.unreadable;
-    case 'unevaluated':
-      return STATE_RANKS.unevaluated;
-    default:
-      break;
-  }
-  const { state } = cell;
-  if (AWAITING_INPUT_STATES.has(state.key)) {
-    return STATE_RANKS.waiting;
-  }
-  if (state.isActive) {
-    return STATE_RANKS.running;
-  }
-  return FAILED_STATES.has(state.key)
-    ? STATE_RANKS.failed
-    : STATE_RANKS.finished;
-}
-
 /** The session lists' one recency order, over the joined rows. */
 export const compareSessionRecency = byLastActive<SessionTableRow>(
   row => row.lastActiveAt,
 );
-
-/**
- * Sort by the State column: by {@link stateRank}, then most recently active
- * first ({@link compareSessionRecency}, unknown last in either direction), so
- * two waiting sessions do not read in whatever order the fleet answered in.
- */
-export function sortSessionsByState(
-  rows: SessionTableRow[],
-  direction: 'ascending' | 'descending',
-): SessionTableRow[] {
-  const factor = direction === 'ascending' ? 1 : -1;
-  return [...rows].sort((a, b) =>
-    a.stateRank !== b.stateRank
-      ? (a.stateRank - b.stateRank) * factor
-      : compareSessionRecency(a, b),
-  );
-}
 
 /**
  * Join the states summary onto the rows the table renders.
@@ -139,7 +75,6 @@ export function withSessionStates(
     return {
       ...row,
       stateCell: cell,
-      stateRank: stateRank(cell),
       lastActiveAt: lastActiveAt(row, states?.states.get(row.id)),
     };
   });

@@ -18,7 +18,6 @@ import {
   PricingCoverageAlert,
   PricingCoverageNote,
 } from '../LlmUsage';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -81,94 +80,88 @@ export function UsageCostPage() {
   const windowNote = `The last ${days} days.`;
 
   return (
-    <ShellAwareContent>
-      <UsageColumn>
-        <Flex direction="column" gap="6">
-          {/* One short caption, not a heading: the tab above already names
-              the view. How the spend is priced is the footnote's to say. */}
-          <Text as="p" variant="body-medium" color="secondary">
-            {installation ? (
-              <>
-                Shows the spend on <strong>{installation}</strong> over the last{' '}
-                {days} days, for every user.
-              </>
-            ) : (
-              `Shows the spend over the last ${days} days, for every user.`
-            )}
-          </Text>
-
-          <LlmUsageState view={view} />
-
-          {view.state === 'unavailable' && reportedCostUsd !== undefined && (
+    <UsageColumn>
+      <Flex direction="column" gap="6">
+        {/* One short caption, not a heading: the tab above already names
+            the view. How the spend is priced is the footnote's to say. */}
+        <Text as="p" variant="body-medium" color="secondary">
+          {installation ? (
             <>
-              <div className={classes.row}>
-                <KpiTile
-                  label="Reported cost"
-                  hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
-                  value={formatUsd(reportedCostUsd)}
-                  sub={`your sessions, over the last ${sessionWindowDays} days`}
-                />
-              </div>
-              <Text variant="body-small" color="secondary">
-                This is the only cost figure available without the gateway's
-                gen_ai metrics. The Your sessions tab breaks it down.
-              </Text>
+              Shows the spend on <strong>{installation}</strong> over the last{' '}
+              {days} days, for every user.
             </>
+          ) : (
+            `Shows the spend over the last ${days} days, for every user.`
           )}
+        </Text>
 
-          {view.state === 'ready' && usage && (
-            <>
-              <CostKpiTiles
-                usage={usage}
-                currency={currency}
-                windowDays={days}
+        <LlmUsageState view={view} />
+
+        {view.state === 'unavailable' && reportedCostUsd !== undefined && (
+          <>
+            <div className={classes.row}>
+              <KpiTile
+                label="Reported cost"
+                hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
+                value={formatUsd(reportedCostUsd)}
+                sub={`your sessions, over the last ${sessionWindowDays} days`}
               />
-              {/* Beside the headline it qualifies: every figure on this page
-                  understates the bill by what an unpriced model spent, and
-                  the detail table below says which models and why. */}
-              <PricingCoverageAlert rows={usage.unpricedModels} />
-              <div className={classes.row}>
-                <CostPerDayCard
-                  daily={usage.costPerDay}
-                  note={windowNote}
-                  currency={currency}
-                />
-              </div>
-              <LlmByAgentTable
-                rows={usage.byAgent}
+            </div>
+            <Text variant="body-small" color="secondary">
+              This is the only cost figure available without the gateway's
+              gen_ai metrics. The Your sessions tab breaks it down.
+            </Text>
+          </>
+        )}
+
+        {view.state === 'ready' && usage && (
+          <>
+            <CostKpiTiles usage={usage} currency={currency} windowDays={days} />
+            {/* Beside the headline it qualifies: every figure on this page
+                understates the bill by what an unpriced model spent, and
+                the detail table below says which models and why. */}
+            <PricingCoverageAlert rows={usage.unpricedModels} />
+            <div className={classes.row}>
+              <CostPerDayCard
+                daily={usage.costPerDay}
+                note={windowNote}
                 currency={currency}
-                emptyMessage="The gateway attributed no calls to an agent in this window."
-                note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed marks an agent this portal no longer knows, and its spend stays in the totals. Unattributed marks traffic matched to no caller."
               />
-              <LlmByModelTable
-                rows={usage.byModel}
-                currency={currency}
-                emptyMessage="No model answered a call in this window."
-                note="Cost/1M is a blend, not a list price: cached tokens count, so heavy caching pushes it below a model's headline rate. Watch average tokens per call for context creep — the usual reason a bill rises without more traffic."
-              />
-              <PricingCoverageNote rows={usage.unpricedModels} />
-              <Text variant="body-small" color="secondary">
-                {converted ? (
-                  <>
-                    Measured in USD per call from the gateway's model catalogue
-                    and converted at this environment's configured rate, so
-                    these are estimates. They are not a provider invoice,
-                    because the catalogue is our own price list and a model it
-                    cannot price adds nothing.
-                  </>
-                ) : (
-                  <>
-                    Measured, not estimated: the gateway prices each call from
-                    its model catalogue. It is still not a provider invoice,
-                    because the catalogue is our own price list and a model it
-                    cannot price adds nothing.
-                  </>
-                )}
-              </Text>
-            </>
-          )}
-        </Flex>
-      </UsageColumn>
-    </ShellAwareContent>
+            </div>
+            <LlmByAgentTable
+              rows={usage.byAgent}
+              currency={currency}
+              emptyMessage="The gateway attributed no calls to an agent in this window."
+              note="The runtime names each call's agent and person; the gateway records them for calls through the Substrate egress and attributes any other call to the calling pod's ServiceAccount. A row covers everyone's traffic through that agent. Removed marks an agent this portal no longer knows, and its spend stays in the totals. Unattributed marks traffic matched to no caller."
+            />
+            <LlmByModelTable
+              rows={usage.byModel}
+              currency={currency}
+              emptyMessage="No model answered a call in this window."
+              note="Cost/1M is a blend, not a list price: cached tokens count, so heavy caching pushes it below a model's headline rate. Watch average tokens per call for context creep — the usual reason a bill rises without more traffic."
+            />
+            <PricingCoverageNote rows={usage.unpricedModels} />
+            <Text variant="body-small" color="secondary">
+              {converted ? (
+                <>
+                  Measured in USD per call from the gateway's model catalogue
+                  and converted at this environment's configured rate, so these
+                  are estimates. They are not a provider invoice, because the
+                  catalogue is our own price list and a model it cannot price
+                  adds nothing.
+                </>
+              ) : (
+                <>
+                  Measured, not estimated: the gateway prices each call from its
+                  model catalogue. It is still not a provider invoice, because
+                  the catalogue is our own price list and a model it cannot
+                  price adds nothing.
+                </>
+              )}
+            </Text>
+          </>
+        )}
+      </Flex>
+    </UsageColumn>
   );
 }

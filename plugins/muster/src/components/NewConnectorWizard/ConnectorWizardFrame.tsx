@@ -47,9 +47,9 @@ export function useConnectorWizardCloseHref(): string {
  * in-content wizard frame (header with Close and the Connect / Sign-in / Test
  * step strip, sticky footer with Cancel, Back and the step's own actions)
  * around a centered column — the rail stays visible beside it. Each step page
- * provides its primary buttons through `useProvidePageHeaderActions`, exactly
- * like the classic steps do — the frame renders them in its footer and claims
- * the page header, so the surrounding layout draws none.
+ * provides its primary buttons through `useProvidePageHeaderActions`; the
+ * frame renders them in its footer and claims the page header, so the
+ * surrounding layout draws none.
  */
 export function ConnectorWizardFrame({
   step,

@@ -9,13 +9,11 @@ import {
   RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
-import type { AgentRow } from './helpers';
 import {
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
   sortAgentRows,
-  sortAgentsBy,
   toAgentRow,
 } from './helpers';
 
@@ -554,91 +552,6 @@ describe('getAgentsRefetchInterval', () => {
     const converging = notReadyAgent('converging', 5_000);
 
     expect(getAgentsRefetchInterval(query([stuck, converging]))).toBe(FAST);
-  });
-});
-
-describe('sortAgentsBy', () => {
-  const row = (name: string, overrides: Partial<AgentRow> = {}): AgentRow => ({
-    ...toAgentRow(makeAgent({ name, displayName: name }), []),
-    ...overrides,
-  });
-
-  const names = (rows: AgentRow[]) => rows.map(r => r.name);
-
-  it('orders the status column by severity, worst first', () => {
-    const rows = [
-      row('ready-one', { readiness: 'ready' }),
-      row('pending-one', { readiness: 'pending' }),
-      row('rejected-one', { readiness: 'failed' }),
-      row('down-one', { readiness: 'notReady' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual(['rejected-one', 'down-one', 'pending-one', 'ready-one']);
-  });
-
-  it('reverses the status order when descending', () => {
-    const rows = [
-      row('rejected-one', { readiness: 'failed' }),
-      row('ready-one', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'descending' }),
-      ),
-    ).toEqual(['ready-one', 'rejected-one']);
-  });
-
-  it('breaks status ties by name so equal rows keep a stable order', () => {
-    const rows = [
-      row('zeta', { readiness: 'ready' }),
-      row('alpha', { readiness: 'ready' }),
-      row('mid', { readiness: 'ready' }),
-    ];
-
-    expect(
-      names(
-        sortAgentsBy(rows, { column: 'readiness', direction: 'ascending' }),
-      ),
-    ).toEqual(['alpha', 'mid', 'zeta']);
-  });
-
-  it('sorts skills numerically, not as strings', () => {
-    const rows = [
-      row('ten', { skillCount: 10 }),
-      row('two', { skillCount: 2 }),
-      row('nine', { skillCount: 9 }),
-    ];
-
-    expect(
-      names(sortAgentsBy(rows, { column: 'skills', direction: 'ascending' })),
-    ).toEqual(['two', 'nine', 'ten']);
-  });
-
-  // The initial sort, which must reproduce the ordering the list had before it
-  // became sortable (installation, then name).
-  it('groups by installation and then name, matching the previous default', () => {
-    const rows = [
-      row('beta', { installation: 'inst-b' }),
-      row('zeta', { installation: 'inst-a' }),
-      row('alpha', { installation: 'inst-a' }),
-    ];
-
-    const sorted = sortAgentsBy(rows, {
-      column: 'installation',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => `${r.installation}:${r.name}`)).toEqual([
-      'inst-a:alpha',
-      'inst-a:zeta',
-      'inst-b:beta',
-    ]);
-    expect(names(sorted)).toEqual(names(sortAgentRows(rows)));
   });
 });
 

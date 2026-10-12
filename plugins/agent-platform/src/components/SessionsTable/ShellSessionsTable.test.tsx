@@ -141,8 +141,6 @@ async function renderShell(
       rows={sessionRows}
       sessionStates={sessionStates}
       searchDebounceMs={0}
-      showFilters
-      layout="shell"
     />,
     {
       apis: [[storageApiRef, storage]],
@@ -735,8 +733,6 @@ describe('SessionsTable in the shell layout', () => {
           rows={current}
           sessionStates={states}
           searchDebounceMs={0}
-          showFilters
-          layout="shell"
         />
       );
     }

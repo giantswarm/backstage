@@ -5,13 +5,11 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { NewAgentFormProvider } from '../NewAgentFormProvider';
 import { AgentDetailPage } from '../AgentDetailPage';
 import { EditAgentPage, LegacyEditAgentRedirect } from '../EditAgentPage';
-import { AgentsIndexPage } from '../AgentsIndexPage';
 import { NewAgentPage } from '../NewAgentPage';
 import { NewAgentSkillsPage } from '../NewAgentSkillsPage';
 import { NewAgentToolsPage } from '../NewAgentToolsPage';
 import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
-import { useAgentShell } from '../../hooks/useAgentShell';
 
 // Content of the "Agents" tab: the list, one agent's details, and the create
 // wizard — for a new agent, and prefilled to edit one. The create steps share one NewAgentFormProvider so the composed
@@ -32,26 +30,15 @@ import { useAgentShell } from '../../hooks/useAgentShell';
 // address survives beside the splat as a redirect, matched first for the same
 // reason. AgentsRouter.test.tsx holds both rankings.
 //
-// Inside the agent-platform shell the list is the Customize screen's Agents
-// tab, so the index sends there.
+// The list is the Customize screen's Agents tab, so the index sends there.
 export const AgentsRouter = () => {
   // The form and review steps, and an agent's page, open at their top.
   useScrollToTopOnNavigation();
-  const agentShell = useAgentShell();
   return (
     <QueryClientProvider>
       <NewAgentFormProvider>
         <Routes>
-          <Route
-            index
-            element={
-              agentShell ? (
-                <ShellCustomizeRedirect tab="agents" />
-              ) : (
-                <AgentsIndexPage />
-              )
-            }
-          />
+          <Route index element={<ShellCustomizeRedirect tab="agents" />} />
           <Route path="new" element={<NewAgentPage />} />
           <Route path="new/skills" element={<NewAgentSkillsPage />} />
           <Route path="new/tools" element={<NewAgentToolsPage />} />

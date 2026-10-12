@@ -137,7 +137,8 @@ describe('NewAgentPage', () => {
       within(dialog).getByRole('button', { name: 'Discard changes' }),
     );
 
-    expect(mockNavigate).toHaveBeenCalledWith('/agent-platform/agents');
+    // Leaving lands on the Customize screen's Agents tab.
+    expect(mockNavigate).toHaveBeenCalledWith('/customize/agents');
   });
 
   it('names the preselected model under the plain fields', async () => {

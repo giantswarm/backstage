@@ -8,8 +8,6 @@ export {
   parseToolGroup,
   mcpServerStateSeverity,
   worstSeverity,
-  serversHealthSummary,
-  SERVERS_HEALTH_WARNING_FRACTION,
 } from './MCPServer';
 export type {
   MCPServerState,
@@ -23,7 +21,6 @@ export type {
   MCPServerClientCredentialsSecretRef,
   MCPServerSigV4,
   MCPServerTokenExchange,
-  ServersHealthSummary,
 } from './MCPServer';
 export { MusterWorkflow, WORKFLOW_CATEGORY_LABEL } from './MusterWorkflow';
 export type {

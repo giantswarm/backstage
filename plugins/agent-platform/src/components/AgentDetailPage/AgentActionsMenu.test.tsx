@@ -30,7 +30,6 @@ function makeAgent(): Agent {
   );
 }
 
-const onEdit = jest.fn();
 const onUpdateSkills = jest.fn();
 const onDelete = jest.fn();
 
@@ -47,7 +46,6 @@ const renderMenu = (agentManager: AgentManagerGate = AVAILABLE) =>
     <AgentActionsMenu
       agent={makeAgent()}
       agentManager={agentManager}
-      onEdit={onEdit}
       onUpdateSkills={onUpdateSkills}
       onDelete={onDelete}
     />,
@@ -59,7 +57,6 @@ async function openMenu() {
 }
 
 beforeEach(() => {
-  onEdit.mockReset();
   onUpdateSkills.mockReset();
   onDelete.mockReset();
 });
@@ -96,14 +93,13 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Edit, Update all skills to latest and Delete when the installation has agent-manager, and asks the page to open them', async () => {
+  it('offers Update all skills to latest and Delete when the installation has agent-manager, and asks the page to open them', async () => {
     await renderMenu();
     await openMenu();
 
-    await userEvent.click(screen.getByRole('menuitem', { name: /Edit agent/ }));
-    expect(onEdit).toHaveBeenCalledTimes(1);
-
-    await openMenu();
+    expect(
+      screen.queryByRole('menuitem', { name: /Edit agent/ }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );
@@ -156,14 +152,11 @@ describe('AgentActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
-  it('offers Edit, Update all skills to latest and Delete for an agent applied from git when agent-manager can commit', async () => {
+  it('offers Update all skills to latest and Delete for an agent applied from git when agent-manager can commit', async () => {
     // All three go through a pull request in the GitOps repository then.
     await renderMenu({ ...AVAILABLE, isGitOpsOwned: true, canCommit: true });
     await openMenu();
 
-    await userEvent.click(screen.getByRole('menuitem', { name: /Edit agent/ }));
-    expect(onEdit).toHaveBeenCalledTimes(1);
-    await openMenu();
     await userEvent.click(
       screen.getByRole('menuitem', { name: 'Update all skills to latest…' }),
     );

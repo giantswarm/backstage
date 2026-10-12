@@ -9,7 +9,6 @@ app:
   # the whole navigation (no "Platform Portal" item; classic pages reachable by
   # URL only). Only platformPortal (the default): the classic portal, where the
   # `agent-platform-shell` feature flag lets one browser opt into the shell.
-  # `agentPlatform` needs `page:agent-platform` enabled below.
   portals:
     platformPortal: true
     agentPlatform: false

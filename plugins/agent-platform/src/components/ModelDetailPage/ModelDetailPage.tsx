@@ -1,8 +1,8 @@
 import { ReactNode, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Content, Link } from '@backstage/core-components';
+import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   ModelConfig,
@@ -31,7 +31,6 @@ import {
 import { contextWindowFor } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
@@ -43,30 +42,18 @@ import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelReadView } from './ModelReadView';
 import { describeContextWindow } from './modelUsage';
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles({
   column: {
     maxWidth: 960,
   },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
-}));
+});
 
 /**
- * The page's outer frame, the same split the session page makes.
- *
- * Inside the agent-platform shell it is the platform-standard page frame
- * (`ShellPage`): breadcrumbs reading "Customize / Models / <model>", the
+ * The page's outer frame: the platform-standard page frame (`ShellPage`) —
+ * breadcrumbs reading "Customize / Models / <model>", the
  * model's name as the h1 at the standard scale, its status, environment and
  * provider beside it, and the facts in the column beside the content. The
  * actions the page registers land in that header's slot.
- *
- * In classic chrome it is `Content` under the Agent Platform page's header,
- * with the page's own heading inside and the facts under the content.
  *
  * A component of its own so every exit — loading, not found, and the model
  * itself — gets the same frame.
@@ -88,15 +75,6 @@ function ModelFrame({
   aside?: ReactNode;
   children: ReactNode;
 }) {
-  const agentShell = useAgentShell();
-  if (!agentShell) {
-    return (
-      <Content>
-        {children}
-        {aside && <Box mt="5">{aside}</Box>}
-      </Content>
-    );
-  }
   return (
     <ShellPage
       title={heading ?? title}
@@ -168,7 +146,6 @@ export function modelFacts({
  */
 export function ModelDetailPage() {
   const classes = useStyles();
-  const agentShell = useAgentShell();
   const navigate = useNavigate();
   const modelEditRoute = useRouteRef(modelEditRouteRef);
   const { config } = useSignedInConfig();
@@ -328,30 +305,6 @@ export function ModelDetailPage() {
       aside={<FactsColumn aria-label="About this model" facts={facts} />}
     >
       <div className={classes.column}>
-        {/* In the shell the header above carries the name and where the
-            model is available, at the platform-standard scale; repeating it
-            here would double the title. */}
-        {!agentShell && (
-          <>
-            <Flex
-              align="center"
-              gap="2"
-              className={classes.pageTitle}
-              style={{ flexWrap: 'wrap' }}
-            >
-              <Text as="h2" variant="title-large" weight="bold">
-                {modelConfig.getDisplayName()}
-              </Text>
-              <StatusDot tone={status.tone} label={status.label} />
-              <InstallationChip installation={installation} />
-            </Flex>
-            <Text as="p" color="secondary" className={classes.intro}>
-              ModelConfig <code>{`${namespace}/${name}`}</code> on{' '}
-              {installation}.
-            </Text>
-          </>
-        )}
-
         <Flex direction="column" gap="5">
           {servedBy && (
             <Card>

@@ -2,13 +2,10 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import {
-  mockApis,
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import { musterApiRef } from '../../apis';
@@ -48,11 +45,7 @@ jest.mock('../MusterInstanceProvider', () => ({
   }),
 }));
 
-jest.mock('../McpServersPage', () => ({
-  McpServersPage: () => <div>servers-list</div>,
-}));
-
-// The probe has its own tests (NewMcpServerPage.test.tsx); here its verdict is
+// The probe has its own tests (lib/transportDetection); here its verdict is
 // set per test so the inline "Server found" states render deterministically
 // and the register flow's callTool assertions see no detect calls.
 let mockDetection: TransportDetectionState = {
@@ -97,11 +90,6 @@ function renderWizard(path: string) {
     {
       initialRouteEntries: [path],
       mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
-      apis: [
-        mockApis.featureFlags({
-          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-        }),
-      ],
     },
   );
 }
@@ -186,7 +174,7 @@ describe('shell connector wizard', () => {
     });
 
     // Live round L5: the field is labelled "Server address", so its problems
-    // say so — not the classic wizard's "URL".
+    // say so — not the validator's "URL".
     it('words the address problems after the field label', async () => {
       await renderWizard('/agent-platform/connectors/new');
 

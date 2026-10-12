@@ -1,7 +1,6 @@
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import usePrevious from 'react-use/esm/usePrevious';
-import { Content } from '@backstage/core-components';
-import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
+import { Alert, ButtonLink, Flex } from '@backstage/ui';
 import { LinearProgress } from '@material-ui/core';
 import AddIcon from '@material-ui/icons/Add';
 import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
@@ -11,36 +10,23 @@ import {
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import {
   HIDE_INSTALLATION,
   isSoleInstallation,
 } from '../../lib/soleInstallation';
-import { useAgents } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
-import { StartNewSession } from '../StartNewSession';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 /**
- * The page frame: inside the agent-platform shell the page titles itself and
- * offers "New session", which goes to the shell's start screen; otherwise the
- * Agent Platform page's header and tabs frame the content.
+ * The page frame: the page titles itself and offers "New session", which goes
+ * to the shell's start screen.
  */
-function SessionsFrame({
-  agentShell,
-  children,
-}: {
-  agentShell: boolean;
-  children: ReactNode;
-}) {
-  if (!agentShell) {
-    return <Content>{children}</Content>;
-  }
+function SessionsFrame({ children }: { children: ReactNode }) {
   return (
     <ShellPage
       title="Sessions"
@@ -83,9 +69,7 @@ function ShellSessionsEmpty({ replacesList }: { replacesList: boolean }) {
   );
 }
 
-// Content of the "Sessions" tab, framed by `SessionsFrame`. Outside the shell
-// the one write it offers, starting a session, is inline rather than a header
-// action, so no actions are provided.
+// Content of the "Sessions" tab, framed by `SessionsFrame`.
 function SessionsIndexPageContent() {
   const {
     rows,
@@ -99,10 +83,6 @@ function SessionsIndexPageContent() {
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
-  // The agents fan-out is a second, independent load: the sessions can settle
-  // long before it, and on first run the composer is all there is to show.
-  const { isLoading: isLoadingAgents } = useAgents();
-  const agentShell = useAgentShell();
   // Only the installations that actually returned a session. An installation
   // with no row has no state to ask after, and each pass costs it one task read
   // per session it does hold — so the fan-out is bounded by what is on screen
@@ -112,16 +92,13 @@ function SessionsIndexPageContent() {
     [rows],
   );
   const sessionStates = useFleetSessionStates(stateInstallations);
-  // Which container the composer mounts in, decided once — see the latch below.
-  // Declared up here because the `hasInstallations` guard returns early.
-  const firstRunRef = useRef<boolean | undefined>(undefined);
   // Whether a list was on screen before, so an empty state that replaces it
   // takes over focus.
   const hadRows = usePrevious(rows.length > 0) ?? false;
 
   if (!isLoading && !hasInstallations) {
     return (
-      <SessionsFrame agentShell={agentShell}>
+      <SessionsFrame>
         <EmptyStateCard
           title="No environments configured"
           description="Sessions are read from your environments, and this portal knows none."
@@ -161,22 +138,8 @@ function SessionsIndexPageContent() {
     unreachableInstallations.length === 0 &&
     queriedInstallations.length > 0;
 
-  // Latch the container at the first settled answer, and never re-read it.
-  //
-  // `StartNewSession` returns a card root on first run and a `Flex` root
-  // otherwise. Flipping between them changes the root element type, so React
-  // unmounts the subtree and mounts a fresh `NewSessionComposer` -- discarding
-  // whatever the user had typed. On a genuinely empty fleet that flip is not
-  // hypothetical: `isLoading` stays true until every installation answers, so
-  // the composer would render inline for the whole fan-out and then jump into
-  // the card. Deciding once, after the list settles, is what keeps the prompt.
-  if (firstRunRef.current === undefined && !isLoading) {
-    firstRunRef.current = invitesFirstSession;
-  }
-  const firstRun = firstRunRef.current === true;
-
   return (
-    <SessionsFrame agentShell={agentShell}>
+    <SessionsFrame>
       <Flex direction="column" gap="3">
         {/* Conversations from before the move to kagent API v2 are not here
             (plan decision D9). Said before the list, so an empty or short one
@@ -185,33 +148,16 @@ function SessionsIndexPageContent() {
             composer, so the tab does not flash it over a spinner. */}
         {!isLoading && <SessionsMigrationNotice />}
 
-        {/* Withheld until the list settles, so `firstRun` is known before the
-            composer mounts -- see the latch above. */}
-        {!isLoading && !agentShell && (
-          <StartNewSession
-            entryPoint="sessionsList"
-            layout={firstRun ? 'firstRun' : 'inline'}
-          />
-        )}
-
         <InstallationScopeNote component="kagent" />
 
         {/* Same gate as the Agents tab: the installation this tab reads could
             not be asked whether it runs kagent. Renders nothing otherwise. */}
         <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
 
-        {/* No rows yet — show activity instead of an empty table skeleton.
-            Also while the agents are still resolving on an empty list: the
-            composer is withheld until they are in, the blurb and table are
-            gated off, and without this the tab would render nothing at all.
-            The shell has no composer here, so it waits for no agent. */}
-        {(isLoading || (isEmpty && isLoadingAgents && !agentShell)) && (
-          <LoadingIndicator label="Reading your sessions…" />
-        )}
+        {/* No rows yet — show activity instead of an empty table skeleton. */}
+        {isLoading && <LoadingIndicator label="Reading your sessions…" />}
 
-        {agentShell && invitesFirstSession && (
-          <ShellSessionsEmpty replacesList={hadRows} />
-        )}
+        {invitesFirstSession && <ShellSessionsEmpty replacesList={hadRows} />}
 
         {/* An empty fleet gets no list at all, rather than an empty table
             beneath the invitation above. */}
@@ -226,23 +172,12 @@ function SessionsIndexPageContent() {
                 Installation column tells the rows apart; the table's initial
                 sort is newest first, whatever installation a session ran on.
                 An installation without sessions simply has no row, and one
-                that could not be read is called out below. The heading, and
-                the extra room above it, keep the search box from reading as
-                part of "Start a new session". */}
+                that could not be read is called out below. */}
             <Flex direction="column" gap="2" mt="4">
-              {!agentShell && (
-                <Text as="h2" variant="title-x-small">
-                  {notUserScopedInstallations.length > 0
-                    ? 'Sessions'
-                    : 'Your sessions'}
-                </Text>
-              )}
               <SessionsTable
                 rows={rows}
                 sessionStates={sessionStates}
                 hideColumns={soleInstallation ? HIDE_INSTALLATION : undefined}
-                showFilters
-                layout={agentShell ? 'shell' : undefined}
               />
             </Flex>
           </>
@@ -286,13 +221,12 @@ function SessionsIndexPageContent() {
 }
 
 /**
- * The Sessions list, and the composer that starts a new one.
+ * The Sessions list.
  *
  * `QueryClientProvider`, `ModelConfigsProvider` and `AgentsDataProvider` are
  * mounted by `SessionsRouter` rather than here, so this screen and the session
  * detail share one query cache and one fleet-wide Agent list — opening a session
- * then reuses the agents already loaded for this list, and so does the composer's
- * agent picker.
+ * then reuses the agents already loaded for this list.
  *
  * Only `SessionsDataProvider` is local, because only this screen fans out across
  * the fleet: the detail page reads one installation, named in its own route.

@@ -2,8 +2,6 @@ import {
   KubeObject,
   Provenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import type { GitOpsSource } from '@giantswarm/backstage-plugin-flux-react';
-import type { GitOpsManagedLabelProps } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -21,24 +19,6 @@ export {
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 export type { Provenance } from '@giantswarm/backstage-plugin-kubernetes-react';
-
-/**
- * The `source` for `GitOpsManagedLabel`: only once there is a Git source to
- * resolve. A server reconciled from a HelmRelease that is not itself in Git
- * keeps the plain label, rather than a link that can never resolve.
- */
-export function gitOpsLabelSource(
-  source: GitOpsSource,
-): GitOpsManagedLabelProps['source'] {
-  if (!source.inGit && !source.isLoading) {
-    return undefined;
-  }
-  return {
-    url: source.url,
-    isLoading: source.isLoading,
-    errorMessage: source.errorMessage,
-  };
-}
 
 /** `namespace/name`, or just the name for an object without a namespace. */
 export function qualifiedName(name: string, namespace?: string): string {

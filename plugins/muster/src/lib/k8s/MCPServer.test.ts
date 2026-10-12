@@ -1,12 +1,10 @@
 import {
   MCPServer,
-  MCPServerState,
   TOOL_GROUP_LABEL,
   TOOL_GROUPS,
   TOOL_GROUP_ORDER,
   mcpServerStateSeverity,
   parseToolGroup,
-  serversHealthSummary,
 } from './MCPServer';
 
 function makeServer(spec: Record<string, unknown>, name = 'srv'): MCPServer {
@@ -16,19 +14,6 @@ function makeServer(spec: Record<string, unknown>, name = 'srv'): MCPServer {
       kind: 'MCPServer',
       metadata: { name },
       spec,
-    } as never,
-    'gazelle',
-  );
-}
-
-function makeStateServer(state: MCPServerState, name = 'srv'): MCPServer {
-  return new MCPServer(
-    {
-      apiVersion: 'muster.giantswarm.io/v1alpha1',
-      kind: 'MCPServer',
-      metadata: { name },
-      spec: { type: 'streamable-http' },
-      status: { state },
     } as never,
     'gazelle',
   );
@@ -297,63 +282,5 @@ describe('MCPServer.isReconcilePending', () => {
     expect(
       withReady(3, [{ type: 'Ready', status: 'True' }]).isReconcilePending(),
     ).toBe(false);
-  });
-});
-
-describe('serversHealthSummary', () => {
-  function fleet(healthy: number, unhealthy: number): MCPServer[] {
-    return [
-      ...Array.from({ length: healthy }, (_, i) =>
-        makeStateServer('Auth Required', `ok-${i}`),
-      ),
-      ...Array.from({ length: unhealthy }, (_, i) =>
-        makeStateServer('Failed', `bad-${i}`),
-      ),
-    ];
-  }
-
-  it('counts ok-severity servers (Auth Required is healthy)', () => {
-    const { healthy, total } = serversHealthSummary([
-      makeStateServer('Connected'),
-      makeStateServer('Auth Required'),
-      makeStateServer('Failed'),
-    ]);
-    expect(healthy).toBe(2);
-    expect(total).toBe(3);
-  });
-
-  it('stays ok when only a few remote backends are down (5/55)', () => {
-    // The gazelle steady state: 5 federated backends Failed out of 55 must not
-    // paint the stat amber.
-    expect(serversHealthSummary(fleet(50, 5)).tone).toBe('ok');
-  });
-
-  it('warns once a meaningful fraction is unhealthy', () => {
-    expect(serversHealthSummary(fleet(49, 6)).tone).toBe('warning');
-  });
-
-  it('counts deactivated servers apart, not as unhealthy', () => {
-    const deactivated = new MCPServer(
-      {
-        apiVersion: 'muster.giantswarm.io/v1alpha1',
-        kind: 'MCPServer',
-        metadata: { name: 'off' },
-        spec: { type: 'streamable-http', suspended: true },
-        status: { state: 'Disconnected' },
-      } as never,
-      'gazelle',
-    );
-    const summary = serversHealthSummary([...fleet(8, 0), deactivated]);
-    expect(summary).toEqual({
-      healthy: 8,
-      total: 8,
-      deactivated: 1,
-      tone: 'ok',
-    });
-  });
-
-  it('is ok for an all-healthy or empty fleet', () => {
-    expect(serversHealthSummary(fleet(12, 0)).tone).toBe('ok');
-    expect(serversHealthSummary([]).tone).toBe('ok');
   });
 });

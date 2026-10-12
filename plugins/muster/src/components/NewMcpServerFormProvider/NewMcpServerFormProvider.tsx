@@ -152,17 +152,16 @@ type EditBase = {
 type Draft = { state: NewMcpServerFormState; slugEdited: boolean };
 
 /**
- * Shared form state for the MCP server registration wizard (details → auth →
- * review & register → verify), modelled on agent creation's
+ * Shared form state for the connector registration wizard (connect →
+ * sign-in → test), modelled on agent creation's
  * `NewAgentFormProvider`: the steps are sub-routes, so the state and every
  * derived verdict live here rather than in a step.
  *
  * Composition and validation are pure functions in `lib/mcpServerDefinition` —
  * this only holds state and re-derives from it.
  *
- * `initialAuthMode` is the sign-in answer a new registration starts from: the
- * shell's connector wizard leads with Company login, the classic pages with
- * none. An edit always starts from the registered server's own mode.
+ * `initialAuthMode` is the sign-in answer a new registration starts from (the
+ * connector wizard leads with Company login). An edit always starts from the registered server's own mode.
  */
 export function NewMcpServerFormProvider({
   children,

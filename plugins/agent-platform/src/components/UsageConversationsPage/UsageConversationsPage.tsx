@@ -1,6 +1,5 @@
 import { Flex } from '@backstage/ui';
 import { AgentUsageSection } from '../AgentUsageSection';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 /**
@@ -20,12 +19,10 @@ import { UsageColumn } from '../UsageColumn';
  */
 export function UsageConversationsPage() {
   return (
-    <ShellAwareContent>
-      <UsageColumn>
-        <Flex direction="column" gap="6">
-          <AgentUsageSection />
-        </Flex>
-      </UsageColumn>
-    </ShellAwareContent>
+    <UsageColumn>
+      <Flex direction="column" gap="6">
+        <AgentUsageSection />
+      </Flex>
+    </UsageColumn>
   );
 }

@@ -7,14 +7,12 @@ import {
 
 import {
   agentEditRouteRef,
-  agentsRouteRef,
   newAgentReviewRouteRef,
   newAgentRouteRef,
   newAgentSkillsRouteRef,
   newAgentToolsRouteRef,
 } from '../../routes';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 
@@ -23,14 +21,10 @@ export type AgentWizardStepId = 'details' | 'skills' | 'tools' | 'review';
 
 /**
  * Where leaving the create-agent wizard lands: the shell's Customize screen's
- * Agents tab, or the classic chrome's agents list.
+ * Agents tab.
  */
 export function useAgentWizardCloseHref(): string {
-  const agentsLink = useRouteRef(agentsRouteRef);
-  const agentShell = useAgentShell();
-  return agentShell
-    ? `${SHELL_CUSTOMIZE_PATH}/agents`
-    : (agentsLink?.() ?? '/');
+  return `${SHELL_CUSTOMIZE_PATH}/agents`;
 }
 
 /** Where each step of the agent wizard lives, as route-ref-shaped functions. */

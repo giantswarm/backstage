@@ -4,9 +4,6 @@ import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
   formatSessionTime,
   sessionDayGroup,
-  SessionTableRow,
-  sortSessionsByState,
-  STATE_RANKS,
   withSessionStates,
 } from './helpers';
 
@@ -119,28 +116,6 @@ describe('withSessionStates', () => {
       kind: 'state',
       state: { label: 'quantum', isActive: false },
     });
-    // An unrecognised state is not claimed to be running, so it ranks with the
-    // finished ones rather than at the top of the list.
-    expect(joined.stateRank).toBe(STATE_RANKS.finished);
-  });
-
-  it.each([
-    ['input-required', STATE_RANKS.waiting],
-    ['auth-required', STATE_RANKS.waiting],
-    ['working', STATE_RANKS.running],
-    ['submitted', STATE_RANKS.running],
-    ['failed', STATE_RANKS.failed],
-    ['rejected', STATE_RANKS.failed],
-    ['completed', STATE_RANKS.finished],
-    ['canceled', STATE_RANKS.finished],
-  ])('ranks %s for the State column', (state, rank) => {
-    const states = new Map<string, SessionStateEntry>([
-      ['gazelle/abc', { sessionId: 'abc', state }],
-    ]);
-
-    const [joined] = withSessionStates([row('gazelle/abc')], view({ states }));
-
-    expect(joined.stateRank).toBe(rank);
   });
 });
 
@@ -166,67 +141,6 @@ describe('withSessionStates, last activity', () => {
       2e12,
       Date.parse(started),
     ]);
-  });
-});
-
-describe('sortSessionsByState', () => {
-  const states = new Map<string, SessionStateEntry>([
-    ['gazelle/done', { sessionId: 'done', state: 'completed', changedAt: 40 }],
-    [
-      'gazelle/waiting-old',
-      { sessionId: 'waiting-old', state: 'input-required', changedAt: 10 },
-    ],
-    [
-      'gazelle/waiting-new',
-      { sessionId: 'waiting-new', state: 'input-required', changedAt: 30 },
-    ],
-    [
-      'gazelle/running',
-      { sessionId: 'running', state: 'working', changedAt: 20 },
-    ],
-  ]);
-
-  const rows: SessionTableRow[] = withSessionStates(
-    [
-      row('gazelle/done'),
-      row('gazelle/waiting-old'),
-      row('gazelle/running'),
-      row('gazelle/waiting-new'),
-      row('gazelle/never'),
-    ],
-    view({ states }),
-  );
-
-  it('puts what needs a person first, ascending', () => {
-    expect(
-      sortSessionsByState(rows, 'ascending').map(r => r.sessionId),
-    ).toEqual(['waiting-new', 'waiting-old', 'running', 'done', 'never']);
-  });
-
-  it('reverses in the other direction', () => {
-    expect(
-      sortSessionsByState(rows, 'descending').map(r => r.sessionId),
-    ).toEqual(['never', 'done', 'running', 'waiting-new', 'waiting-old']);
-  });
-
-  it('does not mutate the rows it is given', () => {
-    const order = rows.map(r => r.sessionId);
-    sortSessionsByState(rows, 'ascending');
-    expect(rows.map(r => r.sessionId)).toEqual(order);
-  });
-
-  it('falls back to the start when no state says when it moved', () => {
-    const undated = withSessionStates(
-      [
-        row('gazelle/older', { createdAt: '2026-09-01T00:00:00Z' }),
-        row('gazelle/newer', { createdAt: '2026-09-08T00:00:00Z' }),
-      ],
-      view(),
-    );
-
-    expect(
-      sortSessionsByState(undated, 'ascending').map(r => r.sessionId),
-    ).toEqual(['newer', 'older']);
   });
 });
 

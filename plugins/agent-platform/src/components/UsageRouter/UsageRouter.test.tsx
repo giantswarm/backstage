@@ -86,11 +86,6 @@ jest.mock('../AgentsDataProvider', () => ({
   ),
 }));
 
-let mockAgentShell = false;
-jest.mock('../../hooks/useAgentShell', () => ({
-  useAgentShell: () => mockAgentShell,
-}));
-
 const CurrentPath = () => {
   const { pathname, search } = useLocation();
   return <div data-testid="path">{`${pathname}${search}`}</div>;
@@ -120,7 +115,6 @@ const MCP_SECTION = [<div key="mcp">contributed section</div>];
 
 describe('UsageRouter', () => {
   beforeEach(() => {
-    mockAgentShell = false;
     scopeState.isSingleInstallation = false;
     scopeState.isLoading = false;
     usageInstallationState.installation = 'alpha';
@@ -404,11 +398,7 @@ describe('UsageRouter', () => {
     });
   });
 
-  describe('inside the agent shell', () => {
-    beforeEach(() => {
-      mockAgentShell = true;
-    });
-
+  describe('the page frame', () => {
     it('heads the screen with the platform-standard frame, once', async () => {
       // The ShellPage idiom every platform page uses: "Usage" as the one h1
       // at the standard scale with its description, no per-view heading.
@@ -463,7 +453,6 @@ describe('UsageRouter', () => {
 describe('UsageScopeBar · the window limit on a phone', () => {
   let layout: MockedLayout;
   beforeEach(() => {
-    mockAgentShell = false;
     scopeState.isSingleInstallation = false;
     scopeState.isLoading = false;
     sessionUsageState.usage = { windowDays: 30 };

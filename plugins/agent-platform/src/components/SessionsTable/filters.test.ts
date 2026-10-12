@@ -5,14 +5,11 @@ import {
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
   agentKey,
-  countSessionsByState,
-  filterSessions,
   filterSessionsBySelection,
-  isSessionsFilterActive,
-  SESSION_STATE_FILTERS,
   sessionAgentOptions,
   sessionFacets,
   sessionSelectionOf,
+  SessionStateFilter,
   SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
@@ -78,81 +75,29 @@ const TRACKER = 'gazelle/agents/issue-tracker';
 
 const ids = (filtered: typeof rows) => filtered.map(r => r.sessionId);
 
-describe('SESSION_STATE_FILTERS', () => {
-  it('names each chip after the State cell of its main state', () => {
-    const label = (state: string) => describeSessionState(state)?.label;
-    expect(SESSION_STATE_FILTERS.map(f => f.label)).toEqual([
-      'All',
-      label('input-required'),
-      label('working'),
-      label('failed'),
-      label('completed'),
-      'No activity yet',
-      'Unknown',
-    ]);
-  });
-});
+/** The rows one State (or Pinned) pick keeps, as a narrowed-list link opens. */
+const byState = (rs: typeof rows, state: SessionStateFilter, agent?: string) =>
+  filterSessionsBySelection(
+    rs,
+    sessionSelectionOf(agent ? { state, agent } : { state }),
+  );
 
-describe('countSessionsByState', () => {
-  it('counts every row once under All and once under its chip', () => {
-    expect(countSessionsByState(rows, undefined)).toEqual({
-      all: 11,
-      pinned: 0,
-      waiting: 2,
-      running: 1,
-      failed: 1,
-      finished: 2,
-      idle: 1,
-      unknown: 2,
-    });
-  });
-
-  it('counts only the chosen agent’s rows', () => {
-    expect(countSessionsByState(rows, SRE)).toEqual({
-      all: 8,
-      pinned: 0,
-      waiting: 1,
-      running: 0,
-      failed: 1,
-      finished: 2,
-      idle: 1,
-      unknown: 2,
-    });
-  });
-
-  it('counts a pinned row under Pinned and under its state chip', () => {
-    const pinnedRows = rows.map(r =>
-      r.sessionId === 'a' ? { ...r, pinned: true } : r,
-    );
-    const counts = countSessionsByState(pinnedRows, undefined);
-    expect(counts.pinned).toBe(1);
-    // Pinning says nothing about the state, so the row still counts there.
-    expect(counts.waiting).toBe(2);
-    expect(counts.all).toBe(11);
-  });
-});
-
-describe('filterSessions', () => {
+describe('the State buckets', () => {
   it('keeps every row without a filter', () => {
-    expect(ids(filterSessions(rows, { state: 'all' }))).toEqual(
-      rows.map(r => r.sessionId),
-    );
+    expect(ids(byState(rows, 'all'))).toEqual(rows.map(r => r.sessionId));
   });
 
   it('keeps input and auth requests under "Waiting for you"', () => {
-    expect(ids(filterSessions(rows, { state: 'waiting' }))).toEqual(['a', 'f']);
+    expect(ids(byState(rows, 'waiting'))).toEqual(['a', 'f']);
   });
 
   it('keeps completed and canceled sessions under "Idle"', () => {
-    expect(ids(filterSessions(rows, { state: 'finished' }))).toEqual([
-      'c',
-      'i',
-    ]);
+    expect(ids(byState(rows, 'finished'))).toEqual(['c', 'i']);
   });
 
   it('reaches idle and unreadable sessions through their chips', () => {
-    expect(ids(filterSessions(rows, { state: 'idle' }))).toEqual(['h']);
-    expect(ids(filterSessions(rows, { state: 'unknown' }))).toEqual(['j', 'k']);
+    expect(ids(byState(rows, 'idle'))).toEqual(['h']);
+    expect(ids(byState(rows, 'unknown'))).toEqual(['j', 'k']);
   });
 
   it('puts a state the portal does not recognise under "Unknown"', () => {
@@ -166,36 +111,20 @@ describe('filterSessions', () => {
     });
 
     expect(odd.stateCell).toMatchObject({ state: { label: 'paused' } });
-    expect(ids(filterSessions([odd], { state: 'unknown' }))).toEqual(['z']);
-    expect(countSessionsByState([odd], undefined)).toMatchObject({
-      all: 1,
-      finished: 0,
-      unknown: 1,
-    });
+    expect(ids(byState([odd], 'unknown'))).toEqual(['z']);
+    expect(ids(byState([odd], 'finished'))).toEqual([]);
   });
 
   it('leaves a row with no loaded state to "All"', () => {
-    const buckets = SESSION_STATE_FILTERS.filter(f => f.id !== 'all');
-    expect(
-      buckets.flatMap(f => ids(filterSessions(rows, { state: f.id }))),
-    ).not.toContain('e');
+    const buckets = SHELL_SESSION_STATE_FILTERS.filter(
+      f => f.id !== 'all' && f.id !== 'pinned',
+    );
+    expect(buckets.flatMap(f => ids(byState(rows, f.id)))).not.toContain('e');
   });
 
   it('combines the state and the agent', () => {
-    expect(ids(filterSessions(rows, { state: 'waiting', agent: SRE }))).toEqual(
-      ['f'],
-    );
-    expect(ids(filterSessions(rows, { state: 'all', agent: TRACKER }))).toEqual(
-      ['a', 'b'],
-    );
-  });
-});
-
-describe('isSessionsFilterActive', () => {
-  it('is off only for all states and all agents', () => {
-    expect(isSessionsFilterActive({ state: 'all' })).toBe(false);
-    expect(isSessionsFilterActive({ state: 'failed' })).toBe(true);
-    expect(isSessionsFilterActive({ state: 'all', agent: SRE })).toBe(true);
+    expect(ids(byState(rows, 'waiting', SRE))).toEqual(['f']);
+    expect(ids(byState(rows, 'all', TRACKER))).toEqual(['a', 'b']);
   });
 });
 
@@ -252,9 +181,17 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
       ['finished', 'Idle'],
       ['failed', 'Failed'],
     ]);
-    // The shell adds the Pinned chip; everything else is the same buckets.
     expect(SHELL_SESSION_STATE_FILTERS.map(({ id }) => id).sort()).toEqual(
-      [...SESSION_STATE_FILTERS.map(({ id }) => id), 'pinned'].sort(),
+      [
+        'all',
+        'failed',
+        'finished',
+        'idle',
+        'pinned',
+        'running',
+        'unknown',
+        'waiting',
+      ].sort(),
     );
   });
 
@@ -262,10 +199,7 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
     const pinnedRows = rows.map(r =>
       ['b', 'd'].includes(r.sessionId) ? { ...r, pinned: true } : r,
     );
-    expect(ids(filterSessions(pinnedRows, { state: 'pinned' }))).toEqual([
-      'b',
-      'd',
-    ]);
+    expect(ids(byState(pinnedRows, 'pinned'))).toEqual(['b', 'd']);
   });
 
   it.each([
@@ -292,7 +226,7 @@ describe('SHELL_SESSION_STATE_FILTERS', () => {
     if (!chip) {
       throw new Error(`no chip is named for ${state}`);
     }
-    expect(filterSessions([stateRow], { state: chip.id })).toEqual([stateRow]);
+    expect(byState([stateRow], chip.id)).toEqual([stateRow]);
   });
 });
 

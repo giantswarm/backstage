@@ -30,7 +30,7 @@ A key works only in the channel it is meant for:
 | --------------------------------------------------------- | ---------- | ---------------------------------------------- | ------------------------------------------------------------------------ |
 | `app.portals.agentPlatform`                               | `false`    | Yes, to serve the shell to everyone            | Shell only for people who opt in with the `agent-platform-shell` flag    |
 | `app.portals.platformPortal`                              | `true`     | No                                             | —                                                                        |
-| `app.extensions: page:agent-platform`                     | disabled   | Yes, wherever the shell is on                  | Sessions, Agents, Models and Usage screens do not exist                  |
+| `app.extensions: page:agent-platform`                     | enabled    | No                                             | —                                                                        |
 | `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform     | No kagent, muster, Mimir or avatar endpoint can be derived               |
 | `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir     | Usage metrics are requested from a Mimir that does not exist             |
 | `gs.installations.<name>.currency`                        | USD        | No                                             | Costs shown in USD                                                       |
@@ -80,21 +80,18 @@ start, before sign-in, so both keys are public.
 | Both on                                                       | The shell on `/`, `/agent-platform/**` and `/customize/**`, the classic portal everywhere else, each linking to the other in a new tab (classic to `/agent-platform`, the shell to `/clusters`).              |
 | Only `agentPlatform`                                          | The shell is the whole navigation, without a Platform Portal item. Classic pages stay reachable by URL, and their Agent Platform item leads back in the same tab.                                             |
 
-**Also required: `page:agent-platform`.** The Sessions, Agents, Models and
-Usage screens live on this extension (`plugins/agent-platform/src/plugin.tsx`),
-which is **disabled by default**. Enable it wherever the shell is on. Where the
-shell is off, the page stays unmounted whatever `app.extensions` says, and the
-classic sidebar's Agent Platform item follows `app.portals`, not
-`nav-item:agent-platform`.
+The Sessions, Agents, Models and Usage screens live on `page:agent-platform`
+(`plugins/agent-platform/src/plugin.tsx`). It is enabled by default and mounted
+only where the shell is on, so `app.portals.agentPlatform` alone switches the
+Agent Platform on. `page:agent-platform: false` in `app.extensions` turns the
+screens off. The classic sidebar's Agent Platform item follows `app.portals`,
+not `nav-item:agent-platform`.
 
 ```yaml
 app:
   portals:
     platformPortal: false
     agentPlatform: true
-  extensions:
-    - page:agent-platform
-    - nav-item:agent-platform
 ```
 
 `app.rootRedirect` applies only to the classic home page; where the shell is
@@ -416,9 +413,6 @@ app:
   portals:
     platformPortal: false
     agentPlatform: true
-  extensions:
-    - page:agent-platform
-    - nav-item:agent-platform
 
 backend:
   database:

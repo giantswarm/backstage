@@ -1,6 +1,5 @@
 import { Fragment, ReactNode } from 'react';
 import { Flex } from '@backstage/ui';
-import { ShellAwareContent } from '../ShellAwareContent';
 import { UsageColumn } from '../UsageColumn';
 
 /**
@@ -23,15 +22,13 @@ import { UsageColumn } from '../UsageColumn';
  */
 export function UsageConnectorsPage({ sections }: { sections: ReactNode[] }) {
   return (
-    <ShellAwareContent>
-      <UsageColumn>
-        <Flex direction="column" gap="6">
-          {/* Contributed elements carry no key of their own. */}
-          {sections.map((section, index) => (
-            <Fragment key={index}>{section}</Fragment>
-          ))}
-        </Flex>
-      </UsageColumn>
-    </ShellAwareContent>
+    <UsageColumn>
+      <Flex direction="column" gap="6">
+        {/* Contributed elements carry no key of their own. */}
+        {sections.map((section, index) => (
+          <Fragment key={index}>{section}</Fragment>
+        ))}
+      </Flex>
+    </UsageColumn>
   );
 }

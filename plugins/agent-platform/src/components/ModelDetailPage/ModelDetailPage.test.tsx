@@ -42,11 +42,6 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   }),
 }));
 
-let mockAgentShell = true;
-jest.mock('../../hooks/useAgentShell', () => ({
-  useAgentShell: () => mockAgentShell,
-}));
-
 // No serving layer: the model points at a provider's own endpoint.
 jest.mock('../ServingProvider', () => ({
   useServing: () => ({
@@ -210,7 +205,6 @@ function renderPage() {
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
-    mockAgentShell = true;
     mockMayUpdate = true;
     mockContextWindows = undefined;
     mockUseResource.mockReturnValue({

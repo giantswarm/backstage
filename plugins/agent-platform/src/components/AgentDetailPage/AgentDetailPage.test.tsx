@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
@@ -19,7 +18,6 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
@@ -571,9 +569,14 @@ function makeGitRepository() {
  */
 const AGENT_PATH = `/agent-platform/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
 
-const renderPage = (tab: 'tools' | 'skills' | 'sessions' | '' = '') =>
+const renderPage = (tab: string = '') =>
   renderInTestApp(<AgentDetailPage />, {
-    mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/agents': agentsRouteRef,
+      '/agent-platform/models': modelsRouteRef,
+      '/agent-platform/skills': skillsRouteRef,
+      '/agent-platform/usage': usageRouteRef,
+    },
     mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
     initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
@@ -592,6 +595,26 @@ function expectHeaderReadiness(label: string) {
 /** An InfoCard title, which renders as a heading. */
 const sectionTitle = (name: string) => screen.getByRole('heading', { name });
 
+/**
+ * Opens the Overview's "Technical details" fold-out, where the configuration,
+ * status and provenance cards live. It starts open for an agent that is not
+ * ready.
+ */
+async function openTechnicalDetails() {
+  const foldOut = screen.getByRole('button', { name: 'Technical details' });
+  if (foldOut.getAttribute('aria-expanded') !== 'true') {
+    await userEvent.click(foldOut);
+  }
+}
+
+/** What the configuration's Model row says, beside the facts' own Model. */
+function configurationModelRow(): string {
+  return Array.from(document.querySelectorAll('dt'))
+    .filter(term => term.textContent === 'Model')
+    .map(term => term.nextElementSibling?.textContent ?? '')
+    .join(' | ');
+}
+
 describe('AgentDetailPage', () => {
   beforeEach(() => {
     mockUseResource.mockReset();
@@ -609,59 +632,6 @@ describe('AgentDetailPage', () => {
     canCommit = false;
   });
 
-  it('renders every section for a ready agent', async () => {
-    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
-
-    await renderPage();
-
-    // Header
-    expect(screen.getByText('PR reviewer')).toBeInTheDocument();
-    expectHeaderReadiness('Ready');
-    expect(
-      screen.getByText('Reviews pull requests in depth.'),
-    ).toBeInTheDocument();
-
-    // The Overview tab's sections. Tools, Skills and Sessions have tabs of
-    // their own and are asserted there.
-    expect(sectionTitle('Status')).toBeInTheDocument();
-    expect(sectionTitle('Configuration')).toBeInTheDocument();
-    expect(sectionTitle('System prompt')).toBeInTheDocument();
-    expect(screen.queryByTestId('agent-toolset-card')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: /^Skills/ })).toBeNull();
-
-    // Resolved model, from the targeted ModelConfig read
-    expect(screen.getByText('Claude Opus 4.7')).toBeInTheDocument();
-    expect(screen.getByText('claude-opus-4-7 · Anthropic')).toBeInTheDocument();
-
-    expect(screen.getByText('You review pull requests.')).toBeInTheDocument();
-
-    // The admitting Harness, once, in the status.
-    expect(screen.getByText(/Sessions run on/)).toHaveTextContent(
-      'Sessions run on kagent',
-    );
-    expect(screen.queryByText(/From the label/)).toBeNull();
-
-    // Nothing stands in for Start a session: the agent is ready.
-    expect(screen.queryByText('Sessions cannot start')).toBeNull();
-    expect(
-      screen.queryByText('Sessions can start once the agent is ready'),
-    ).toBeNull();
-  });
-
-  // Each fact once: the installation is the chip, `namespace/name` the
-  // subtitle, the Harness the Status card's.
-  it('names where the agent runs in the header and nowhere else', async () => {
-    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
-
-    await renderPage();
-
-    expect(screen.getByText('agent-platform/pr-reviewer')).toBeInTheDocument();
-    const terms = Array.from(document.querySelectorAll('dt')).map(
-      term => term.textContent,
-    );
-    expect(terms).toEqual(['Model', 'Tools', 'Created', 'Deployed by']);
-  });
-
   it('lists the extra egress origins the Agent declares, and no row without them', async () => {
     const base = makeAgent();
     const withEgress = new Agent(
@@ -677,6 +647,7 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: withEgress }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
 
     const terms = Array.from(document.querySelectorAll('dt')).map(
       term => term.textContent,
@@ -742,65 +713,8 @@ describe('AgentDetailPage', () => {
     });
   });
 
-  describe('tabs', () => {
-    it('offers the four tabs, each at its own URL', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderPage();
-
-      const tabs = screen.getAllByRole('tab');
-      expect(tabs.map(tab => tab.textContent)).toEqual([
-        'Overview',
-        'Tools',
-        'Skills',
-        'Sessions',
-      ]);
-      expect(tabs.map(tab => tab.getAttribute('href'))).toEqual([
-        AGENT_PATH,
-        `${AGENT_PATH}/tools`,
-        `${AGENT_PATH}/skills`,
-        `${AGENT_PATH}/sessions`,
-      ]);
-    });
-
-    // `aria-selected` alone is not the affordance: bui draws the active
-    // underline from the selected key, and skips it entirely for an empty one
-    // (TabsIndicators guards on `selectedKey !== ''`), so a tab whose id came
-    // from its path would be selected and yet visibly unmarked on Overview.
-    it.each([
-      ['', 'Overview'],
-      ['tools', 'Tools'],
-    ] as const)(
-      'marks the open tab with the active indicator (%s)',
-      async (tab, _label) => {
-        stubResources({ resource: makeAgent() });
-
-        const { container } = await renderPage(tab);
-
-        const strip = container.querySelector('.bui-Tabs');
-        expect(strip).toHaveStyle({ '--active-tab-opacity': '1' });
-      },
-    );
-
-    // Overview's href is a prefix of every other tab's, so a 'prefix' match
-    // strategy would leave it selected on all four.
-    it('selects only the open tab', async () => {
-      stubResources({ resource: makeAgent() });
-
-      const { unmount } = await renderPage();
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Overview',
-      );
-      unmount();
-
-      stubResources({ resource: makeAgent() });
-      await renderPage('tools');
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Tools',
-      );
-    });
-
-    it('renders the toolset on the Tools tab', async () => {
+  describe('tools', () => {
+    it('renders the toolset one level below the agent', async () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage('tools');
@@ -811,45 +725,9 @@ describe('AgentDetailPage', () => {
         screen.queryByRole('heading', { name: 'Configuration' }),
       ).toBeNull();
     });
-
-    // A retired or mistyped tab is not a missing agent.
-    it('sends an unknown sub-path back to Overview', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderInTestApp(<AgentDetailPage />, {
-        mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
-        mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
-        initialRouteEntries: [`${AGENT_PATH}/gitops`],
-      });
-
-      expect(sectionTitle('Configuration')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
-        'Overview',
-      );
-    });
   });
 
   describe('skills', () => {
-    it('shows each mounted skill as a card', async () => {
-      stubResources({ resource: makeAgent() });
-
-      await renderPage('skills');
-
-      expect(sectionTitle('Skills (1)')).toBeInTheDocument();
-      // One skill card: the label, its repo as a link, and the commit it is
-      // pinned to — short on the card, full in the tooltip.
-      expect(screen.getByText('PR review conventions')).toBeInTheDocument();
-      expect(
-        screen.getByRole('link', { name: 'giantswarm/skills' }),
-      ).toHaveAttribute('href', 'https://github.com/giantswarm/skills');
-      expect(screen.getByText(COMMIT.slice(0, 12))).toHaveAttribute(
-        'title',
-        COMMIT,
-      );
-      // Read-only: the picker's checkbox affordance must not come along.
-      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-    });
-
     // Update skills only moves the pins of skills already mounted, so an agent
     // without any is pointed at the edit page, where skills are added.
     describe('without any', () => {
@@ -867,7 +745,9 @@ describe('AgentDetailPage', () => {
           screen.getByRole('button', { name: 'Add skills' }),
         ).toBeInTheDocument();
         expect(
-          screen.queryByRole('button', { name: 'Update skills\u2026' }),
+          screen.queryByRole('button', {
+            name: 'Update all skills to latest…',
+          }),
         ).toBeNull();
       });
 
@@ -886,9 +766,7 @@ describe('AgentDetailPage', () => {
 
         await renderPage('skills');
 
-        expect(
-          screen.getByText(/so its skills are added there/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/so add skills there/)).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Add skills' })).toBeNull();
       });
 
@@ -912,7 +790,7 @@ describe('AgentDetailPage', () => {
     // The exact label, because the stubbed dialog's own button says
     // "stub: Update skills landed" and would match a looser query.
     const updateSkills = () =>
-      screen.queryByRole('button', { name: 'Update skills\u2026' });
+      screen.queryByRole('button', { name: 'Update all skills to latest…' });
 
     it('offers Update skills when agent-manager can write to the agent', async () => {
       withAgentManager('helmrelease');
@@ -1009,9 +887,8 @@ describe('AgentDetailPage', () => {
 
     expect(screen.getByText('runbooks')).toBeInTheDocument();
     expect(
-      screen.getByText('gsoci.azurecr.io/giantswarm/skills'),
+      screen.getByText(/^From gsoci\.azurecr\.io\/giantswarm\/skills/),
     ).toBeInTheDocument();
-    expect(screen.getByText(`sha256:${'f'.repeat(12)}`)).toBeInTheDocument();
   });
 
   it('names the agent in the document title and as the page heading', async () => {
@@ -1024,7 +901,7 @@ describe('AgentDetailPage', () => {
       expect(document.title).toBe('PR reviewer · Agents · Agent Platform'),
     );
     expect(
-      screen.getByRole('heading', { level: 2, name: 'PR reviewer' }),
+      screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
     ).toBeInTheDocument();
   });
 
@@ -1045,6 +922,7 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
 
     const terms = Array.from(document.querySelectorAll('dt')).map(
       term => term.textContent,
@@ -1059,6 +937,7 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
     await renderPage();
+    await openTechnicalDetails();
 
     const disclosure = screen.getByRole('button', { name: 'Conditions (2)' });
     expect(disclosure).toHaveAttribute('aria-expanded', 'false');
@@ -1071,7 +950,9 @@ describe('AgentDetailPage', () => {
     expect(
       screen.getByRole('heading', { level: 5, name: /^Accepted/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Revision')).toHaveTextContent('Revision rev-1');
+    expect(
+      screen.getAllByText('Revision').map(term => term.textContent),
+    ).toContain('Revision rev-1');
   });
 
   it.each([
@@ -1086,13 +967,16 @@ describe('AgentDetailPage', () => {
       );
 
       await renderPage();
+      await openTechnicalDetails();
 
-      // The first line is the model, not the resource name the ModelConfig
-      // line already shows, and in monospace like the other identifiers.
-      const modelLine = screen.getByText('claude-opus-4-7 · Anthropic');
-      expect(modelLine).toHaveAttribute('data-variant', 'body-medium');
+      // The configuration card's first line is the model, not the resource
+      // name, and in monospace like the other identifiers. (The overview's
+      // facts name the ModelConfig too; see the plain Overview's tests.)
+      const modelLine = screen
+        .getAllByText('claude-opus-4-7 · Anthropic')
+        .find(line => line.getAttribute('data-variant') === 'body-medium');
+      expect(modelLine).toBeDefined();
       expect(modelLine).toHaveStyle({ fontFamily: 'monospace' });
-      expect(screen.queryByText('opus-4-7')).toBeNull();
     },
   );
 
@@ -1234,10 +1118,7 @@ describe('AgentDetailPage', () => {
       ).toBeGreaterThan(0);
 
       // The Model row, not the Accepted condition, is where to look.
-      const modelRow = screen
-        .getByText('Model')
-        .closest('dt')?.nextElementSibling;
-      expect(modelRow).toHaveTextContent('Cannot be resolved');
+      expect(configurationModelRow()).toContain('Cannot be resolved');
 
       // Conditions in the order kagent evaluates them: the failed stage
       // before the stages it blocks, and the one open.
@@ -1276,9 +1157,7 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(
-        screen.getByText('Model').closest('dt')?.nextElementSibling,
-      ).toHaveTextContent('Cannot be resolved');
+      expect(configurationModelRow()).toContain('Cannot be resolved');
     });
 
     it('offers Edit agent beside the cause to whoever may edit the agent', async () => {
@@ -1421,6 +1300,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expectHeaderReadiness('Ready');
       expect(
@@ -1443,6 +1323,7 @@ describe('AgentDetailPage', () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('Gateway server missing')).toBeInTheDocument();
       expect(
@@ -1459,6 +1340,7 @@ describe('AgentDetailPage', () => {
       stubResources({ resource: makeAgent() });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('Reading the toolset…')).toBeInTheDocument();
     });
@@ -1480,11 +1362,12 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('RemoteMCPServer grafana')).toBeInTheDocument();
       expect(
-        screen.getByText('2 tools: query, dashboards'),
-      ).toBeInTheDocument();
+        screen.getAllByText('2 tools: query, dashboards').length,
+      ).toBeGreaterThan(0);
     });
 
     // Two entries may reference the same server with different scopes — that is
@@ -1518,9 +1401,10 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
-      expect(screen.getByText('1 tool: query')).toBeInTheDocument();
-      expect(screen.getByText('1 tool: annotate')).toBeInTheDocument();
+      expect(screen.getAllByText('1 tool: query').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('1 tool: annotate').length).toBeGreaterThan(0);
       expect(
         screen.getByText('Requires approval before every call'),
       ).toBeInTheDocument();
@@ -1542,6 +1426,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('No tools')).toBeInTheDocument();
       expect(
@@ -1567,6 +1452,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('agent-platform/sre-agent')).toBeInTheDocument();
       expect(screen.getByText(/Called as the tool/)).toHaveTextContent(
@@ -1579,6 +1465,7 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: makeAgent() });
 
     await renderPage();
+    await openTechnicalDetails();
 
     expect(
       screen.getByText('HelmRelease agent-platform/pr-reviewer'),
@@ -1599,6 +1486,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(screen.getByText('Managed through GitOps')).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /Source/ })).toHaveAttribute(
@@ -1618,6 +1506,7 @@ describe('AgentDetailPage', () => {
       });
 
       await renderPage();
+      await openTechnicalDetails();
 
       expect(
         screen.queryByText('Managed through GitOps'),
@@ -1657,7 +1546,9 @@ describe('AgentDetailPage', () => {
 
     await renderPage();
 
-    expect(screen.getByText('Not set on the Agent.')).toBeInTheDocument();
+    expect(
+      screen.getByText("Nothing is set, so the runtime's defaults apply."),
+    ).toBeInTheDocument();
   });
 
   it('names the ConfigMap a system prompt is read from', async () => {
@@ -1672,9 +1563,10 @@ describe('AgentDetailPage', () => {
     });
 
     await renderPage();
+    await openTechnicalDetails();
 
     expect(
-      screen.getByText('Read from the ConfigMap prompts, key reviewer.md.'),
+      screen.getByText('ConfigMap prompts, key reviewer.md'),
     ).toBeInTheDocument();
   });
 
@@ -1689,6 +1581,7 @@ describe('AgentDetailPage', () => {
     });
 
     await renderPage();
+    await openTechnicalDetails();
 
     expect(
       screen.getByRole('heading', { name: 'How you work' }),
@@ -1700,17 +1593,6 @@ describe('AgentDetailPage', () => {
   });
 
   describe('sessions', () => {
-    it('describes the list as the user’s own', async () => {
-      stubResources({ resource: makeAgent() });
-      mockUseAgentSessions.mockReturnValue(ONE_SESSION);
-
-      await renderPage('sessions');
-
-      expect(
-        screen.getByText(/These are only your sessions with this agent/),
-      ).toBeInTheDocument();
-    });
-
     // An installation running kagent in `unsecure` mode returns everyone's
     // sessions — calling those "yours" would be a lie in the other direction.
     it('stops claiming the sessions are yours when kagent is not user-scoped', async () => {
@@ -1736,9 +1618,10 @@ describe('AgentDetailPage', () => {
       expect(
         screen.getByText('You have no sessions with this agent.'),
       ).toBeInTheDocument();
+      // The header's and the empty list's own.
       expect(
-        screen.getByRole('button', { name: 'Start a session' }),
-      ).toBeInTheDocument();
+        screen.getAllByRole('button', { name: 'Start a session' }),
+      ).toHaveLength(2);
       expect(screen.queryByRole('searchbox')).toBeNull();
       expect(screen.queryByRole('table')).toBeNull();
       expect(screen.queryByText(/not a usage total/)).toBeNull();
@@ -1864,8 +1747,9 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
-      expect(sectionTitle('Status')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
+      ).toBeInTheDocument();
       expect(
         screen.queryByText('Could not load this agent'),
       ).not.toBeInTheDocument();
@@ -1889,7 +1773,9 @@ describe('AgentDetailPage', () => {
 
       await renderPage();
 
-      expect(screen.getByText('PR reviewer')).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'PR reviewer' }),
+      ).toBeInTheDocument();
       expect(screen.queryByText('Agent not found')).not.toBeInTheDocument();
     });
   });
@@ -2142,14 +2028,9 @@ describe('AgentDetailPage: the model behind the agent', () => {
   });
 });
 
-describe('AgentDetailPage inside the agent shell', () => {
+describe('AgentDetailPage: the frame and the plain Overview', () => {
   const renderShell = (tab: string = '') =>
     renderInTestApp(<AgentDetailPage />, {
-      apis: [
-        mockApis.featureFlags({
-          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-        }),
-      ],
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,

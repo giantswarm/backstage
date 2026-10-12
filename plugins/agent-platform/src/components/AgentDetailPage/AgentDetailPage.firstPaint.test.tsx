@@ -1,13 +1,11 @@
 import type { ReactNode } from 'react';
 import { lazy, Profiler, Suspense } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AGENT_SHELL_FLAG } from '../../hooks/useAgentShell';
 import type { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import {
@@ -340,12 +338,7 @@ async function renderApp() {
       </Routes>
     </Profiler>,
     {
-      apis: [
-        mockApis.featureFlags({
-          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-        }),
-        [kubernetesApiRef, { proxy }],
-      ],
+      apis: [[kubernetesApiRef, { proxy }]],
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
@@ -411,12 +404,7 @@ async function renderThroughThePage() {
       </Routes>
     </Profiler>,
     {
-      apis: [
-        mockApis.featureFlags({
-          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-        }),
-        [kubernetesApiRef, { proxy }],
-      ],
+      apis: [[kubernetesApiRef, { proxy }]],
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,

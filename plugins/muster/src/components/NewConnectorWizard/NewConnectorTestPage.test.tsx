@@ -2,13 +2,10 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import {
-  mockApis,
   renderInTestApp,
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   mockPhoneLayout,
   PageHeaderActionsProvider,
@@ -51,10 +48,6 @@ jest.mock('../MusterInstanceProvider', () => ({
   }),
 }));
 
-jest.mock('../McpServersPage', () => ({
-  McpServersPage: () => <div>servers-list</div>,
-}));
-
 jest.mock('../NewMcpServerPage/useTransportDetection', () => ({
   useTransportDetection: () => ({ detected: undefined, probing: false }),
 }));
@@ -91,11 +84,6 @@ function renderWizard(path: string) {
     {
       initialRouteEntries: [path],
       mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
-      apis: [
-        mockApis.featureFlags({
-          initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-        }),
-      ],
     },
   );
 }

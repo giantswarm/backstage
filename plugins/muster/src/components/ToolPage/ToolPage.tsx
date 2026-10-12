@@ -1,16 +1,12 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Content } from '@backstage/core-components';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Link } from '@backstage/ui';
 import {
-  BreadcrumbItem,
-  Breadcrumbs,
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useAgentShell } from '../../hooks/useAgentShell';
 import { customizeExternalRouteRef } from '../../routes';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
 import {
@@ -18,7 +14,6 @@ import {
   serverPrefixInfos,
   shortToolName,
 } from '../../lib/toolGrouping';
-import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   SessionGate,
@@ -27,8 +22,10 @@ import {
   useToolDescription,
 } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
-import { useServersListHref } from '../ServerPage';
-import { useServerTools } from '../ServerPage/useServerPageData';
+import {
+  useServersListHref,
+  useServerTools,
+} from '../ServerPage/useServerPageData';
 
 /** A muster tool name: one unbroken snake_case token, so it may break anywhere. */
 const TOOL_NAME_STYLE = {
@@ -45,7 +42,6 @@ const TOOL_NAME_STYLE = {
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
-  const agentShell = useAgentShell();
   const customizeRoute = useRouteRef(customizeExternalRouteRef);
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
@@ -84,13 +80,6 @@ export function ToolPage() {
   const annotations = described.data?.annotations ?? listed?.annotations;
 
   const toolsHref = links.server(serverKey, activeInstallation);
-  const crumbs: BreadcrumbItem[] = [
-    { label: 'Connectors', href: listHref },
-    { label: serverKey, href: toolsHref },
-    { label: 'Tools', href: toolsHref },
-    { label: shortName },
-  ];
-
   let body: ReactNode;
   if (isLoadingInstallations || isLoading) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
@@ -159,54 +148,27 @@ export function ToolPage() {
     </>
   );
 
-  // In the shell, the platform's page frame like the connector's own page:
-  // its phone gutters, an h1 that wraps, and the trail under Customize.
-  if (agentShell) {
-    const customize = customizeRoute?.();
-    return (
-      <ShellPage
-        title={shortName}
-        breadcrumbs={[
-          { label: 'Customize', href: customize },
-          {
-            label: 'Connectors',
-            href: customize ? `${customize}/connectors` : listHref,
-          },
-          // No "Tools" crumb: Tools is the connector page's index, so it
-          // would repeat the connector's own link.
-          { label: serverKey, href: toolsHref },
-          { label: shortName },
-        ]}
-        badges={<ToolMarkers annotations={annotations} />}
-        meta={exposedAs}
-      >
-        {body}
-      </ShellPage>
-    );
-  }
-
+  // The platform's page frame like the connector's own page: its phone
+  // gutters, an h1 that wraps, and the trail under Customize.
+  const customize = customizeRoute?.();
   return (
-    <Content>
-      <ActiveInstallationNote />
-      <Flex direction="column" gap="4" style={{ maxWidth: 1024 }}>
-        <Flex direction="column" gap="2">
-          <Breadcrumbs items={crumbs} />
-          <Text
-            as="h2"
-            variant="title-medium"
-            style={{ overflowWrap: 'anywhere' }}
-          >
-            {shortName}
-          </Text>
-          <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-            <Text variant="body-small" color="secondary">
-              {exposedAs}
-            </Text>
-            <ToolMarkers annotations={annotations} />
-          </Flex>
-        </Flex>
-        {body}
-      </Flex>
-    </Content>
+    <ShellPage
+      title={shortName}
+      breadcrumbs={[
+        { label: 'Customize', href: customize },
+        {
+          label: 'Connectors',
+          href: customize ? `${customize}/connectors` : listHref,
+        },
+        // No "Tools" crumb: Tools is the connector page's index, so it
+        // would repeat the connector's own link.
+        { label: serverKey, href: toolsHref },
+        { label: shortName },
+      ]}
+      badges={<ToolMarkers annotations={annotations} />}
+      meta={exposedAs}
+    >
+      {body}
+    </ShellPage>
   );
 }

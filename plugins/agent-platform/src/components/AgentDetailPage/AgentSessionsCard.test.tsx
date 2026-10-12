@@ -71,10 +71,10 @@ const sessions: AgentSessionsView = {
   isUnavailable: false,
 };
 
-describe('AgentSessionsCard in the shell', () => {
+describe('AgentSessionsCard', () => {
   it("lists the agent's few sessions as the Sessions page does: its words, no paging, no search", async () => {
     await renderInTestApp(
-      <AgentSessionsCard plain agentName="Swarmgeist" sessions={sessions} />,
+      <AgentSessionsCard agentName="Swarmgeist" sessions={sessions} />,
       { mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef } },
     );
 

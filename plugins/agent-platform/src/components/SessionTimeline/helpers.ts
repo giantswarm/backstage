@@ -2,9 +2,6 @@ import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
 import { decodeAgentIdLabel } from '../SessionsDataProvider/helpers';
 
-// Lives in `lib/duration` beside the rail's compact-age formatter; re-exported
-// here so this directory's public surface is unchanged.
-
 /**
  * A tool's name as a readable phrase, for the plain trace: `github_search_issues`
  * → `Github search issues`. Lossy on purpose — the exact identifier is one

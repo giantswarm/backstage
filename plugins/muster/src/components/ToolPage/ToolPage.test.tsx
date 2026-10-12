@@ -2,9 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { FeatureFlagState } from '@backstage/frontend-plugin-api';
-import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
   PageHeaderActionsProvider,
@@ -71,11 +69,7 @@ function makeApi() {
 
 const BASE = '/agent-platform/connectors';
 
-async function renderAt(
-  path: string,
-  api = makeApi(),
-  { shell = false }: { shell?: boolean } = {},
-) {
+async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -96,16 +90,7 @@ async function renderAt(
         '/agent-platform/connectors': mcpServersRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      apis: [
-        [musterApiRef, api as never],
-        ...(shell
-          ? [
-              mockApis.featureFlags({
-                initialStates: { [AGENT_SHELL_FLAG]: FeatureFlagState.Active },
-              }),
-            ]
-          : []),
-      ],
+      apis: [[musterApiRef, api as never]],
     },
   );
   return api;
@@ -123,35 +108,14 @@ describe('ToolPage', () => {
     );
 
     expect(
-      screen.getByRole('heading', { name: 'list_buckets' }),
+      screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('x_aws-root_list_buckets').parentElement,
-    ).toHaveTextContent('Exposed by muster as: x_aws-root_list_buckets');
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    // Once, at the end of the "Exposed by muster as" line.
-    expect(
-      screen.getByText('x_aws-root_list_buckets').parentElement!.parentElement,
-    ).toContainElement(screen.getByText('read-only'));
+    // Once, beside the title: the panel shows no markers of its own.
+    expect(screen.getAllByText('read-only')).toHaveLength(1);
     expect(screen.getByText('Input schema')).toBeInTheDocument();
-
-    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(
-      within(trail)
-        .getAllByRole('link')
-        .map(link => [
-          // The back arrow has no text, only its label.
-          link.textContent || link.getAttribute('aria-label'),
-          link.getAttribute('href'),
-        ]),
-    ).toEqual([
-      ['Back to Tools', `${BASE}/aws-root?installation=gazelle`],
-      ['Connectors', `${BASE}?installation=gazelle`],
-      ['aws-root', `${BASE}/aws-root?installation=gazelle`],
-      ['Tools', `${BASE}/aws-root?installation=gazelle`],
-    ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
     expect(await screen.findByText('Result')).toBeInTheDocument();
@@ -221,7 +185,7 @@ describe('ToolPage', () => {
   });
 });
 
-describe('ToolPage in the agent-platform shell, at phone width', () => {
+describe('ToolPage at phone width', () => {
   let layout: ReturnType<typeof mockPhoneLayout>;
   beforeEach(() => {
     layout = mockPhoneLayout();
@@ -231,8 +195,6 @@ describe('ToolPage in the agent-platform shell, at phone width', () => {
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
     await renderAt(
       `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
-      makeApi(),
-      { shell: true },
     );
 
     expect(
