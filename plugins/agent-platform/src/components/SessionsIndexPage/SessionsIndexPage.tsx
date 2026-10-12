@@ -29,7 +29,7 @@ function SessionsFrame({ children }: { children: ReactNode }) {
   return (
     <ShellPage
       title="Sessions"
-      description="Find every conversation you have had with an agent."
+      description="Find your conversations with agents."
       actions={
         <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
           New session

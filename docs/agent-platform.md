@@ -684,9 +684,9 @@ probe reports (see "User scoping").
 
 ### Earlier conversations are not here
 
-Conversations were **not migrated** to the API v2 line (plan decision D9). The
-Sessions tab no longer says so: the notice that did was removed once the
-migration was old news.
+Conversations were **not migrated** to the API v2 line (plan decision D9), and
+the Sessions tab does not say so: a person whose sessions predate the migration
+sees only newer ones, or the empty state.
 
 ### What the list can and cannot show
 
