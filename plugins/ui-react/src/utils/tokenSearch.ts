@@ -8,9 +8,14 @@
  * boundary-aware matching.
  */
 
-/** Lowercase and split on any run of non-alphanumeric characters. */
+/**
+ * Lowercase, drop accents ("Café" reads as "cafe") and split on any run of
+ * non-alphanumeric characters.
+ */
 export function tokenize(text: string): string[] {
   return text
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);

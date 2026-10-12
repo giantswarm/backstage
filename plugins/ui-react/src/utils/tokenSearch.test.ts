@@ -8,6 +8,10 @@ describe('tokenize', () => {
   it('drops empty tokens from leading/trailing separators', () => {
     expect(tokenize('  -foo--bar-  ')).toEqual(['foo', 'bar']);
   });
+
+  it('drops accents rather than splitting on them', () => {
+    expect(tokenize('Café Crème')).toEqual(['cafe', 'creme']);
+  });
 });
 
 describe('matchesQuery', () => {
@@ -26,6 +30,11 @@ describe('matchesQuery', () => {
   it('requires every query token to match (AND semantics)', () => {
     expect(matchesQuery('dex error', 'dex-error-rate')).toBe(true);
     expect(matchesQuery('dex missing', 'dex-error-rate')).toBe(false);
+  });
+
+  it('ignores accents on either side', () => {
+    expect(matchesQuery('cafe', 'Café Helper')).toBe(true);
+    expect(matchesQuery('café', 'cafe-helper')).toBe(true);
   });
 
   it('treats a blank query as matching everything', () => {
