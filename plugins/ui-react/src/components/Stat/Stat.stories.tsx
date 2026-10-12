@@ -16,7 +16,7 @@ const meta = {
             'One labelled number: an uppercase muted label over a large tabular-nums value.',
           whenToUse:
             'The primitive a stats strip is built from — a figure a reader scans rather than acts on. Give a `tone` only to a value that is good or bad; a plain count takes none. Give a `hint` when the arithmetic behind the number is not obvious from its label. Use `variant="tile"` in a `StatGrid` for a page\'s headline figures, each in its own card.',
-          migration: 'mui-v4',
+          migration: 'mixed',
         }),
       },
     },
