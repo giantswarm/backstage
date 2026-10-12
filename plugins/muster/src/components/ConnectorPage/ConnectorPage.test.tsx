@@ -4,11 +4,11 @@ import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockPhoneLayout,
-  PageHeaderActionsProvider,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';

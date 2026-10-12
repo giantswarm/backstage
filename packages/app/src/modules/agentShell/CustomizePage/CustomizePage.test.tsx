@@ -4,7 +4,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import musterPlugin from '@giantswarm/backstage-plugin-muster';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

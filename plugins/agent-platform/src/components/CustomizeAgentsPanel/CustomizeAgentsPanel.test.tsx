@@ -7,7 +7,7 @@ import {
   type MockedLayout,
   mockDesktopLayout,
   mockPhoneLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
 import { agentsRouteRef } from '../../routes';

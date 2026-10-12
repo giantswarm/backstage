@@ -17,7 +17,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import type { AgentStatusState } from '../../hooks/useAgentStatus';
 import type { ClientServingState } from '../../lib/serving';
