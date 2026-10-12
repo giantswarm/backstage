@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -8,11 +8,10 @@ import { useCommitAgentUpdateDryRun } from '../../hooks/useCommitAgentUpdateDryR
 import { useValidateAgentUpdate } from '../../hooks/useValidateAgentUpdate';
 import type { UpdateAgentState } from '../../hooks/useUpdateAgent';
 import {
-  releaseOutsideDirectory,
+  missingReleaseFile,
   type AgentSkillEntry,
   type AgentUpdate,
   type CommitAgentResult,
-  type ReleaseOutsideDirectory,
   type WriteMode,
 } from '../../lib/agentManager';
 import { repoSlug } from '../../lib/skills';
@@ -23,6 +22,7 @@ import {
 } from '../../lib/skillRefresh';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { MissingReleaseFileAlert } from '../MissingReleaseFileAlert';
 import { shortPin } from './helpers';
 
 const useStyles = makeStyles(theme => ({
@@ -111,41 +111,6 @@ function PlanRow({ entry }: { entry: SkillRefreshEntry }) {
   );
 }
 
-/**
- * Why no pull request can be opened for this agent, and where to make the
- * change instead: its release is defined outside agent-manager's directory.
- */
-function OutsideDirectoryAlert({
-  outside,
-}: {
-  outside: ReleaseOutsideDirectory;
-}) {
-  const classes = useStyles();
-  return (
-    <Alert
-      status="warning"
-      title="Update these skills in the GitOps repository"
-      description={
-        <>
-          Its HelmRelease{' '}
-          <span className={classes.code}>{outside.release}</span> is defined in
-          a file of{' '}
-          <Link
-            href={`https://github.com/${outside.repository}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {outside.repository}
-          </Link>{' '}
-          outside <span className={classes.code}>{outside.directory}</span>, the
-          only directory agent-manager edits. Change the pins listed below in
-          that file.
-        </>
-      }
-    />
-  );
-}
-
 const ALREADY_AT_HEAD =
   "Every git skill is already at its repository's default-branch head.";
 
@@ -195,13 +160,14 @@ export type AgentUpdateSkillsDialogProps = {
  * dialog then shows the pull request (`CommitOutcome`) and only closes, and the
  * page has no revision to watch — the agent moves once it is merged.
  *
- * `validate_agent` does not read the repository, so in commit mode the dialog
- * also asks `update_agent`'s own commit dry run. agent-manager edits only the
- * files in its directory; a release defined elsewhere in the repository is
- * refused there, before the confirm, and the dialog says where to make the
- * change instead of offering a pull request it cannot open. Any other refusal
- * of that dry run (no GitHub authorization yet, say) leaves the confirm as it
- * was: the write reports it in agent-manager's words.
+ * `validate_agent` does not read the repository. So once it shows a pull
+ * request to open — skills that move, no violations — the dialog asks
+ * `update_agent`'s own commit dry run, which does, and the plan shows the pins
+ * that dry run would commit. agent-manager edits a release only in its own
+ * file in its directory; when that file is missing the dry run is refused, and
+ * the dialog says so instead of offering a pull request it cannot open. Any
+ * other refusal of that dry run (no GitHub authorization yet, say) leaves the
+ * confirm as it was: the write reports it in agent-manager's words.
  */
 export function AgentUpdateSkillsDialog({
   installation,
@@ -225,37 +191,55 @@ export function AgentUpdateSkillsDialog({
     () => (isOpen ? { namespace, name, refreshSkills: true } : undefined),
     [isOpen, namespace, name],
   );
-  const dryRun = useValidateAgentUpdate(installation, refresh, mode);
+  const validated = useValidateAgentUpdate(installation, refresh, mode);
   const viaPullRequest = mode === 'commit';
-  const commitDryRun = useCommitAgentUpdateDryRun(
-    installation,
-    viaPullRequest ? refresh : undefined,
-  );
-  // The write itself can still answer it when the dry run did not (it was
-  // refused for another reason, or the release moved in between).
-  const outside =
-    releaseOutsideDirectory(commitDryRun.failure) ??
-    releaseOutsideDirectory(updating.failure);
   // What `mode: commit` answered: the pull request. Cleared on close, so the
   // next open starts from the dry run again.
   const [commitResult, setCommitResult] = useState<CommitAgentResult>();
   const isCommitted = commitResult?.commit !== undefined;
 
   const current = useMemo(() => agent?.skills ?? [], [agent]);
-  const refreshed = dryRun.result?.manifests.values.skills as
+  const validatedSkills = validated.result?.manifests.values.skills as
     AgentSkillEntry[] | undefined;
-  const plan = useMemo(
-    () => skillRefreshPlan(current, refreshed),
-    [current, refreshed],
+  const validatedPlan = useMemo(
+    () => skillRefreshPlan(current, validatedSkills),
+    [current, validatedSkills],
   );
+  const violations = validated.result?.errors ?? [];
+  const failure = validated.failure ?? readFailure;
+
+  // The pull request's own dry run, only when there is one to open: it reads
+  // GitHub as the person, and agent-manager refuses a missing release file
+  // even when nothing would change.
+  const opensPullRequest =
+    viaPullRequest &&
+    Boolean(validated.result) &&
+    !failure &&
+    violations.length === 0 &&
+    refreshChangesAnything(validatedPlan);
+  const commitDryRun = useCommitAgentUpdateDryRun(
+    installation,
+    opensPullRequest ? refresh : undefined,
+  );
+  const plan = useMemo(
+    () =>
+      commitDryRun.result
+        ? skillRefreshPlan(current, commitDryRun.result.skills)
+        : validatedPlan,
+    [commitDryRun.result, current, validatedPlan],
+  );
+  // The write itself can still answer it when the dry run did not (it was
+  // refused for another reason, or the file went in between).
+  const missing =
+    missingReleaseFile(commitDryRun.failure) ??
+    missingReleaseFile(updating.failure);
+
   const gitSkills = plan.filter(entry => entry.kind === 'git');
-  const violations = dryRun.result?.errors ?? [];
-  const failure = dryRun.failure ?? readFailure;
   const notConnected =
     failure?.kind === 'not-connected' ||
     updating.failure?.kind === 'not-connected';
-  const isLoading =
-    isLoadingAgent || dryRun.isLoading || commitDryRun.isLoading;
+  const isReadingPlan = isLoadingAgent || validated.isLoading;
+  const isLoading = isReadingPlan || commitDryRun.isLoading;
   const changesAnything = refreshChangesAnything(plan);
 
   const confirmNote = viaPullRequest
@@ -266,9 +250,9 @@ export function AgentUpdateSkillsDialog({
     !isCommitted &&
     !isLoading &&
     !failure &&
-    !outside &&
+    !missing &&
     violations.length === 0 &&
-    Boolean(dryRun.result) &&
+    Boolean(validated.result) &&
     changesAnything;
 
   const onConfirm = async () => {
@@ -314,7 +298,7 @@ export function AgentUpdateSkillsDialog({
       isDone={isCommitted}
       isConfirmDisabled={!canConfirm}
       error={
-        updating.failure && !notConnected && !outside
+        updating.failure && !notConnected && !missing
           ? updating.failure.message
           : undefined
       }
@@ -326,16 +310,21 @@ export function AgentUpdateSkillsDialog({
           Every git skill moves to the latest commit of its repository's default
           branch. Nothing else about the agent changes.
         </Text>
-        {viaPullRequest && !outside && (
+        {viaPullRequest && !missing && (
           <Text variant="body-medium">
             This agent is applied from GitOps, so agent-manager opens a pull
             request as you with the new pins. The skills move once it is merged.
           </Text>
         )}
 
-        {isLoading && !dryRun.result && (
+        {isReadingPlan && (
           <Text color="secondary">
             Asking agent-manager which skills would move…
+          </Text>
+        )}
+        {commitDryRun.isLoading && (
+          <Text color="secondary">
+            Asking agent-manager whether it can open the pull request…
           </Text>
         )}
 
@@ -357,7 +346,12 @@ export function AgentUpdateSkillsDialog({
             description={failure.message}
           />
         )}
-        {outside && <OutsideDirectoryAlert outside={outside} />}
+        {missing && (
+          <MissingReleaseFileAlert
+            missing={missing}
+            change="the pins listed below"
+          />
+        )}
         {violations.length > 0 && (
           <Alert
             status="danger"
@@ -401,9 +395,10 @@ export function AgentUpdateSkillsDialog({
           </table>
         )}
 
-        {dryRun.result &&
+        {validated.result &&
+          !isLoading &&
           !failure &&
-          !outside &&
+          !missing &&
           violations.length === 0 &&
           !isCommitted && (
             <Text variant="body-small" color="secondary">

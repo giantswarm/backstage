@@ -49,13 +49,29 @@ type Scenario = {
   commitDryRunError?: Error;
   /** What only the pull request itself throws (the dry run passed). */
   commitError?: Error;
+  /** What the commit dry run would write; default: what validate_agent answered. */
+  committed?: AgentSkillEntry[];
+  /** Holds the commit dry run's answer until it settles. */
+  commitDryRunHeld?: Promise<void>;
+  /** validate_agent's violations. */
+  violations?: string[];
   /** The dialog is open in commit mode: an agent applied from git. */
   commit?: boolean;
 };
 
-const OUTSIDE_DIRECTORY = new Error(
-  "conflict: HelmRelease flux-giantswarm/pr-reviewer-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml there): change it in the file that defines it",
+// As agent-manager answers it over MCP: the code, then its wrapped error.
+const MISSING_RELEASE_FILE = new Error(
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer-agent is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml there): change it in the file that defines it",
 );
+const MISSING_PATH =
+  'management-clusters/gazelle/extras/agent-manager/pr-reviewer-agent.yaml';
+const HEAD2 = '4e6d8c0a2b4f6e8d0c2a4b6d8f0e2c4a6b8d0f2e';
+
+function commitDryRuns(callTool: jest.Mock) {
+  return callTool.mock.calls.filter(
+    ([tool, args]) => tool === 'x_agent-manager_update_agent' && args.dryRun,
+  );
+}
 
 function makeMusterApi(scenario: Scenario = {}) {
   const refreshed = scenario.refreshed ?? [
@@ -80,7 +96,8 @@ function makeMusterApi(scenario: Scenario = {}) {
             ...(scenario.commit ? { mode: 'commit' } : {}),
           });
           return {
-            valid: true,
+            valid: !scenario.violations,
+            errors: scenario.violations,
             mode: 'update',
             schemaVersion: '1.0.0',
             schemaSource: 'registry',
@@ -95,10 +112,19 @@ function makeMusterApi(scenario: Scenario = {}) {
             throw scenario.updateError;
           }
           if (args.mode === 'commit' && args.dryRun) {
+            await scenario.commitDryRunHeld;
             if (scenario.commitDryRunError) {
               throw scenario.commitDryRunError;
             }
-            return { ...committedTo(), dryRun: true };
+            return {
+              ...committedTo(),
+              dryRun: true,
+              agent: AGENT,
+              before: { skills: CURRENT },
+              after: { skills: scenario.committed ?? refreshed },
+              changed: ['skills'],
+              manifests: { ociRepository: '', helmRelease: '', values: {} },
+            };
           }
           if (args.mode === 'commit') {
             if (scenario.commitError) {
@@ -324,21 +350,19 @@ describe('AgentUpdateSkillsDialog', () => {
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
     });
 
-    it("says where to update the skills, and offers no pull request, for a release outside agent-manager's directory", async () => {
+    it('says agent-manager has no file for the release, and offers no pull request, when the commit dry run is refused so', async () => {
       const { callTool } = await renderDialog({
         commit: true,
-        commitDryRunError: OUTSIDE_DIRECTORY,
+        commitDryRunError: MISSING_RELEASE_FILE,
       });
 
       expect(
-        await screen.findByText('Update these skills in the GitOps repository'),
+        await screen.findByText('agent-manager cannot open this pull request'),
       ).toBeInTheDocument();
       expect(
         screen.getByText('flux-giantswarm/pr-reviewer-agent'),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText('management-clusters/gazelle/extras/agent-manager'),
-      ).toBeInTheDocument();
+      expect(screen.getByText(MISSING_PATH)).toBeInTheDocument();
       expect(
         screen.getByRole('link', {
           name: 'giantswarm/giantswarm-management-clusters',
@@ -366,20 +390,106 @@ describe('AgentUpdateSkillsDialog', () => {
     });
 
     it('says the same when only the pull request is refused that way', async () => {
-      await renderDialog({ commit: true, commitError: OUTSIDE_DIRECTORY });
+      await renderDialog({ commit: true, commitError: MISSING_RELEASE_FILE });
       await screen.findByTestId('skill-refresh-pr-review');
       const confirm = screen.getByRole('button', { name: 'Open pull request' });
       await waitFor(() => expect(confirm).toBeEnabled());
       await userEvent.click(confirm);
 
       expect(
-        await screen.findByText('Update these skills in the GitOps repository'),
+        await screen.findByText('agent-manager cannot open this pull request'),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(/is not in agent-manager's directory/),
       ).not.toBeInTheDocument();
       expect(confirm).toBeDisabled();
       expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('asks no commit dry run when every git skill is already at its head', async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        refreshed: CURRENT,
+        commitDryRunError: MISSING_RELEASE_FILE,
+      });
+
+      expect(
+        await screen.findByText(
+          "Every git skill is already at its repository's default-branch head.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('agent-manager cannot open this pull request'),
+      ).not.toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('asks no commit dry run when validate_agent reports violations', async () => {
+      const { callTool } = await renderDialog({
+        commit: true,
+        violations: ['skills[0]: unresolvable'],
+      });
+
+      expect(
+        await screen.findByText('agent-manager refuses the update'),
+      ).toBeInTheDocument();
+      expect(commitDryRuns(callTool)).toHaveLength(0);
+    });
+
+    it('says it is checking while the commit dry run runs, and promises no pull request until it answers', async () => {
+      let settle: () => void = () => {};
+      const held = new Promise<void>(resolve => (settle = resolve));
+      await renderDialog({ commit: true, commitDryRunHeld: held });
+
+      expect(
+        await screen.findByText(
+          'Asking agent-manager whether it can open the pull request…',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Open pull request' }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByText(/Confirming opens a pull request/),
+      ).not.toBeInTheDocument();
+
+      settle();
+      expect(
+        await screen.findByText(/Confirming opens a pull request/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Asking agent-manager whether it can open the pull request…',
+        ),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Open pull request' }),
+        ).toBeEnabled(),
+      );
+    });
+
+    it('shows the pins the commit dry run would write', async () => {
+      await renderDialog({
+        commit: true,
+        committed: [
+          {
+            name: 'pr-review',
+            path: 'pr-review',
+            git: { url: REPO, commit: HEAD2 },
+          },
+          {
+            name: 'incident',
+            path: 'incident',
+            git: { url: REPO, commit: HEAD },
+          },
+          { name: 'runbooks', oci: OCI },
+        ],
+      });
+
+      const moving = await screen.findByTestId('skill-refresh-pr-review');
+      expect(await within(moving).findByTitle(HEAD2)).toBeInTheDocument();
+      expect(within(moving).queryByTitle(HEAD)).not.toBeInTheDocument();
     });
   });
 
