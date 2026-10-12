@@ -18,7 +18,6 @@ import {
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
-import { SessionsMigrationNotice } from '../SessionsMigrationNotice';
 import { SessionsTable } from '../SessionsTable';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
@@ -30,7 +29,7 @@ function SessionsFrame({ children }: { children: ReactNode }) {
   return (
     <ShellPage
       title="Sessions"
-      description="Find every conversation you have had with an agent."
+      description="Find your conversations with agents."
       actions={
         <ButtonLink href="/" variant="primary" iconStart={<AddIcon />}>
           New session
@@ -141,13 +140,6 @@ function SessionsIndexPageContent() {
   return (
     <SessionsFrame>
       <Flex direction="column" gap="3">
-        {/* Conversations from before the move to kagent API v2 are not here
-            (plan decision D9). Said before the list, so an empty or short one
-            is explained rather than puzzled over; dismissible, because it is
-            true forever and interesting once. Withheld while loading, like the
-            composer, so the tab does not flash it over a spinner. */}
-        {!isLoading && <SessionsMigrationNotice />}
-
         <InstallationScopeNote component="kagent" />
 
         {/* Same gate as the Agents tab: the installation this tab reads could

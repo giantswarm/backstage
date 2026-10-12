@@ -136,7 +136,7 @@ describe('SessionsIndexPage', () => {
       screen.getByRole('heading', { level: 1, name: 'Sessions' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Find every conversation you have had with an agent.'),
+      screen.getByText('Find your conversations with agents.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'New session' })).toHaveAttribute(
       'href',
