@@ -19,11 +19,13 @@ import { useSearchParams } from 'react-router-dom';
  */
 export const PROVIDER_STORAGE_KEY = '@backstage/core:SignInPage:provider';
 
-/** One sign-in option: the `SignInPage` provider shape. */
+/**
+ * One sign-in option: the `SignInPage` provider shape, its message optional.
+ */
 export interface ShellSignInProvider {
   id: string;
   title: string;
-  message: string;
+  message?: string;
   apiRef: ApiRef<ProfileInfoApi & BackstageIdentityApi & SessionApi>;
 }
 
