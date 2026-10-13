@@ -121,6 +121,22 @@ function defaultAuthStatus(): AuthStatusResponse {
   };
 }
 
+/** muster's answer when it failed to connect the SSO connector for this person. */
+function ssoFailedAuthStatus(): AuthStatusResponse {
+  return {
+    servers: [
+      { name: 'github', status: 'connected' },
+      {
+        name: 'kubernetes',
+        status: 'auth_required',
+        token_forwarding_enabled: true,
+        sso_attempt_failed: true,
+      },
+      { name: 'web-search', status: 'connected' },
+    ],
+  };
+}
+
 /** muster's answer when the SSO connector's sign-in has lapsed. */
 function ssoExpiredAuthStatus(): AuthStatusResponse {
   return {
@@ -247,6 +263,9 @@ describe('CustomizeConnectorsPanel', () => {
       within(kubernetes).queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
 
+    // react-aria opens a tooltip on hover only once it has seen a pointer
+    // move, and a hover's own move lands after its enter.
+    await user.hover(document.body);
     await user.hover(
       within(kubernetes).getByRole('button', {
         name: 'About the state of kubernetes',
@@ -256,6 +275,37 @@ describe('CustomizeConnectorsPanel', () => {
       SSO_EXPLANATION,
     );
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('says a failed SSO connection in a few words, the paragraph in a tooltip (T104)', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const kubernetes = rowOf('kubernetes');
+    // Not "Sign in needed": there is nothing to sign in to.
+    expect(
+      await within(kubernetes).findByText('Could not sign in'),
+    ).toBeInTheDocument();
+    expect(
+      within(kubernetes).queryByText('Sign in needed'),
+    ).not.toBeInTheDocument();
+    expect(
+      within(kubernetes).queryByText(/trusted audiences/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(kubernetes).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+
+    await user.hover(document.body);
+    await user.hover(
+      within(kubernetes).getByRole('button', {
+        name: 'About the state of kubernetes',
+      }),
+    );
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      `${SSO_EXPLANATION} muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.`,
+    );
   });
 
   it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
@@ -288,6 +338,9 @@ describe('CustomizeConnectorsPanel', () => {
       within(github).queryByText(/Dynamic Client Registration/),
     ).toBeNull();
 
+    // react-aria opens a tooltip on hover only once it has seen a pointer
+    // move, and a hover's own move lands after its enter.
+    await user.hover(document.body);
     await user.hover(
       within(github).getByRole('button', {
         name: 'About the state of github',
@@ -318,6 +371,9 @@ describe('CustomizeConnectorsPanel', () => {
       await within(github).findByText('Could not sign in'),
     ).toBeInTheDocument();
     expect(within(github).queryByText(/Too many sign-in attempts/)).toBeNull();
+    // react-aria opens a tooltip on hover only once it has seen a pointer
+    // move, and a hover's own move lands after its enter.
+    await user.hover(document.body);
     await user.hover(
       within(github).getByRole('button', {
         name: 'About the state of github',
@@ -504,6 +560,9 @@ describe('CustomizeConnectorsPanel', () => {
     expect(
       await within(github).findByText('Could not sign in'),
     ).toBeInTheDocument();
+    // react-aria opens a tooltip on hover only once it has seen a pointer
+    // move, and a hover's own move lands after its enter.
+    await user.hover(document.body);
     await user.hover(
       within(github).getByRole('button', {
         name: 'About the state of github',

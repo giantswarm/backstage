@@ -1,5 +1,5 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { InfoHint, StatusDot } from '@giantswarm/backstage-plugin-ui-react';
+import { StatusDot, StatusHint } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ServerSignInStatusState,
   type UseServerSignInStatusOptions,
@@ -25,7 +25,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
 }));
 
-/** The state in a few words, with the sentences in an {@link InfoHint}. */
+/** The state in a few words, with the sentences in a {@link StatusHint}. */
 export function SignInStatusText({
   serverName,
   signInStatus: { shown, details },
@@ -37,11 +37,7 @@ export function SignInStatusText({
   return (
     <span className={classes.status}>
       <StatusDot tone={shown.tone} label={shown.label} />
-      {details.length > 0 ? (
-        <InfoHint label={`About the state of ${serverName}`} size="medium">
-          {details.join('\n')}
-        </InfoHint>
-      ) : null}
+      <StatusHint subject={serverName} explanation={details} />
     </span>
   );
 }

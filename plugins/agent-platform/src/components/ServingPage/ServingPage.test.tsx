@@ -1251,11 +1251,7 @@ describe('ServingPage', () => {
         const grid = screen.getByRole('grid');
         expect(within(grid).getByText('nope:latest')).toBeInTheDocument();
         expect(within(grid).getByText('Not ready')).toBeInTheDocument();
-        expect(
-          within(grid).getByText(
-            'Download failed: pull model manifest: file does not exist',
-          ),
-        ).toBeInTheDocument();
+        expect(within(grid).getByText('Download failed')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Retry download nope:latest' }),
         ).toBeInTheDocument();

@@ -516,6 +516,28 @@ describe('ConnectorPage', () => {
     expect(headerButtons()).toEqual(signedOutHeader);
   });
 
+  it('says in full why muster could not connect an SSO connector (T104)', async () => {
+    // The Customize list keeps this to "Could not sign in" and a hint.
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        {
+          name: 'grafana',
+          status: 'connected',
+          token_forwarding_enabled: true,
+          sso_attempt_failed: true,
+        },
+      ],
+    } as never);
+    await renderAt(`${BASE}/grafana`, { api });
+
+    expect(
+      await screen.findByText(
+        "grafana authenticates through SSO from muster's own session, so there is nothing to sign in to here. muster tried and failed to establish it for your session — check the connector's trusted audiences with an administrator.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('offers reconnect, turn off and remove, and confirms a removal', async () => {
     await renderAt(`${BASE}/jira`);
 

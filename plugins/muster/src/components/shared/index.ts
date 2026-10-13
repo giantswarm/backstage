@@ -25,6 +25,7 @@ export type { GateProps } from '@giantswarm/backstage-plugin-ui-react';
 export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
 export {
+  authActionParts,
   deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
