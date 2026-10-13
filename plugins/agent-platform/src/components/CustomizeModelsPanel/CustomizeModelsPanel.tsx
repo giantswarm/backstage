@@ -16,11 +16,10 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
-  InfoHint,
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
-  StatusDot,
+  StatusWithHint,
   useCatalogFilters,
   usePhoneColumns,
   usePhoneLayout,
@@ -60,31 +59,19 @@ const MODEL_FACETS: CatalogFacet<ModelRow>[] = [
 /**
  * A model's state, and beside it the controller's reason where the verdict
  * falls short ("Not accepted" because a key Secret is missing): a hint, so
- * the label stays short enough to read in the column. The same pattern as
- * the connectors' status.
+ * the label stays short enough to read in the column, as the connectors'
+ * status does.
  */
 function ModelStatusCell({ row }: { row: Row }) {
   const status = modelStatus(row);
   return (
     <Cell>
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 'var(--bui-space-1)',
-          maxWidth: '100%',
-        }}
-      >
-        <StatusDot tone={status.tone} label={status.label} />
-        {status.detail && (
-          <InfoHint
-            label={`About the state of ${row.displayName}`}
-            size="medium"
-          >
-            {status.detail}
-          </InfoHint>
-        )}
-      </span>
+      <StatusWithHint
+        tone={status.tone}
+        label={status.label}
+        hint={status.detail}
+        hintLabel={`About the state of ${row.displayName}`}
+      />
     </Cell>
   );
 }

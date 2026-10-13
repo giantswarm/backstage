@@ -53,6 +53,7 @@ export * from './StatDelta';
 export * from './StatGrid';
 export * from './StackedBarChart';
 export * from './StatusDot';
+export * from './StatusWithHint';
 export * from './StatusLabel';
 export * from './SyncMark';
 export * from './StructuredMetadataList';
