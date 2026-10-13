@@ -55,7 +55,7 @@ export function ClusterManagerCommitOutcome({
                 variant="secondary"
                 size="small"
               >
-                Open the pull request ↗
+                Review pull request ↗
               </ButtonLink>
             </div>
           )}

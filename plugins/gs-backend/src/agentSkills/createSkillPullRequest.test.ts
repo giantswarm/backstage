@@ -295,7 +295,7 @@ describe('createSkillPullRequest — update', () => {
     };
     expect(put.branch).toBe(BRANCH);
     expect(put.sha).toBe('blob-sha-1');
-    expect(put.message).toBe('Update skill: ticket-triage');
+    expect(put.message).toBe('fix: update skill ticket-triage');
     const written = Buffer.from(put.content, 'base64').toString('utf8');
     // The form's fields replace theirs; the keys the form does not show stay.
     expect(splitSkillMarkdown(written)).toEqual({
@@ -310,7 +310,7 @@ describe('createSkillPullRequest — update', () => {
     expect(
       calls.find(call => call.key === `POST ${API}/pulls`)?.body,
     ).toMatchObject({
-      title: 'Update skill: ticket-triage',
+      title: 'fix: update skill ticket-triage',
       head: BRANCH,
       base: 'main',
       body: expect.stringContaining('starting from commit ccccccc'),
@@ -392,7 +392,7 @@ describe('createSkillPullRequest — update', () => {
     });
     expect(
       calls.find(call => call.key === `POST ${API}/pulls`)?.body,
-    ).toMatchObject({ title: 'Update skill: Ticket Triage (v2)' });
+    ).toMatchObject({ title: 'fix: update skill Ticket Triage (v2)' });
   });
 
   it('refuses with 422 a name that is neither a slug nor the existing one', async () => {

@@ -84,7 +84,7 @@ describe('AgentDeleteDialog', () => {
     );
 
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),

@@ -504,7 +504,7 @@ export async function createSkillPullRequest(
   // One summary for the commit and the pull request: a single-commit pull
   // request squash-merges with the commit's message, so both must agree.
   const summary = isUpdate
-    ? `Update skill: ${skillName}`
+    ? `fix: update skill ${skillName}`
     : `feat: add skill ${skillName}`;
   let prResponse: Response;
   try {

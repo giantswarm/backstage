@@ -435,9 +435,10 @@ Skills change only through pull requests. `AddSkillPage`
   name exists.
 - **Edit** (`kind: 'update'`) creates `update-skill/<directory as a slug>` (the
   repository name for a root-level skill) and rewrites `<dir>/SKILL.md` with the
-  file's blob sha, keeping frontmatter keys the form does not show. It answers
-  409 when the default branch's file changed since the pinned commit, 404 when
-  the file is gone, and 422 when nothing changed.
+  file's blob sha, keeping frontmatter keys the form does not show. The commit
+  and the pull request are both `fix: update skill <name>`. It answers 409 when
+  the default branch's file changed since the pinned commit, 404 when the file
+  is gone, and 422 when nothing changed.
 
 Either way, 409 also means the branch exists. The edit form is prefilled from
 `GET /agent-skills/content` at the pinned commit: through the contents API for
