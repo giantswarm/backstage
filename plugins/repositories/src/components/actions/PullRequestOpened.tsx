@@ -46,7 +46,7 @@ export function PullRequestBody({ result }: { result: Committed }) {
           variant="secondary"
           size="small"
         >
-          Open the pull request ↗
+          Review pull request ↗
         </ButtonLink>
       </div>
     </Flex>

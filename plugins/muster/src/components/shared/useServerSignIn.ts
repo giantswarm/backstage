@@ -146,6 +146,12 @@ export interface ServerSignInState {
   signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
+  /**
+   * Why `auth://status` cannot be read, while a sign-in is outstanding. Also
+   * reported as `error` when no answer to a click outranks it; set apart so a
+   * status can tell a failed read from a failed sign-in.
+   */
+  statusUnreadable?: string;
   /** Muster's message for an outcome that isn't a failure (already connected). */
   note?: string;
   /**
@@ -459,6 +465,7 @@ export function useServerSignIn(
         ? `Sign-out request failed: ${signOut.error.message}`
         : undefined) ??
       (pending ? statusUnreadable : undefined),
+    statusUnreadable: pending ? statusUnreadable : undefined,
     // 'connected' with the alert still up is a real combination (the two come
     // from different muster state), and silence there is indistinguishable from
     // the no-op click this feature fixes. Same for a completed sign-out: the

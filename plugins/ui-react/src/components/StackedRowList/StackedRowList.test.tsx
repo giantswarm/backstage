@@ -8,7 +8,7 @@ import {
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
 import { ShowMore } from '../ShowMore';
-import { StackedRowItem, StackedRowList } from './StackedRowList';
+import { StackedRow, StackedRowItem, StackedRowList } from './StackedRowList';
 
 type Session = {
   id: string;
@@ -170,6 +170,38 @@ describe('StackedRowList', () => {
 
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
     expect(screen.getByText('No sessions yet.')).toBeInTheDocument();
+  });
+
+  it('draws rows given as children, in the same list', () => {
+    function HookRow({ name }: { name: string }) {
+      return <StackedRow title={name} status={`${name} status`} />;
+    }
+    render(
+      <StackedRowList aria-label="Connectors" emptyState={<p>None.</p>}>
+        <HookRow name="github" />
+        <HookRow name="miro" />
+      </StackedRowList>,
+    );
+
+    const list = screen.getByRole('list', { name: 'Connectors' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(list).getByText('miro status')).toBeInTheDocument();
+    expect(screen.queryByText('None.')).not.toBeInTheDocument();
+  });
+
+  it('shows the empty state when every child row is left out', () => {
+    const visible = [false, false];
+    render(
+      <StackedRowList aria-label="Connectors" emptyState={<p>None.</p>}>
+        {visible.map(
+          (shown, index) =>
+            shown && <StackedRow key={index} title={`row ${index}`} />,
+        )}
+      </StackedRowList>,
+    );
+
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getByText('None.')).toBeInTheDocument();
   });
 
   it('pages 300 rows through ShowMore, every row with its actions', async () => {

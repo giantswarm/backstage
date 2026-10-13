@@ -501,6 +501,11 @@ export async function createSkillPullRequest(
           : ''
       }. Agents keep the commit they are pinned to until their skills are updated.`
     : "Opened from the portal's Customize → Skills tab. The skill appears in the catalog once this merges.";
+  // One summary for the commit and the pull request: a single-commit pull
+  // request squash-merges with the commit's message, so both must agree.
+  const summary = isUpdate
+    ? `fix: update skill ${skillName}`
+    : `feat: add skill ${skillName}`;
   let prResponse: Response;
   try {
     const putResponse = await githubRequest(
@@ -509,9 +514,7 @@ export async function createSkillPullRequest(
       {
         method: 'PUT',
         body: {
-          message: isUpdate
-            ? `Update the ${skillName} skill`
-            : `Add the ${skillName} skill`,
+          message: summary,
           content,
           branch: created,
           ...(existingSha ? { sha: existingSha } : {}),
@@ -528,7 +531,7 @@ export async function createSkillPullRequest(
       {
         method: 'POST',
         body: {
-          title: `${isUpdate ? 'Update' : 'Add'} skill: ${skillName}`,
+          title: summary,
           head: created,
           base,
           body: `${description.trim()}\n\n${origin}`,

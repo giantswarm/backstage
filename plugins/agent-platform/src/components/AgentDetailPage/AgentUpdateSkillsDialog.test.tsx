@@ -394,7 +394,7 @@ describe('AgentUpdateSkillsDialog', () => {
       await userEvent.click(confirm);
 
       expect(
-        await screen.findByRole('link', { name: /Open the pull request/ }),
+        await screen.findByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
       const write = callTool.mock.calls.find(
         ([tool, args]) =>
