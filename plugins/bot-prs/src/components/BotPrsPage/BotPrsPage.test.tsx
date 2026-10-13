@@ -194,6 +194,48 @@ describe('BotPrsPage', () => {
     ]);
   });
 
+  it('reports a spent token once, with its reset, and holds every button until then', async () => {
+    const resetAt = new Date(Date.now() + 31 * 60_000);
+    callTool.mockImplementation(() =>
+      Promise.reject(
+        new Error(
+          `GitHub rate limit reached for this token; it resets at ${resetAt.toISOString()}`,
+        ),
+      ),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByText(/^Your GitHub API budget is spent until /),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/marge refused the read/),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled();
+  });
+
+  it('reads a team refused for rate as the rate limit, not as a refusal', async () => {
+    const resetAt = new Date(Date.now() + 20 * 60_000);
+    callTool.mockImplementation(() =>
+      Promise.resolve({
+        teams: [
+          {
+            team: 'bumblebee',
+            error: `GitHub rate limit too low for this run: 2 requests left of the 7 it needs at the least; it resets at ${resetAt.toISOString()}`,
+          },
+        ],
+      }),
+    );
+    await renderPage();
+
+    expect(
+      await screen.findByText(/^Your GitHub API budget is spent until /),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/marge refused the read/),
+    ).not.toBeInTheDocument();
+  });
+
   it('reads the queue again without a page reload', async () => {
     await renderPage();
 

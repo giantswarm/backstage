@@ -27,10 +27,13 @@ import {
   useMargeServerName,
 } from '../../hooks/useMarge';
 import { useTeams } from '../../hooks/useTeams';
+import { RateLimitAlert, useIsBefore } from '../RateLimitAlert';
 import {
   looksUnknownTeam,
   MargeAnswerLostError,
   MargeNotConnectedError,
+  MargeRateLimitError,
+  rateLimitResetOf,
   rowsOf,
   type BotPrRow,
 } from '../../lib/marge';
@@ -234,11 +237,23 @@ function Queue({
   const isReadLost = queue.queues.some(
     entry => entry.error instanceof MargeAnswerLostError,
   );
+  // A spent token refuses every team's read the same way, and the
+  // classification's too: reported once, with the time it is served again.
+  const isRateRefused = [
+    queue.classifyError,
+    ...queue.queues.map(entry => entry.error),
+  ].some(error => error instanceof MargeRateLimitError);
+  const rateLimitReset = rateLimitResetOf([
+    queue.classifyError,
+    ...queue.queues.map(entry => entry.error),
+  ]);
+  const isRateLimited = useIsBefore(rateLimitReset);
   const refused = queue.queues.filter(
     entry =>
       entry.error &&
       !(entry.error instanceof MargeNotConnectedError) &&
       !(entry.error instanceof MargeAnswerLostError) &&
+      !(entry.error instanceof MargeRateLimitError) &&
       !isSessionExpiredError(entry.error) &&
       !looksUnknownTeam(entry.error),
   );
@@ -251,7 +266,7 @@ function Queue({
     0,
   );
   const readAt = Math.max(0, ...answered.map(entry => entry.readAt ?? 0));
-  const canAct = !queue.notConnected && answered.length > 0;
+  const canAct = !queue.notConnected && answered.length > 0 && !isRateLimited;
 
   const onToggleAll = useCallback(
     (isSelected: boolean) =>
@@ -329,7 +344,7 @@ function Queue({
                 size="small"
                 variant="outlined"
                 startIcon={<RefreshIcon />}
-                disabled={queue.isLoading}
+                disabled={queue.isLoading || isRateLimited}
                 onClick={queue.reload}
               >
                 {queue.isLoading ? 'Reading…' : 'Refresh'}
@@ -415,8 +430,14 @@ function Queue({
           />
         </Box>
       ) : null}
+      {isRateRefused ? (
+        <Box pt={2}>
+          <RateLimitAlert resetAt={rateLimitReset} />
+        </Box>
+      ) : null}
       {queue.classifyError &&
-      !(queue.classifyError instanceof MargeAnswerLostError) ? (
+      !(queue.classifyError instanceof MargeAnswerLostError) &&
+      !(queue.classifyError instanceof MargeRateLimitError) ? (
         <Box pt={2}>
           <Alert
             status="danger"

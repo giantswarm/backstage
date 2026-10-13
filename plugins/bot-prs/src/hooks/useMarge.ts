@@ -15,6 +15,9 @@ import {
   MARGE_SERVER,
   MargeAnswerLostError,
   MargeNotConnectedError,
+  MargeRateLimitError,
+  rateLimitOf,
+  rateLimitResetOf,
   type MargeMarkResult,
   type MargeResult,
   type MargeTeamQueues,
@@ -276,6 +279,21 @@ export function useBotPrs(
       if (reason) {
         throw reason;
       }
+      // A run that stopped at the rate limit answers, and what it left
+      // undecided keeps its old label: the page says why the table moved
+      // less than asked.
+      const resetAt = rateLimitResetOf(
+        [],
+        answers.map(answer =>
+          answer.status === 'fulfilled' ? answer.value : undefined,
+        ),
+      );
+      if (resetAt) {
+        throw new MargeRateLimitError(
+          `GitHub rate limit reached for this token; it resets at ${resetAt.toISOString()}`,
+          resetAt,
+        );
+      }
     },
     onSettled: () => {
       setClassifying([]);
@@ -311,7 +329,11 @@ export function useBotPrs(
       result: answer?.result,
       readAt: query.data?.readAt,
       isLoading: enabled && isAwaitingData(query),
-      error: failure ?? (answer?.error ? new Error(answer.error) : null),
+      error:
+        failure ??
+        (answer?.error
+          ? (rateLimitOf(answer.error) ?? new Error(answer.error))
+          : null),
     };
   });
   const classifyError = (classifyRun.error as Error | null) ?? null;
@@ -358,6 +380,13 @@ export type MargeTeamSweepsState = {
   progress: Record<string, string>;
   /** The first not-connected refusal, when one team's call met one. */
   notConnected: MargeNotConnectedError | undefined;
+  /**
+   * When GitHub serves the person's token again, when a call of the last
+   * run was refused for rate or a run stopped at the limit.
+   */
+  rateLimitReset: Date | undefined;
+  /** The PRs the last run's teams stopped before deciding. */
+  notReached: number;
   run: (args: TeamSweepArgs) => Promise<TeamSweepRun[]>;
   /**
    * The last run again, for the given teams only: every other team keeps the
@@ -477,6 +506,15 @@ export function useMargeTeamSweeps(
       error instanceof MargeNotConnectedError,
   );
 
+  const rateLimitReset = rateLimitResetOf(
+    [mutation.error as Error | null, ...runs.map(run => run.error)],
+    runs.map(run => run.result),
+  );
+  const notReached = runs.reduce(
+    (sum, run) => sum + (run.result?.summary.not_reached ?? 0),
+    0,
+  );
+
   const run = useCallback(
     (args: TeamSweepArgs) => mutateAsync({ args, kept: [] }),
     [mutateAsync],
@@ -498,6 +536,8 @@ export function useMargeTeamSweeps(
     isPending: mutation.isPending,
     progress,
     notConnected,
+    rateLimitReset,
+    notReached,
     run,
     retry,
     reset: mutation.reset,
