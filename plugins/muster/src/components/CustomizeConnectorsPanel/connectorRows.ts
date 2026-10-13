@@ -47,6 +47,13 @@ export function authLabel(server: MCPServer | undefined): string {
   return server ? SHELL_AUTH_LABELS[serverAuthMode(server)] : '';
 }
 
+/** How a person gets into muster itself: the portal's login, where it asks. */
+export function musterAuthLabel(requiresAuth: boolean): string {
+  return requiresAuth
+    ? SHELL_AUTH_LABELS['platform-sso']
+    : SHELL_AUTH_LABELS.anonymous;
+}
+
 /** "12 tools", or nothing while the tools are unknown. */
 export function toolsLabel(entry: ServerListEntry): string | undefined {
   if (entry.toolCount === undefined) {
@@ -160,4 +167,40 @@ export function connectorReach(
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'
     : 'not-connected';
+}
+
+/** What muster's own row needs to know of this person's muster session. */
+export type MusterSessionState = {
+  requiresAuth: boolean;
+  authenticated: boolean;
+  pending: boolean;
+  failed: boolean;
+};
+
+/**
+ * muster's own state: connected once this person has a session (or none is
+ * needed), nothing while the session is still being asked for, else not
+ * connected — the session gate above the list says how to connect.
+ */
+export function musterStatus(session: MusterSessionState): StatusText {
+  if (!session.requiresAuth || session.authenticated) {
+    return { label: 'Connected', tone: 'success' };
+  }
+  if (session.pending) {
+    return { label: '', tone: 'neutral' };
+  }
+  return {
+    label: CONNECTOR_REACH_LABELS['not-connected'],
+    tone: session.failed ? 'danger' : 'warning',
+  };
+}
+
+/** muster's own state as a Connection filter bucket. */
+export function musterReach(
+  session: MusterSessionState,
+): ConnectorReach | undefined {
+  if (!session.requiresAuth || session.authenticated) {
+    return 'connected';
+  }
+  return session.pending ? undefined : 'not-connected';
 }

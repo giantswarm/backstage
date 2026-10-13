@@ -10,8 +10,9 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import type { AuthStatusResponse } from '../../apis/types';
-import { mcpServersRouteRef } from '../../routes';
-import { MCPServer, MCPServerState } from '../../lib/k8s';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
+import type { ConnectorGroup } from '../../lib/connectorGroups';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
 
 const mockNavigate = jest.fn();
@@ -56,14 +57,22 @@ function makeServer(
     auth?: Record<string, unknown>;
     description?: string;
     suspended?: boolean;
+    toolGroup?: string;
+    family?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name },
+      metadata: {
+        name,
+        labels: options.toolGroup
+          ? { [TOOL_GROUP_LABEL]: options.toolGroup }
+          : {},
+      },
       spec: {
+        ...(options.family ? { family: { name: options.family } } : {}),
         type: 'streamable-http',
         url: `https://${name}.example.test/mcp`,
         description: options.description,
@@ -157,18 +166,21 @@ const SSO_EXPLANATION =
 
 let queryClient: QueryClient;
 
-async function renderPanel(search = '') {
+async function renderPanel(search = '', group?: ConnectorGroup) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
   return renderInTestApp(
     <QueryClientProvider client={client}>
-      <CustomizeConnectorsPanel search={search} />
+      <CustomizeConnectorsPanel search={search} group={group} />
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
     },
   );
 }
@@ -1021,5 +1033,107 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No connectors yet')).toBeInTheDocument();
+  });
+
+  describe('sub-tabs', () => {
+    const fleet = () => [
+      ...servers(),
+      makeServer('agent-manager', {
+        toolGroup: 'agent-platform',
+        description: 'Manages agents',
+      }),
+      makeServer('a-prometheus', {
+        toolGroup: 'infrastructure',
+        family: 'prometheus',
+      }),
+      makeServer('b-prometheus', {
+        toolGroup: 'infrastructure',
+        family: 'prometheus',
+      }),
+    ];
+
+    beforeEach(() => {
+      mockServers = fleet();
+    });
+
+    it('lists only the customer’s connectors by default', async () => {
+      await renderPanel();
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      for (const name of ['github', 'kubernetes', 'web-search']) {
+        expect(rowOf(name)).toBeInTheDocument();
+      }
+      for (const name of ['agent-manager', 'prometheus', 'muster']) {
+        expect(
+          screen.queryByRole('row', { name: new RegExp(`^${name}`) }),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    it('lists the families, one row each, on Families', async () => {
+      await renderPanel('', 'families');
+      expect(
+        screen.getByText(/one connector with an instance per management/),
+      ).toBeInTheDocument();
+      expect(rowOf('prometheus')).toBeInTheDocument();
+      expect(screen.getAllByRole('row')).toHaveLength(2);
+    });
+
+    it('lists muster with its endpoint among the internal servers', async () => {
+      mockInstance = {
+        activeInstallationInfo: {
+          name: 'gazelle',
+          requiresAuth: true,
+          endpoint: 'https://muster.gazelle.example.test/mcp',
+        },
+      };
+      const writeText = jest.fn(async () => undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+      const user = userEvent.setup();
+      await renderPanel('', 'internal');
+
+      expect(rowOf('agent-manager')).toBeInTheDocument();
+      const muster = rowOf('muster');
+      expect(
+        within(muster).getByText('https://muster.gazelle.example.test/mcp'),
+      ).toBeInTheDocument();
+      expect(within(muster).getByText('Company login')).toBeInTheDocument();
+      expect(within(muster).getByText('Connected')).toBeInTheDocument();
+      expect(
+        within(muster).getByRole('link', { name: 'muster' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/connectors/muster?installation=gazelle',
+      );
+
+      await user.click(
+        within(muster).getByRole('button', { name: 'Copy endpoint' }),
+      );
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+
+    it('says muster is not connected without a session', async () => {
+      mockAuthenticated = false;
+      await renderPanel('', 'internal');
+      expect(
+        within(rowOf('muster')).getByText('Not connected'),
+      ).toBeInTheDocument();
+    });
+
+    it('points a search that finds nothing here to the sub-tabs where it does', async () => {
+      await renderPanel('manager');
+      expect(
+        await screen.findByText(/No connectors or tools match/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/The search matches/)).toHaveTextContent(
+        'The search matches 1 connector on Internal.',
+      );
+      expect(screen.getByRole('link', { name: 'Internal' })).toHaveAttribute(
+        'href',
+        '/customize/connectors/internal',
+      );
+    });
   });
 });

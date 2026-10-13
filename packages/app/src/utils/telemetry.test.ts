@@ -1,3 +1,5 @@
+import { CONNECTOR_GROUPS } from '@giantswarm/backstage-plugin-muster';
+import { CUSTOMIZE_CONNECTOR_SUBTABS } from '../modules/agentShell/customizeTabIds';
 import { getTelemetryPageViewPayload } from './telemetry';
 
 describe('getTelemetryPageViewPayload', () => {
@@ -127,6 +129,26 @@ describe('getTelemetryPageViewPayload', () => {
       });
     },
   );
+
+  it.each(CUSTOMIZE_CONNECTOR_SUBTABS)(
+    'reports the Connectors tab’s %s sub-tab as its subview',
+    sub => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
+      ).toEqual({
+        page: 'Customize',
+        view: 'connectors',
+        subview: sub,
+        path: `/customize/connectors/${sub}`,
+      });
+    },
+  );
+
+  it('reports exactly the sub-tabs muster draws below the Connectors tab', () => {
+    expect([...CUSTOMIZE_CONNECTOR_SUBTABS]).toEqual(
+      CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
+    );
+  });
 
   it('reports an unknown Customize tab without a view', () => {
     expect(getTelemetryPageViewPayload('/customize/whatever')).toEqual({
@@ -584,6 +606,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
+      '/customize/connectors/families',
+      '/customize/connectors/internal',
       '/customize/models',
       '/customize/workflows',
       '/installations',

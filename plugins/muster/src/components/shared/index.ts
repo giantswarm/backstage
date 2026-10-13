@@ -62,3 +62,4 @@ export type {
   DefinitionEditorDialogProps,
   DefinitionEditorProps,
 } from './DefinitionEditorDialog';
+export { useConnectorGroupPaths } from './useConnectorGroupPaths';

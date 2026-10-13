@@ -30,6 +30,11 @@ jest.mock('../MusterInstanceProvider', () => ({
     scope: 'gazelle',
     homeInstallation: 'gazelle',
     isSingleInstallation: true,
+    activeInstallationInfo: {
+      name: 'gazelle',
+      requiresAuth: true,
+      endpoint: 'https://muster.gazelle.example.test/mcp',
+    },
     mcpServers: mockServers,
     workflows: [],
     isLoading: false,
@@ -258,6 +263,41 @@ describe('ConnectorPage', () => {
     expect(
       screen.getByText('Search, read and update tickets'),
     ).toBeInTheDocument();
+  });
+
+  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/families',
+    );
+  });
+
+  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+    await renderAt(`${BASE}/muster`);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'muster' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/internal',
+    );
+    expect(
+      screen.getByText(/It comes with the Agent Platform/),
+    ).toBeInTheDocument();
+    const facts = screen.getByRole('complementary', {
+      name: 'Connector details',
+    });
+    expect(
+      within(facts).getByText('https://muster.gazelle.example.test/mcp'),
+    ).toBeInTheDocument();
+    expect(
+      within(facts).getByRole('button', { name: 'Copy endpoint' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
   });
 
   it('names the connector in the document title', async () => {

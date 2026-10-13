@@ -50,6 +50,8 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export { CONNECTOR_GROUPS, connectorGroupOfPath } from './lib/connectorGroups';
+export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
 export {
   installationErrorLine,
   isMcpTransportText,

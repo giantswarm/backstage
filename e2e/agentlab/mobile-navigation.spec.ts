@@ -184,7 +184,13 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
   await expect.poll(async () => (await geometry()).scrollLeft).toBe(0);
   await expectUnderlineUnderSelected(tablist, 'Workflows, strip scrolled back');
 
-  for (const tab of ['skills', 'connectors', 'models']) {
+  for (const tab of [
+    'skills',
+    'connectors',
+    'connectors/families',
+    'connectors/internal',
+    'models',
+  ]) {
     await open(admin, `/customize/${tab}`);
     await expectNoHorizontalScroll(admin, `Customize · ${tab}`);
   }

@@ -15,7 +15,7 @@ import { CUSTOMIZE_TAB_IDS } from '../customizeTabIds';
 import { CUSTOMIZE_TABS, CustomizePage } from './CustomizePage';
 
 let mockCustomizeData: Record<string, unknown>;
-let mockMusterCounts: Record<string, number>;
+let mockMusterCounts: Record<string, unknown>;
 let mockCanAddSkill = false;
 
 function mockPanel(name: string) {
@@ -76,7 +76,16 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
     CustomizeMusterProvider: ({ children }: { children: ReactNode }) =>
       children,
     useMusterCustomizeCounts: () => mockMusterCounts,
-    CustomizeConnectorsPanel: mockPanel('Connectors'),
+    CONNECTOR_GROUPS: [
+      { id: 'yours', path: '', title: 'Your connectors' },
+      { id: 'families', path: 'families', title: 'Families' },
+      { id: 'internal', path: 'internal', title: 'Internal' },
+    ],
+    connectorGroupOfPath: (segment: string) =>
+      ({ '': 'yours', families: 'families', internal: 'internal' })[segment],
+    CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
+      <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
+    ),
     CustomizeWorkflowsPanel: ({
       createAssist,
       ...props
@@ -141,7 +150,11 @@ describe('CustomizePage', () => {
       counts: { agents: 5, skills: 71, models: 3 },
       hasSkillRepositories: true,
     };
-    mockMusterCounts = { connectors: 7, workflows: 2 };
+    mockMusterCounts = {
+      connectors: 7,
+      connectorGroups: { yours: 3, families: 2, internal: 2 },
+      workflows: 2,
+    };
     mockCanAddSkill = false;
   });
 
@@ -481,5 +494,90 @@ describe('CustomizePage', () => {
     await userEvent.click(screen.getByRole('tab', { name: /^Workflows/ }));
 
     await waitFor(() => expect(document.title).toBe('Workflows · Customize'));
+  });
+
+  describe('the Connectors tab’s sub-tabs', () => {
+    const subTabs = () =>
+      screen
+        .getAllByRole('tab')
+        .filter(tab =>
+          /^(Your connectors|Families|Internal)/.test(tab.textContent ?? ''),
+        )
+        .map(tab => [tab.textContent, tab.getAttribute('href')]);
+
+    it('opens on the customer’s own connectors, at the tab’s own address', async () => {
+      await renderCustomize('/customize/connectors?installation=golem');
+
+      expect(subTabs()).toEqual([
+        ['Your connectors (3)', '/customize/connectors?installation=golem'],
+        ['Families (2)', '/customize/connectors/families?installation=golem'],
+        ['Internal (2)', '/customize/connectors/internal?installation=golem'],
+      ]);
+      expect(
+        screen.getByText('Connectors panel, search “”, yours'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/customize/connectors?installation=golem',
+      );
+    });
+
+    it.each([
+      ['families', 'Families'],
+      ['internal', 'Internal'],
+    ])(
+      'shows the %s sub-tab at its own path, named in the document title',
+      async (path, title) => {
+        await renderCustomize(`/customize/connectors/${path}`);
+
+        expect(
+          screen.getByText(`Connectors panel, search “”, ${path}`),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('tab', { name: /^Connectors/ }),
+        ).toHaveAttribute('aria-selected', 'true');
+        await waitFor(() =>
+          expect(
+            screen.getByRole('tab', { name: new RegExp(`^${title}`) }),
+          ).toHaveAttribute('aria-selected', 'true'),
+        );
+        await waitFor(() =>
+          expect(document.title).toBe(`${title} · Connectors · Customize`),
+        );
+        // Add connector stays: what it adds lands on Your connectors.
+        expect(
+          screen.getByRole('link', { name: 'Add connector' }),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it('keeps the search when switching sub-tabs', async () => {
+      await renderCustomize('/customize/connectors');
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search connectors and tools' }),
+        'kube',
+      );
+      await userEvent.click(screen.getByRole('tab', { name: /^Families/ }));
+
+      expect(
+        await screen.findByText('Connectors panel, search “kube”, families'),
+      ).toBeInTheDocument();
+    });
+
+    it('sends an unknown path under Connectors to the default sub-tab', async () => {
+      await renderCustomize(
+        '/customize/connectors/nonsense?installation=golem',
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location')).toHaveTextContent(
+          /^\/customize\/connectors\?installation=golem$/,
+        ),
+      );
+    });
+
+    it('draws no sub-tabs on the other tabs', async () => {
+      await renderCustomize('/customize/models');
+      expect(subTabs()).toEqual([]);
+    });
   });
 });

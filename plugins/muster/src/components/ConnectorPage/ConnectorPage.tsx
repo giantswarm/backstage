@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
+  CopyButton,
   DisabledAction,
   EmptyStateCard,
   FactsColumn,
@@ -53,11 +54,8 @@ import {
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
-import {
-  customizeExternalRouteRef,
-  mcpServersRouteRef,
-  newMcpServerRouteRef,
-} from '../../routes';
+import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
+import { connectorGroup } from '../../lib/connectorGroups';
 import {
   familyGroups,
   findServerRow,
@@ -90,6 +88,7 @@ import {
   ServerAuthActions,
   serverStateLabel,
   SessionGate,
+  useConnectorGroupPaths,
   useServerSignIn,
 } from '../shared';
 import {
@@ -106,18 +105,9 @@ import {
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
 
-/** The shell's Customize page and its Connectors tab, where the app binds them. */
-function useCustomizePaths(): {
-  customize?: string;
-  connectors?: string;
-} {
-  const customizeRoute = useRouteRef(customizeExternalRouteRef);
-  const customize = customizeRoute?.();
-  return {
-    customize,
-    connectors: customize ? `${customize}/connectors` : undefined,
-  };
-}
+/** muster's own page's line under its name. */
+const MUSTER_DESCRIPTION =
+  'Connects agents to every connector and offers the platform tools. It comes with the Agent Platform and cannot be changed here.';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -240,7 +230,12 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useCustomizePaths();
+  const paths = useConnectorGroupPaths();
+  // The sub-tab that lists the connector, where its crumb and a removal lead.
+  const listPath = paths.group(connectorGroup(row));
+  const { activeInstallationInfo } = useMusterInstance();
+  const endpoint =
+    row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
@@ -474,6 +469,20 @@ function ConnectorPageContent({
   if (calls !== undefined) {
     facts.push({ label: 'Calls this month', value: calls });
   }
+  if (endpoint) {
+    // The address an MCP client connects to: muster's, the one to copy.
+    facts.push({
+      label: 'Endpoint',
+      value: (
+        <Flex align="center" gap="1">
+          <Text variant="body-small" style={{ wordBreak: 'break-all' }}>
+            {endpoint}
+          </Text>
+          <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
+        </Flex>
+      ),
+    });
+  }
   const address = representative?.getUrl();
   if (address) {
     facts.push({
@@ -492,7 +501,7 @@ function ConnectorPageContent({
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
-    { label: 'Connectors', href: paths.connectors },
+    { label: 'Connectors', href: listPath },
     { label: name },
   ];
 
@@ -579,7 +588,11 @@ function ConnectorPageContent({
         breadcrumbs={breadcrumbs}
         leading={<ConnectorTile name={name} />}
         badges={<StatusBadge row={row} />}
-        meta={representative?.getDescription()}
+        meta={
+          row.kind === 'core'
+            ? MUSTER_DESCRIPTION
+            : representative?.getDescription()
+        }
         actions={editAction}
         menu={menuAction}
         tabs={tabs}
@@ -678,7 +691,7 @@ function ConnectorPageContent({
             open={actionOpen}
             onClose={() => setActionOpen(false)}
             onDone={done => {
-              const away = paths.connectors ?? serversRoute?.();
+              const away = listPath ?? serversRoute?.();
               if (done.destructive && away) {
                 // Leaving the page takes the dialog's own confirmation with
                 // it, so the removal is acknowledged as the platform's other
@@ -735,7 +748,7 @@ function ConnectorPageBody({
 }: ConnectorPageProps & { serverKey: string }) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
-  const paths = useCustomizePaths();
+  const paths = useConnectorGroupPaths();
   const { search } = useLocation();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
 
