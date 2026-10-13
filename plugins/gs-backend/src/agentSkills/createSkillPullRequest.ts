@@ -511,7 +511,7 @@ export async function createSkillPullRequest(
         body: {
           message: isUpdate
             ? `Update the ${skillName} skill`
-            : `Add the ${skillName} skill`,
+            : `feat: add skill ${skillName}`,
           content,
           branch: created,
           ...(existingSha ? { sha: existingSha } : {}),

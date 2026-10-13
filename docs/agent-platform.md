@@ -429,9 +429,10 @@ Skills change only through pull requests. `AddSkillPage`
 (`useProposeSkill`). The route accepts github.com repositories only, and
 `canProposeSkillTo` (`lib/skills.ts`) mirrors that check in the UI.
 
-- **Add** creates the branch `add-skill/<name>`, puts `<name>/SKILL.md` and
-  titles the pull request `feat: add skill <name>`. It answers 409 when the
-  skill name exists.
+- **Add** creates the branch `add-skill/<name>` and puts `<name>/SKILL.md`. The
+  commit and the pull request are both `feat: add skill <name>`, so a squash
+  merge follows conventional commits either way. It answers 409 when the skill
+  name exists.
 - **Edit** (`kind: 'update'`) creates `update-skill/<directory as a slug>` (the
   repository name for a root-level skill) and rewrites `<dir>/SKILL.md` with the
   file's blob sha, keeping frontmatter keys the form does not show. It answers

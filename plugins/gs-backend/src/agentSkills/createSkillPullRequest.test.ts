@@ -105,8 +105,13 @@ describe('createSkillPullRequest', () => {
     const put = calls.find(
       call => call.key === `PUT ${API}/contents/ticket-triage/SKILL.md`,
     );
-    const putBody = put?.body as { branch: string; content: string };
+    const putBody = put?.body as {
+      branch: string;
+      content: string;
+      message: string;
+    };
     expect(putBody.branch).toBe('add-skill/ticket-triage');
+    expect(putBody.message).toBe('feat: add skill ticket-triage');
     const written = Buffer.from(putBody.content, 'base64').toString('utf8');
     expect(parseFrontmatter(written)).toEqual({
       name: 'ticket-triage',
