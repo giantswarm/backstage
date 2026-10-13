@@ -4,12 +4,19 @@ import { TechnicalDetailsFoldOut } from './TechnicalDetailsFoldOut';
 
 const trigger = () => screen.getByRole('button', { name: 'Technical details' });
 
-function renderFoldOut(defaultExpanded: boolean) {
-  return render(
-    <TechnicalDetailsFoldOut defaultExpanded={defaultExpanded}>
+function foldOut(defaultExpanded: boolean, follow?: boolean) {
+  return (
+    <TechnicalDetailsFoldOut
+      defaultExpanded={defaultExpanded}
+      followDefaultExpanded={follow}
+    >
       <p>The conditions</p>
-    </TechnicalDetailsFoldOut>,
+    </TechnicalDetailsFoldOut>
   );
+}
+
+function renderFoldOut(defaultExpanded: boolean, follow?: boolean) {
+  return render(foldOut(defaultExpanded, follow));
 }
 
 describe('TechnicalDetailsFoldOut', () => {
@@ -22,27 +29,36 @@ describe('TechnicalDetailsFoldOut', () => {
     expect(screen.getByText('The conditions')).toBeInTheDocument();
   });
 
-  it('opens when a fresh read turns the resource unhealthy after the first render', () => {
+  it('only seeds the first render by default, as on the agent page', () => {
     const { rerender } = renderFoldOut(false);
+
+    rerender(foldOut(true));
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('follows a later turn to unhealthy when asked to', () => {
+    const { rerender } = renderFoldOut(false, true);
     expect(trigger()).toHaveAttribute('aria-expanded', 'false');
 
-    rerender(
-      <TechnicalDetailsFoldOut defaultExpanded>
-        <p>The conditions</p>
-      </TechnicalDetailsFoldOut>,
-    );
+    rerender(foldOut(true, true));
     expect(trigger()).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('The conditions')).toBeInTheDocument();
   });
 
-  it('leaves the open state alone when the resource turns healthy', () => {
-    const { rerender } = renderFoldOut(true);
+  it('never re-opens after the person closed it', async () => {
+    const { rerender } = renderFoldOut(true, true);
+    await userEvent.click(trigger());
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
 
-    rerender(
-      <TechnicalDetailsFoldOut defaultExpanded={false}>
-        <p>The conditions</p>
-      </TechnicalDetailsFoldOut>,
-    );
+    rerender(foldOut(false, true));
+    rerender(foldOut(true, true));
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('leaves the open state alone when the resource turns healthy', () => {
+    const { rerender } = renderFoldOut(true, true);
+
+    rerender(foldOut(false, true));
     expect(trigger()).toHaveAttribute('aria-expanded', 'true');
   });
 });

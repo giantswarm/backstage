@@ -73,33 +73,30 @@ jest.mock('../../hooks/useLlmUsage', () => ({
   useLlmUsage: () => mockLlmUsage,
 }));
 
-// The agents of the model's namespace, as the page reads them; filtered by
-// the real `agentsUsingModel`, so a row naming another model stays out.
+// The fleet's agents, as the Customize page's provider lists them.
 let mockAgents: AgentRow[] = [];
-jest.mock('./useModelAgents', () => {
-  const { agentsUsingModel, modelConfigIdOf } =
-    jest.requireActual('./modelUsage');
-  return {
-    useModelAgents: (
-      installation: string,
-      namespace: string,
-      name: string,
-    ) => ({
-      agents: agentsUsingModel(
-        mockAgents,
-        modelConfigIdOf(installation, namespace, name),
-      ),
-      isLoading: false,
-      isUnreadable: false,
-    }),
-  };
-});
+jest.mock('../AgentsDataProvider', () => ({
+  useAgents: () => ({
+    rows: mockAgents,
+    isLoading: false,
+    unreachableInstallations: [],
+  }),
+}));
 
-// The chart itself is ui-react's; what matters here is which series it gets.
+// The chart itself is ui-react's; what matters here is which series it gets,
+// and whether it draws a key.
 jest.mock('../LlmUsage', () => ({
   ...jest.requireActual('../LlmUsage'),
-  CostPerDayCard: ({ daily }: { daily: { series: string[] } }) => (
-    <div data-testid="cost-per-day">{daily.series.join(',')}</div>
+  CostPerDayCard: ({
+    daily,
+    showLegend,
+  }: {
+    daily: { series: string[] };
+    showLegend?: boolean;
+  }) => (
+    <div data-testid="cost-per-day" data-legend={String(showLegend ?? true)}>
+      {daily.series.join(',')}
+    </div>
   ),
 }));
 
@@ -293,8 +290,9 @@ describe('ModelDetailPage', () => {
     expect(
       screen.getByText('Secret sonnet-key, key ANTHROPIC_API_KEY'),
     ).toBeInTheDocument();
-    // The technical name in the facts, and the ModelConfig in Resource.
-    expect(screen.getAllByText('kagent/sonnet')).toHaveLength(2);
+    // The technical name, under Resource › Name, and only there.
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getAllByText('kagent/sonnet')).toHaveLength(1);
     // Each condition is a heading under the Status card, in the order the
     // controller evaluates them.
     expect(
@@ -330,6 +328,11 @@ describe('ModelDetailPage', () => {
     expect(screen.getByText('21.9M')).toBeInTheDocument();
     expect(screen.getByText('8,412')).toBeInTheDocument();
     expect(screen.getByTestId('cost-per-day')).toHaveTextContent('Sonnet 4.5');
+    // One model, named by the page: no key.
+    expect(screen.getByTestId('cost-per-day')).toHaveAttribute(
+      'data-legend',
+      'false',
+    );
   });
 
   it('lists the agents whose spec names this model, with their spend on it', async () => {
@@ -410,7 +413,8 @@ describe('ModelDetailPage', () => {
     expect(within(facts).getByText('claude-sonnet-4-5')).toBeInTheDocument();
     expect(within(facts).getByText('Provider default')).toBeInTheDocument();
     expect(within(facts).getByText('200k tokens')).toBeInTheDocument();
-    expect(within(facts).getByText('kagent/sonnet')).toBeInTheDocument();
+    // The technical name lives in Technical details › Resource, not here.
+    expect(within(facts).queryByText('kagent/sonnet')).toBeNull();
   });
 
   it('leaves the context window out when the table does not name the model', async () => {

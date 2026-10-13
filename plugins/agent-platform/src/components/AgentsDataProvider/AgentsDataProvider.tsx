@@ -490,14 +490,6 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The provider's value, or `undefined` outside one: for a hook that only
- * enriches what it reads with the agents where a page lists them anyway.
- */
-export function useOptionalAgents(): AgentsContextValue | undefined {
-  return useContext(AgentsContext);
-}
-
 export function useAgents(): AgentsContextValue {
   const ctx = useContext(AgentsContext);
   if (!ctx) {

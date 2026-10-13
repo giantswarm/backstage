@@ -34,19 +34,24 @@ function daily(models: string[]): LlmDailySeries {
 }
 
 describe('CostPerDayCard', () => {
-  it('draws a key while several models share the stack', () => {
-    render(<CostPerDayCard daily={daily(['claude-sonnet-4-5', 'gpt-4o'])} />);
+  it('draws a key by default, one model or several', () => {
+    const { rerender } = render(
+      <CostPerDayCard daily={daily(['claude-sonnet-4-5', 'gpt-4o'])} />,
+    );
+    expect(screen.getByTestId('chart')).toHaveAttribute('data-legend', 'true');
 
+    rerender(<CostPerDayCard daily={daily(['claude-sonnet-4-5'])} />);
     expect(screen.getByTestId('chart')).toHaveAttribute('data-legend', 'true');
   });
 
-  it('draws no key for one model, as on a model page', () => {
-    render(<CostPerDayCard daily={daily(['claude-sonnet-4-5'])} />);
-
-    expect(screen.getByTestId('chart')).toHaveAttribute(
-      'data-series',
-      'claude-sonnet-4-5',
+  it('draws no key where the caller says the page names the model', () => {
+    render(
+      <CostPerDayCard
+        daily={daily(['claude-sonnet-4-5'])}
+        showLegend={false}
+      />,
     );
+
     expect(screen.getByTestId('chart')).toHaveAttribute('data-legend', 'false');
   });
 });

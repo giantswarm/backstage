@@ -4,6 +4,7 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Card, CardBody, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  ErrorsProvider,
   ModelConfig,
   useResource,
   useSelfSubjectAccessReview,
@@ -130,26 +131,10 @@ export function modelFacts({
       ),
     });
   }
-  facts.push({
-    label: 'Technical name',
-    value: `${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
-  });
   return facts;
 }
 
-/**
- * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
- * by the app's Customize page), as a read view with Edit as an action, per the
- * prototype: what it cost and how much it was used, the agents that run on
- * it, the facts beside it, and "Technical details" with the controller's
- * conditions. Mounted inside the plugin's query client and a
- * `ServingProvider`, as `CustomizeModelPage` mounts it. **Edit** opens the Connect-a-model flow prefilled
- * (`EditModelPage`), the same way agents and skills are edited. A CR the
- * portal must not write (tool-owned, no RBAC, or a provider the form does not
- * speak) offers no Edit, and an alert says why where the reason is not just
- * the reader's permissions.
- */
-export function ModelDetailPage() {
+function ModelDetailPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
   const modelEditRoute = useRouteRef(modelEditRouteRef);
@@ -353,10 +338,13 @@ export function ModelDetailPage() {
 
           {/* Open on arrival while the controller has not accepted the model,
               as the agent page does for an agent that is not ready: the
-              conditions there say why. */}
+              conditions there say why. It follows a fresh read that turns
+              the model unhealthy (the page renders from the cache first),
+              and starts afresh per model. */}
           <TechnicalDetailsFoldOut
             key={`${installation}/${namespace}/${name}`}
             defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
+            followDefaultExpanded
           >
             <ModelTechnicalDetails
               modelConfig={modelConfig}
@@ -366,5 +354,32 @@ export function ModelDetailPage() {
         </Flex>
       </div>
     </ModelFrame>
+  );
+}
+
+/**
+ * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
+ * by the app's Customize page), as a read view with Edit as an action, per the
+ * prototype: what it cost and how much it was used, the agents that run on
+ * it, the facts beside it, and "Technical details" with the controller's
+ * conditions. **Edit** opens the Connect-a-model flow prefilled
+ * (`EditModelPage`), the same way agents and skills are edited. A CR the
+ * portal must not write (tool-owned, no RBAC, or a provider the form does not
+ * speak) offers no Edit, and an alert says why where the reason is not just
+ * the reader's permissions.
+ *
+ * Mounted inside the Customize page's providers, the ones the models list
+ * reads through (`CustomizeDataProvider`: the query client, the ModelConfigs,
+ * the serving snapshot and the agents), so it shares the list's reads.
+ *
+ * `ErrorsProvider` is required, not decorative: the Technical details'
+ * `GitOpsCard` reports the failures of its Flux lookups through
+ * `useShowErrors`, which throws without this context, as on the agent page.
+ */
+export function ModelDetailPage() {
+  return (
+    <ErrorsProvider>
+      <ModelDetailPageContent />
+    </ErrorsProvider>
   );
 }

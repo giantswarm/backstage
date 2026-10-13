@@ -87,12 +87,12 @@ export type ModelRow = {
   /** The configured base URL/host; empty = the provider's default endpoint. */
   endpoint: string;
   readiness: ModelConfigReadiness;
-  /**
-   * The controller's own explanation, for the status tooltip. Never from a
-   * stale status, whose conditions describe the previous spec.
-   */
+  /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
-  /** The controller has not reconciled the latest change yet. */
+  /**
+   * The controller has not reconciled the latest change yet, so
+   * `readinessMessage` describes the previous spec (see `modelStatus`).
+   */
   isStale?: boolean;
   /** The in-cluster served model behind `endpoint`, when known. */
   servedBy?: ModelServedBy;
@@ -113,9 +113,8 @@ export function toModelRow(
     model: modelConfig.getModel() ?? '',
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
-    ...(isStale
-      ? { isStale }
-      : { readinessMessage: modelConfig.getReadinessMessage() }),
+    readinessMessage: modelConfig.getReadinessMessage(),
+    ...(isStale ? { isStale } : {}),
     ...(servedBy ? { servedBy } : {}),
   };
 }

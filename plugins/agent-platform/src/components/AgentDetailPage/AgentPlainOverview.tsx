@@ -511,12 +511,15 @@ function ModelFact({
     modelConfig && modelConfig.getModel() !== label
       ? underlyingModelLine(modelConfig)
       : undefined;
-  // The ModelConfig sits in the agent's namespace; without one there is no
-  // page to resolve, so the name stays plain text.
+  // The model's page, where the ModelConfig could be read: for a reader who
+  // cannot read it (normal for a non-admin), the page could only say so. The
+  // ModelConfig sits in the agent's namespace; without one there is no page
+  // to resolve either. Plain text in both cases.
   const namespace = agent.getNamespace();
-  const href = namespace
-    ? modelDetailRoute?.({ installation, namespace, name: modelConfigName })
-    : undefined;
+  const href =
+    modelConfig && namespace
+      ? modelDetailRoute?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">

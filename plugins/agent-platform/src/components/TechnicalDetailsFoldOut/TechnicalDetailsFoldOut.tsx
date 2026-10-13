@@ -12,13 +12,17 @@ const useStyles = makeStyles({
 });
 
 export type TechnicalDetailsFoldOutProps = {
-  /**
-   * Open on arrival, e.g. while the resource is not healthy. A later change
-   * to `true` opens it too: a page renders from the cache first, and a fresh
-   * read that finds the resource unhealthy must not leave the reason folded
-   * away. Key the fold-out by the resource, so another one starts afresh.
-   */
+  /** Open on arrival, e.g. while the resource is not healthy. */
   defaultExpanded: boolean;
+  /**
+   * Also open when `defaultExpanded` later turns `true`, until the person
+   * opens or closes the fold-out themselves: a page that renders from the
+   * cache first must not leave a reason the fresh read found folded away.
+   * Opt-in, for the model page; key the fold-out by the resource there, so
+   * another one starts afresh. Without it, `defaultExpanded` only seeds the
+   * first render, as on the agent page.
+   */
+  followDefaultExpanded?: boolean;
   children: ReactNode;
 };
 
@@ -31,26 +35,31 @@ export type TechnicalDetailsFoldOutProps = {
  */
 export function TechnicalDetailsFoldOut({
   defaultExpanded,
+  followDefaultExpanded = false,
   children,
 }: TechnicalDetailsFoldOutProps) {
   const classes = useStyles();
   const spacing = useSimpleAccordionStyles();
   const [isExpanded, setExpanded] = useState(defaultExpanded);
+  const [isToggled, setToggled] = useState(false);
   // Adjusted while rendering, React's pattern for state that follows a prop:
-  // a turn to `true` opens the fold-out; a turn to `false` leaves the
-  // person's choice alone.
+  // a turn to `true` opens the fold-out, unless the person has toggled it.
   const [seededWith, setSeededWith] = useState(defaultExpanded);
-  if (defaultExpanded !== seededWith) {
+  if (followDefaultExpanded && defaultExpanded !== seededWith) {
     setSeededWith(defaultExpanded);
-    if (defaultExpanded) {
+    if (defaultExpanded && !isToggled) {
       setExpanded(true);
     }
   }
+  const toggle = (expanded: boolean) => {
+    setToggled(true);
+    setExpanded(expanded);
+  };
   return (
     <Accordion
       className={`${classes.foldOut} ${spacing.group}`}
       isExpanded={isExpanded}
-      onExpandedChange={setExpanded}
+      onExpandedChange={toggle}
     >
       {/* h2: a section of the page beside its other sections. */}
       <AccordionTrigger level={2}>Technical details</AccordionTrigger>

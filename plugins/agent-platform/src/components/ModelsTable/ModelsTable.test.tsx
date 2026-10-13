@@ -567,7 +567,7 @@ describe('toModelRow', () => {
     });
   });
 
-  it("drops a stale status's message: it describes the previous spec", () => {
+  it('marks a stale status, whose message describes the previous spec', () => {
     const row = toModelRow(
       new ModelConfig(
         {
@@ -594,7 +594,9 @@ describe('toModelRow', () => {
 
     expect(row.readiness).toBe('pending');
     expect(row.isStale).toBe(true);
-    expect(row.readinessMessage).toBeUndefined();
+    // The controller's raw message: `modelStatus` decides what a stale row
+    // shows.
+    expect(row.readinessMessage).toBe('Secret kagent/qwen3 not found');
   });
 
   it('attaches the served model link when given one', () => {

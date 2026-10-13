@@ -12,6 +12,7 @@ import {
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { STALE_MODEL_DETAIL } from '../../lib/customize';
 import { Mono } from '../Mono';
 
 /**
@@ -27,8 +28,10 @@ function ResourceFacts({ modelConfig }: { modelConfig: ModelConfig }) {
   const secretKey = modelConfig.getApiKeySecretKey();
 
   const facts: Fact[] = [
+    // The ModelConfig's technical name, here rather than beside the title,
+    // as the agent page keeps its own.
     {
-      label: 'ModelConfig',
+      label: 'Name',
       value: <Mono>{namespace ? `${namespace}/${name}` : name}</Mono>,
     },
   ];
@@ -69,8 +72,8 @@ function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
             all read healthy and still describe the previous spec. */}
         {modelConfig.isStale() && (
           <Text variant="body-small" color="secondary">
-            The controller has not reconciled the latest change yet, so the
-            conditions below describe the previous version.
+            {STALE_MODEL_DETAIL} The conditions below describe the previous
+            version.
           </Text>
         )}
         <ConditionsList
@@ -89,16 +92,18 @@ function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
   );
 }
 
-/**
- * The model as a Kubernetes resource, inside the page's "Technical details"
- * fold-out, as on the agent page: where it came from (GitOps), what it is
- * called in the cluster, and the controller's conditions.
- */
 export type ModelTechnicalDetailsProps = {
   modelConfig: ModelConfig;
   installation: string;
 };
 
+/**
+ * The model as a Kubernetes resource, inside the page's "Technical details"
+ * fold-out, as on the agent page: where it came from (GitOps), what it is
+ * called in the cluster, and the controller's conditions. Needs an
+ * `ErrorsProvider` above it, for the GitOps card (`ModelDetailPage` mounts
+ * one).
+ */
 export function ModelTechnicalDetails({
   modelConfig,
   installation,

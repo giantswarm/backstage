@@ -56,16 +56,21 @@ test('a model’s page sits under Customize, says why in Technical details, and 
   await expect(admin).toHaveURL(detail);
   const namespace = detail.exec(new URL(admin.url()).pathname)?.[1];
 
-  // The conditions behind the status, folded in place as on the agent page:
-  // open on arrival unless the controller accepted the model.
+  // The conditions behind the status, folded in place as on the agent page.
+  // The lab's model works, so once the read settles on Ready the fold-out is
+  // closed (it opens on arrival only for a model that is not accepted); the
+  // assertions retry until then, so a page drawn from the cache first cannot
+  // race the click.
+  await expect(
+    admin.getByRole('main').getByText('Ready', { exact: true }).first(),
+  ).toBeVisible();
   const technical = admin.getByRole('button', {
     name: 'Technical details',
     exact: true,
   });
-  await expect(technical).toBeVisible();
-  if ((await technical.getAttribute('aria-expanded')) !== 'true') {
-    await technical.click();
-  }
+  await expect(technical).toHaveAttribute('aria-expanded', 'false');
+  await technical.click();
+  await expect(technical).toHaveAttribute('aria-expanded', 'true');
   await expect(
     admin.getByRole('heading', { level: 4, name: /^Accepted/ }),
   ).toBeVisible();

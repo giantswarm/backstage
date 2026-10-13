@@ -66,21 +66,17 @@ const LegacyNewRedirect = () => {
  * (`/customize/models/<installation>/<namespace>/<name>`), from this tab's
  * `<installation>/<namespace>/<name>` and, before that, `configs/…`. Both
  * redirect there, so a bookmark or an older release's link still resolves.
- * Renders nothing where the app binds no Customize page.
+ * Where the app binds no Customize page, the link lands on the tab root
+ * instead (`..`, as above) rather than on a blank page.
  */
 const LegacyDetailRedirect = () => {
   const { installation = '', namespace = '', name = '' } = useParams();
   const { search } = useLocation();
   const { modelDetail } = useCustomizePaths();
-  if (!modelDetail) {
-    return null;
-  }
-  return (
-    <Navigate
-      to={{ pathname: modelDetail({ installation, namespace, name }), search }}
-      replace
-    />
-  );
+  const pathname = modelDetail
+    ? modelDetail({ installation, namespace, name })
+    : '..';
+  return <Navigate to={{ pathname, search }} replace />;
 };
 
 /**
@@ -232,9 +228,9 @@ const hostingFlowRoutes = [
 ];
 
 /**
- * The tab's views. The list and one model's page are the Customize screen's,
- * so the index and the former detail path send there; the create and edit
- * flows frame themselves; everything else is model hosting.
+ * The tab's views. The list is the Customize screen's, so the index sends
+ * there (one model's former path redirects above, in `ModelsRouter`); the
+ * create and edit flows frame themselves; everything else is model hosting.
  */
 const ModelsViews = () => (
   <Routes>
@@ -245,10 +241,6 @@ const ModelsViews = () => (
       element={<EditModelPage />}
     />
     {hostingFlowRoutes}
-    <Route
-      path=":installation/:namespace/:name"
-      element={<LegacyDetailRedirect />}
-    />
     <Route path="*" element={<ShellModelHosting />} />
   </Routes>
 );
@@ -266,28 +258,39 @@ const ModelsViews = () => (
  * ModelConfig while the user waits for it on the Model configs view.
  *
  * The legacy redirects are siblings of the views, not routes inside them, so the
- * tab strip never renders for a location that is about to change. They can sit
- * inside the providers: no provider here writes to the URL, so nothing races
- * the redirect.
+ * tab strip never renders for a location that is about to change, and they
+ * sit above the providers, so following an old link starts none of the
+ * fleet-wide reads only to navigate away.
  */
 export const ModelsRouter = () => {
   return (
-    <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <ServedModelRowsProvider>
-            <Routes>
-              <Route path="configs" element={<LegacyConfigsRedirect />} />
-              <Route path="configs/new" element={<LegacyNewRedirect />} />
-              <Route
-                path="configs/:installation/:namespace/:name"
-                element={<LegacyDetailRedirect />}
-              />
-              <Route path="*" element={<ModelsViews />} />
-            </Routes>
-          </ServedModelRowsProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
-    </QueryClientProvider>
+    <Routes>
+      <Route path="configs" element={<LegacyConfigsRedirect />} />
+      <Route path="configs/new" element={<LegacyNewRedirect />} />
+      <Route
+        path="configs/:installation/:namespace/:name"
+        element={<LegacyDetailRedirect />}
+      />
+      {/* Three segments: no view of the tab has that many (the flows have
+          two, editing has four). */}
+      <Route
+        path=":installation/:namespace/:name"
+        element={<LegacyDetailRedirect />}
+      />
+      <Route
+        path="*"
+        element={
+          <QueryClientProvider>
+            <ModelConfigsProvider>
+              <ServingProvider>
+                <ServedModelRowsProvider>
+                  <ModelsViews />
+                </ServedModelRowsProvider>
+              </ServingProvider>
+            </ModelConfigsProvider>
+          </QueryClientProvider>
+        }
+      />
+    </Routes>
   );
 };

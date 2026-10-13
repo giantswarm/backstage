@@ -21,8 +21,13 @@ import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { CostPerDayCard } from '../LlmUsage';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
-import { modelUsageSlice, type ModelUsageSlice } from './modelUsage';
-import { useModelAgents } from './useModelAgents';
+import { useAgents } from '../AgentsDataProvider';
+import {
+  agentsUsingModel,
+  modelConfigIdOf,
+  modelUsageSlice,
+  type ModelUsageSlice,
+} from './modelUsage';
 
 /** The window the page reads: the prototype's "last 30 days". */
 export const MODEL_USAGE_WINDOW_DAYS = 30;
@@ -134,7 +139,12 @@ function UsageSection({
         />
       </StatGrid>
       {slice.costPerDay.series.length > 0 && (
-        <CostPerDayCard daily={slice.costPerDay} currency={currency} />
+        // One model, the page's own: the key would only repeat its name.
+        <CostPerDayCard
+          daily={slice.costPerDay}
+          currency={currency}
+          showLegend={false}
+        />
       )}
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
@@ -160,10 +170,11 @@ function UsedBySection({
   const classes = useStyles();
   const currency = useCurrency(installation);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const { agents, isLoading, isUnreadable } = useModelAgents(
-    installation,
-    namespace,
-    name,
+  const { rows, isLoading, unreachableInstallations } = useAgents();
+  const agents = useMemo(
+    () =>
+      agentsUsingModel(rows, modelConfigIdOf(installation, namespace, name)),
+    [rows, installation, namespace, name],
   );
 
   let body;
@@ -172,7 +183,7 @@ function UsedBySection({
   } else if (agents.length === 0) {
     body = (
       <Text as="p" variant="body-medium" color="secondary">
-        {isUnreadable
+        {unreachableInstallations.includes(installation)
           ? `The agents on ${installation} could not be read.`
           : 'No agent runs on this model yet.'}
       </Text>
@@ -259,8 +270,9 @@ function UsedBySection({
  * screen's own reductions), the cost per day, and the agents that run on it
  * with what each spent on it.
  *
- * "Used by" reads the agents of the model's namespace on its installation
- * (`useModelAgents`), not the fleet-wide agent provider.
+ * The agents come from the Customize page's agent provider, the list's own
+ * read: the gateway reduction names agents through it, and "Used by" filters
+ * it. No provider of its own, so the page never runs the agent reads twice.
  */
 export function ModelReadView({
   installation,

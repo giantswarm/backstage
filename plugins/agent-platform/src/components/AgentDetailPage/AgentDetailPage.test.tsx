@@ -1006,6 +1006,9 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('opus-4-7')).toBeInTheDocument();
+    // No link to a page that could only say it cannot load the model.
+    await openTechnicalDetails();
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
   });
 
   it("links the ModelConfig in Technical details to the model's page", async () => {
@@ -1020,6 +1023,10 @@ describe('AgentDetailPage', () => {
       'href',
       '/customize/models/gazelle/agent-platform/opus-4-7',
     );
+    // Sized and coloured as the "ModelConfig" line it sits in.
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute('data-variant', 'body-small');
   });
 
   it('keeps the model as text where the agent has no namespace to resolve it in', async () => {

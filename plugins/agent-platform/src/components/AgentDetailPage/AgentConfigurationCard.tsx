@@ -23,15 +23,13 @@ import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { MONO } from '../Mono';
 import { FailureMarker } from './FailureMarker';
 import {
   describeToolScope,
   isGatewayServerBinding,
   mcpBindingId,
 } from './helpers';
-
-/** Monospace for identifiers the reader may retype into `kubectl`. */
-const MONO: React.CSSProperties = { fontFamily: 'monospace' };
 
 /**
  * How the model is described: the ModelConfig's friendly name, with the model id
@@ -45,7 +43,9 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
  * access to — rather than implying the agent has no model.
  *
  * The ModelConfig line opens the model's page, which says why a model is not
- * accepted; plain text where the agent has no namespace to resolve it in.
+ * accepted, where the ModelConfig could be read: otherwise the page could only
+ * say it cannot load it. Plain text too where the agent has no namespace to
+ * resolve it in.
  */
 function ModelValue({
   modelConfigName,
@@ -74,9 +74,10 @@ function ModelValue({
   // ModelConfig line below already shows it. The model itself leads instead,
   // still in monospace like every identifier here.
   const displayName = modelConfig?.getDisplayNameAnnotation();
-  const href = namespace
-    ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
-    : undefined;
+  const href =
+    modelConfig && namespace
+      ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">
@@ -95,7 +96,12 @@ function ModelValue({
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
         {href ? (
-          <BuiLink href={href} style={MONO}>
+          <BuiLink
+            href={href}
+            variant="body-small"
+            color="secondary"
+            style={MONO}
+          >
             {`${namespace}/${modelConfigName}`}
           </BuiLink>
         ) : (
