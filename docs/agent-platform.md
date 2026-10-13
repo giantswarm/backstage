@@ -537,10 +537,16 @@ No scaffolder task, `kube:apply` or portal-minted token is involved.
 
 On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
-Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
-derives the same verdict from `status.harnesses[]`. A `not_found` right after
-the create is polled through. The installation's cached `kagent.dev` lists are
-invalidated after the write.
+Harness (`status.agent.harness`) has a verdict. The status card derives the
+same verdict from `status.harnesses[]`. A `not_found` right after the create is
+polled through. `ready` ends the poll. A `failed` verdict is shown but still
+re-read every 5 s, the pace the page reads a converging Agent at, because right
+after a create kagent can briefly report the agent's own tool server as an
+unresolved reference, and that clears to Ready without a reload. A read error
+ends the poll as before, and so does a `not_found` after a `failed` verdict:
+the agent is gone. agent-manager reporting the transient state as `progressing`
+is the proper fix (giantswarm/agent-manager#145). The installation's cached
+`kagent.dev` lists are invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -1680,8 +1686,8 @@ switching tabs refetches nothing; the toolset's muster queries run only on
 ### Sections
 
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
-  (consumed once) and polls `get_agent_status` until the Harness reports ready
-  or failed.
+  (consumed once) and polls `get_agent_status` until the Harness reports
+  ready, re-reading a failed verdict every 5 s.
 - **Header** — Edit and Use this agent are buttons; the actions menu offers
   `Update all skills to latest…` and `Delete agent…` where agent-manager is
   available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the
@@ -1806,8 +1812,8 @@ The review lists the changes and asks **`validate_agent` with `update: true`**.
 **Save changes** calls **`x_agent-manager_update_agent`** with the changed
 fields (`useUpdateAgent`, reported as `AgentPlatform.agentUpdated`) and returns
 with `action: 'updated'`, so the progress element polls `get_agent_status`
-until the new revision is ready or failed. agent-manager stamps the person into
-the HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
+until the new revision is ready. agent-manager stamps the person into the
+HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
 `conflict:` and locks Save; a viewer gets `forbidden:`. A git-applied agent,
 behind the commit capability, gets **Propose changes as pull request**
 (`update_agent` with `mode: commit`), locked once its pull request is open.
