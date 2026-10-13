@@ -128,6 +128,40 @@ describe('getTelemetryPageViewPayload', () => {
     },
   );
 
+  it.each(['infrastructure', 'internal'])(
+    'reports the Connectors tab’s %s sub-tab as its subview',
+    sub => {
+      expect(
+        getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
+      ).toEqual({
+        page: 'Customize',
+        view: 'connectors',
+        subview: sub,
+        path: `/customize/connectors/${sub}`,
+      });
+    },
+  );
+
+  it('reports the retired Families path without a subview, as it redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/families'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/families',
+    });
+  });
+
+  it('reports no subview for a path below a sub-tab, which redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/infrastructure/x'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/infrastructure/x',
+    });
+  });
+
   it('reports an unknown Customize tab without a view', () => {
     expect(getTelemetryPageViewPayload('/customize/whatever')).toEqual({
       page: 'Customize',
@@ -595,6 +629,9 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
+      '/customize/connectors/infrastructure',
+      '/customize/connectors/families',
+      '/customize/connectors/internal',
       '/customize/models',
       '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/workflows',

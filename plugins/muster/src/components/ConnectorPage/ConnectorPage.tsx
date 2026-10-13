@@ -29,6 +29,7 @@ import { useQuery } from '@tanstack/react-query';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   BreadcrumbItem,
+  CopyButton,
   DisabledAction,
   EmptyStateCard,
   FactsColumn,
@@ -53,11 +54,8 @@ import {
 import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
-import {
-  customizeExternalRouteRef,
-  mcpServersRouteRef,
-  newMcpServerRouteRef,
-} from '../../routes';
+import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
+import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
 import {
   familyGroups,
   findServerRow,
@@ -90,6 +88,7 @@ import {
   ServerAuthActions,
   serverStateLabel,
   SessionGate,
+  useConnectorGroupPaths,
   useServerSignIn,
 } from '../shared';
 import {
@@ -105,19 +104,6 @@ import {
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
-
-/** The shell's Customize page and its Connectors tab, where the app binds them. */
-function useCustomizePaths(): {
-  customize?: string;
-  connectors?: string;
-} {
-  const customizeRoute = useRouteRef(customizeExternalRouteRef);
-  const customize = customizeRoute?.();
-  return {
-    customize,
-    connectors: customize ? `${customize}/connectors` : undefined,
-  };
-}
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -138,6 +124,31 @@ const useStyles = makeStyles({
     textTransform: 'uppercase',
   },
 });
+
+/**
+ * muster's endpoint, the address an MCP client connects to, with its copy
+ * button: under the page's title, above its tabs, since it is what the page
+ * is opened for more often than its tools.
+ */
+function MusterEndpoint({ endpoint }: { endpoint: string }) {
+  // Inline: the page's description is a paragraph.
+  return (
+    <>
+      Endpoint{' '}
+      <Text
+        as="span"
+        variant="body-medium"
+        color="primary"
+        style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+      >
+        {endpoint}
+      </Text>{' '}
+      <span style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+        <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
+      </span>
+    </>
+  );
+}
 
 function ConnectorTile({ name }: { name: string }) {
   const classes = useStyles();
@@ -240,7 +251,12 @@ function ConnectorPageContent({
   const navigate = useNavigate();
   const toastApi = useApi(toastApiRef);
   const basePath = useSplatBasePath();
-  const paths = useCustomizePaths();
+  const paths = useConnectorGroupPaths();
+  // The sub-tab that lists the connector, where its crumb and a removal lead.
+  const listPath = paths.listOf(serverRowKey(row), row);
+  const { activeInstallationInfo } = useMusterInstance();
+  const endpoint =
+    row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const search = `?installation=${encodeURIComponent(installation)}`;
   const name = serverRowKey(row);
@@ -492,7 +508,7 @@ function ConnectorPageContent({
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: 'Customize', href: paths.customize },
-    { label: 'Connectors', href: paths.connectors },
+    { label: 'Connectors', href: listPath },
     { label: name },
   ];
 
@@ -579,7 +595,14 @@ function ConnectorPageContent({
         breadcrumbs={breadcrumbs}
         leading={<ConnectorTile name={name} />}
         badges={<StatusBadge row={row} />}
-        meta={representative?.getDescription()}
+        meta={
+          row.kind === 'core'
+            ? MUSTER_PAGE_DESCRIPTION
+            : representative?.getDescription()
+        }
+        description={
+          endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
+        }
         actions={editAction}
         menu={menuAction}
         tabs={tabs}
@@ -678,7 +701,7 @@ function ConnectorPageContent({
             open={actionOpen}
             onClose={() => setActionOpen(false)}
             onDone={done => {
-              const away = paths.connectors ?? serversRoute?.();
+              const away = listPath ?? serversRoute?.();
               if (done.destructive && away) {
                 // Leaving the page takes the dialog's own confirmation with
                 // it, so the removal is acknowledged as the platform's other
@@ -735,9 +758,13 @@ function ConnectorPageBody({
 }: ConnectorPageProps & { serverKey: string }) {
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
-  const paths = useCustomizePaths();
+  const paths = useConnectorGroupPaths();
   const { search } = useLocation();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  // The sub-tab that lists the connector: known from a cached row (or for
+  // muster) even while loading; otherwise the crumb has no link rather than
+  // one to a sub-tab that does not list it.
+  const listPath = paths.listOf(key, row);
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -748,7 +775,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
         leading={<ConnectorTile name={key} />}
@@ -767,7 +794,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
       >
@@ -784,7 +811,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
       >

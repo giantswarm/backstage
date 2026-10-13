@@ -98,10 +98,24 @@ remote images, and only when the portal can read the file.
 
 ### Connectors
 
-Connectors are muster's MCP servers. **Add connector** probes the address,
-sets the sign-in mode (company login, each person's own account, none, or AWS
-request signing) and registers the server. Connectors managed through GitOps
-point to their source instead of being editable.
+Connectors are muster's MCP servers, on three sub-tabs by the
+`agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
+MCPServer, a family (`spec.family`, one row) and a single server alike:
+
+- **Your connectors** (`/customize/connectors`): servers and families without
+  the label, everything the installation or its users registered.
+- **Infrastructure** (`/customize/connectors/infrastructure`): servers and
+  families labelled `infrastructure`, those for the management clusters the
+  platform runs on. `/customize/connectors/families` redirects here.
+- **Internal** (`/customize/connectors/internal`): servers labelled
+  `agent-platform` (agent-manager, model-manager, cluster-manager) and muster
+  itself where it runs. muster's page shows its endpoint to copy for MCP
+  clients.
+
+**Add connector** probes the address, sets the sign-in mode (company login,
+each person's own account, none, or AWS request signing) and registers the
+server. Connectors managed through GitOps point to their source instead of
+being editable.
 
 ### Models
 

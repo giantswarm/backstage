@@ -27,7 +27,7 @@ function server(name: string, family?: string) {
 }
 
 describe('useMusterCustomizeCounts', () => {
-  it('counts a family once, and the workflows', () => {
+  it('counts a family once, muster itself, each sub-tab, and the workflows', () => {
     mockInstance = makeTestMusterInstance({
       mcpServers: [
         server('a-kubernetes', 'kubernetes'),
@@ -47,7 +47,24 @@ describe('useMusterCustomizeCounts', () => {
       ],
     });
     const { result } = renderHook(() => useMusterCustomizeCounts());
-    expect(result.current).toEqual({ connectors: 2, workflows: 1 });
+    expect(result.current).toEqual({
+      connectors: 3,
+      connectorGroups: { yours: 2, infrastructure: 0, internal: 1 },
+      workflows: 1,
+    });
+  });
+
+  it('leaves muster out where no installation runs it', () => {
+    mockInstance = makeTestMusterInstance({
+      activeInstallation: undefined,
+      mcpServers: [],
+    });
+    const { result } = renderHook(() => useMusterCustomizeCounts());
+    expect(result.current).toEqual({
+      connectors: 0,
+      connectorGroups: { yours: 0, infrastructure: 0, internal: 0 },
+      workflows: 0,
+    });
   });
 
   it('counts nothing while loading', () => {

@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useMemo } from 'react';
+import { Fragment, type ReactNode, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -17,6 +18,7 @@ import {
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
+  countNoun,
   EmptyStateCard,
   INITIAL_ROWS,
   LoadingIndicator,
@@ -32,7 +34,15 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
-import type { ServerListEntry } from '../../lib/serverList';
+import type { ServerListEntry, ServerListRow } from '../../lib/serverList';
+import {
+  CONNECTOR_GROUPS,
+  type ConnectorGroup,
+  type ConnectorGroupInfo,
+  connectorGroup,
+  connectorGroupInfo,
+  MUSTER_DESCRIPTION,
+} from '../../lib/connectorGroups';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
@@ -44,6 +54,7 @@ import {
   SignInStatusActions,
   SignInStatusText,
   type StatusText,
+  useConnectorGroupPaths,
   useServerPageLinks,
   useServerSignInStatus,
   useToolCatalogue,
@@ -55,6 +66,10 @@ import {
   type ConnectorReach,
   connectorReach,
   connectorStatus,
+  musterAuthLabel,
+  musterReach,
+  type MusterSessionState,
+  musterStatus,
   rowServer,
   toolsLabel,
 } from './connectorRows';
@@ -84,6 +99,8 @@ const useStyles = makeStyles({
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
+  /** The sub-tab to list; the customer's own connectors by default. */
+  group?: ConnectorGroup;
 };
 
 type Row = {
@@ -347,9 +364,11 @@ function ConnectorStackedList({
 function ConnectorsTable({
   search,
   installation,
+  group,
 }: {
   search: string;
   installation: string;
+  group: ConnectorGroup;
 }) {
   const { mcpServers, activeInstallationInfo } = useMusterInstance();
   const session = useMusterSession();
@@ -365,15 +384,63 @@ function ConnectorsTable({
     enabled: hasSession,
   });
 
-  const listRows = useMemo(
-    () =>
-      serverListRows(mcpServers, catalogue.data?.tools ?? undefined).filter(
-        row => row.row.kind !== 'core',
-      ),
+  // Every sub-tab's rows, muster's own among the internal ones: the search
+  // counts what it finds on the other sub-tabs.
+  const everyRow = useMemo(
+    () => serverListRows(mcpServers, catalogue.data?.tools ?? undefined),
     [mcpServers, catalogue.data],
+  );
+  const rowsByGroup = useMemo(() => {
+    const byGroup: Record<ConnectorGroup, ServerListRow[]> = {
+      yours: [],
+      infrastructure: [],
+      internal: [],
+    };
+    for (const row of everyRow) {
+      byGroup[connectorGroup(row.row)].push(row);
+    }
+    return byGroup;
+  }, [everyRow]);
+  const listRows = rowsByGroup[group];
+  // muster's own row reports only what was observed: the backend's probe,
+  // the session, and whether muster listed its tools.
+  const sessionFailed = session.failure !== undefined;
+  const answered = catalogue.data !== undefined;
+  const catalogueFailed = Boolean(catalogue.error);
+  const musterSession = useMemo<MusterSessionState>(
+    () => ({
+      requiresAuth: activeInstallationInfo?.requiresAuth,
+      reachable: activeInstallationInfo?.reachable,
+      authenticated: session.authenticated,
+      pending: session.pending,
+      failed: sessionFailed,
+      answered,
+      catalogueFailed,
+    }),
+    [
+      activeInstallationInfo?.requiresAuth,
+      activeInstallationInfo?.reachable,
+      session.authenticated,
+      session.pending,
+      sessionFailed,
+      answered,
+      catalogueFailed,
+    ],
   );
   const toRow = useCallback(
     (entry: ServerListEntry): Row => {
+      if (entry.row.kind === 'core') {
+        const reach = musterReach(musterSession);
+        return {
+          id: entry.key,
+          entry,
+          description: MUSTER_DESCRIPTION,
+          auth: musterAuthLabel(musterSession.requiresAuth),
+          tools: toolsLabel(entry),
+          status: musterStatus(musterSession),
+          ...(reach ? { reach } : {}),
+        };
+      }
       const server = rowServer(entry, installation);
       const status =
         entry.row.kind === 'server'
@@ -399,7 +466,7 @@ function ConnectorsTable({
         ...(reach ? { reach } : {}),
       };
     },
-    [installation, authStatus.data],
+    [installation, authStatus.data, musterSession],
   );
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.
@@ -460,22 +527,38 @@ function ConnectorsTable({
     },
   ];
 
+  const info = connectorGroupInfo(group);
+  // Where a search that finds nothing here finds something: on an empty
+  // sub-tab too, where the palette's "+N more" may land.
+  const otherMatches = (
+    <OtherGroupMatches
+      group={group}
+      rowsByGroup={rowsByGroup}
+      search={search}
+    />
+  );
   let list;
   if (listRows.length === 0) {
     list = (
-      <EmptyStateCard
-        title="No connectors yet"
-        description="Add a connector to give agents its tools."
-      />
+      <Flex direction="column" gap="2">
+        <EmptyStateCard
+          title={info.empty.title}
+          description={info.empty.description}
+        />
+        {otherMatches}
+      </Flex>
     );
   } else if (rows.length === 0) {
     list = (
-      <CatalogNoMatch
-        plural="connectors or tools"
-        search={search}
-        isFiltered={filters.isFiltered}
-        onClearFilters={filters.clear}
-      />
+      <Flex direction="column" gap="2">
+        <CatalogNoMatch
+          plural="connectors or tools"
+          search={search}
+          isFiltered={filters.isFiltered}
+          onClearFilters={filters.clear}
+        />
+        {otherMatches}
+      </Flex>
     );
   } else {
     // `serverListEntries` sorts by name, and ShowMore hands the table a page of
@@ -512,6 +595,11 @@ function ConnectorsTable({
 
   return (
     <Flex direction="column" gap="4">
+      {info.description && (
+        <Text as="p" variant="body-medium" color="secondary">
+          {info.description}
+        </Text>
+      )}
       <CatalogFilterBar
         dimensions={filters.dimensions}
         onSelect={filters.select}
@@ -547,7 +635,61 @@ function ConnectorsTable({
   );
 }
 
-function Panel({ search }: CustomizeConnectorsPanelProps) {
+/**
+ * Where a search that finds nothing on this sub-tab finds something: the
+ * other sub-tabs with their match counts, as links that keep the search. The
+ * command palette's "+N more" lands on the default sub-tab, whatever it found.
+ */
+function OtherGroupMatches({
+  group,
+  rowsByGroup,
+  search,
+}: {
+  group: ConnectorGroup;
+  rowsByGroup: Record<ConnectorGroup, ServerListRow[]>;
+  search: string;
+}) {
+  const paths = useConnectorGroupPaths();
+  const location = useLocation();
+  const query = search.trim();
+  const matches = useMemo(
+    () =>
+      query === ''
+        ? []
+        : CONNECTOR_GROUPS.filter(other => other.id !== group)
+            .map(other => ({
+              other,
+              count: serverListEntries(rowsByGroup[other.id], query).length,
+            }))
+            .filter(({ count }) => count > 0),
+    [group, rowsByGroup, query],
+  );
+  if (matches.length === 0) {
+    return null;
+  }
+  const link = (other: ConnectorGroupInfo) => {
+    const href = paths.group(other.id);
+    return href ? (
+      <Link href={`${href}${location.search}`}>{other.title}</Link>
+    ) : (
+      other.title
+    );
+  };
+  return (
+    <Text as="p" variant="body-medium" color="secondary">
+      The search matches{' '}
+      {matches.map(({ other, count }, index) => (
+        <Fragment key={other.id}>
+          {index > 0 && ' and '}
+          {countNoun(count, 'connector')} on {link(other)}
+        </Fragment>
+      ))}
+      .
+    </Text>
+  );
+}
+
+function Panel({ search, group = 'yours' }: CustomizeConnectorsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
 
   let body;
@@ -562,7 +704,11 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
     );
   } else {
     body = (
-      <ConnectorsTable search={search} installation={activeInstallation} />
+      <ConnectorsTable
+        search={search}
+        installation={activeInstallation}
+        group={group}
+      />
     );
   }
   return (
@@ -574,7 +720,10 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
 }
 
 /**
- * The Connectors tab of the shell's Customize screen: the active muster's
+ * One sub-tab of the Connectors tab of the shell's Customize screen
+ * (`connectorGroup`: the customer's own connectors, those for the
+ * infrastructure the platform runs on, or the platform's internal servers with
+ * muster itself): the active muster's
  * servers as flat rows with how one signs in, their tool count and state, and
  * a sign-in where muster asks this person for one; filtered by sign-in and by
  * connection where those tell connectors apart (T49). Must be mounted inside a

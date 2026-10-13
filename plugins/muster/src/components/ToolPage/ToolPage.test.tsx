@@ -190,6 +190,18 @@ describe('ToolPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
+  it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
+    await renderAt(
+      `${BASE}/muster/tools/core_service_list?installation=gazelle`,
+    );
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'Connectors' },
+      ),
+    ).toHaveAttribute('href', '/customize/connectors/internal');
+  });
+
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
     await renderAt(
       `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,

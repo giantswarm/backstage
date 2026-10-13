@@ -48,6 +48,18 @@ export interface ServerListEntry extends Omit<ServerListRow, 'tools'> {
 }
 
 /**
+ * The rows the servers list shows, before any tools: one per server family,
+ * per singular server and for muster itself. What the list and its counts
+ * share.
+ */
+export function serverPageRows(servers: MCPServer[]): ServerPageRow[] {
+  return [
+    ...partitionServers(servers).flatMap(group => group.rows),
+    { kind: 'core' },
+  ];
+}
+
+/**
  * The servers list's rows: one per server family, per singular server and
  * for muster itself, each with its tools from the catalogue. The expensive
  * half of the list -- every tool attributed to its row once -- so it is worked
@@ -57,10 +69,7 @@ export function serverListRows(
   servers: MCPServer[],
   catalogue: ToolSummary[] | undefined,
 ): ServerListRow[] {
-  const rows: ServerPageRow[] = [
-    ...partitionServers(servers).flatMap(group => group.rows),
-    { kind: 'core' },
-  ];
+  const rows = serverPageRows(servers);
   const families = new Set(
     servers.map(s => s.getFamily()).filter((f): f is string => Boolean(f)),
   );

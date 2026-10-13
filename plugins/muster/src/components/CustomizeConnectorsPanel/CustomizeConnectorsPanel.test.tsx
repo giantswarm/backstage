@@ -10,8 +10,9 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import type { AuthStatusResponse } from '../../apis/types';
-import { mcpServersRouteRef } from '../../routes';
-import { MCPServer, MCPServerState } from '../../lib/k8s';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
+import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
+import type { ConnectorGroup } from '../../lib/connectorGroups';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
 
 const mockNavigate = jest.fn();
@@ -56,14 +57,22 @@ function makeServer(
     auth?: Record<string, unknown>;
     description?: string;
     suspended?: boolean;
+    toolGroup?: string;
+    family?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name },
+      metadata: {
+        name,
+        labels: options.toolGroup
+          ? { [TOOL_GROUP_LABEL]: options.toolGroup }
+          : {},
+      },
       spec: {
+        ...(options.family ? { family: { name: options.family } } : {}),
         type: 'streamable-http',
         url: `https://${name}.example.test/mcp`,
         description: options.description,
@@ -157,18 +166,21 @@ const SSO_EXPLANATION =
 
 let queryClient: QueryClient;
 
-async function renderPanel(search = '') {
+async function renderPanel(search = '', group?: ConnectorGroup) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
   return renderInTestApp(
     <QueryClientProvider client={client}>
-      <CustomizeConnectorsPanel search={search} />
+      <CustomizeConnectorsPanel search={search} group={group} />
     </QueryClientProvider>,
     {
       apis: [[musterApiRef, api]],
-      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
     },
   );
 }
@@ -1021,5 +1033,144 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No connectors yet')).toBeInTheDocument();
+  });
+
+  describe('sub-tabs', () => {
+    const fleet = () => [
+      ...servers(),
+      makeServer('agent-manager', {
+        toolGroup: 'agent-platform',
+        description: 'Manages agents',
+      }),
+      makeServer('a-prometheus', {
+        toolGroup: 'infrastructure',
+        family: 'prometheus',
+      }),
+      makeServer('b-prometheus', {
+        toolGroup: 'infrastructure',
+        family: 'prometheus',
+      }),
+      makeServer('lone-capi', { toolGroup: 'infrastructure' }),
+      // The customer's own family: no label.
+      makeServer('a-crm', { family: 'crm' }),
+      makeServer('b-crm', { family: 'crm' }),
+    ];
+
+    beforeEach(() => {
+      mockServers = fleet();
+    });
+
+    it('lists only the customer’s connectors by default', async () => {
+      await renderPanel();
+      expect(await screen.findByText('2 tools')).toBeInTheDocument();
+      for (const name of ['crm', 'github', 'kubernetes', 'web-search']) {
+        expect(rowOf(name)).toBeInTheDocument();
+      }
+      for (const name of [
+        'agent-manager',
+        'prometheus',
+        'lone-capi',
+        'muster',
+      ]) {
+        expect(
+          screen.queryByRole('row', { name: new RegExp(`^${name}`) }),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    it('lists every infrastructure server, families and single ones, on Infrastructure', async () => {
+      await renderPanel('', 'infrastructure');
+      expect(
+        screen.getByText(/the infrastructure the platform runs on/),
+      ).toBeInTheDocument();
+      expect(rowOf('prometheus')).toBeInTheDocument();
+      expect(rowOf('lone-capi')).toBeInTheDocument();
+      // The header row, then the two connectors.
+      expect(screen.getAllByRole('row')).toHaveLength(3);
+    });
+
+    it('lists muster among the internal servers, without its endpoint', async () => {
+      mockInstance = {
+        activeInstallationInfo: {
+          name: 'gazelle',
+          requiresAuth: true,
+          endpoint: 'https://muster.gazelle.example.test/mcp',
+        },
+      };
+      await renderPanel('', 'internal');
+
+      expect(rowOf('agent-manager')).toBeInTheDocument();
+      const muster = rowOf('muster');
+      expect(
+        within(muster).queryByText('https://muster.gazelle.example.test/mcp'),
+      ).not.toBeInTheDocument();
+      expect(
+        within(muster).queryByRole('button', { name: 'Copy endpoint' }),
+      ).not.toBeInTheDocument();
+      expect(within(muster).getByText('Company login')).toBeInTheDocument();
+      expect(within(muster).getByText('Connected')).toBeInTheDocument();
+      expect(
+        within(muster).getByRole('link', { name: 'muster' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/connectors/muster?installation=gazelle',
+      );
+    });
+
+    it('says an anonymous muster the probe could not reach is not connected', async () => {
+      mockInstance = {
+        activeInstallationInfo: {
+          name: 'gazelle',
+          requiresAuth: false,
+          reachable: false,
+        },
+      };
+      await renderPanel('', 'internal');
+      const muster = rowOf('muster');
+      expect(within(muster).getByText('No sign-in')).toBeInTheDocument();
+      expect(within(muster).getByText('Not connected')).toBeInTheDocument();
+      expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    it('claims no state for muster while its installation is undescribed', async () => {
+      mockInstance = { activeInstallationInfo: undefined };
+      await renderPanel('', 'internal');
+      const muster = rowOf('muster');
+      expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
+      expect(within(muster).queryByText('No sign-in')).not.toBeInTheDocument();
+    });
+
+    it('says where a search matches when this sub-tab is empty', async () => {
+      mockServers = fleet().filter(
+        server => server.getToolGroup() !== undefined,
+      );
+      await renderPanel('prometheus');
+      expect(await screen.findByText('No connectors yet')).toBeInTheDocument();
+      expect(screen.getByText(/The search matches/)).toHaveTextContent(
+        'The search matches 1 connector on Infrastructure.',
+      );
+    });
+
+    it('says muster is not connected without a session', async () => {
+      mockAuthenticated = false;
+      await renderPanel('', 'internal');
+      expect(
+        within(rowOf('muster')).getByText('Not connected'),
+      ).toBeInTheDocument();
+    });
+
+    it('points a search that finds nothing here to the sub-tabs where it does', async () => {
+      await renderPanel('manager');
+      expect(
+        await screen.findByText(/No connectors or tools match/),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/The search matches/)).toHaveTextContent(
+        'The search matches 1 connector on Internal.',
+      );
+      expect(screen.getByRole('link', { name: 'Internal' })).toHaveAttribute(
+        'href',
+        '/customize/connectors/internal',
+      );
+    });
   });
 });
