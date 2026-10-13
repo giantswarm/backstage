@@ -3,10 +3,7 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 jest.mock('node-fetch', () => jest.fn());
 
 import fetch from 'node-fetch';
-import {
-  DEFAULT_ALLOWED_OWNERS,
-  fetchGitHubRawContent,
-} from './githubRawContent';
+import { fetchGitHubRawContent } from './githubRawContent';
 
 const fetchMock = fetch as unknown as jest.Mock;
 
@@ -24,13 +21,12 @@ describe('fetchGitHubRawContent', () => {
     fetchMock.mockResolvedValue({ ok: true });
   });
 
-  it('attaches the portal token for an allowed owner', async () => {
+  it('attaches the token the provider grants', async () => {
     const provider = makeCredentialsProvider('portal-token');
 
     await fetchGitHubRawContent(
       'https://raw.githubusercontent.com/giantswarm/some-repo/main/values.yaml',
       provider,
-      ['giantswarm'],
     );
 
     expect(provider.getCredentials).toHaveBeenCalledWith({
@@ -42,44 +38,42 @@ describe('fetchGitHubRawContent', () => {
     );
   });
 
-  it('never requests credentials for an owner outside the allowlist', async () => {
+  it('derives the owner from the normalized URL and fetches that same form', async () => {
+    const provider = makeCredentialsProvider('portal-token');
+
+    // Dot segments collapse before the owner is read, so the credentials
+    // request names the owner the fetch actually hits, and the allowlist
+    // wrapper judges the right one.
+    for (const url of [
+      'https://raw.githubusercontent.com/giantswarm/../other-org/private-repo/main/file',
+      'https://raw.githubusercontent.com/giantswarm/%2e%2e/other-org/private-repo/main/file',
+      'https://raw.githubusercontent.com/giantswarm/a\\..\\..\\other-org/private-repo/main/file',
+    ]) {
+      await fetchGitHubRawContent(url, provider);
+
+      expect(provider.getCredentials).toHaveBeenLastCalledWith({
+        url: 'https://github.com/other-org/private-repo',
+      });
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        'https://raw.githubusercontent.com/other-org/private-repo/main/file',
+        expect.anything(),
+      );
+    }
+  });
+
+  it('never requests credentials for a non-raw.githubusercontent.com URL', async () => {
     const provider = makeCredentialsProvider('portal-token');
 
     await fetchGitHubRawContent(
-      'https://raw.githubusercontent.com/some-other-org/private-repo/main/secrets.md',
+      'https://example.com/giantswarm/repo/main/file',
       provider,
-      ['giantswarm'],
     );
 
     expect(provider.getCredentials).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/some-other-org/private-repo/main/secrets.md',
+      'https://example.com/giantswarm/repo/main/file',
       { headers: {} },
     );
-  });
-
-  it('matches owners case-insensitively', async () => {
-    const provider = makeCredentialsProvider('portal-token');
-
-    await fetchGitHubRawContent(
-      'https://raw.githubusercontent.com/GiantSwarm/some-repo/main/README.md',
-      provider,
-      ['giantswarm'],
-    );
-
-    expect(provider.getCredentials).toHaveBeenCalled();
-  });
-
-  it('defaults the allowlist to giantswarm', async () => {
-    const provider = makeCredentialsProvider('portal-token');
-
-    await fetchGitHubRawContent(
-      'https://raw.githubusercontent.com/not-giantswarm/repo/main/file',
-      provider,
-    );
-
-    expect(DEFAULT_ALLOWED_OWNERS).toEqual(['giantswarm']);
-    expect(provider.getCredentials).not.toHaveBeenCalled();
   });
 
   it('fetches without auth when no token is available', async () => {
@@ -88,7 +82,6 @@ describe('fetchGitHubRawContent', () => {
     await fetchGitHubRawContent(
       'https://raw.githubusercontent.com/giantswarm/public-repo/main/README.md',
       provider,
-      ['giantswarm'],
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -97,21 +90,20 @@ describe('fetchGitHubRawContent', () => {
     );
   });
 
-  it('fetches without auth when the credentials provider throws', async () => {
+  it('fetches without auth when the provider refuses (owner not allowed) or throws', async () => {
     const provider = {
       getCredentials: jest.fn(async () => {
-        throw new Error('no integration configured');
+        throw new Error('not in gs.github.allowedOwners');
       }),
     } as unknown as GithubCredentialsProvider;
 
     await fetchGitHubRawContent(
-      'https://raw.githubusercontent.com/giantswarm/public-repo/main/README.md',
+      'https://raw.githubusercontent.com/some-other-org/repo/main/README.md',
       provider,
-      ['giantswarm'],
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://raw.githubusercontent.com/giantswarm/public-repo/main/README.md',
+      'https://raw.githubusercontent.com/some-other-org/repo/main/README.md',
       { headers: {} },
     );
   });

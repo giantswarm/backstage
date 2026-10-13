@@ -1,53 +1,46 @@
 import { GithubCredentialsProvider } from '@backstage/integration';
 import fetch, { Response } from 'node-fetch';
 
-const RAW_GITHUB_URL_PATTERN =
-  /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/.*/;
-
-/**
- * The owners (GitHub organizations or users) the raw-content proxy attaches
- * the portal's GitHub credentials for when no
- * `gs.githubRawContent.allowedOwners` is configured.
- */
-export const DEFAULT_ALLOWED_OWNERS = ['giantswarm'];
-
 /**
  * Fetches content from a URL, adding GitHub authentication when the URL
- * points to raw.githubusercontent.com AND the repository owner is in
- * `allowedOwners`. Any other URL is fetched without credentials, so a
- * caller-supplied URL can never read private content the caller was not
- * meant to see (the portal's GitHub App may have access to far more than
- * the signed-in user does). Falls back to unauthenticated fetch when
- * credentials are unavailable (e.g. public repos without a configured
- * GitHub integration).
+ * points to raw.githubusercontent.com and the credentials provider grants
+ * it. The provider is expected to be wrapped in
+ * `AllowedOwnersGithubCredentialsProvider`, which refuses owners outside
+ * `gs.github.allowedOwners`; a refusal (like any credentials failure) falls
+ * back to an unauthenticated fetch, so public content stays reachable.
+ *
+ * The URL is parsed up front and both the owner check and the fetch use the
+ * WHATWG-normalized form: `node-fetch` requests the normalized URL, so
+ * deriving the owner from the raw string would let dot segments (`..`,
+ * `%2e%2e`) or backslashes smuggle a different owner past the credentials
+ * check.
  */
 export async function fetchGitHubRawContent(
   url: string,
   githubCredentialsProvider: GithubCredentialsProvider,
-  allowedOwners: string[] = DEFAULT_ALLOWED_OWNERS,
 ): Promise<Response> {
+  const parsed = new URL(url);
   const headers: Record<string, string> = {};
-  const match = url.match(RAW_GITHUB_URL_PATTERN);
-  if (match && isAllowedOwner(match[1], allowedOwners)) {
-    try {
-      const repoUrl = `https://github.com/${match[1]}/${match[2]}`;
-      const { token } = await githubCredentialsProvider.getCredentials({
-        url: repoUrl,
-      });
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
+
+  if (
+    parsed.protocol === 'https:' &&
+    parsed.hostname === 'raw.githubusercontent.com'
+  ) {
+    const [owner, repo] = parsed.pathname.split('/').filter(Boolean);
+    if (owner && repo) {
+      try {
+        const { token } = await githubCredentialsProvider.getCredentials({
+          url: `https://github.com/${owner}/${repo}`,
+        });
+        if (token) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      } catch {
+        // Owner not allowed, or no integration/credentials — proceed without
+        // auth; may still work for public repos.
       }
-    } catch {
-      // Proceed without auth — may still work for public repos
     }
   }
 
-  return fetch(url, { headers });
-}
-
-// GitHub owner names are case-insensitive.
-function isAllowedOwner(owner: string, allowedOwners: string[]): boolean {
-  return allowedOwners.some(
-    allowed => allowed.toLowerCase() === owner.toLowerCase(),
-  );
+  return fetch(parsed.href, { headers });
 }

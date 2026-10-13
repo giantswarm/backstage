@@ -22,13 +22,19 @@ export interface Config {
       }[];
     };
 
-    githubRawContent?: {
+    github?: {
       /**
-       * Repository owners (GitHub organizations or users) the
-       * `/github/raw-content` proxy attaches the portal's GitHub
-       * credentials for. URLs under any other owner are fetched without
-       * credentials, so only their public content is reachable.
-       * Defaults to ["giantswarm"].
+       * Repository owners (GitHub organizations or users) the gs backend
+       * uses the portal's GitHub credentials for when the repository URL is
+       * caller-influenced: the `/github/raw-content` proxy, `/agent-skills`
+       * discovery and the `get-helm-chart-values` MCP action. URLs under any
+       * other owner are fetched without credentials, so only their public
+       * content is reachable.
+       *
+       * Defaults to ["giantswarm"]. A portal whose GitHub integration reads
+       * private repositories of other owners must list them here, or chart
+       * previews and skill discovery for those owners return 404 after
+       * rollout.
        * @visibility backend
        */
       allowedOwners?: string[];

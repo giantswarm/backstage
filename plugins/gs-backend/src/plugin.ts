@@ -8,6 +8,10 @@ import {
   DefaultGithubCredentialsProvider,
   ScmIntegrations,
 } from '@backstage/integration';
+import {
+  AllowedOwnersGithubCredentialsProvider,
+  readAllowedOwners,
+} from './githubCredentials';
 import { registerMcpActions } from './mcpActions';
 import { createRouter } from './router';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
@@ -48,8 +52,15 @@ export const gsPlugin = createBackendPlugin({
         catalog,
       }) {
         const integrations = ScmIntegrations.fromConfig(config);
+        // Routes and actions hand caller-influenced URLs to this provider, so
+        // it only ever mints credentials for the owners in
+        // `gs.github.allowedOwners` (read once here; shared by the router and
+        // the MCP actions).
         const githubCredentialsProvider =
-          DefaultGithubCredentialsProvider.fromIntegrations(integrations);
+          new AllowedOwnersGithubCredentialsProvider(
+            DefaultGithubCredentialsProvider.fromIntegrations(integrations),
+            readAllowedOwners(config),
+          );
 
         httpRouter.use(
           await createRouter({

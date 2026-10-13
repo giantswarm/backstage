@@ -317,7 +317,7 @@ describe('GET /github/raw-content', () => {
     expect(fetchGitHubRawContentMock).not.toHaveBeenCalled();
   });
 
-  it('fetches with the default owner allowlist when none is configured', async () => {
+  it('proxies the content through the shared credentials provider', async () => {
     const app = await buildApp(makeConfig({}));
 
     const url =
@@ -328,31 +328,12 @@ describe('GET /github/raw-content', () => {
 
     expect(response.status).toBe(200);
     expect(response.text).toBe('file content');
+    // The owner allowlist (gs.github.allowedOwners) is enforced inside the
+    // provider the plugin wires up, not per route — see
+    // githubCredentials.test.ts.
     expect(fetchGitHubRawContentMock).toHaveBeenCalledWith(
       url,
       githubCredentialsProvider,
-      ['giantswarm'],
-    );
-  });
-
-  it('forwards the configured owner allowlist', async () => {
-    const app = await buildApp(
-      makeConfig({
-        gs: {
-          githubRawContent: {
-            allowedOwners: ['giantswarm', 'acme-corp'],
-          },
-        },
-      }),
-    );
-
-    const url = 'https://raw.githubusercontent.com/acme-corp/repo/main/file';
-    await request(app).get('/github/raw-content').query({ url });
-
-    expect(fetchGitHubRawContentMock).toHaveBeenCalledWith(
-      url,
-      githubCredentialsProvider,
-      ['giantswarm', 'acme-corp'],
     );
   });
 
