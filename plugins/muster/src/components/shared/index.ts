@@ -32,12 +32,16 @@ export {
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
 export {
   ServerSignInStatus,
-  useServerSignInStatus,
+  SignInStatusActions,
+  SignInStatusText,
 } from './ServerSignInStatus';
+export type { ServerSignInStatusProps } from './ServerSignInStatus';
+export { useAuthStatus, useServerSignInStatus } from './hooks';
 export type {
-  ServerSignInStatusProps,
-  StatusLabel,
-} from './ServerSignInStatus';
+  ServerSignInStatusState,
+  StatusText,
+  UseServerSignInStatusOptions,
+} from './hooks';
 export {
   authStatusQueryKey,
   needsSignIn,

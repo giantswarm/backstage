@@ -5,7 +5,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { musterApiRef, ServerAuthStatus } from '../../apis';
 
 /** How often `auth://status` is re-read while a browser sign-in is pending. */
-const DEFAULT_POLL_INTERVAL_MS = 5_000;
+export const DEFAULT_POLL_INTERVAL_MS = 5_000;
 
 /**
  * How long to keep polling for an unfinished sign-in. A real IdP round-trip
@@ -31,7 +31,7 @@ const MUSTER_STATE_TTL_MS = 10 * 60 * 1_000;
 const DEFAULT_AUTH_URL_LIFETIME_MS = MUSTER_STATE_TTL_MS - 60 * 1_000;
 
 /** Statuses that mean the user themselves can still act (sign in). */
-const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
+export const NEEDS_LOGIN: ServerAuthStatus['status'][] = [
   'auth_required',
   'reauth_required',
 ];
@@ -74,7 +74,7 @@ export type SignInNoun = 'server' | 'connector';
  * the pending flow there would reproduce exactly the "nothing happened" symptom
  * this feature exists to fix. Re-mounting the row resumes the same wait.
  */
-interface PendingSignIn {
+export interface PendingSignIn {
   /**
    * Muster's sign-in URL, while muster still honours it. Withdrawn on its own
    * (the entry stays) once the state behind it has expired: the wait goes on,
@@ -94,15 +94,23 @@ interface PendingSignIn {
   opened: boolean;
 }
 
-function pendingKey(installation: string | undefined, serverName: string) {
+export function pendingKey(
+  installation: string | undefined,
+  serverName: string,
+) {
   return ['muster', 'pending-sign-in', installation, serverName] as const;
+}
+
+/** The prefix of every pending sign-in on one installation. */
+export function pendingSignInsKey(installation: string | undefined) {
+  return ['muster', 'pending-sign-in', installation] as const;
 }
 
 /**
  * `null` rather than `undefined` for "nothing pending": react-query rejects a
  * queryFn that resolves to undefined.
  */
-function readPending(
+export function readPending(
   queryClient: QueryClient,
   installation: string | undefined,
   serverName: string,
@@ -146,6 +154,12 @@ export interface ServerSignInState {
   signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
+  /**
+   * Why `auth://status` cannot be read, while a sign-in is outstanding. Also
+   * reported as `error` when no answer to a click outranks it; set apart so a
+   * status can tell a failed read from a failed sign-in.
+   */
+  statusUnreadable?: string;
   /** Muster's message for an outcome that isn't a failure (already connected). */
   note?: string;
   /**
@@ -459,6 +473,7 @@ export function useServerSignIn(
         ? `Sign-out request failed: ${signOut.error.message}`
         : undefined) ??
       (pending ? statusUnreadable : undefined),
+    statusUnreadable: pending ? statusUnreadable : undefined,
     // 'connected' with the alert still up is a real combination (the two come
     // from different muster state), and silence there is indistinguishable from
     // the no-op click this feature fixes. Same for a completed sign-out: the

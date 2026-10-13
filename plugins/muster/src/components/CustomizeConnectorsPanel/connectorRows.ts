@@ -10,7 +10,7 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
-import type { StatusLabel } from '../shared';
+import type { StatusText } from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -66,7 +66,7 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): StatusLabel {
+): StatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(

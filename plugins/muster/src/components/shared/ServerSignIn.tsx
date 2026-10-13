@@ -196,14 +196,24 @@ export type AuthActionParts =
 export function authActionParts(
   serverName: string,
   state: ServerSignInState,
-  options: { noun: SignInNoun; oauthConfigured?: boolean; signInGate?: string },
+  options: {
+    noun: SignInNoun;
+    oauthConfigured?: boolean;
+    signInGate?: string;
+    /**
+     * Offer the sign-in (or the SSO explanation) whatever muster reports, for
+     * a surface that already knows the server is auth-gated
+     * ({@link ServerSignIn}).
+     */
+    alwaysOffer?: boolean;
+  },
 ): AuthActionParts {
-  const { noun, oauthConfigured, signInGate } = options;
+  const { noun, oauthConfigured, signInGate, alwaysOffer } = options;
   if (state.isSsoManaged) {
     // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
     // merely pending) SSO server explains itself only when muster asks the
     // user to act, which for SSO it normally never does.
-    return state.needsLogin || state.status?.sso_attempt_failed
+    return alwaysOffer || state.needsLogin || state.status?.sso_attempt_failed
       ? {
           kind: 'sso',
           explanation: ssoExplanationText(serverName, state, noun),
@@ -213,7 +223,7 @@ export function authActionParts(
   // `isWaiting` keeps the row alive while a sign-in this tab started is
   // outstanding, whatever the polled status currently claims -- and whether or
   // not the URL muster issued for it is still on offer.
-  if (state.needsLogin || state.isWaiting) {
+  if (alwaysOffer || state.needsLogin || state.isWaiting) {
     if (signInGate) {
       return { kind: 'sign-in', gate: signInGate };
     }
@@ -245,12 +255,13 @@ export function authActionParts(
  */
 export function SignInFlow({
   state,
+  wait,
   prominent,
-  noun,
   compact,
 }: {
   state: ServerSignInState;
-  noun: SignInNoun;
+  /** The outstanding sign-in, as {@link authActionParts} decided it. */
+  wait?: SignInWait;
   /**
    * Primary styling. On the MCP servers page the sign-in is the single action
    * an auth-gated server needs, so it outranks the secondary lifecycle
@@ -265,7 +276,6 @@ export function SignInFlow({
 }) {
   const classes = useStyles();
   const { authUrl, isPending, signIn, signInTabOpened } = state;
-  const wait = signInWait(state, noun);
 
   if (!wait) {
     return (
@@ -404,11 +414,15 @@ export function ServerSignIn({
 }: ServerSignInProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
+  const parts = authActionParts(serverName, state, {
+    noun,
+    alwaysOffer: true,
+  });
 
-  if (state.isSsoManaged) {
+  if (parts.kind === 'sso') {
     return (
       <div className={classes.root}>
-        <SsoExplanation text={ssoExplanationText(serverName, state, noun)} />
+        <SsoExplanation text={parts.explanation} />
         {/* Rendered under the paragraph, not instead of it: a specific refusal
             (rate limit, issuer discovery) must not be swapped for the generic
             SSO explanation. */}
@@ -420,7 +434,10 @@ export function ServerSignIn({
   return (
     <div className={classes.root}>
       {showName ? <code className={classes.name}>{serverName}</code> : null}
-      <SignInFlow state={state} noun={noun} />
+      <SignInFlow
+        state={state}
+        wait={parts.kind === 'sign-in' ? parts.wait : undefined}
+      />
       <Messages state={state} />
     </div>
   );
@@ -494,7 +511,7 @@ export function ServerAuthActions({
           {parts.gate ? (
             <GatedSignIn reason={parts.gate} />
           ) : (
-            <SignInFlow state={state} prominent noun={noun} />
+            <SignInFlow state={state} wait={parts.wait} prominent />
           )}
           <Messages state={state} />
         </div>

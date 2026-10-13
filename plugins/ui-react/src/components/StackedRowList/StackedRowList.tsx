@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Children, Fragment, type ReactNode } from 'react';
 import { Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
@@ -139,7 +139,13 @@ export type StackedRowItem = {
 };
 
 export type StackedRowListProps = {
-  rows: StackedRowItem[];
+  rows?: StackedRowItem[];
+  /**
+   * Rows the list draws as they are, after `rows`: {@link StackedRow}
+   * elements, each in a component of its own, for rows that call hooks (a
+   * row's status and actions read from one hook call).
+   */
+  children?: ReactNode;
   /** The list's accessible name, e.g. "Sessions". */
   'aria-label': string;
   /** Shown instead of the list when there are no rows. */
@@ -224,13 +230,18 @@ export function StackedRow({
  * `usePhoneColumns` instead.
  */
 export function StackedRowList({
-  rows,
+  rows = [],
+  children,
   'aria-label': ariaLabel,
   emptyState,
   className,
 }: StackedRowListProps) {
   const classes = useStyles();
-  if (rows.length === 0 && emptyState !== undefined) {
+  if (
+    rows.length === 0 &&
+    Children.count(children) === 0 &&
+    emptyState !== undefined
+  ) {
     return <>{emptyState}</>;
   }
   return (
@@ -245,6 +256,7 @@ export function StackedRowList({
       {rows.map(({ id, ...row }) => (
         <StackedRow key={id} {...row} />
       ))}
+      {children}
     </ul>
   );
 }

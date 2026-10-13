@@ -1,6 +1,4 @@
-import { useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useApi } from '@backstage/frontend-plugin-api';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -23,24 +21,26 @@ import {
   ShowMore,
   StackedRow,
   type StackedRowItem,
+  StackedRowList,
   StatusDot,
   isAwaitingData,
   stopRowPress,
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
-  authStatusQueryKey,
   deactivatedSignInGate,
   ServerSignInStatus,
   SessionGate,
-  type StatusLabel,
+  SignInStatusActions,
+  SignInStatusText,
+  type StatusText,
+  useAuthStatus,
   useServerPageLinks,
   useServerSignInStatus,
   useToolCatalogue,
@@ -69,13 +69,6 @@ const useStyles = makeStyles({
     fontWeight: 700,
     color: 'var(--bui-fg-secondary)',
   },
-  // The phone list's own <ul>, as StackedRowList draws it: each row calls the
-  // sign-in hook once for its status and its actions (see ConnectorStackedRow).
-  list: {
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
-  },
   // A phone row's description: two lines, then the connector's page.
   description: {
     display: '-webkit-box',
@@ -97,13 +90,20 @@ type Row = {
   auth: string;
   tools?: string;
   /** The row's state, from muster's sign-in report and the server's own. */
-  status: StatusLabel;
+  status: StatusText;
   /** The muster server to sign in to, where muster asks this person to. */
   signInServer?: string;
   /** Why that sign-in cannot help now (a deactivated connector). */
   signInGate?: string;
   reach?: ConnectorReach;
 };
+
+/** A row muster asks this person to sign in to. */
+type SignInRow = Row & { signInServer: string };
+
+function hasSignIn(row: Row): row is SignInRow {
+  return row.signInServer !== undefined;
+}
 
 /**
  * The Connectors tab's facets (T49): how a person signs in, and whether the
@@ -159,10 +159,8 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
 }
 
 /** A row's plain state, for a row with no sign-in: nothing to press. */
-function PlainStatus({ row }: { row: Row }) {
-  return row.status.label ? (
-    <StatusDot tone={row.status.tone} label={row.status.label} />
-  ) : null;
+function PlainStatus({ status }: { status: StatusText }) {
+  return <StatusDot tone={status.tone} label={status.label} />;
 }
 
 function ConnectorStatusCell({
@@ -172,11 +170,11 @@ function ConnectorStatusCell({
   row: Row;
   installation: string;
 }) {
-  if (!row.signInServer) {
+  if (!hasSignIn(row)) {
     // Pressing a plain state opens the connector, like the rest of the row.
     return (
       <Cell>
-        <PlainStatus row={row} />
+        {row.status.label ? <PlainStatus status={row.status} /> : null}
       </Cell>
     );
   }
@@ -205,28 +203,53 @@ function ConnectorStatusCell({
 type StackedRowProps = Omit<StackedRowItem, 'id'>;
 
 /**
- * A stacked row whose connector muster asks this person to sign in to: its
- * state and hint on line 1, the sign-in in the row's actions. One hook call
- * for both, so the answer to a click on the button reaches the state.
+ * A stacked row whose connector muster asks this person to sign in to, from
+ * one hook call, so the answer to a click on the button reaches the state:
+ * the state and its hint on line 1; the Sign in button in the row's actions;
+ * an outstanding sign-in's way back into the page ("Reopen sign-in page",
+ * "Open sign-in page ↗") on a line of its own under the description, since
+ * at the end of line 1 it would squeeze the name to a few characters.
  */
 function SignInStackedRow({
   row,
-  signInServer,
   installation,
+  description,
   ...props
 }: StackedRowProps & {
-  row: Row;
-  signInServer: string;
+  row: SignInRow;
   installation: string;
+  description?: ReactNode;
 }) {
-  const { status, actions } = useServerSignInStatus({
+  const signInStatus = useServerSignInStatus({
     noun: 'connector',
-    serverName: signInServer,
+    serverName: row.signInServer,
     installation,
     status: row.status,
     signInGate: row.signInGate,
   });
-  return <StackedRow {...props} status={status} actions={actions} />;
+  const { parts } = signInStatus;
+  const actions = <SignInStatusActions signInStatus={signInStatus} />;
+  const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
+  const details =
+    waiting || description ? (
+      <Flex direction="column" gap="2" align="start">
+        {description}
+        {waiting ? actions : null}
+      </Flex>
+    ) : undefined;
+  return (
+    <StackedRow
+      {...props}
+      status={
+        <SignInStatusText
+          serverName={row.signInServer}
+          signInStatus={signInStatus}
+        />
+      }
+      {...(waiting ? {} : { actions })}
+      {...(details ? { details } : {})}
+    />
+  );
 }
 
 function ConnectorStackedRow({
@@ -241,6 +264,15 @@ function ConnectorStackedRow({
   toolsPending: boolean;
 }) {
   const classes = useStyles();
+  const description = row.description ? (
+    <Text
+      variant="body-small"
+      color="secondary"
+      className={classes.description}
+    >
+      {row.description}
+    </Text>
+  ) : undefined;
   const props: StackedRowProps = {
     title: row.entry.id,
     ...(href ? { href } : {}),
@@ -250,34 +282,24 @@ function ConnectorStackedRow({
       </span>
     ),
     facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
-    ...(row.description
-      ? {
-          details: (
-            <Text
-              variant="body-small"
-              color="secondary"
-              className={classes.description}
-            >
-              {row.description}
-            </Text>
-          ),
-        }
-      : {}),
   };
-  if (row.signInServer) {
+  if (hasSignIn(row)) {
     return (
       <SignInStackedRow
         {...props}
         row={row}
-        signInServer={row.signInServer}
         installation={installation}
+        description={description}
       />
     );
   }
   return (
     <StackedRow
       {...props}
-      {...(row.status.label ? { status: <PlainStatus row={row} /> } : {})}
+      {...(row.status.label
+        ? { status: <PlainStatus status={row.status} /> }
+        : {})}
+      {...(description ? { details: description } : {})}
     />
   );
 }
@@ -289,9 +311,13 @@ function ConnectorStackedRow({
  * row per connector instead:
  *
  * - line 1: the letter tile, the connector's name (the row's link), its
- *   state, and the sign-in at the end as the row's action;
+ *   state, and Sign in at the end as the row's action;
  * - line 2: how one signs in · its tools;
- * - under them, the description (two lines).
+ * - under them, the description (two lines), and an outstanding sign-in's
+ *   way back into the page.
+ *
+ * Each row is a component of its own, as `StackedRowList`'s children, so a
+ * row with a sign-in reads its state and its buttons from one hook call.
  */
 function ConnectorStackedList({
   rows,
@@ -304,12 +330,8 @@ function ConnectorStackedList({
   hrefOf: (row: Row) => string | undefined;
   toolsPending: boolean;
 }) {
-  const classes = useStyles();
   return (
-    // StackedRowList's markup: an explicit role, since Safari drops list
-    // semantics from a `list-style: none` list.
-    // eslint-disable-next-line jsx-a11y/no-redundant-roles
-    <ul role="list" aria-label="Connectors" className={classes.list}>
+    <StackedRowList aria-label="Connectors">
       {rows.map(row => (
         <ConnectorStackedRow
           key={row.id}
@@ -319,7 +341,7 @@ function ConnectorStackedList({
           toolsPending={toolsPending}
         />
       ))}
-    </ul>
+    </StackedRowList>
   );
 }
 
@@ -335,14 +357,14 @@ function ConnectorsTable({
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
   const hasSession = session.authenticated || !requiresAuth;
   const links = useServerPageLinks();
-  const musterApi = useApi(musterApiRef);
 
   const catalogue = useToolCatalogue(installation, hasSession);
-  const authStatus = useQuery({
-    queryKey: authStatusQueryKey(installation),
-    queryFn: () => musterApi.getAuthStatus(installation),
-    enabled: hasSession,
-  });
+  // Also finishes a sign-in whose row has already dropped its hook: the read
+  // that reports `connected` is the one that removes the row's Sign in.
+  const { query: authStatus, pending: pendingSignIns } = useAuthStatus(
+    installation,
+    hasSession,
+  );
 
   const listRows = useMemo(
     () =>
@@ -358,9 +380,12 @@ function ConnectorsTable({
         entry.row.kind === 'server'
           ? authStatus.data?.servers.find(s => s.name === entry.id)
           : undefined;
+      // A sign-in this tab started stays in view until it ends, whatever a
+      // read in between says (an unreadable status reports no servers).
       const asksSignIn =
         status?.status === 'auth_required' ||
-        status?.status === 'reauth_required';
+        status?.status === 'reauth_required' ||
+        (entry.row.kind === 'server' && pendingSignIns.has(entry.id));
       const reach = connectorReach(entry, status);
       return {
         id: entry.key,
@@ -378,7 +403,7 @@ function ConnectorsTable({
         ...(reach ? { reach } : {}),
       };
     },
-    [installation, authStatus.data],
+    [installation, authStatus.data, pendingSignIns],
   );
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.

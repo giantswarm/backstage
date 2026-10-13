@@ -1,8 +1,6 @@
 export {
   ServerSignInStatus,
-  useServerSignInStatus,
+  SignInStatusActions,
+  SignInStatusText,
 } from './ServerSignInStatus';
-export type {
-  ServerSignInStatusProps,
-  StatusLabel,
-} from './ServerSignInStatus';
+export type { ServerSignInStatusProps } from './ServerSignInStatus';
