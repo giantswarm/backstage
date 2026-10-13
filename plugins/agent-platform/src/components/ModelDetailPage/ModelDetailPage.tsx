@@ -38,8 +38,10 @@ import { ModelServingStatus } from '../ModelServingStatus';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
+import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelReadView } from './ModelReadView';
+import { ModelTechnicalDetails } from './ModelTechnicalDetails';
 import { describeContextWindow } from './modelUsage';
 
 const useStyles = makeStyles({
@@ -136,9 +138,12 @@ export function modelFacts({
 }
 
 /**
- * One model, as a read view with Edit as an action, per the prototype: what it
- * cost and how much it was used, the agents that run on it, and the facts
- * beside it. **Edit** opens the Connect-a-model flow prefilled
+ * One model (`/customize/models/<installation>/<namespace>/<name>`, routed by
+ * the app's Customize page), as a read view with Edit as an action, per the
+ * prototype: what it cost and how much it was used, the agents that run on
+ * it, the facts beside it, and "Technical details" with the controller's
+ * conditions. Must be mounted inside a `CustomizeDataProvider`, which
+ * carries the serving snapshot and the query client it reads through. **Edit** opens the Connect-a-model flow prefilled
  * (`EditModelPage`), the same way agents and skills are edited. A CR the
  * portal must not write (tool-owned, no RBAC, or a provider the form does not
  * speak) offers no Edit, and an alert says why where the reason is not just
@@ -344,6 +349,18 @@ export function ModelDetailPage() {
             model={modelConfig.getModel()}
             label={modelConfig.getDisplayName()}
           />
+
+          {/* Open on arrival while the controller has not accepted the model,
+              as the agent page does for an agent that is not ready: the
+              conditions there say why. */}
+          <TechnicalDetailsFoldOut
+            defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
+          >
+            <ModelTechnicalDetails
+              modelConfig={modelConfig}
+              installation={installation}
+            />
+          </TechnicalDetailsFoldOut>
         </Flex>
       </div>
     </ModelFrame>

@@ -26,11 +26,11 @@ import {
 import { useCreateSession } from '../../hooks/useCreateSession';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
+import { useModelDetailHref } from '../../hooks/useModelDetailHref';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import { skillDetailPath } from '../../lib/skills';
 import {
   agentDetailRouteRef,
-  modelDetailRouteRef,
   musterServersExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
@@ -396,7 +396,7 @@ function PaletteDialog({
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillsRoute = useRouteRef(skillsRouteRef);
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const modelDetailRoute = useModelDetailHref();
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 

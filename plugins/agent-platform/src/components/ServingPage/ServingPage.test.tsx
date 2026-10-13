@@ -890,7 +890,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByRole('link', { name: 'qwen3-14b' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.queryByText('claude')).not.toBeInTheDocument();
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();

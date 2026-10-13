@@ -1006,6 +1006,34 @@ describe('AgentDetailPage', () => {
     expect(screen.getByText('opus-4-7')).toBeInTheDocument();
   });
 
+  it("links the ModelConfig in Technical details to the model's page", async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/models/gazelle/agent-platform/opus-4-7',
+    );
+  });
+
+  it('keeps the model as text where the agent has no namespace to resolve it in', async () => {
+    const agent = makeAgent();
+    delete agent.jsonData.metadata!.namespace;
+    stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // Neither the configuration's ModelConfig nor the facts' model name.
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Claude Opus 4.7' })).toBeNull();
+    expect(screen.getAllByText('opus-4-7').length).toBeGreaterThan(0);
+  });
+
   describe('status', () => {
     it('surfaces the Ready condition message for a compiling agent, expanded', async () => {
       stubResources({
@@ -2355,7 +2383,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByRole('link', { name: 'Claude Opus 4.7' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/models/gazelle/agent-platform/opus-4-7',
+        '/customize/models/gazelle/agent-platform/opus-4-7',
       );
       // The model it runs, as the secondary line under the name (PO L6).
       expect(

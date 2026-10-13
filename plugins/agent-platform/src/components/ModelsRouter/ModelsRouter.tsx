@@ -22,7 +22,6 @@ import {
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { NewModelPage } from '../NewModelPage';
 import { EditModelPage } from '../EditModelPage';
-import { ModelDetailPage } from '../ModelDetailPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
 import { ModelCachePage } from '../ModelCachePage';
@@ -42,6 +41,7 @@ import {
   ShellCustomizeRedirect,
 } from '../ShellCustomizeRedirect';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
+import { modelDetailPath } from '../../hooks/useModelDetailHref';
 
 /**
  * The ModelConfigs list, its create flow and one model used to live under a
@@ -61,15 +61,19 @@ const LegacyNewRedirect = () => {
   return <Navigate to={{ pathname: '../new', search }} replace />;
 };
 
+/**
+ * One model's page moved beside the Customize screen's Models tab
+ * (`/customize/models/<installation>/<namespace>/<name>`), from this tab's
+ * `<installation>/<namespace>/<name>` and, before that, `configs/…`. Both
+ * redirect there, so a bookmark or an older release's link still resolves.
+ */
 const LegacyDetailRedirect = () => {
   const { installation = '', namespace = '', name = '' } = useParams();
   const { search } = useLocation();
   return (
     <Navigate
       to={{
-        pathname: `../${[installation, namespace, name]
-          .map(encodeURIComponent)
-          .join('/')}`,
+        pathname: modelDetailPath({ installation, namespace, name }),
         search,
       }}
       replace
@@ -226,8 +230,9 @@ const hostingFlowRoutes = [
 ];
 
 /**
- * The tab's views. The list is the Customize screen's Models tab, so the index sends there; the create and edit flows and
- * one model's page frame themselves; everything else is model hosting.
+ * The tab's views. The list and one model's page are the Customize screen's,
+ * so the index and the former detail path send there; the create and edit
+ * flows frame themselves; everything else is model hosting.
  */
 const ModelsViews = () => (
   <Routes>
@@ -240,7 +245,7 @@ const ModelsViews = () => (
     {hostingFlowRoutes}
     <Route
       path=":installation/:namespace/:name"
-      element={<ModelDetailPage />}
+      element={<LegacyDetailRedirect />}
     />
     <Route path="*" element={<ShellModelHosting />} />
   </Routes>

@@ -182,7 +182,7 @@ function renderPage() {
     <PageHeaderActionsProvider>
       <Routes>
         <Route
-          path="/agent-platform/models/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name"
           element={<ModelDetailPage />}
         />
         <Route
@@ -192,7 +192,7 @@ function renderPage() {
       </Routes>
     </PageHeaderActionsProvider>,
     {
-      initialRouteEntries: ['/agent-platform/models/inst-1/kagent/sonnet'],
+      initialRouteEntries: ['/customize/models/inst-1/kagent/sonnet'],
       mountedRoutes: {
         '/agent-platform/models': modelsRouteRef,
         '/agent-platform/agents': agentsRouteRef,
@@ -234,6 +234,60 @@ describe('ModelDetailPage', () => {
     // No form on this page at all: Edit opens the Connect-a-model flow.
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
+  });
+
+  it('explains a model the controller did not accept in Technical details, open on arrival', async () => {
+    const rejected = sonnet();
+    rejected.jsonData.status!.conditions![1] = {
+      type: 'ResolvedRefs',
+      status: 'False',
+      reason: 'SecretNotFound',
+      message: 'Secret kagent/sonnet-key not found',
+      lastTransitionTime: '2026-09-01T10:00:00Z',
+    };
+    mockUseResource.mockReturnValue({
+      resource: rejected,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByText('Not accepted')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    // The failing stage starts expanded, its reason and message in view.
+    expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret kagent/sonnet-key not found'),
+    ).toBeInTheDocument();
+  });
+
+  it('folds Technical details away for an accepted model, with the resource and its conditions inside', async () => {
+    await renderPage();
+
+    const trigger = screen.getByRole('button', { name: 'Technical details' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('API key from')).toBeNull();
+
+    await userEvent.click(trigger);
+
+    expect(screen.getByText('API key from')).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret sonnet-key, key ANTHROPIC_API_KEY'),
+    ).toBeInTheDocument();
+    // The technical name in the facts, and the ModelConfig in Resource.
+    expect(screen.getAllByText('kagent/sonnet')).toHaveLength(2);
+    // Each condition is a heading under the Status card, in the order the
+    // controller evaluates them.
+    expect(
+      screen
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Accepted/),
+      expect.stringMatching(/^ResolvedRefs/),
+    ]);
   });
 
   it("shows the gateway's figures for the model, snapshots included", async () => {

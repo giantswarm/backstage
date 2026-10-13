@@ -8,14 +8,13 @@ import {
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import type {
   ModelConfig,
   ModelConfigReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { modelDetailRouteRef } from '../../routes';
+import { useModelDetailHref } from '../../hooks/useModelDetailHref';
 import {
   stopRowPress,
   useVisibleSort,
@@ -312,7 +311,7 @@ export type ModelsTableProps = {
  */
 export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const modelDetailRoute = useModelDetailHref();
 
   // All three parameters are needed: a ModelConfig name is only unique within
   // a namespace on one installation. Undefined when the route isn't bound, in

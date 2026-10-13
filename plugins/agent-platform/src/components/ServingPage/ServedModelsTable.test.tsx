@@ -757,7 +757,7 @@ describe('ServedModelsTable', () => {
     const link = screen.getByRole('link', { name: /Qwen3 14B \(lab vLLM\)/ });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.getAllByText('No model config')).toHaveLength(2);
   });
@@ -875,7 +875,7 @@ describe('ServedModelsTable', () => {
 
       expect(screen.getByRole('link', { name: 'qwen3-5-9b' })).toHaveAttribute(
         'href',
-        '/agent-platform/models/lab/kagent/qwen3-5-9b',
+        '/customize/models/lab/kagent/qwen3-5-9b',
       );
       expect(screen.getByText('No model config')).toBeInTheDocument();
     });

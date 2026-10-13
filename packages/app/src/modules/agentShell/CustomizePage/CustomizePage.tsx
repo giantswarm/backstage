@@ -27,6 +27,7 @@ import {
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
+  ModelDetailPage,
   useCanAddSkill,
   useCustomizeData,
   WorkflowCreateAssist,
@@ -260,8 +261,11 @@ function CustomizeTabPage() {
 
 /**
  * The shell's Customize screen: a tab per area at `/customize/:tab`, with
- * `/customize` opening the first. Rendered without the app's page layout, so
- * it mounts the header-actions slot its pages render.
+ * `/customize` opening the first, and one model's page beside the Models tab
+ * (`/customize/models/<installation>/<namespace>/<name>`), inside the same
+ * data providers so the way back to the list is instant. Rendered without
+ * the app's page layout, so it mounts the header-actions slot its pages
+ * render.
  */
 export function CustomizePage() {
   return (
@@ -272,6 +276,10 @@ export function CustomizePage() {
         <CustomizeDataProvider>
           <Routes>
             <Route index element={<DefaultTabRedirect />} />
+            <Route
+              path="models/:installation/:namespace/:name"
+              element={<ModelDetailPage />}
+            />
             <Route path="*" element={<CustomizeTabPage />} />
           </Routes>
         </CustomizeDataProvider>

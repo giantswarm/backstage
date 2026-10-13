@@ -65,7 +65,9 @@ export function CostPerDayCard({
         xAxisKey="day"
         series={series}
         height={200}
-        showLegend
+        // One model (a model's own page, or a window with one) needs no key:
+        // the card's context already names it.
+        showLegend={series.length > 1}
         // Money, not counts: a series topping out under a dollar collapses to a
         // single `0` tick with whole-number ticks.
         allowDecimalTicks

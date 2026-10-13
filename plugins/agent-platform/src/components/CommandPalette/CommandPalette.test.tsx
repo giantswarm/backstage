@@ -638,7 +638,7 @@ describe('CommandPalette', () => {
     expect(within(listbox).getByText('Models')).toBeVisible();
     await userEvent.click(within(listbox).getByText('Default model'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/models/gazelle/kagent/default-model',
+      '/customize/models/gazelle/kagent/default-model',
     );
   });
 

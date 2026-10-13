@@ -16,6 +16,7 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
+  InfoHint,
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
@@ -31,7 +32,8 @@ import {
   searchModels,
   usedByLabel,
 } from '../../lib/customize';
-import { modelDetailRouteRef, servingRouteRef } from '../../routes';
+import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { servingRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -54,6 +56,38 @@ const MODEL_FACETS: CatalogFacet<ModelRow>[] = [
     value: row => row.provider || undefined,
   },
 ];
+
+/**
+ * A model's state, and beside it the controller's reason where the verdict
+ * falls short ("Not accepted" because a key Secret is missing): a hint, so
+ * the label stays short enough to read in the column. The same pattern as
+ * the connectors' status.
+ */
+function ModelStatusCell({ row }: { row: Row }) {
+  const status = modelStatus(row);
+  return (
+    <Cell>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--bui-space-1)',
+          maxWidth: '100%',
+        }}
+      >
+        <StatusDot tone={status.tone} label={status.label} />
+        {status.detail && (
+          <InfoHint
+            label={`About the state of ${row.displayName}`}
+            size="medium"
+          >
+            {status.detail}
+          </InfoHint>
+        )}
+      </span>
+    </Cell>
+  );
+}
 
 /** The way into model hosting, for installations with a serving layer. */
 function ModelHostingBanner() {
@@ -92,7 +126,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const { isLoading, hasInstallations, unreachableInstallations } =
     useModelConfigs();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const modelDetailRoute = useModelDetailHref();
 
   const usage = useMemo(() => agentsByModel(agents), [agents]);
   const searched = useMemo(
@@ -160,17 +194,11 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       id: 'status',
       label: 'Status',
       defaultWidth: '1fr',
-      // Room for the longest label, "Not accepted", beside its dot and the
-      // cell's padding: bui's 75px default minimum clipped it at phone width.
-      minWidth: 128,
-      cell: row => {
-        const status = modelStatus(row);
-        return (
-          <Cell>
-            <StatusDot tone={status.tone} label={status.label} />
-          </Cell>
-        );
-      },
+      // Room for the longest label, "Not accepted", beside its dot, its
+      // hint and the cell's padding: bui's 75px default minimum clipped it at
+      // phone width.
+      minWidth: 152,
+      cell: row => <ModelStatusCell row={row} />,
     },
   ];
   // T22 C7: three columns in 343px left Used by and Status ~51px each, and

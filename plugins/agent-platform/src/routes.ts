@@ -133,15 +133,10 @@ export const newModelRouteRef = createSubRouteRef({
   parent: modelsRouteRef,
 });
 
-// One model (`/agent-platform/models/<installation>/<namespace>/<name>`), as a
-// read view with Edit as an action (none when a tool owns the CR). Three
-// segments for the same reason as `agentDetailRouteRef`: all three are part of
-// the identity, and the segment count keeps it clear of the one-segment `/new`,
-// `/serving` and `/capacity`.
-export const modelDetailRouteRef = createSubRouteRef({
-  path: '/:installation/:namespace/:name',
-  parent: modelsRouteRef,
-});
+// One model's page is not a route of this plugin: it lives beside the
+// Customize screen's Models tab, at `/customize/models/<installation>/<namespace>/<name>`
+// (`modelDetailPath`, hooks/useModelDetailHref.ts). The three-segment path
+// under this tab redirects there.
 
 // Editing one model (`/agent-platform/models/edit/<installation>/<namespace>/<name>`):
 // the Connect-a-model flow prefilled from the CR, its primary Save changes. A

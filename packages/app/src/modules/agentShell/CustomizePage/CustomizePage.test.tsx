@@ -51,6 +51,11 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
+    ModelDetailPage: () => {
+      const { useParams } = jest.requireActual('react-router-dom');
+      const { installation, namespace, name } = useParams();
+      return <p>{`Model ${installation}/${namespace}/${name}`}</p>;
+    },
     WorkflowCreateAssist: ({ installation }: { installation?: string }) => (
       <p>{`Create a workflow with the agent on ${installation}`}</p>
     ),
@@ -161,6 +166,16 @@ describe('CustomizePage', () => {
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
       'Agents',
     );
+  });
+
+  it("routes one model's page beside the Models tab, without the tab strip", async () => {
+    await renderCustomize('/customize/models/gazelle/kagent/default-model');
+
+    expect(
+      screen.getByText('Model gazelle/kagent/default-model'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByText(/^Models panel/)).toBeNull();
   });
 
   it('leaves a count out until it is known', async () => {

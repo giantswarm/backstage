@@ -17,7 +17,12 @@ import {
 import { parseSelector, toolsetShape } from './toolset';
 
 /** A state as the shell's Customize screen shows it: a dot and a few words. */
-export type CustomizeStatus = { label: string; tone: StatusDotTone };
+export type CustomizeStatus = {
+  label: string;
+  tone: StatusDotTone;
+  /** Why it is in that state, in the controller's words, for a hint beside it. */
+  detail?: string;
+};
 
 const INTENT_TONE: Record<StatusLabelIntent, StatusDotTone> = {
   positive: 'success',
@@ -108,14 +113,19 @@ export function harnessLabel(name: string, title?: string): string {
  * what the serving layer says about the model behind it — in the Running
  * models table's words, so one served model reads the same everywhere (UX
  * review M14). A model nothing here serves (a provider's) is Ready once
- * accepted.
+ * accepted. A verdict short of accepted carries the controller's message
+ * (which Secret is missing, say) as its detail.
  */
 export function modelStatus(row: ModelRow): CustomizeStatus {
   if (row.readiness === 'notAccepted') {
-    return { label: 'Not accepted', tone: 'danger' };
+    return {
+      label: 'Not accepted',
+      tone: 'danger',
+      detail: row.readinessMessage,
+    };
   }
   if (row.readiness === 'pending') {
-    return { label: 'Pending', tone: 'neutral' };
+    return { label: 'Pending', tone: 'neutral', detail: row.readinessMessage };
   }
   const readiness = row.servedBy?.readiness;
   if (readiness === undefined) {

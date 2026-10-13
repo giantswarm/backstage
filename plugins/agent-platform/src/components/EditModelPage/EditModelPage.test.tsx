@@ -83,7 +83,7 @@ function renderPage() {
           element={<EditModelPage />}
         />
         <Route
-          path="/agent-platform/models/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name"
           element={<p>The model's page</p>}
         />
       </Routes>
@@ -178,7 +178,7 @@ describe('EditModelPage', () => {
     expect(screen.getByText('Model not found')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the model' }),
-    ).toHaveAttribute('href', '/agent-platform/models/inst-1/kagent/sonnet');
+    ).toHaveAttribute('href', '/customize/models/inst-1/kagent/sonnet');
   });
 
   it.each([

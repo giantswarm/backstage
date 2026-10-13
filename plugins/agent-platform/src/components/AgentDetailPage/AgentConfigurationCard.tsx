@@ -18,6 +18,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useModelDetailHref } from '../../hooks/useModelDetailHref';
 import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
@@ -42,20 +43,26 @@ const MONO: React.CSSProperties = { fontFamily: 'monospace' };
  * Falls back to the bare reference when the ModelConfig cannot be read — which is
  * normal for a non-admin, since ModelConfigs live in namespaces they may not have
  * access to — rather than implying the agent has no model.
+ *
+ * The ModelConfig line opens the model's page, which says why a model is not
+ * accepted; plain text where the agent has no namespace to resolve it in.
  */
 function ModelValue({
   modelConfigName,
   modelConfig,
   modelServing,
+  installation,
   namespace,
   isFailing,
 }: {
   modelConfigName?: string;
   modelConfig?: ModelConfig;
   modelServing?: ClientServingSummary;
+  installation: string;
   namespace?: string;
   isFailing: boolean;
 }) {
+  const modelDetailHref = useModelDetailHref();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
@@ -67,6 +74,9 @@ function ModelValue({
   // ModelConfig line below already shows it. The model itself leads instead,
   // still in monospace like every identifier here.
   const displayName = modelConfig?.getDisplayNameAnnotation();
+  const href = namespace
+    ? modelDetailHref?.({ installation, namespace, name: modelConfigName })
+    : undefined;
 
   return (
     <Flex direction="column" gap="1">
@@ -84,9 +94,15 @@ function ModelValue({
       )}
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
-        <span style={MONO}>
-          {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
-        </span>
+        {href ? (
+          <Link to={href} style={MONO}>
+            {`${namespace}/${modelConfigName}`}
+          </Link>
+        ) : (
+          <span style={MONO}>
+            {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
+          </span>
+        )}
       </Text>
       {modelServing && <ModelServingStatus serving={modelServing} />}
       {isFailing && <FailureMarker />}
@@ -307,6 +323,7 @@ export function AgentConfigurationCard({
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
+        installation={agent.cluster}
         namespace={namespace}
         isFailing={failure?.field === 'model'}
       />

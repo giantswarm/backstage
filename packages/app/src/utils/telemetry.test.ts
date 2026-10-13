@@ -389,9 +389,10 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it('names one model without naming it in page or view', () => {
-      const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
-
+    it.each([
+      '/customize/models/gazelle/agent-platform/gpt-4o',
+      '/agent-platform/models/gazelle/agent-platform/gpt-4o',
+    ])('names one model without naming it in page or view: %s', pathname => {
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
         page: 'Model detail',
         path: pathname,
@@ -585,6 +586,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/skills',
       '/customize/connectors',
       '/customize/models',
+      '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/workflows',
       '/installations',
       '/clusters',

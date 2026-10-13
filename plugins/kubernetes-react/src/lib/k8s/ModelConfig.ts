@@ -24,6 +24,13 @@ const READINESS_CONDITIONS = [
 ];
 
 /**
+ * The conditions in the order the controller evaluates them: whether the spec
+ * is valid, then whether what it references resolves.
+ */
+export const MODEL_CONFIG_CONDITION_ORDER: readonly string[] =
+  READINESS_CONDITIONS;
+
+/**
  * Readiness of a ModelConfig, derived from its status conditions.
  *
  * - `accepted` — both `Accepted` and `ResolvedRefs` are `True`: the runtime can
@@ -164,6 +171,26 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
 
   getCondition(type: string): ModelConfigCondition | undefined {
     return findCondition(this.jsonData, type);
+  }
+
+  /** The controller's conditions on the ModelConfig, in the order it wrote them. */
+  getConditions(): ModelConfigCondition[] {
+    return [...(this.jsonData.status?.conditions ?? [])];
+  }
+
+  /**
+   * Whether the conditions describe an older spec: the controller recorded the
+   * generation it reconciled and it is behind. Absent means "cannot tell",
+   * same reasoning as {@link deriveModelConfigReadiness}.
+   */
+  isStale(): boolean {
+    const generation = this.jsonData.metadata?.generation;
+    const observedGeneration = this.jsonData.status?.observedGeneration;
+    return (
+      typeof generation === 'number' &&
+      typeof observedGeneration === 'number' &&
+      observedGeneration < generation
+    );
   }
 
   /**

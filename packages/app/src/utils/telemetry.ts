@@ -80,6 +80,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Customize' };
       break;
 
+    // One model: `/customize/models/<installation>/<namespace>/<name>`. One
+    // page, the model in neither `page` nor `view`, like the former
+    // `/agent-platform/models/…` detail path below (which now redirects
+    // here). Above the tab case, which would report it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Model detail' };
+      break;
+
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
     case pathname.startsWith('/customize/'): {
@@ -226,7 +234,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Models index' };
       break;
 
-    // One model: `…/models/<installation>/<namespace>/<name>`. No `view`, for
+    // One model's former path, `…/models/<installation>/<namespace>/<name>`,
+    // which redirects to `/customize/models/…` (above). No `view`, for
     // the same reason as Session detail and Agent detail: `page` and `view` are
     // the dimensions TelemetryDeck aggregates on, and putting path segments
     // there yields a distinct signal name per model rather than a countable

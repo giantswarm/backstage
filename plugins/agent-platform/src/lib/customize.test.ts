@@ -164,6 +164,21 @@ describe('modelStatus', () => {
     });
   });
 
+  it("carries the controller's message as the verdict's detail", () => {
+    expect(
+      modelStatus(
+        model({
+          readiness: 'notAccepted',
+          readinessMessage: 'Secret kagent/openai-key not found',
+        }),
+      ),
+    ).toEqual({
+      label: 'Not accepted',
+      tone: 'danger',
+      detail: 'Secret kagent/openai-key not found',
+    });
+  });
+
   it('reads in the Running models words, Ready when nothing here serves it', () => {
     expect(modelStatus(model())).toEqual({
       label: 'Ready',

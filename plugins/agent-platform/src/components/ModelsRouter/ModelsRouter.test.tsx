@@ -14,9 +14,6 @@ import { ModelsRouter } from './ModelsRouter';
 jest.mock('../NewModelPage', () => ({
   NewModelPage: () => <div>new-model-view</div>,
 }));
-jest.mock('../ModelDetailPage', () => ({
-  ModelDetailPage: () => <div>model-detail-view</div>,
-}));
 jest.mock('../ServingPage', () => ({
   ServingPage: () => <div>serving-view</div>,
 }));
@@ -212,23 +209,22 @@ describe('ModelsRouter', () => {
       expect(await screen.findByText('serving-view')).toBeInTheDocument();
       expect(screen.queryByText(/^hosting-kpis/)).toBeNull();
     });
-
-    it('leaves the model page to frame itself, with no tab strip above it', async () => {
-      renderTab('/agent-platform/models/inst-1/kagent/qwen3');
-
-      expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
-      expect(screen.queryAllByRole('tab')).toHaveLength(0);
-      expect(screen.queryByText('Model hosting')).toBeNull();
-    });
   });
 
-  it('routes the create and detail flows directly under the tab', async () => {
-    const first = renderTab('/agent-platform/models/new');
+  it('routes the create flow directly under the tab', async () => {
+    renderTab('/agent-platform/models/new');
     expect(await screen.findByText('new-model-view')).toBeInTheDocument();
-    first.unmount();
+  });
 
-    renderTab('/agent-platform/models/inst-1/kagent/qwen3');
-    expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
+  it("redirects a model's former path to its page beside Customize › Models, keeping the query string", async () => {
+    renderTab('/agent-platform/models/inst-1/kagent/qwen3?installation=alpha');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        '/customize/models/inst-1/kagent/qwen3?installation=alpha',
+      );
+    });
+    expect(screen.queryByText('Model hosting')).toBeNull();
   });
 
   it('redirects the legacy configs view through the tab root, keeping the query string', async () => {
@@ -252,13 +248,12 @@ describe('ModelsRouter', () => {
     });
   });
 
-  it('redirects a legacy model deep link to the detail under the tab', async () => {
+  it("redirects a legacy model deep link to the model's page", async () => {
     renderTab('/agent-platform/models/configs/inst-1/kagent/qwen3');
 
-    expect(await screen.findByText('model-detail-view')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('path')).toHaveTextContent(
-        '/agent-platform/models/inst-1/kagent/qwen3',
+        '/customize/models/inst-1/kagent/qwen3',
       );
     });
   });

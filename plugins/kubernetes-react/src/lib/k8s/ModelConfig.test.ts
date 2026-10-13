@@ -72,6 +72,32 @@ describe('ModelConfig', () => {
     expect(ModelConfig.supportedVersions).toEqual(['v1alpha3']);
   });
 
+  describe('conditions', () => {
+    it('lists the conditions as the controller wrote them', () => {
+      const conditions = [
+        condition('ResolvedRefs', 'False', 'Secret kagent/key not found'),
+        condition('Accepted', 'True'),
+      ];
+      expect(makeModelConfig(conditions).getConditions()).toEqual(conditions);
+      expect(makeModelConfig().getConditions()).toEqual([]);
+    });
+
+    it('is stale only when the reconciled generation is known and behind', () => {
+      const accepted = [condition('Accepted', 'True')];
+      expect(
+        makeModelConfig(accepted, {
+          generation: 2,
+          observedGeneration: 1,
+        }).isStale(),
+      ).toBe(true);
+      expect(makeModelConfig(accepted).isStale()).toBe(false);
+      // No recorded generation (a default parameter would fill `undefined`).
+      const unrecorded = makeModelConfig(accepted, { generation: 2 });
+      delete unrecorded.jsonData.status!.observedGeneration;
+      expect(unrecorded.isStale()).toBe(false);
+    });
+  });
+
   describe('readiness', () => {
     it('is accepted when both Accepted and ResolvedRefs are True', () => {
       const modelConfig = makeModelConfig([

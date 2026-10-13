@@ -1,15 +1,7 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Badge,
-  Button,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   Agent,
@@ -22,7 +14,6 @@ import {
   type Fact,
   SectionHeader,
   ShowMore,
-  useSimpleAccordionStyles,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
@@ -39,9 +30,11 @@ import {
 } from '../../lib/skills';
 import { bindsGateway } from '../../lib/toolset';
 import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
-import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
+import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { skillsRouteRef } from '../../routes';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import {
@@ -104,41 +97,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
   },
-  // Outlined like the create flow's review step "Technical details".
-  foldOut: {
-    border: '1px solid var(--bui-border-1)',
-    borderRadius: 12,
-  },
 }));
-
-/**
- * "Technical details", folded in place — the shell's one way to offer
- * technical detail, never a page-wide switch. Controlled, so the cards inside
- * (which read the HelmRelease, GitOps source and conditions) mount only while
- * open: bui's panel otherwise stays mounted, merely hidden.
- */
-function TechnicalDetailsFoldOut({
-  defaultExpanded,
-  children,
-}: {
-  defaultExpanded: boolean;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  const spacing = useSimpleAccordionStyles();
-  const [isExpanded, setExpanded] = useState(defaultExpanded);
-  return (
-    <Accordion
-      className={`${classes.foldOut} ${spacing.group}`}
-      isExpanded={isExpanded}
-      onExpandedChange={setExpanded}
-    >
-      {/* h2: a section of the overview beside Skills and Connectors. */}
-      <AccordionTrigger level={2}>Technical details</AccordionTrigger>
-      <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
-    </Accordion>
-  );
-}
 
 /** A section of the plain overview: a small heading, then what it says. */
 function Section({
@@ -537,7 +496,7 @@ function ModelFact({
   modelServing?: ClientServingSummary;
   isFailing: boolean;
 }) {
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const modelDetailRoute = useModelDetailHref();
   const modelConfigName = agent.getModelConfigName();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
@@ -552,11 +511,12 @@ function ModelFact({
     modelConfig && modelConfig.getModel() !== label
       ? underlyingModelLine(modelConfig)
       : undefined;
-  const href = modelDetailRoute?.({
-    installation,
-    namespace: agent.getNamespace() ?? '',
-    name: modelConfigName,
-  });
+  // The ModelConfig sits in the agent's namespace; without one there is no
+  // page to resolve, so the name stays plain text.
+  const namespace = agent.getNamespace();
+  const href = namespace
+    ? modelDetailRoute?.({ installation, namespace, name: modelConfigName })
+    : undefined;
 
   return (
     <Flex direction="column" gap="1">
