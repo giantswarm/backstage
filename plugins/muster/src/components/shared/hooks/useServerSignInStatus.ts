@@ -101,6 +101,11 @@ function statusDetails(
   if (state.error) {
     details.push(state.error);
   }
+  // A click's answer outranks the unreadable status in `error`; the tooltip
+  // keeps both, since the unreadable status is why the wait cannot end.
+  if (state.statusUnreadable && state.statusUnreadable !== state.error) {
+    details.push(state.statusUnreadable);
+  }
   return details;
 }
 

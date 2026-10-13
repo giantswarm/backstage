@@ -239,7 +239,8 @@ export function StackedRowList({
   const classes = useStyles();
   if (
     rows.length === 0 &&
-    Children.count(children) === 0 &&
+    // toArray drops null and booleans: a row rendered conditionally.
+    Children.toArray(children).length === 0 &&
     emptyState !== undefined
   ) {
     return <>{emptyState}</>;

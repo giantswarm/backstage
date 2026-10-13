@@ -461,63 +461,11 @@ describe('CustomizeConnectorsPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('finishes a sign-in once muster reports it, although the row drops its Sign in on that read', async () => {
-    const open = jest.spyOn(window, 'open').mockReturnValue({
-      closed: false,
-      location: { href: '' },
-    } as unknown as Window);
-    const user = userEvent.setup();
-    await renderPanel();
-
-    const github = rowOf('github');
-    await user.click(
-      await within(github).findByRole('button', { name: 'Sign in' }),
-    );
-    expect(await within(github).findByText('Signing in…')).toBeInTheDocument();
-    const catalogueReads = api.filterTools.mock.calls.length;
-
-    // The poll that reports `connected` is the read that removes the row's
-    // sign-in, and with it the hook that used to finish the flow.
-    api.getAuthStatus.mockImplementation(async () => ({
-      servers: [
-        { name: 'github', status: 'connected' },
-        { name: 'kubernetes', status: 'connected' },
-        { name: 'web-search', status: 'connected' },
-      ],
-    }));
-    await act(() =>
-      queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
-    );
-
-    // Every muster query is read again, so the connector's tools appear.
-    await waitFor(() =>
-      expect(api.filterTools.mock.calls.length).toBeGreaterThan(catalogueReads),
-    );
-    expect(
-      queryClient.getQueryData([
-        'muster',
-        'pending-sign-in',
-        'gazelle',
-        'github',
-      ]),
-    ).toBeNull();
-
-    // A later lapse asks for a fresh sign-in, not the finished one.
-    api.getAuthStatus.mockImplementation(async () => defaultAuthStatus());
-    await act(() =>
-      queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
-    );
-    expect(
-      await within(rowOf('github')).findByRole('button', { name: 'Sign in' }),
-    ).toBeInTheDocument();
-    expect(within(rowOf('github')).queryByText('Signing in…')).toBeNull();
-    open.mockRestore();
-  });
-
   it('says "Status unavailable", not a failed sign-in, when the status cannot be read during one', async () => {
     const open = jest.spyOn(window, 'open').mockReturnValue({
       closed: false,
       location: { href: '' },
+      close: jest.fn(),
     } as unknown as Window);
     const user = userEvent.setup();
     await renderPanel();
@@ -529,11 +477,9 @@ describe('CustomizeConnectorsPanel', () => {
       await within(rowOf('github')).findByText('Signing in…'),
     ).toBeInTheDocument();
 
-    api.getAuthStatus.mockImplementation(async () => ({
-      servers: [],
-      unavailable: true,
-      message: 'muster answered 502',
-    }));
+    api.getAuthStatus.mockImplementation(async () => {
+      throw new Error('muster answered 502');
+    });
     await act(() =>
       queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
     );
@@ -544,9 +490,30 @@ describe('CustomizeConnectorsPanel', () => {
     ).toBeInTheDocument();
     expect(within(github).queryByText('Could not sign in')).toBeNull();
     // The sign-in is still going: its way back into the page stays.
+    const reopen = within(github).getByRole('button', {
+      name: 'Reopen sign-in page',
+    });
+
+    // A refused reopen outranks the unreadable status in the label; the
+    // tooltip keeps both.
+    api.signInServer.mockResolvedValueOnce({
+      status: 'error',
+      message: 'Too many sign-in attempts; try again in a minute.',
+    } as never);
+    await user.click(reopen);
     expect(
-      within(github).getByRole('button', { name: 'Reopen sign-in page' }),
+      await within(github).findByText('Could not sign in'),
     ).toBeInTheDocument();
+    await user.hover(
+      within(github).getByRole('button', {
+        name: 'About the state of github',
+      }),
+    );
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Too many sign-in attempts');
+    expect(tooltip).toHaveTextContent(
+      'Cannot read the muster auth status: muster answered 502',
+    );
     open.mockRestore();
   });
 
@@ -872,6 +839,8 @@ describe('CustomizeConnectorsPanel', () => {
         within(kubernetes).getByText('Sign-in expired'),
       ).toBeInTheDocument();
       expect(within(kubernetes).queryByText(SSO_EXPLANATION)).toBeNull();
+      // No sign-in, so no actions slot: just the tile and the body.
+      expect(kubernetes.children).toHaveLength(2);
       const hint = within(kubernetes).getByRole('button', {
         name: 'About the state of kubernetes',
       });
@@ -901,52 +870,6 @@ describe('CustomizeConnectorsPanel', () => {
       expect(
         await within(github).findByText('Could not sign in'),
       ).toBeInTheDocument();
-      open.mockRestore();
-    });
-
-    it('finishes a sign-in once muster reports it, although the row drops its Sign in on that read', async () => {
-      const open = jest.spyOn(window, 'open').mockReturnValue({
-        closed: false,
-        location: { href: '' },
-      } as unknown as Window);
-      await renderPanel();
-
-      await screen.findByText('Sign in needed');
-      await userEvent.click(
-        within(itemOf('github')).getByRole('button', { name: 'Sign in' }),
-      );
-      expect(
-        await within(itemOf('github')).findByText('Signing in…'),
-      ).toBeInTheDocument();
-      const catalogueReads = api.filterTools.mock.calls.length;
-
-      // The poll that reports `connected` is the read that removes the row's
-      // sign-in, and with it the hook that used to finish the flow.
-      api.getAuthStatus.mockImplementation(async () => ({
-        servers: [
-          { name: 'github', status: 'connected' },
-          { name: 'kubernetes', status: 'connected' },
-          { name: 'web-search', status: 'connected' },
-        ],
-      }));
-      await act(() =>
-        queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
-      );
-
-      // Every muster query is read again, so the connector's tools appear.
-      await waitFor(() =>
-        expect(api.filterTools.mock.calls.length).toBeGreaterThan(
-          catalogueReads,
-        ),
-      );
-      expect(
-        queryClient.getQueryData([
-          'muster',
-          'pending-sign-in',
-          'gazelle',
-          'github',
-        ]),
-      ).toBeNull();
       open.mockRestore();
     });
 

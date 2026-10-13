@@ -36,7 +36,7 @@ export {
   SignInStatusText,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useAuthStatus, useServerSignInStatus } from './hooks';
+export { useServerSignInStatus } from './hooks';
 export type {
   ServerSignInStatusState,
   StatusText,

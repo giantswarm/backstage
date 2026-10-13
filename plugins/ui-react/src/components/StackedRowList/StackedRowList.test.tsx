@@ -189,6 +189,21 @@ describe('StackedRowList', () => {
     expect(screen.queryByText('None.')).not.toBeInTheDocument();
   });
 
+  it('shows the empty state when every child row is left out', () => {
+    const visible = [false, false];
+    render(
+      <StackedRowList aria-label="Connectors" emptyState={<p>None.</p>}>
+        {visible.map(
+          (shown, index) =>
+            shown && <StackedRow key={index} title={`row ${index}`} />,
+        )}
+      </StackedRowList>,
+    );
+
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getByText('None.')).toBeInTheDocument();
+  });
+
   it('pages 300 rows through ShowMore, every row with its actions', async () => {
     render(
       <ShowMore items={manySessions} noun="session">

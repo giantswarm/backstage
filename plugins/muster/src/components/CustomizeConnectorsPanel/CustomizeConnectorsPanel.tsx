@@ -1,4 +1,6 @@
 import { type ReactNode, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useApi } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -28,19 +30,20 @@ import {
   useCatalogFilters,
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterApiRef } from '../../apis';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
+  authStatusQueryKey,
   deactivatedSignInGate,
   ServerSignInStatus,
   SessionGate,
   SignInStatusActions,
   SignInStatusText,
   type StatusText,
-  useAuthStatus,
   useServerPageLinks,
   useServerSignInStatus,
   useToolCatalogue,
@@ -158,11 +161,6 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
   );
 }
 
-/** A row's plain state, for a row with no sign-in: nothing to press. */
-function PlainStatus({ status }: { status: StatusText }) {
-  return <StatusDot tone={status.tone} label={status.label} />;
-}
-
 function ConnectorStatusCell({
   row,
   installation,
@@ -173,9 +171,7 @@ function ConnectorStatusCell({
   if (!hasSignIn(row)) {
     // Pressing a plain state opens the connector, like the rest of the row.
     return (
-      <Cell>
-        {row.status.label ? <PlainStatus status={row.status} /> : null}
-      </Cell>
+      <Cell>{row.status.label ? <StatusDot {...row.status} /> : null}</Cell>
     );
   }
   return (
@@ -228,7 +224,12 @@ function SignInStackedRow({
     signInGate: row.signInGate,
   });
   const { parts } = signInStatus;
-  const actions = <SignInStatusActions signInStatus={signInStatus} />;
+  // Only a sign-in has buttons: an empty actions slot would still take its
+  // gap at the end of line 1.
+  const actions =
+    parts.kind === 'sign-in' ? (
+      <SignInStatusActions signInStatus={signInStatus} />
+    ) : null;
   const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
   const details =
     waiting || description ? (
@@ -246,7 +247,7 @@ function SignInStackedRow({
           signInStatus={signInStatus}
         />
       }
-      {...(waiting ? {} : { actions })}
+      {...(actions && !waiting ? { actions } : {})}
       {...(details ? { details } : {})}
     />
   );
@@ -296,9 +297,7 @@ function ConnectorStackedRow({
   return (
     <StackedRow
       {...props}
-      {...(row.status.label
-        ? { status: <PlainStatus status={row.status} /> }
-        : {})}
+      {...(row.status.label ? { status: <StatusDot {...row.status} /> } : {})}
       {...(description ? { details: description } : {})}
     />
   );
@@ -357,14 +356,14 @@ function ConnectorsTable({
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
   const hasSession = session.authenticated || !requiresAuth;
   const links = useServerPageLinks();
+  const musterApi = useApi(musterApiRef);
 
   const catalogue = useToolCatalogue(installation, hasSession);
-  // Also finishes a sign-in whose row has already dropped its hook: the read
-  // that reports `connected` is the one that removes the row's Sign in.
-  const { query: authStatus, pending: pendingSignIns } = useAuthStatus(
-    installation,
-    hasSession,
-  );
+  const authStatus = useQuery({
+    queryKey: authStatusQueryKey(installation),
+    queryFn: () => musterApi.getAuthStatus(installation),
+    enabled: hasSession,
+  });
 
   const listRows = useMemo(
     () =>
@@ -380,12 +379,9 @@ function ConnectorsTable({
         entry.row.kind === 'server'
           ? authStatus.data?.servers.find(s => s.name === entry.id)
           : undefined;
-      // A sign-in this tab started stays in view until it ends, whatever a
-      // read in between says (an unreadable status reports no servers).
       const asksSignIn =
         status?.status === 'auth_required' ||
-        status?.status === 'reauth_required' ||
-        (entry.row.kind === 'server' && pendingSignIns.has(entry.id));
+        status?.status === 'reauth_required';
       const reach = connectorReach(entry, status);
       return {
         id: entry.key,
@@ -403,7 +399,7 @@ function ConnectorsTable({
         ...(reach ? { reach } : {}),
       };
     },
-    [installation, authStatus.data, pendingSignIns],
+    [installation, authStatus.data],
   );
   // The whole list decides which filters can tell connectors apart; the
   // searched one is what they then narrow.
