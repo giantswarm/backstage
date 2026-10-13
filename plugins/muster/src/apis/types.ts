@@ -588,6 +588,22 @@ export interface MusterApi {
     installation?: string,
   ): Promise<unknown>;
   /**
+   * {@link callTool} for a tool that reports progress while it works: each
+   * progress notification reaches `onProgress` as it arrives, and the call
+   * lasts as long as the tool keeps reporting. `signal` cancels it. An
+   * answer cut before its result arrived rejects with
+   * {@link MusterAnswerCutError}.
+   */
+  callToolWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<unknown>;
+  /**
    * Ensure a per-user token for the target installation's muster `authProvider`
    * is available, triggering the OAuth/Dex popup if needed. Returns true when a
    * token was obtained (or no provider is configured).
@@ -635,4 +651,20 @@ export interface MusterAuthCredentials {
  */
 export interface MusterAuthProvidersApi {
   getCredentials(authProvider: string): Promise<MusterAuthCredentials>;
+}
+
+/** One progress notification of a tool call. */
+export type MusterToolProgress = {
+  /** Higher than the one before it. */
+  progress: number;
+  total?: number;
+  message?: string;
+};
+
+/**
+ * A streamed tool answer ended before its result: the connection closed
+ * under it. Nothing is known about how far the tool got.
+ */
+export class MusterAnswerCutError extends Error {
+  readonly name = 'MusterAnswerCutError';
 }
