@@ -69,6 +69,28 @@ function readFavorites(value: unknown): FavoriteAgent[] {
   return Array.isArray(value) ? value.filter(isFavoriteAgent) : [];
 }
 
+/** The favorite ids a snapshot of the stored setting holds, oldest star first. */
+function useFavoriteIdsOf(
+  snapshot: ReturnType<typeof useStoredSetting>['snapshot'],
+): string[] {
+  return useMemo(
+    () =>
+      readFavorites(snapshot.presence === 'present' ? snapshot.value : []).map(
+        toFavoriteAgentId,
+      ),
+    [snapshot],
+  );
+}
+
+/**
+ * The ids of the agents the user marked as favorites, oldest star first, for
+ * a surface that only reads them. Same store and live updates as
+ * {@link useFavoriteAgents}, without its write.
+ */
+export function useFavoriteAgentIds(): string[] {
+  return useFavoriteIdsOf(useStoredSetting(KEY).snapshot);
+}
+
 /**
  * The agents the user marked as favorites, persisted per user through the
  * StorageApi (bucket `agent-platform`, key `favoriteAgents`). With the app's
@@ -87,13 +109,7 @@ function readFavorites(value: unknown): FavoriteAgent[] {
  */
 export function useFavoriteAgents() {
   const { snapshot, update } = useStoredSetting(KEY);
-
-  const entries = useMemo(
-    () => readFavorites(snapshot.presence === 'present' ? snapshot.value : []),
-    [snapshot],
-  );
-
-  const pinnedIds = useMemo(() => entries.map(toFavoriteAgentId), [entries]);
+  const pinnedIds = useFavoriteIdsOf(snapshot);
 
   const isPinned = useCallback(
     (id: string) => pinnedIds.includes(id),

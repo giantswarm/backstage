@@ -12,6 +12,7 @@ import {
   agentOptionLabel,
   modelWarningFor,
   NewSessionComposer,
+  PICKER_FAVORITES_LIMIT,
 } from './NewSessionComposer';
 
 const mockBuildAvatarUrl = jest.fn(
@@ -730,6 +731,104 @@ describe('opt-in picker options', () => {
     await userEvent.keyboard('{Enter}');
 
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
+  });
+
+  it('lists only the newest favorites, in display order', async () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(letter =>
+      agentRow({
+        id: `gazelle/kagent/agent-${letter}`,
+        name: `Agent ${letter.toUpperCase()}`,
+        technicalName: `agent-${letter}`,
+      }),
+    );
+    renderComposer({
+      agents: many,
+      groupByNamespace: true,
+      // Oldest star first: G and A were starred before the rest.
+      favoriteAgentIds: [many[6], many[0], ...many.slice(1, 6)].map(
+        agent => agent.id,
+      ),
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(
+      within(screen.getByRole('group', { name: 'Favorites' }))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toHaveLength(PICKER_FAVORITES_LIMIT);
+    expect(
+      within(screen.getByRole('group', { name: 'Favorites' }))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(
+      ['B', 'C', 'D', 'E', 'F'].map(letter =>
+        expect.stringContaining(`Agent ${letter}`),
+      ),
+    );
+  });
+
+  it('keeps the groups as they were while the picker is open', async () => {
+    const props = {
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      isStarting: false,
+      onStart,
+    };
+    const { rerender } = render(
+      <NewSessionComposer {...props} recentAgentIds={[research.id]} />,
+    );
+
+    await userEvent.click(agentPicker());
+    // The favorites arrive from the user-settings backend while it is open.
+    rerender(
+      <NewSessionComposer
+        {...props}
+        recentAgentIds={[research.id]}
+        favoriteAgentIds={[issues.id]}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('group', { name: 'Favorites' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(agentPicker());
+
+    expect(
+      screen.getByRole('group', { name: 'Favorites' }),
+    ).toBeInTheDocument();
+  });
+
+  it('checks the favorite row that was picked, not its namespace copy', async () => {
+    renderComposer({
+      agents: [sre, research],
+      groupByNamespace: true,
+      favoriteAgentIds: [research.id],
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    );
+    await userEvent.click(agentPicker());
+
+    expect(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toHaveAttribute('aria-selected', 'false');
   });
 
   it('offers a search box when asked, whatever the number of agents', async () => {
