@@ -6,14 +6,13 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
-  customizeExternalRouteRef,
   mcpServersRouteRef,
   newMcpServerAuthRouteRef,
   newMcpServerRouteRef,
 } from '../../routes';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { withEditParam } from '../NewMcpServerEditGate';
-import { useServerPageLinks } from '../shared';
+import { useConnectorGroupPaths, useServerPageLinks } from '../shared';
 
 /** The shell connector wizard's three steps, in order. */
 export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
@@ -26,7 +25,7 @@ export type ConnectorWizardStepId = 'connect' | 'signin' | 'test';
  * after "Add connector", so "Done" ends where adding began).
  */
 export function useConnectorWizardCloseHref(): string {
-  const customizeRoute = useRouteRef(customizeExternalRouteRef);
+  const groupPaths = useConnectorGroupPaths();
   const serversLink = useRouteRef(mcpServersRouteRef);
   const pageLinks = useServerPageLinks();
   const { registeredName, registeredInstallation, lastSave } =
@@ -38,8 +37,9 @@ export function useConnectorWizardCloseHref(): string {
   if (editedPage) {
     return editedPage;
   }
-  const customize = customizeRoute?.();
-  return customize ? `${customize}/connectors` : (serversLink?.() ?? '/');
+  // A registered connector carries no tool-group label: it is listed on
+  // Your connectors, the Connectors tab's default sub-tab.
+  return groupPaths.group('yours') ?? serversLink?.() ?? '/';
 }
 
 /**

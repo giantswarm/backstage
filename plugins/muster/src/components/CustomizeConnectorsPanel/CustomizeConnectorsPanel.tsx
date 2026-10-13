@@ -42,6 +42,7 @@ import {
   type ConnectorGroupInfo,
   connectorGroup,
   connectorGroupInfo,
+  MUSTER_DESCRIPTION,
 } from '../../lib/connectorGroups';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -97,13 +98,8 @@ const useStyles = makeStyles({
   },
   endpoint: {
     fontFamily: 'monospace',
-    overflowWrap: 'anywhere',
   },
 });
-
-/** muster's own row's description: what it is, beside its endpoint. */
-const MUSTER_DESCRIPTION =
-  'Connects agents to every connector and offers the platform tools.';
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
@@ -333,16 +329,15 @@ function ConnectorStackedRow({
       {row.description}
     </Text>
   ) : undefined;
+  // A fragment, so the description's lines sit directly in the row's
+  // details, beside an outstanding sign-in's actions.
   const description =
-    text && row.endpoint ? (
-      <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+    text || row.endpoint ? (
+      <>
         {text}
-        <MusterEndpoint endpoint={row.endpoint} />
-      </Flex>
-    ) : (
-      (text ??
-      (row.endpoint ? <MusterEndpoint endpoint={row.endpoint} /> : undefined))
-    );
+        {row.endpoint && <MusterEndpoint endpoint={row.endpoint} />}
+      </>
+    ) : undefined;
   const props: StackedRowProps = {
     title: row.entry.id,
     ...(href ? { href } : {}),
@@ -442,19 +437,42 @@ function ConnectorsTable({
     () => serverListRows(mcpServers, catalogue.data?.tools ?? undefined),
     [mcpServers, catalogue.data],
   );
-  const listRows = useMemo(
-    () => everyRow.filter(row => connectorGroup(row.row) === group),
-    [everyRow, group],
-  );
+  const rowsByGroup = useMemo(() => {
+    const byGroup: Record<ConnectorGroup, ServerListRow[]> = {
+      yours: [],
+      families: [],
+      internal: [],
+    };
+    for (const row of everyRow) {
+      byGroup[connectorGroup(row.row)].push(row);
+    }
+    return byGroup;
+  }, [everyRow]);
+  const listRows = rowsByGroup[group];
+  // muster's own row reports only what was observed: the backend's probe,
+  // the session, and whether muster listed its tools.
   const sessionFailed = session.failure !== undefined;
+  const answered = catalogue.data !== undefined;
+  const catalogueFailed = Boolean(catalogue.error);
   const musterSession = useMemo<MusterSessionState>(
     () => ({
-      requiresAuth,
+      requiresAuth: activeInstallationInfo?.requiresAuth,
+      reachable: activeInstallationInfo?.reachable,
       authenticated: session.authenticated,
       pending: session.pending,
       failed: sessionFailed,
+      answered,
+      catalogueFailed,
     }),
-    [requiresAuth, session.authenticated, session.pending, sessionFailed],
+    [
+      activeInstallationInfo?.requiresAuth,
+      activeInstallationInfo?.reachable,
+      session.authenticated,
+      session.pending,
+      sessionFailed,
+      answered,
+      catalogueFailed,
+    ],
   );
   const endpoint = activeInstallationInfo?.endpoint;
   const toRow = useCallback(
@@ -559,13 +577,25 @@ function ConnectorsTable({
   ];
 
   const info = connectorGroupInfo(group);
+  // Where a search that finds nothing here finds something: on an empty
+  // sub-tab too, where the palette's "+N more" may land.
+  const otherMatches = (
+    <OtherGroupMatches
+      group={group}
+      rowsByGroup={rowsByGroup}
+      search={search}
+    />
+  );
   let list;
   if (listRows.length === 0) {
     list = (
-      <EmptyStateCard
-        title={info.empty.title}
-        description={info.empty.description}
-      />
+      <Flex direction="column" gap="2">
+        <EmptyStateCard
+          title={info.empty.title}
+          description={info.empty.description}
+        />
+        {otherMatches}
+      </Flex>
     );
   } else if (rows.length === 0) {
     list = (
@@ -576,7 +606,7 @@ function ConnectorsTable({
           isFiltered={filters.isFiltered}
           onClearFilters={filters.clear}
         />
-        <OtherGroupMatches group={group} rows={everyRow} search={search} />
+        {otherMatches}
       </Flex>
     );
   } else {
@@ -661,27 +691,28 @@ function ConnectorsTable({
  */
 function OtherGroupMatches({
   group,
-  rows,
+  rowsByGroup,
   search,
 }: {
   group: ConnectorGroup;
-  rows: ServerListRow[];
+  rowsByGroup: Record<ConnectorGroup, ServerListRow[]>;
   search: string;
 }) {
   const paths = useConnectorGroupPaths();
   const location = useLocation();
-  if (search.trim() === '') {
-    return null;
-  }
-  const matches = CONNECTOR_GROUPS.filter(other => other.id !== group)
-    .map(other => ({
-      other,
-      count: serverListEntries(
-        rows.filter(row => connectorGroup(row.row) === other.id),
-        search,
-      ).length,
-    }))
-    .filter(({ count }) => count > 0);
+  const query = search.trim();
+  const matches = useMemo(
+    () =>
+      query === ''
+        ? []
+        : CONNECTOR_GROUPS.filter(other => other.id !== group)
+            .map(other => ({
+              other,
+              count: serverListEntries(rowsByGroup[other.id], query).length,
+            }))
+            .filter(({ count }) => count > 0),
+    [group, rowsByGroup, query],
+  );
   if (matches.length === 0) {
     return null;
   }

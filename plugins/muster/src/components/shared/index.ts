@@ -37,7 +37,8 @@ export {
   SignInStatusText,
 } from './ServerSignInStatus';
 export type { ServerSignInStatusProps } from './ServerSignInStatus';
-export { useServerSignInStatus } from './hooks';
+export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
+export type { ConnectorGroupPaths } from './hooks';
 export type {
   ServerSignInStatusState,
   StatusText,
@@ -62,4 +63,3 @@ export type {
   DefinitionEditorDialogProps,
   DefinitionEditorProps,
 } from './DefinitionEditorDialog';
-export { useConnectorGroupPaths } from './useConnectorGroupPaths';

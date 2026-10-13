@@ -21,6 +21,7 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
+let mockLoading = false;
 const mockRefresh = jest.fn();
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
@@ -37,7 +38,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     },
     mcpServers: mockServers,
     workflows: [],
-    isLoading: false,
+    isLoading: mockLoading,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
   }),
@@ -241,6 +242,7 @@ const BASE = '/agent-platform/connectors';
 beforeEach(() => {
   mockServers = makeServers();
   mockAuthenticated = true;
+  mockLoading = false;
   mockRefresh.mockClear();
 });
 
@@ -271,6 +273,31 @@ describe('ConnectorPage', () => {
       'href',
       '/customize/connectors/families',
     );
+  });
+
+  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+    mockLoading = true;
+    // Read before (the persisted cache): the row is known while loading.
+    await renderAt(`${BASE}/kubernetes`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/families',
+    );
+    cleanup();
+
+    await renderAt(`${BASE}/muster`);
+    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
+      'href',
+      '/customize/connectors/internal',
+    );
+    cleanup();
+
+    // Not read yet: no link rather than one to a sub-tab that may not list it.
+    mockServers = [];
+    await renderAt(`${BASE}/jira`);
+    expect(
+      screen.queryByRole('link', { name: 'Connectors' }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows muster's own page with its endpoint to copy, under Internal", async () => {

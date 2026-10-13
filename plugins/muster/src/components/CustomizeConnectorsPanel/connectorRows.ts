@@ -47,13 +47,6 @@ export function authLabel(server: MCPServer | undefined): string {
   return server ? SHELL_AUTH_LABELS[serverAuthMode(server)] : '';
 }
 
-/** How a person gets into muster itself: the portal's login, where it asks. */
-export function musterAuthLabel(requiresAuth: boolean): string {
-  return requiresAuth
-    ? SHELL_AUTH_LABELS['platform-sso']
-    : SHELL_AUTH_LABELS.anonymous;
-}
-
 /** "12 tools", or nothing while the tools are unknown. */
 export function toolsLabel(entry: ServerListEntry): string | undefined {
   if (entry.toolCount === undefined) {
@@ -169,38 +162,77 @@ export function connectorReach(
     : 'not-connected';
 }
 
-/** What muster's own row needs to know of this person's muster session. */
+/**
+ * How a person gets into muster itself: the portal's login where it asks for
+ * one; nothing while the installation's muster is not described yet.
+ */
+export function musterAuthLabel(requiresAuth: boolean | undefined): string {
+  if (requiresAuth === undefined) {
+    return '';
+  }
+  return requiresAuth
+    ? SHELL_AUTH_LABELS['platform-sso']
+    : SHELL_AUTH_LABELS.anonymous;
+}
+
+/** What muster's own row knows of whether muster answers this person. */
 export type MusterSessionState = {
-  requiresAuth: boolean;
+  /** From the installation's description; undefined while it is unread. */
+  requiresAuth?: boolean;
+  /** The backend's unauthenticated probe (`MusterInstallationInfo.reachable`). */
+  reachable?: boolean | 'unknown';
   authenticated: boolean;
   pending: boolean;
+  /** The session probe failed. */
   failed: boolean;
+  /** muster listed its tools for this person. */
+  answered: boolean;
+  /** Listing its tools failed. */
+  catalogueFailed: boolean;
 };
 
 /**
- * muster's own state: connected once this person has a session (or none is
- * needed), nothing while the session is still being asked for, else not
- * connected — the session gate above the list says how to connect.
+ * muster's own state, only from what was observed: not connected when the
+ * probe could not reach it, when the session failed, or when listing its
+ * tools failed; connected once a session opened (or, for a muster that asks
+ * no sign-in, once it answered or the probe reached it); nothing while none
+ * of that is known yet. A session muster still waiting for this person reads
+ * not connected, as a warning: the session gate above the list connects.
  */
-export function musterStatus(session: MusterSessionState): StatusText {
-  if (!session.requiresAuth || session.authenticated) {
-    return { label: 'Connected', tone: 'success' };
+export function musterStatus(state: MusterSessionState): StatusText {
+  const reach = musterReach(state);
+  if (reach === 'connected') {
+    return { label: CONNECTOR_REACH_LABELS.connected, tone: 'success' };
   }
-  if (session.pending) {
-    return { label: '', tone: 'neutral' };
+  if (reach === 'not-connected') {
+    const waiting =
+      state.requiresAuth &&
+      state.reachable !== false &&
+      !state.failed &&
+      !state.catalogueFailed;
+    return {
+      label: CONNECTOR_REACH_LABELS['not-connected'],
+      tone: waiting ? 'warning' : 'danger',
+    };
   }
-  return {
-    label: CONNECTOR_REACH_LABELS['not-connected'],
-    tone: session.failed ? 'danger' : 'warning',
-  };
+  return { label: '', tone: 'neutral' };
 }
 
-/** muster's own state as a Connection filter bucket. */
+/** muster's own state as a Connection filter bucket; see {@link musterStatus}. */
 export function musterReach(
-  session: MusterSessionState,
+  state: MusterSessionState,
 ): ConnectorReach | undefined {
-  if (!session.requiresAuth || session.authenticated) {
-    return 'connected';
+  if (state.requiresAuth === undefined) {
+    return undefined;
   }
-  return session.pending ? undefined : 'not-connected';
+  if (state.reachable === false || state.failed || state.catalogueFailed) {
+    return 'not-connected';
+  }
+  if (state.requiresAuth) {
+    if (state.authenticated) {
+      return 'connected';
+    }
+    return state.pending ? undefined : 'not-connected';
+  }
+  return state.answered || state.reachable === true ? 'connected' : undefined;
 }

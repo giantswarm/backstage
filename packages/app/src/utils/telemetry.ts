@@ -1,15 +1,17 @@
 import sha256 from 'crypto-js/sha256';
-import {
-  CUSTOMIZE_CONNECTOR_SUBTABS,
-  CUSTOMIZE_TAB_IDS,
-} from '../modules/agentShell/customizeTabIds';
+import { CONNECTOR_GROUPS } from '@giantswarm/backstage-plugin-muster';
+import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 
-/** The Connectors tab's sub-tabs below its own address, a fixed set too. */
+/**
+ * The Connectors tab's sub-tabs below its own address (muster's
+ * `CONNECTOR_GROUPS`, the default at the tab's own address left out), a fixed
+ * set too.
+ */
 const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
-  CUSTOMIZE_CONNECTOR_SUBTABS,
+  CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
 );
 
 /** Model hosting's create flows by their last path segment, as page names. */
@@ -104,10 +106,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // The Connectors tab's sub-tabs below its own address add a `subview`; the
     // tab's own address is its default sub-tab, the customer's connectors.
     case pathname.startsWith('/customize/'): {
-      const [, , tab, sub] = pathname.split('/');
+      const [, , tab, sub, ...deeper] = pathname.split('/');
       if (!CUSTOMIZE_TABS.has(tab)) {
         payload = { page: 'Customize' };
-      } else if (tab === 'connectors' && CONNECTOR_SUBTABS.has(sub)) {
+      } else if (
+        tab === 'connectors' &&
+        CONNECTOR_SUBTABS.has(sub) &&
+        deeper.length === 0
+      ) {
         payload = { page: 'Customize', view: tab, subview: sub };
       } else {
         payload = { page: 'Customize', view: tab };

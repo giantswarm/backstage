@@ -30,14 +30,15 @@ describe('connectorGroup', () => {
     expect(connectorGroup({ kind: 'core' })).toBe('internal');
   });
 
-  it('sorts singular servers by their tool-group label', () => {
+  it('lists a singular server by its tool-group label, never as a family', () => {
     const group = (toolGroup?: string) =>
       connectorGroup({
         kind: 'server',
         server: makeServer({ name: 's', toolGroup }),
       });
     expect(group('agent-platform')).toBe('internal');
-    expect(group('infrastructure')).toBe('families');
+    // Shipped by the platform, but one instance: not a family.
+    expect(group('infrastructure')).toBe('internal');
     expect(group()).toBe('yours');
     // A typo in a chart's values is no declared group.
     expect(group('agent-plat')).toBe('yours');
@@ -65,23 +66,34 @@ describe('connectorGroup', () => {
 });
 
 describe('connectorGroupCounts', () => {
+  it('counts nothing, muster included, where muster does not run', () => {
+    expect(connectorGroupCounts([], false)).toEqual({
+      yours: 0,
+      families: 0,
+      internal: 0,
+    });
+  });
+
   it('counts a family once and muster itself among the internal ones', () => {
     expect(
-      connectorGroupCounts([
-        makeServer({ name: 'github' }),
-        makeServer({ name: 'jira' }),
-        makeServer({ name: 'agent-manager', toolGroup: 'agent-platform' }),
-        makeServer({
-          name: 'a-kubernetes',
-          family: 'kubernetes',
-          toolGroup: 'infrastructure',
-        }),
-        makeServer({
-          name: 'b-kubernetes',
-          family: 'kubernetes',
-          toolGroup: 'infrastructure',
-        }),
-      ]),
+      connectorGroupCounts(
+        [
+          makeServer({ name: 'github' }),
+          makeServer({ name: 'jira' }),
+          makeServer({ name: 'agent-manager', toolGroup: 'agent-platform' }),
+          makeServer({
+            name: 'a-kubernetes',
+            family: 'kubernetes',
+            toolGroup: 'infrastructure',
+          }),
+          makeServer({
+            name: 'b-kubernetes',
+            family: 'kubernetes',
+            toolGroup: 'infrastructure',
+          }),
+        ],
+        true,
+      ),
     ).toEqual({ yours: 2, families: 1, internal: 2 });
   });
 });

@@ -54,6 +54,19 @@ describe('useMusterCustomizeCounts', () => {
     });
   });
 
+  it('leaves muster out where no installation runs it', () => {
+    mockInstance = makeTestMusterInstance({
+      activeInstallation: undefined,
+      mcpServers: [],
+    });
+    const { result } = renderHook(() => useMusterCustomizeCounts());
+    expect(result.current).toEqual({
+      connectors: 0,
+      connectorGroups: { yours: 0, families: 0, internal: 0 },
+      workflows: 0,
+    });
+  });
+
   it('counts nothing while loading', () => {
     mockInstance = makeTestMusterInstance({ isLoading: true });
     const { result } = renderHook(() => useMusterCustomizeCounts());

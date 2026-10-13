@@ -1,9 +1,6 @@
-import { MCPServer, ToolGroupKey } from './k8s';
-import {
-  familyToolGroup,
-  partitionServers,
-  ServerPageRow,
-} from './serverGrouping';
+import { MCPServer } from './k8s';
+import { familyToolGroup, ServerPageRow } from './serverGrouping';
+import { serverPageRows } from './serverList';
 
 /**
  * The Connectors tab's sub-tabs: the customer's own connectors (the default),
@@ -22,6 +19,13 @@ export interface ConnectorGroupInfo {
   /** The sub-tab's empty state. */
   empty: { title: string; description: string };
 }
+
+/** What muster is, on its row and its page. */
+export const MUSTER_DESCRIPTION =
+  'Connects agents to every connector and offers the platform tools.';
+
+/** muster's page's line under its name: what it is, and that it is fixed. */
+export const MUSTER_PAGE_DESCRIPTION = `${MUSTER_DESCRIPTION} It comes with the Agent Platform and cannot be changed here.`;
 
 /** The sub-tabs, in strip order. */
 export const CONNECTOR_GROUPS: readonly ConnectorGroupInfo[] = [
@@ -70,49 +74,51 @@ export function connectorGroupOfPath(
   return CONNECTOR_GROUPS.find(group => group.path === segment)?.id;
 }
 
-const GROUP_OF_TOOL_GROUP: Record<ToolGroupKey, ConnectorGroup> = {
-  'agent-platform': 'internal',
-  infrastructure: 'families',
-  registered: 'yours',
-};
-
 /**
- * The sub-tab a row is listed on. The tool-group label the shipping chart
- * stamps (`TOOL_GROUP_LABEL`) decides: `agent-platform` is internal (the
- * managers for agents, models and clusters), `infrastructure` the families.
- * muster itself is internal: it ships with the platform, and muster's own
- * `agent-platform` preset includes its core tools. A family without the label
- * is still a family (`spec.family` makes it one connector across management
- * clusters), so an installation whose charts carry no labels yet does not
- * list its families as the customer's. Everything else is the customer's.
+ * The sub-tab a row is listed on, from the tool-group label the shipping
+ * chart stamps (`TOOL_GROUP_LABEL`) and the row's shape:
+ *
+ * - **Internal**: muster itself (it ships with the platform, and muster's own
+ *   `agent-platform` preset includes its core tools), every server or family
+ *   labelled `agent-platform` (the managers for agents, models and clusters),
+ *   and a singular server labelled `infrastructure` — shipped by the platform,
+ *   but not a family.
+ * - **Families**: every other family (`spec.family`: one connector with an
+ *   instance per management cluster), labelled `infrastructure` or not, so an
+ *   installation whose charts carry no labels yet does not list its families
+ *   as the customer's.
+ * - **Your connectors**: singular servers without the label, what the
+ *   installation or its users registered.
  */
 export function connectorGroup(row: ServerPageRow): ConnectorGroup {
   if (row.kind === 'core') {
     return 'internal';
   }
   if (row.kind === 'family') {
-    // `registered` here means no member declares a group.
-    const group = familyToolGroup(row.servers);
-    return group === 'registered' ? 'families' : GROUP_OF_TOOL_GROUP[group];
+    return familyToolGroup(row.servers) === 'agent-platform'
+      ? 'internal'
+      : 'families';
   }
-  return GROUP_OF_TOOL_GROUP[row.server.getToolGroupKey()];
+  return row.server.getToolGroup() ? 'internal' : 'yours';
 }
 
-/** How many rows each sub-tab lists, muster itself included. */
+/**
+ * How many rows each sub-tab lists. muster itself counts only where it runs
+ * (`withMuster`): without a muster installation the list is not shown at all.
+ */
 export function connectorGroupCounts(
   servers: MCPServer[],
+  withMuster: boolean,
 ): Record<ConnectorGroup, number> {
   const counts: Record<ConnectorGroup, number> = {
     yours: 0,
     families: 0,
     internal: 0,
   };
-  const rows: ServerPageRow[] = [
-    ...partitionServers(servers).flatMap(group => group.rows),
-    { kind: 'core' },
-  ];
-  for (const row of rows) {
-    counts[connectorGroup(row)] += 1;
+  for (const row of serverPageRows(servers)) {
+    if (row.kind !== 'core' || withMuster) {
+      counts[connectorGroup(row)] += 1;
+    }
   }
   return counts;
 }

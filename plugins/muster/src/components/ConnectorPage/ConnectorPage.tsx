@@ -55,7 +55,7 @@ import { isGitOpsManaged } from '../../lib/gitops';
 import { isReadOnly } from '../../lib/toolAnnotations';
 import { serverPageResolver } from '../../lib/toolGrouping';
 import { mcpServersRouteRef, newMcpServerRouteRef } from '../../routes';
-import { connectorGroup } from '../../lib/connectorGroups';
+import { MUSTER_PAGE_DESCRIPTION } from '../../lib/connectorGroups';
 import {
   familyGroups,
   findServerRow,
@@ -104,10 +104,6 @@ import {
 } from './connectorPageTarget';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
-
-/** muster's own page's line under its name. */
-const MUSTER_DESCRIPTION =
-  'Connects agents to every connector and offers the platform tools. It comes with the Agent Platform and cannot be changed here.';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -232,7 +228,7 @@ function ConnectorPageContent({
   const basePath = useSplatBasePath();
   const paths = useConnectorGroupPaths();
   // The sub-tab that lists the connector, where its crumb and a removal lead.
-  const listPath = paths.group(connectorGroup(row));
+  const listPath = paths.listOf(serverRowKey(row), row);
   const { activeInstallationInfo } = useMusterInstance();
   const endpoint =
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
@@ -590,7 +586,7 @@ function ConnectorPageContent({
         badges={<StatusBadge row={row} />}
         meta={
           row.kind === 'core'
-            ? MUSTER_DESCRIPTION
+            ? MUSTER_PAGE_DESCRIPTION
             : representative?.getDescription()
         }
         actions={editAction}
@@ -751,6 +747,10 @@ function ConnectorPageBody({
   const paths = useConnectorGroupPaths();
   const { search } = useLocation();
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  // The sub-tab that lists the connector: known from a cached row (or for
+  // muster) even while loading; otherwise the crumb has no link rather than
+  // one to a sub-tab that does not list it.
+  const listPath = paths.listOf(key, row);
 
   if (isLoadingInstallations || isLoading) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
@@ -761,7 +761,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
         leading={<ConnectorTile name={key} />}
@@ -780,7 +780,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
       >
@@ -797,7 +797,7 @@ function ConnectorPageBody({
         title={key}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
-          { label: 'Connectors', href: paths.connectors },
+          { label: 'Connectors', href: listPath },
           { label: key },
         ]}
       >

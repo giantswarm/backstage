@@ -86,6 +86,12 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
       { id: 'families', path: 'families', title: 'Families' },
       { id: 'internal', path: 'internal', title: 'Internal' },
     ],
+    connectorGroupInfo: (group: string) =>
+      ({
+        yours: { id: 'yours', path: '', title: 'Your connectors' },
+        families: { id: 'families', path: 'families', title: 'Families' },
+        internal: { id: 'internal', path: 'internal', title: 'Internal' },
+      })[group],
     connectorGroupOfPath: (segment: string) =>
       ({ '': 'yours', families: 'families', internal: 'internal' })[segment],
     CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
@@ -587,6 +593,21 @@ describe('CustomizePage', () => {
         expect(screen.getByTestId('location')).toHaveTextContent(
           /^\/customize\/connectors\?installation=golem$/,
         ),
+      );
+    });
+
+    it.each([
+      [
+        '/customize/connectors/families/anything?installation=golem',
+        '/customize/connectors?installation=golem',
+      ],
+      ['/customize/connectors/', '/customize/connectors'],
+      ['/customize/connectors/internal/', '/customize/connectors/internal'],
+    ])('sends %s to %s', async (from, to) => {
+      await renderCustomize(from);
+
+      await waitFor(() =>
+        expect(screen.getByTestId('location').textContent).toBe(to),
       );
     });
 

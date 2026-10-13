@@ -36,6 +36,7 @@ import {
 import musterPlugin, {
   CONNECTOR_GROUPS,
   type ConnectorGroup,
+  connectorGroupInfo,
   connectorGroupOfPath,
   CustomizeConnectorsPanel,
   CustomizeMusterProvider,
@@ -235,7 +236,7 @@ function CustomizeTabContent({
   };
   const groupTitle =
     tab.id === 'connectors' && connectorGroup !== 'yours'
-      ? CONNECTOR_GROUPS.find(group => group.id === connectorGroup)?.title
+      ? connectorGroupInfo(connectorGroup).title
       : undefined;
   const tabs = CUSTOMIZE_TABS.filter(
     candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
@@ -309,14 +310,17 @@ function DefaultTabRedirect() {
   );
 }
 
-/** Opens the Connectors tab's default sub-tab, keeping the query string. */
-function ConnectorsTabRedirect() {
+/** Opens a Connectors sub-tab at its own address, keeping the query string. */
+function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
   const { search } = useLocation();
   const customizeLink = useRouteRef(customizeRouteRef);
+  const { path } = connectorGroupInfo(group);
   return (
     <Navigate
       to={{
-        pathname: `${customizeLink?.() ?? '/customize'}/connectors`,
+        pathname: `${customizeLink?.() ?? '/customize'}/connectors${
+          path ? `/${path}` : ''
+        }`,
         search,
       }}
       replace
@@ -324,20 +328,41 @@ function ConnectorsTabRedirect() {
   );
 }
 
+/**
+ * The Connectors sub-tab a path below the tab names: none for the tab's own
+ * address, one segment for the others. Anything else (a deeper path, an
+ * unknown segment) is undefined. A connector's own page lives under the Agent
+ * Platform, so no connector's name is ever a path here.
+ */
+function connectorGroupOfSegments(
+  segments: string[],
+): ConnectorGroup | undefined {
+  if (segments.length === 0) {
+    return 'yours';
+  }
+  return segments.length === 1 && segments[0] !== ''
+    ? connectorGroupOfPath(segments[0])
+    : undefined;
+}
+
 function CustomizeTabPage() {
-  const [tabId, subPath = ''] = (useParams()['*'] ?? '').split('/');
+  const splat = useParams()['*'] ?? '';
+  const [tabId, ...rest] = splat.split('/');
   const { search } = useLocation();
   const { hasSkillRepositories } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
   if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
     return <DefaultTabRedirect />;
   }
-  // A connector's own page lives under the Agent Platform, so anything below
-  // the Connectors tab but a sub-tab is a guess: it lands on the default one.
-  const connectorGroup =
-    tab.id === 'connectors' ? connectorGroupOfPath(subPath) : undefined;
-  if (tab.id === 'connectors' && !connectorGroup) {
-    return <ConnectorsTabRedirect />;
+  let connectorGroup: ConnectorGroup | undefined;
+  if (tab.id === 'connectors') {
+    // A trailing slash names the same sub-tab, at its own address, so the
+    // strip can tell which is open; any other path lands on the default.
+    const trimmed = rest[rest.length - 1] === '' ? rest.slice(0, -1) : rest;
+    connectorGroup = connectorGroupOfSegments(trimmed);
+    if (!connectorGroup || trimmed.length !== rest.length) {
+      return <ConnectorsTabRedirect group={connectorGroup ?? 'yours'} />;
+    }
   }
   // Keyed by tab, so the search starts over on each tab — and by the
   // address's `q`, so a link that brings a search (the palette's "+N more")

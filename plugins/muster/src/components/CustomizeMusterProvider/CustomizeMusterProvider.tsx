@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import {
   type ConnectorGroup,
   connectorGroupCounts,
@@ -15,16 +15,21 @@ export type MusterCustomizeCounts = {
 };
 
 /**
- * The connectors (one per server family, singular server and muster itself),
- * per Connectors sub-tab and in all, and the workflows of the active muster.
- * Must be called inside a `CustomizeMusterProvider`.
+ * The connectors (one per server family, singular server and muster itself,
+ * where muster runs), per Connectors sub-tab and in all, and the workflows of
+ * the active muster. Must be called inside a `CustomizeMusterProvider`.
  */
 export function useMusterCustomizeCounts(): MusterCustomizeCounts {
-  const { mcpServers, workflows, isLoading } = useMusterInstance();
+  const { mcpServers, workflows, isLoading, activeInstallation } =
+    useMusterInstance();
+  const withMuster = activeInstallation !== undefined;
+  const connectorGroups = useMemo(
+    () => connectorGroupCounts(mcpServers, withMuster),
+    [mcpServers, withMuster],
+  );
   if (isLoading) {
     return {};
   }
-  const connectorGroups = connectorGroupCounts(mcpServers);
   return {
     connectors:
       connectorGroups.yours +

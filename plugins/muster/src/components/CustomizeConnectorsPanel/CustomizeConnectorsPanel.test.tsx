@@ -1114,6 +1114,49 @@ describe('CustomizeConnectorsPanel', () => {
       expect(mockNavigate).not.toHaveBeenCalled();
     });
 
+    it('lists a single infrastructure server among the internal ones, not the families', async () => {
+      mockServers = [
+        ...fleet(),
+        makeServer('lone-capi', { toolGroup: 'infrastructure' }),
+      ];
+      await renderPanel('', 'internal');
+      expect(rowOf('lone-capi')).toBeInTheDocument();
+    });
+
+    it('says an anonymous muster the probe could not reach is not connected', async () => {
+      mockInstance = {
+        activeInstallationInfo: {
+          name: 'gazelle',
+          requiresAuth: false,
+          reachable: false,
+        },
+      };
+      await renderPanel('', 'internal');
+      const muster = rowOf('muster');
+      expect(within(muster).getByText('No sign-in')).toBeInTheDocument();
+      expect(within(muster).getByText('Not connected')).toBeInTheDocument();
+      expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
+    });
+
+    it('claims no state for muster while its installation is undescribed', async () => {
+      mockInstance = { activeInstallationInfo: undefined };
+      await renderPanel('', 'internal');
+      const muster = rowOf('muster');
+      expect(within(muster).queryByText('Connected')).not.toBeInTheDocument();
+      expect(within(muster).queryByText('No sign-in')).not.toBeInTheDocument();
+    });
+
+    it('says where a search matches when this sub-tab is empty', async () => {
+      mockServers = fleet().filter(
+        server => server.getToolGroup() !== undefined,
+      );
+      await renderPanel('prometheus');
+      expect(await screen.findByText('No connectors yet')).toBeInTheDocument();
+      expect(screen.getByText(/The search matches/)).toHaveTextContent(
+        'The search matches 1 connector on Families.',
+      );
+    });
+
     it('says muster is not connected without a session', async () => {
       mockAuthenticated = false;
       await renderPanel('', 'internal');

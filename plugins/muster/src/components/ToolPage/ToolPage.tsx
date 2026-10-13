@@ -1,13 +1,11 @@
 import { ReactNode, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Link } from '@backstage/ui';
 import {
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { customizeExternalRouteRef } from '../../routes';
 import { findServerRow, serverRowKey } from '../../lib/serverGrouping';
 import {
   serverPageResolver,
@@ -20,6 +18,7 @@ import {
   ToolMarkers,
   useServerPageLinks,
   useToolDescription,
+  useConnectorGroupPaths,
 } from '../shared';
 import { ToolDetailPanel } from '../ToolDetail';
 import {
@@ -42,7 +41,7 @@ const TOOL_NAME_STYLE = {
  */
 export function ToolPage() {
   const { server: key = '', tool = '' } = useParams();
-  const customizeRoute = useRouteRef(customizeExternalRouteRef);
+  const paths = useConnectorGroupPaths();
   const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
     useMusterInstance();
   const session = useMusterSession();
@@ -150,15 +149,15 @@ export function ToolPage() {
 
   // The platform's page frame like the connector's own page: its phone
   // gutters, an h1 that wraps, and the trail under Customize.
-  const customize = customizeRoute?.();
   return (
     <ShellPage
       title={shortName}
       breadcrumbs={[
-        { label: 'Customize', href: customize },
+        { label: 'Customize', href: paths.customize },
         {
           label: 'Connectors',
-          href: customize ? `${customize}/connectors` : listHref,
+          // The sub-tab that lists the tool's connector.
+          href: paths.customize ? paths.listOf(key, row) : listHref,
         },
         // No "Tools" crumb: Tools is the connector page's index, so it
         // would repeat the connector's own link.
