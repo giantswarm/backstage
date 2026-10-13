@@ -287,9 +287,15 @@ describe('createSkillPullRequest — update', () => {
     ).toEqual({ ref: `refs/heads/${BRANCH}`, sha: HEAD });
 
     const put = calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
-      ?.body as { branch: string; content: string; sha: string };
+      ?.body as {
+      branch: string;
+      content: string;
+      sha: string;
+      message: string;
+    };
     expect(put.branch).toBe(BRANCH);
     expect(put.sha).toBe('blob-sha-1');
+    expect(put.message).toBe('Update skill: ticket-triage');
     const written = Buffer.from(put.content, 'base64').toString('utf8');
     // The form's fields replace theirs; the keys the form does not show stay.
     expect(splitSkillMarkdown(written)).toEqual({

@@ -338,6 +338,11 @@ describe('AddSkillPage editing an existing skill', () => {
         /support\/ticket-triage\/SKILL.md in giantswarm\/skills/,
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This opens a pull request. The change reaches the catalog once a teammate merges it; agents keep their pinned version until their skills are updated.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
     await waitFor(() =>
       expect(document.title).toBe('Edit ticket-triage · Skills'),
