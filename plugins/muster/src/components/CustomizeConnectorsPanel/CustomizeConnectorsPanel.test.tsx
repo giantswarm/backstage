@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -9,6 +9,7 @@ import {
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
+import type { AuthStatusResponse } from '../../apis/types';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
@@ -54,6 +55,7 @@ function makeServer(
     state?: MCPServerState;
     auth?: Record<string, unknown>;
     description?: string;
+    suspended?: boolean;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -66,6 +68,7 @@ function makeServer(
         url: `https://${name}.example.test/mcp`,
         description: options.description,
         ...(options.auth ? { auth: options.auth } : {}),
+        ...(options.suspended ? { suspended: true } : {}),
       },
       status: { state: options.state ?? 'Connected' },
     } as never,
@@ -101,23 +104,48 @@ const api = {
     authUrl: 'https://github.example.test/login/oauth/authorize',
     message: 'Sign in to github.',
   })),
-  getAuthStatus: jest.fn(async () => ({
+  getAuthStatus: jest.fn(async () => defaultAuthStatus()),
+};
+
+function defaultAuthStatus(): AuthStatusResponse {
+  return {
     servers: [
       {
         name: 'github',
-        status: 'auth_required' as const,
+        status: 'auth_required',
         auth_tool: 'core_auth_login',
       },
-      { name: 'kubernetes', status: 'connected' as const },
-      { name: 'web-search', status: 'connected' as const },
+      { name: 'kubernetes', status: 'connected' },
+      { name: 'web-search', status: 'connected' },
     ],
-  })),
-};
+  };
+}
+
+/** muster's answer when the SSO connector's sign-in has lapsed. */
+function ssoExpiredAuthStatus(): AuthStatusResponse {
+  return {
+    servers: [
+      { name: 'github', status: 'connected' },
+      {
+        name: 'kubernetes',
+        status: 'reauth_required',
+        token_forwarding_enabled: true,
+      },
+      { name: 'web-search', status: 'connected' },
+    ],
+  };
+}
+
+const SSO_EXPLANATION =
+  "kubernetes authenticates through SSO from muster's own session, so there is nothing to sign in to here.";
+
+let queryClient: QueryClient;
 
 async function renderPanel(search = '') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  queryClient = client;
   return renderInTestApp(
     <QueryClientProvider client={client}>
       <CustomizeConnectorsPanel search={search} />
@@ -140,6 +168,7 @@ describe('CustomizeConnectorsPanel', () => {
     mockInstance = {};
     api.filterTools.mockClear();
     api.getAuthStatus.mockClear();
+    api.getAuthStatus.mockImplementation(async () => defaultAuthStatus());
     api.signInServer.mockClear();
     mockNavigate.mockClear();
   });
@@ -200,6 +229,292 @@ describe('CustomizeConnectorsPanel', () => {
       '/agent-platform/connectors/github?installation=gazelle',
       undefined,
     );
+  });
+
+  it('says an SSO sign-in has expired in a few words, the reason in a tooltip', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoExpiredAuthStatus());
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const kubernetes = rowOf('kubernetes');
+    expect(
+      await within(kubernetes).findByText('Sign-in expired'),
+    ).toBeInTheDocument();
+    // The sentence used to fill the cell and push the state out of sight.
+    expect(within(kubernetes).queryByText(SSO_EXPLANATION)).toBeNull();
+    // Nothing to sign in to: SSO comes from muster's own session.
+    expect(
+      within(kubernetes).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+
+    await user.hover(
+      within(kubernetes).getByRole('button', {
+        name: 'About the state of kubernetes',
+      }),
+    );
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      SSO_EXPLANATION,
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('says "Signing in…" while the sign-in page is open, the wait in a tooltip', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue({
+      closed: false,
+      location: { href: '' },
+    } as unknown as Window);
+    api.signInServer.mockResolvedValueOnce({
+      status: 'auth_required',
+      authUrl: 'https://github.example.test/login/oauth/authorize',
+      message: 'Sign in to github.',
+      clientIdMethod: 'dcr',
+    } as never);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+
+    expect(await within(github).findByText('Signing in…')).toBeInTheDocument();
+    expect(
+      within(github).getByRole('button', { name: 'Reopen sign-in page' }),
+    ).toBeInTheDocument();
+    expect(
+      within(github).queryByText('Waiting for you to finish signing in…'),
+    ).toBeNull();
+    expect(
+      within(github).queryByText(/Dynamic Client Registration/),
+    ).toBeNull();
+
+    await user.hover(
+      within(github).getByRole('button', {
+        name: 'About the state of github',
+      }),
+    );
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Waiting for you to finish signing in…');
+    expect(tooltip).toHaveTextContent(/Dynamic Client Registration/);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    open.mockRestore();
+  });
+
+  it("names a refused sign-in in a few words, muster's reason in a tooltip", async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    api.signInServer.mockResolvedValueOnce({
+      status: 'error',
+      message: 'Too many sign-in attempts; try again in a minute.',
+    } as never);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+
+    expect(
+      await within(github).findByText('Could not sign in'),
+    ).toBeInTheDocument();
+    expect(within(github).queryByText(/Too many sign-in attempts/)).toBeNull();
+    await user.hover(
+      within(github).getByRole('button', {
+        name: 'About the state of github',
+      }),
+    );
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Too many sign-in attempts; try again in a minute.',
+    );
+    // The sign-in stays on offer: a refusal is not the end of it.
+    expect(
+      within(github).getByRole('button', { name: 'Sign in' }),
+    ).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it('names an error during a sign-in over "Signing in…": a refused reopen', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue({
+      closed: false,
+      location: { href: '' },
+    } as unknown as Window);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+    expect(await within(github).findByText('Signing in…')).toBeInTheDocument();
+
+    api.signInServer.mockResolvedValueOnce({
+      status: 'error',
+      message: 'Too many sign-in attempts; try again in a minute.',
+    } as never);
+    await user.click(
+      within(github).getByRole('button', { name: 'Reopen sign-in page' }),
+    );
+
+    expect(
+      await within(github).findByText('Could not sign in'),
+    ).toBeInTheDocument();
+    expect(within(github).queryByText('Signing in…')).toBeNull();
+    // The wait goes on: the tab opened earlier may still complete it.
+    expect(
+      within(github).getByRole('button', { name: 'Reopen sign-in page' }),
+    ).toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it('warns while signing in when the sign-in may be rejected as an unregistered client', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    api.signInServer.mockResolvedValueOnce({
+      status: 'auth_required',
+      authUrl: 'https://github.example.test/login/oauth/authorize',
+      message: 'Sign in to github.',
+      clientIdMethod: 'cimd-fallback',
+    } as never);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+
+    const label = await within(github).findByText('Signing in…');
+    expect(label.parentElement?.querySelector('[data-tone]')).toHaveAttribute(
+      'data-tone',
+      'warning',
+    );
+    open.mockRestore();
+  });
+
+  it('never says "Signing in…" for a connector muster turns out to manage through SSO', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue(null);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    const github = rowOf('github');
+    await user.click(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    );
+    expect(await within(github).findByText('Signing in…')).toBeInTheDocument();
+
+    api.getAuthStatus.mockImplementation(async () => ({
+      servers: [
+        {
+          name: 'github',
+          status: 'auth_required',
+          token_exchange_enabled: true,
+        },
+        { name: 'kubernetes', status: 'connected' },
+        { name: 'web-search', status: 'connected' },
+      ],
+    }));
+    await act(() =>
+      queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
+    );
+
+    expect(
+      await within(github).findByText('Sign in needed'),
+    ).toBeInTheDocument();
+    expect(within(github).queryByText('Signing in…')).toBeNull();
+    expect(
+      within(github).queryByRole('button', { name: /sign-in page/ }),
+    ).not.toBeInTheDocument();
+    open.mockRestore();
+  });
+
+  it('opens the connector from a plain state, which has nothing to press', async () => {
+    const user = userEvent.setup();
+    await renderPanel();
+
+    await user.click(await within(rowOf('kubernetes')).findByText('Connected'));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/agent-platform/connectors/kubernetes?installation=gazelle',
+      undefined,
+    );
+  });
+
+  it('withholds the sign-in of a deactivated connector, saying why', async () => {
+    mockServers = [
+      makeServer('github', {
+        auth: { type: 'oauth' },
+        state: 'Stopped',
+        suspended: true,
+      }),
+    ];
+    await renderPanel();
+
+    // The list redraws once muster's sign-in report arrives.
+    await screen.findByRole('button', { name: 'Sign in' });
+    const github = rowOf('github');
+    expect(within(github).getByText('Deactivated')).toBeInTheDocument();
+    expect(
+      await within(github).findByRole('button', { name: 'Sign in' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Deactivated connectors cannot be signed in to; activate the connector first.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says "Status unavailable", not a failed sign-in, when the status cannot be read during one', async () => {
+    const open = jest.spyOn(window, 'open').mockReturnValue({
+      closed: false,
+      location: { href: '' },
+      close: jest.fn(),
+    } as unknown as Window);
+    const user = userEvent.setup();
+    await renderPanel();
+
+    await user.click(
+      await within(rowOf('github')).findByRole('button', { name: 'Sign in' }),
+    );
+    expect(
+      await within(rowOf('github')).findByText('Signing in…'),
+    ).toBeInTheDocument();
+
+    api.getAuthStatus.mockImplementation(async () => {
+      throw new Error('muster answered 502');
+    });
+    await act(() =>
+      queryClient.invalidateQueries({ queryKey: ['muster', 'auth-status'] }),
+    );
+
+    const github = rowOf('github');
+    expect(
+      await within(github).findByText('Status unavailable'),
+    ).toBeInTheDocument();
+    expect(within(github).queryByText('Could not sign in')).toBeNull();
+    // The sign-in is still going: its way back into the page stays.
+    const reopen = within(github).getByRole('button', {
+      name: 'Reopen sign-in page',
+    });
+
+    // A refused reopen outranks the unreadable status in the label; the
+    // tooltip keeps both.
+    api.signInServer.mockResolvedValueOnce({
+      status: 'error',
+      message: 'Too many sign-in attempts; try again in a minute.',
+    } as never);
+    await user.click(reopen);
+    expect(
+      await within(github).findByText('Could not sign in'),
+    ).toBeInTheDocument();
+    await user.hover(
+      within(github).getByRole('button', {
+        name: 'About the state of github',
+      }),
+    );
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Too many sign-in attempts');
+    expect(tooltip).toHaveTextContent(
+      'Cannot read the muster auth status: muster answered 502',
+    );
+    open.mockRestore();
   });
 
   it('offers no sign-in without a muster session', async () => {
@@ -496,6 +811,8 @@ describe('CustomizeConnectorsPanel', () => {
       const open = jest.spyOn(window, 'open').mockReturnValue(null);
       await renderPanel();
 
+      // A row with a sign-in is redrawn once muster's report arrives.
+      await screen.findByText('Sign in needed');
       const github = itemOf('github');
       const signIn = await within(github).findByRole('button', {
         name: 'Sign in',
@@ -509,6 +826,75 @@ describe('CustomizeConnectorsPanel', () => {
         expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
       );
       expect(mockNavigate).not.toHaveBeenCalled();
+      open.mockRestore();
+    });
+
+    it('keeps an expired SSO sign-in to its state on line 1, the reason in a hint', async () => {
+      api.getAuthStatus.mockImplementation(async () => ssoExpiredAuthStatus());
+      await renderPanel();
+
+      await screen.findByText('Sign-in expired');
+      const kubernetes = itemOf('kubernetes');
+      expect(
+        within(kubernetes).getByText('Sign-in expired'),
+      ).toBeInTheDocument();
+      expect(within(kubernetes).queryByText(SSO_EXPLANATION)).toBeNull();
+      // No sign-in, so no actions slot: just the tile and the body.
+      expect(kubernetes.children).toHaveLength(2);
+      const hint = within(kubernetes).getByRole('button', {
+        name: 'About the state of kubernetes',
+      });
+      expect(
+        within(kubernetes).getByRole('link', { name: 'kubernetes' }),
+      ).not.toContainElement(hint);
+    });
+
+    it("puts the sign-in in the row's actions, and its answer in the state", async () => {
+      const open = jest.spyOn(window, 'open').mockReturnValue(null);
+      api.signInServer.mockResolvedValueOnce({
+        status: 'error',
+        message: 'Too many sign-in attempts; try again in a minute.',
+      } as never);
+      await renderPanel();
+
+      // A row with a sign-in is redrawn once muster's report arrives.
+      await screen.findByText('Sign in needed');
+      const github = itemOf('github');
+      const signIn = await within(github).findByRole('button', {
+        name: 'Sign in',
+      });
+      // The actions slot, at the end of line 1, not the status beside the name.
+      expect(signIn.closest('li > div')).toBe(github.lastElementChild);
+
+      await userEvent.click(signIn);
+      expect(
+        await within(github).findByText('Could not sign in'),
+      ).toBeInTheDocument();
+      open.mockRestore();
+    });
+
+    it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
+      const open = jest.spyOn(window, 'open').mockReturnValue({
+        closed: false,
+        location: { href: '' },
+      } as unknown as Window);
+      await renderPanel();
+
+      await screen.findByText('Sign in needed');
+      await userEvent.click(
+        within(itemOf('github')).getByRole('button', { name: 'Sign in' }),
+      );
+
+      const github = itemOf('github');
+      const reopen = await within(github).findByRole('button', {
+        name: 'Reopen sign-in page',
+      });
+      expect(within(github).getByText('Signing in…')).toBeInTheDocument();
+      // Under the description, not in the actions at the end of line 1.
+      expect(
+        within(github).getByText('Repositories and pull requests')
+          .parentElement,
+      ).toContainElement(reopen);
       open.mockRestore();
     });
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -21,8 +21,9 @@ import {
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
-  StackedRowList,
+  StackedRow,
   type StackedRowItem,
+  StackedRowList,
   StatusDot,
   isAwaitingData,
   stopRowPress,
@@ -30,7 +31,6 @@ import {
   usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import type { ServerAuthStatus } from '../../apis/types';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
@@ -38,9 +38,14 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
   authStatusQueryKey,
-  ServerAuthActions,
+  deactivatedSignInGate,
+  ServerSignInStatus,
   SessionGate,
+  SignInStatusActions,
+  SignInStatusText,
+  type StatusText,
   useServerPageLinks,
+  useServerSignInStatus,
   useToolCatalogue,
 } from '../shared';
 import {
@@ -87,10 +92,21 @@ type Row = {
   description?: string;
   auth: string;
   tools?: string;
-  authStatus?: ServerAuthStatus;
+  /** The row's state, from muster's sign-in report and the server's own. */
+  status: StatusText;
+  /** The muster server to sign in to, where muster asks this person to. */
   signInServer?: string;
+  /** Why that sign-in cannot help now (a deactivated connector). */
+  signInGate?: string;
   reach?: ConnectorReach;
 };
+
+/** A row muster asks this person to sign in to. */
+type SignInRow = Row & { signInServer: string };
+
+function hasSignIn(row: Row): row is SignInRow {
+  return row.signInServer !== undefined;
+}
 
 /**
  * The Connectors tab's facets (T49): how a person signs in, and whether the
@@ -152,29 +168,138 @@ function ConnectorStatusCell({
   row: Row;
   installation: string;
 }) {
-  const status = connectorStatus(row.entry, row.authStatus);
+  if (!hasSignIn(row)) {
+    // Pressing a plain state opens the connector, like the rest of the row.
+    return (
+      <Cell>{row.status.label ? <StatusDot {...row.status} /> : null}</Cell>
+    );
+  }
   return (
     <Cell>
-      <Flex align="center" justify="between" gap="2">
-        <StatusDot tone={status.tone} label={status.label} />
-        {row.signInServer && (
-          // The row opens the connector; the sign-in must not.
-          <span
-            onPointerDown={stopRowPress}
-            onPointerUp={stopRowPress}
-            onClick={stopRowPress}
-            onKeyDown={stopRowPress}
-            role="presentation"
-          >
-            <ServerAuthActions
-              noun="connector"
-              serverName={row.signInServer}
-              installation={installation}
-            />
-          </span>
-        )}
-      </Flex>
+      {/* The row opens the connector; the sign-in and the hint must not. */}
+      <span
+        onPointerDown={stopRowPress}
+        onPointerUp={stopRowPress}
+        onClick={stopRowPress}
+        onKeyDown={stopRowPress}
+        role="presentation"
+      >
+        <ServerSignInStatus
+          noun="connector"
+          serverName={row.signInServer}
+          installation={installation}
+          status={row.status}
+          signInGate={row.signInGate}
+        />
+      </span>
     </Cell>
+  );
+}
+
+type StackedRowProps = Omit<StackedRowItem, 'id'>;
+
+/**
+ * A stacked row whose connector muster asks this person to sign in to, from
+ * one hook call, so the answer to a click on the button reaches the state:
+ * the state and its hint on line 1; the Sign in button in the row's actions;
+ * an outstanding sign-in's way back into the page ("Reopen sign-in page",
+ * "Open sign-in page ↗") on a line of its own under the description, since
+ * at the end of line 1 it would squeeze the name to a few characters.
+ */
+function SignInStackedRow({
+  row,
+  installation,
+  description,
+  ...props
+}: StackedRowProps & {
+  row: SignInRow;
+  installation: string;
+  description?: ReactNode;
+}) {
+  const signInStatus = useServerSignInStatus({
+    noun: 'connector',
+    serverName: row.signInServer,
+    installation,
+    status: row.status,
+    signInGate: row.signInGate,
+  });
+  const { parts } = signInStatus;
+  // Only a sign-in has buttons: an empty actions slot would still take its
+  // gap at the end of line 1.
+  const actions =
+    parts.kind === 'sign-in' ? (
+      <SignInStatusActions signInStatus={signInStatus} />
+    ) : null;
+  const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
+  const details =
+    waiting || description ? (
+      <Flex direction="column" gap="2" align="start">
+        {description}
+        {waiting ? actions : null}
+      </Flex>
+    ) : undefined;
+  return (
+    <StackedRow
+      {...props}
+      status={
+        <SignInStatusText
+          serverName={row.signInServer}
+          signInStatus={signInStatus}
+        />
+      }
+      {...(actions && !waiting ? { actions } : {})}
+      {...(details ? { details } : {})}
+    />
+  );
+}
+
+function ConnectorStackedRow({
+  row,
+  installation,
+  href,
+  toolsPending,
+}: {
+  row: Row;
+  installation: string;
+  href?: string;
+  toolsPending: boolean;
+}) {
+  const classes = useStyles();
+  const description = row.description ? (
+    <Text
+      variant="body-small"
+      color="secondary"
+      className={classes.description}
+    >
+      {row.description}
+    </Text>
+  ) : undefined;
+  const props: StackedRowProps = {
+    title: row.entry.id,
+    ...(href ? { href } : {}),
+    leading: (
+      <span className={classes.tile} aria-hidden>
+        {row.entry.id.charAt(0).toUpperCase()}
+      </span>
+    ),
+    facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
+  };
+  if (hasSignIn(row)) {
+    return (
+      <SignInStackedRow
+        {...props}
+        row={row}
+        installation={installation}
+        description={description}
+      />
+    );
+  }
+  return (
+    <StackedRow
+      {...props}
+      {...(row.status.label ? { status: <StatusDot {...row.status} /> } : {})}
+      {...(description ? { details: description } : {})}
+    />
   );
 }
 
@@ -184,12 +309,14 @@ function ConnectorStatusCell({
  * Sign in button was clipped out of reach inside the Status cell. A stacked
  * row per connector instead:
  *
- * - line 1: the letter tile, the connector's name (the row's link) and its
- *   state;
+ * - line 1: the letter tile, the connector's name (the row's link), its
+ *   state, and Sign in at the end as the row's action;
  * - line 2: how one signs in · its tools;
- * - under them, the description (two lines) and the sign-in, outside the
- *   link. The sign-in grows into a sentence and a second button while it
- *   waits on the person, so it gets the row's width, not the end of line 1.
+ * - under them, the description (two lines), and an outstanding sign-in's
+ *   way back into the page.
+ *
+ * Each row is a component of its own, as `StackedRowList`'s children, so a
+ * row with a sign-in reads its state and its buttons from one hook call.
  */
 function ConnectorStackedList({
   rows,
@@ -202,50 +329,19 @@ function ConnectorStackedList({
   hrefOf: (row: Row) => string | undefined;
   toolsPending: boolean;
 }) {
-  const classes = useStyles();
-  const items = rows.map<StackedRowItem>(row => {
-    const status = connectorStatus(row.entry, row.authStatus);
-    const href = hrefOf(row);
-    const details =
-      row.description || row.signInServer ? (
-        <Flex direction="column" gap="2" align="start">
-          {row.description && (
-            <Text
-              variant="body-small"
-              color="secondary"
-              className={classes.description}
-            >
-              {row.description}
-            </Text>
-          )}
-          {row.signInServer && (
-            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-              <ServerAuthActions
-                noun="connector"
-                serverName={row.signInServer}
-                installation={installation}
-              />
-            </Flex>
-          )}
-        </Flex>
-      ) : undefined;
-    return {
-      id: row.id,
-      title: row.entry.id,
-      ...(href ? { href } : {}),
-      leading: (
-        <span className={classes.tile} aria-hidden>
-          {row.entry.id.charAt(0).toUpperCase()}
-        </span>
-      ),
-      ...(status.label
-        ? { status: <StatusDot tone={status.tone} label={status.label} /> }
-        : {}),
-      facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
-      ...(details ? { details } : {}),
-    };
-  });
-  return <StackedRowList rows={items} aria-label="Connectors" />;
+  return (
+    <StackedRowList aria-label="Connectors">
+      {rows.map(row => (
+        <ConnectorStackedRow
+          key={row.id}
+          row={row}
+          installation={installation}
+          href={hrefOf(row)}
+          toolsPending={toolsPending}
+        />
+      ))}
+    </StackedRowList>
+  );
 }
 
 function ConnectorsTable({
@@ -293,9 +389,12 @@ function ConnectorsTable({
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
-        ...(status ? { authStatus: status } : {}),
+        status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? { signInServer: entry.id }
+          : {}),
+        ...(server?.getSuspended()
+          ? { signInGate: deactivatedSignInGate('connector') }
           : {}),
         ...(reach ? { reach } : {}),
       };
