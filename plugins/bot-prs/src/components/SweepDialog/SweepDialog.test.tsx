@@ -260,4 +260,35 @@ describe('SweepDialog', () => {
       'https://github.com/giantswarm/backstage/pull/2250',
     );
   });
+  it('reports a preview stopped at the rate limit, and holds Apply until the reset', async () => {
+    const resetAt = new Date(Date.now() + 30 * 60_000);
+    const stopped = previewOf('backstage', 2250);
+    callTool.mockImplementation(() =>
+      Promise.resolve({
+        ...stopped,
+        summary: { ...summary, total: 2, not_reached: 1 },
+        not_reached: [
+          {
+            ...stopped.eligible![0],
+            number: 2251,
+            url: 'https://github.com/giantswarm/backstage/pull/2251',
+            status: 'Pending',
+          },
+        ],
+        rate_limit: { reset_at: resetAt.toISOString() },
+      } satisfies MargeResult),
+    );
+
+    renderDialog({
+      bumblebee: ['giantswarm/backstage#2250', 'giantswarm/backstage#2251'],
+    });
+
+    expect(
+      await screen.findByText(/^Your GitHub API budget is spent until /),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/left 1 PR undecided; they keep the class they had/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply sweep' })).toBeDisabled();
+  });
 });

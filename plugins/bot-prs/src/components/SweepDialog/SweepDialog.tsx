@@ -6,6 +6,7 @@ import { useMargeTeamSweeps } from '../../hooks/useMarge';
 import {
   actionsArgument,
   MargeAnswerLostError,
+  MargeRateLimitError,
   rowsOf,
   SWEEP_STEPS,
   type BotPrRow,
@@ -14,6 +15,7 @@ import {
 import { refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { LostAnswerAlert } from '../LostAnswerAlert';
+import { RateLimitAlert, useIsBefore } from '../RateLimitAlert';
 import { OutcomeTable } from '../OutcomeTable';
 import { SweepProgress } from '../SweepProgress';
 
@@ -111,7 +113,11 @@ export function SweepDialog({
   const lost = failed
     .filter(run => run.error instanceof MargeAnswerLostError)
     .map(run => run.team);
-  const refused = failed.filter(run => !lost.includes(run.team));
+  const refused = failed.filter(
+    run =>
+      !lost.includes(run.team) && !(run.error instanceof MargeRateLimitError),
+  );
+  const isRateLimited = useIsBefore(sweeps.rateLimitReset);
   const notConnected = sweeps.notConnected;
 
   // What Apply runs on: exactly the PRs the preview listed, per team.
@@ -119,7 +125,12 @@ export function SweepDialog({
     () => preview.flatMap(run => rowsOf(run.result, run.team)),
     [preview],
   );
-  const applyTargets = useMemo(() => refsByTeam(previewRows), [previewRows]);
+  // A PR the preview stopped before deciding was not previewed, so Apply
+  // leaves it out.
+  const applyTargets = useMemo(
+    () => refsByTeam(previewRows.filter(row => row.group !== 'not_reached')),
+    [previewRows],
+  );
   const applyCount = Object.values(applyTargets).reduce(
     (sum, refs) => sum + refs.length,
     0,
@@ -173,6 +184,7 @@ export function SweepDialog({
       isBusy={sweeps.isPending && !sweeps.isDryRun}
       isDone={applied}
       isConfirmDisabled={
+        isRateLimited ||
         sweeps.isPending ||
         applyCount === 0 ||
         steps.length === 0 ||
@@ -215,6 +227,12 @@ export function SweepDialog({
         <ConnectMargeAlert
           installation={installation}
           message={notConnected.message}
+        />
+      ) : null}
+      {sweeps.rateLimitReset ? (
+        <RateLimitAlert
+          resetAt={sweeps.rateLimitReset}
+          notReached={sweeps.notReached}
         />
       ) : null}
       {refused.length > 0 && !notConnected ? (
