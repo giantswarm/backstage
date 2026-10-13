@@ -8,7 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { EditModelPage } from './EditModelPage';
 
 const mockUseResource = jest.fn();
@@ -83,14 +83,17 @@ function renderPage() {
           element={<EditModelPage />}
         />
         <Route
-          path="/agent-platform/models/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name"
           element={<p>The model's page</p>}
         />
       </Routes>
     </PageHeaderActionsProvider>,
     {
       initialRouteEntries: ['/agent-platform/models/edit/inst-1/kagent/sonnet'],
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
     },
   );
 }
@@ -178,7 +181,7 @@ describe('EditModelPage', () => {
     expect(screen.getByText('Model not found')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Back to the model' }),
-    ).toHaveAttribute('href', '/agent-platform/models/inst-1/kagent/sonnet');
+    ).toHaveAttribute('href', '/customize/models/inst-1/kagent/sonnet');
   });
 
   it.each([

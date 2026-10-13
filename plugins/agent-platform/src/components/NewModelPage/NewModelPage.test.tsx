@@ -55,7 +55,7 @@ function renderPage(edit?: ModelEdit) {
       <Routes>
         <Route path="/" element={<NewModelPage edit={edit} />} />
         <Route
-          path="/agent-platform/models/inst-1/kagent/sonnet"
+          path="/customize/models/inst-1/kagent/sonnet"
           element={<p>The model's page</p>}
         />
       </Routes>
@@ -259,7 +259,7 @@ describe('NewModelPage · editing a model', () => {
   const editOf = (modelConfig = sonnet()): ModelEdit => ({
     installation: 'inst-1',
     modelConfig,
-    detailHref: '/agent-platform/models/inst-1/kagent/sonnet',
+    detailHref: '/customize/models/inst-1/kagent/sonnet',
   });
 
   it('is the same flow, prefilled, with Save changes waiting for a change', async () => {

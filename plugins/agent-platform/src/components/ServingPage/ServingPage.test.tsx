@@ -24,7 +24,7 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ServingPage } from './ServingPage';
@@ -328,7 +328,10 @@ const renderSection = (initialRouteEntries?: string[]) =>
       <Route path="*" element={<Section />} />
     </Routes>,
     {
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
       initialRouteEntries,
     },
   );
@@ -890,7 +893,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByRole('link', { name: 'qwen3-14b' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.queryByText('claude')).not.toBeInTheDocument();
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();

@@ -88,6 +88,17 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Customize' };
       break;
 
+    // One model: `/customize/models/<installation>/<namespace>/<name>`. One
+    // page, the model in neither `page` nor `view` (it is in `path`, as on
+    // every page): `page` and `view` are the dimensions TelemetryDeck
+    // aggregates on, and path segments there would make a signal per model.
+    // The former `/agent-platform/models/…` path redirects here. A trailing
+    // slash is the same page, as the router has it. Above the tab case, which
+    // would report it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail' };
+      break;
+
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
     // The Connectors tab's sub-tabs below its own address add a `subview`; the
@@ -240,15 +251,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Models index' };
       break;
 
-    // One model: `…/models/<installation>/<namespace>/<name>`. No `view`, for
-    // the same reason as Session detail and Agent detail: `page` and `view` are
-    // the dimensions TelemetryDeck aggregates on, and putting path segments
-    // there yields a distinct signal name per model rather than a countable
-    // page. (It is not a privacy measure — every payload below carries
-    // `path: pathname` verbatim.) Placed above the views case so the three
-    // identifying segments cannot reach a `view`.
-    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
-      payload = { page: 'Model detail' };
+    // One model's former path, `…/models/<installation>/<namespace>/<name>`,
+    // which only redirects to `/customize/models/…` (above); the page the
+    // visit lands on reports itself as Model detail right after, so this one
+    // must not, or each old link counts twice. Its own page, like the Agents
+    // redirect, with no `view`: the segments name a model. Placed above the
+    // views case so the three identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail redirect' };
       break;
 
     // Editing one model: the Connect-a-model flow prefilled, at

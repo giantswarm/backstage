@@ -95,6 +95,8 @@ export type { InputProviderRef } from './ResourceSet';
 export { ResourceSetInputProvider } from './ResourceSetInputProvider';
 export {
   deriveModelConfigReadiness,
+  isModelConfigStatusStale,
+  MODEL_CONFIG_CONDITION_ORDER,
   ModelConfig,
   ModelConfigConditionType,
 } from './ModelConfig';

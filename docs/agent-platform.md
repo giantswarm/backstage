@@ -210,6 +210,14 @@ Customize → Models) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
 combines the `Accepted` and `ResolvedRefs` conditions into Accepted, Not
 accepted or Pending; a ModelConfig has no workload, so there is no `Ready`.
+The controller's message for Not accepted or Pending sits in a hint beside
+the status.
+
+One model's page (`ModelDetailPage`) is at
+`/customize/models/<installation>/<namespace>/<name>`, routed by the app's
+Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
+redirects there. Its Technical details fold-out lists the conditions with
+their reason and message, and opens on arrival unless the model is accepted.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)

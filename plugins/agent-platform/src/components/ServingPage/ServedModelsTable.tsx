@@ -13,9 +13,8 @@ import {
 import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 
-import { modelDetailRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   CatalogNoMatch,
   countNoun,
@@ -1442,7 +1441,7 @@ export function ServedModelsTable({
   renderGroupDetail,
   emptyGroups,
 }: ServedModelsTableProps) {
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   const hrefFor = useCallback(
     (consumer: ServedModelConsumer) =>

@@ -19,9 +19,9 @@ import {
 } from '../../lib/formatNumbers';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
-import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { CostPerDayCard } from '../LlmUsage';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
+import { useAgents } from '../AgentsDataProvider';
 import {
   agentsUsingModel,
   modelConfigIdOf,
@@ -139,7 +139,12 @@ function UsageSection({
         />
       </StatGrid>
       {slice.costPerDay.series.length > 0 && (
-        <CostPerDayCard daily={slice.costPerDay} currency={currency} />
+        // One model, the page's own: the key would only repeat its name.
+        <CostPerDayCard
+          daily={slice.costPerDay}
+          currency={currency}
+          showLegend={false}
+        />
       )}
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
@@ -152,21 +157,24 @@ function UsageSection({
 
 /** The agents whose spec names this ModelConfig, each with what it spent on it. */
 function UsedBySection({
-  modelConfigId,
-  slice,
   installation,
+  namespace,
+  name,
+  slice,
 }: {
-  modelConfigId: string;
-  slice: ModelUsageSlice | undefined;
   installation: string;
+  namespace: string;
+  name: string;
+  slice: ModelUsageSlice | undefined;
 }) {
   const classes = useStyles();
   const currency = useCurrency(installation);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const { rows, isLoading, unreachableInstallations } = useAgents();
   const agents = useMemo(
-    () => agentsUsingModel(rows, modelConfigId),
-    [rows, modelConfigId],
+    () =>
+      agentsUsingModel(rows, modelConfigIdOf(installation, namespace, name)),
+    [rows, installation, namespace, name],
   );
 
   let body;
@@ -256,7 +264,18 @@ function UsedBySection({
   );
 }
 
-function ModelReadViewContent({
+/**
+ * The model as a read view, per the prototype: what it cost and how much it
+ * was used over the last 30 days (the gateway's figures, from the Usage
+ * screen's own reductions), the cost per day, and the agents that run on it
+ * with what each spent on it.
+ *
+ * The agents come from the `AgentsDataProvider` above the page
+ * (`CustomizeModelPage` mounts it): the gateway reduction names agents
+ * through it, and "Used by" filters it. No provider of its own, so the page
+ * never runs the agent reads twice.
+ */
+export function ModelReadView({
   installation,
   namespace,
   name,
@@ -291,28 +310,11 @@ function ModelReadViewContent({
         state={state}
       />
       <UsedBySection
-        modelConfigId={modelConfigIdOf(installation, namespace, name)}
-        slice={state === 'ready' ? slice : undefined}
         installation={installation}
+        namespace={namespace}
+        name={name}
+        slice={state === 'ready' ? slice : undefined}
       />
     </Flex>
-  );
-}
-
-/**
- * The model as a read view, per the prototype: what it cost and how much it
- * was used over the last 30 days (the gateway's figures, from the Usage
- * screen's own reductions), the cost per day, and the agents that run on it
- * with what each spent on it.
- *
- * The agent list is the Usage screen's provider: the gateway reduction names
- * agents through it, and "Used by" filters it. Mounted here, so the page pays
- * for it only in the read view.
- */
-export function ModelReadView(props: ModelReadViewProps) {
-  return (
-    <AgentsDataProvider>
-      <ModelReadViewContent {...props} />
-    </AgentsDataProvider>
   );
 }

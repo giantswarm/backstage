@@ -25,6 +25,7 @@ import {
   agentPlatformPlugin,
   CustomizeAgentsPanel,
   CustomizeDataProvider,
+  CustomizeModelPage,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
@@ -353,24 +354,42 @@ function CustomizeTabPage() {
   );
 }
 
+/** The Customize screen itself: its tabs, over the data they share. */
+function CustomizeScreen() {
+  return (
+    <CustomizeMusterProvider>
+      <CustomizeDataProvider>
+        <Routes>
+          <Route index element={<DefaultTabRedirect />} />
+          <Route path="*" element={<CustomizeTabPage />} />
+        </Routes>
+      </CustomizeDataProvider>
+    </CustomizeMusterProvider>
+  );
+}
+
 /**
- * The shell's Customize screen: a tab per area at `/customize/:tab`, with
- * `/customize` opening the first. Rendered without the app's page layout, so
- * it mounts the header-actions slot its pages render.
+ * The shell's Customize page: a tab per area at `/customize/:tab`, with
+ * `/customize` opening the first, and one model's page beside the Models tab
+ * (`/customize/models/<installation>/<namespace>/<name>`). The model's page
+ * is outside the screen's providers: it mounts only the agent-platform data
+ * it reads (`CustomizeModelPage`), not the skill catalogue or muster, whose
+ * errors panel would otherwise sit above it. Both share one query client, so
+ * the list's reads are cache hits on the page. Rendered without the app's
+ * page layout, so it mounts the header-actions slot its pages render.
  */
 export function CustomizePage() {
   return (
     <PageHeaderActionsProvider>
       {/* Until a tab's page names itself. */}
       <ShellDocumentTitle title="Customize" />
-      <CustomizeMusterProvider>
-        <CustomizeDataProvider>
-          <Routes>
-            <Route index element={<DefaultTabRedirect />} />
-            <Route path="*" element={<CustomizeTabPage />} />
-          </Routes>
-        </CustomizeDataProvider>
-      </CustomizeMusterProvider>
+      <Routes>
+        <Route
+          path="models/:installation/:namespace/:name"
+          element={<CustomizeModelPage />}
+        />
+        <Route path="*" element={<CustomizeScreen />} />
+      </Routes>
     </PageHeaderActionsProvider>
   );
 }
