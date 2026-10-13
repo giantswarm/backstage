@@ -5,6 +5,14 @@ import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
 import { createRouter } from './router';
+
+// The credential/allowlist behaviour has its own suite
+// (githubRawContent.test.ts); here only what the route forwards is under test.
+jest.mock('./githubRawContent', () => ({
+  ...jest.requireActual('./githubRawContent'),
+  fetchGitHubRawContent: jest.fn(),
+}));
+import { fetchGitHubRawContent } from './githubRawContent';
 import { containerRegistryServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { mimirServiceRef } from './services/MimirService';
 import { ManagementClusterVersionsService } from './services/ManagementClusterVersions';
@@ -283,5 +291,64 @@ describe('GET /installations/versions', () => {
     const response = await request(app).get('/installations/versions');
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('GET /github/raw-content', () => {
+  const fetchGitHubRawContentMock = fetchGitHubRawContent as jest.Mock;
+
+  beforeEach(() => {
+    fetchGitHubRawContentMock.mockReset();
+    fetchGitHubRawContentMock.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/plain' },
+      text: async () => 'file content',
+    });
+  });
+
+  it('rejects URLs outside raw.githubusercontent.com', async () => {
+    const app = await buildAppWithErrors({});
+
+    const response = await request(app)
+      .get('/github/raw-content')
+      .query({ url: 'https://example.com/giantswarm/repo/main/file' });
+
+    expect(response.status).toBe(400);
+    expect(fetchGitHubRawContentMock).not.toHaveBeenCalled();
+  });
+
+  it('proxies the content through the shared credentials provider', async () => {
+    const app = await buildApp(makeConfig({}));
+
+    const url =
+      'https://raw.githubusercontent.com/giantswarm/repo/main/values.yaml';
+    const response = await request(app).get('/github/raw-content').query({
+      url,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.text).toBe('file content');
+    // The owner allowlist (gs.github.allowedOwners) is enforced inside the
+    // provider the plugin wires up, not per route — see
+    // githubCredentials.test.ts.
+    expect(fetchGitHubRawContentMock).toHaveBeenCalledWith(
+      url,
+      githubCredentialsProvider,
+    );
+  });
+
+  it('passes upstream failures through as the upstream status', async () => {
+    fetchGitHubRawContentMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+    });
+    const app = await buildApp(makeConfig({}));
+
+    const response = await request(app).get('/github/raw-content').query({
+      url: 'https://raw.githubusercontent.com/giantswarm/repo/main/nope',
+    });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toMatch(/HTTP 404/);
   });
 });

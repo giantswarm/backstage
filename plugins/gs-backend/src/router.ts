@@ -216,7 +216,13 @@ export async function createRouter({
    * GET /github/raw-content
    *
    * Proxies a fetch to a raw.githubusercontent.com URL, adding GitHub
-   * authentication for private repository access.
+   * authentication for private repository access. The URL is caller-supplied
+   * and the portal's GitHub App can read repositories the signed-in user
+   * cannot, so the credentials provider (wrapped in
+   * `AllowedOwnersGithubCredentialsProvider` at plugin setup) only grants
+   * credentials for owners in `gs.github.allowedOwners`; for any other owner
+   * the fetch goes out without credentials and only public content comes
+   * back.
    *
    * Query parameters:
    * - url: The raw.githubusercontent.com URL to fetch
@@ -264,6 +270,11 @@ export async function createRouter({
    * file and reading its `name`/`description` frontmatter, at the head commit
    * of the ref. Each skill maps to a chart `skills[]` entry pinned to that
    * commit (`{ name, path, git: { url, commit } }`).
+   *
+   * The repoUrl is caller-supplied, so like `/github/raw-content` this reads
+   * with the portal's credentials only for owners in
+   * `gs.github.allowedOwners` (enforced by the provider wrapper); any other
+   * owner is read unauthenticated and only its public repositories resolve.
    *
    * Query parameters:
    * - repoUrl: The github.com repository URL (https://github.com/<owner>/<repo>)
