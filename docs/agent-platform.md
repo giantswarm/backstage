@@ -1551,14 +1551,13 @@ The picker offers **ready agents only**, grouped by installation when there is
 more than one, with search past eight agents. Non-ready agents are omitted,
 except on the home screen (`AgentPlatformHome`), which shows them disabled with
 the reason, groups by namespace and is always searchable. It puts a "Recent"
-group first and a "Favorites" group second: the agents starred on Customize →
-Agents, at most five (`PICKER_FAVORITES_LIMIT`, the newest stars), in display
-order. An agent that is both is listed in both, so the favorites do not change
-with what was used last. Both groups keep what they held when the picker
-opened, so a late read of the favorites never moves rows under the pointer, and
-both give way to a flat list of matches while a search is typed.
-`isStartableAgent` is shared, so the picker and the decision to offer one
-agree.
+group first and a "Favorites" group second: every agent starred on Customize →
+Agents, uncapped, in display order. An agent that is both is listed in both, so
+the favorites do not change with what was used last. Both groups keep what they
+held when the picker opened, so a late read of the favorites never moves rows
+under the pointer, and both give way to a flat list of matches while a search
+is typed. `isStartableAgent` is shared, so the picker and the decision to offer
+one agree.
 
 A single offered agent is preselected and the control disabled, but still named
 to confirm the target. `InstallationSelect` does the same for one installation.

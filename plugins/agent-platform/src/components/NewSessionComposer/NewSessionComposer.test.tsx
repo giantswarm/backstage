@@ -12,7 +12,6 @@ import {
   agentOptionLabel,
   modelWarningFor,
   NewSessionComposer,
-  PICKER_FAVORITES_LIMIT,
 } from './NewSessionComposer';
 
 const mockBuildAvatarUrl = jest.fn(
@@ -733,7 +732,7 @@ describe('opt-in picker options', () => {
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
   });
 
-  it('lists only the newest favorites, in display order', async () => {
+  it('lists every favorite, uncapped, in display order', async () => {
     const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(letter =>
       agentRow({
         id: `gazelle/kagent/agent-${letter}`,
@@ -744,7 +743,7 @@ describe('opt-in picker options', () => {
     renderComposer({
       agents: many,
       groupByNamespace: true,
-      // Oldest star first: G and A were starred before the rest.
+      // Stored oldest star first, which is not the order they are listed in.
       favoriteAgentIds: [many[6], many[0], ...many.slice(1, 6)].map(
         agent => agent.id,
       ),
@@ -756,13 +755,8 @@ describe('opt-in picker options', () => {
       within(screen.getByRole('group', { name: 'Favorites' }))
         .getAllByRole('option')
         .map(option => option.textContent),
-    ).toHaveLength(PICKER_FAVORITES_LIMIT);
-    expect(
-      within(screen.getByRole('group', { name: 'Favorites' }))
-        .getAllByRole('option')
-        .map(option => option.textContent),
     ).toEqual(
-      ['B', 'C', 'D', 'E', 'F'].map(letter =>
+      ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map(letter =>
         expect.stringContaining(`Agent ${letter}`),
       ),
     );

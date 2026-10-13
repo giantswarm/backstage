@@ -160,13 +160,6 @@ function agentIdOfOption(id: string): string {
   return id;
 }
 
-/**
- * Most favorites the picker lists, so a person who stars many agents does not
- * push the namespace groups out of view. Over it, the newest stars win; the
- * rest stay in their namespace groups and in search.
- */
-export const PICKER_FAVORITES_LIMIT = 5;
-
 /** An action listed last in the agent picker, e.g. a link to manage agents. */
 export type NewSessionComposerPickerAction = {
   label: string;
@@ -196,10 +189,9 @@ export type NewSessionComposerProps = {
    */
   recentAgentIds?: string[];
   /**
-   * The person's favorite agents, oldest star first, listed under a
-   * "Favorites" heading after the Recent group, in display order, while the
-   * search box is empty. At most {@link PICKER_FAVORITES_LIMIT}, the newest
-   * stars. An agent that is both stays in both, so the favorites read the same
+   * The person's favorite agents, all of them, listed under a "Favorites"
+   * heading after the Recent group, in display order, while the search box is
+   * empty. An agent that is both stays in both, so the favorites read the same
    * whatever was used last. Only read with `groupByNamespace`; ids not on
    * offer are skipped.
    */
@@ -561,15 +553,10 @@ export function NewSessionComposer({
         : (shownRecentIds ?? [])
             .map(id => listed.find(agent => agent.id === id))
             .filter((agent): agent is AgentRow => agent !== undefined);
-      // The newest stars on offer, in display order as Customize lists them.
-      const listedIds = new Set(listed.map(agent => agent.id));
-      const favoriteIds = new Set(
-        isSearching
-          ? []
-          : (shownFavoriteIds ?? [])
-              .filter(id => listedIds.has(id))
-              .slice(-PICKER_FAVORITES_LIMIT),
-      );
+      // Every favorite on offer, uncapped, in display order as Customize
+      // lists them: the person's own shortlist matters more than keeping the
+      // namespace groups near the top.
+      const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
       const favorites = listed.filter(agent => favoriteIds.has(agent.id));
       const namespaces = [
         ...new Set(listed.map(agent => agent.namespace)),
