@@ -1,3 +1,4 @@
+import { MusterAnswerCutError } from '@giantswarm/backstage-plugin-muster';
 import {
   classifyMargeError,
   dependencyOf,
@@ -197,6 +198,13 @@ describe('classifyMargeError', () => {
     expect(classifyMargeError(new Error(message))).toBeInstanceOf(
       MargeNotConnectedError,
     );
+  });
+
+  it('reads an answer cut before its result as one that never arrived', () => {
+    const cut = new MusterAnswerCutError(
+      'the answer to x_marge_sweep ended before its result arrived',
+    );
+    expect(classifyMargeError(cut)).toBeInstanceOf(MargeAnswerLostError);
   });
 
   it('passes any other refusal on verbatim', () => {

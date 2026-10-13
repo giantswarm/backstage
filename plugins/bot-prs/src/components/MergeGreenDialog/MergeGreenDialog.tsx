@@ -15,6 +15,7 @@ import { greenByTeam, refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { LostAnswerAlert } from '../LostAnswerAlert';
 import { OutcomeTable } from '../OutcomeTable';
+import { SweepProgress } from '../SweepProgress';
 
 export type MergeGreenDialogProps = {
   installation: string;
@@ -173,6 +174,9 @@ export function MergeGreenDialog({
           its team&apos;s policy. A PR that is no longer green is left alone.
         </Text>
       )}
+      {sweeps.isPending ? (
+        <SweepProgress progress={sweeps.progress} showTeam={teams.length > 1} />
+      ) : null}
       {notConnected ? (
         <ConnectMargeAlert
           installation={installation}

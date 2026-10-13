@@ -21,12 +21,14 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  MusterAnswerCutError,
   MusterApi,
   MusterAuthProvidersApi,
   MusterInstallationInfo,
   MusterInstallationsResponse,
   ServerSignInResult,
   ServerSignOutResult,
+  MusterToolProgress,
   ToolDetail,
   WorkflowExecution,
   WorkflowExecutionListResponse,
@@ -296,6 +298,85 @@ export class MusterApiClient implements MusterApi {
     installation?: string,
   ): Promise<unknown> {
     return this.post<unknown>('/call', { name, arguments: args }, installation);
+  }
+
+  async callToolWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<unknown> {
+    const url = await this.buildUrl('/call/progress', options.installation);
+    const headers = {
+      ...(await this.getAuthHeaders(options.installation)),
+      'Content-Type': 'application/json',
+    };
+    const response = await this.fetchApi.fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name, arguments: args }),
+      signal: options.signal,
+    });
+    if (!response.ok || !response.body) {
+      return this.handleResponse<unknown>(response);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffered += decoder.decode(value, { stream: true });
+      let newline = buffered.indexOf('\n');
+      while (newline >= 0) {
+        const line = buffered.slice(0, newline).trim();
+        buffered = buffered.slice(newline + 1);
+        newline = buffered.indexOf('\n');
+        if (line === '') {
+          continue;
+        }
+        const event = JSON.parse(line) as
+          | ({ type: 'progress' } & MusterToolProgress)
+          | { type: 'result'; result: unknown }
+          | {
+              type: 'error';
+              error: { name: string; message: string; details?: string[] };
+            };
+        switch (event.type) {
+          case 'progress':
+            options.onProgress({
+              progress: event.progress,
+              total: event.total,
+              message: event.message,
+            });
+            break;
+          case 'result':
+            await reader.cancel();
+            return event.result;
+          case 'error': {
+            await reader.cancel();
+            const error = new Error(event.error.message);
+            error.name = event.error.name;
+            if (event.error.details) {
+              (error as Error & { details: string[] }).details =
+                event.error.details;
+            }
+            throw error;
+          }
+          default:
+            break;
+        }
+      }
+    }
+    throw new MusterAnswerCutError(
+      `the answer to ${name} ended before its result arrived`,
+    );
   }
 
   async getAuthStatus(installation?: string): Promise<AuthStatusResponse> {

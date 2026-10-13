@@ -9,7 +9,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-react';
 import { ClusterTokenError } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MusterApiClient, toolErrorDetails } from './MusterApiClient';
-import { MusterAuthProvidersApi } from './types';
+import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
 
 const HEADER = 'backstage-muster-authorization';
 
@@ -116,6 +116,129 @@ describe('MusterApiClient response status', () => {
       'Muster request failed with status 504',
     );
     expect((error as Error & { status?: number }).status).toBe(504);
+  });
+});
+
+/** A streamed answer whose body yields `chunks` as they would arrive. */
+function streamResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  const pending = chunks.map(chunk => encoder.encode(chunk));
+  const reader = {
+    read: async () =>
+      pending.length > 0
+        ? { done: false, value: pending.shift() }
+        : { done: true, value: undefined },
+    cancel: jest.fn(async () => undefined),
+  };
+  return {
+    ok: true,
+    status: 200,
+    body: { getReader: () => reader },
+  } as unknown as Response;
+}
+
+/** `/call/progress` answers `response`; every other read its default. */
+function answerCall(fetchMock: jest.Mock, response: Response) {
+  fetchMock.mockImplementation(async (url: string) =>
+    url.includes('/call/progress')
+      ? response
+      : okResponse({ total: 1, tools: [] }),
+  );
+}
+
+describe('MusterApiClient.callToolWithProgress', () => {
+  it('hands each progress line on as it arrives, then answers the result', async () => {
+    const { client, fetchMock } = setup();
+    answerCall(
+      fetchMock,
+      streamResponse([
+        '{"type":"progress","progress":1,"message":"0 of 2 PRs done"}\n{"type":"pro',
+        'gress","progress":2,"message":"2 of 2 PRs done"}\n',
+        '{"type":"result","result":{"swept":2}}\n',
+      ]),
+    );
+    const onProgress = jest.fn();
+
+    const result = await client.callToolWithProgress(
+      'x_marge_sweep',
+      { team: 'honeybadger' },
+      { installation: 'open', onProgress },
+    );
+
+    expect(result).toEqual({ swept: 2 });
+    expect(onProgress.mock.calls.map(([p]) => p.message)).toEqual([
+      '0 of 2 PRs done',
+      '2 of 2 PRs done',
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://backend/api/muster/call/progress?installation=open',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('throws an error line as the error it names, with its details', async () => {
+    const { client, fetchMock } = setup();
+    answerCall(
+      fetchMock,
+      streamResponse([
+        '{"type":"progress","progress":1}\n',
+        '{"type":"error","error":{"name":"MusterToolError","message":"refused","details":["{}"]}}\n',
+      ]),
+    );
+
+    const error: unknown = await client
+      .callToolWithProgress(
+        'x_marge_sweep',
+        {},
+        {
+          installation: 'open',
+          onProgress: () => {},
+        },
+      )
+      .catch(e => e);
+
+    expect((error as Error).name).toBe('MusterToolError');
+    expect((error as Error).message).toBe('refused');
+    expect(toolErrorDetails(error)).toEqual(['{}']);
+  });
+
+  it('reports an answer that ended before its result as cut', async () => {
+    const { client, fetchMock } = setup();
+    answerCall(
+      fetchMock,
+      streamResponse(['{"type":"progress","progress":1}\n']),
+    );
+
+    await expect(
+      client.callToolWithProgress(
+        'x_marge_sweep',
+        {},
+        {
+          installation: 'open',
+          onProgress: () => {},
+        },
+      ),
+    ).rejects.toBeInstanceOf(MusterAnswerCutError);
+  });
+
+  it('throws a failure before the stream as callTool does', async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(
+      errorResponse(401, { error: { message: 'sign in' } }),
+    );
+
+    const error: unknown = await client
+      .callToolWithProgress(
+        'x_marge_sweep',
+        {},
+        {
+          installation: 'open',
+          onProgress: () => {},
+        },
+      )
+      .catch(e => e);
+
+    expect((error as Error).name).toBe('UnauthorizedError');
   });
 });
 

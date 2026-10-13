@@ -15,6 +15,7 @@ import { refsByTeam } from '../../lib/rows';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { LostAnswerAlert } from '../LostAnswerAlert';
 import { OutcomeTable } from '../OutcomeTable';
+import { SweepProgress } from '../SweepProgress';
 
 export type SweepDialogProps = {
   installation: string;
@@ -206,6 +207,9 @@ export function SweepDialog({
             ))}
           </Flex>
         </Flex>
+      ) : null}
+      {sweeps.isPending ? (
+        <SweepProgress progress={sweeps.progress} showTeam={teams.length > 1} />
       ) : null}
       {notConnected ? (
         <ConnectMargeAlert

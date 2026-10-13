@@ -58,6 +58,10 @@ export class MargeClient {
     } catch (error) {
       throw classifyMargeError(error);
     }
+    return this.parse<T>(tool, result);
+  }
+
+  private parse<T>(tool: MargeTool, result: unknown): T {
     if (typeof result === 'string') {
       try {
         return JSON.parse(result) as T;
@@ -99,9 +103,33 @@ export class MargeClient {
     return answer;
   }
 
-  /** The sweep, whole team or narrowed; `dry_run` is the preview. */
-  sweep(args: MargeSweepArgs): Promise<MargeResult> {
-    return this.call<MargeResult>(MARGE_TOOLS.sweep, { ...args });
+  /**
+   * The sweep, whole team or narrowed; `dry_run` is the preview. marge
+   * reports its progress while it works (`34 of 79 PRs done`), and the call
+   * lasts as long as it keeps reporting, however long the team's queue.
+   */
+  async sweep(
+    args: MargeSweepArgs,
+    options: { onProgress?: (message: string) => void } = {},
+  ): Promise<MargeResult> {
+    let result: unknown;
+    try {
+      result = await this.musterApi.callToolWithProgress(
+        margeToolName(MARGE_TOOLS.sweep),
+        { ...args },
+        {
+          installation: this.installation,
+          onProgress: ({ message }) => {
+            if (message) {
+              options.onProgress?.(message);
+            }
+          },
+        },
+      );
+    } catch (error) {
+      throw classifyMargeError(error);
+    }
+    return this.parse<MargeResult>(MARGE_TOOLS.sweep, result);
   }
 
   /** An ai-rescue marker on one PR, as the person. */

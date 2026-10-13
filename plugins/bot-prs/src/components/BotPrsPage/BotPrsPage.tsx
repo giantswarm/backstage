@@ -49,6 +49,7 @@ import {
 import { BotPrsFilters } from '../BotPrsFilters';
 import { ClassificationLegend } from '../ClassificationLegend';
 import { BotPrsTable } from '../BotPrsTable';
+import { SweepProgress } from '../SweepProgress';
 import { ConnectMargeAlert } from '../ConnectMargeAlert';
 import { MarkBlockedDialog } from '../MarkBlockedDialog';
 import { MergeGreenDialog } from '../MergeGreenDialog';
@@ -397,6 +398,10 @@ function Queue({
             status="info"
             title={`Classifying ${queue.classifying.length > 0 ? queue.classifying.join(', ') : 'the PRs in view'}`}
             description="The engine reads every PR's checks and writes the class it decides to the PR's label. One check read per PR, so a team of many repositories takes a minute. The table reloads when it is done."
+          />
+          <SweepProgress
+            progress={queue.classifyProgress}
+            showTeam={queue.classifying.length > 1}
           />
         </Box>
       ) : null}

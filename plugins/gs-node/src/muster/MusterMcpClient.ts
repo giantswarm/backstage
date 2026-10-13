@@ -5,6 +5,8 @@ import {
   experimental_createMCPClient as createMCPClient,
   MCPClient,
 } from '@ai-sdk/mcp';
+import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
   describeMcpFailure,
   isRecoverableSessionError,
@@ -246,6 +248,52 @@ export class MusterToolError extends Error {
   }
 }
 
+/** One `notifications/progress` of a tool call, as muster relayed it. */
+export interface MusterToolProgress {
+  /** Higher than the one before it. */
+  progress: number;
+  total?: number;
+  message?: string;
+}
+
+/**
+ * How long a call that reports progress waits for the next notification or
+ * its answer. Longer than muster's own per-server budget, so a server that
+ * falls silent is cut by muster, which names the server's timeout.
+ */
+export const PROGRESS_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * The longest a call that reports progress may run. Past muster's own
+ * bound of one hour, so muster reports the cut.
+ */
+export const PROGRESS_CALL_MAX_MS = 65 * 60_000;
+
+/** The part of an MCP SDK client a call with progress uses. */
+export interface ProgressCallClient {
+  callTool: SdkClient['callTool'];
+  /** Ends the call's MCP session and closes the connection. */
+  close(): Promise<void>;
+}
+
+async function connectProgressClient(
+  url: string,
+  headers: Record<string, string> | undefined,
+): Promise<ProgressCallClient> {
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: { headers },
+  });
+  const client = new SdkClient({ name: 'muster-backend', version: '1.0.0' });
+  await client.connect(transport);
+  return {
+    callTool: client.callTool.bind(client),
+    close: async () => {
+      await transport.terminateSession().catch(() => undefined);
+      await client.close();
+    },
+  };
+}
+
 /**
  * Thin client around a single muster MCP aggregator. It exposes muster's
  * meta-tools as typed JSON calls: discovery meta-tools are invoked directly,
@@ -271,8 +319,65 @@ export class MusterMcpClient {
           headers,
         },
       }),
+    private readonly progressClientFactory: (
+      headers: Record<string, string> | undefined,
+    ) => Promise<ProgressCallClient> = headers =>
+      connectProgressClient(installation.url, headers),
   ) {
     this.cache = new McpClientCache(logger);
+  }
+
+  /**
+   * Like {@link callTool}, for a tool that reports progress while it works.
+   * The call carries a progressToken, each `notifications/progress` muster
+   * relays reaches `onProgress`, and each one restarts the wait for the
+   * answer, so the call lasts as long as the tool keeps reporting, up to
+   * {@link PROGRESS_CALL_MAX_MS}. `signal` cancels the call, which muster
+   * passes on to the tool.
+   *
+   * The call runs on an MCP session of its own, opened with the official
+   * MCP SDK: the cached `@ai-sdk/mcp` client sends no progressToken and
+   * drops notifications.
+   */
+  async callToolWithProgress(
+    toolName: string,
+    args: Record<string, unknown>,
+    options: {
+      authToken?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<unknown> {
+    let client: ProgressCallClient;
+    try {
+      client = await this.progressClientFactory(
+        this.headersFor(options.authToken),
+      );
+    } catch (error) {
+      throw this.explain(error);
+    }
+    try {
+      const result = await client.callTool(
+        { name: CALL_TOOL, arguments: { name: toolName, arguments: args } },
+        undefined,
+        {
+          onprogress: ({ progress, total, message }) =>
+            options.onProgress({ progress, total, message }),
+          resetTimeoutOnProgress: true,
+          timeout: PROGRESS_IDLE_TIMEOUT_MS,
+          maxTotalTimeout: PROGRESS_CALL_MAX_MS,
+          signal: options.signal,
+        },
+      );
+      return this.parseResult(result, toolName);
+    } catch (error) {
+      if (error instanceof MusterToolError) {
+        throw error;
+      }
+      throw this.explain(error);
+    } finally {
+      await client.close().catch(() => undefined);
+    }
   }
 
   /**
@@ -407,16 +512,18 @@ export class MusterMcpClient {
   }> {
     const authToken = options?.authToken;
     const cacheKey = McpClientCache.buildKey(this.installation.name, authToken);
-
-    const headers: Record<string, string> | undefined =
-      authToken !== undefined
-        ? { ...this.installation.headers, Authorization: `Bearer ${authToken}` }
-        : this.installation.headers;
-
     const client = await this.cache.getOrCreate(cacheKey, () =>
-      this.clientFactory(headers),
+      this.clientFactory(this.headersFor(authToken)),
     );
     return { client, cacheKey };
+  }
+
+  private headersFor(
+    authToken: string | undefined,
+  ): Record<string, string> | undefined {
+    return authToken !== undefined
+      ? { ...this.installation.headers, Authorization: `Bearer ${authToken}` }
+      : this.installation.headers;
   }
 
   /**

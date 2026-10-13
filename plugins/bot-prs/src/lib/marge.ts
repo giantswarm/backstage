@@ -549,6 +549,14 @@ function messageOf(error: unknown): string {
   return typeof message === 'string' ? message : String(error);
 }
 
+/**
+ * The muster client's `MusterAnswerCutError`: a streamed answer that ended
+ * before its result, recognised by its name.
+ */
+function isAnswerCut(error: unknown): boolean {
+  return (error as { name?: unknown } | null)?.name === 'MusterAnswerCutError';
+}
+
 export function looksAnswerLost(error: unknown): boolean {
   if (error instanceof TypeError) {
     return NETWORK_FAILURE_PATTERNS.some(pattern =>
@@ -571,7 +579,7 @@ export function classifyMargeError(error: unknown): Error {
     return error;
   }
   const message = messageOf(error);
-  if (looksAnswerLost(error)) {
+  if (isAnswerCut(error) || looksAnswerLost(error)) {
     return new MargeAnswerLostError(message, { cause: error });
   }
   if (looksNotConnected(message)) {
