@@ -38,7 +38,7 @@ import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
   authStatusQueryKey,
-  ServerAuthActions,
+  ServerSignInStatus,
   SessionGate,
   useServerPageLinks,
   useToolCatalogue,
@@ -145,7 +145,12 @@ function ConnectorName({ row, href }: { row: Row; href?: string }) {
   );
 }
 
-function ConnectorStatusCell({
+/**
+ * A row's state in a few words that always fit, with any explanation in a
+ * tooltip beside them and, where muster asks this person for one, the
+ * sign-in button.
+ */
+function ConnectorStatus({
   row,
   installation,
 }: {
@@ -153,27 +158,40 @@ function ConnectorStatusCell({
   installation: string;
 }) {
   const status = connectorStatus(row.entry, row.authStatus);
+  if (!row.signInServer) {
+    return status.label ? (
+      <StatusDot tone={status.tone} label={status.label} />
+    ) : null;
+  }
+  return (
+    <ServerSignInStatus
+      noun="connector"
+      serverName={row.signInServer}
+      installation={installation}
+      status={status}
+    />
+  );
+}
+
+function ConnectorStatusCell({
+  row,
+  installation,
+}: {
+  row: Row;
+  installation: string;
+}) {
   return (
     <Cell>
-      <Flex align="center" justify="between" gap="2">
-        <StatusDot tone={status.tone} label={status.label} />
-        {row.signInServer && (
-          // The row opens the connector; the sign-in must not.
-          <span
-            onPointerDown={stopRowPress}
-            onPointerUp={stopRowPress}
-            onClick={stopRowPress}
-            onKeyDown={stopRowPress}
-            role="presentation"
-          >
-            <ServerAuthActions
-              noun="connector"
-              serverName={row.signInServer}
-              installation={installation}
-            />
-          </span>
-        )}
-      </Flex>
+      {/* The row opens the connector; the sign-in and the hint must not. */}
+      <span
+        onPointerDown={stopRowPress}
+        onPointerUp={stopRowPress}
+        onClick={stopRowPress}
+        onKeyDown={stopRowPress}
+        role="presentation"
+      >
+        <ConnectorStatus row={row} installation={installation} />
+      </span>
     </Cell>
   );
 }
@@ -185,11 +203,10 @@ function ConnectorStatusCell({
  * row per connector instead:
  *
  * - line 1: the letter tile, the connector's name (the row's link) and its
- *   state;
+ *   state, with the sign-in beside the state (it wraps under the name when
+ *   line 1 is full);
  * - line 2: how one signs in · its tools;
- * - under them, the description (two lines) and the sign-in, outside the
- *   link. The sign-in grows into a sentence and a second button while it
- *   waits on the person, so it gets the row's width, not the end of line 1.
+ * - under them, the description (two lines).
  */
 function ConnectorStackedList({
   rows,
@@ -204,31 +221,19 @@ function ConnectorStackedList({
 }) {
   const classes = useStyles();
   const items = rows.map<StackedRowItem>(row => {
-    const status = connectorStatus(row.entry, row.authStatus);
     const href = hrefOf(row);
-    const details =
-      row.description || row.signInServer ? (
-        <Flex direction="column" gap="2" align="start">
-          {row.description && (
-            <Text
-              variant="body-small"
-              color="secondary"
-              className={classes.description}
-            >
-              {row.description}
-            </Text>
-          )}
-          {row.signInServer && (
-            <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-              <ServerAuthActions
-                noun="connector"
-                serverName={row.signInServer}
-                installation={installation}
-              />
-            </Flex>
-          )}
-        </Flex>
-      ) : undefined;
+    const details = row.description ? (
+      <Text
+        variant="body-small"
+        color="secondary"
+        className={classes.description}
+      >
+        {row.description}
+      </Text>
+    ) : undefined;
+    const hasStatus =
+      Boolean(row.signInServer) ||
+      connectorStatus(row.entry, row.authStatus).label !== '';
     return {
       id: row.id,
       title: row.entry.id,
@@ -238,8 +243,10 @@ function ConnectorStackedList({
           {row.entry.id.charAt(0).toUpperCase()}
         </span>
       ),
-      ...(status.label
-        ? { status: <StatusDot tone={status.tone} label={status.label} /> }
+      ...(hasStatus
+        ? {
+            status: <ConnectorStatus row={row} installation={installation} />,
+          }
         : {}),
       facts: [row.auth, row.tools ?? (toolsPending ? '…' : '')],
       ...(details ? { details } : {}),
