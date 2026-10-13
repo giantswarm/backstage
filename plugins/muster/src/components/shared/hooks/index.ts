@@ -4,3 +4,5 @@ export type {
   StatusText,
   UseServerSignInStatusOptions,
 } from './useServerSignInStatus';
+export { useConnectorGroupPaths } from './useConnectorGroupPaths';
+export type { ConnectorGroupPaths } from './useConnectorGroupPaths';

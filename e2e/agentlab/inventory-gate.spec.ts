@@ -27,7 +27,8 @@ test('with a token the API server accepts, Customize · Connectors renders witho
     !!process.env.AGENTLAB_INVENTORY_REFUSED,
     'the lab portal requests no audience the apiserver accepts, every probe is refused',
   );
-  await open(admin, serversPath);
+  // The kubernetes family is listed on the Infrastructure sub-tab.
+  await open(admin, '/customize/connectors/infrastructure');
   await expect(
     admin.getByRole('row', { name: /^kubernetes( |$)/ }),
     'Customize · Connectors renders its CRD-backed table',

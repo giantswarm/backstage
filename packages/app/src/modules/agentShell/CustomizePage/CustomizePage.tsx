@@ -16,6 +16,7 @@ import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
   PageHeaderActionsProvider,
+  RouteTabs,
   ShellDocumentTitle,
   ShellPage,
   usePhoneLayout,
@@ -33,9 +34,15 @@ import {
   WorkflowCreateAssist,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import musterPlugin, {
+  CONNECTOR_GROUPS,
+  type ConnectorGroup,
+  connectorGroupInfo,
+  connectorGroupOfPath,
   CustomizeConnectorsPanel,
   CustomizeMusterProvider,
   CustomizeWorkflowsPanel,
+  LEGACY_CONNECTOR_GROUP_PATHS,
+  type MusterCustomizeCounts,
   useMusterCustomizeCounts,
 } from '@giantswarm/backstage-plugin-muster';
 import { customizeRouteRef } from '../routes';
@@ -129,14 +136,24 @@ function CreateAction({
   );
 }
 
-function TabPanel({ tab, search }: { tab: CustomizeTabId; search: string }) {
+function TabPanel({
+  tab,
+  search,
+  connectorGroup,
+}: {
+  tab: CustomizeTabId;
+  search: string;
+  connectorGroup: ConnectorGroup;
+}) {
   switch (tab) {
     case 'agents':
       return <CustomizeAgentsPanel search={search} />;
     case 'skills':
       return <CustomizeSkillsPanel search={search} />;
     case 'connectors':
-      return <CustomizeConnectorsPanel search={search} />;
+      return (
+        <CustomizeConnectorsPanel search={search} group={connectorGroup} />
+      );
     case 'models':
       return <CustomizeModelsPanel search={search} />;
     default:
@@ -156,6 +173,34 @@ function renderWorkflowCreateAssist(installation: string) {
 }
 
 /**
+ * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
+ * connectors at the tab's own address, those for the platform's
+ * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
+ * views, keeping the query string, so the installation scope and a search the
+ * palette brought (`?q=`) survive a switch.
+ */
+function ConnectorGroupTabs({
+  counts,
+}: {
+  counts: MusterCustomizeCounts['connectorGroups'];
+}) {
+  const customizeLink = useRouteRef(customizeRouteRef);
+  const { search } = useLocation();
+  return (
+    <RouteTabs
+      basePath={`${customizeLink?.() ?? '/customize'}/connectors`}
+      search={search}
+      tabs={CONNECTOR_GROUPS.map(({ id, path, title }) => ({
+        id,
+        path,
+        title,
+        count: counts?.[id],
+      }))}
+    />
+  );
+}
+
+/**
  * One tab: its search and action, and its panel. Global-only (D4): no
  * organization filter; the Environment select shows only with more than one.
  *
@@ -165,7 +210,14 @@ function renderWorkflowCreateAssist(installation: string) {
  * under the search, from its own data, and only those that would change the
  * list.
  */
-function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
+function CustomizeTabContent({
+  tab,
+  connectorGroup = 'yours',
+}: {
+  tab: CustomizeTab;
+  /** The Connectors tab's sub-tab; the customer's own connectors by default. */
+  connectorGroup?: ConnectorGroup;
+}) {
   const { counts, hasSkillRepositories } = useCustomizeData();
   const canAddSkill = useCanAddSkill();
   const create = tab.id === 'skills' && !canAddSkill ? undefined : tab.create;
@@ -180,8 +232,13 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
 
   const tabCounts: Partial<Record<CustomizeTabId, number>> = {
     ...counts,
-    ...musterCounts,
+    connectors: musterCounts.connectors,
+    workflows: musterCounts.workflows,
   };
+  const groupTitle =
+    tab.id === 'connectors' && connectorGroup !== 'yours'
+      ? connectorGroupInfo(connectorGroup).title
+      : undefined;
   const tabs = CUSTOMIZE_TABS.filter(
     candidate => candidate.id !== 'skills' || hasSkillRepositories !== false,
   ).map(({ id, title }) => ({ id, path: id, title, count: tabCounts[id] }));
@@ -192,12 +249,19 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
       // Each tab names itself, as the section's pages do: "Agents · Customize
       // · Agent Platform". Without it every tab carried the bare "Customize"
       // (live round 2, R5).
-      documentTitle={[tab.title, 'Customize']}
+      documentTitle={
+        groupTitle
+          ? [groupTitle, tab.title, 'Customize']
+          : [tab.title, 'Customize']
+      }
       description="Manage the agents, skills, connectors and models behind your sessions."
       actions={<EnvironmentSelect component={tab.component} />}
       tabs={tabs}
     >
       <Flex direction="column" gap="5">
+        {tab.id === 'connectors' && (
+          <ConnectorGroupTabs counts={musterCounts.connectorGroups} />
+        )}
         <Flex
           align="center"
           justify="between"
@@ -222,7 +286,11 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
           </div>
           {create && <CreateAction create={create} fullWidth={isPhone} />}
         </Flex>
-        <TabPanel tab={tab.id} search={search} />
+        <TabPanel
+          tab={tab.id}
+          search={search}
+          connectorGroup={connectorGroup}
+        />
       </Flex>
     </ShellPage>
   );
@@ -243,20 +311,82 @@ function DefaultTabRedirect() {
   );
 }
 
+/** Opens a Connectors sub-tab at its own address, keeping the query string. */
+function ConnectorsTabRedirect({ group }: { group: ConnectorGroup }) {
+  const { search } = useLocation();
+  const customizeLink = useRouteRef(customizeRouteRef);
+  const { path } = connectorGroupInfo(group);
+  return (
+    <Navigate
+      to={{
+        pathname: `${customizeLink?.() ?? '/customize'}/connectors${
+          path ? `/${path}` : ''
+        }`,
+        search,
+      }}
+      replace
+    />
+  );
+}
+
+/**
+ * The Connectors sub-tab a path below the tab names: none for the tab's own
+ * address, one segment for the others. Anything else (a deeper path, an
+ * unknown segment) is undefined. A connector's own page lives under the Agent
+ * Platform, so no connector's name is ever a path here.
+ */
+function connectorGroupOfSegments(
+  segments: string[],
+): ConnectorGroup | undefined {
+  if (segments.length === 0) {
+    return 'yours';
+  }
+  return segments.length === 1 && segments[0] !== ''
+    ? connectorGroupOfPath(segments[0])
+    : undefined;
+}
+
 function CustomizeTabPage() {
-  const tabId = (useParams()['*'] ?? '').split('/')[0];
+  const splat = useParams()['*'] ?? '';
+  const [tabId, ...rest] = splat.split('/');
   const { search } = useLocation();
   const { hasSkillRepositories } = useCustomizeData();
   const tab = CUSTOMIZE_TABS.find(candidate => candidate.id === tabId);
   if (!tab || (tab.id === 'skills' && hasSkillRepositories === false)) {
     return <DefaultTabRedirect />;
   }
+  let connectorGroup: ConnectorGroup | undefined;
+  if (tab.id === 'connectors') {
+    // A trailing slash names the same sub-tab, at its own address, so the
+    // strip can tell which is open; a retired sub-tab path (`families`)
+    // names the sub-tab it became; any other path lands on the default.
+    const trimmed = rest[rest.length - 1] === '' ? rest.slice(0, -1) : rest;
+    const retired =
+      trimmed.length === 1 &&
+      Object.hasOwn(LEGACY_CONNECTOR_GROUP_PATHS, trimmed[0])
+        ? LEGACY_CONNECTOR_GROUP_PATHS[trimmed[0]]
+        : undefined;
+    if (retired) {
+      return <ConnectorsTabRedirect group={retired} />;
+    }
+    connectorGroup = connectorGroupOfSegments(trimmed);
+    if (!connectorGroup || trimmed.length !== rest.length) {
+      return <ConnectorsTabRedirect group={connectorGroup ?? 'yours'} />;
+    }
+  }
   // Keyed by tab, so the search starts over on each tab — and by the
   // address's `q`, so a link that brings a search (the palette's "+N more")
   // reseeds it even when it lands on the tab already open. Typing never
   // writes `q` back, so a keystroke does not remount anything.
   const query = new URLSearchParams(search).get('q') ?? '';
-  return <CustomizeTabContent key={`${tab.id}?${query}`} tab={tab} />;
+  // Not keyed by the sub-tab: a search carries over to the next one.
+  return (
+    <CustomizeTabContent
+      key={`${tab.id}?${query}`}
+      tab={tab}
+      connectorGroup={connectorGroup}
+    />
+  );
 }
 
 /** The Customize screen itself: its tabs, over the data they share. */

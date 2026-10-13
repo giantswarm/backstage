@@ -95,7 +95,16 @@ const stubPagePlugin = createFrontendPlugin({
 
 // Generated class-name counters and React ids differ between two renders.
 function normalized(html: string): string {
-  return html.replace(/-\d+\b/g, '-N').replace(/\br\d+\b/g, 'rN');
+  return (
+    html
+      .replace(/-\d+\b/g, '-N')
+      .replace(/\br\d+\b/g, 'rN')
+      // React's useId counts in base 32 (`ra`, `r1f`): an id derived from
+      // one (the logo's gradient, `gs-logo-ant-ra`) ends in letters once a
+      // run has handed out ten ids, which follows from the tests before and
+      // not from the chrome.
+      .replace(/-r[0-9a-v]+(?=[")])/g, '-rN')
+  );
 }
 
 function renderApp(

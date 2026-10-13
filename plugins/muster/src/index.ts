@@ -51,6 +51,13 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
+  CONNECTOR_GROUPS,
+  connectorGroupInfo,
+  connectorGroupOfPath,
+  LEGACY_CONNECTOR_GROUP_PATHS,
+} from './lib/connectorGroups';
+export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export {
   installationErrorLine,
   isMcpTransportText,
 } from './lib/installationError';
