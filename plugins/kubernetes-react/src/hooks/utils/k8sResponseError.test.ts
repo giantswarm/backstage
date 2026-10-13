@@ -1,4 +1,5 @@
 import { k8sResponseError, k8sResponseReason } from './k8sResponseError';
+import { isObjectNotFound } from './queries';
 
 function failedResponse(response: Partial<Response>): Response {
   return { ok: false, statusText: '', ...response } as Response;
@@ -137,5 +138,57 @@ describe('k8sResponseError', () => {
         }),
       ).resolves.toBe('HTTP 401');
     });
+  });
+});
+
+describe('k8sResponseError notFoundName', () => {
+  it('names the object a 404 Status names', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 404,
+        json: async () => ({
+          kind: 'Status',
+          reason: 'NotFound',
+          message: 'clusters.cluster.x-k8s.io "wc1" not found',
+          details: { name: 'wc1', group: 'cluster.x-k8s.io', kind: 'clusters' },
+        }),
+      }),
+      'Failed to fetch x',
+    );
+
+    expect(error.name).toBe('NotFoundError');
+    expect(error.notFoundName).toBe('wc1');
+    expect(isObjectNotFound(error)).toBe(true);
+  });
+
+  it('names no object for a 404 of an API path the apiserver does not serve', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 404,
+        json: async () => ({
+          kind: 'Status',
+          reason: 'NotFound',
+          message: 'the server could not find the requested resource',
+          details: {},
+        }),
+      }),
+      'Failed to fetch x',
+    );
+
+    expect(error.name).toBe('NotFoundError');
+    expect(error.notFoundName).toBeUndefined();
+    expect(isObjectNotFound(error)).toBe(false);
+  });
+
+  it('names no object for a status other than 404', async () => {
+    const error = await k8sResponseError(
+      failedResponse({
+        status: 403,
+        json: async () => ({ kind: 'Status', details: { name: 'wc1' } }),
+      }),
+      'Failed to fetch x',
+    );
+
+    expect(isObjectNotFound(error)).toBe(false);
   });
 });
