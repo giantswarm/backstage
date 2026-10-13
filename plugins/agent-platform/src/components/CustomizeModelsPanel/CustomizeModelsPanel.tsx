@@ -19,7 +19,8 @@ import {
   INITIAL_ROWS,
   LoadingIndicator,
   ShowMore,
-  StatusWithHint,
+  StatusDot,
+  StatusHint,
   useCatalogFilters,
   usePhoneColumns,
   usePhoneLayout,
@@ -59,19 +60,25 @@ const MODEL_FACETS: CatalogFacet<ModelRow>[] = [
 /**
  * A model's state, and beside it the controller's reason where the verdict
  * falls short ("Not accepted" because a key Secret is missing): a hint, so
- * the label stays short enough to read in the column, as the connectors'
- * status does.
+ * the label stays short enough to read in the column. The connectors'
+ * status layout: the dot and label, then the `StatusHint`, 4px apart, the
+ * pair never shrinking.
  */
 function ModelStatusCell({ row }: { row: Row }) {
   const status = modelStatus(row);
   return (
     <Cell>
-      <StatusWithHint
-        tone={status.tone}
-        label={status.label}
-        hint={status.detail}
-        hintLabel={`About the state of ${row.displayName}`}
-      />
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--bui-space-1)',
+          flex: 'none',
+        }}
+      >
+        <StatusDot tone={status.tone} label={status.label} />
+        <StatusHint subject={row.displayName} explanation={status.detail} />
+      </span>
     </Cell>
   );
 }

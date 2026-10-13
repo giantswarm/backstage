@@ -84,6 +84,7 @@ import {
 } from '../ServerPage/useServerPageData';
 import { useServerCapabilityCounts } from '../McpServersPage/serverDetail';
 import {
+  authActionParts,
   deactivatedSignInGate,
   familyHealthLabel,
   ServerAuthActions,
@@ -281,6 +282,17 @@ function ConnectorPageContent({
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
+  // An SSO connector muster failed to connect for this person: the Customize
+  // list says "Could not sign in" and keeps the why in a hint; this page says
+  // it in full. Where muster asks for a sign-in, the Tools tab's gate already
+  // carries the same sentence.
+  const signInParts = canSignIn
+    ? authActionParts(singular!.getName(), signIn, { noun: 'connector' })
+    : undefined;
+  const ssoFailure =
+    signInParts?.kind === 'sso' && !signIn.needsLogin
+      ? signInParts.explanation
+      : undefined;
   const canSignOut =
     canSignIn &&
     !signIn.isSsoManaged &&
@@ -579,6 +591,7 @@ function ConnectorPageContent({
         }
       >
         <Flex direction="column" gap="3">
+          {ssoFailure && <Alert status="danger" description={ssoFailure} />}
           {canSignIn && signIn.error && (
             <Alert status="danger" description={signIn.error} />
           )}

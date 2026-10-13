@@ -22,6 +22,7 @@ import {
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
+  servedModelStatusExplanation,
   servedModelStatusLines,
   sortServedModelsBy,
 } from './ServedModelsTable';
@@ -33,6 +34,22 @@ const renderTable = (element: React.ReactElement) =>
       '/customize': customizeExternalRouteRef,
     },
   });
+
+/**
+ * Hovers a row's status hint and returns its tooltip. The pointer moves over
+ * the page first: react-aria opens a tooltip on hover only once it has seen
+ * a pointer move, and a hover's own move lands after its enter.
+ */
+async function hintTooltip(
+  user: ReturnType<typeof userEvent.setup>,
+  subject: string,
+) {
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: `About the state of ${subject}` }),
+  );
+  return screen.findByRole('tooltip');
+}
 
 /** Three InferenceServices on two installations, read as CRs. */
 const rows: ServedModelRow[] = [
@@ -402,6 +419,10 @@ describe('ServedModelStatusCell · GPU share', () => {
 });
 
 describe('ServedModelStatusCell · the reason behind a state', () => {
+  /** The scheduler's whole answer, as kube-scheduler words it on the lab. */
+  const SCHEDULER =
+    '0/3 nodes are available: 3 Insufficient nvidia.com/gpu. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod.';
+
   /** model-manager 0.23.4's view of a served model whose predictor pod waits for a GPU node. */
   const stuck: ServedModelRow = {
     ...rows[1],
@@ -410,21 +431,18 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
     namespace: 'model-serving',
     readiness: 'pending',
     readinessReason: 'Unschedulable',
-    readinessMessage: '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    readinessMessage: SCHEDULER,
     node: undefined,
     nodeSource: undefined,
   };
 
-  it('lists the explanation under the label only where the backend named a reason', () => {
-    expect(servedModelStatusLines(stuck)).toEqual([
-      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
-    ]);
+  it('never lists the explanation under the label; the hint carries it', () => {
+    expect(servedModelStatusLines(stuck)).toEqual([]);
+    expect(servedModelStatusExplanation(stuck)).toBe(SCHEDULER);
+    // A neutral state without the backend's word for it needs no look.
     expect(
-      servedModelStatusLines({
-        ...stuck,
-        readinessReason: undefined,
-      }),
-    ).toEqual([]);
+      servedModelStatusExplanation({ ...stuck, readinessReason: undefined }),
+    ).toBeUndefined();
     // A model that is not running has no footprint to report, whatever its
     // inventory entry says: KServe lists the preset's weights as the size of a
     // model it has not started.
@@ -434,39 +452,41 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
         loaded: true,
         memoryBytes: 8_050_000_000,
       }),
-    ).toEqual(['0/3 nodes are available: 3 Insufficient nvidia.com/gpu.']);
-    expect(
-      servedModelStatusLines({
-        ...ollamaRows[1],
-        readiness: 'notReady',
-        readinessReason: 'Faulted',
-        readinessMessage: 'The server answered 500.',
-      }),
-    ).toEqual(['The server answered 500.']);
+    ).toEqual([]);
+    const faulted: ServedModelRow = {
+      ...ollamaRows[1],
+      readiness: 'notReady',
+      readinessReason: 'Faulted',
+      readinessMessage: 'The server answered 500.',
+    };
+    expect(servedModelStatusLines(faulted)).toEqual([]);
+    expect(servedModelStatusExplanation(faulted)).toBe(
+      'The server answered 500.',
+    );
+    // A healthy state keeps its message on hover, not in a hint.
+    expect(servedModelStatusExplanation(ollamaRows[0])).toBeUndefined();
     expect(
       servedModelStatusLines({ ...ollamaRows[0], readiness: 'terminating' }),
     ).toEqual([]);
   });
 
-  it('reads Pending · Unschedulable with the scheduler’s text under it and on hover', async () => {
+  it('reads Pending · Unschedulable, the scheduler’s text in a hint, not in the cell', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={[stuck]} />);
 
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByTestId('served-readiness-reason')).toHaveTextContent(
       '· Unschedulable',
     );
-    expect(
-      screen.getByText(
-        '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Pending').closest('[title]')).toHaveAttribute(
-      'title',
-      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    // The paragraph used to fill the cell under the label.
+    expect(screen.queryByText(SCHEDULER)).toBeNull();
+    expect(await hintTooltip(user, 'qwen3-4b-instruct')).toHaveTextContent(
+      SCHEDULER,
     );
   });
 
-  it('keeps a row without a reason as it was: the label, the explanation on hover only', async () => {
+  it('puts a Not ready row’s explanation in the hint, not in the cell', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={[rows[1]]} />);
 
     expect(screen.getByText('Not ready')).toBeInTheDocument();
@@ -474,10 +494,21 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
     expect(
       screen.queryByText('Deployment does not have minimum availability.'),
     ).toBeNull();
-    expect(screen.getByText('Not ready').closest('[title]')).toHaveAttribute(
-      'title',
+    expect(await hintTooltip(user, 'devstral')).toHaveTextContent(
       'Deployment does not have minimum availability.',
     );
+  });
+
+  it('keeps a healthy row as it was: the label, its message on hover, no hint', async () => {
+    await renderTable(<ServedModelsTable rows={[ollamaRows[0]]} />);
+
+    expect(screen.getByText('Ready').closest('[title]')).toHaveAttribute(
+      'title',
+      'Loaded in memory until 13:05.',
+    );
+    expect(
+      screen.queryByRole('button', { name: /^About the state of/ }),
+    ).toBeNull();
   });
 
   it('reads a model being deleted as Stopping', async () => {
@@ -534,8 +565,10 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
         wire: false,
       }),
     ).toBe('waiting for a node');
-    expect(downloadLine(failedDownload.download)).toBe(
-      'Download failed: pull model manifest: file does not exist',
+    // The error is the status hint's, never the cell's.
+    expect(downloadLine(failedDownload.download)).toBe('Download failed');
+    expect(servedModelStatusExplanation(failedDownload)).toBe(
+      'pull model manifest: file does not exist',
     );
     expect(downloadLine({ jobId: 'x', phase: 'failed', wire: false })).toBe(
       'Download failed',
@@ -553,9 +586,7 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
     expect(servedModelStatusLines(downloading)).toEqual([
       'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
     ]);
-    expect(servedModelStatusLines(failedDownload)).toEqual([
-      'Download failed: pull model manifest: file does not exist',
-    ]);
+    expect(servedModelStatusLines(failedDownload)).toEqual(['Download failed']);
     expect(servedModelStatusLines({ ...downloading, loaded: false })).toEqual([
       'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
     ]);
@@ -738,12 +769,13 @@ describe('ServedModelsTable', () => {
     ).toBeInTheDocument();
   });
 
-  it('explains a not-ready model in the status tooltip', async () => {
+  it('explains a not-ready model in the status hint', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={rows} />);
 
-    expect(
-      screen.getByTitle('Deployment does not have minimum availability.'),
-    ).toBeInTheDocument();
+    expect(await hintTooltip(user, 'devstral')).toHaveTextContent(
+      'Deployment does not have minimum availability.',
+    );
   });
 
   it('shows a fresh LLMInferenceService with nothing but its name and status', async () => {
@@ -981,21 +1013,19 @@ describe('ServedModelsTable', () => {
     });
 
     it('keeps a failed pull as a Not ready row with the failure in the status cell and no bar', async () => {
+      const user = userEvent.setup();
       await renderTable(
         <ServedModelsTable rows={[...ollamaRows, failedDownload]} />,
       );
 
       expect(screen.getByText('Not ready')).toBeInTheDocument();
+      expect(screen.getByText('Download failed')).toBeInTheDocument();
       expect(
-        screen.getByText(
-          'Download failed: pull model manifest: file does not exist',
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByTitle(
-          'The pull failed: pull model manifest: file does not exist',
-        ),
-      ).toBeInTheDocument();
+        screen.queryByText(/pull model manifest: file does not exist/),
+      ).toBeNull();
+      expect(await hintTooltip(user, 'nope:latest')).toHaveTextContent(
+        'pull model manifest: file does not exist',
+      );
       expect(screen.queryByRole('progressbar')).toBeNull();
     });
 
@@ -1344,11 +1374,17 @@ describe('ServedModelsTable at phone width', () => {
     ).toBeVisible();
 
     const devstral = items[1];
-    // The explanation inline, not only on hover; the pin said as one.
+    // A troubled state keeps to its words; the explanation is the hint a
+    // press opens. The pin is said as one.
     expect(
-      within(devstral).getByText(
+      within(devstral).queryByText(
         'Deployment does not have minimum availability.',
       ),
+    ).toBeNull();
+    expect(
+      within(devstral).getByRole('button', {
+        name: 'About the state of devstral',
+      }),
     ).toBeVisible();
     expect(
       within(devstral).getByText('pinned to gpu-node-1, no pod yet'),
@@ -1420,17 +1456,20 @@ describe('ServedModelsTable at phone width', () => {
 });
 
 describe('phoneStatusLines and describePlacement', () => {
-  it('brings an explanation without a reason inline, once', () => {
-    expect(phoneStatusLines(rows[1])).toEqual([
-      'Deployment does not have minimum availability.',
+  it('brings a healthy state’s explanation inline, a troubled one’s never', () => {
+    expect(phoneStatusLines(ollamaRows[1])).toEqual([
+      'Downloaded; not loaded in memory.',
+      'Not loaded',
     ]);
-    // A row with a reason already lists its explanation; no second copy.
-    const withReason = {
-      ...rows[1],
-      readinessReason: 'Unschedulable',
-      readinessMessage: '0/3 nodes are available.',
-    };
-    expect(phoneStatusLines(withReason)).toEqual(['0/3 nodes are available.']);
+    // Not ready, or a state the backend named a reason for: the hint's.
+    expect(phoneStatusLines(rows[1])).toEqual([]);
+    expect(
+      phoneStatusLines({
+        ...rows[2],
+        readinessReason: 'Unschedulable',
+        readinessMessage: '0/3 nodes are available.',
+      }),
+    ).toEqual([]);
   });
 
   it('says where a model runs', () => {

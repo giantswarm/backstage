@@ -580,14 +580,19 @@ describe('CustomizeAgentsPanel at phone width (T22 P2)', () => {
     );
   });
 
-  it('says why a not-Ready agent needs a look in the row, not a tooltip', async () => {
+  it('keeps a not-Ready agent’s state to its few words; its page says why', async () => {
+    const reason =
+      'Model config sonnet not found. The agent references a model config that does not exist in its namespace, so the controller cannot render its deployment; create the model config or pick another one.';
+    mockAgents = {
+      ...mockAgents,
+      rows: [triage, { ...failing, readinessMessage: reason }],
+    };
     await renderPanel();
 
     const costs = items().find(item => within(item).queryByText(longName))!;
     expect(within(costs).getByText('Failed')).toBeInTheDocument();
-    expect(
-      within(costs).getByText('Model config sonnet not found'),
-    ).toBeInTheDocument();
+    // The paragraph used to fill two lines of the row.
+    expect(within(costs).queryByText(reason)).not.toBeInTheDocument();
     // A Ready agent says nothing extra.
     expect(items()[0]).toHaveTextContent(/Support triageSorts tickets/);
   });

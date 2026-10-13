@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   mockDesktopLayout,
   mockPhoneLayout,
@@ -603,6 +604,20 @@ const sparkPinnedOut: GpuNode = {
 const rowOf = (name: string) =>
   screen.getByText(name).closest('[role="row"]') as HTMLElement;
 
+/**
+ * Hovers a node's status hint and returns its tooltip. The pointer moves over
+ * the page first: react-aria opens a tooltip on hover only once it has seen
+ * a pointer move, and a hover's own move lands after its enter.
+ */
+async function hintTooltip(node: string) {
+  const user = userEvent.setup();
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: `About the state of ${node}` }),
+  );
+  return screen.findByRole('tooltip');
+}
+
 describe('GpuCapacityPanel · serving targets', () => {
   it('marks a node pinned out by the cache claim as a target for model-image presets', async () => {
     await renderInTestApp(
@@ -616,13 +631,12 @@ describe('GpuCapacityPanel · serving targets', () => {
 
     const marker = screen.getByText(MODEL_IMAGE_TARGET_DESCRIPTION);
     expect(rowOf('spark-e119')).toContainElement(marker);
-    expect(marker).toHaveAttribute(
-      'title',
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Serving target for model-image presets; Hugging Face presets: cache claim hf-cache is pinned to spark-8723',
     );
   });
 
-  it('marks a node the serving layer will not place a model on, with its reason on hover', async () => {
+  it('marks a node the serving layer will not place a model on, with its reason in a hint', async () => {
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[sparkTarget, sparkPinnedOut]}
@@ -634,8 +648,13 @@ describe('GpuCapacityPanel · serving targets', () => {
 
     const marker = screen.getByText(NOT_SERVING_TARGET_DESCRIPTION);
     expect(rowOf('spark-e119')).toContainElement(marker);
-    expect(marker).toHaveAttribute(
-      'title',
+    // The cell keeps to its few words; the reason is the hint's.
+    expect(
+      within(rowOf('spark-e119')).queryByText(
+        'Not a serving target: cache claim hf-cache is pinned to spark-8723',
+      ),
+    ).toBeNull();
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Not a serving target: cache claim hf-cache is pinned to spark-8723',
     );
     // The reason sits in the budget tooltip too, next to the budget's source.
@@ -653,6 +672,9 @@ describe('GpuCapacityPanel · serving targets', () => {
     // The target reads as before: no marker, no hint in its cache cell.
     expect(
       within(rowOf('spark-8723')).queryByText(NOT_SERVING_TARGET_DESCRIPTION),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'About the state of spark-8723' }),
     ).toBeNull();
     expect(screen.getByText('20 models')).toBeInTheDocument();
     expect(screen.queryByText(NO_CACHE_ON_NODE_HINT)).not.toBeInTheDocument();
@@ -673,8 +695,7 @@ describe('GpuCapacityPanel · serving targets', () => {
       />,
     );
 
-    expect(screen.getByText(NOT_SERVING_TARGET_DESCRIPTION)).toHaveAttribute(
-      'title',
+    expect(await hintTooltip('spark-e119')).toHaveTextContent(
       'Not a serving target: the serving layer gave no reason',
     );
   });
@@ -817,7 +838,7 @@ describe('describeNode / lacksInstallationCache', () => {
 });
 
 // T22 B15: up to ten columns squashed in 343px, and a node's ineligibility
-// reason only on hover.
+// reason only on hover; T104: the reason is a hint a press opens.
 describe('GpuCapacityPanel at phone width', () => {
   let layout: MockedLayout;
   afterEach(() => layout.restore());
@@ -867,27 +888,38 @@ describe('GpuCapacityPanel at phone width', () => {
     ).toBeVisible();
   });
 
-  it('says why a node is not a serving target under its name, and the card says where to look', async () => {
+  it('keeps a node that is not a serving target to its few words, the reason in its hint', async () => {
     layout = mockPhoneLayout();
     await renderPanel();
 
+    const row = nodeRow('cpu-pool-node');
+    expect(within(row).getByText(NOT_SERVING_TARGET_DESCRIPTION)).toBeVisible();
     expect(
-      within(nodeRow('cpu-pool-node')).getByTestId('gpu-node-reason'),
-    ).toHaveTextContent(
-      `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
-    );
-    expect(screen.getByText(/the reason is under its name\./)).toBeVisible();
+      within(row).queryByText(
+        `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
+      ),
+    ).toBeNull();
+    expect(
+      within(row).getByRole('button', {
+        name: 'About the state of cpu-pool-node',
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/the info icon beside it says which\./),
+    ).toBeVisible();
   });
 
-  it('says the reason under the name on a touch screen of any width', async () => {
+  it('keeps the hint on a touch screen of any width', async () => {
     layout = mockViewport({ width: 1024, touch: true });
     await renderPanel();
 
     expect(headers()).toContain('GPUs');
-    expect(screen.getByTestId('gpu-node-reason')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'About the state of cpu-pool-node' }),
+    ).toBeVisible();
   });
 
-  it('keeps every column, and the reason on hover, on a desktop with a mouse', async () => {
+  it('keeps every column, and the reason in its hint, on a desktop with a mouse', async () => {
     layout = mockDesktopLayout();
     await renderPanel();
 
@@ -901,8 +933,9 @@ describe('GpuCapacityPanel at phone width', () => {
       'Requested',
       'Free',
     ]);
-    expect(screen.queryByTestId('gpu-node-reason')).toBeNull();
-    expect(screen.getByText(/the reason is on hover\./)).toBeVisible();
+    expect(await hintTooltip('cpu-pool-node')).toHaveTextContent(
+      `${NOT_SERVING_TARGET_DESCRIPTION}: outside the serving node selector`,
+    );
     expect(screen.queryByText('of 1')).toBeNull();
   });
 

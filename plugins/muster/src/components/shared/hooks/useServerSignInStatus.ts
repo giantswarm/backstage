@@ -51,6 +51,9 @@ export interface ServerSignInStatusState {
  *   sign-in itself may well still be going, so it is not called failed.
  * - "Signing in…": a sign-in page is open; in the warning tone when the
  *   authorization server may reject muster as an unregistered client.
+ * - "Could not sign in" (danger) for an SSO server muster failed to connect
+ *   for this person: whatever muster's sign-in status reads, there is nothing
+ *   to sign in to, so "Sign in needed" would send them looking for a button.
  * - Else the row's own state.
  */
 function shownStatus(
@@ -68,6 +71,9 @@ function shownStatus(
   }
   if (state.statusUnreadable) {
     return { label: 'Status unavailable', tone: 'warning' };
+  }
+  if (parts.kind === 'sso' && state.status?.sso_attempt_failed) {
+    return { label: 'Could not sign in', tone: 'danger' };
   }
   if (parts.kind === 'sign-in' && parts.wait) {
     return {
