@@ -646,6 +646,92 @@ describe('opt-in picker options', () => {
     expect(onStart).toHaveBeenCalledWith(research, 'check');
   });
 
+  it('lists the favorites second, after the recent agents, in display order', async () => {
+    renderComposer({
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      favoriteAgentIds: [research.id, issues.id, sre.id],
+    });
+
+    await userEvent.click(agentPicker());
+    const groups = screen.getAllByRole('group');
+
+    ['Recent', 'Favorites', 'kagent', 'research'].forEach((name, index) =>
+      expect(groups[index]).toHaveAccessibleName(name),
+    );
+    expect(groups).toHaveLength(4);
+    // A recent favorite stays in both groups.
+    expect(
+      within(groups[1])
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([
+      expect.stringContaining('SRE Agent'),
+      expect.stringContaining('Issue Tracker'),
+      expect.stringContaining('Research Agent'),
+    ]);
+  });
+
+  it('groups by favorites alone, and skips favorites not on offer', async () => {
+    renderComposer({
+      agents: [sre, issues],
+      groupByNamespace: true,
+      favoriteAgentIds: ['gazelle/kagent/deleted-agent', issues.id],
+    });
+
+    await userEvent.click(agentPicker());
+    const groups = screen.getAllByRole('group');
+
+    ['Favorites', 'kagent'].forEach((name, index) =>
+      expect(groups[index]).toHaveAccessibleName(name),
+    );
+    expect(groups).toHaveLength(2);
+    expect(
+      within(groups[0])
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual([expect.stringContaining('Issue Tracker')]);
+  });
+
+  it('selects the agent behind a favorite option', async () => {
+    renderComposer({
+      agents: [sre, research],
+      groupByNamespace: true,
+      favoriteAgentIds: [research.id],
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Favorites' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    );
+    await userEvent.type(field(), 'check');
+    await userEvent.click(startButton());
+
+    expect(onStart).toHaveBeenCalledWith(research, 'check');
+  });
+
+  it('moves from Recent into Favorites with the arrow keys', async () => {
+    renderComposer({
+      agents: [sre, issues, research],
+      groupByNamespace: true,
+      recentAgentIds: [research.id],
+      favoriteAgentIds: [issues.id],
+    });
+
+    agentPicker().focus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveTextContent('Research Agent');
+    await userEvent.keyboard('{ArrowDown}');
+    expect(document.activeElement).toHaveTextContent('Issue Tracker');
+    await userEvent.keyboard('{Enter}');
+
+    expect(agentPicker()).toHaveTextContent('Issue Tracker');
+  });
+
   it('offers a search box when asked, whatever the number of agents', async () => {
     renderComposer({
       agents: [sre, issues],
@@ -665,6 +751,7 @@ describe('opt-in picker options', () => {
       agents: [sre, research, issues],
       groupByNamespace: true,
       recentAgentIds: [research.id],
+      favoriteAgentIds: [sre.id],
       searchable: true,
     });
 
