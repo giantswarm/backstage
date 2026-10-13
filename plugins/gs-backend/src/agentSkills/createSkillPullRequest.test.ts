@@ -105,8 +105,13 @@ describe('createSkillPullRequest', () => {
     const put = calls.find(
       call => call.key === `PUT ${API}/contents/ticket-triage/SKILL.md`,
     );
-    const putBody = put?.body as { branch: string; content: string };
+    const putBody = put?.body as {
+      branch: string;
+      content: string;
+      message: string;
+    };
     expect(putBody.branch).toBe('add-skill/ticket-triage');
+    expect(putBody.message).toBe('feat: add skill ticket-triage');
     const written = Buffer.from(putBody.content, 'base64').toString('utf8');
     expect(parseFrontmatter(written)).toEqual({
       name: 'ticket-triage',
@@ -116,7 +121,7 @@ describe('createSkillPullRequest', () => {
 
     const pr = calls.find(call => call.key === `POST ${API}/pulls`);
     expect(pr?.body).toMatchObject({
-      title: 'Add skill: ticket-triage',
+      title: 'feat: add skill ticket-triage',
       head: 'add-skill/ticket-triage',
       base: 'main',
     });
@@ -282,9 +287,15 @@ describe('createSkillPullRequest — update', () => {
     ).toEqual({ ref: `refs/heads/${BRANCH}`, sha: HEAD });
 
     const put = calls.find(call => call.key === `PUT ${API}/contents/${FILE}`)
-      ?.body as { branch: string; content: string; sha: string };
+      ?.body as {
+      branch: string;
+      content: string;
+      sha: string;
+      message: string;
+    };
     expect(put.branch).toBe(BRANCH);
     expect(put.sha).toBe('blob-sha-1');
+    expect(put.message).toBe('Update skill: ticket-triage');
     const written = Buffer.from(put.content, 'base64').toString('utf8');
     // The form's fields replace theirs; the keys the form does not show stay.
     expect(splitSkillMarkdown(written)).toEqual({
