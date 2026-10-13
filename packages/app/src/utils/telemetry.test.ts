@@ -389,12 +389,21 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it.each([
-      '/customize/models/gazelle/agent-platform/gpt-4o',
-      '/agent-platform/models/gazelle/agent-platform/gpt-4o',
-    ])('names one model without naming it in page or view: %s', pathname => {
+    it('names one model without naming it in page or view', () => {
+      const pathname = '/customize/models/gazelle/agent-platform/gpt-4o';
+
       expect(getTelemetryPageViewPayload(pathname)).toEqual({
         page: 'Model detail',
+        path: pathname,
+      });
+    });
+
+    // The old path only redirects; the page it lands on reports Model detail.
+    it("counts a model's former path apart, so an old link is one Model detail", () => {
+      const pathname = '/agent-platform/models/gazelle/agent-platform/gpt-4o';
+
+      expect(getTelemetryPageViewPayload(pathname)).toEqual({
+        page: 'Model detail redirect',
         path: pathname,
       });
     });

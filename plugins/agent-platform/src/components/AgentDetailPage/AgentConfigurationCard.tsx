@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Box, Flex, Text } from '@backstage/ui';
+import { Box, Flex, Link as BuiLink, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -18,7 +18,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
-import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import type { ClientServingSummary } from '../../lib/serving';
 import { bindsGateway, describeToolset } from '../../lib/toolset';
 import { deploymentDetailsExternalRouteRef } from '../../routes';
@@ -62,7 +62,7 @@ function ModelValue({
   namespace?: string;
   isFailing: boolean;
 }) {
-  const modelDetailHref = useModelDetailHref();
+  const { modelDetail: modelDetailHref } = useCustomizePaths();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <NotAvailable />;
   }
@@ -95,9 +95,9 @@ function ModelValue({
       <Text variant="body-small" color="secondary">
         ModelConfig{' '}
         {href ? (
-          <Link to={href} style={MONO}>
+          <BuiLink href={href} style={MONO}>
             {`${namespace}/${modelConfigName}`}
-          </Link>
+          </BuiLink>
         ) : (
           <span style={MONO}>
             {namespace ? `${namespace}/${modelConfigName}` : modelConfigName}
@@ -289,6 +289,8 @@ function DeployedByValue({ agent }: { agent: Agent }) {
 
 export type AgentConfigurationCardProps = {
   agent: Agent;
+  /** The page's installation, as the overview's model fact links with it. */
+  installation: string;
   modelConfig?: ModelConfig;
   /** The serving layer's word on the model behind `modelConfig`, when it has one. */
   modelServing?: ClientServingSummary;
@@ -308,6 +310,7 @@ export type AgentConfigurationCardProps = {
  */
 export function AgentConfigurationCard({
   agent,
+  installation,
   modelConfig,
   modelServing,
   failure,
@@ -323,7 +326,7 @@ export function AgentConfigurationCard({
         modelConfigName={agent.getModelConfigName()}
         modelConfig={modelConfig}
         modelServing={modelServing}
-        installation={agent.cluster}
+        installation={installation}
         namespace={namespace}
         isFailing={failure?.field === 'model'}
       />

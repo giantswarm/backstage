@@ -12,19 +12,7 @@ import {
   InfoCard,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-/** Identifiers someone may retype into `kubectl`. */
-const MONO: React.CSSProperties = {
-  fontFamily: 'monospace',
-  overflowWrap: 'anywhere',
-};
-
-function Mono({ children }: { children: string }) {
-  return (
-    <Text variant="body-small" style={MONO}>
-      {children}
-    </Text>
-  );
-}
+import { Mono } from '../Mono';
 
 /**
  * The resource behind the model, in the terms of the people who run the
@@ -106,13 +94,15 @@ function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
  * fold-out, as on the agent page: where it came from (GitOps), what it is
  * called in the cluster, and the controller's conditions.
  */
+export type ModelTechnicalDetailsProps = {
+  modelConfig: ModelConfig;
+  installation: string;
+};
+
 export function ModelTechnicalDetails({
   modelConfig,
   installation,
-}: {
-  modelConfig: ModelConfig;
-  installation: string;
-}) {
+}: ModelTechnicalDetailsProps) {
   return (
     <Flex direction="column" gap="4">
       {/* A cheap pre-check only: whether the model is *actually* applied from

@@ -16,7 +16,7 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
-import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { NewModelPage } from '../NewModelPage';
 
 /**
@@ -52,7 +52,7 @@ function editBlocker(
  */
 export function EditModelPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
-  const modelDetailLink = useModelDetailHref();
+  const { modelDetail: modelDetailLink } = useCustomizePaths();
   const detailHref = modelDetailLink?.({ installation, namespace, name });
 
   const {

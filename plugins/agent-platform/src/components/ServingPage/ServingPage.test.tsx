@@ -24,7 +24,7 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ServingPage } from './ServingPage';
@@ -328,7 +328,10 @@ const renderSection = (initialRouteEntries?: string[]) =>
       <Route path="*" element={<Section />} />
     </Routes>,
     {
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
       initialRouteEntries,
     },
   );

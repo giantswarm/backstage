@@ -12,7 +12,12 @@ const useStyles = makeStyles({
 });
 
 export type TechnicalDetailsFoldOutProps = {
-  /** Open on arrival, e.g. while the resource is not healthy. */
+  /**
+   * Open on arrival, e.g. while the resource is not healthy. A later change
+   * to `true` opens it too: a page renders from the cache first, and a fresh
+   * read that finds the resource unhealthy must not leave the reason folded
+   * away. Key the fold-out by the resource, so another one starts afresh.
+   */
   defaultExpanded: boolean;
   children: ReactNode;
 };
@@ -31,6 +36,16 @@ export function TechnicalDetailsFoldOut({
   const classes = useStyles();
   const spacing = useSimpleAccordionStyles();
   const [isExpanded, setExpanded] = useState(defaultExpanded);
+  // Adjusted while rendering, React's pattern for state that follows a prop:
+  // a turn to `true` opens the fold-out; a turn to `false` leaves the
+  // person's choice alone.
+  const [seededWith, setSeededWith] = useState(defaultExpanded);
+  if (defaultExpanded !== seededWith) {
+    setSeededWith(defaultExpanded);
+    if (defaultExpanded) {
+      setExpanded(true);
+    }
+  }
   return (
     <Accordion
       className={`${classes.foldOut} ${spacing.group}`}

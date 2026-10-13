@@ -9,6 +9,7 @@ import {
   connectorCount,
   harnessLabel,
   modelStatus,
+  STALE_MODEL_DETAIL,
   rankSkills,
   searchAgents,
   searchModels,
@@ -161,6 +162,22 @@ describe('modelStatus', () => {
     expect(modelStatus(model({ readiness: 'pending' }))).toEqual({
       label: 'Pending',
       tone: 'neutral',
+    });
+  });
+
+  it('says a stale model is Pending because its change is not reconciled yet', () => {
+    expect(
+      modelStatus(
+        model({
+          readiness: 'pending',
+          isStale: true,
+          readinessMessage: 'Secret support/old-key not found',
+        }),
+      ),
+    ).toEqual({
+      label: 'Pending',
+      tone: 'neutral',
+      detail: STALE_MODEL_DETAIL,
     });
   });
 

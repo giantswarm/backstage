@@ -14,7 +14,7 @@ import type {
   ModelConfigReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   stopRowPress,
   useVisibleSort,
@@ -87,8 +87,13 @@ export type ModelRow = {
   /** The configured base URL/host; empty = the provider's default endpoint. */
   endpoint: string;
   readiness: ModelConfigReadiness;
-  /** The controller's own explanation, for the status tooltip. */
+  /**
+   * The controller's own explanation, for the status tooltip. Never from a
+   * stale status, whose conditions describe the previous spec.
+   */
   readinessMessage?: string;
+  /** The controller has not reconciled the latest change yet. */
+  isStale?: boolean;
   /** The in-cluster served model behind `endpoint`, when known. */
   servedBy?: ModelServedBy;
 };
@@ -97,6 +102,7 @@ export function toModelRow(
   modelConfig: ModelConfig,
   servedBy?: ModelServedBy,
 ): ModelRow {
+  const isStale = modelConfig.isStale();
   return {
     id: `${modelConfig.cluster}/${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
     installation: modelConfig.cluster,
@@ -107,7 +113,9 @@ export function toModelRow(
     model: modelConfig.getModel() ?? '',
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
-    readinessMessage: modelConfig.getReadinessMessage(),
+    ...(isStale
+      ? { isStale }
+      : { readinessMessage: modelConfig.getReadinessMessage() }),
     ...(servedBy ? { servedBy } : {}),
   };
 }
@@ -311,7 +319,7 @@ export type ModelsTableProps = {
  */
 export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
-  const modelDetailRoute = useModelDetailHref();
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   // All three parameters are needed: a ModelConfig name is only unique within
   // a namespace on one installation. Undefined when the route isn't bound, in

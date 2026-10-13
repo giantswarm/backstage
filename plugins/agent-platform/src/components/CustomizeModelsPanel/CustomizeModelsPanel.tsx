@@ -32,7 +32,7 @@ import {
   searchModels,
   usedByLabel,
 } from '../../lib/customize';
-import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { servingRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
@@ -126,7 +126,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const { isLoading, hasInstallations, unreachableInstallations } =
     useModelConfigs();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
-  const modelDetailRoute = useModelDetailHref();
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   const usage = useMemo(() => agentsByModel(agents), [agents]);
   const searched = useMemo(

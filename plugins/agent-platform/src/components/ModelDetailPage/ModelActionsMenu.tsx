@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  toastApiRef,
-  useApi,
-  useRouteRef,
-} from '@backstage/frontend-plugin-api';
+import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
@@ -12,7 +8,7 @@ import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { UseDeleteModelConfigResult } from '../../hooks/useDeleteModelConfig';
-import { modelsRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { ModelDeleteDialog } from './ModelDeleteDialog';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -36,7 +32,7 @@ export function ModelActionsMenu({
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
-  const modelsRoute = useRouteRef(modelsRouteRef);
+  const { models: modelsPath } = useCustomizePaths();
 
   const {
     isDeletable,
@@ -77,10 +73,10 @@ export function ModelActionsMenu({
       timeout: TOAST_TIMEOUT_MS,
     });
 
-    // An unbound route means the Agent Platform extension is disabled — in
-    // which case this page is not rendering either.
-    if (modelsRoute) {
-      navigate(modelsRoute());
+    // Back to the list the page sits beside. The app renders this page on its
+    // Customize page, the target of the bound route, so it is always there.
+    if (modelsPath) {
+      navigate(modelsPath);
     }
   };
 

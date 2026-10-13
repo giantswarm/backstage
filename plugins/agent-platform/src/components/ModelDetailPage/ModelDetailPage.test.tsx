@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Link as RouterLink, Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,7 +11,11 @@ import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils
 
 import type { LlmUsageView } from '../../hooks/useLlmUsage';
 import type { LlmUsage } from '../../lib/llmUsage';
-import { agentsRouteRef, modelsRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  agentsRouteRef,
+  modelsRouteRef,
+} from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ModelDetailPage } from './ModelDetailPage';
 
@@ -70,18 +73,27 @@ jest.mock('../../hooks/useLlmUsage', () => ({
   useLlmUsage: () => mockLlmUsage,
 }));
 
-// The fleet's agents, as the provider lists them.
+// The agents of the model's namespace, as the page reads them; filtered by
+// the real `agentsUsingModel`, so a row naming another model stays out.
 let mockAgents: AgentRow[] = [];
-jest.mock('../AgentsDataProvider', () => ({
-  AgentsDataProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
-  useAgents: () => ({
-    rows: mockAgents,
-    isLoading: false,
-    unreachableInstallations: [],
-  }),
-}));
+jest.mock('./useModelAgents', () => {
+  const { agentsUsingModel, modelConfigIdOf } =
+    jest.requireActual('./modelUsage');
+  return {
+    useModelAgents: (
+      installation: string,
+      namespace: string,
+      name: string,
+    ) => ({
+      agents: agentsUsingModel(
+        mockAgents,
+        modelConfigIdOf(installation, namespace, name),
+      ),
+      isLoading: false,
+      isUnreadable: false,
+    }),
+  };
+});
 
 // The chart itself is ui-react's; what matters here is which series it gets.
 jest.mock('../LlmUsage', () => ({
@@ -190,11 +202,16 @@ function renderPage() {
           element={<p>The Connect-a-model flow, prefilled</p>}
         />
       </Routes>
+      {/* Another model under the same route, as the palette opens one. */}
+      <RouterLink to="/customize/models/inst-1/kagent/haiku">
+        Next model
+      </RouterLink>
     </PageHeaderActionsProvider>,
     {
       initialRouteEntries: ['/customize/models/inst-1/kagent/sonnet'],
       mountedRoutes: {
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/agents': agentsRouteRef,
       },
     },
@@ -288,6 +305,22 @@ describe('ModelDetailPage', () => {
       expect.stringMatching(/^Accepted/),
       expect.stringMatching(/^ResolvedRefs/),
     ]);
+  });
+
+  it('starts Technical details afresh on another model', async () => {
+    await renderPage();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(screen.getByRole('link', { name: 'Next model' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'false');
   });
 
   it("shows the gateway's figures for the model, snapshots included", async () => {

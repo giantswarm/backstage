@@ -18,7 +18,7 @@ import {
   type ClientServingState,
   type ServedModel,
 } from '../../lib/serving';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import {
   isModelRowMuted,
   ModelRow,
@@ -43,7 +43,10 @@ jest.mock('react-router-dom', () => ({
 // SubRouteRef — and the detail sub-route resolves relative to it.
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 
 const rows: ModelRow[] = [
@@ -562,6 +565,36 @@ describe('toModelRow', () => {
       readiness: 'notAccepted',
       readinessMessage: 'referenced Secret not found',
     });
+  });
+
+  it("drops a stale status's message: it describes the previous spec", () => {
+    const row = toModelRow(
+      new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'qwen3', namespace: 'kagent', generation: 2 },
+          spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
+          status: {
+            observedGeneration: 1,
+            conditions: [
+              {
+                type: 'ResolvedRefs',
+                status: 'False',
+                reason: 'SecretNotFound',
+                message: 'Secret kagent/qwen3 not found',
+                lastTransitionTime: '2026-09-01T00:00:00Z',
+              },
+            ],
+          },
+        } as ModelConfigInterface,
+        'inst-1',
+      ),
+    );
+
+    expect(row.readiness).toBe('pending');
+    expect(row.isStale).toBe(true);
+    expect(row.readinessMessage).toBeUndefined();
   });
 
   it('attaches the served model link when given one', () => {

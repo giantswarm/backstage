@@ -41,7 +41,7 @@ import {
   ShellCustomizeRedirect,
 } from '../ShellCustomizeRedirect';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
-import { modelDetailPath } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 
 /**
  * The ModelConfigs list, its create flow and one model used to live under a
@@ -66,16 +66,18 @@ const LegacyNewRedirect = () => {
  * (`/customize/models/<installation>/<namespace>/<name>`), from this tab's
  * `<installation>/<namespace>/<name>` and, before that, `configs/…`. Both
  * redirect there, so a bookmark or an older release's link still resolves.
+ * Renders nothing where the app binds no Customize page.
  */
 const LegacyDetailRedirect = () => {
   const { installation = '', namespace = '', name = '' } = useParams();
   const { search } = useLocation();
+  const { modelDetail } = useCustomizePaths();
+  if (!modelDetail) {
+    return null;
+  }
   return (
     <Navigate
-      to={{
-        pathname: modelDetailPath({ installation, namespace, name }),
-        search,
-      }}
+      to={{ pathname: modelDetail({ installation, namespace, name }), search }}
       replace
     />
   );

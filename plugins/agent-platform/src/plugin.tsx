@@ -29,6 +29,7 @@ import {
 import {
   agentDetailRouteRef,
   agentsRouteRef,
+  customizeExternalRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
   modelCacheRouteRef,
@@ -472,6 +473,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
   // and are simply unbound when the target plugin is disabled. Every call site
   // must handle `useRouteRef` returning undefined.
   externalRoutes: {
+    customize: customizeExternalRouteRef,
     musterServers: musterServersExternalRouteRef,
     musterServerTool: musterServerToolExternalRouteRef,
     musterWorkflowDetail: musterWorkflowDetailExternalRouteRef,

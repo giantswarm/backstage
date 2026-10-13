@@ -8,6 +8,7 @@ import type {
   AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
   skillsRouteRef,
@@ -595,6 +596,7 @@ const renderPage = (tab: string = '') =>
     mountedRoutes: {
       '/agent-platform/agents': agentsRouteRef,
       '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
       '/agent-platform/skills': skillsRouteRef,
       '/agent-platform/usage': usageRouteRef,
     },
@@ -1999,6 +2001,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
       },
       mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
@@ -2085,6 +2088,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/usage': usageRouteRef,
       },

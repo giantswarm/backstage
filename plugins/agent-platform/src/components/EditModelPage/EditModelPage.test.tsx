@@ -8,7 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { EditModelPage } from './EditModelPage';
 
 const mockUseResource = jest.fn();
@@ -90,7 +90,10 @@ function renderPage() {
     </PageHeaderActionsProvider>,
     {
       initialRouteEntries: ['/agent-platform/models/edit/inst-1/kagent/sonnet'],
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
     },
   );
 }

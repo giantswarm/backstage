@@ -11,7 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
 import type { ModelRow } from '../ModelsTable';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { CustomizeModelsPanel } from './CustomizeModelsPanel';
 
 const sonnet: ModelRow = {
@@ -75,7 +75,10 @@ jest.mock('../ServingProvider', () => ({
 
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 }
 
@@ -91,7 +94,10 @@ function RerenderablePanel() {
 
 function renderRerenderablePanel() {
   return renderInTestApp(<RerenderablePanel />, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 }
 
@@ -152,7 +158,12 @@ describe('CustomizeModelsPanel', () => {
           <PathProbe />
           <CustomizeModelsPanel search="" />
         </ShellScopeProvider>,
-        { mountedRoutes: { '/agent-platform/models': modelsRouteRef } },
+        {
+          mountedRoutes: {
+            '/agent-platform/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
       );
       const path = screen.getByTestId('path').textContent;
 

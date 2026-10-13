@@ -1,8 +1,7 @@
 import { ReactNode, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Card, CardBody, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Card, CardBody, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   ModelConfig,
@@ -30,18 +29,18 @@ import {
 } from '../../lib/modelConfigs';
 import { contextWindowFor } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { InstallationChip } from '../InstallationChip';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { ModelTechnicalDetails } from '../ModelTechnicalDetails';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
-import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { ModelActionsMenu } from './ModelActionsMenu';
 import { ModelReadView } from './ModelReadView';
-import { ModelTechnicalDetails } from './ModelTechnicalDetails';
 import { describeContextWindow } from './modelUsage';
 
 const useStyles = makeStyles({
@@ -77,12 +76,13 @@ function ModelFrame({
   aside?: ReactNode;
   children: ReactNode;
 }) {
+  const paths = useCustomizePaths();
   return (
     <ShellPage
       title={heading ?? title}
       breadcrumbs={[
-        { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
-        { label: 'Models', href: `${SHELL_CUSTOMIZE_PATH}/models` },
+        { label: 'Customize', href: paths.customize },
+        { label: 'Models', href: paths.models },
         { label: title },
       ]}
       badges={badges}
@@ -138,12 +138,12 @@ export function modelFacts({
 }
 
 /**
- * One model (`/customize/models/<installation>/<namespace>/<name>`, routed by
- * the app's Customize page), as a read view with Edit as an action, per the
+ * One model (`<customize>/models/<installation>/<namespace>/<name>`, routed
+ * by the app's Customize page), as a read view with Edit as an action, per the
  * prototype: what it cost and how much it was used, the agents that run on
  * it, the facts beside it, and "Technical details" with the controller's
- * conditions. Must be mounted inside a `CustomizeDataProvider`, which
- * carries the serving snapshot and the query client it reads through. **Edit** opens the Connect-a-model flow prefilled
+ * conditions. Mounted inside the plugin's query client and a
+ * `ServingProvider`, as `CustomizeModelPage` mounts it. **Edit** opens the Connect-a-model flow prefilled
  * (`EditModelPage`), the same way agents and skills are edited. A CR the
  * portal must not write (tool-owned, no RBAC, or a provider the form does not
  * speak) offers no Edit, and an alert says why where the reason is not just
@@ -153,6 +153,7 @@ export function ModelDetailPage() {
   const classes = useStyles();
   const navigate = useNavigate();
   const modelEditRoute = useRouteRef(modelEditRouteRef);
+  const paths = useCustomizePaths();
   const { config } = useSignedInConfig();
   const {
     installation = '',
@@ -273,14 +274,14 @@ export function ModelDetailPage() {
               title="Could not load this model"
               description={`ModelConfig ${namespace}/${name} on ${installation} could not be read. It may have been deleted, or you may not have permission to read it.`}
             />
-            <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
+            {paths.models && <Link href={paths.models}>Back to models</Link>}
           </Flex>
         ) : (
           <EmptyStateCard
             title="Model not found"
             description={`ModelConfig ${namespace}/${name} does not exist on ${installation}.`}
             actions={
-              <Link to={`${SHELL_CUSTOMIZE_PATH}/models`}>Back to models</Link>
+              paths.models && <Link href={paths.models}>Back to models</Link>
             }
           />
         )}
@@ -354,6 +355,7 @@ export function ModelDetailPage() {
               as the agent page does for an agent that is not ready: the
               conditions there say why. */}
           <TechnicalDetailsFoldOut
+            key={`${installation}/${namespace}/${name}`}
             defaultExpanded={modelConfig.getReadiness() !== 'accepted'}
           >
             <ModelTechnicalDetails

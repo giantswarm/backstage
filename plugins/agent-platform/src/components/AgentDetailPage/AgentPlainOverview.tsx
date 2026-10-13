@@ -30,7 +30,7 @@ import {
 } from '../../lib/skills';
 import { bindsGateway } from '../../lib/toolset';
 import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
-import { useModelDetailHref } from '../../hooks/useModelDetailHref';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { skillsRouteRef } from '../../routes';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
@@ -496,7 +496,7 @@ function ModelFact({
   modelServing?: ClientServingSummary;
   isFailing: boolean;
 }) {
-  const modelDetailRoute = useModelDetailHref();
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
   const modelConfigName = agent.getModelConfigName();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;

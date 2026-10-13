@@ -108,6 +108,10 @@ export function harnessLabel(name: string, title?: string): string {
   return title ? `${title} (${name})` : name;
 }
 
+/** Why a model whose latest change the controller has not reconciled is Pending. */
+export const STALE_MODEL_DETAIL =
+  'The controller has not reconciled the latest change yet.';
+
 /**
  * A model's state: the controller's verdict on the ModelConfig first, then
  * what the serving layer says about the model behind it — in the Running
@@ -125,7 +129,13 @@ export function modelStatus(row: ModelRow): CustomizeStatus {
     };
   }
   if (row.readiness === 'pending') {
-    return { label: 'Pending', tone: 'neutral', detail: row.readinessMessage };
+    return {
+      label: 'Pending',
+      tone: 'neutral',
+      // A stale status is pending for that reason alone; its conditions, and
+      // so its message, describe the previous spec.
+      detail: row.isStale ? STALE_MODEL_DETAIL : row.readinessMessage,
+    };
   }
   const readiness = row.servedBy?.readiness;
   if (readiness === undefined) {

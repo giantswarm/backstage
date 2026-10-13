@@ -1,4 +1,8 @@
-export { AgentsDataProvider, useAgents } from './AgentsDataProvider';
+export {
+  AgentsDataProvider,
+  useAgents,
+  useOptionalAgents,
+} from './AgentsDataProvider';
 export type { AgentsContextValue } from './AgentsDataProvider';
 export {
   getAgentRefetchInterval,

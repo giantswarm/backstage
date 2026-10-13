@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
   musterServersExternalRouteRef,
@@ -197,6 +198,7 @@ function renderPalette() {
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/connectors': musterServersExternalRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/workflows/:name': musterWorkflowDetailExternalRouteRef,
       },
     },

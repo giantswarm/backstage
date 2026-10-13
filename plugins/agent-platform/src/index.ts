@@ -36,7 +36,7 @@ export {
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
 export type { CustomizeModelsPanelProps } from './components/CustomizeModelsPanel';
-export { ModelDetailPage } from './components/ModelDetailPage';
+export { CustomizeModelPage } from './components/CustomizeModelPage';
 export { WorkflowCreateAssist } from './components/WorkflowCreateAssist';
 export type { WorkflowCreateAssistProps } from './components/WorkflowCreateAssist';
 export { EnvironmentSelect } from './components/EnvironmentSelect';

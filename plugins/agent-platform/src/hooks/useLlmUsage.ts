@@ -5,7 +5,7 @@ import {
   useMimirRangeQuery,
 } from '@giantswarm/backstage-plugin-gs';
 import { agentDetailRouteRef } from '../routes';
-import { useAgents } from '../components/AgentsDataProvider';
+import { useOptionalAgents } from '../components/AgentsDataProvider';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { buildLlmUsage, type LlmUsage } from '../lib/llmUsage';
 import {
@@ -20,6 +20,9 @@ import {
   windowDaysOf,
   type LlmUsageQueryOptions,
 } from '../lib/llmUsageQueries';
+
+/** A stable empty list, so the reduction's memo holds without a provider. */
+const NO_AGENTS: AgentRow[] = [];
 
 export type LlmUsageView = {
   usage: LlmUsage | undefined;
@@ -229,7 +232,10 @@ export function useLlmUsage(
     enabled: enabled && comparePrevious,
   });
 
-  const { rows: agentRows } = useAgents();
+  // The fleet's agents name the per-agent rows where a provider lists them
+  // (the Usage screen). A model's page reads only the model's own figures and
+  // mounts none, so its agents stay keyed by namespace and name.
+  const agentRows = useOptionalAgents()?.rows ?? NO_AGENTS;
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
   // Deliberately **excludes the two today queries**.

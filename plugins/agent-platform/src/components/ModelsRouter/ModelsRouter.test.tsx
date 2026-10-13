@@ -5,7 +5,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ServingContextValue } from '../ServingProvider';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { ModelsRouter } from './ModelsRouter';
 
 // The views are irrelevant here — this is about the tab's routing and which
@@ -80,7 +80,10 @@ function renderTab(path: string) {
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
     },
   );
 }

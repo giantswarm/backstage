@@ -40,7 +40,7 @@ function stub({ query, enabled = true }: { query: string; enabled?: boolean }) {
 }
 
 jest.mock('../components/AgentsDataProvider', () => ({
-  useAgents: () => ({ rows: [] }),
+  useOptionalAgents: () => ({ rows: [] }),
 }));
 
 jest.mock('@backstage/frontend-plugin-api', () => ({

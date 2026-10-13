@@ -134,9 +134,9 @@ export const newModelRouteRef = createSubRouteRef({
 });
 
 // One model's page is not a route of this plugin: it lives beside the
-// Customize screen's Models tab, at `/customize/models/<installation>/<namespace>/<name>`
-// (`modelDetailPath`, hooks/useModelDetailHref.ts). The three-segment path
-// under this tab redirects there.
+// Customize screen's Models tab, at `<customize>/models/<installation>/<namespace>/<name>`
+// (`useCustomizePaths`, through `customizeExternalRouteRef` below). The
+// three-segment path under this tab redirects there.
 
 // Editing one model (`/agent-platform/models/edit/<installation>/<namespace>/<name>`):
 // the Connect-a-model flow prefilled from the CR, its primary Save changes. A
@@ -205,6 +205,15 @@ export const addGpuNodePoolRouteRef = createSubRouteRef({
   path: '/capacity/add-pool',
   parent: modelsRouteRef,
 });
+
+/**
+ * The agent-platform shell's Customize page (`/customize`): its Models tab
+ * and one model's page beside it. A page of the app, which binds it in
+ * `bindRoutes` (no plugin can name it as a default target), as it binds
+ * muster's route of the same name. Unbound, model links render as plain text.
+ * Read through `useCustomizePaths` (hooks/useCustomizePaths.ts).
+ */
+export const customizeExternalRouteRef = createExternalRouteRef();
 
 /**
  * muster's Connectors tab (`/agent-platform/connectors`): the connectors table,

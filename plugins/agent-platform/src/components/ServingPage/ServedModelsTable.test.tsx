@@ -6,7 +6,7 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import userEvent from '@testing-library/user-event';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
 import {
   columnsForRows,
@@ -28,7 +28,10 @@ import {
 
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 
 /** Three InferenceServices on two installations, read as CRs. */

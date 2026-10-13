@@ -24,10 +24,10 @@ import {
   agentPlatformPlugin,
   CustomizeAgentsPanel,
   CustomizeDataProvider,
+  CustomizeModelPage,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
-  ModelDetailPage,
   useCanAddSkill,
   useCustomizeData,
   WorkflowCreateAssist,
@@ -259,31 +259,41 @@ function CustomizeTabPage() {
   return <CustomizeTabContent key={`${tab.id}?${query}`} tab={tab} />;
 }
 
+/** The Customize screen itself: its tabs, over the data they share. */
+function CustomizeScreen() {
+  return (
+    <CustomizeMusterProvider>
+      <CustomizeDataProvider>
+        <Routes>
+          <Route index element={<DefaultTabRedirect />} />
+          <Route path="*" element={<CustomizeTabPage />} />
+        </Routes>
+      </CustomizeDataProvider>
+    </CustomizeMusterProvider>
+  );
+}
+
 /**
- * The shell's Customize screen: a tab per area at `/customize/:tab`, with
+ * The shell's Customize page: a tab per area at `/customize/:tab`, with
  * `/customize` opening the first, and one model's page beside the Models tab
- * (`/customize/models/<installation>/<namespace>/<name>`), inside the same
- * data providers so the way back to the list is instant. Rendered without
- * the app's page layout, so it mounts the header-actions slot its pages
- * render.
+ * (`/customize/models/<installation>/<namespace>/<name>`). The model's page
+ * sits outside the screen's providers, which read every agent, the skill
+ * catalogue and muster for the tabs; it mounts only what it reads. Rendered
+ * without the app's page layout, so it mounts the header-actions slot its
+ * pages render.
  */
 export function CustomizePage() {
   return (
     <PageHeaderActionsProvider>
       {/* Until a tab's page names itself. */}
       <ShellDocumentTitle title="Customize" />
-      <CustomizeMusterProvider>
-        <CustomizeDataProvider>
-          <Routes>
-            <Route index element={<DefaultTabRedirect />} />
-            <Route
-              path="models/:installation/:namespace/:name"
-              element={<ModelDetailPage />}
-            />
-            <Route path="*" element={<CustomizeTabPage />} />
-          </Routes>
-        </CustomizeDataProvider>
-      </CustomizeMusterProvider>
+      <Routes>
+        <Route
+          path="models/:installation/:namespace/:name"
+          element={<CustomizeModelPage />}
+        />
+        <Route path="*" element={<CustomizeScreen />} />
+      </Routes>
     </PageHeaderActionsProvider>
   );
 }

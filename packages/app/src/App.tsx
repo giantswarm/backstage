@@ -114,8 +114,10 @@ const app = createApp({
   ],
   bindRoutes({ bind }) {
     // The shell's Customize page belongs to the app, which no plugin can name
-    // as a default target.
+    // as a default target. Both plugins link to pages under it through their
+    // `customize` external route.
     bind(musterPlugin.externalRoutes, { customize: customizeRouteRef });
+    bind(agentPlatformPlugin.externalRoutes, { customize: customizeRouteRef });
   },
 });
 

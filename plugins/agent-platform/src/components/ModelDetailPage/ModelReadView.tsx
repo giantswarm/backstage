@@ -19,15 +19,10 @@ import {
 } from '../../lib/formatNumbers';
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
-import { AgentsDataProvider, useAgents } from '../AgentsDataProvider';
 import { CostPerDayCard } from '../LlmUsage';
 import { ShowMore, USED_BY_ROWS } from '../ShowMore';
-import {
-  agentsUsingModel,
-  modelConfigIdOf,
-  modelUsageSlice,
-  type ModelUsageSlice,
-} from './modelUsage';
+import { modelUsageSlice, type ModelUsageSlice } from './modelUsage';
+import { useModelAgents } from './useModelAgents';
 
 /** The window the page reads: the prototype's "last 30 days". */
 export const MODEL_USAGE_WINDOW_DAYS = 30;
@@ -152,21 +147,23 @@ function UsageSection({
 
 /** The agents whose spec names this ModelConfig, each with what it spent on it. */
 function UsedBySection({
-  modelConfigId,
-  slice,
   installation,
+  namespace,
+  name,
+  slice,
 }: {
-  modelConfigId: string;
-  slice: ModelUsageSlice | undefined;
   installation: string;
+  namespace: string;
+  name: string;
+  slice: ModelUsageSlice | undefined;
 }) {
   const classes = useStyles();
   const currency = useCurrency(installation);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
-  const { rows, isLoading, unreachableInstallations } = useAgents();
-  const agents = useMemo(
-    () => agentsUsingModel(rows, modelConfigId),
-    [rows, modelConfigId],
+  const { agents, isLoading, isUnreadable } = useModelAgents(
+    installation,
+    namespace,
+    name,
   );
 
   let body;
@@ -175,7 +172,7 @@ function UsedBySection({
   } else if (agents.length === 0) {
     body = (
       <Text as="p" variant="body-medium" color="secondary">
-        {unreachableInstallations.includes(installation)
+        {isUnreadable
           ? `The agents on ${installation} could not be read.`
           : 'No agent runs on this model yet.'}
       </Text>
@@ -256,7 +253,16 @@ function UsedBySection({
   );
 }
 
-function ModelReadViewContent({
+/**
+ * The model as a read view, per the prototype: what it cost and how much it
+ * was used over the last 30 days (the gateway's figures, from the Usage
+ * screen's own reductions), the cost per day, and the agents that run on it
+ * with what each spent on it.
+ *
+ * "Used by" reads the agents of the model's namespace on its installation
+ * (`useModelAgents`), not the fleet-wide agent provider.
+ */
+export function ModelReadView({
   installation,
   namespace,
   name,
@@ -291,28 +297,11 @@ function ModelReadViewContent({
         state={state}
       />
       <UsedBySection
-        modelConfigId={modelConfigIdOf(installation, namespace, name)}
-        slice={state === 'ready' ? slice : undefined}
         installation={installation}
+        namespace={namespace}
+        name={name}
+        slice={state === 'ready' ? slice : undefined}
       />
     </Flex>
-  );
-}
-
-/**
- * The model as a read view, per the prototype: what it cost and how much it
- * was used over the last 30 days (the gateway's figures, from the Usage
- * screen's own reductions), the cost per day, and the agents that run on it
- * with what each spent on it.
- *
- * The agent list is the Usage screen's provider: the gateway reduction names
- * agents through it, and "Used by" filters it. Mounted here, so the page pays
- * for it only in the read view.
- */
-export function ModelReadView(props: ModelReadViewProps) {
-  return (
-    <AgentsDataProvider>
-      <ModelReadViewContent {...props} />
-    </AgentsDataProvider>
   );
 }

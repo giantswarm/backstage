@@ -51,7 +51,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
-    ModelDetailPage: () => {
+    CustomizeModelPage: () => {
       const { useParams } = jest.requireActual('react-router-dom');
       const { installation, namespace, name } = useParams();
       return <p>{`Model ${installation}/${namespace}/${name}`}</p>;
