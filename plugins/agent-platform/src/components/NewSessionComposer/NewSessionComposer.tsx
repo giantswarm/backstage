@@ -142,8 +142,23 @@ export type NewSessionComposerFooterContext = {
   selectAgent: (agent: AgentRow) => void;
 };
 
-/** Prefix of the option ids in the Recent group, which repeat agents listed below it. */
+/**
+ * Prefixes of the option ids in the Recent and Favorites groups, which repeat
+ * agents listed below them: an option id is unique across the list, so each
+ * repeat needs its own.
+ */
 const RECENT_OPTION_PREFIX = 'recent:';
+const FAVORITE_OPTION_PREFIX = 'favorite:';
+
+/** The agent id behind an option id, without a group's prefix. */
+function agentIdOfOption(id: string): string {
+  for (const prefix of [RECENT_OPTION_PREFIX, FAVORITE_OPTION_PREFIX]) {
+    if (id.startsWith(prefix)) {
+      return id.slice(prefix.length);
+    }
+  }
+  return id;
+}
 
 /** An action listed last in the agent picker, e.g. a link to manage agents. */
 export type NewSessionComposerPickerAction = {
@@ -173,6 +188,14 @@ export type NewSessionComposerProps = {
    * are skipped.
    */
   recentAgentIds?: string[];
+  /**
+   * The person's favorite agents, all of them, listed under a "Favorites"
+   * heading after the Recent group, in display order, while the search box is
+   * empty. An agent that is both stays in both, so the favorites read the same
+   * whatever was used last. Only read with `groupByNamespace`; ids not on
+   * offer are skipped.
+   */
+  favoriteAgentIds?: string[];
   /** Gives the picker a search box whatever the number of agents. */
   searchable?: boolean;
   /** What the picker says while no agent is selected. */
@@ -352,6 +375,7 @@ export function NewSessionComposer({
   showUnavailable = false,
   groupByNamespace = false,
   recentAgentIds,
+  favoriteAgentIds,
   searchable,
   pickerPlaceholder = 'Select an agent',
   pickerPlacement = 'controls',
@@ -411,6 +435,9 @@ export function NewSessionComposer({
   const [selectedId, setSelectedId] = useState<string | undefined>(
     effectiveDefault?.id,
   );
+  // The option that was picked, with its group's prefix, so the row the person
+  // used is the one that carries the checkmark when the picker opens again.
+  const [pickedOptionId, setPickedOptionId] = useState<string>();
 
   // Adopt the default when it *arrives*, not only if it happened to be resolved at
   // mount. The fleet-wide list resolves progressively — `useAgents().isLoading`
@@ -430,7 +457,20 @@ export function NewSessionComposer({
   ) {
     adopted.current = effectiveDefault.id;
     setSelectedId(effectiveDefault.id);
+    setPickedOptionId(undefined);
   }
+
+  // The Recent and Favorites groups as they were when the picker opened. Both
+  // can change while it is open: favorites are read from the user-settings
+  // backend after the first render, and a session started elsewhere changes
+  // Recent. Inserting or moving rows then would shift every option below them
+  // under the pointer or the arrow keys; the next opening shows the change.
+  const [openedWith, setOpenedWith] = useState<{
+    recent?: string[];
+    favorites?: string[];
+  }>();
+  const shownRecentIds = openedWith ? openedWith.recent : recentAgentIds;
+  const shownFavoriteIds = openedWith ? openedWith.favorites : favoriteAgentIds;
 
   const selectedAgent = useMemo(
     () => offered.find(agent => agent.id === selectedId),
@@ -461,9 +501,9 @@ export function NewSessionComposer({
     [buildAvatarUrl, classes.agentAvatar],
   );
 
-  // With `groupByNamespace`, grouped by namespace behind the Recent group, or
-  // flat when that would be a single heading or while a search is typed, so
-  // the matches read as one list. Otherwise grouped by
+  // With `groupByNamespace`, grouped by namespace behind the Recent and
+  // Favorites groups, or flat when that would be a single heading or while a
+  // search is typed, so the matches read as one list. Otherwise grouped by
   // installation only when there is more than one, since a single
   // group heading repeating the only installation's name is pure noise. Order is
   // already home-then-installation-then-name from `sortAgentRows`, so grouping
@@ -510,33 +550,47 @@ export function NewSessionComposer({
     if (groupByNamespace) {
       const recent = isSearching
         ? []
-        : (recentAgentIds ?? [])
+        : (shownRecentIds ?? [])
             .map(id => listed.find(agent => agent.id === id))
             .filter((agent): agent is AgentRow => agent !== undefined);
+      // Every favorite on offer, uncapped, in display order as Customize
+      // lists them: the person's own shortlist matters more than keeping the
+      // namespace groups near the top.
+      const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
+      const favorites = listed.filter(agent => favoriteIds.has(agent.id));
       const namespaces = [
         ...new Set(listed.map(agent => agent.namespace)),
       ].sort((a, b) => a.localeCompare(b));
-      if (isSearching || (recent.length === 0 && namespaces.length <= 1)) {
+      if (
+        isSearching ||
+        (recent.length === 0 &&
+          favorites.length === 0 &&
+          namespaces.length <= 1)
+      ) {
         return matched.map(toOption);
       }
-      const groups = namespaces.map(namespace => ({
-        title: namespace,
-        options: listed
-          .filter(agent => agent.namespace === namespace)
-          .map(toOption),
-      }));
-      return recent.length > 0
-        ? [
-            {
-              title: 'Recent',
-              options: recent.map(agent => ({
-                ...toOption(agent),
-                id: `${RECENT_OPTION_PREFIX}${agent.id}`,
-              })),
-            },
-            ...groups,
-          ]
-        : groups;
+      const repeated = (title: string, prefix: string, group: AgentRow[]) =>
+        group.length > 0
+          ? [
+              {
+                title,
+                options: group.map(agent => ({
+                  ...toOption(agent),
+                  id: `${prefix}${agent.id}`,
+                })),
+              },
+            ]
+          : [];
+      return [
+        ...repeated('Recent', RECENT_OPTION_PREFIX, recent),
+        ...repeated('Favorites', FAVORITE_OPTION_PREFIX, favorites),
+        ...namespaces.map(namespace => ({
+          title: namespace,
+          options: listed
+            .filter(agent => agent.namespace === namespace)
+            .map(toOption),
+        })),
+      ];
     }
 
     if (!multipleInstallations) {
@@ -558,7 +612,8 @@ export function NewSessionComposer({
     multipleInstallations,
     optionsByAgentId,
     groupByNamespace,
-    recentAgentIds,
+    shownRecentIds,
+    shownFavoriteIds,
     isSearching,
   ]);
 
@@ -575,6 +630,25 @@ export function NewSessionComposer({
     [options, matched, pickerFooterAction],
   );
 
+  // The picked row while it is listed (a search drops the Recent and Favorites
+  // groups), else the agent's row in its own group.
+  const selectedKey = useMemo(() => {
+    if (!selectedId) {
+      return null;
+    }
+    const isListed = (id: string) =>
+      options.some(entry =>
+        'options' in entry
+          ? entry.options.some(option => option.id === id)
+          : entry.id === id,
+      );
+    return pickedOptionId &&
+      agentIdOfOption(pickedOptionId) === selectedId &&
+      isListed(pickedOptionId)
+      ? pickedOptionId
+      : selectedId;
+  }, [options, pickedOptionId, selectedId]);
+
   useEffect(() => {
     onSelectedAgentChange?.(selectedAgent);
   }, [onSelectedAgentChange, selectedAgent]);
@@ -585,6 +659,7 @@ export function NewSessionComposer({
     }
     touched.current = true;
     setSelectedId(agent.id);
+    setPickedOptionId(undefined);
   }, []);
 
   // Agent-first and nothing chosen yet: the prompt field and Start wait,
@@ -689,7 +764,7 @@ export function NewSessionComposer({
         // in the list.
         icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
         options={pickerOptions}
-        selectedKey={selectedId ?? null}
+        selectedKey={selectedKey}
         onSelectionChange={key => {
           setSearchText('');
           const id = key ? String(key) : undefined;
@@ -698,22 +773,24 @@ export function NewSessionComposer({
             return;
           }
           touched.current = true;
-          setSelectedId(
-            id?.startsWith(RECENT_OPTION_PREFIX)
-              ? id.slice(RECENT_OPTION_PREFIX.length)
-              : id,
-          );
+          setSelectedId(id && agentIdOfOption(id));
+          setPickedOptionId(id);
         }}
         onOpenChange={isOpen => {
+          setOpenedWith(
+            isOpen
+              ? { recent: recentAgentIds, favorites: favoriteAgentIds }
+              : undefined,
+          );
           if (!isOpen) {
             setSearchText('');
           }
         }}
         placeholder={pickerPlaceholder}
         // The search text is held here so the options can be the matches,
-        // agents found by name first, and so the Recent group can step aside
-        // while a search is typed. Without `groupByNamespace` the box keeps bui's
-        // own placeholder.
+        // agents found by name first, and so the Recent and Favorites groups
+        // can step aside while a search is typed. Without `groupByNamespace`
+        // the box keeps bui's own placeholder.
         {...(isSearchable && {
           search: {
             inputValue: searchText,

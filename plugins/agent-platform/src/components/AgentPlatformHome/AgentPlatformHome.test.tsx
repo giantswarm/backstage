@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { storageApiRef } from '@backstage/core-plugin-api';
+import { StorageApi, storageApiRef } from '@backstage/core-plugin-api';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
@@ -159,6 +159,7 @@ function render({
   manageAgentsHref,
   url,
   rerenderable = false,
+  storage = mockApis.storage(),
 }: {
   bound?: boolean;
   displayName?: string;
@@ -167,6 +168,8 @@ function render({
   url?: string;
   /** Mount it so `rerenderHome` can re-render it in place. */
   rerenderable?: boolean;
+  /** What the person has stored, e.g. their favorite agents. */
+  storage?: StorageApi;
 } = {}) {
   return renderInTestApp(
     rerenderable ? (
@@ -183,7 +186,7 @@ function render({
             getProfileInfo: async () => ({ displayName }),
           }),
         ],
-        [storageApiRef, mockApis.storage()],
+        [storageApiRef, storage],
       ],
       ...(bound && {
         mountedRoutes: {
@@ -488,6 +491,27 @@ describe('AgentPlatformHome', () => {
       expect(
         screen.getByRole('group', { name: 'research' }),
       ).toBeInTheDocument();
+    });
+
+    it('lists the favorite agents second, after the recent ones', async () => {
+      const storage = mockApis.storage();
+      await storage
+        .forBucket('agent-platform')
+        .set('favoriteAgents', [
+          { installation: 'gazelle', namespace: 'kagent', name: 'docs-agent' },
+        ]);
+      await render({ storage });
+
+      await userEvent.click(agentPicker());
+      const groups = screen.getAllByRole('group');
+
+      expect(groups[0]).toHaveAccessibleName('Recent');
+      expect(groups[1]).toHaveAccessibleName('Favorites');
+      expect(
+        within(groups[1])
+          .getAllByRole('option')
+          .map(option => option.textContent),
+      ).toEqual([expect.stringContaining('Docs Agent')]);
     });
 
     it('asks for an agent in the picker until one is chosen', async () => {

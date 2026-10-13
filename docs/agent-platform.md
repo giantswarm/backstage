@@ -1564,9 +1564,14 @@ installation. The create sends the namespace and the **technical** name (the
 The picker offers **ready agents only**, grouped by installation when there is
 more than one, with search past eight agents. Non-ready agents are omitted,
 except on the home screen (`AgentPlatformHome`), which shows them disabled with
-the reason, groups by namespace, puts a "Recent" group first and is always
-searchable. `isStartableAgent` is shared, so the picker and the decision to
-offer one agree.
+the reason, groups by namespace and is always searchable. It puts a "Recent"
+group first and a "Favorites" group second: every agent starred on Customize →
+Agents, uncapped, in display order. An agent that is both is listed in both, so
+the favorites do not change with what was used last. Both groups keep what they
+held when the picker opened, so a late read of the favorites never moves rows
+under the pointer, and both give way to a flat list of matches while a search
+is typed. `isStartableAgent` is shared, so the picker and the decision to offer
+one agree.
 
 A single offered agent is preselected and the control disabled, but still named
 to confirm the target. `InstallationSelect` does the same for one installation.
@@ -1592,7 +1597,7 @@ after a hasty Enter.
 The prototype's visibility/team selector has no kagent equivalent: a session
 has one owner, and kagent's shares (read-only and read-write, behind the
 backend's `/shares` routes) are not offered in the composer. The home picker
-offers "Recent" instead of favourites first.
+offers "Recent" first and favorites second.
 
 ## The agents list
 
@@ -2248,8 +2253,6 @@ The portal does not carry the values shape.
 - **The agent version is not pinned to the session.** The prototype's
   `model-session.md` requires it, but kagent's record has only `agent_ref`, so
   upgrading an agent changes every existing session. Raise upstream.
-- **No favourites in the agent picker**; it offers recent agents and search
-  past eight.
 - **The composer cannot offer to create an agent** when the fleet has none. A
   link would help.
 - **Batch decisions are not supported.** Answers send the uniform

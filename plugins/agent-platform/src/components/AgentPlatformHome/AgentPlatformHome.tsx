@@ -16,6 +16,7 @@ import { InstallationInventoryGate } from '@giantswarm/backstage-plugin-gs';
 
 import { makeStyles } from '@material-ui/core/styles';
 
+import { useFavoriteAgentIds } from '../../hooks/useFavoriteAgents';
 import { NEW_SESSION_AGENT_PARAM } from '../../lib/newSessionLink';
 import { recentAgents } from '../../lib/recentAgents';
 import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
@@ -153,6 +154,8 @@ function AgentPlatformHomeContent({
     [sessions, agents],
   );
   const recentAgentIds = useMemo(() => recent.map(agent => agent.id), [recent]);
+  // Starred on Customize → Agents.
+  const favoriteAgentIds = useFavoriteAgentIds();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
 
   // The chips stand in for a choice not yet made; once an agent is chosen the
@@ -231,6 +234,7 @@ function AgentPlatformHomeContent({
                 showUnavailable: true,
                 groupByNamespace: true,
                 recentAgentIds,
+                favoriteAgentIds,
                 pickerPlaceholder: 'Choose an agent',
                 pickerFooterAction: manageAgents,
                 promptPlaceholder,
