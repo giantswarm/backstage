@@ -528,7 +528,9 @@ export async function createSkillPullRequest(
       {
         method: 'POST',
         body: {
-          title: `${isUpdate ? 'Update' : 'Add'} skill: ${skillName}`,
+          title: isUpdate
+            ? `Update skill: ${skillName}`
+            : `feat: add skill ${skillName}`,
           head: created,
           base,
           body: `${description.trim()}\n\n${origin}`,

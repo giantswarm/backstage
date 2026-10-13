@@ -116,7 +116,7 @@ describe('createSkillPullRequest', () => {
 
     const pr = calls.find(call => call.key === `POST ${API}/pulls`);
     expect(pr?.body).toMatchObject({
-      title: 'Add skill: ticket-triage',
+      title: 'feat: add skill ticket-triage',
       head: 'add-skill/ticket-triage',
       base: 'main',
     });
