@@ -17,6 +17,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import {
+  PHONE_FULL_SCREEN_DIALOG,
   PHONE_MEDIA,
   stopRowPress,
   usePhoneLayout,
@@ -39,10 +40,7 @@ import {
 } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
 import { useAgents, type AgentRow } from '../AgentsDataProvider';
-import {
-  NewSessionDialog,
-  PHONE_FULL_SCREEN_DIALOG,
-} from '../NewSessionDialog';
+import { NewSessionDialog } from '../NewSessionDialog';
 import { useSessions } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
 import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';

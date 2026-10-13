@@ -152,9 +152,6 @@ jest.mock('../../hooks/useCreateSession', () => ({
 // The composer drags in the full agent picker; the palette's wiring to it —
 // which agent it preselects, what happens on start — is what this file covers.
 jest.mock('../NewSessionDialog', () => ({
-  PHONE_FULL_SCREEN_DIALOG: jest.requireActual(
-    '../NewSessionDialog/phoneDialog',
-  ).PHONE_FULL_SCREEN_DIALOG,
   NewSessionDialog: ({
     isOpen,
     defaultAgent,

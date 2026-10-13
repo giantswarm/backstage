@@ -63,6 +63,8 @@ export interface ToolDetailPanelProps {
   note?: string;
   /** The run button's label. */
   runLabel?: string;
+  /** Called whenever a run starts (`true`) and settles (`false`). */
+  onPendingChange?: (pending: boolean) => void;
 }
 
 /**
@@ -78,6 +80,7 @@ export function ToolDetailPanel({
   showMarkers = true,
   note,
   runLabel = 'Execute',
+  onPendingChange,
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
 
@@ -133,6 +136,11 @@ export function ToolDetailPanel({
       return { result, durationMs: Math.round(performance.now() - startedAt) };
     },
   });
+
+  const { isPending } = mutation;
+  useEffect(() => {
+    onPendingChange?.(isPending);
+  }, [isPending, onPendingChange]);
 
   const setValue = (key: string, value: FormValue) =>
     setValues(prev => ({ ...prev, [key]: value }));

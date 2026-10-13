@@ -40,8 +40,9 @@ update this file in the same change.
   the shell is the only renderer.
 - Fixed product decisions: there are no Organization selectors; the
   Environment (installation) selector appears only with more than one
-  installation; the UI is light mode only; workflows are read-only; runtimes,
-  budgets, organizations and workspaces have no UI.
+  installation; the UI is light mode only; workflows cannot be created, edited
+  or deleted here, only run ("Run now"); runtimes, budgets, organizations and
+  workspaces have no UI.
 - A feature that needs a meta-agent role (`agentPlatform.metaAgents.<role>`)
   hides when the role is unconfigured, unresolvable or ambiguous. Production
   needs qualified names, a GitHub token and the avatar service; see

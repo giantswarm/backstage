@@ -257,6 +257,7 @@ function makeApi() {
       workflow: { name: 'deploy', steps: [] },
       yaml: 'name: deploy\nsteps: []\n',
     })),
+    callTool: jest.fn(async () => ({ status: 'completed' })),
   };
 }
 
@@ -831,15 +832,44 @@ describe('WorkflowPage', () => {
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
   });
 
-  it('offers no run, create, edit or delete affordances of its own — the page is read-only (D11)', async () => {
+  it('offers no create, edit or delete affordances of its own — the definition is read-only (D11)', async () => {
     await renderAt(`${BASE}/deploy?installation=gazelle`);
 
     // Anchored: step buttons may name a tool such as kubernetes · delete.
     expect(screen.queryByRole('button', { name: /^edit/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^delete/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /^create/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^run/i })).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Run' })).toBeNull();
+  });
+
+  it('runs the workflow as the person from Run now, then rereads its last run and statistics', async () => {
+    const api = await renderAt(`${BASE}/deploy?installation=gazelle`);
+    await waitFor(() => expect(api.getWorkflowStats).toHaveBeenCalled());
+    const statsReads = api.getWorkflowStats.mock.calls.length;
+    const runReads = api.listExecutions.mock.calls.length;
+
+    await userEvent.click(screen.getByRole('button', { name: 'Run now' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByRole('heading', { name: 'Run deploy' }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      await within(dialog).findByRole('button', { name: 'Run' }),
+    );
+
+    await waitFor(() =>
+      expect(api.callTool).toHaveBeenCalledWith(
+        'workflow_deploy',
+        {},
+        'gazelle',
+      ),
+    );
+    expect(await within(dialog).findByText('Result')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.getWorkflowStats.mock.calls.length).toBeGreaterThan(
+        statsReads,
+      ),
+    );
+    expect(api.listExecutions.mock.calls.length).toBeGreaterThan(runReads);
   });
 
   it('shows an attached edit action beside the title, with the workflow to act on', async () => {
@@ -899,9 +929,10 @@ describe('WorkflowPage', () => {
 
     expect(
       screen.getByText(
-        /Statistics, the last run and the read-only badge need a muster session/,
+        /Running it, its statistics, the last run and the read-only badge need a muster session/,
       ),
     ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run now' })).toBeDisabled();
     expect(screen.queryByText('Only reads')).toBeNull();
     expect(
       screen.getByText(/Connect to muster above to see statistics/),

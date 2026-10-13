@@ -1,4 +1,4 @@
-import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import { PHONE_MEDIA } from './breakpoints';
 
 /**
  * A bui `Dialog` (its `className` lands on the modal) that is the whole screen

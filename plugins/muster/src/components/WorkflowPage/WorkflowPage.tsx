@@ -43,6 +43,7 @@ import {
   StateBadge,
 } from '../shared';
 import { WorkflowFlowCanvas } from './WorkflowFlowCanvas';
+import { WorkflowRunAction } from './WorkflowRunAction';
 import { WorkflowStatistics } from './WorkflowStatistics';
 import {
   WorkflowPageTarget,
@@ -377,7 +378,17 @@ function WorkflowPageContent({
       <ShellPage
         title={name}
         breadcrumbs={breadcrumbs}
-        actions={editAction}
+        actions={
+          <>
+            <WorkflowRunAction
+              name={name}
+              toolName={toolName}
+              installation={installation}
+              hasSession={hasSession}
+            />
+            {editAction}
+          </>
+        }
         badges={
           <>
             {effect && <EffectBadge effect={effect} subject="workflow" />}
@@ -412,7 +423,7 @@ function WorkflowPageContent({
             <SessionGate
               session={session}
               installation={installation}
-              context="Statistics, the last run and the read-only badge need a muster session."
+              context="Running it, its statistics, the last run and the read-only badge need a muster session."
             />
           )}
 
@@ -553,10 +564,11 @@ function WorkflowPageContent({
 }
 
 /**
- * A workflow's page in the agent-platform shell — read-only by decision D11:
- * no create, edit or delete forms; changes happen through Git or agents via
- * muster, and the page's one change action (`editAction`, where another
- * plugin attaches one) hands the workflow to the workflow agent. Plain level,
+ * A workflow's page in the agent-platform shell. Its definition is read-only
+ * here (decision D11): no create, edit or delete forms; changes happen through
+ * Git or agents via muster, and the page's one change action (`editAction`,
+ * where another plugin attaches one) hands the workflow to the workflow
+ * agent. "Run now" runs it as the signed-in person. Plain level,
  * in order: what it needs, how it runs (the flow canvas, coloured by the last
  * run — a step expands in place to its details, the flow can go full
  * screen), and its statistics (the last run, muster's run totals, rates and

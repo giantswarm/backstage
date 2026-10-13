@@ -34,6 +34,7 @@ import { musterApiRef } from '../../apis';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+import { MusterEndpoint } from '../MusterEndpoint';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
@@ -512,6 +513,7 @@ function ConnectorsTable({
 
   return (
     <Flex direction="column" gap="4">
+      <MusterEndpoint />
       <CatalogFilterBar
         dimensions={filters.dimensions}
         onSelect={filters.select}
@@ -575,7 +577,7 @@ function Panel({ search }: CustomizeConnectorsPanelProps) {
 
 /**
  * The Connectors tab of the shell's Customize screen: the active muster's
- * servers as flat rows with how one signs in, their tool count and state, and
+ * MCP endpoint, then its servers as flat rows with how one signs in, their tool count and state, and
  * a sign-in where muster asks this person for one; filtered by sign-in and by
  * connection where those tell connectors apart (T49). Must be mounted inside a
  * `CustomizeMusterProvider`.

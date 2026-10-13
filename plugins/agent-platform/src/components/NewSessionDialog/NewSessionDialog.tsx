@@ -1,9 +1,11 @@
 import { Dialog, DialogBody, DialogHeader } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { dialogDismissLock } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  dialogDismissLock,
+  PHONE_FULL_SCREEN_DIALOG,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { AgentRow } from '../AgentsDataProvider';
 import { NewSessionComposer } from '../NewSessionComposer';
-import { PHONE_FULL_SCREEN_DIALOG } from './phoneDialog';
 
 const useStyles = makeStyles({
   // The whole screen on a phone, so the box and Start stay above the soft

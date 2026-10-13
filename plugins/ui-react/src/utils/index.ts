@@ -21,6 +21,7 @@ export { stopRowPress } from './rowPress';
 export { MENU_WIDTH } from './menuWidth';
 export { createMarkdownLinkResolver } from './resolveMarkdownLink';
 export { dialogDismissLock } from './dialogDismissLock';
+export { PHONE_FULL_SCREEN_DIALOG } from './phoneDialog';
 export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
 export {
