@@ -132,6 +132,26 @@ describe('AddSkillPage', () => {
     );
   });
 
+  it('explains the pull request and the fields', async () => {
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        'This opens a pull request. The skill reaches the catalog once a teammate merges it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Use lowercase letters, digits and dashes, e.g. ticket-triage.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Write what the agent should know and do. Markdown formatting allowed.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   // Live round L2: without its own title the page fell back to the
   // /agent-platform extension's default, "Sessions".
   it('names itself in the document title', async () => {
@@ -208,7 +228,7 @@ describe('AddSkillPage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', opened.pullRequestUrl);
     const footer = screen.getByRole('contentinfo');
     expect(
@@ -316,6 +336,11 @@ describe('AddSkillPage editing an existing skill', () => {
     expect(
       screen.getByText(
         /support\/ticket-triage\/SKILL.md in giantswarm\/skills/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This opens a pull request. The change reaches the catalog once a teammate merges it; agents keep their pinned version until their skills are updated.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/)).toHaveAttribute('readonly');
@@ -439,7 +464,7 @@ describe('AddSkillPage editing an existing skill', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', opened.pullRequestUrl);
   });
 });

@@ -76,7 +76,7 @@ function SkillPullRequestOutcome({
               variant="secondary"
               size="small"
             >
-              Open the pull request ↗
+              Review pull request ↗
             </ButtonLink>
           </div>
         </Flex>
@@ -285,13 +285,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     >
       {edit ? (
         <WizardStepHeading title="Propose a change">
-          This opens a pull request as you. The change reaches the catalog once
-          a teammate merges it; agents keep their pinned version until their
+          This opens a pull request. The change reaches the catalog once a
+          teammate merges it; agents keep their pinned version until their
           skills are updated.
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Propose a skill">
-          This opens a pull request as you. The skill reaches the catalog once a
+          This opens a pull request. The skill reaches the catalog once a
           teammate merges it.
         </WizardStepHeading>
       )}
@@ -365,7 +365,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             <TextField
               label="Name"
               isRequired
-              description="Becomes the skill's folder. Use lowercase letters, digits and dashes, e.g. ticket-triage."
+              description="Use lowercase letters, digits and dashes, e.g. ticket-triage."
               value={skillName}
               onChange={setSkillName}
               {...fieldErrorProps(
@@ -387,7 +387,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             label="Instructions"
             // As bui's `isRequired` marks the fields above it.
             secondaryLabel="Required"
-            description="Write what the agent should know and do, in Markdown."
+            description="Write what the agent should know and do. Markdown formatting allowed."
             rows={10}
             value={instructions}
             onChange={setInstructions}
