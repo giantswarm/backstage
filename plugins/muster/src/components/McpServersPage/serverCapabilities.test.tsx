@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -122,6 +122,11 @@ describe('ServerPrompts', () => {
     await render(<ServerPrompts server={makeServer()} />, { filterPrompts });
 
     expect(await screen.findByText('triage_issue')).toBeInTheDocument();
+    expect(screen.queryByText(/prompt\(s\)/)).toBeNull();
+    const row = within(screen.getByRole('list', { name: 'Prompts' })).getByRole(
+      'listitem',
+    );
+    expect(within(row).getByText('Triage an issue.')).toBeInTheDocument();
     expect(filterPrompts).toHaveBeenCalledWith({
       installation: 'gazelle',
       server: 'pro',
@@ -196,12 +201,18 @@ describe('resource and prompt lists at scale', () => {
     });
 
     expect(await screen.findByText('doc://item-3')).toBeInTheDocument();
-    expect(screen.getByText('3 resource(s)')).toBeInTheDocument();
+    // The tab carries the count; the list repeats none of its own.
+    expect(screen.queryByText(/resource\(s\)/)).toBeNull();
+    expect(
+      within(screen.getByRole('list', { name: 'Resources' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(3);
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('pages 200 of 300 resources twenty at a time, keeping the first-page note', async () => {
+  it('pages 200 of 300 resources twenty at a time, saying the list is partial', async () => {
     const filterResources = jest.fn().mockResolvedValue({
       total: 300,
       filtered_count: 200,
@@ -217,7 +228,9 @@ describe('resource and prompt lists at scale', () => {
     expect(screen.queryByText('doc://item-21')).toBeNull();
     expect(screen.getAllByText(/^doc:\/\/item-/)).toHaveLength(20);
     expect(
-      screen.getByText('300 resource(s) (first page)'),
+      screen.getByText(
+        'This list may be incomplete: muster returned only part of the resources.',
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Show 20 more resources' }),

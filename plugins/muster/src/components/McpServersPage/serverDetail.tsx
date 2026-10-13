@@ -20,6 +20,8 @@ import {
   CatalogNoMatch,
   matchesQuery,
   ShowMore,
+  StackedRowList,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import {
@@ -74,13 +76,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     alignSelf: 'stretch',
     margin: '0 calc(-1 * var(--bui-space-2))',
     padding: '0 var(--bui-space-2)',
-  },
-  capabilityList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1),
-    marginTop: theme.spacing(1),
-    fontSize: 13,
   },
   errorPre: {
     whiteSpace: 'pre-wrap',
@@ -676,22 +671,29 @@ export function useServerCapabilityCounts(
 }
 
 /**
- * A server's resources or prompts: a page of {@link INITIAL_ROWS} at a time,
- * and a search over them once there are more than a page — a server's handful
- * is read, not searched. The search starts the paging over.
+ * A server's resources or prompts as stacked rows, a name over its
+ * description: a page of {@link INITIAL_ROWS} at a time, and a search over them
+ * once there are more than a page — a server's handful is read, not searched.
+ * The search starts the paging over. The tab carries the count, so the list
+ * states none of its own.
  */
 function CapabilityList<T>({
   items,
   noun,
+  label,
+  truncated,
   searchText,
-  render,
+  row,
 }: {
   items: T[];
   noun: string;
+  /** The list's accessible name, e.g. "Prompts". */
+  label: string;
+  /** muster returned only part of the list. */
+  truncated?: boolean;
   searchText: (item: T) => string;
-  render: (item: T) => ReactNode;
+  row: (item: T) => StackedRowItem;
 }) {
-  const classes = useStyles();
   const [query, setQuery] = useState('');
   const searchable = items.length > INITIAL_ROWS;
   const shown = searchable
@@ -699,9 +701,9 @@ function CapabilityList<T>({
     : items;
 
   return (
-    <>
+    <Flex direction="column" gap="2">
       {searchable && (
-        <Box mt="2" style={{ maxWidth: 360 }}>
+        <Box style={{ maxWidth: 360 }}>
           <SearchField
             aria-label={`Search ${noun}s`}
             placeholder={`Search ${items.length} ${noun}s`}
@@ -711,18 +713,30 @@ function CapabilityList<T>({
           />
         </Box>
       )}
+      {truncated && (
+        <Text as="p" variant="body-small" color="secondary">
+          This list may be incomplete: muster returned only part of the {noun}s.
+        </Text>
+      )}
       {shown.length === 0 ? (
-        <Box mt="1">
-          <CatalogNoMatch plural={`${noun}s`} search={query} />
-        </Box>
+        <CatalogNoMatch plural={`${noun}s`} search={query} />
       ) : (
         <ShowMore key={query} items={shown} noun={noun}>
           {visible => (
-            <Box className={classes.capabilityList}>{visible.map(render)}</Box>
+            <StackedRowList aria-label={label} rows={visible.map(row)} />
           )}
         </ShowMore>
       )}
-    </>
+    </Flex>
+  );
+}
+
+/** A row's description, in the secondary voice the tools list uses. */
+function RowDescription({ children }: { children: ReactNode }) {
+  return (
+    <Text as="p" variant="body-small" color="secondary">
+      {children}
+    </Text>
   );
 }
 
@@ -772,30 +786,27 @@ export function ServerResources({
   }
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? resources.length} resource(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <CapabilityList
-        items={resources}
-        noun="resource"
-        searchText={resource =>
-          [resource.uri, resource.name, resource.description].join(' ')
-        }
-        render={resource => (
-          <Box key={`${resource.server}:${resource.uri}`}>
-            <Mono>{resource.uri}</Mono>
-            {resource.name ? ` — ${resource.name}` : ''}
-            {resource.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {resource.description}
-              </Text>
-            )}
-          </Box>
-        )}
-      />
-    </Box>
+    <CapabilityList
+      items={resources}
+      noun="resource"
+      label="Resources"
+      truncated={data?.truncated}
+      searchText={resource =>
+        [resource.uri, resource.name, resource.description].join(' ')
+      }
+      // The name reads as the title where the server gives one; the URI is
+      // what an agent asks for, so it stays on the row either way.
+      row={resource => ({
+        id: `${resource.server}:${resource.uri}`,
+        title: resource.name || <Mono>{resource.uri}</Mono>,
+        facts: resource.name
+          ? [<Mono key="uri">{resource.uri}</Mono>]
+          : undefined,
+        details: resource.description ? (
+          <RowDescription>{resource.description}</RowDescription>
+        ) : undefined,
+      })}
+    />
   );
 }
 
@@ -849,29 +860,22 @@ export function ServerPrompts({
       : promptName;
 
   return (
-    <Box>
-      <Note>
-        {data?.total ?? prompts.length} prompt(s)
-        {data?.truncated ? ' (first page)' : ''}
-      </Note>
-      <CapabilityList
-        items={prompts}
-        noun="prompt"
-        searchText={prompt =>
-          [shortName(prompt.name), prompt.description].join(' ')
-        }
-        render={prompt => (
-          <Box key={prompt.name}>
-            <Mono>{shortName(prompt.name)}</Mono>
-            {prompt.description && (
-              <Text as="p" variant="body-small" color="secondary">
-                {prompt.description}
-              </Text>
-            )}
-          </Box>
-        )}
-      />
-    </Box>
+    <CapabilityList
+      items={prompts}
+      noun="prompt"
+      label="Prompts"
+      truncated={data?.truncated}
+      searchText={prompt =>
+        [shortName(prompt.name), prompt.description].join(' ')
+      }
+      row={prompt => ({
+        id: prompt.name,
+        title: shortName(prompt.name),
+        details: prompt.description ? (
+          <RowDescription>{prompt.description}</RowDescription>
+        ) : undefined,
+      })}
+    />
   );
 }
 
