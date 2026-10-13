@@ -1,5 +1,5 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { InfoHint, StatusDot } from '@giantswarm/backstage-plugin-ui-react';
+import { StatusWithHint } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type ServerSignInStatusState,
   type UseServerSignInStatusOptions,
@@ -17,15 +17,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     minWidth: 0,
   },
-  status: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    flex: 'none',
-  },
 }));
 
-/** The state in a few words, with the sentences in an {@link InfoHint}. */
+/**
+ * The state in a few words, with the sentences in a hint beside them: ui-react's
+ * `StatusWithHint`, as the models list renders its status.
+ */
 export function SignInStatusText({
   serverName,
   signInStatus: { shown, details },
@@ -33,16 +30,13 @@ export function SignInStatusText({
   serverName: string;
   signInStatus: ServerSignInStatusState;
 }) {
-  const classes = useStyles();
   return (
-    <span className={classes.status}>
-      <StatusDot tone={shown.tone} label={shown.label} />
-      {details.length > 0 ? (
-        <InfoHint label={`About the state of ${serverName}`} size="medium">
-          {details.join('\n')}
-        </InfoHint>
-      ) : null}
-    </span>
+    <StatusWithHint
+      tone={shown.tone}
+      label={shown.label}
+      hint={details.length > 0 ? details.join('\n') : undefined}
+      hintLabel={`About the state of ${serverName}`}
+    />
   );
 }
 
