@@ -29,11 +29,11 @@ import {
 import {
   agentDetailRouteRef,
   agentsRouteRef,
+  customizeExternalRouteRef,
   deploymentDetailsExternalRouteRef,
   gpuCapacityRouteRef,
   modelCacheRouteRef,
   installationsExternalRouteRef,
-  modelDetailRouteRef,
   modelsRouteRef,
   musterServersExternalRouteRef,
   musterServerToolExternalRouteRef,
@@ -464,16 +464,19 @@ export const agentPlatformPlugin = createFrontendPlugin({
     profile: profileRouteRef,
     usage: usageRouteRef,
     models: modelsRouteRef,
-    modelDetail: modelDetailRouteRef,
     newModel: newModelRouteRef,
     serving: servingRouteRef,
     gpuCapacity: gpuCapacityRouteRef,
     modelCache: modelCacheRouteRef,
   },
-  // All carry a `defaultTarget`, so they resolve without an app-config binding
-  // and are simply unbound when the target plugin is disabled. Every call site
+  // All but `customize` carry a `defaultTarget`, so they resolve without an
+  // app-config binding and are simply unbound when the target plugin is
+  // disabled. `customize` targets the app's own Customize page, which no
+  // plugin can name: it resolves only through the app's `bindRoutes`
+  // (packages/app/src/App.tsx) and is unbound without it. Every call site
   // must handle `useRouteRef` returning undefined.
   externalRoutes: {
+    customize: customizeExternalRouteRef,
     musterServers: musterServersExternalRouteRef,
     musterServerTool: musterServerToolExternalRouteRef,
     musterWorkflowDetail: musterWorkflowDetailExternalRouteRef,

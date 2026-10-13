@@ -18,7 +18,7 @@ import {
   type ClientServingState,
   type ServedModel,
 } from '../../lib/serving';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import {
   isModelRowMuted,
   ModelRow,
@@ -43,7 +43,10 @@ jest.mock('react-router-dom', () => ({
 // SubRouteRef — and the detail sub-route resolves relative to it.
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
 
 const rows: ModelRow[] = [
@@ -146,7 +149,7 @@ describe('ModelsTable', () => {
     const link = screen.getByRole('link', { name: /Qwen 3 \(lab vLLM\)/ });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/customize/models/inst-1/kagent/qwen3',
     );
   });
 
@@ -156,7 +159,7 @@ describe('ModelsTable', () => {
     await userEvent.click(screen.getByText('qwen3-8-27b'));
 
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/models/inst-1/kagent/qwen3',
+      '/customize/models/inst-1/kagent/qwen3',
     );
   });
 
@@ -562,6 +565,38 @@ describe('toModelRow', () => {
       readiness: 'notAccepted',
       readinessMessage: 'referenced Secret not found',
     });
+  });
+
+  it('marks a stale status, whose message describes the previous spec', () => {
+    const row = toModelRow(
+      new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'qwen3', namespace: 'kagent', generation: 2 },
+          spec: { provider: 'OpenAI', model: 'qwen3-8-27b' },
+          status: {
+            observedGeneration: 1,
+            conditions: [
+              {
+                type: 'ResolvedRefs',
+                status: 'False',
+                reason: 'SecretNotFound',
+                message: 'Secret kagent/qwen3 not found',
+                lastTransitionTime: '2026-09-01T00:00:00Z',
+              },
+            ],
+          },
+        } as ModelConfigInterface,
+        'inst-1',
+      ),
+    );
+
+    expect(row.readiness).toBe('pending');
+    expect(row.isStale).toBe(true);
+    // The controller's raw message: `modelStatus` decides what a stale row
+    // shows.
+    expect(row.readinessMessage).toBe('Secret kagent/qwen3 not found');
   });
 
   it('attaches the served model link when given one', () => {

@@ -8,6 +8,7 @@ import type {
   AgentStatus,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
   skillsRouteRef,
@@ -595,6 +596,7 @@ const renderPage = (tab: string = '') =>
     mountedRoutes: {
       '/agent-platform/agents': agentsRouteRef,
       '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
       '/agent-platform/skills': skillsRouteRef,
       '/agent-platform/usage': usageRouteRef,
     },
@@ -1004,6 +1006,41 @@ describe('AgentDetailPage', () => {
     await renderPage();
 
     expect(screen.getByText('opus-4-7')).toBeInTheDocument();
+    // No link to a page that could only say it cannot load the model.
+    await openTechnicalDetails();
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+  });
+
+  it("links the ModelConfig in Technical details to the model's page", async () => {
+    stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/models/gazelle/agent-platform/opus-4-7',
+    );
+    // Sized and coloured as the "ModelConfig" line it sits in.
+    expect(
+      screen.getByRole('link', { name: 'agent-platform/opus-4-7' }),
+    ).toHaveAttribute('data-variant', 'body-small');
+  });
+
+  it('keeps the model as text where the agent has no namespace to resolve it in', async () => {
+    const agent = makeAgent();
+    delete agent.jsonData.metadata!.namespace;
+    stubResources({ resource: agent }, { resource: makeModelConfig() });
+
+    await renderPage();
+    await openTechnicalDetails();
+
+    // Neither the configuration's ModelConfig nor the facts' model name.
+    expect(screen.queryByRole('link', { name: /opus-4-7$/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Claude Opus 4.7' })).toBeNull();
+    expect(screen.getAllByText('opus-4-7').length).toBeGreaterThan(0);
   });
 
   describe('status', () => {
@@ -1971,6 +2008,7 @@ describe('AgentDetailPage: the model behind the agent', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
       },
       mountPath: '/agent-platform/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
@@ -2057,6 +2095,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       mountedRoutes: {
         '/agent-platform/agents': agentsRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/usage': usageRouteRef,
       },
@@ -2355,7 +2394,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByRole('link', { name: 'Claude Opus 4.7' }),
       ).toHaveAttribute(
         'href',
-        '/agent-platform/models/gazelle/agent-platform/opus-4-7',
+        '/customize/models/gazelle/agent-platform/opus-4-7',
       );
       // The model it runs, as the secondary line under the name (PO L6).
       expect(

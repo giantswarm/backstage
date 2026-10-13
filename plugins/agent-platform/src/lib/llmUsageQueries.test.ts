@@ -1,9 +1,7 @@
 import {
   counterIncrease,
   dailyRangeWindow,
-  llmUsageQueries,
   llmUsageQueriesFor,
-  llmUsageRangeQueries,
   llmUsageRangeQueriesFor,
   todayPartialQueries,
   dailyWindowDayKeys,
@@ -113,12 +111,12 @@ describe('dailyWindowDayKeys', () => {
   });
 });
 
-describe('llmUsageQueries.outputTokensPerSecond', () => {
+describe('llmUsageQueriesFor().outputTokensPerSecond', () => {
   it('inverts the median, not the mean', () => {
     // The mean of this histogram is unweighted by reply length, so a reply
     // that emitted three tokens after a long wait counts as much as a long
     // one — on `graveler` that turned a 63 tok/s median into 2 tok/s.
-    expect(llmUsageQueries.outputTokensPerSecond).toBe(
+    expect(llmUsageQueriesFor().outputTokensPerSecond).toBe(
       `1 / histogram_quantile(0.50, sum by (le) ${counterIncrease(
         'agentgateway_gen_ai_server_time_per_output_token_bucket',
         '30d',
@@ -131,7 +129,11 @@ describe('llmUsageQueriesFor', () => {
   it('is the installation-wide 30-day set by default', () => {
     const { previousCost, ...queries } = llmUsageQueriesFor();
 
-    expect(queries).toEqual(llmUsageQueries);
+    expect(queries).toEqual(
+      (({ previousCost: _, ...rest }) => rest)(
+        llmUsageQueriesFor({ days: 30 }),
+      ),
+    );
     expect(previousCost).toBe(
       'sum by (agent_namespace, agent, gen_ai_response_model, gen_ai_token_type) (increase(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d) or label_replace(min_over_time(agentgateway_gen_ai_client_cost_usd_total[30d] offset 30d) unless last_over_time(agentgateway_gen_ai_client_cost_usd_total[1h] offset 60d), "first_sample", "true", "__name__", ".*"))',
     );
@@ -174,8 +176,10 @@ describe('llmUsageQueriesFor', () => {
       expect(queries[key]).toContain(only);
     }
     // Their metrics carry no namespace label.
-    expect(queries.requestsByStatus).toBe(llmUsageQueries.requestsByStatus);
-    expect(queries.unpricedLookups).toBe(llmUsageQueries.unpricedLookups);
+    expect(queries.requestsByStatus).toBe(
+      llmUsageQueriesFor().requestsByStatus,
+    );
+    expect(queries.unpricedLookups).toBe(llmUsageQueriesFor().unpricedLookups);
   });
 
   it('compares one organization over the window just before this one', () => {
@@ -195,7 +199,7 @@ describe('llmUsageQueriesFor', () => {
   });
 
   it('filters the daily and today queries the same way', () => {
-    expect(llmUsageRangeQueriesFor()).toEqual(llmUsageRangeQueries);
+    expect(llmUsageRangeQueriesFor()).toEqual(llmUsageRangeQueriesFor({}));
     expect(llmUsageRangeQueriesFor({ org: 'support' }).costPerDayByModel).toBe(
       `sum by (gen_ai_response_model) ${counterIncrease(
         'agentgateway_gen_ai_client_cost_usd_total{agent_namespace="support"}',
@@ -302,7 +306,7 @@ describe('counterIncrease', () => {
   it('is what every usage query counts with — no bare increase() or rate()', () => {
     const all = [
       ...Object.values(llmUsageQueriesFor({ days: 7, org: 'support' })),
-      ...Object.values(llmUsageRangeQueries),
+      ...Object.values(llmUsageRangeQueriesFor()),
       ...Object.values(todayPartialQueries('600s')),
     ];
     for (const query of all) {

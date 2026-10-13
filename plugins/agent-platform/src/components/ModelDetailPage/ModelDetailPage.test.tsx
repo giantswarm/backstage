@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Link as RouterLink, Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,7 +11,11 @@ import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils
 
 import type { LlmUsageView } from '../../hooks/useLlmUsage';
 import type { LlmUsage } from '../../lib/llmUsage';
-import { agentsRouteRef, modelsRouteRef } from '../../routes';
+import {
+  customizeExternalRouteRef,
+  agentsRouteRef,
+  modelsRouteRef,
+} from '../../routes';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ModelDetailPage } from './ModelDetailPage';
 
@@ -70,12 +73,9 @@ jest.mock('../../hooks/useLlmUsage', () => ({
   useLlmUsage: () => mockLlmUsage,
 }));
 
-// The fleet's agents, as the provider lists them.
+// The fleet's agents, as the Customize page's provider lists them.
 let mockAgents: AgentRow[] = [];
 jest.mock('../AgentsDataProvider', () => ({
-  AgentsDataProvider: ({ children }: { children: ReactNode }) => (
-    <>{children}</>
-  ),
   useAgents: () => ({
     rows: mockAgents,
     isLoading: false,
@@ -83,11 +83,20 @@ jest.mock('../AgentsDataProvider', () => ({
   }),
 }));
 
-// The chart itself is ui-react's; what matters here is which series it gets.
+// The chart itself is ui-react's; what matters here is which series it gets,
+// and whether it draws a key.
 jest.mock('../LlmUsage', () => ({
   ...jest.requireActual('../LlmUsage'),
-  CostPerDayCard: ({ daily }: { daily: { series: string[] } }) => (
-    <div data-testid="cost-per-day">{daily.series.join(',')}</div>
+  CostPerDayCard: ({
+    daily,
+    showLegend,
+  }: {
+    daily: { series: string[] };
+    showLegend?: boolean;
+  }) => (
+    <div data-testid="cost-per-day" data-legend={String(showLegend ?? true)}>
+      {daily.series.join(',')}
+    </div>
   ),
 }));
 
@@ -182,7 +191,7 @@ function renderPage() {
     <PageHeaderActionsProvider>
       <Routes>
         <Route
-          path="/agent-platform/models/:installation/:namespace/:name"
+          path="/customize/models/:installation/:namespace/:name"
           element={<ModelDetailPage />}
         />
         <Route
@@ -190,11 +199,16 @@ function renderPage() {
           element={<p>The Connect-a-model flow, prefilled</p>}
         />
       </Routes>
+      {/* Another model under the same route, as the palette opens one. */}
+      <RouterLink to="/customize/models/inst-1/kagent/haiku">
+        Next model
+      </RouterLink>
     </PageHeaderActionsProvider>,
     {
-      initialRouteEntries: ['/agent-platform/models/inst-1/kagent/sonnet'],
+      initialRouteEntries: ['/customize/models/inst-1/kagent/sonnet'],
       mountedRoutes: {
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/agents': agentsRouteRef,
       },
     },
@@ -236,6 +250,77 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByLabelText(/Model ID|^Model$/)).toBeNull();
   });
 
+  it('explains a model the controller did not accept in Technical details, open on arrival', async () => {
+    const rejected = sonnet();
+    rejected.jsonData.status!.conditions![1] = {
+      type: 'ResolvedRefs',
+      status: 'False',
+      reason: 'SecretNotFound',
+      message: 'Secret kagent/sonnet-key not found',
+      lastTransitionTime: '2026-09-01T10:00:00Z',
+    };
+    mockUseResource.mockReturnValue({
+      resource: rejected,
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByText('Not accepted')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    // The failing stage starts expanded, its reason and message in view.
+    expect(screen.getByText('SecretNotFound')).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret kagent/sonnet-key not found'),
+    ).toBeInTheDocument();
+  });
+
+  it('folds Technical details away for an accepted model, with the resource and its conditions inside', async () => {
+    await renderPage();
+
+    const trigger = screen.getByRole('button', { name: 'Technical details' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('API key from')).toBeNull();
+
+    await userEvent.click(trigger);
+
+    expect(screen.getByText('API key from')).toBeInTheDocument();
+    expect(
+      screen.getByText('Secret sonnet-key, key ANTHROPIC_API_KEY'),
+    ).toBeInTheDocument();
+    // The technical name, under Resource › Name, and only there.
+    expect(screen.getByText('Name')).toBeInTheDocument();
+    expect(screen.getAllByText('kagent/sonnet')).toHaveLength(1);
+    // Each condition is a heading under the Status card, in the order the
+    // controller evaluates them.
+    expect(
+      screen
+        .getAllByRole('heading', { level: 4 })
+        .map(heading => heading.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Accepted/),
+      expect.stringMatching(/^ResolvedRefs/),
+    ]);
+  });
+
+  it('starts Technical details afresh on another model', async () => {
+    await renderPage();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(screen.getByRole('link', { name: 'Next model' }));
+
+    expect(
+      screen.getByRole('button', { name: 'Technical details' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it("shows the gateway's figures for the model, snapshots included", async () => {
     await renderPage();
 
@@ -243,6 +328,11 @@ describe('ModelDetailPage', () => {
     expect(screen.getByText('21.9M')).toBeInTheDocument();
     expect(screen.getByText('8,412')).toBeInTheDocument();
     expect(screen.getByTestId('cost-per-day')).toHaveTextContent('Sonnet 4.5');
+    // One model, named by the page: no key.
+    expect(screen.getByTestId('cost-per-day')).toHaveAttribute(
+      'data-legend',
+      'false',
+    );
   });
 
   it('lists the agents whose spec names this model, with their spend on it', async () => {
@@ -323,7 +413,8 @@ describe('ModelDetailPage', () => {
     expect(within(facts).getByText('claude-sonnet-4-5')).toBeInTheDocument();
     expect(within(facts).getByText('Provider default')).toBeInTheDocument();
     expect(within(facts).getByText('200k tokens')).toBeInTheDocument();
-    expect(within(facts).getByText('kagent/sonnet')).toBeInTheDocument();
+    // The technical name lives in Technical details › Resource, not here.
+    expect(within(facts).queryByText('kagent/sonnet')).toBeNull();
   });
 
   it('leaves the context window out when the table does not name the model', async () => {

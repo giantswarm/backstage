@@ -22753,6 +22753,7 @@ __metadata:
     "@giantswarm/backstage-plugin-flux": "workspace:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
     "@giantswarm/backstage-plugin-gs": "workspace:^"
+    "@giantswarm/backstage-plugin-gs-react": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-muster": "workspace:^"
     "@giantswarm/backstage-plugin-plans": "workspace:^"

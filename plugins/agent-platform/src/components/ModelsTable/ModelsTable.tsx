@@ -8,14 +8,13 @@ import {
   useTable,
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useNavigate } from 'react-router-dom';
 import type {
   ModelConfig,
   ModelConfigReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { modelDetailRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
   stopRowPress,
   useVisibleSort,
@@ -90,6 +89,11 @@ export type ModelRow = {
   readiness: ModelConfigReadiness;
   /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
+  /**
+   * The controller has not reconciled the latest change yet, so
+   * `readinessMessage` describes the previous spec (see `modelStatus`).
+   */
+  isStale?: boolean;
   /** The in-cluster served model behind `endpoint`, when known. */
   servedBy?: ModelServedBy;
 };
@@ -98,6 +102,7 @@ export function toModelRow(
   modelConfig: ModelConfig,
   servedBy?: ModelServedBy,
 ): ModelRow {
+  const isStale = modelConfig.isStale();
   return {
     id: `${modelConfig.cluster}/${modelConfig.getNamespace() ?? ''}/${modelConfig.getName()}`,
     installation: modelConfig.cluster,
@@ -109,6 +114,7 @@ export function toModelRow(
     endpoint: modelConfig.getEndpoint() ?? '',
     readiness: modelConfig.getReadiness(),
     readinessMessage: modelConfig.getReadinessMessage(),
+    ...(isStale ? { isStale } : {}),
     ...(servedBy ? { servedBy } : {}),
   };
 }
@@ -312,7 +318,7 @@ export type ModelsTableProps = {
  */
 export function ModelsTable({ rows, hideColumns }: ModelsTableProps) {
   const navigate = useNavigate();
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
 
   // All three parameters are needed: a ModelConfig name is only unique within
   // a namespace on one installation. Undefined when the route isn't bound, in
