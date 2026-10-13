@@ -65,19 +65,22 @@ function ResourceFacts({ modelConfig }: { modelConfig: ModelConfig }) {
  * itself (a missing key Secret, a provider config that does not resolve).
  */
 function StatusConditions({ modelConfig }: { modelConfig: ModelConfig }) {
+  const conditions = modelConfig.getConditions();
   return (
     <InfoCard title="Status">
       <Flex direction="column" gap="4">
         {/* The one thing the conditions cannot say on their own: they may
             all read healthy and still describe the previous spec. */}
-        {modelConfig.isStale() && (
+        {/* Only over conditions: with none yet, the empty state says the
+            controller has not reported, which is the whole story. */}
+        {modelConfig.isStale() && conditions.length > 0 && (
           <Text variant="body-small" color="secondary">
             {STALE_MODEL_DETAIL} The conditions below describe the previous
             version.
           </Text>
         )}
         <ConditionsList
-          conditions={modelConfig.getConditions()}
+          conditions={conditions}
           order={MODEL_CONFIG_CONDITION_ORDER}
           headingLevel={4}
           emptyContent={

@@ -84,9 +84,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // page, the model in neither `page` nor `view` (it is in `path`, as on
     // every page): `page` and `view` are the dimensions TelemetryDeck
     // aggregates on, and path segments there would make a signal per model.
-    // The former `/agent-platform/models/…` path redirects here. Above the
-    // tab case, which would report it as the Models tab.
-    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+    // The former `/agent-platform/models/…` path redirects here. A trailing
+    // slash is the same page, as the router has it. Above the tab case, which
+    // would report it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
       payload = { page: 'Model detail' };
       break;
 
@@ -242,7 +243,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // must not, or each old link counts twice. Its own page, like the Agents
     // redirect, with no `view`: the segments name a model. Placed above the
     // views case so the three identifying segments cannot reach a `view`.
-    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
       payload = { page: 'Model detail redirect' };
       break;
 

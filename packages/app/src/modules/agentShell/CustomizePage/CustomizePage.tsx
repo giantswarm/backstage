@@ -24,10 +24,10 @@ import {
   agentPlatformPlugin,
   CustomizeAgentsPanel,
   CustomizeDataProvider,
+  CustomizeModelPage,
   CustomizeModelsPanel,
   CustomizeSkillsPanel,
   EnvironmentSelect,
-  ModelDetailPage,
   useCanAddSkill,
   useCustomizeData,
   WorkflowCreateAssist,
@@ -259,33 +259,42 @@ function CustomizeTabPage() {
   return <CustomizeTabContent key={`${tab.id}?${query}`} tab={tab} />;
 }
 
+/** The Customize screen itself: its tabs, over the data they share. */
+function CustomizeScreen() {
+  return (
+    <CustomizeMusterProvider>
+      <CustomizeDataProvider>
+        <Routes>
+          <Route index element={<DefaultTabRedirect />} />
+          <Route path="*" element={<CustomizeTabPage />} />
+        </Routes>
+      </CustomizeDataProvider>
+    </CustomizeMusterProvider>
+  );
+}
+
 /**
  * The shell's Customize page: a tab per area at `/customize/:tab`, with
  * `/customize` opening the first, and one model's page beside the Models tab
  * (`/customize/models/<installation>/<namespace>/<name>`). The model's page
- * sits inside the same providers as the list: they stay mounted between the
- * two, and their React Query reads (the ModelConfigs, the agents, the serving
- * snapshot) are the ones the list already made, so opening a model from the
- * list reads nothing again. Rendered without the app's page layout, so it
- * mounts the header-actions slot its pages render.
+ * is outside the screen's providers: it mounts only the agent-platform data
+ * it reads (`CustomizeModelPage`), not the skill catalogue or muster, whose
+ * errors panel would otherwise sit above it. Both share one query client, so
+ * the list's reads are cache hits on the page. Rendered without the app's
+ * page layout, so it mounts the header-actions slot its pages render.
  */
 export function CustomizePage() {
   return (
     <PageHeaderActionsProvider>
       {/* Until a tab's page names itself. */}
       <ShellDocumentTitle title="Customize" />
-      <CustomizeMusterProvider>
-        <CustomizeDataProvider>
-          <Routes>
-            <Route index element={<DefaultTabRedirect />} />
-            <Route
-              path="models/:installation/:namespace/:name"
-              element={<ModelDetailPage />}
-            />
-            <Route path="*" element={<CustomizeTabPage />} />
-          </Routes>
-        </CustomizeDataProvider>
-      </CustomizeMusterProvider>
+      <Routes>
+        <Route
+          path="models/:installation/:namespace/:name"
+          element={<CustomizeModelPage />}
+        />
+        <Route path="*" element={<CustomizeScreen />} />
+      </Routes>
     </PageHeaderActionsProvider>
   );
 }

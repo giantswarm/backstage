@@ -67,7 +67,7 @@ const LegacyNewRedirect = () => {
  * `<installation>/<namespace>/<name>` and, before that, `configs/…`. Both
  * redirect there, so a bookmark or an older release's link still resolves.
  * Where the app binds no Customize page, the link lands on the tab root
- * instead (`..`, as above) rather than on a blank page.
+ * instead (`..`, as above), whose redirect then says there is no list.
  */
 const LegacyDetailRedirect = () => {
   const { installation = '', namespace = '', name = '' } = useParams();

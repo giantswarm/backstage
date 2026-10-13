@@ -368,13 +368,14 @@ function ModelDetailPageContent() {
  * speak) offers no Edit, and an alert says why where the reason is not just
  * the reader's permissions.
  *
- * Mounted inside the Customize page's providers, the ones the models list
- * reads through (`CustomizeDataProvider`: the query client, the ModelConfigs,
- * the serving snapshot and the agents), so it shares the list's reads.
+ * Mounted inside the plugin's query client, a `ServingProvider` and an
+ * `AgentsDataProvider`, as `CustomizeModelPage` mounts it.
  *
- * `ErrorsProvider` is required, not decorative: the Technical details'
- * `GitOpsCard` reports the failures of its Flux lookups through
- * `useShowErrors`, which throws without this context, as on the agent page.
+ * This is the page's one `ErrorsProvider`, and it is required, not
+ * decorative: the Technical details' `GitOpsCard` reports the failures of its
+ * Flux lookups through `useShowErrors`, which throws without this context, as
+ * on the agent page. The route keeps the page outside muster's provider, so no
+ * other errors panel sits above it.
  */
 export function ModelDetailPage() {
   return (

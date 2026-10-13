@@ -270,9 +270,10 @@ function UsedBySection({
  * screen's own reductions), the cost per day, and the agents that run on it
  * with what each spent on it.
  *
- * The agents come from the Customize page's agent provider, the list's own
- * read: the gateway reduction names agents through it, and "Used by" filters
- * it. No provider of its own, so the page never runs the agent reads twice.
+ * The agents come from the `AgentsDataProvider` above the page
+ * (`CustomizeModelPage` mounts it): the gateway reduction names agents
+ * through it, and "Used by" filters it. No provider of its own, so the page
+ * never runs the agent reads twice.
  */
 export function ModelReadView({
   installation,

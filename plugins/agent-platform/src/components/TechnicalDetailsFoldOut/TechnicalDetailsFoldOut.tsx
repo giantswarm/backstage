@@ -15,12 +15,12 @@ export type TechnicalDetailsFoldOutProps = {
   /** Open on arrival, e.g. while the resource is not healthy. */
   defaultExpanded: boolean;
   /**
-   * Also open when `defaultExpanded` later turns `true`, until the person
+   * Follow later changes of `defaultExpanded`, both ways, until the person
    * opens or closes the fold-out themselves: a page that renders from the
-   * cache first must not leave a reason the fresh read found folded away.
-   * Opt-in, for the model page; key the fold-out by the resource there, so
-   * another one starts afresh. Without it, `defaultExpanded` only seeds the
-   * first render, as on the agent page.
+   * cache first must neither leave a reason the fresh read found folded away
+   * nor keep open what a stale copy opened. Opt-in, for the model page; key
+   * the fold-out by the resource there, so another one starts afresh. Without
+   * it, `defaultExpanded` only seeds the first render, as on the agent page.
    */
   followDefaultExpanded?: boolean;
   children: ReactNode;
@@ -43,12 +43,12 @@ export function TechnicalDetailsFoldOut({
   const [isExpanded, setExpanded] = useState(defaultExpanded);
   const [isToggled, setToggled] = useState(false);
   // Adjusted while rendering, React's pattern for state that follows a prop:
-  // a turn to `true` opens the fold-out, unless the person has toggled it.
+  // the fold-out follows `defaultExpanded` until the person has toggled it.
   const [seededWith, setSeededWith] = useState(defaultExpanded);
   if (followDefaultExpanded && defaultExpanded !== seededWith) {
     setSeededWith(defaultExpanded);
-    if (defaultExpanded && !isToggled) {
-      setExpanded(true);
+    if (!isToggled) {
+      setExpanded(defaultExpanded);
     }
   }
   const toggle = (expanded: boolean) => {

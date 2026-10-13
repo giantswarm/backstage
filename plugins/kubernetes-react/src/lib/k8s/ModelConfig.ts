@@ -193,15 +193,19 @@ export class ModelConfig extends KubeObject<ModelConfigInterface> {
   }
 
   /**
-   * The controller's explanation for a `notAccepted` readiness: the message of
-   * the first condition that is not `True` (e.g. which Secret could not be
-   * found). `undefined` when nothing is failing.
+   * The controller's explanation for a readiness short of `accepted`: the
+   * message of the first condition that is `False` (e.g. which Secret could
+   * not be found), since that is why it is `notAccepted`; otherwise of the
+   * first that is not `True` (still `Unknown`, why it is `pending`).
+   * `undefined` when nothing is failing.
    */
   getReadinessMessage(): string | undefined {
-    return (
-      READINESS_CONDITIONS.map(type => this.getCondition(type)).find(
-        condition => condition && condition.status !== 'True',
-      )?.message || undefined
+    const conditions = READINESS_CONDITIONS.map(type =>
+      this.getCondition(type),
     );
+    const failing =
+      conditions.find(condition => condition?.status === 'False') ??
+      conditions.find(condition => condition && condition.status !== 'True');
+    return failing?.message || undefined;
   }
 }

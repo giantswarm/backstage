@@ -55,9 +55,18 @@ describe('TechnicalDetailsFoldOut', () => {
     expect(trigger()).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('leaves the open state alone when the resource turns healthy', () => {
+  it('closes again when a fresh read finds the resource healthy', () => {
     const { rerender } = renderFoldOut(true, true);
 
+    rerender(foldOut(false, true));
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('stops following once the person opened it', async () => {
+    const { rerender } = renderFoldOut(false, true);
+    await userEvent.click(trigger());
+
+    rerender(foldOut(true, true));
     rerender(foldOut(false, true));
     expect(trigger()).toHaveAttribute('aria-expanded', 'true');
   });

@@ -72,6 +72,27 @@ describe('ModelConfig', () => {
     expect(ModelConfig.supportedVersions).toEqual(['v1alpha3']);
   });
 
+  describe('readiness message', () => {
+    it('explains Not accepted by the condition that failed, not one still Unknown', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'Unknown', 'waiting for the controller'),
+        condition('ResolvedRefs', 'False', 'Secret kagent/key not found'),
+      ]);
+      expect(modelConfig.getReadiness()).toBe('notAccepted');
+      expect(modelConfig.getReadinessMessage()).toBe(
+        'Secret kagent/key not found',
+      );
+    });
+
+    it('explains Pending by the condition still Unknown', () => {
+      const modelConfig = makeModelConfig([
+        condition('Accepted', 'True'),
+        condition('ResolvedRefs', 'Unknown', 'resolving the Secret'),
+      ]);
+      expect(modelConfig.getReadinessMessage()).toBe('resolving the Secret');
+    });
+  });
+
   describe('conditions', () => {
     it('lists the conditions as the controller wrote them', () => {
       const conditions = [
