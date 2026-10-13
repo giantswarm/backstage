@@ -1,11 +1,6 @@
 import { makeStyles, Theme } from '@material-ui/core';
 import { Button, ButtonLink, Text } from '@backstage/ui';
-import {
-  DisabledAction,
-  InfoHint,
-  StatusDot,
-  type StatusDotTone,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
   SignInNoun,
@@ -49,21 +44,6 @@ const useStyles = makeStyles((theme: Theme) => ({
   name: {
     fontFamily: theme.typography.fontFamily,
     fontSize: '0.8125rem',
-  },
-  // A status cell: the state, then the sign-in. The state never shrinks, so
-  // in a narrow cell the button wraps under it instead of cutting the label.
-  status: {
-    display: 'inline-flex',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: theme.spacing(1),
-    minWidth: 0,
-  },
-  statusLabel: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    flex: 'none',
   },
 }));
 
@@ -116,7 +96,10 @@ function ssoExplanationText(
 }
 
 /** What a row says while the sign-in page is open somewhere. */
-const WAITING_FOR_SIGN_IN = 'Waiting for you to finish signing in…';
+export const WAITING_FOR_SIGN_IN = 'Waiting for you to finish signing in…';
+
+/** A word on how muster identifies itself to the authorization server. */
+export type ClientIdNote = { text: string; color: 'warning' | 'secondary' };
 
 /**
  * What the challenge's client identity means for the sign-in (muster#1083),
@@ -129,7 +112,7 @@ const WAITING_FOR_SIGN_IN = 'Waiting for you to finish signing in…';
 function clientIdMethodNote(
   clientIdMethod: ServerSignInState['clientIdMethod'],
   noun: SignInNoun,
-): { text: string; color: 'warning' | 'secondary' } | undefined {
+): ClientIdNote | undefined {
   switch (clientIdMethod) {
     case 'cimd-fallback':
       return {
@@ -159,15 +142,7 @@ function clientIdMethodNote(
  * of a button: their connection comes from muster's own session, so there is
  * nothing for the user to sign in to (and muster refuses a manual logout).
  */
-function SsoExplanation({
-  serverName,
-  state,
-  noun,
-}: {
-  serverName: string;
-  state: ServerSignInState;
-  noun: SignInNoun;
-}) {
+function SsoExplanation({ text }: { text: string }) {
   const classes = useStyles();
   return (
     <Text
@@ -176,9 +151,79 @@ function SsoExplanation({
       color="secondary"
       className={classes.fullRow}
     >
-      {ssoExplanationText(serverName, state, noun)}
+      {text}
     </Text>
   );
+}
+
+/**
+ * The wait of a sign-in this tab started, or `undefined` when there is none:
+ * what the flow says beside its way back into the sign-in page.
+ */
+export type SignInWait = { clientIdNote?: ClientIdNote };
+
+function signInWait(
+  state: ServerSignInState,
+  noun: SignInNoun,
+): SignInWait | undefined {
+  if (!state.isWaiting) {
+    return undefined;
+  }
+  const clientIdNote = clientIdMethodNote(state.clientIdMethod, noun);
+  return clientIdNote ? { clientIdNote } : {};
+}
+
+/**
+ * What {@link ServerAuthActions} shows for a server, decided once, so every
+ * layout of it (inline sentences, or a status with a tooltip) follows the
+ * same rules:
+ *
+ * - `sso`: an SSO-managed server (token forwarding/exchange) muster asks to
+ *   act on, or whose automatic connection failed: an explanation, no button.
+ *   It never waits on a sign-in, since there is nothing to sign in to.
+ * - `sign-in`: muster reports a sign-in is needed, or one this tab started is
+ *   outstanding. `gate` withholds it with a reason; `wait` is the outstanding
+ *   flow.
+ * - `sign-out`: a per-user OAuth server that is connected.
+ * - `none`: nothing asks anything of the person.
+ */
+export type AuthActionParts =
+  | { kind: 'none' }
+  | { kind: 'sso'; explanation: string }
+  | { kind: 'sign-in'; gate?: string; wait?: SignInWait }
+  | { kind: 'sign-out' };
+
+export function authActionParts(
+  serverName: string,
+  state: ServerSignInState,
+  options: { noun: SignInNoun; oauthConfigured?: boolean; signInGate?: string },
+): AuthActionParts {
+  const { noun, oauthConfigured, signInGate } = options;
+  if (state.isSsoManaged) {
+    // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
+    // merely pending) SSO server explains itself only when muster asks the
+    // user to act, which for SSO it normally never does.
+    return state.needsLogin || state.status?.sso_attempt_failed
+      ? {
+          kind: 'sso',
+          explanation: ssoExplanationText(serverName, state, noun),
+        }
+      : { kind: 'none' };
+  }
+  // `isWaiting` keeps the row alive while a sign-in this tab started is
+  // outstanding, whatever the polled status currently claims -- and whether or
+  // not the URL muster issued for it is still on offer.
+  if (state.needsLogin || state.isWaiting) {
+    if (signInGate) {
+      return { kind: 'sign-in', gate: signInGate };
+    }
+    const wait = signInWait(state, noun);
+    return wait ? { kind: 'sign-in', wait } : { kind: 'sign-in' };
+  }
+  if (oauthConfigured && state.isConnected) {
+    return { kind: 'sign-out' };
+  }
+  return { kind: 'none' };
 }
 
 /**
@@ -198,7 +243,7 @@ function SsoExplanation({
  *   link gives way to a button requesting a fresh URL (which, with popups
  *   still blocked, renders as a fresh link).
  */
-function SignInFlow({
+export function SignInFlow({
   state,
   prominent,
   noun,
@@ -214,21 +259,15 @@ function SignInFlow({
   prominent?: boolean;
   /**
    * The buttons alone, for a status cell: the wait and the notes are said by
-   * the status beside them (see {@link ServerSignInStatus}).
+   * the status beside them (`ServerSignInStatus`).
    */
   compact?: boolean;
 }) {
   const classes = useStyles();
-  const {
-    authUrl,
-    clientIdMethod,
-    isPending,
-    isWaiting,
-    signIn,
-    signInTabOpened,
-  } = state;
+  const { authUrl, isPending, signIn, signInTabOpened } = state;
+  const wait = signInWait(state, noun);
 
-  if (!isWaiting) {
+  if (!wait) {
     return (
       <Button
         variant={prominent ? 'primary' : 'secondary'}
@@ -293,9 +332,7 @@ function SignInFlow({
     );
   }
 
-  const clientIdNote = compact
-    ? undefined
-    : clientIdMethodNote(clientIdMethod, noun);
+  const clientIdNote = compact ? undefined : wait.clientIdNote;
   return (
     <>
       {wayIn}
@@ -318,7 +355,7 @@ function SignInFlow({
  * the row still says where the sign-in went -- the same shape as the gated
  * Reconnect in the lifecycle row.
  */
-function GatedSignIn({ reason }: { reason: string }) {
+export function GatedSignIn({ reason }: { reason: string }) {
   return (
     <DisabledAction reason={reason}>
       {describedBy => (
@@ -371,7 +408,7 @@ export function ServerSignIn({
   if (state.isSsoManaged) {
     return (
       <div className={classes.root}>
-        <SsoExplanation serverName={serverName} state={state} noun={noun} />
+        <SsoExplanation text={ssoExplanationText(serverName, state, noun)} />
         {/* Rendered under the paragraph, not instead of it: a specific refusal
             (rate limit, issuer discovery) must not be swapped for the generic
             SSO explanation. */}
@@ -433,171 +470,55 @@ export function ServerAuthActions({
 }: ServerAuthActionsProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const {
-    status,
-    isWaiting,
-    isSsoManaged,
-    needsLogin,
-    isConnected,
-    isSigningOut,
-    signOut,
-  } = state;
+  const parts = authActionParts(serverName, state, {
+    noun,
+    oauthConfigured,
+    signInGate,
+  });
+  const name = showName ? (
+    <code className={classes.name}>{serverName}</code>
+  ) : null;
 
-  if (isSsoManaged) {
-    // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
-    // merely pending) SSO server explains itself only when muster asks the
-    // user to act, which for SSO it normally never does.
-    if (!needsLogin && !status?.sso_attempt_failed) {
+  switch (parts.kind) {
+    case 'sso':
+      return (
+        <div className={classes.inActionRow}>
+          <SsoExplanation text={parts.explanation} />
+          <Messages state={state} />
+        </div>
+      );
+    case 'sign-in':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          {parts.gate ? (
+            <GatedSignIn reason={parts.gate} />
+          ) : (
+            <SignInFlow state={state} prominent noun={noun} />
+          )}
+          <Messages state={state} />
+        </div>
+      );
+    case 'sign-out':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          <Button
+            variant="secondary"
+            size="small"
+            isPending={state.isSigningOut}
+            onClick={state.signOut}
+          >
+            {state.isSigningOut ? 'Signing out…' : 'Sign out'}
+          </Button>
+          <Messages state={state} />
+        </div>
+      );
+    default:
+      // Idle deliberately ignores `error`/`note`: they are the answer to a
+      // click, which by definition happened on a row that was already
+      // visible, so letting them defeat the gate would pin an unrelated row
+      // open (they also do not survive a remount, unlike the pending entry).
       return null;
-    }
-    return (
-      <div className={classes.inActionRow}>
-        <SsoExplanation serverName={serverName} state={state} noun={noun} />
-        <Messages state={state} />
-      </div>
-    );
   }
-
-  // `isWaiting` keeps the row alive while a sign-in this tab started is
-  // outstanding, whatever the polled status currently claims -- and whether or
-  // not the URL muster issued for it is still on offer.
-  if (needsLogin || isWaiting) {
-    return (
-      <div className={classes.inActionRow}>
-        {showName ? <code className={classes.name}>{serverName}</code> : null}
-        {signInGate ? (
-          <GatedSignIn reason={signInGate} />
-        ) : (
-          <SignInFlow state={state} prominent noun={noun} />
-        )}
-        <Messages state={state} />
-      </div>
-    );
-  }
-
-  if (oauthConfigured && isConnected) {
-    return (
-      <div className={classes.inActionRow}>
-        {showName ? <code className={classes.name}>{serverName}</code> : null}
-        <Button
-          variant="secondary"
-          size="small"
-          isPending={isSigningOut}
-          onClick={signOut}
-        >
-          {isSigningOut ? 'Signing out…' : 'Sign out'}
-        </Button>
-        <Messages state={state} />
-      </div>
-    );
-  }
-
-  // Idle deliberately ignores `error`/`note`: they are the answer to a click,
-  // which by definition happened on a row that was already visible, so letting
-  // them defeat the gate would pin an unrelated row open (they also do not
-  // survive a remount, unlike the pending entry).
-  return null;
-}
-
-/** A state as a status cell shows it: a dot and a few words. */
-export type SignInStatusLabel = { label: string; tone: StatusDotTone };
-
-/**
- * The state a status cell shows for a server with a sign-in: the row's own
- * while nothing from this tab speaks for it, "Signing in…" while a sign-in
- * page is open, and "Could not sign in" after a refused or lost request.
- */
-export function signInStatusLabel(
-  status: SignInStatusLabel,
-  state: Pick<ServerSignInState, 'isWaiting' | 'error'>,
-): SignInStatusLabel {
-  if (state.isWaiting) {
-    return { label: 'Signing in…', tone: 'info' };
-  }
-  if (state.error) {
-    return { label: 'Could not sign in', tone: 'danger' };
-  }
-  return status;
-}
-
-/**
- * Everything {@link ServerAuthActions} says in sentences, for the tooltip of a
- * status that shows a few words instead: why an SSO server has no sign-in,
- * the wait, how muster identifies itself to the authorization server, and
- * muster's answer to the last click.
- */
-export function signInStatusDetails(
-  serverName: string,
-  state: ServerSignInState,
-  noun: SignInNoun,
-): string[] {
-  const details: string[] = [];
-  if (
-    state.isSsoManaged &&
-    (state.needsLogin || state.status?.sso_attempt_failed)
-  ) {
-    details.push(ssoExplanationText(serverName, state, noun));
-  }
-  if (state.isWaiting && !state.isSsoManaged) {
-    details.push(WAITING_FOR_SIGN_IN);
-    const clientIdNote = clientIdMethodNote(state.clientIdMethod, noun);
-    if (clientIdNote) {
-      details.push(clientIdNote.text);
-    }
-  }
-  if (state.note) {
-    details.push(state.note);
-  }
-  if (state.error) {
-    details.push(state.error);
-  }
-  return details;
-}
-
-export interface ServerSignInStatusProps {
-  /** The muster server name, as reported by `auth://status`. */
-  serverName: string;
-  installation?: string;
-  /** The row's own state, shown while no sign-in from this tab overrides it. */
-  status: SignInStatusLabel;
-  /** What the copy calls the server: main's "server" by default. */
-  noun?: SignInNoun;
-}
-
-/**
- * A server's state for a list's status cell, with its sign-in: a dot and a
- * few words that always fit, the explanation in an {@link InfoHint} beside
- * them, and the bare sign-in buttons. The same flow as
- * {@link ServerAuthActions}, whose sentences would crowd the label out of a
- * table cell. For a server muster reports as needing a sign-in, or one this
- * tab is signing in to.
- */
-export function ServerSignInStatus({
-  serverName,
-  installation,
-  status,
-  noun = 'server',
-}: ServerSignInStatusProps) {
-  const classes = useStyles();
-  const state = useServerSignIn(serverName, installation, { noun });
-  const shown = signInStatusLabel(status, state);
-  const details = signInStatusDetails(serverName, state, noun);
-  const offersSignIn =
-    !state.isSsoManaged && (state.needsLogin || state.isWaiting);
-
-  return (
-    <span className={classes.status}>
-      <span className={classes.statusLabel}>
-        <StatusDot tone={shown.tone} label={shown.label} />
-        {details.length > 0 ? (
-          <InfoHint label={`About the state of ${serverName}`} size="medium">
-            {details.join('\n')}
-          </InfoHint>
-        ) : null}
-      </span>
-      {offersSignIn ? (
-        <SignInFlow state={state} noun={noun} prominent compact />
-      ) : null}
-    </span>
-  );
 }

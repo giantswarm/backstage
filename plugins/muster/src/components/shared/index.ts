@@ -28,13 +28,16 @@ export {
   deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
+} from './ServerSignIn';
+export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
+export {
   ServerSignInStatus,
-} from './ServerSignIn';
+  useServerSignInStatus,
+} from './ServerSignInStatus';
 export type {
-  ServerAuthActionsProps,
-  ServerSignInProps,
   ServerSignInStatusProps,
-} from './ServerSignIn';
+  StatusLabel,
+} from './ServerSignInStatus';
 export {
   authStatusQueryKey,
   needsSignIn,

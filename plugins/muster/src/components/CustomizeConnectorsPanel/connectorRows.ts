@@ -10,6 +10,7 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
+import type { StatusLabel } from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -20,9 +21,6 @@ export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
   sigv4: 'Shared AWS identity',
   unknown: 'Other sign-in',
 };
-
-/** A state as the shell's Customize screen shows it: a dot and a few words. */
-export type ConnectorStatus = { label: string; tone: StatusDotTone };
 
 const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
   ok: 'success',
@@ -68,7 +66,7 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): ConnectorStatus {
+): StatusLabel {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
