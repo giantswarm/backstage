@@ -9,6 +9,7 @@ import {
   useShowErrors,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useCurrentCluster } from '../../../../ClusterDetailsPage/useCurrentCluster';
+import { useIsExpectedClusterError } from '../../../../ClusterDetailsPage/useIsExpectedClusterError';
 import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import type { InfrastructureRef } from '../../../ClusterSwitch';
 
@@ -29,6 +30,7 @@ export const ProviderClusterLocationValue = ({
   infrastructureRef: InfrastructureRef;
 }) => {
   const { installationName } = useCurrentCluster();
+  const isExpectedError = useIsExpectedClusterError();
 
   const { name, namespace } = infrastructureRef;
 
@@ -44,7 +46,7 @@ export const ProviderClusterLocationValue = ({
   });
 
   let errorMessage: string | undefined;
-  if (error) {
+  if (error && !isExpectedError(error)) {
     errorMessage = getErrorMessage({
       error,
       resourceKind: model.kind,

@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ClusterPageTarget } from '@giantswarm/backstage-plugin-gs';
 
 import { CreateClusterAction, DeleteClusterAction } from './ClusterActions';
 
 const mockTarget = jest.fn<ClusterPageTarget | undefined, []>();
 const mockAvailability = jest.fn();
+const mockInfoLost = { current: false };
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useClusterPageTarget: () => mockTarget(),
@@ -17,19 +18,21 @@ jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: (installations: string[]) =>
     mockAvailability(installations),
   useClusterManagerInfo: (installation: string | undefined) => ({
-    info: installation
-      ? {
-          version: '0.25.0',
-          modes: { apply: true, commit: false },
-          tools: ['delete_cluster'],
-        }
-      : undefined,
+    info:
+      installation && !mockInfoLost.current
+        ? {
+            version: '0.25.0',
+            modes: { apply: true, commit: false },
+            tools: ['delete_cluster'],
+          }
+        : undefined,
   }),
   useInstallationsOffering: (installations: string[]) => installations,
 }));
 
 jest.mock('../DeleteClusterDialog', () => ({
-  DeleteClusterDialog: () => null,
+  DeleteClusterDialog: ({ isOpen, name }: { isOpen: boolean; name: string }) =>
+    isOpen ? <div role="dialog">Delete cluster {name}?</div> : null,
 }));
 jest.mock('../CreateClusterDialog', () => ({
   CreateClusterDialog: () => null,
@@ -41,11 +44,13 @@ const CREATED: ClusterPageTarget = {
   namespace: 'org-acme',
   organization: 'acme',
   isManagementCluster: false,
+  isDeleting: false,
   helmRelease: { name: 'demo1', namespace: 'org-acme' },
 };
 
 describe('DeleteClusterAction', () => {
   beforeEach(() => {
+    mockInfoLost.current = false;
     mockAvailability.mockImplementation(() => ({
       presenceOf: () => 'available',
     }));
@@ -77,6 +82,7 @@ describe('DeleteClusterAction', () => {
       },
     ],
     ['the management cluster', { ...CREATED, isManagementCluster: true }],
+    ['a cluster already being deleted', { ...CREATED, isDeleting: true }],
     [
       'the installation’s own cluster without the management label',
       {
@@ -96,6 +102,19 @@ describe('DeleteClusterAction', () => {
     expect(mockAvailability).toHaveBeenLastCalledWith([]);
   });
 
+  it("keeps the open dialog when cluster-manager's info is no longer read", () => {
+    mockTarget.mockReturnValue(CREATED);
+    const { rerender } = render(<DeleteClusterAction />);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    mockInfoLost.current = true;
+    act(() => rerender(<DeleteClusterAction />));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Delete cluster demo1?',
+    );
+  });
+
   it('shows Delete disabled, with the reason, where muster has no per-user sign-in', () => {
     mockTarget.mockReturnValue(CREATED);
     mockAvailability.mockImplementation(() => ({
@@ -111,6 +130,28 @@ describe('DeleteClusterAction', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it.each<[string, ClusterPageTarget | undefined]>([
+    ['being deleted', { ...CREATED, isDeleting: true }],
+    ['gone', undefined],
+  ])(
+    'keeps the open dialog once the cluster is %s, without offering Delete again',
+    (_, later) => {
+      mockTarget.mockReturnValue(CREATED);
+      const { rerender } = render(<DeleteClusterAction />);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+      mockTarget.mockReturnValue(later);
+      act(() => rerender(<DeleteClusterAction />));
+
+      expect(screen.getByRole('dialog')).toHaveTextContent(
+        'Delete cluster demo1?',
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Delete' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
 
 describe('CreateClusterAction', () => {
