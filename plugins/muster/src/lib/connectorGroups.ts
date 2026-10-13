@@ -1,13 +1,13 @@
-import { MCPServer } from './k8s';
+import { MCPServer, ToolGroupKey } from './k8s';
 import { familyToolGroup, ServerPageRow } from './serverGrouping';
 import { serverPageRows } from './serverList';
 
 /**
  * The Connectors tab's sub-tabs: the customer's own connectors (the default),
- * the families that reach every management cluster, and the Agent Platform's
- * internal servers, muster itself among them.
+ * the connectors for the infrastructure the platform runs on, and the Agent
+ * Platform's internal servers, muster itself among them.
  */
-export type ConnectorGroup = 'yours' | 'families' | 'internal';
+export type ConnectorGroup = 'yours' | 'infrastructure' | 'internal';
 
 export interface ConnectorGroupInfo {
   id: ConnectorGroup;
@@ -39,14 +39,14 @@ export const CONNECTOR_GROUPS: readonly ConnectorGroupInfo[] = [
     },
   },
   {
-    id: 'families',
-    path: 'families',
-    title: 'Families',
+    id: 'infrastructure',
+    path: 'infrastructure',
+    title: 'Infrastructure',
     description:
-      'A family is one connector with an instance per management cluster; agents name the cluster in each call.',
+      'Connectors for the infrastructure the platform runs on. A family has an instance per management cluster; agents name the cluster in each call.',
     empty: {
-      title: 'No families',
-      description: 'No connector here has an instance per management cluster.',
+      title: 'No infrastructure connectors',
+      description: 'The platform installs none on this environment.',
     },
   },
   {
@@ -75,31 +75,45 @@ export function connectorGroupOfPath(
 }
 
 /**
+ * Retired sub-tab paths and the sub-tab each now is, so a shared link still
+ * lands: Infrastructure was "Families" (`families`) before it took every
+ * server labelled `infrastructure`.
+ */
+export const LEGACY_CONNECTOR_GROUP_PATHS: Readonly<
+  Record<string, ConnectorGroup>
+> = { families: 'infrastructure' };
+
+const GROUP_OF_TOOL_GROUP: Record<ToolGroupKey, ConnectorGroup> = {
+  'agent-platform': 'internal',
+  infrastructure: 'infrastructure',
+  registered: 'yours',
+};
+
+/**
  * The sub-tab a row is listed on, from the tool-group label the shipping
- * chart stamps (`TOOL_GROUP_LABEL`) and the row's shape:
+ * chart stamps (`TOOL_GROUP_LABEL`) alone, a family and a single server
+ * alike:
  *
- * - **Internal**: muster itself (it ships with the platform, and muster's own
- *   `agent-platform` preset includes its core tools), every server or family
- *   labelled `agent-platform` (the managers for agents, models and clusters),
- *   and a singular server labelled `infrastructure` — shipped by the platform,
- *   but not a family.
- * - **Families**: every other family (`spec.family`: one connector with an
- *   instance per management cluster), labelled `infrastructure` or not, so an
- *   installation whose charts carry no labels yet does not list its families
- *   as the customer's.
- * - **Your connectors**: singular servers without the label, what the
- *   installation or its users registered.
+ * - **Internal**: `agent-platform` (the managers for agents, models and
+ *   clusters), and muster itself: it ships with the platform, and muster's
+ *   own `agent-platform` preset includes its core tools.
+ * - **Infrastructure**: `infrastructure`, the servers for the management
+ *   clusters the platform runs on.
+ * - **Your connectors**: no label, what the installation or its users
+ *   registered, the customer's own families included.
+ *
+ * A family's members vote while a label rollout is in flight
+ * (`familyToolGroup`).
  */
 export function connectorGroup(row: ServerPageRow): ConnectorGroup {
   if (row.kind === 'core') {
     return 'internal';
   }
-  if (row.kind === 'family') {
-    return familyToolGroup(row.servers) === 'agent-platform'
-      ? 'internal'
-      : 'families';
-  }
-  return row.server.getToolGroup() ? 'internal' : 'yours';
+  return GROUP_OF_TOOL_GROUP[
+    row.kind === 'family'
+      ? familyToolGroup(row.servers)
+      : row.server.getToolGroupKey()
+  ];
 }
 
 /**
@@ -112,7 +126,7 @@ export function connectorGroupCounts(
 ): Record<ConnectorGroup, number> {
   const counts: Record<ConnectorGroup, number> = {
     yours: 0,
-    families: 0,
+    infrastructure: 0,
     internal: 0,
   };
   for (const row of serverPageRows(servers)) {

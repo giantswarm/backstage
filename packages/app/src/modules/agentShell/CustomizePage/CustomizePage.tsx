@@ -41,6 +41,7 @@ import musterPlugin, {
   CustomizeConnectorsPanel,
   CustomizeMusterProvider,
   CustomizeWorkflowsPanel,
+  LEGACY_CONNECTOR_GROUP_PATHS,
   type MusterCustomizeCounts,
   useMusterCustomizeCounts,
 } from '@giantswarm/backstage-plugin-muster';
@@ -173,8 +174,8 @@ function renderWorkflowCreateAssist(installation: string) {
 
 /**
  * The Connectors tab's sub-tabs (`CONNECTOR_GROUPS`): the customer's own
- * connectors at the tab's own address, the families and the platform's
- * internal servers each at a path under it. Routed tabs like Model hosting's
+ * connectors at the tab's own address, those for the platform's
+ * infrastructure and the platform's internal servers each at a path under it. Routed tabs like Model hosting's
  * views, keeping the query string, so the installation scope and a search the
  * palette brought (`?q=`) survive a switch.
  */
@@ -357,8 +358,17 @@ function CustomizeTabPage() {
   let connectorGroup: ConnectorGroup | undefined;
   if (tab.id === 'connectors') {
     // A trailing slash names the same sub-tab, at its own address, so the
-    // strip can tell which is open; any other path lands on the default.
+    // strip can tell which is open; a retired sub-tab path (`families`)
+    // names the sub-tab it became; any other path lands on the default.
     const trimmed = rest[rest.length - 1] === '' ? rest.slice(0, -1) : rest;
+    const retired =
+      trimmed.length === 1 &&
+      Object.hasOwn(LEGACY_CONNECTOR_GROUP_PATHS, trimmed[0])
+        ? LEGACY_CONNECTOR_GROUP_PATHS[trimmed[0]]
+        : undefined;
+    if (retired) {
+      return <ConnectorsTabRedirect group={retired} />;
+    }
     connectorGroup = connectorGroupOfSegments(trimmed);
     if (!connectorGroup || trimmed.length !== rest.length) {
       return <ConnectorsTabRedirect group={connectorGroup ?? 'yours'} />;

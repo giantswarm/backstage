@@ -128,7 +128,7 @@ describe('getTelemetryPageViewPayload', () => {
     },
   );
 
-  it.each(['families', 'internal'])(
+  it.each(['infrastructure', 'internal'])(
     'reports the Connectors tab’s %s sub-tab as its subview',
     sub => {
       expect(
@@ -142,13 +142,23 @@ describe('getTelemetryPageViewPayload', () => {
     },
   );
 
-  it('reports no subview for a path below a sub-tab, which redirects', () => {
+  it('reports the retired Families path without a subview, as it redirects', () => {
     expect(
-      getTelemetryPageViewPayload('/customize/connectors/families/x'),
+      getTelemetryPageViewPayload('/customize/connectors/families'),
     ).toEqual({
       page: 'Customize',
       view: 'connectors',
-      path: '/customize/connectors/families/x',
+      path: '/customize/connectors/families',
+    });
+  });
+
+  it('reports no subview for a path below a sub-tab, which redirects', () => {
+    expect(
+      getTelemetryPageViewPayload('/customize/connectors/infrastructure/x'),
+    ).toEqual({
+      page: 'Customize',
+      view: 'connectors',
+      path: '/customize/connectors/infrastructure/x',
     });
   });
 
@@ -619,6 +629,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
+      '/customize/connectors/infrastructure',
       '/customize/connectors/families',
       '/customize/connectors/internal',
       '/customize/models',

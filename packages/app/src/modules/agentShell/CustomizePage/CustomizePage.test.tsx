@@ -83,17 +83,24 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
     useMusterCustomizeCounts: () => mockMusterCounts,
     CONNECTOR_GROUPS: [
       { id: 'yours', path: '', title: 'Your connectors' },
-      { id: 'families', path: 'families', title: 'Families' },
+      { id: 'infrastructure', path: 'infrastructure', title: 'Infrastructure' },
       { id: 'internal', path: 'internal', title: 'Internal' },
     ],
     connectorGroupInfo: (group: string) =>
       ({
         yours: { id: 'yours', path: '', title: 'Your connectors' },
-        families: { id: 'families', path: 'families', title: 'Families' },
+        infrastructure: {
+          id: 'infrastructure',
+          path: 'infrastructure',
+          title: 'Infrastructure',
+        },
         internal: { id: 'internal', path: 'internal', title: 'Internal' },
       })[group],
     connectorGroupOfPath: (segment: string) =>
-      ({ '': 'yours', families: 'families', internal: 'internal' })[segment],
+      ({ '': 'yours', infrastructure: 'infrastructure', internal: 'internal' })[
+        segment
+      ],
+    LEGACY_CONNECTOR_GROUP_PATHS: { families: 'infrastructure' },
     CustomizeConnectorsPanel: (props: { search: string; group: string }) => (
       <p>{`Connectors panel, search “${props.search}”, ${props.group}`}</p>
     ),
@@ -163,7 +170,7 @@ describe('CustomizePage', () => {
     };
     mockMusterCounts = {
       connectors: 7,
-      connectorGroups: { yours: 3, families: 2, internal: 2 },
+      connectorGroups: { yours: 3, infrastructure: 2, internal: 2 },
       workflows: 2,
     };
     mockCanAddSkill = false;
@@ -522,7 +529,9 @@ describe('CustomizePage', () => {
       screen
         .getAllByRole('tab')
         .filter(tab =>
-          /^(Your connectors|Families|Internal)/.test(tab.textContent ?? ''),
+          /^(Your connectors|Infrastructure|Internal)/.test(
+            tab.textContent ?? '',
+          ),
         )
         .map(tab => [tab.textContent, tab.getAttribute('href')]);
 
@@ -531,7 +540,10 @@ describe('CustomizePage', () => {
 
       expect(subTabs()).toEqual([
         ['Your connectors (3)', '/customize/connectors?installation=golem'],
-        ['Families (2)', '/customize/connectors/families?installation=golem'],
+        [
+          'Infrastructure (2)',
+          '/customize/connectors/infrastructure?installation=golem',
+        ],
         ['Internal (2)', '/customize/connectors/internal?installation=golem'],
       ]);
       expect(
@@ -543,7 +555,7 @@ describe('CustomizePage', () => {
     });
 
     it.each([
-      ['families', 'Families'],
+      ['infrastructure', 'Infrastructure'],
       ['internal', 'Internal'],
     ])(
       'shows the %s sub-tab at its own path, named in the document title',
@@ -577,10 +589,14 @@ describe('CustomizePage', () => {
         screen.getByRole('searchbox', { name: 'Search connectors and tools' }),
         'kube',
       );
-      await userEvent.click(screen.getByRole('tab', { name: /^Families/ }));
+      await userEvent.click(
+        screen.getByRole('tab', { name: /^Infrastructure/ }),
+      );
 
       expect(
-        await screen.findByText('Connectors panel, search “kube”, families'),
+        await screen.findByText(
+          'Connectors panel, search “kube”, infrastructure',
+        ),
       ).toBeInTheDocument();
     });
 
@@ -598,8 +614,17 @@ describe('CustomizePage', () => {
 
     it.each([
       [
-        '/customize/connectors/families/anything?installation=golem',
+        '/customize/connectors/infrastructure/anything?installation=golem',
         '/customize/connectors?installation=golem',
+      ],
+      // Infrastructure was "Families": an old link lands on it.
+      [
+        '/customize/connectors/families?installation=golem',
+        '/customize/connectors/infrastructure?installation=golem',
+      ],
+      [
+        '/customize/connectors/families/',
+        '/customize/connectors/infrastructure',
       ],
       ['/customize/connectors/', '/customize/connectors'],
       ['/customize/connectors/internal/', '/customize/connectors/internal'],

@@ -187,7 +187,7 @@ test('Customize’s tab strip scrolls sideways with fades, the underline under t
   for (const tab of [
     'skills',
     'connectors',
-    'connectors/families',
+    'connectors/infrastructure',
     'connectors/internal',
     'models',
   ]) {

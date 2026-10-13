@@ -10,7 +10,11 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
-import { MANAGEMENT_CLUSTER_LABEL, MCPServer } from '../../lib/k8s';
+import {
+  MANAGEMENT_CLUSTER_LABEL,
+  MCPServer,
+  TOOL_GROUP_LABEL,
+} from '../../lib/k8s';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
@@ -52,6 +56,8 @@ jest.mock('../MusterInstanceProvider', () => ({
 }));
 
 const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
+/** The platform's charts label their infrastructure servers. */
+const INFRASTRUCTURE = { ...HELM, [TOOL_GROUP_LABEL]: 'infrastructure' };
 
 function makeServer(opts: {
   name: string;
@@ -96,14 +102,14 @@ const makeServers = () => [
     name: 'walrus-mcp-kubernetes',
     family: 'kubernetes',
     mc: 'walrus',
-    labels: HELM,
+    labels: INFRASTRUCTURE,
   }),
   makeServer({
     name: 'gazelle-mcp-kubernetes',
     family: 'kubernetes',
     mc: 'gazelle',
     state: 'Failed',
-    labels: HELM,
+    labels: INFRASTRUCTURE,
   }),
   makeServer({
     name: 'jira',
@@ -271,7 +277,7 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/families',
+      '/customize/connectors/infrastructure',
     );
   });
 
@@ -281,7 +287,7 @@ describe('ConnectorPage', () => {
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/families',
+      '/customize/connectors/infrastructure',
     );
     cleanup();
 
@@ -313,15 +319,27 @@ describe('ConnectorPage', () => {
     expect(
       screen.getByText(/It comes with the Agent Platform/),
     ).toBeInTheDocument();
-    const facts = screen.getByRole('complementary', {
-      name: 'Connector details',
-    });
+    // Above the tabs, not among the facts.
+    const endpoint = screen.getByText(
+      'https://muster.gazelle.example.test/mcp',
+    );
+    expect(endpoint.closest('p')).toHaveTextContent(
+      'Endpoint https://muster.gazelle.example.test/mcp',
+    );
     expect(
-      within(facts).getByText('https://muster.gazelle.example.test/mcp'),
+      within(endpoint.closest('p')!).getByRole('button', {
+        name: 'Copy endpoint',
+      }),
     ).toBeInTheDocument();
     expect(
-      within(facts).getByRole('button', { name: 'Copy endpoint' }),
-    ).toBeInTheDocument();
+      screen
+        .getByRole('tab', { name: /^Tools/ })
+        .compareDocumentPosition(endpoint) & Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    // Not a fact: muster has none, so its page has no facts column.
+    expect(
+      screen.queryByRole('complementary', { name: 'Connector details' }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();

@@ -4,6 +4,7 @@ import {
   connectorGroup,
   connectorGroupCounts,
   connectorGroupOfPath,
+  LEGACY_CONNECTOR_GROUP_PATHS,
 } from './connectorGroups';
 
 function makeServer(opts: {
@@ -30,21 +31,20 @@ describe('connectorGroup', () => {
     expect(connectorGroup({ kind: 'core' })).toBe('internal');
   });
 
-  it('lists a singular server by its tool-group label, never as a family', () => {
+  it('lists a single server by its tool-group label', () => {
     const group = (toolGroup?: string) =>
       connectorGroup({
         kind: 'server',
         server: makeServer({ name: 's', toolGroup }),
       });
     expect(group('agent-platform')).toBe('internal');
-    // Shipped by the platform, but one instance: not a family.
-    expect(group('infrastructure')).toBe('internal');
+    expect(group('infrastructure')).toBe('infrastructure');
     expect(group()).toBe('yours');
     // A typo in a chart's values is no declared group.
     expect(group('agent-plat')).toBe('yours');
   });
 
-  it('sorts a family by its members’ label, and an unlabelled one as a family', () => {
+  it('lists a family by its members’ label, the customer’s own as theirs', () => {
     const family = (...toolGroups: Array<string | undefined>) =>
       connectorGroup({
         kind: 'family',
@@ -57,11 +57,11 @@ describe('connectorGroup', () => {
           }),
         ),
       });
-    expect(family('infrastructure', 'infrastructure')).toBe('families');
+    expect(family('infrastructure', 'infrastructure')).toBe('infrastructure');
     // A label rollout in flight: the labelled members decide.
-    expect(family('infrastructure', undefined)).toBe('families');
+    expect(family('infrastructure', undefined)).toBe('infrastructure');
     expect(family('agent-platform', 'agent-platform')).toBe('internal');
-    expect(family(undefined, undefined)).toBe('families');
+    expect(family(undefined, undefined)).toBe('yours');
   });
 });
 
@@ -69,7 +69,7 @@ describe('connectorGroupCounts', () => {
   it('counts nothing, muster included, where muster does not run', () => {
     expect(connectorGroupCounts([], false)).toEqual({
       yours: 0,
-      families: 0,
+      infrastructure: 0,
       internal: 0,
     });
   });
@@ -94,7 +94,16 @@ describe('connectorGroupCounts', () => {
         ],
         true,
       ),
-    ).toEqual({ yours: 2, families: 1, internal: 2 });
+    ).toEqual({ yours: 2, infrastructure: 1, internal: 2 });
+  });
+});
+
+describe('LEGACY_CONNECTOR_GROUP_PATHS', () => {
+  it('sends the old Families path to Infrastructure, and names no live path', () => {
+    expect(LEGACY_CONNECTOR_GROUP_PATHS.families).toBe('infrastructure');
+    for (const path of Object.keys(LEGACY_CONNECTOR_GROUP_PATHS)) {
+      expect(connectorGroupOfPath(path)).toBeUndefined();
+    }
   });
 });
 

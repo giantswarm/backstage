@@ -54,6 +54,7 @@ export {
   CONNECTOR_GROUPS,
   connectorGroupInfo,
   connectorGroupOfPath,
+  LEGACY_CONNECTOR_GROUP_PATHS,
 } from './lib/connectorGroups';
 export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
 export {

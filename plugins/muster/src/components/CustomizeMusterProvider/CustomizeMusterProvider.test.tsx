@@ -49,7 +49,7 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 3,
-      connectorGroups: { yours: 1, families: 1, internal: 1 },
+      connectorGroups: { yours: 2, infrastructure: 0, internal: 1 },
       workflows: 1,
     });
   });
@@ -62,7 +62,7 @@ describe('useMusterCustomizeCounts', () => {
     const { result } = renderHook(() => useMusterCustomizeCounts());
     expect(result.current).toEqual({
       connectors: 0,
-      connectorGroups: { yours: 0, families: 0, internal: 0 },
+      connectorGroups: { yours: 0, infrastructure: 0, internal: 0 },
       workflows: 0,
     });
   });

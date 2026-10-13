@@ -125,6 +125,31 @@ const useStyles = makeStyles({
   },
 });
 
+/**
+ * muster's endpoint, the address an MCP client connects to, with its copy
+ * button: under the page's title, above its tabs, since it is what the page
+ * is opened for more often than its tools.
+ */
+function MusterEndpoint({ endpoint }: { endpoint: string }) {
+  // Inline: the page's description is a paragraph.
+  return (
+    <>
+      Endpoint{' '}
+      <Text
+        as="span"
+        variant="body-medium"
+        color="primary"
+        style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+      >
+        {endpoint}
+      </Text>{' '}
+      <span style={{ display: 'inline-flex', verticalAlign: 'middle' }}>
+        <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
+      </span>
+    </>
+  );
+}
+
 function ConnectorTile({ name }: { name: string }) {
   const classes = useStyles();
   return (
@@ -465,20 +490,6 @@ function ConnectorPageContent({
   if (calls !== undefined) {
     facts.push({ label: 'Calls this month', value: calls });
   }
-  if (endpoint) {
-    // The address an MCP client connects to: muster's, the one to copy.
-    facts.push({
-      label: 'Endpoint',
-      value: (
-        <Flex align="center" gap="1">
-          <Text variant="body-small" style={{ wordBreak: 'break-all' }}>
-            {endpoint}
-          </Text>
-          <CopyButton text={endpoint} label="Copy endpoint" size="compact" />
-        </Flex>
-      ),
-    });
-  }
   const address = representative?.getUrl();
   if (address) {
     facts.push({
@@ -588,6 +599,9 @@ function ConnectorPageContent({
           row.kind === 'core'
             ? MUSTER_PAGE_DESCRIPTION
             : representative?.getDescription()
+        }
+        description={
+          endpoint ? <MusterEndpoint endpoint={endpoint} /> : undefined
         }
         actions={editAction}
         menu={menuAction}

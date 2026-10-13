@@ -1050,6 +1050,10 @@ describe('CustomizeConnectorsPanel', () => {
         toolGroup: 'infrastructure',
         family: 'prometheus',
       }),
+      makeServer('lone-capi', { toolGroup: 'infrastructure' }),
+      // The customer's own family: no label.
+      makeServer('a-crm', { family: 'crm' }),
+      makeServer('b-crm', { family: 'crm' }),
     ];
 
     beforeEach(() => {
@@ -1059,26 +1063,33 @@ describe('CustomizeConnectorsPanel', () => {
     it('lists only the customer’s connectors by default', async () => {
       await renderPanel();
       expect(await screen.findByText('2 tools')).toBeInTheDocument();
-      for (const name of ['github', 'kubernetes', 'web-search']) {
+      for (const name of ['crm', 'github', 'kubernetes', 'web-search']) {
         expect(rowOf(name)).toBeInTheDocument();
       }
-      for (const name of ['agent-manager', 'prometheus', 'muster']) {
+      for (const name of [
+        'agent-manager',
+        'prometheus',
+        'lone-capi',
+        'muster',
+      ]) {
         expect(
           screen.queryByRole('row', { name: new RegExp(`^${name}`) }),
         ).not.toBeInTheDocument();
       }
     });
 
-    it('lists the families, one row each, on Families', async () => {
-      await renderPanel('', 'families');
+    it('lists every infrastructure server, families and single ones, on Infrastructure', async () => {
+      await renderPanel('', 'infrastructure');
       expect(
-        screen.getByText(/one connector with an instance per management/),
+        screen.getByText(/the infrastructure the platform runs on/),
       ).toBeInTheDocument();
       expect(rowOf('prometheus')).toBeInTheDocument();
-      expect(screen.getAllByRole('row')).toHaveLength(2);
+      expect(rowOf('lone-capi')).toBeInTheDocument();
+      // The header row, then the two connectors.
+      expect(screen.getAllByRole('row')).toHaveLength(3);
     });
 
-    it('lists muster with its endpoint among the internal servers', async () => {
+    it('lists muster among the internal servers, without its endpoint', async () => {
       mockInstance = {
         activeInstallationInfo: {
           name: 'gazelle',
@@ -1086,19 +1097,16 @@ describe('CustomizeConnectorsPanel', () => {
           endpoint: 'https://muster.gazelle.example.test/mcp',
         },
       };
-      const writeText = jest.fn(async () => undefined);
-      Object.defineProperty(navigator, 'clipboard', {
-        value: { writeText },
-        configurable: true,
-      });
-      const user = userEvent.setup();
       await renderPanel('', 'internal');
 
       expect(rowOf('agent-manager')).toBeInTheDocument();
       const muster = rowOf('muster');
       expect(
-        within(muster).getByText('https://muster.gazelle.example.test/mcp'),
-      ).toBeInTheDocument();
+        within(muster).queryByText('https://muster.gazelle.example.test/mcp'),
+      ).not.toBeInTheDocument();
+      expect(
+        within(muster).queryByRole('button', { name: 'Copy endpoint' }),
+      ).not.toBeInTheDocument();
       expect(within(muster).getByText('Company login')).toBeInTheDocument();
       expect(within(muster).getByText('Connected')).toBeInTheDocument();
       expect(
@@ -1107,20 +1115,6 @@ describe('CustomizeConnectorsPanel', () => {
         'href',
         '/agent-platform/connectors/muster?installation=gazelle',
       );
-
-      await user.click(
-        within(muster).getByRole('button', { name: 'Copy endpoint' }),
-      );
-      expect(mockNavigate).not.toHaveBeenCalled();
-    });
-
-    it('lists a single infrastructure server among the internal ones, not the families', async () => {
-      mockServers = [
-        ...fleet(),
-        makeServer('lone-capi', { toolGroup: 'infrastructure' }),
-      ];
-      await renderPanel('', 'internal');
-      expect(rowOf('lone-capi')).toBeInTheDocument();
     });
 
     it('says an anonymous muster the probe could not reach is not connected', async () => {
@@ -1153,7 +1147,7 @@ describe('CustomizeConnectorsPanel', () => {
       await renderPanel('prometheus');
       expect(await screen.findByText('No connectors yet')).toBeInTheDocument();
       expect(screen.getByText(/The search matches/)).toHaveTextContent(
-        'The search matches 1 connector on Families.',
+        'The search matches 1 connector on Infrastructure.',
       );
     });
 

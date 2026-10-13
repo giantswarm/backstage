@@ -33,7 +33,7 @@ export function useMusterCustomizeCounts(): MusterCustomizeCounts {
   return {
     connectors:
       connectorGroups.yours +
-      connectorGroups.families +
+      connectorGroups.infrastructure +
       connectorGroups.internal,
     connectorGroups,
     workflows: workflows.length,
