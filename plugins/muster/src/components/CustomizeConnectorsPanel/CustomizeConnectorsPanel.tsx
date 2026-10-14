@@ -61,6 +61,7 @@ import {
 } from '../shared';
 import {
   authLabel,
+  type CatalogueState,
   CONNECTOR_REACH_LABELS,
   CONNECTOR_REACH_ORDER,
   type ConnectorReach,
@@ -72,6 +73,7 @@ import {
   musterStatus,
   rowServer,
   toolsLabel,
+  unsearchedToolsNotes,
 } from './connectorRows';
 
 const useStyles = makeStyles({
@@ -487,6 +489,14 @@ function ConnectorsTable({
     facets: CONNECTOR_FACETS,
   });
   const rows = filters.filtered;
+  let catalogueState: CatalogueState = 'unavailable';
+  if (catalogue.data) {
+    catalogueState = 'loaded';
+  } else if (isAwaitingData(catalogue)) {
+    catalogueState = 'loading';
+  } else if (catalogue.error) {
+    catalogueState = 'failed';
+  }
   const isPhone = usePhoneLayout();
   const hrefOf = (row: Row) =>
     row.entry.shadowed
@@ -549,14 +559,25 @@ function ConnectorsTable({
       </Flex>
     );
   } else if (rows.length === 0) {
+    // A search that found nothing says what it could not look at, where the
+    // tool may still be.
+    const unsearched =
+      search.trim() === '' ? [] : unsearchedToolsNotes(catalogueState, allRows);
     list = (
       <Flex direction="column" gap="2">
         <CatalogNoMatch
-          plural="connectors or tools"
+          plural={
+            catalogueState === 'loaded' ? 'connectors or tools' : 'connectors'
+          }
           search={search}
           isFiltered={filters.isFiltered}
           onClearFilters={filters.clear}
         />
+        {unsearched.length > 0 && (
+          <Text as="p" variant="body-medium" color="secondary">
+            {unsearched.join(' ')}
+          </Text>
+        )}
         {otherMatches}
       </Flex>
     );

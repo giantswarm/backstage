@@ -619,6 +619,81 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(await screen.findByText('1 of 1 tools match')).toBeInTheDocument();
     expect(screen.queryByText('github')).not.toBeInTheDocument();
+    // The row opens its Tools tab on the same search.
+    expect(rowOf('kubernetes')).toHaveAttribute(
+      'data-href',
+      '/agent-platform/connectors/kubernetes?installation=gazelle&q=pods',
+    );
+  });
+
+  it('opens a row its name matched without the search', async () => {
+    await renderPanel('kube');
+
+    await screen.findByText('1 tool');
+    expect(rowOf('kubernetes')).toHaveAttribute(
+      'data-href',
+      '/agent-platform/connectors/kubernetes?installation=gazelle',
+    );
+  });
+
+  it('names the connectors whose tools a search that found nothing could not see', async () => {
+    mockServers = [
+      ...servers().filter(server => server.getName() !== 'web-search'),
+      makeServer('web-search', { state: 'Failed' }),
+    ];
+    // muster lists no tools of a connector waiting on a sign-in.
+    api.filterTools.mockImplementationOnce(async () => ({
+      total: 1,
+      filtered_count: 1,
+      truncated: false,
+      tools: [{ name: 'x_kubernetes_get_pods', description: 'List pods' }],
+    }));
+    await renderPanel('issue');
+
+    expect(await screen.findByText(/need your sign-in/)).toHaveTextContent(
+      'The tools of github need your sign-in and were not searched. The tools of web-search could not be read and were not searched.',
+    );
+    expect(
+      screen.getByText('No connectors or tools match “issue”.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says a search that found nothing covered names only while the tools load', async () => {
+    api.filterTools.mockImplementationOnce(() => new Promise(() => {}));
+    await renderPanel('pods');
+
+    expect(
+      await screen.findByText('No connectors match “pods”.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Only connector names were searched: the tools are still loading.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a search that found nothing covered names only when the tools failed', async () => {
+    api.filterTools.mockImplementationOnce(async () => {
+      throw new Error('muster answered 502');
+    });
+    await renderPanel('pods');
+
+    expect(
+      await screen.findByText(
+        'Only connector names were searched: the tools could not be read.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a search that found nothing covered names only without a session', async () => {
+    mockAuthenticated = false;
+    await renderPanel('pods');
+
+    expect(
+      await screen.findByText(
+        'Only connector names were searched: tools need a muster session.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('asks for a muster session before reading tools', async () => {

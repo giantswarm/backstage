@@ -1,6 +1,12 @@
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import type { ServerListEntry } from '../../lib/serverList';
-import { connectorReach, connectorStatus, toolsLabel } from './connectorRows';
+import {
+  type ConnectorReach,
+  connectorReach,
+  connectorStatus,
+  toolsLabel,
+  unsearchedToolsNotes,
+} from './connectorRows';
 
 function server(
   name: string,
@@ -119,5 +125,47 @@ describe('connectorReach', () => {
     expect(
       connectorReach(family(server('a', 'Failed'), server('b', 'Failed'))),
     ).toBe('not-connected');
+  });
+});
+
+describe('unsearchedToolsNotes', () => {
+  const row = (name: string, reach: ConnectorReach, toolCount = 0) => ({
+    entry: single(server(name), toolCount),
+    reach,
+  });
+
+  it('says only names were searched while the catalogue is not read', () => {
+    expect(unsearchedToolsNotes('loading', [row('a', 'sign-in')])).toEqual([
+      'Only connector names were searched: the tools are still loading.',
+    ]);
+    expect(unsearchedToolsNotes('failed', [])).toEqual([
+      'Only connector names were searched: the tools could not be read.',
+    ]);
+    expect(unsearchedToolsNotes('unavailable', [])).toEqual([
+      'Only connector names were searched: tools need a muster session.',
+    ]);
+  });
+
+  it('names the connectors that list no tools for want of a sign-in or an answer', () => {
+    expect(
+      unsearchedToolsNotes('loaded', [
+        row('github', 'sign-in'),
+        row('jira', 'sign-in'),
+        row('slack', 'not-connected'),
+        // Its tools were listed, so they were searched.
+        row('linear', 'sign-in', 4),
+        row('web-search', 'connected'),
+        row('old', 'deactivated'),
+      ]),
+    ).toEqual([
+      'The tools of 2 connectors (github, jira) need your sign-in and were not searched.',
+      'The tools of slack could not be read and were not searched.',
+    ]);
+  });
+
+  it('says nothing when every connector’s tools were searched', () => {
+    expect(
+      unsearchedToolsNotes('loaded', [row('web-search', 'connected', 3)]),
+    ).toEqual([]);
   });
 });

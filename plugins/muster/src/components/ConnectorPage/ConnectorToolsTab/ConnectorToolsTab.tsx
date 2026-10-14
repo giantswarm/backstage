@@ -1,4 +1,5 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Accordion,
   AccordionGroup,
@@ -169,7 +170,9 @@ function ToolRow({
  * choice, and per tool its effect and an inline
  * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
  * fewer) is read, not searched, so it shows neither; a long one renders a
- * page of tools at a time.
+ * page of tools at a time. The search is the page's `?q=`: the Customize
+ * list's search links a connector it matched by its tools here with it, so
+ * the tab opens on the matching tools.
  */
 export function ConnectorToolsTab({
   installation,
@@ -180,7 +183,26 @@ export function ConnectorToolsTab({
   signInGate,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
-  const [query, setQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q') ?? '';
+  const setQuery = useCallback(
+    (next: string) =>
+      setSearchParams(
+        prev => {
+          if (next) {
+            prev.set('q', next);
+          } else {
+            prev.delete('q');
+          }
+          return prev;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+  // A search the page opened with keeps its field, short list or not, so it
+  // can be read and cleared; clearing it does not take the field away.
+  const [openedSearched] = useState(() => query.trim() !== '');
   const [openTool, setOpenTool] = useState<string | undefined>();
 
   const { tools: listed, shortName } = tools;
@@ -228,8 +250,9 @@ export function ConnectorToolsTab({
   }
 
   // Three tools are read at a glance; a search and a filter over them is
-  // volume framing.
-  const searchable = all.length > SEARCH_MIN;
+  // volume framing, unless a search is already in force.
+  const searchable =
+    all.length > SEARCH_MIN || openedSearched || query.trim() !== '';
 
   return (
     <Flex direction="column" gap="0">

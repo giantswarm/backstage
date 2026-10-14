@@ -1,5 +1,5 @@
 import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
-import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
+import { countNoun, joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
   mcpServerStateSeverity,
@@ -235,4 +235,63 @@ export function musterReach(
     return state.pending ? undefined : 'not-connected';
   }
   return state.answered || state.reachable === true ? 'connected' : undefined;
+}
+
+/**
+ * Where the search's tool names come from: muster's tool catalogue, read,
+ * still being read, failed, or not asked for (no muster session).
+ */
+export type CatalogueState = 'loaded' | 'loading' | 'failed' | 'unavailable';
+
+const UNSEARCHED_CATALOGUE: Record<
+  Exclude<CatalogueState, 'loaded'>,
+  string
+> = {
+  loading: 'Only connector names were searched: the tools are still loading.',
+  failed: 'Only connector names were searched: the tools could not be read.',
+  unavailable:
+    'Only connector names were searched: tools need a muster session.',
+};
+
+function unsearchedSentence(names: string[], why: string): string {
+  const whose =
+    names.length === 1
+      ? names[0]
+      : `${countNoun(names.length, 'connector')} (${joinNames(names)})`;
+  return `The tools of ${whose} ${why} and were not searched.`;
+}
+
+/**
+ * What a search that found no connector could not look at, where the tool
+ * may still be: every tool while the catalogue is not read; else the
+ * connectors that list no tools because they wait on this person's sign-in
+ * or do not answer. muster's own row is left out: without its catalogue,
+ * nothing was searched.
+ */
+export function unsearchedToolsNotes(
+  catalogue: CatalogueState,
+  rows: readonly { entry: ServerListEntry; reach?: ConnectorReach }[],
+): string[] {
+  if (catalogue !== 'loaded') {
+    return [UNSEARCHED_CATALOGUE[catalogue]];
+  }
+  const hidden = (reach: ConnectorReach) =>
+    rows
+      .filter(
+        row =>
+          row.entry.row.kind !== 'core' &&
+          row.entry.toolCount === 0 &&
+          row.reach === reach,
+      )
+      .map(row => row.entry.id);
+  const signIn = hidden('sign-in');
+  const unreachable = hidden('not-connected');
+  return [
+    ...(signIn.length > 0
+      ? [unsearchedSentence(signIn, 'need your sign-in')]
+      : []),
+    ...(unreachable.length > 0
+      ? [unsearchedSentence(unreachable, 'could not be read')]
+      : []),
+  ];
 }

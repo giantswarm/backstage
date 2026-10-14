@@ -1,5 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ToolSummary } from '../../../apis';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
@@ -13,21 +14,33 @@ function makeTools(count: number): ToolSummary[] {
   }));
 }
 
-function renderTab(tools: ToolSummary[]) {
+/** The address the tab leaves, so a test can read its `?q=`. */
+function LocationProbe() {
+  const { search } = useLocation();
+  return <output aria-label="Location">{search}</output>;
+}
+
+function renderTab(tools: ToolSummary[], path = '/connector') {
   return renderInTestApp(
-    <ConnectorToolsTab
-      installation="gazelle"
-      tools={{
-        tools,
-        truncated: false,
-        isLoading: false,
-        shortName: name => name.replace(/^x_jira_/, ''),
-      }}
-      runsAsCaller
-      emptyExplanation="No tools."
-    />,
+    <>
+      <ConnectorToolsTab
+        installation="gazelle"
+        tools={{
+          tools,
+          truncated: false,
+          isLoading: false,
+          shortName: name => name.replace(/^x_jira_/, ''),
+        }}
+        runsAsCaller
+        emptyExplanation="No tools."
+      />
+      <LocationProbe />
+    </>,
+    { initialRouteEntries: [path] },
   );
 }
+
+const location = () => screen.getByRole('status', { name: 'Location' });
 
 const toolRows = () => screen.getAllByRole('button', { name: /^tool_\d+/ });
 
@@ -101,5 +114,43 @@ describe('ConnectorToolsTab', () => {
     );
     expect(toolRows()).toHaveLength(1);
     expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('opens on the tools the address searches for', async () => {
+    await renderTab(
+      makeTools(300),
+      '/connector?installation=gazelle&q=tool_29',
+    );
+
+    expect(screen.getByRole('searchbox', { name: 'Search tools' })).toHaveValue(
+      'tool_29',
+    );
+    // tool_290 to tool_299.
+    expect(toolRows()).toHaveLength(10);
+  });
+
+  it('keeps its search in the address', async () => {
+    await renderTab(makeTools(300), '/connector?installation=gazelle');
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+      'tool_1',
+    );
+    expect(location()).toHaveTextContent('?installation=gazelle&q=tool_1');
+    await userEvent.clear(screen.getByRole('searchbox'));
+    expect(location()).toHaveTextContent(/^\?installation=gazelle$/);
+  });
+
+  it('shows a short list its search, and keeps the field once cleared', async () => {
+    await renderTab(makeTools(3), '/connector?q=tool_001');
+
+    expect(toolRows().map(row => row.textContent)).toEqual([
+      expect.stringContaining('tool_001'),
+    ]);
+    await userEvent.clear(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+    );
+    expect(toolRows()).toHaveLength(3);
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 });
