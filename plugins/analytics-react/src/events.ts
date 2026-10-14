@@ -24,11 +24,45 @@ export const portalEvents = defineEvents({
       'An agent was created in the Agent Platform, deployed live or committed to Git as a pull request.',
     attributes: { mode: ['deploy', 'commit'] },
   },
+  'AgentPlatform.agentUpdated': {
+    description:
+      "An agent's configuration was changed in the Agent Platform — edited, or its skills moved to their latest commits — applied live or committed to Git as a pull request.",
+    attributes: {
+      mode: ['apply', 'commit'],
+      change: ['edited', 'skillsRefreshed'],
+    },
+  },
   'AgentPlatform.sessionStarted': {
     description: 'A session with an agent was started.',
     attributes: {
-      entryPoint: ['sessionsList', 'agentDetail', 'sessionDetail'],
+      entryPoint: [
+        'sessionsList',
+        'agentDetail',
+        'sessionDetail',
+        'home',
+        'skillDetail',
+        'createAgentAssist',
+        'searchPalette',
+        'skillCreationAssist',
+        'workflowEdit',
+        'workflowCreateAssist',
+      ],
     },
+  },
+  'AgentPlatform.sessionPinChanged': {
+    description:
+      "A session was pinned to, or unpinned from, the top of the person's session lists.",
+    attributes: { change: ['pinned', 'unpinned'] },
+  },
+  'AgentPlatform.agentFavoriteChanged': {
+    description:
+      "An agent was added to, or removed from, the person's favorites.",
+    attributes: { change: ['added', 'removed'] },
+  },
+  'AgentPlatform.skillProposed': {
+    description:
+      'A new skill, or a change to an existing one, was proposed to a skill repository, as a pull request opened as the signed-in person.',
+    attributes: { kind: ['created', 'updated'] },
   },
   'AgentPlatform.clusterCreated': {
     description:

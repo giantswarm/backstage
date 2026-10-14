@@ -1,0 +1,410 @@
+import { PropsWithChildren } from 'react';
+import {
+  renderInTestApp,
+  TestApiProvider,
+} from '@backstage/frontend-test-utils';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { modelManagerApiRef } from '../../apis';
+import type { ModelManagerApi } from '../../apis/ModelManagerApi';
+import searchFixture from '../../lib/__fixtures__/model-manager.search.kserve.json';
+import fitFixture from '../../lib/__fixtures__/model-manager.fit.kserve.json';
+import {
+  modelManagerFitResultSchema,
+  modelManagerSearchResultSchema,
+  parseModelManagerList,
+} from '../../lib/modelManager';
+import type { GpuNode } from '../../lib/serving';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  describeSearchResult,
+  ImportModelPage,
+  SEARCH_LIMIT,
+  type ImportTarget,
+} from './ImportModelPage';
+import { describeFit } from '../../lib/modelManagerServe';
+
+const searchModels = jest.fn();
+const fitCheck = jest.fn();
+const pullModel = jest.fn();
+const post = jest.fn();
+const onImported = jest.fn();
+
+const modelManagerApi = {
+  searchModels,
+  fitCheck,
+  pullModel,
+} as unknown as ModelManagerApi;
+
+const results = parseModelManagerList(
+  searchFixture,
+  'results',
+  modelManagerSearchResultSchema,
+);
+const fits = modelManagerFitResultSchema.parse(fitFixture);
+
+const node: GpuNode = {
+  id: 'gpu/gpu-node-1',
+  installation: 'gpu',
+  name: 'gpu-node-1',
+  ready: true,
+  memoryBudgetBytes: 92417933312,
+  memoryFreeBytes: 30140907520,
+};
+
+const target: ImportTarget = { name: 'gpu', nodes: [node] };
+
+function render(targets: ImportTarget[] = [target]) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const Wrapper = ({ children }: PropsWithChildren<{}>) => (
+    <TestApiProvider
+      apis={[
+        [modelManagerApiRef, modelManagerApi],
+        [toastApiRef, { post }],
+      ]}
+    >
+      <QueryClientProvider client={queryClient}>
+        <PageHeaderActionsProvider>{children}</PageHeaderActionsProvider>
+      </QueryClientProvider>
+    </TestApiProvider>
+  );
+  return renderInTestApp(
+    <Wrapper>
+      <ImportModelPage
+        targets={targets}
+        closeHref="/agent-platform/models/serving"
+        onImported={onImported}
+      />
+    </Wrapper>,
+  );
+}
+
+async function search(query: string) {
+  await userEvent.type(screen.getByRole('textbox', { name: 'Search' }), query);
+  await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+  await waitFor(() => expect(searchModels).toHaveBeenCalled());
+}
+
+const downloadButton = () =>
+  screen.getByRole('button', { name: /Download|Starting/ });
+
+beforeEach(() => {
+  [searchModels, fitCheck, pullModel, post, onImported].forEach(fn =>
+    fn.mockReset(),
+  );
+  searchModels.mockResolvedValue(results);
+  fitCheck.mockResolvedValue(fits);
+  pullModel.mockResolvedValue({ job: { id: 'j1' }, created: true });
+});
+
+describe('describeSearchResult / describeFit', () => {
+  it('summarises a hit and a verdict', () => {
+    // Counts follow the user's locale, as everywhere else in the tab.
+    expect(describeSearchResult(results[0])).toBe(
+      `text-generation · transformers · ${(2831456).toLocaleString()} downloads · ${(512).toLocaleString()} likes · preset qwen3-14b`,
+    );
+    expect(describeFit(fits)).toBe(
+      'Download 27.6 GiB; needs 57.5 GiB (27.5 GiB of weights per safetensors-index + 30.0 GiB of serving headroom); gpu-node-1 has 86.1 GiB free of 86.1 GiB (allocatable)',
+    );
+  });
+});
+
+describe('ImportModelPage', () => {
+  it('searches the hub, checks the fit of the chosen hit on the node, and starts the download', async () => {
+    await render();
+    // Pressable before a model is picked: pressed, the search field says what
+    // is missing and takes the focus.
+    expect(downloadButton()).toBeEnabled();
+    await userEvent.click(downloadButton());
+    const searchField = screen.getByRole('textbox', { name: 'Search' });
+    expect(searchField).toHaveAttribute('aria-invalid', 'true');
+    expect(searchField).toHaveFocus();
+    expect(
+      screen.getByText('Search the hub, then pick a model from the results.'),
+    ).toBeInTheDocument();
+    expect(pullModel).not.toHaveBeenCalled();
+
+    await search('qwen3 14b');
+    expect(searchModels).toHaveBeenCalledWith('gpu', 'qwen3 14b', SEARCH_LIMIT);
+    expect(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Gated')).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+
+    // The hit's single preset and the single node are the defaults.
+    await waitFor(() =>
+      expect(fitCheck).toHaveBeenCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+        preset: 'qwen3-14b',
+        node: 'gpu-node-1',
+      }),
+    );
+    expect(await screen.findByText('Fits on gpu-node-1')).toBeInTheDocument();
+    expect(screen.getByText(/Download 27\.6 GiB/)).toBeInTheDocument();
+    expect(downloadButton()).toBeEnabled();
+
+    await userEvent.click(downloadButton());
+
+    await waitFor(() =>
+      expect(pullModel).toHaveBeenCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+        preset: 'qwen3-14b',
+        node: 'gpu-node-1',
+      }),
+    );
+    // Never `wire`: on kserve models are wired when served.
+    expect(pullModel.mock.calls[0][1]).not.toHaveProperty('wire');
+    await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+    expect(post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Downloading Qwen/Qwen3-14B on gpu',
+        description: expect.stringContaining(
+          'It goes into the cache on gpu-node-1.',
+        ),
+      }),
+    );
+  });
+
+  it('refuses to submit a model that does not fit, saying why', async () => {
+    fitCheck.mockResolvedValue({
+      ...fits,
+      fits: false,
+      reason: '104.8 GiB exceed the 86.1 GiB available on gpu-node-1',
+    });
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+
+    expect(
+      await screen.findByText('Does not fit on gpu-node-1'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/104\.8 GiB exceed/)).toBeInTheDocument();
+    expect(downloadButton()).toBeDisabled();
+    expect(pullModel).not.toHaveBeenCalled();
+  });
+
+  it('blocks a gated repository until the installation has a hub token', async () => {
+    fitCheck.mockResolvedValue({
+      ...fits,
+      model: 'meta-llama/Llama-3.3-70B-Instruct',
+      gated: true,
+      tokenConfigured: false,
+    });
+    await render();
+    await search('llama');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'meta-llama/Llama-3.3-70B-Instruct' }),
+    );
+
+    expect(await screen.findByText('Gated repository')).toBeInTheDocument();
+    expect(screen.getByText(/has none configured/)).toBeInTheDocument();
+    expect(downloadButton()).toBeDisabled();
+  });
+
+  it('says when the model is already cached and lets model-manager pick the node with several', async () => {
+    fitCheck.mockResolvedValue({ ...fits, cached: true });
+    await render([
+      {
+        name: 'gpu',
+        nodes: [node, { ...node, id: 'gpu/gpu-node-2', name: 'gpu-node-2' }],
+      },
+    ]);
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+
+    await waitFor(() =>
+      expect(fitCheck).toHaveBeenCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+        preset: 'qwen3-14b',
+      }),
+    );
+    expect(
+      await screen.findByText('Already in the cache on gpu-node-1'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Target node/ }),
+    ).toHaveTextContent('Best node');
+  });
+
+  it('keeps the preset and the node under More options, one column, and sends neither when None and Best node are chosen', async () => {
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await waitFor(() => expect(fitCheck).toHaveBeenCalled());
+
+    const more = screen.getByText('More options').closest('details')!;
+    expect(more).not.toHaveAttribute('open');
+    expect(more).toHaveTextContent('preset qwen3-14b · gpu-node-1');
+    expect(more).toContainElement(
+      screen.getByRole('button', { name: /Serving preset/ }),
+    );
+    expect(more).toContainElement(
+      screen.getByRole('button', { name: /Target node/ }),
+    );
+
+    await userEvent.click(screen.getByText('More options'));
+    await userEvent.click(
+      screen.getByRole('button', { name: /Serving preset/ }),
+    );
+    await userEvent.click(await screen.findByRole('option', { name: /^None/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: /^Best node/ }),
+    );
+
+    await waitFor(() =>
+      expect(fitCheck).toHaveBeenLastCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+      }),
+    );
+    expect(more).toHaveTextContent('preset none · the best node');
+    await screen.findByText('Fits on gpu-node-1');
+    await userEvent.click(downloadButton());
+    await waitFor(() =>
+      expect(pullModel).toHaveBeenCalledWith('gpu', {
+        model: 'Qwen/Qwen3-14B',
+      }),
+    );
+  });
+
+  it('is a page whose Cancel leads back, and hands over once the download started', async () => {
+    let land: (answer: unknown) => void = () => {};
+    pullModel.mockReturnValue(
+      new Promise(resolve => {
+        land = resolve;
+      }),
+    );
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await screen.findByText('Fits on gpu-node-1');
+
+    await userEvent.click(downloadButton());
+    await screen.findByRole('button', { name: /Starting…/ });
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Import from Hugging Face',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/agent-platform/models/serving',
+    );
+
+    expect(onImported).not.toHaveBeenCalled();
+    land({ job: { id: 'j1' }, created: true });
+    await waitFor(() => expect(onImported).toHaveBeenCalledTimes(1));
+  });
+
+  it('stays with the refusal when model-manager rejects the download', async () => {
+    const refused = new Error(
+      'model does not fit: 104.8 GiB exceed the 86.1 GiB available',
+    );
+    refused.name = 'PreconditionFailedError';
+    pullModel.mockRejectedValue(refused);
+    await render();
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await screen.findByText('Fits on gpu-node-1');
+
+    await userEvent.click(downloadButton());
+
+    expect(
+      await screen.findByText('Could not start the download'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/104\.8 GiB exceed/)).toBeInTheDocument();
+    expect(onImported).not.toHaveBeenCalled();
+  });
+
+  it('reports a hub that cannot be searched and an empty result', async () => {
+    searchModels.mockRejectedValueOnce(new Error('hub unreachable'));
+    await render();
+    await search('anything');
+    expect(
+      await screen.findByText('Could not search the hub'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('hub unreachable')).toBeInTheDocument();
+
+    searchModels.mockResolvedValue([]);
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Search' }));
+    await search('nothing-like-this');
+    expect(
+      await screen.findByText(/Nothing on the hub matches "nothing-like-this"/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('ImportModelPage · the selects at scale', () => {
+  const nodesOf = (count: number): GpuNode[] =>
+    Array.from({ length: count }, (_, i) => ({
+      ...node,
+      id: `gpu/gpu-node-${i + 1}`,
+      name: `gpu-node-${i + 1}`,
+    }));
+
+  const openTargetNodes = async () => {
+    await search('qwen3');
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'Qwen/Qwen3-14B' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Target node/ }));
+  };
+
+  it('offers three environments and two nodes without a search', async () => {
+    await render([
+      { name: 'gpu', nodes: nodesOf(2) },
+      { name: 'lab', nodes: [] },
+      { name: 'edge', nodes: [] },
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+    expect(
+      await screen.findByRole('option', { name: 'edge' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    await userEvent.keyboard('{Escape}');
+
+    await openTargetNodes();
+    expect(
+      await screen.findByRole('option', { name: /gpu-node-2/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('offers type-ahead over 300 environments and 300 nodes', async () => {
+    await render([
+      { name: 'gpu', nodes: nodesOf(300) },
+      ...Array.from({ length: 299 }, (_, i) => ({
+        name: `inst-${i + 1}`,
+        nodes: [],
+      })),
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: /Environment/ }));
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('searchbox')).toBeNull());
+
+    await openTargetNodes();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});

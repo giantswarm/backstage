@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   toastApiRef,
   useApi,
@@ -14,6 +14,7 @@ import { MENU_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { RuntimeLoss } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { UseDeleteSessionResult } from '../../hooks/useDeleteSession';
 import { sessionsRouteRef } from '../../routes';
+import { PinIcon } from '../PinIcon';
 import {
   describeSessionDeleteFailure,
   SessionDeleteDialog,
@@ -46,6 +47,9 @@ export function SessionActionsMenu({
   onRename,
   isUserScoped,
   runtimeLoss,
+  triggerLabel = 'Session actions',
+  onDeleted,
+  pin,
 }: {
   /** The session's display title, for the dialog and the toast. */
   title: string;
@@ -58,10 +62,25 @@ export function SessionActionsMenu({
    * a *failed* delete depends on it — see `describeSessionDeleteFailure`.
    */
   runtimeLoss?: RuntimeLoss;
+  /** The menu button's accessible name; a list names the session in it. */
+  triggerLabel?: string;
+  /**
+   * Called once the session is deleted, for a list to move focus off the
+   * row that held this menu.
+   */
+  onDeleted?: () => void;
+  /**
+   * The session's pin toggle, before the menu — the prototype's header pin.
+   * Pinned sessions lead the shell rail and the sessions list. Absent where
+   * pins show nowhere (classic chrome) and in a list, whose rows carry their
+   * own.
+   */
+  pin?: { isPinned: boolean; onToggle: () => void };
 }) {
   const [isDeleteOpen, setDeleteOpen] = useState(false);
   const toastApi = useApi(toastApiRef);
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const sessionsRoute = useRouteRef(sessionsRouteRef);
 
   const { deleteSession, isDeleting, error, reset } = deletion;
@@ -97,17 +116,29 @@ export function SessionActionsMenu({
     // An unbound route means the Agent Platform extension is disabled — in which
     // case this page is not rendering either. Staying put beats hardcoding a
     // path that would silently rot if the route moved.
-    if (sessionsRoute) {
-      navigate(sessionsRoute());
+    // From the list itself there is nowhere to go: the row is already gone.
+    const sessionsPath = sessionsRoute?.();
+    if (sessionsPath && sessionsPath !== pathname) {
+      navigate(sessionsPath);
     }
+    onDeleted?.();
   };
 
   return (
     <>
+      {pin && (
+        <ButtonIcon
+          icon={<PinIcon filled={pin.isPinned} size={17} />}
+          aria-pressed={pin.isPinned}
+          aria-label={pin.isPinned ? 'Unpin session' : 'Pin session'}
+          variant="tertiary"
+          onPress={pin.onToggle}
+        />
+      )}
       <MenuTrigger>
         <ButtonIcon
           icon={<MoreVertIcon />}
-          aria-label="Session actions"
+          aria-label={triggerLabel}
           variant="tertiary"
         />
         <Menu maxWidth={MENU_WIDTH}>

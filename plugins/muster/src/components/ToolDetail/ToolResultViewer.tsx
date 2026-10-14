@@ -6,6 +6,7 @@ import {
   CellText,
   ColumnConfig,
   Flex,
+  SearchField,
   Table,
   Text,
   ToggleButton,
@@ -17,24 +18,40 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 import ReplayIcon from '@material-ui/icons/Replay';
 import UnfoldLessIcon from '@material-ui/icons/UnfoldLess';
 import UnfoldMoreIcon from '@material-ui/icons/UnfoldMore';
-import { CopyTextButton } from '@backstage/core-components';
-import { YamlEditorFormField } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  CopyButton,
+  ShowMore,
+  YamlEditorFormField,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { formatBytes } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { detectTable } from '../../lib/resultShape';
 
 type ViewMode = 'parsed' | 'raw' | 'table';
 
 // Fills the viewport below the toolbar once the result is scrolled into view,
-// with a usable minimum on short windows.
-const RESULT_MAX_HEIGHT = 'max(240px, calc(100vh - 200px))';
+// with a usable minimum on short windows. The dynamic viewport and the
+// shell's phone bar (0 elsewhere) count, so on a phone the box ends above the
+// bar instead of under it, and a swipe past its end reaches the page.
+const RESULT_MAX_HEIGHT =
+  'max(240px, calc(100dvh - var(--agent-shell-mobile-bar-height, 0px) - 200px))';
+
+/**
+ * Every result column's least width. A result's shape is unknown — a k8s list
+ * has eight columns — and bui squeezes columns without widths into the table's
+ * width (~37px each at 375px, values clipped). With a minimum it switches to
+ * its resizable container, which scrolls sideways inside itself instead.
+ */
+export const RESULT_COLUMN_MIN_WIDTH = 120;
+
+/**
+ * How many table rows render before *Show N more rows*, and the row count above
+ * which the table gets a filter field. A k8s list result can be thousands of
+ * rows; past a screenful, finding one is a filter, not a scroll.
+ */
+export const RESULT_TABLE_ROWS = 50;
 
 /** One table row: a stable id plus the raw record `detectTable` produced. */
 type ResultRow = { id: string; values: Record<string, unknown> };
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function cellText(value: unknown): string {
   if (value === null || value === undefined) {
@@ -59,7 +76,9 @@ export interface ToolResultViewerProps {
  * Renders a tool's JSON result: a parsed (pretty-printed, foldable) view in the
  * read-only editor, a compact table when the result is a list of like-shaped
  * objects, and a raw (compact) view. Shows the call duration and result
- * size, and offers copy, download, and one-click re-run.
+ * size, and offers copy, download, and one-click re-run. The table shows its
+ * first {@link RESULT_TABLE_ROWS} rows (more a page at a time) and, only when
+ * the result is longer than that, a filter over every cell's text.
  */
 export function ToolResultViewer({
   result,
@@ -70,6 +89,7 @@ export function ToolResultViewer({
   const table = useMemo(() => detectTable(result), [result]);
   const [mode, setMode] = useState<ViewMode>(table ? 'table' : 'parsed');
   const [collapsed, setCollapsed] = useState(false);
+  const [query, setQuery] = useState('');
 
   const pretty = useMemo(
     () => JSON.stringify(result, null, 2) ?? 'null',
@@ -83,9 +103,12 @@ export function ToolResultViewer({
 
   const columnConfig = useMemo<ColumnConfig<ResultRow>[]>(
     () =>
-      (table?.columns ?? []).map(col => ({
+      (table?.columns ?? []).map((col, index) => ({
         id: col,
         label: col,
+        // The leading column (`name` when the rows have one) names the row.
+        isRowHeader: index === 0,
+        minWidth: RESULT_COLUMN_MIN_WIDTH,
         cell: row => <CellText title={cellText(row.values[col])} />,
       })),
     [table],
@@ -93,6 +116,20 @@ export function ToolResultViewer({
   const rows = useMemo<ResultRow[]>(
     () => (table?.rows ?? []).map((values, i) => ({ id: String(i), values })),
     [table],
+  );
+  const hasFilter = rows.length > RESULT_TABLE_ROWS;
+  const needle = hasFilter ? query.trim().toLowerCase() : '';
+  // Client-side, case-insensitive, over the text each visible cell shows.
+  const filteredRows = useMemo(
+    () =>
+      needle
+        ? rows.filter(row =>
+            (table?.columns ?? []).some(col =>
+              cellText(row.values[col]).toLowerCase().includes(needle),
+            ),
+          )
+        : rows,
+    [rows, table, needle],
   );
 
   const download = () => {
@@ -131,7 +168,7 @@ export function ToolResultViewer({
             <ToggleButton id="parsed">Parsed</ToggleButton>
             <ToggleButton id="raw">Raw</ToggleButton>
           </ToggleButtonGroup>
-          <CopyTextButton text={copyText} tooltipText="Copied result" />
+          <CopyButton text={copyText} label="Copy result" />
           <TooltipTrigger>
             <ButtonIcon
               variant="tertiary"
@@ -203,20 +240,47 @@ export function ToolResultViewer({
 
       <Box mt="2">
         {mode === 'table' && table && (
-          <Box
-            style={{
-              maxHeight: RESULT_MAX_HEIGHT,
-              overflow: 'auto',
-              border: '1px solid var(--bui-border-1)',
-              borderRadius: 'var(--bui-radius-2)',
-            }}
-          >
-            <Table<ResultRow>
-              columnConfig={columnConfig}
-              data={rows}
-              pagination={{ type: 'none' }}
-            />
-          </Box>
+          <Flex direction="column" gap="2">
+            {hasFilter && (
+              <SearchField
+                aria-label="Filter rows"
+                placeholder="Filter rows"
+                value={query}
+                onChange={setQuery}
+                style={{ maxWidth: 480 }}
+              />
+            )}
+            {filteredRows.length === 0 ? (
+              <Text as="p" variant="body-small" color="secondary">
+                No row matches “{query}”.
+              </Text>
+            ) : (
+              // Keyed on the filter so a new search starts at the first page.
+              <ShowMore
+                key={needle}
+                items={filteredRows}
+                initial={RESULT_TABLE_ROWS}
+                noun="row"
+              >
+                {visible => (
+                  <Box
+                    style={{
+                      maxHeight: RESULT_MAX_HEIGHT,
+                      overflow: 'auto',
+                      border: '1px solid var(--bui-border-1)',
+                      borderRadius: 'var(--bui-radius-2)',
+                    }}
+                  >
+                    <Table<ResultRow>
+                      columnConfig={columnConfig}
+                      data={visible}
+                      pagination={{ type: 'none' }}
+                    />
+                  </Box>
+                )}
+              </ShowMore>
+            )}
+          </Flex>
         )}
 
         {mode === 'parsed' &&

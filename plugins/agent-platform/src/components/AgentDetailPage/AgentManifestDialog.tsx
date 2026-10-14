@@ -37,9 +37,8 @@ export function AgentManifestDialog({
       manifest={manifest}
       description={
         <>
-          The resource as stored on cluster <strong>{agent.cluster}</strong>,
-          minus server-side-apply bookkeeping. Read-only — this view never
-          writes.
+          As stored on cluster <strong>{agent.cluster}</strong>, minus
+          server-side-apply bookkeeping.
         </>
       }
     />

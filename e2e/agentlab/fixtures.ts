@@ -8,7 +8,13 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
-import { contextOptions, lab, type LabUser } from './lab';
+import {
+  contextOptionsFor,
+  lab,
+  type LabUser,
+  type PortalMode,
+  type Variant,
+} from './lab';
 
 export { expect };
 
@@ -54,6 +60,35 @@ export async function completeDexLogin(
 }
 
 /**
+ * The portal's chrome on whatever page is open: the classic sidebar
+ * (`sidebar nav`) or, on the agent shell's routes of a lab in `shell` mode,
+ * the shell's rail or phone bar (`Main`). In the DOM only for a signed-in app.
+ */
+export function portalChrome(page: Page): Locator {
+  return page
+    .getByRole('navigation', { name: 'sidebar nav' })
+    .or(page.getByRole('navigation', { name: 'Main', exact: true }))
+    .first();
+}
+
+/**
+ * Fails at once, with what to change, when the lab serves other portals than
+ * `AGENTLAB_PORTAL_MODE` says — rather than letting every spec fail on a
+ * missing route or the other chrome. `page` is signed in and on `/`, which is
+ * the shell's new-session screen exactly when the lab serves the shell.
+ */
+async function expectLabPortalMode(page: Page): Promise<void> {
+  const rail = page.getByRole('navigation', { name: 'Main', exact: true });
+  const served: PortalMode = (await rail.count()) > 0 ? 'shell' : 'classic';
+  expect(
+    served,
+    lab.portalMode === 'shell'
+      ? 'AGENTLAB_PORTAL_MODE=shell, but the lab serves the classic portal only: run its Backstage with APP_CONFIG_app_portals_agentPlatform=true (see e2e/agentlab/README.md)'
+      : 'the lab serves the agent shell: set AGENTLAB_PORTAL_MODE=shell (the Agent Platform specs need it), or switch the lab back to the classic portal',
+  ).toBe(lab.portalMode);
+}
+
+/**
  * Signs `page` in as a lab user the way a person does: the Dex card's
  * **Sign In** opens the popup, the lab Dex asks for the fixture account, and
  * the portal renders signed in. Fails with the page's state when the card is
@@ -62,13 +97,15 @@ export async function completeDexLogin(
  */
 export async function signIn(page: Page, user: LabUser): Promise<void> {
   await page.goto('/');
+  // The classic card's "Sign In" and the shell card's "Sign in with …" alike
+  // (a case-insensitive substring).
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(card, 'the sign-in page offers the Dex card').toBeVisible();
   const popup = page.waitForEvent('popup');
   await card.click();
   await completeDexLogin(await popup, user);
   await expect(
-    page.getByRole('navigation', { name: 'sidebar nav' }),
+    portalChrome(page),
     `the portal renders signed in as ${user.email}`,
   ).toBeAttached({ timeout: 60_000 });
 }
@@ -86,6 +123,12 @@ export function watchPageErrors(page: Page): string[] {
 }
 
 type WorkerFixtures = {
+  /**
+   * The browser the project drives (`use: { variant }` in
+   * `playwright.config.ts`): `desktop`, or the `agentlab-mobile` project's
+   * phone. Every context the fixtures open takes its options from it.
+   */
+  variant: Variant;
   /**
    * One page per worker, signed in as the lab admin once and kept for the
    * worker's lifetime; every test navigates it.
@@ -152,9 +195,11 @@ function labAgentFailureFile(outputDir: string): string {
 }
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
+  variant: ['desktop', { scope: 'worker', option: true }],
+
   adminPage: [
-    async ({ browser }, use) => {
-      const context = await browser.newContext(contextOptions);
+    async ({ browser, variant }, use) => {
+      const context = await browser.newContext(contextOptionsFor(variant));
       const page = await context.newPage();
       await page.addInitScript(
         ([keys, flag]) => {
@@ -166,6 +211,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         [PERSISTED_QUERY_CACHES, DROP_CACHES_FLAG] as const,
       );
       await signIn(page, lab.users.admin);
+      await expectLabPortalMode(page);
       await use(page);
       await context.close();
     },
@@ -230,10 +276,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     expect(errors, 'no uncaught errors on the page').toEqual([]);
   },
 
-  signInAs: async ({ browser }, use) => {
+  signInAs: async ({ browser, variant }, use) => {
     const contexts: BrowserContext[] = [];
     await use(async user => {
-      const context = await browser.newContext(contextOptions);
+      const context = await browser.newContext(contextOptionsFor(variant));
       contexts.push(context);
       const page = await context.newPage();
       await signIn(page, user);
@@ -243,21 +289,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   },
 });
 
-/** The Agent Platform section's top-level tabs, in the order the portal shows them. */
-export const agentPlatformTabs = [
-  'Sessions',
-  'Agents',
-  'Models',
-  'MCP Servers',
-  'Workflows',
-  'Usage',
-] as const;
-
 /**
- * Opens `path` on a signed-in page and waits for the portal's chrome, so
- * assertions see a rendered app. The sidebar is in the DOM only for a
- * signed-in app; Playwright counts its collapsed `nav` as not visible, hence
- * attached rather than visible.
+ * Opens `path` on a signed-in page and waits for the portal's chrome (the
+ * classic sidebar or the shell's rail, {@link portalChrome}), so assertions
+ * see a rendered app. The chrome is in the DOM only for a signed-in app;
+ * Playwright counts the classic sidebar's collapsed `nav` as not visible,
+ * hence attached rather than visible.
  *
  * When the sign-in card shows instead — a Backstage pod roll in the shared lab
  * drops every session — the page signs in again as `user` and retries once,
@@ -269,7 +306,7 @@ export async function open(
   user: LabUser = lab.users.admin,
 ): Promise<void> {
   await page.goto(path);
-  const chrome = page.getByRole('navigation', { name: 'sidebar nav' });
+  const chrome = portalChrome(page);
   const card = page.getByRole('button', { name: 'Sign In' });
   await expect(chrome.or(card).first()).toBeAttached();
   if (await card.isVisible()) {
@@ -277,6 +314,58 @@ export async function open(
     await page.goto(path);
   }
   await expect(chrome).toBeAttached();
+}
+
+/**
+ * Fills the New agent wizard's Details step: the name, what it is for and its
+ * instructions, then waits until the step names the model the agent runs on
+ * ("Runs on …"), which it does once the environment's ModelConfigs are read
+ * and one is preselected — a Continue before that is refused for the model.
+ */
+export async function fillAgentDetails(
+  page: Page,
+  details: { name: string; description: string; instructions: string },
+): Promise<void> {
+  await expectWizardStep(page, 'Details');
+  await page
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill(details.name);
+  await page
+    .getByRole('textbox', { name: 'What is it for?' })
+    .fill(details.description);
+  await page
+    .getByRole('textbox', { name: 'Instructions' })
+    .fill(details.instructions);
+  await expect(
+    page.getByText(/^Runs on /),
+    'a model is preselected for the agent',
+  ).toBeVisible({ timeout: 60_000 });
+}
+
+/**
+ * Opens the New agent wizard's **More options** disclosure on Details — its
+ * summary reads "More options · <harness>", and the plain view's model line
+ * ("Runs on … · change under More options") names it too, so the summary is
+ * found as the disclosure, not by the words alone.
+ */
+export async function openWizardMoreOptions(page: Page): Promise<void> {
+  await page
+    .locator('summary')
+    .filter({ hasText: /^More options/ })
+    .click();
+}
+
+/**
+ * Asserts the in-content wizard frame is on `step`: the step strip marks it
+ * as the current one. Replaces the old "Step N of M: <label>" line the pages
+ * carried before the shared `WizardFrame`.
+ */
+export async function expectWizardStep(page: Page, step: string) {
+  await expect(
+    page
+      .getByRole('list', { name: 'Steps' })
+      .locator('li[aria-current="step"]'),
+  ).toContainText(step);
 }
 
 /**
@@ -315,7 +404,7 @@ export async function connectToMuster(page: Page, ready: Locator) {
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
  * page's user: Details (no skills, no tools, the lab's default ModelConfig),
- * agent-manager's dry run on Review, then Deploy. Resolves on the agent's
+ * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  */
@@ -326,20 +415,24 @@ export async function createAgentInWizard(
 ): Promise<string> {
   // --- Step 1: Details -----------------------------------------------------
   await open(page, '/agent-platform/agents/new');
-  await expect(page.getByText('Step 1 of 4: Details')).toBeVisible();
+  await expectWizardStep(page, 'Details');
   await expect(
-    page.getByText('No installations with models'),
+    page.getByText('No environments with models'),
     `the wizard sees no reachable installation with a ModelConfig — the lab's kagent route may be unreachable from Backstage, or the backend cached an unreachable probe after a pod roll (5 min TTL)`,
   ).toBeHidden();
-  await page.getByRole('textbox', { name: 'Name' }).fill(agentName);
-  await expect(page.getByRole('textbox', { name: 'Slug' })).toHaveValue(
-    agentSlug,
-  );
   await page
-    .getByRole('textbox', { name: 'Description' })
+    .getByRole('textbox', { name: 'Name', exact: true })
+    .fill(agentName);
+  // The technical name sits behind "More options", derived from the name.
+  await openWizardMoreOptions(page);
+  await expect(
+    page.getByRole('textbox', { name: 'Technical name' }),
+  ).toHaveValue(agentSlug);
+  await page
+    .getByRole('textbox', { name: 'What is it for?' })
     .fill('Throwaway agent of the Playwright suite; deleted by the same run.');
   await page
-    .getByRole('textbox', { name: 'System prompt' })
+    .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
   await page
     .getByRole('radiogroup', { name: 'Model' })
@@ -348,24 +441,33 @@ export async function createAgentInWizard(
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 2: Skills (none) -----------------------------------------------
-  await expect(page.getByText('Step 2 of 4: Skills')).toBeVisible();
+  await expectWizardStep(page, 'Skills');
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
   // --- Step 3: Tools (none) ------------------------------------------------
-  await expect(page.getByText('Step 3 of 4: Tools')).toBeVisible();
+  await expectWizardStep(page, 'Tools');
+  // A new agent starts on "Nothing outside the chat". What is selected so far
+  // shows in the docked *Selected* rail where the step keeps its column beside
+  // it (a desktop), else in the *Selected so far* bar (a phone, a tablet).
   await expect(
-    page.getByLabel('Selected so far').getByText('No tools'),
+    page
+      .getByRole('complementary', { name: 'Selected' })
+      .or(page.getByRole('region', { name: 'Selected so far' }))
+      .getByText('No tools', { exact: true }),
     'nothing selected is the empty toolset, and the step says so',
   ).toBeVisible();
   await page.getByRole('button', { name: 'Continue' }).first().click();
 
-  // --- Step 4: Review = agent-manager's dry run, then Deploy ---------------
-  await expect(page.getByText('Step 4 of 4: Review')).toBeVisible();
+  // --- Step 4: Check and create = agent-manager's dry run, then Create -----
+  await expectWizardStep(page, 'Review');
+  await expect(page.getByText(agentName).first()).toBeVisible();
+  // The release and its manifests are collapsed under Technical details.
+  await page.getByText('Technical details').click();
   await expect(page.getByText(agentSlug).first()).toBeVisible();
-  const deploy = page.getByRole('button', { name: 'Deploy agent' }).first();
+  const deploy = page.getByRole('button', { name: 'Create agent' }).first();
   await expect(
     deploy,
-    'the dry run through agent-manager completed and Deploy is offered',
+    'the dry run through agent-manager completed and Create is offered',
   ).toBeEnabled({ timeout: 90_000 });
   await deploy.click();
 
@@ -393,22 +495,42 @@ export async function deleteAgentInPortal(
   const dialog = page.getByRole('dialog', { name: /Delete agent/ });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Delete agent' }).click();
-  await expect(page).toHaveURL(/\/agent-platform\/agents$/, {
+  // Back on the agents list: Customize's Agents tab.
+  await expect(page).toHaveURL(/\/customize\/agents$/, {
     timeout: 60_000,
   });
-  // By the href: the link's name is the display name, not the slug.
+  // By the href: the link's name is the display name, not the slug. The
+  // roster re-reads the Agents on its 60 s poll, and the Agent goes only once
+  // Flux has uninstalled the release agent-manager deleted, so allow two
+  // polls.
   await expect(
     page.locator(`a[href$="/${agentSlug}"]`),
     'the roster no longer lists the agent',
-  ).toHaveCount(0, { timeout: 60_000 });
+  ).toHaveCount(0, { timeout: 150_000 });
 }
 
-/** The roster's link to the agent named `name`, on the open Agents tab. */
+/**
+ * The roster's link to the agent named `name`, on the open Agents tab
+ * (Customize's): one row per agent, the whole row a link to its page, named by
+ * all it shows — so the row is found by the name line itself.
+ */
 export function rosterLinkOf(page: Page, name: string): Locator {
   return page
-    .getByRole('grid', { name: 'Data table' })
-    .getByRole('rowheader')
-    .getByRole('link', { name, exact: true });
+    .getByRole('main')
+    .getByRole('listitem')
+    .getByRole('link')
+    .filter({ has: page.getByText(name, { exact: true }) });
+}
+
+/**
+ * Narrows the open Agents tab to `name` where the tab offers its search (from
+ * eight agents on), so a row beyond the first page is on screen.
+ */
+export async function searchRoster(page: Page, name: string): Promise<void> {
+  const search = page.getByRole('searchbox', { name: 'Search agents' });
+  if (await search.isVisible()) {
+    await search.fill(name);
+  }
 }
 
 /** The detail page of the roster's agent named `name`, if the roster lists it. */
@@ -417,11 +539,21 @@ async function rosterPathOf(
   name: string,
 ): Promise<string | undefined> {
   await open(page, '/agent-platform/agents');
+  await searchRoster(page, name);
   const link = rosterLinkOf(page, name);
   await link.waitFor({ timeout: 30_000 }).catch(() => undefined);
   return (await link.count()) === 1
     ? ((await link.getAttribute('href')) ?? undefined)
     : undefined;
+}
+
+/**
+ * The agent detail page's header button that starts a session with the agent:
+ * **Use this agent**, offered once the agent is ready. Everywhere else the verb
+ * is "Start a session" (T98), including the Sessions tab's empty state.
+ */
+export function startSessionButton(page: Page): Locator {
+  return page.getByRole('button', { name: 'Use this agent', exact: true });
 }
 
 /**
@@ -435,7 +567,7 @@ export async function openReadyAgent(
 ): Promise<void> {
   await open(page, agent.detailPath);
   await expect(
-    page.getByRole('button', { name: 'Start a session' }),
+    startSessionButton(page),
     'the fixture agent becomes ready on the platform Harness (golden boot): `kubectl -n kagent get agents,harness,workerpools` and the kagent-controller log',
   ).toBeVisible({ timeout: 6 * 60_000 });
 }
@@ -464,7 +596,7 @@ export async function startSessionOnReadyAgent(
   // The button follows the roster's own read of the agent (`readiness`),
   // polled apart from the header's conditions above, so it can trail
   // the header's Ready by more than an action timeout.
-  const startSession = page.getByRole('button', { name: 'Start a session' });
+  const startSession = startSessionButton(page);
   await expect(
     startSession,
     'the page offers a session once the roster reads the agent ready',
@@ -485,7 +617,7 @@ export async function startSessionOnReadyAgent(
       await route.continue();
     });
   }
-  // Exact: the page header's "Start a session" is a button too.
+  // Exact: the dialog's own Start, not a longer button name.
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   if (whileStarting) {
     try {
@@ -500,4 +632,122 @@ export async function startSessionOnReadyAgent(
     new RegExp(`/agent-platform/sessions/${lab.installation}/[^/]+$`),
     { timeout: 60_000 },
   );
+}
+
+/**
+ * The page does not scroll sideways: nothing reaches past the viewport's right
+ * edge (the phone promise, T22). On a failure the message names the widest
+ * offenders — the outermost elements past the edge, by tag, class and text —
+ * so the cause is in the report, not only in a screenshot.
+ */
+export async function expectNoHorizontalScroll(
+  page: Page,
+  what: string,
+): Promise<void> {
+  const report = await page.evaluate(() => {
+    const root = document.scrollingElement ?? document.documentElement;
+    // The layout width, not `innerWidth`: with mobile emulation the latter
+    // grows with whatever overflows it.
+    const width = root.clientWidth;
+    const overflowing = root.scrollWidth > root.clientWidth + 1;
+    if (!overflowing) {
+      return null;
+    }
+    const describe = (el: Element) => {
+      const cls =
+        typeof el.className === 'string'
+          ? el.className.split(/\s+/).filter(Boolean).slice(0, 3).join('.')
+          : '';
+      const text = (el.textContent ?? '').trim().slice(0, 40);
+      const right = Math.round(el.getBoundingClientRect().right);
+      return `${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''} (right ${right}px) "${text}"`;
+    };
+    // Outermost offenders: an element past the edge whose parent is not —
+    // `html` and `body` included, which a wide child can stretch.
+    const past = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.right > width + 1;
+    };
+    const all = [
+      document.documentElement,
+      ...Array.from(document.querySelectorAll('body, body *')),
+    ];
+    let offenders = all
+      .filter(el => past(el) && !(el.parentElement && past(el.parentElement)))
+      .slice(0, 5)
+      .map(describe);
+    if (offenders.length === 0) {
+      // Nothing is past the edge by its box: name the widest boxes instead.
+      offenders = all
+        .filter(
+          el =>
+            el.scrollWidth > el.clientWidth + 1 &&
+            getComputedStyle(el).overflowX === 'visible',
+        )
+        .slice(0, 5)
+        .map(el => `${describe(el)} scrollWidth ${el.scrollWidth}`);
+    }
+    return `scrollWidth ${root.scrollWidth} > clientWidth ${root.clientWidth}; past the edge: ${offenders.join('; ') || '(none found)'}`;
+  });
+  expect(report, `${what}: no horizontal page scroll`).toBeNull();
+}
+
+/**
+ * On a phone, `locator` is fully above the shell's bottom bar (its height is
+ * `--agent-shell-mobile-bar-height` on the body) and is what a tap at its
+ * centre hits — not the bar, not an overlay above it.
+ */
+export async function expectClearOfBottomBar(
+  page: Page,
+  locator: Locator,
+  what: string,
+): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  const box = await locator.boundingBox();
+  expect(box, `${what} is laid out`).not.toBeNull();
+  const barBox = await page.locator('.agent-shell-mobile-bar').boundingBox();
+  const barTop = barBox ? barBox.y : page.viewportSize()!.height;
+  const hit = await locator.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    const at = document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+    return !!at && (at === el || el.contains(at));
+  });
+  expect(
+    box!.y + box!.height,
+    `${what} ends above the bottom bar`,
+  ).toBeLessThanOrEqual(barTop + 0.5);
+  expect(hit, `a tap on ${what} reaches it`).toBe(true);
+}
+
+/**
+ * Whether the deployment's `app.extensions` switches `extension` off, read from
+ * the public config the page was served with (`script[type="backstage.io/config"]`,
+ * the highest-priority layer that lists `app.extensions` wins — Backstage
+ * replaces config arrays rather than merging them). For assertions on chrome
+ * that follows the deployment's config, such as the classic sidebar's AI
+ * Assistant, which the agent-platform chart's app-config turns off.
+ */
+export async function extensionDisabled(
+  page: Page,
+  extension: string,
+): Promise<boolean> {
+  return page.evaluate(id => {
+    const script = document.querySelector('script[type="backstage.io/config"]');
+    const layers = JSON.parse(script?.textContent ?? '[]') as {
+      data?: { app?: { extensions?: unknown[] } };
+    }[];
+    const lists = layers
+      .map(layer => layer.data?.app?.extensions)
+      .filter((list): list is unknown[] => Array.isArray(list));
+    const list = lists[lists.length - 1] ?? [];
+    return list.some(
+      entry =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        (entry as Record<string, unknown>)[id] === false,
+    );
+  }, extension);
 }

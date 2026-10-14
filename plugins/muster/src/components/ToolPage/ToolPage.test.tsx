@@ -3,8 +3,10 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
-import { mcpServersRouteRef } from '../../routes';
+import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
 
@@ -63,7 +65,7 @@ function makeApi() {
   };
 }
 
-const BASE = '/agent-platform/mcp-servers';
+const BASE = '/agent-platform/connectors';
 
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
@@ -71,16 +73,21 @@ async function renderAt(path: string, api = makeApi()) {
   });
   await renderInTestApp(
     <QueryClientProvider client={queryClient}>
-      <Routes>
-        <Route
-          path="/agent-platform/mcp-servers/*"
-          element={<McpServersRouter />}
-        />
-      </Routes>
+      <PageHeaderActionsProvider>
+        <Routes>
+          <Route
+            path="/agent-platform/connectors/*"
+            element={<McpServersRouter />}
+          />
+        </Routes>
+      </PageHeaderActionsProvider>
     </QueryClientProvider>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef },
+      mountedRoutes: {
+        '/agent-platform/connectors': mcpServersRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
       apis: [[musterApiRef, api as never]],
     },
   );
@@ -99,30 +106,14 @@ describe('ToolPage', () => {
     );
 
     expect(
-      screen.getByRole('heading', { name: 'list_buckets' }),
+      screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('x_aws-root_list_buckets').parentElement,
-    ).toHaveTextContent('Exposed by muster as: x_aws-root_list_buckets');
     expect(
       await screen.findByText('List the buckets of the account.'),
     ).toBeInTheDocument();
-    // Once, at the end of the "Exposed by muster as" line.
-    expect(
-      screen.getByText('x_aws-root_list_buckets').parentElement!.parentElement,
-    ).toContainElement(screen.getByText('read-only'));
+    // Once, beside the title: the panel shows no markers of its own.
+    expect(screen.getAllByText('read-only')).toHaveLength(1);
     expect(screen.getByText('Input schema')).toBeInTheDocument();
-
-    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
-    expect(
-      within(trail)
-        .getAllByRole('link')
-        .map(link => [link.textContent, link.getAttribute('href')]),
-    ).toEqual([
-      ['MCP Servers', `${BASE}?installation=gazelle`],
-      ['aws-root', `${BASE}/aws-root?installation=gazelle`],
-      ['Tools', `${BASE}/aws-root?installation=gazelle`],
-    ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
     expect(await screen.findByText('Result')).toBeInTheDocument();
@@ -153,9 +144,7 @@ describe('ToolPage', () => {
       `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
     );
 
-    expect(
-      screen.getByText(/described and run through the muster session/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
 
@@ -191,5 +180,62 @@ describe('ToolPage', () => {
       'x_aws-root_far_down_the_list',
       'gazelle',
     );
+  });
+});
+
+describe('ToolPage at phone width', () => {
+  let layout: ReturnType<typeof mockPhoneLayout>;
+  beforeEach(() => {
+    layout = mockPhoneLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
+    await renderAt(
+      `${BASE}/muster/tools/core_service_list?installation=gazelle`,
+    );
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'Connectors' },
+      ),
+    ).toHaveAttribute('href', '/customize/connectors/internal');
+  });
+
+  it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
+    await renderAt(
+      `${BASE}/aws-root/tools/x_aws-root_list_buckets?installation=gazelle`,
+    );
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'list_buckets' }),
+    ).toBeInTheDocument();
+    const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(
+      within(trail)
+        .getAllByRole('link')
+        .map(link => [
+          // The back arrow has no text, only its label.
+          link.textContent || link.getAttribute('aria-label'),
+          link.getAttribute('href'),
+        ]),
+    ).toEqual([
+      ['Back to aws-root', `${BASE}/aws-root?installation=gazelle`],
+      ['Customize', '/customize'],
+      ['Connectors', '/customize/connectors'],
+      // One link to the connector: no "Tools" crumb repeating it.
+      ['aws-root', `${BASE}/aws-root?installation=gazelle`],
+    ]);
+    // The unbroken snake_case name may break anywhere instead of widening
+    // the page.
+    const name = screen.getByText('x_aws-root_list_buckets');
+    expect(name.parentElement).toHaveTextContent(
+      'Exposed by muster as: x_aws-root_list_buckets',
+    );
+    expect(name).toHaveStyle({ fontFamily: 'monospace' });
+    expect(name.getAttribute('style')).toContain('overflow-wrap: anywhere');
+    expect(
+      await screen.findByText('List the buckets of the account.'),
+    ).toBeInTheDocument();
   });
 });

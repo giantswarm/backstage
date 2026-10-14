@@ -271,7 +271,7 @@ export class KagentApiClient implements KagentApi {
   }
 
   /**
-   * Derived state for this installation's sessions, for the switcher rail.
+   * Derived state for this installation's sessions, for the session lists.
    *
    * The backend does the work: a session's state lives in its tasks, and reading
    * every session's conversation in the browser to learn one string each is not

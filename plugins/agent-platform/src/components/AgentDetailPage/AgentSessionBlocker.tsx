@@ -5,7 +5,7 @@ import { useAgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
 
 /**
  * Why sessions cannot be started with this agent, in place of the header's
- * **Start a session**, which is offered only for a ready agent — on every tab,
+ * **Use this agent**, which is offered only for a ready agent — on every tab,
  * because the reason is true on every tab.
  *
  * A failed agent names the root cause and, when the viewer may edit the agent
@@ -43,11 +43,11 @@ export function AgentSessionBlocker({
     const sentence = reason?.replace(/\.$/, '');
     let description = reason;
     if (isPlatform) {
-      description = `${sentence}. This is a problem with the platform, not with the agent: a platform admin has to fix it.`;
+      description = `${sentence}. This is a platform problem, not the agent's, and a platform admin has to fix it.`;
     } else if (isGitOpsOwned) {
       description = onEdit
-        ? `${sentence}. This agent is deployed from a GitOps repository, so a fix opens a pull request there.`
-        : `${sentence}. This agent is deployed from a GitOps repository, so it is fixed there.`;
+        ? `${sentence}. It is deployed from GitOps, so a fix opens a pull request there.`
+        : `${sentence}. It is deployed from GitOps, so fix it there.`;
     }
     const canFix = onEdit && !isPlatform;
 
@@ -55,7 +55,7 @@ export function AgentSessionBlocker({
       <Alert
         status="danger"
         icon
-        title="Sessions can't start"
+        title="Sessions cannot start"
         description={description}
         customActions={
           canFix ? (

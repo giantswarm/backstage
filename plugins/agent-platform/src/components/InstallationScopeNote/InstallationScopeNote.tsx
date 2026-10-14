@@ -33,7 +33,7 @@ export function InstallationScopeNote({
   if (!entry) {
     return (
       <Text variant="body-small" color="secondary">
-        This portal knows no installation named “{scope}”.
+        This portal knows no environment named “{scope}”.
       </Text>
     );
   }

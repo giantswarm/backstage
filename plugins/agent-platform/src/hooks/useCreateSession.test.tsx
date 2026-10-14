@@ -10,7 +10,11 @@ import {
 import { kagentApiRef } from '../apis';
 import { KagentApi } from '../apis/types';
 import type { AgentRow } from '../components/AgentsDataProvider';
-import { useCreateSession } from './useCreateSession';
+import {
+  useCreateSession,
+  type SessionEntryPoint,
+  type UseCreateSessionOptions,
+} from './useCreateSession';
 
 const createSession = jest.fn();
 
@@ -31,7 +35,10 @@ const agent: AgentRow = {
 
 const analyticsApi = mockApis.analytics.mock();
 
-function renderWith() {
+function renderWith(
+  entryPoint: SessionEntryPoint = 'agentDetail',
+  options?: UseCreateSessionOptions,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -49,7 +56,7 @@ function renderWith() {
   );
 
   return {
-    ...renderHook(() => useCreateSession('agentDetail'), { wrapper }),
+    ...renderHook(() => useCreateSession(entryPoint, options), { wrapper }),
     invalidateQueries,
   };
 }
@@ -93,6 +100,22 @@ describe('useCreateSession', () => {
     );
   });
 
+  it('titles the session with up to titleMaxLength characters of the prompt', async () => {
+    const prompt = `Investigate ${'the restarting ingress controller '.repeat(3)}`;
+    const { result } = renderWith('home', { titleMaxLength: 199 });
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt });
+    });
+
+    expect(createSession).toHaveBeenCalledWith(
+      'gazelle',
+      { namespace: 'kagent', name: 'sre-agent' },
+      prompt.trim(),
+      expect.any(String),
+    );
+  });
+
   it('reports the started session with its entry point', async () => {
     const { result } = renderWith();
 
@@ -105,6 +128,87 @@ describe('useCreateSession', () => {
       expect.objectContaining({
         action: 'AgentPlatform.sessionStarted',
         attributes: { entryPoint: 'agentDetail' },
+      }),
+    );
+  });
+
+  it('reports a session started from the home page as such', async () => {
+    const { result } = renderWith('home');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'home' },
+      }),
+    );
+  });
+
+  it('reports a session started from the create-agent assist as such', async () => {
+    const { result } = renderWith('createAgentAssist');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Draft an agent' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'createAgentAssist' },
+      }),
+    );
+  });
+
+  it("reports a session started from the skill forms' skill-creator hand-off as such", async () => {
+    const { result } = renderWith('skillCreationAssist');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Write a skill' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'skillCreationAssist' },
+      }),
+    );
+  });
+
+  it.each([
+    ['the workflow page’s hand-off to the workflow agent', 'workflowEdit'],
+    ['the workflows overview’s create hint', 'workflowCreateAssist'],
+  ] as const)(
+    'reports a session started from %s as such',
+    async (_, entryPoint) => {
+      const { result } = renderWith(entryPoint);
+
+      await act(async () => {
+        await result.current.createSession({ agent, prompt: 'A workflow' });
+      });
+
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.sessionStarted',
+          attributes: { entryPoint },
+        }),
+      );
+    },
+  );
+
+  it('reports a session started from the ⌘K search palette as such', async () => {
+    const { result } = renderWith('searchPalette');
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
+    });
+
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.sessionStarted',
+        attributes: { entryPoint: 'searchPalette' },
       }),
     );
   });
@@ -143,18 +247,50 @@ describe('useCreateSession', () => {
     );
   });
 
-  it('marks the installation’s sessions list stale without refetching it', async () => {
-    // The caller navigates away from the list at once, so a refetch here would
-    // spend a fleet-wide query on a screen nobody is looking at.
+  it('invalidates the installation’s sessions list so mounted lists refetch at once', async () => {
+    // The shell rail's session history stays mounted through the navigation,
+    // so the default (active) refetch is what makes the new session appear in
+    // the sidebar immediately. `refetchType: 'none'` here is the bug this
+    // guards against.
     const { result, invalidateQueries } = renderWith();
 
     await act(async () => {
       await result.current.createSession({ agent, prompt: 'Check' });
     });
 
-    expect(invalidationFor(invalidateQueries, SESSIONS_KEY)).toMatchObject({
-      refetchType: 'none',
+    const invalidation = invalidationFor(invalidateQueries, SESSIONS_KEY);
+    expect(invalidation).toBeDefined();
+    expect(invalidation).not.toMatchObject({ refetchType: 'none' });
+  });
+
+  it('invalidates the installation’s session states, which group and mark the rail', async () => {
+    const { result, invalidateQueries } = renderWith();
+
+    await act(async () => {
+      await result.current.createSession({ agent, prompt: 'Check' });
     });
+
+    const invalidation = invalidationFor(invalidateQueries, [
+      'agent-platform',
+      'kagent',
+      'session-states',
+      'gazelle',
+    ]);
+    expect(invalidation).toBeDefined();
+    expect(invalidation).not.toMatchObject({ refetchType: 'none' });
+  });
+
+  it('does not invalidate anything when the create fails', async () => {
+    createSession.mockRejectedValue(new Error('kagent is down'));
+    const { result, invalidateQueries } = renderWith();
+
+    await act(async () => {
+      await result.current
+        .createSession({ agent, prompt: 'Check' })
+        .catch(() => {});
+    });
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
   });
 
   it('surfaces a failure without inventing a session id', async () => {

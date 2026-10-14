@@ -12,6 +12,8 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -25,13 +27,6 @@ import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
-
-// Header actions land in the shared plugin header, outside this tree; the page
-// renders the same Deploy in its own card, which is what is driven.
-jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
-  useProvidePageHeaderActions: jest.fn(),
-}));
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -86,6 +81,14 @@ function listedHarness(
     'gazelle',
   );
 }
+
+// The targeted ModelConfig read behind the fold-out's "Underlying model";
+// unread (undefined) unless a test says what the ModelConfig runs.
+const mockUseUnderlyingModel = jest.fn();
+jest.mock('../../hooks/useUnderlyingModel', () => ({
+  ...jest.requireActual('../../hooks/useUnderlyingModel'),
+  useUnderlyingModel: (...args: unknown[]) => mockUseUnderlyingModel(...args),
+}));
 
 jest.mock('../../hooks/useAgentIconUrl', () => ({
   useAgentIconUrl: () => (installation: string, name: string) =>
@@ -322,15 +325,19 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
-        <NewAgentFormProvider>
-          <Seed
-            withSkill={withSkill}
-            harness={scenario.harness}
-            egressText={scenario.egressText}
-          >
-            <NewAgentReviewPage />
-          </Seed>
-        </NewAgentFormProvider>
+        {/* The step's actions land in the wizard frame's footer through the
+            page-header slot, which is what is driven. */}
+        <PageHeaderActionsProvider>
+          <NewAgentFormProvider>
+            <Seed
+              withSkill={withSkill}
+              harness={scenario.harness}
+              egressText={scenario.egressText}
+            >
+              <NewAgentReviewPage />
+            </Seed>
+          </NewAgentFormProvider>
+        </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
     { mountedRoutes: { '/agent-platform/agents': agentsRouteRef } },
@@ -339,10 +346,11 @@ async function renderReview(scenario: Scenario = {}, withSkill = true) {
 }
 
 const deployButton = () =>
-  within(
-    screen.getByRole('heading', { name: 'Deploy' })
-      .parentElement as HTMLElement,
-  ).getByRole('button', { name: /Deploy agent|Deploying…/ });
+  screen.getByRole('button', { name: /^(Create agent|Creating…)$/ });
+
+/** The plain summary's answer for `label`. */
+const plainRow = (label: string) =>
+  screen.getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
 
 function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
   const call = callTool.mock.calls.find(([name]) => name === tool);
@@ -352,11 +360,63 @@ function specSentTo(callTool: jest.Mock, tool: string): AgentSpec {
 
 beforeEach(() => {
   mockNavigate.mockReset();
+  mockUseUnderlyingModel.mockReset();
   mockHarnessListing.mockReset();
   mockHarnessListing.mockReturnValue([]);
 });
 
 describe('NewAgentReviewPage', () => {
+  it('leads with the plain summary and keeps the manifests under Technical details', async () => {
+    await renderReview();
+
+    expect(
+      screen.getByRole('heading', { name: 'Check and create' }),
+    ).toBeInTheDocument();
+    expect(plainRow('Name')).toHaveTextContent('Go service reviewer');
+    expect(plainRow("What it's for")).toHaveTextContent(
+      'Reviews pull requests.',
+    );
+    // No display name was handed over, so the ModelConfig's name stands in.
+    expect(plainRow('Model')).toHaveTextContent('opus-4-7');
+    expect(plainRow('Runtime')).toHaveTextContent(
+      'Standard (platform default)',
+    );
+    expect(plainRow('Skills')).toHaveTextContent('Incident responder');
+    expect(plainRow('Tools')).toHaveTextContent('Read-only tools');
+
+    // The release and its manifests sit in a collapsed disclosure.
+    const release = await screen.findByTestId('code-go-service-reviewer.yaml');
+    const technical = release.closest('details') as HTMLDetailsElement;
+    expect(technical).not.toBeNull();
+    expect(technical.open).toBe(false);
+    expect(
+      within(technical).getByText('Technical details'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    // Nothing read about the ModelConfig: no underlying-model line.
+    expect(within(technical).queryByText('Underlying model')).toBeNull();
+  });
+
+  it('keeps the ModelConfig name and names the model it runs under Technical details', async () => {
+    mockUseUnderlyingModel.mockReturnValue('claude-sonnet-4-6 · Anthropic');
+
+    await renderReview();
+
+    // The plain summary keeps the ModelConfig's name (PO decision L6).
+    expect(plainRow('Model')).toHaveTextContent('opus-4-7');
+    expect(plainRow('Model')).not.toHaveTextContent('claude-sonnet-4-6');
+    // The model is one disclosure away, beside the ModelConfig it belongs to.
+    const release = await screen.findByTestId('code-go-service-reviewer.yaml');
+    const technical = release.closest('details') as HTMLDetailsElement;
+    const item = within(technical).getByText('Underlying model').parentElement;
+    expect(item).toHaveTextContent('claude-sonnet-4-6 · Anthropic');
+    expect(mockUseUnderlyingModel).toHaveBeenCalledWith(
+      'gazelle',
+      'opus-4-7',
+      'kagent',
+    );
+  });
+
   it('sends the extra egress origins and names them in the summary', async () => {
     const { callTool } = await renderReview({
       egressText: 'https://github.com:443\nhttps://*.githubusercontent.com',
@@ -428,13 +488,12 @@ describe('NewAgentReviewPage', () => {
       screen.getByText('oci://gsoci.azurecr.io/charts/giantswarm/agent:1.x'),
     ).toBeInTheDocument();
     expect(screen.getByText('latest 1.0.0')).toBeInTheDocument();
-    expect(
-      screen.getByText('Runtime (Harness)').parentElement,
-    ).toHaveTextContent('kagent');
-    // The skills summary names the pin.
+    expect(screen.getByText('Harness').parentElement).toHaveTextContent(
+      'kagent',
+    );
+    // The technical summary names the skill's pin and the selectors.
     expect(screen.getByText('@cb1fb76')).toBeInTheDocument();
-    // The Tools summary names the preset by its label, the selector below it.
-    expect(screen.getByText('Read-only tools').parentElement).toHaveTextContent(
+    expect(screen.getByText('Toolset').parentElement).toHaveTextContent(
       'preset:read-only',
     );
     // Validated against the chart schema agent-manager named.
@@ -483,7 +542,7 @@ describe('NewAgentReviewPage', () => {
     mockHarnessListing.mockReturnValue([listedHarness('kagent', 'kagent')]);
     await renderReview();
 
-    await screen.findByText('Runtime (Harness)');
+    await screen.findByText('Standard (platform default)');
     expect(screen.queryByRole('group', { name: 'Limits' })).toBeNull();
   });
 
@@ -502,10 +561,11 @@ describe('NewAgentReviewPage', () => {
         specSentTo(callTool, 'x_agent-manager_validate_agent'),
       ).toMatchObject({ harness: 'claude' }),
     );
-    const summary = screen.getByText('Runtime (Harness)')
-      .parentElement as HTMLElement;
-    expect(summary).toHaveTextContent('claude');
-    expect(summary).toHaveTextContent('Claude Code');
+    // The plain summary names the runtime, the technical one the Harness.
+    expect(plainRow('Runtime')).toHaveTextContent('Claude Code');
+    expect(screen.getByText('Harness').parentElement).toHaveTextContent(
+      'claude',
+    );
     expect(
       screen.getByText(/the agent runs on the Harness/),
     ).toBeInTheDocument();
@@ -653,22 +713,24 @@ describe('NewAgentReviewPage', () => {
     expect(deployButton()).toBeDisabled();
   });
 
-  it('hides Commit while agent-manager does not report the capability', async () => {
+  it('hides the pull-request alternative while agent-manager does not report the capability', async () => {
     await renderReview();
     await screen.findByTestId('code-agent.yaml');
     expect(
-      screen.queryByRole('button', { name: /Commit/ }),
+      screen.queryByRole('button', { name: /Propose as pull request/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('offers Commit once agent-manager reports it, and shows the pull request it opened', async () => {
+  it('offers the pull-request alternative once agent-manager reports it, and shows the pull request it opened', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderReview({
       info: { capabilities: { ...INFO.capabilities, commit: true } },
     });
 
     await screen.findByTestId('code-agent.yaml');
-    const commit = await screen.findByRole('button', { name: 'Commit' });
+    const commit = await screen.findByRole('button', {
+      name: 'Propose as pull request instead',
+    });
     await waitFor(() => expect(commit).toBeEnabled());
     await user.click(commit);
 
@@ -683,9 +745,47 @@ describe('NewAgentReviewPage', () => {
       await screen.findByText(/Pull request #7 opened/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Open the pull request ↗' }),
+      screen.getByRole('link', { name: 'Review pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('moves the pull-request alternative out of the footer at phone width', async () => {
+    const layout = mockPhoneLayout();
+    try {
+      const user = userEvent.setup();
+      const { callTool } = await renderReview({
+        info: { capabilities: { ...INFO.capabilities, commit: true } },
+      });
+
+      await screen.findByTestId('code-agent.yaml');
+      const commit = await screen.findByRole('button', {
+        name: 'Propose as pull request instead',
+      });
+      // One row in the footer: Back (an icon) and Create; the alternative is
+      // on the page, above the technical details.
+      const footer = screen.getByRole('contentinfo');
+      expect(footer).not.toContainElement(commit);
+      expect(
+        within(footer)
+          .getAllByRole('button')
+          .map(
+            button => button.getAttribute('aria-label') ?? button.textContent,
+          ),
+      ).toEqual(['Back', 'Create agent']);
+
+      await waitFor(() => expect(commit).toBeEnabled());
+      await user.click(commit);
+      await waitFor(() =>
+        expect(callTool).toHaveBeenCalledWith(
+          'x_agent-manager_create_agent',
+          expect.objectContaining({ mode: 'commit' }),
+          'gazelle',
+        ),
+      );
+    } finally {
+      layout.restore();
+    }
   });
 
   it("renders the manual fallback from agent-manager's values and chart", async () => {

@@ -8,7 +8,7 @@ import {
   type StackedBarChartSeries,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { foldSeries, type LlmDailySeries } from '../../../lib/llmUsage';
-import { formatUsd } from '../../../lib/formatNumbers';
+import { formatMoney, USD, type Currency } from '../../../lib/formatNumbers';
 import { formatDayTick, formatDayTooltip } from '../../../lib/formatDay';
 import { UsageCard } from '../UsageCard';
 
@@ -25,11 +25,25 @@ import { UsageCard } from '../UsageCard';
 export function CostPerDayCard({
   daily,
   note,
+  currency = USD,
+  showLegend = true,
 }: {
   daily: LlmDailySeries;
   note?: string;
+  /**
+   * The key naming each model's colour. Off where the page already names the
+   * one model the chart shows (a model's own page).
+   */
+  showLegend?: boolean;
+  /**
+   * The installation's display currency. The series stay USD — a linear
+   * conversion preserves every bar's proportion — and only the labels convert.
+   */
+  currency?: Currency;
 }) {
   const theme = useTheme();
+  const formatCost = (value: number | undefined) =>
+    formatMoney(value, currency);
 
   const { rows, series } = useMemo(() => {
     const folded = foldSeries(
@@ -51,21 +65,21 @@ export function CostPerDayCard({
   }, [daily, theme]);
 
   return (
-    <UsageCard title="Cost per day" note={note} wide>
+    <UsageCard title="Spend per day" note={note} wide>
       <StackedBarChart
         data={rows}
         xAxisKey="day"
         series={series}
         height={200}
-        showLegend
+        showLegend={showLegend}
         // Money, not counts: a series topping out under a dollar collapses to a
         // single `0` tick with whole-number ticks.
         allowDecimalTicks
         formatXAxisTick={formatDayTick}
         formatTooltipLabel={formatDayTooltip}
-        formatYAxisTick={formatUsd}
+        formatYAxisTick={formatCost}
         yAxisWidth={64}
-        formatValue={formatUsd}
+        formatValue={formatCost}
       />
     </UsageCard>
   );

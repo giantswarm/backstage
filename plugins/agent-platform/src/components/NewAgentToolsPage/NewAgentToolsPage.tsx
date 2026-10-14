@@ -1,7 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { Content } from '@backstage/core-components';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -14,8 +12,12 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  CatalogFilterBar,
+  CatalogNoMatch,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  useWizardFrameRail,
+  WizardStepHeading,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
@@ -29,49 +31,56 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
-  declaredToolset,
   MAX_INLINE_SELECTORS,
+  presetNameOf,
+  presetSelector,
+  PRESET_FULL,
   selectorProblem,
-  toolsetShape,
-  type ToolsetShape,
+  type ServerBucket,
+  toggleSelector,
+  toolsetProblems as problemsOf,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import {
-  newAgentReviewRouteRef,
-  newAgentRouteRef,
-  newAgentSkillsRouteRef,
-} from '../../routes';
 import { useNewAgentForm } from '../NewAgentFormProvider';
-import { ToolsetResolutionList } from '../ToolsetResolutionList';
+import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
+import {
+  AUTO_EXPAND_MAX,
+  ToolsetResolutionList,
+} from '../ToolsetResolutionList';
+import { AccessLevelCards } from './AccessLevelCards';
+import {
+  EFFECT_FILTER_ID,
+  effectDimension,
+  effectFromPicks,
+  type EffectFilter,
+  filterCatalogueByEffect,
+} from './catalogueEffect';
+import { ConnectorGrid } from './ConnectorGrid';
+import {
+  ACCESS_CHAT_ONLY,
+  ACCESS_OWN_PICKS,
+  type AccessLevel,
+  accessLevelOf,
+  type ConnectorChoice,
+  compactSelection,
+  connectorsOf,
+  expandSelection,
+  inlineCapProblem,
+  isPresetLevel,
+  isSelectionOff,
+  materialize,
+  needsIndividualTools,
+  presetBaseOf,
+  withConnectorChoice,
+} from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
-import { PresetCards } from './PresetCards';
+import { SelectedRail, type SelectedRailProps } from './SelectedRail';
 import { ToolCatalogue } from './ToolCatalogue';
 import { ToolsetSummaryBar } from './ToolsetSummaryBar';
 
 const useStyles = makeStyles(theme => ({
-  column: {
-    maxWidth: 960,
-  },
-  stepLabel: {
-    marginBottom: theme.spacing(0.5),
-  },
-  pageTitle: {
-    marginBottom: theme.spacing(1),
-  },
-  intro: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(3),
-  },
   sectionTitle: {
-    marginBottom: theme.spacing(0.5),
-  },
-  sectionDescription: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
-  },
-  footerNote: {
-    maxWidth: '70ch',
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1),
   },
   details: {
     border: `1px solid ${theme.palette.divider}`,
@@ -88,59 +97,121 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1.5),
   },
-  afterPresets: {
-    marginTop: theme.spacing(2),
+  code: {
+    fontFamily: 'monospace',
   },
 }));
 
-/** The line above the step's actions: what happens next, or what blocks it. */
-function footerNote(isToolsetValid: boolean, shape: ToolsetShape): string {
-  if (!isToolsetValid) {
-    return 'Fix the toolset to continue.';
-  }
-  const next =
-    'The next step composes the Helm values and manifests so you can review them before the agent is deployed.';
-  if (shape === 'none') {
-    return `Nothing selected: the agent is created without tools. ${next}`;
-  }
-  return next;
-}
-
-function SectionTitle({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function SectionTitle({ title }: { title: string }) {
   const classes = useStyles();
   return (
-    <>
-      <Text
-        as="h3"
-        variant="title-small"
-        weight="bold"
-        className={classes.sectionTitle}
-      >
-        {title}
-      </Text>
-      <Text as="p" color="secondary" className={classes.sectionDescription}>
-        {description}
-      </Text>
-    </>
+    <Text
+      as="h3"
+      variant="title-x-small"
+      weight="bold"
+      className={classes.sectionTitle}
+    >
+      {title}
+    </Text>
   );
 }
 
+/** The line under *Which apps?*: what the access level above means for it. */
+function connectorsHint({
+  level,
+  derived,
+  resolving,
+  unsignedConnectors,
+  extrasBase,
+}: {
+  level: AccessLevel;
+  derived: boolean;
+  resolving: boolean;
+  unsignedConnectors: boolean;
+  /** A preset with more beside it whose coverage is not in hand. */
+  extrasBase?: 'reading' | 'unshown';
+}): string | undefined {
+  if (level === ACCESS_CHAT_ONLY) {
+    return 'Pick another option above to add tools.';
+  }
+  if (level === PRESET_FULL) {
+    return 'Full gateway includes every tool.';
+  }
+  if (extrasBase === 'reading') {
+    return 'Reading what the preset covers…';
+  }
+  if (extrasBase === 'unshown') {
+    return 'The preset in this toolset cannot be shown per connector here, so change it under the individual tools.';
+  }
+  if (!isPresetLevel(level)) {
+    return undefined;
+  }
+  if (resolving) {
+    return 'Reading what the preset covers…';
+  }
+  if (!derived) {
+    return 'This preset cannot be shown per connector here.';
+  }
+  // A change keeps the preset as the base while everything it covers stays
+  // chosen (B1); taking part of it away writes it out, and what the author
+  // cannot see does not make it into that list.
+  return `Changing anything below switches to Only the tools I choose below${
+    unsignedConnectors
+      ? ', and removing something this preset covers also drops connectors you are not signed in to'
+      : ''
+  }.`;
+}
+
+/**
+ * The summary bar where the frame has no room for the rail: below the
+ * two-column tier, or in a frame too narrow for it beside the step.
+ */
+function NarrowSelection({
+  onToggle,
+  ...props
+}: SelectedRailProps & { onToggle: (selector: string) => void }) {
+  const { docked } = useWizardFrameRail();
+  if (docked) {
+    return null;
+  }
+  return (
+    <ToolsetSummaryBar
+      selectors={props.selectors}
+      onRemove={onToggle}
+      resolution={props.resolution}
+      unsigned={props.unsigned}
+      problems={props.problems}
+      onShowDetails={props.onShowDetails ?? (() => {})}
+    />
+  );
+}
+
+/**
+ * *What may it do?* (T81, T81b): the access level as a radio — *Nothing
+ * outside the chat*, the presets, *Only the tools I choose below* — then
+ * *Which apps?*, the connectors with *Read-only* / *All* each, then *Choose
+ * individual tools instead*, which opens the catalogue and the power-user
+ * paths (copy another agent's toolset, a selector by name, the resolved
+ * list). The selection stays in view in the *Selected* rail. A preset is a
+ * macro: the grid and the catalogue show what it covers, and a change there
+ * switches to *Only the tools I choose below*, stored as the preset plus what
+ * was added where selectors allow (B1), else written out. Nothing is
+ * rewritten until the author picks something.
+ */
 export function NewAgentToolsPage() {
   const classes = useStyles();
   const navigate = useNavigate();
-  const newAgentLink = useRouteRef(newAgentRouteRef);
-  const skillsLink = useRouteRef(newAgentSkillsRouteRef);
-  const reviewLink = useRouteRef(newAgentReviewRouteRef);
+  const {
+    details: newAgentLink,
+    skills: skillsLink,
+    review: reviewLink,
+  } = useAgentWizardLinks();
   const {
     state,
-    toggleToolsetSelector,
+    edit,
     setToolset,
+    setToolsChatOnly,
+    setToolsetBase: setKeptBase,
     isComplete,
     isToolsetValid,
     toolsetProblems,
@@ -156,38 +227,232 @@ export function NewAgentToolsPage() {
     useMusterServers(installation);
   const resolution = useToolsetResolution(installation, state.toolset);
 
-  const [query, setQuery] = useState('');
-  const trimmed = query.trim();
-  // The catalogue is the second path, behind the presets: opened on request,
-  // or by a search — typing is asking to see what matches.
-  const [browsing, setBrowsing] = useState(false);
-  const showCatalogue = browsing || trimmed !== '';
-
+  const isCatalogueLoading =
+    Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
     () =>
       buildCatalogue(catalogue.tools, servers, catalogue.serversRequiringAuth),
     [catalogue.tools, servers, catalogue.serversRequiringAuth],
   );
-  const visibleGroups = useMemo(
-    () => filterCatalogue(groups, trimmed),
-    [groups, trimmed],
-  );
+  const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
-  const matches = useMemo(
-    () => catalogueInventory(visibleGroups),
-    [visibleGroups],
-  );
-  const selected = useMemo(() => new Set(state.toolset), [state.toolset]);
   const unsigned = useMemo(
     () => unsignedServerSelectors(state.toolset, groups),
     [state.toolset, groups],
   );
-  // The empty selection is no tools: the shape is that of what will be declared.
-  const shape = toolsetShape(declaredToolset(state.toolset));
 
-  // A selector typed by hand: how a power user adds `server:x` on a portal
-  // without the muster plugin, or a tool they know by name. Validated against
-  // the same grammar the chart and agent-manager enforce.
+  const offered = useMemo(
+    () => new Set(presets.presets.map(preset => presetSelector(preset.name))),
+    [presets.presets],
+  );
+  const level = accessLevelOf(
+    state.toolset,
+    Boolean(state.toolsChatOnly),
+    offered,
+  );
+  const presetLevel = isPresetLevel(level);
+  // The preset the toolset holds, alone or with more beside it (B1).
+  const ownBase = presetBaseOf(state.toolset, offered);
+  // The preset every change compacts against, kept as long as the draft
+  // (R2-1, N2): a change that takes part of it away writes it out, and without
+  // the base kept in the form, undoing that change — on this visit to the step
+  // or after a round trip through another — could never collapse back to it.
+  // Picking an access level, copying a toolset or removing the preset itself
+  // replaces it.
+  const keptBase = state.toolsetBase;
+  const presetBase = ownBase ?? keptBase;
+  // Its own resolution is the toolset's while it stands alone (one query).
+  const presetResolution = useToolsetResolution(
+    installation,
+    presetBase ? [presetBase] : [],
+  );
+  const presetResolved =
+    presetBase !== undefined &&
+    !isCatalogueLoading &&
+    presetResolution.status === 'resolved' &&
+    !presetResolution.truncated;
+  // While the toolset holds a preset, the grid and the catalogue show what it
+  // selects (T81b): the preset written out plus what is beside it — once the
+  // resolution and the catalogue are in, and only when the resolution is
+  // whole.
+  const expanded = useMemo(
+    () =>
+      presetResolved && ownBase
+        ? expandSelection(
+            materialize(presetResolution.tools, groups),
+            state.toolset.filter(selector => selector !== ownBase),
+            groups,
+          )
+        : undefined,
+    [presetResolved, presetResolution.tools, groups, state.toolset, ownBase],
+  );
+  // A preset with more beside it whose coverage is not in hand (R2-2): the
+  // grid would read its connectors as None, so it stays off — while the
+  // coverage is read, the whole selection; once that failed, only the grid,
+  // and the individual tools show every selector as it is (T81b's display).
+  const holdsUnofferedPreset =
+    presets.isLoading &&
+    ownBase === undefined &&
+    state.toolset.some(selector => presetNameOf(selector) !== undefined);
+  const extrasBaseReading =
+    holdsUnofferedPreset ||
+    (ownBase !== undefined &&
+      !presetLevel &&
+      !expanded &&
+      (isCatalogueLoading || presetResolution.status === 'loading'));
+  const extrasBaseUnshown =
+    ownBase !== undefined && !presetLevel && !expanded && !extrasBaseReading;
+  let extrasBaseState: 'reading' | 'unshown' | undefined;
+  if (extrasBaseReading) {
+    extrasBaseState = 'reading';
+  } else if (extrasBaseUnshown) {
+    extrasBaseState = 'unshown';
+  }
+  // The preset alone, written out.
+  const derived = presetLevel ? expanded : undefined;
+  // What every change below starts from: the selection as it shows, or as it
+  // is when there is no preset to write out.
+  const base = expanded ?? state.toolset;
+  const selected = useMemo(() => new Set(base), [base]);
+  // Every change is stored as compactly as selectors allow (B1): the preset
+  // plus what was added while everything it covers is still chosen — against
+  // the kept base, so restoring what a change took away collapses back to it.
+  const commit = useCallback(
+    (next: string[]) => {
+      if (presetBase) {
+        setKeptBase(presetBase);
+      }
+      setToolset(
+        compactSelection(
+          next,
+          presetResolved && presetBase
+            ? { preset: presetBase, resolved: presetResolution.tools }
+            : undefined,
+          groups,
+        ),
+      );
+    },
+    [
+      setToolset,
+      setKeptBase,
+      presetResolved,
+      presetBase,
+      presetResolution.tools,
+      groups,
+    ],
+  );
+  // Over the cap, the step can say which connectors to reduce.
+  const problems = useMemo(
+    () =>
+      toolsetProblems.length === 0
+        ? toolsetProblems
+        : problemsOf(state.toolset, selectors =>
+            inlineCapProblem(selectors, groups),
+          ),
+    [toolsetProblems, state.toolset, groups],
+  );
+  // Over the cap, muster refuses the toolset with its whole selector list
+  // (QA R2-1); the cap problem already says what to reduce, so that refusal is
+  // not shown beside it. Any other resolution error still is.
+  const overCap =
+    problems.length > 0 && state.toolset.length > MAX_INLINE_SELECTORS;
+  // A preset that cannot be shown per connector cannot be changed from there
+  // either: its selection stays off until the author picks Only the tools I
+  // choose below.
+  const selectionOff =
+    isSelectionOff(level) || (presetLevel && !derived) || extrasBaseReading;
+  const gridOff = selectionOff || extrasBaseUnshown;
+
+  // The individual tools: behind the link, or open from the start when the
+  // selection holds what the level and the connectors cannot show (an edited
+  // agent's toolset), decided once the catalogue has been read.
+  const [showIndividual, setShowIndividual] = useState(false);
+  const decided = useRef(false);
+  useEffect(() => {
+    if (
+      decided.current ||
+      isCatalogueLoading ||
+      presets.isLoading ||
+      extrasBaseReading
+    ) {
+      return;
+    }
+    decided.current = true;
+    // Beside a preset the step writes out, only what is added counts: the
+    // grid shows the preset's part itself — unless it cannot, and then every
+    // selector is shown as it is.
+    const builtOn = presetBaseOf(state.toolset, offered);
+    const shown =
+      builtOn === undefined || state.toolset.length === 1 || extrasBaseUnshown
+        ? state.toolset
+        : state.toolset.filter(selector => selector !== builtOn);
+    if (
+      needsIndividualTools(
+        shown,
+        groups,
+        shown === state.toolset ? level : ACCESS_OWN_PICKS,
+      )
+    ) {
+      setShowIndividual(true);
+    }
+  }, [
+    isCatalogueLoading,
+    presets.isLoading,
+    extrasBaseReading,
+    extrasBaseUnshown,
+    state.toolset,
+    groups,
+    level,
+    offered,
+  ]);
+  const individualOpen = showIndividual && !selectionOff;
+
+  // The catalogue's search and its All / Reads / Changes things filter, both
+  // only over a catalogue too long to read whole (AUTO_EXPAND_MAX).
+  const [query, setQuery] = useState('');
+  const isShortCatalogue =
+    !isCatalogueLoading &&
+    inventory.servers +
+      inventory.tools +
+      inventory.platformAdministration +
+      inventory.workflows <=
+      AUTO_EXPAND_MAX;
+  // Dropped when the catalogue shrinks under the bar (a re-read after a
+  // sign-out), so neither is reapplied if it grows back.
+  const activeQuery = isShortCatalogue ? '' : query.trim();
+  const [effectPick, setEffect] = useState<EffectFilter>('all');
+  const effect: EffectFilter = isShortCatalogue ? 'all' : effectPick;
+  useEffect(() => {
+    if (isShortCatalogue) {
+      setQuery('');
+      setEffect('all');
+    }
+  }, [isShortCatalogue]);
+  const isNarrowed = activeQuery !== '' || effect !== 'all';
+
+  const searchedGroups = useMemo(
+    () => filterCatalogue(groups, activeQuery),
+    [groups, activeQuery],
+  );
+  const visibleGroups = useMemo(
+    () => filterCatalogueByEffect(searchedGroups, effect),
+    [searchedGroups, effect],
+  );
+  const effectFilter = useMemo(
+    () =>
+      isShortCatalogue
+        ? undefined
+        : effectDimension(groups, searchedGroups, effect),
+    [isShortCatalogue, groups, searchedGroups, effect],
+  );
+  const matches = useMemo(
+    () => catalogueInventory(visibleGroups),
+    [visibleGroups],
+  );
+
+  // A selector typed by hand: `server:x` on a portal without the muster
+  // plugin, a tool known by name, or a second preset. Validated against the
+  // grammar the chart and agent-manager enforce.
   const [manualSelector, setManualSelector] = useState('');
   const [manualProblem, setManualProblem] = useState<string | undefined>();
   const addManualSelector = useCallback(() => {
@@ -199,44 +464,116 @@ export function NewAgentToolsPage() {
     }
     setManualProblem(undefined);
     setManualSelector('');
-    if (!state.toolset.includes(value)) {
-      toggleToolsetSelector(value);
+    if (!base.includes(value) && !state.toolset.includes(value)) {
+      commit(toggleSelector(base, value));
     }
-  }, [manualSelector, state.toolset, toggleToolsetSelector]);
+  }, [manualSelector, base, state.toolset, commit]);
 
-  // The summary bar stays in view; the full resolved list is one click down.
-  const resolvedListRef = useRef<HTMLDivElement>(null);
+  // A preset replaces the selection; *Only the tools I choose below* keeps
+  // what a preset showed, written out (Full gateway's everything is not a
+  // starting point: it starts empty).
+  const pickLevel = useCallback(
+    (next: AccessLevel) => {
+      // A level picked is a fresh start: the base is the preset picked, or
+      // none — Only the tools I choose below writes the preset out on purpose.
+      setKeptBase(presetBaseOf([next], offered));
+      if (next === ACCESS_CHAT_ONLY) {
+        setToolsChatOnly();
+      } else if (next === ACCESS_OWN_PICKS) {
+        setToolset(
+          level !== PRESET_FULL && derived
+            ? derived
+            : state.toolset.filter(
+                selector => presetNameOf(selector) === undefined,
+              ),
+        );
+      } else {
+        setToolset([next]);
+      }
+    },
+    [
+      setToolsChatOnly,
+      setToolset,
+      setKeptBase,
+      state.toolset,
+      level,
+      derived,
+      offered,
+    ],
+  );
+  // Every change below starts from `base`, what the grid shows; unless it
+  // lands back on the preset alone, the radio then reads Only the tools I
+  // choose below.
+  const chooseConnector = useCallback(
+    (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
+      commit(withConnectorChoice(base, bucket, choice)),
+    [commit, base],
+  );
+  const toggleSelected = useCallback(
+    (selector: string) => commit(toggleSelector(base, selector)),
+    [commit, base],
+  );
+  // The rail and the bar list the toolset's own selectors (the preset among
+  // them) beside the preset's part: removing one of its own takes just that
+  // out — the preset with all it covers — and anything else is a change like
+  // the grid's.
+  const removeSelectors = useCallback(
+    (selectors: string[]) => {
+      if (!selectors.every(entry => state.toolset.includes(entry))) {
+        commit(base.filter(entry => !selectors.includes(entry)));
+        return;
+      }
+      if (presetBase && selectors.includes(presetBase)) {
+        setKeptBase(undefined);
+      }
+      setToolset(state.toolset.filter(entry => !selectors.includes(entry)));
+    },
+    [setToolset, setKeptBase, commit, state.toolset, base, presetBase],
+  );
+  // A copied toolset replaces the selection, and with it the base.
+  const copyToolset = useCallback(
+    (toolset: string[]) => {
+      setKeptBase(undefined);
+      setToolset(toolset);
+    },
+    [setToolset, setKeptBase],
+  );
+
+  // The rail stays in view; the full resolved list is in the individual tools.
+  const resolvedListRef = useRef<HTMLElement>(null);
+  const [scrollRequest, setScrollRequest] = useState(0);
+  useEffect(() => {
+    if (scrollRequest > 0) {
+      resolvedListRef.current?.scrollIntoView?.({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }
+  }, [scrollRequest]);
   const showResolvedList = useCallback(() => {
-    resolvedListRef.current?.scrollIntoView?.({
-      behavior: 'smooth',
-      block: 'start',
-    });
+    setShowIndividual(true);
+    setScrollRequest(count => count + 1);
   }, []);
 
   const backLink = hasRepositories ? skillsLink : newAgentLink;
-  const stepNumber = hasRepositories ? 3 : 2;
-  const totalSteps = hasRepositories ? 4 : 3;
 
+  // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
     () => (
-      <Flex gap="2">
-        <Button
-          variant="tertiary"
-          onPress={() => navigate(backLink ? backLink() : '..')}
-        >
-          Back
-        </Button>
-        <Button
-          variant="primary"
-          isDisabled={!isToolsetValid}
-          onPress={() => reviewLink && navigate(reviewLink())}
-        >
-          Continue
-        </Button>
-      </Flex>
+      <Button
+        variant="primary"
+        isDisabled={!isToolsetValid}
+        onPress={() => reviewLink && navigate(reviewLink())}
+      >
+        Continue
+      </Button>
     ),
-    [backLink, reviewLink, navigate, isToolsetValid],
+    [reviewLink, navigate, isToolsetValid],
   );
+
+  const onBack = useCallback(() => {
+    navigate(backLink ? backLink() : '..');
+  }, [backLink, navigate]);
 
   useProvidePageHeaderActions(isComplete ? actions : null);
 
@@ -245,163 +582,161 @@ export function NewAgentToolsPage() {
     return <Navigate to={newAgentLink ? newAgentLink() : '..'} replace />;
   }
 
-  const isCatalogueLoading =
-    Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
+  const railProps: SelectedRailProps = {
+    // An untouched preset is listed with what it covers.
+    selectors: expanded && ownBase ? [ownBase, ...expanded] : state.toolset,
+    catalogue: groups,
+    resolution,
+    unsigned,
+    problems,
+    onRemove: removeSelectors,
+    onShowDetails: selectionOff ? undefined : showResolvedList,
+  };
 
-  const inventoryLine =
-    trimmed === ''
-      ? `${countNoun(inventory.servers, 'server')} · ${countNoun(
-          inventory.tools + inventory.platformAdministration,
-          'tool',
-        )} · ${countNoun(inventory.workflows, 'workflow')}`
-      : `${countNoun(
-          matches.tools + matches.platformAdministration,
-          'tool',
-        )} and ${countNoun(matches.workflows, 'workflow')} match`;
+  const inventoryLine = !isNarrowed
+    ? `${countNoun(inventory.servers, 'connector')} · ${countNoun(
+        inventory.tools + inventory.platformAdministration,
+        'tool',
+      )} · ${countNoun(inventory.workflows, 'workflow')}`
+    : `${countNoun(
+        matches.tools + matches.platformAdministration,
+        'tool',
+      )} and ${countNoun(matches.workflows, 'workflow')} match`;
+  const hint = connectorsHint({
+    level,
+    derived: Boolean(derived),
+    resolving: presetLevel && resolution.status === 'loading',
+    unsignedConnectors: connectors.some(bucket => bucket.needsSignIn),
+    extrasBase: extrasBaseState,
+  });
 
   return (
-    <Content>
-      <div className={classes.column}>
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          className={classes.stepLabel}
-        >
-          Step {stepNumber} of {totalSteps}: Tools
-        </Text>
-        <Text
-          as="h2"
-          variant="title-large"
-          weight="bold"
-          className={classes.pageTitle}
-        >
-          Choose the agent's tools
-        </Text>
-        <Text as="p" className={classes.intro}>
-          The toolset bounds which of the gateway's tools this agent can
-          discover and call, within whatever the person using it may reach
-          themselves. Start from a preset — <strong>Read-only tools</strong>{' '}
-          fits most agents — and add servers, workflows or single tools from the
-          catalogue if you need more. Nothing is granted until you add it: with
-          nothing selected the agent has <strong>no tools</strong> and works
-          from its prompt and skills alone.
-        </Text>
+    <AgentWizardFrame
+      step="tools"
+      onBack={onBack}
+      rail={<SelectedRail {...railProps} />}
+    >
+      <WizardStepHeading title="What may it do?">
+        Connectors let the agent use other apps for you — never beyond what its
+        user may reach.
+      </WizardStepHeading>
 
-        <Flex direction="column" gap="4">
-          <Card>
-            <CardBody>
-              <SectionTitle
-                title="Presets"
-                description="Named selections the platform defines. Read-only tools is the safe default; Full gateway is today's unbounded behaviour, made explicit. A preset combines with anything you add from the catalogue."
-              />
-              <Flex direction="column" gap="3">
-                {/* Only the notice waits for the read. The built-in list the
-                    hook holds meanwhile stays valid whatever muster answers, so
-                    the cards are clickable from the first paint -- through a
-                    retry too, which backs off for ~7s before it gives up. */}
-                {presets.isLoading ? (
-                  <LoadingIndicator label="Reading the installation's presets…" />
-                ) : (
-                  presets.source === 'built-in' &&
-                  musterApi &&
-                  installation && (
-                    <Alert
-                      status="info"
-                      title="Only the built-in presets are known"
-                      description={
-                        presets.error
-                          ? `The installation's muster could not be asked for its presets (${presets.error}). The three presets built into every muster are offered.`
-                          : "This installation's muster did not list its presets — it may predate toolsets. The three presets built into every muster are offered."
-                      }
-                    />
-                  )
-                )}
-                <PresetCards
-                  presets={presets.presets}
-                  selected={selected}
-                  onToggle={toggleToolsetSelector}
-                />
-              </Flex>
-              <details className={`${classes.details} ${classes.afterPresets}`}>
-                <summary className={classes.summaryLine}>
-                  Or start from an existing agent's toolset
-                </summary>
-                <div className={classes.detailsBody}>
-                  <Text variant="body-small" color="secondary">
-                    Copy another agent's toolset into this step, then adjust it.
-                    Agents on {installation} with a declared toolset:
-                  </Text>
-                  <CopyFromAgent
-                    installation={installation}
-                    current={state.toolset}
-                    onCopy={setToolset}
-                  />
-                </div>
-              </details>
-            </CardBody>
-          </Card>
-
-          <ToolsetSummaryBar
-            selectors={state.toolset}
-            onRemove={toggleToolsetSelector}
-            resolution={resolution}
-            unsigned={unsigned}
-            problems={toolsetProblems}
-            onShowDetails={showResolvedList}
+      <Flex direction="column" gap="4">
+        {/* An agent from before toolsets declares none and sees every tool;
+            it keeps that until something is picked here. */}
+        {edit && !edit.agent.toolset && state.toolset.length === 0 && (
+          <Alert
+            status="info"
+            title="This agent declares no toolset"
+            description="It can call every tool the gateway exposes until you pick something here."
           />
+        )}
 
+        <Flex direction="column" gap="2">
+          {presets.isLoading ? (
+            <LoadingIndicator label="Reading the environment's presets…" />
+          ) : (
+            presets.source === 'built-in' &&
+            musterApi &&
+            installation && (
+              <Alert
+                status="info"
+                title="Only the built-in presets are known"
+                description={
+                  presets.error
+                    ? `The environment's muster could not be asked (${presets.error}).`
+                    : "This environment's muster lists no presets."
+                }
+              />
+            )
+          )}
+          {/* The built-in list the hook holds while it reads stays valid
+              whatever muster answers, so the options work from the start. */}
+          <AccessLevelCards
+            presets={presets.presets}
+            level={level}
+            onPick={pickLevel}
+          />
+        </Flex>
+
+        <NarrowSelection
+          {...railProps}
+          onToggle={selector => removeSelectors([selector])}
+        />
+
+        <section aria-label="Which connectors?">
+          <SectionTitle title="Which connectors?" />
+          <Flex direction="column" gap="2">
+            {hint && (
+              <Text variant="body-small" color="secondary">
+                {hint}
+              </Text>
+            )}
+            {!musterApi && (
+              <Text variant="body-small" color="secondary">
+                Connectors cannot be listed in this portal.
+              </Text>
+            )}
+            {musterApi && catalogue.error && (
+              <Alert
+                status="warning"
+                title="Could not read the gateway's catalogue"
+                description={catalogue.error}
+              />
+            )}
+            {isCatalogueLoading && connectors.length === 0 && (
+              <LoadingIndicator label="Reading the connectors…" />
+            )}
+            {connectors.length > 0 && (
+              <ConnectorGrid
+                connectors={connectors}
+                selected={selected}
+                disabled={gridOff}
+                onChoose={chooseConnector}
+              />
+            )}
+            <div>
+              <Button
+                variant="tertiary"
+                size="small"
+                isDisabled={selectionOff}
+                aria-expanded={individualOpen}
+                onPress={() => setShowIndividual(value => !value)}
+              >
+                {individualOpen
+                  ? 'Hide individual tools'
+                  : 'Choose individual tools instead'}
+              </Button>
+            </div>
+          </Flex>
+        </section>
+
+        {individualOpen && (
           <Card>
             <CardBody>
-              <SectionTitle
-                title="Catalogue"
-                description="Every server the gateway aggregates and every workflow it runs, grouped as Infrastructure, Agent Platform, Registered servers and Workflows. Search across all of it, or browse group by group; select a whole server, or open it and pick single tools."
-              />
+              <SectionTitle title="Individual tools" />
               <Flex direction="column" gap="3">
-                {!musterApi && (
-                  <Alert
-                    status="info"
-                    title="The catalogue is not available in this portal"
-                    description="The muster plugin is not installed here, so servers and tools cannot be browsed. Choose a preset above, or add selectors by name below."
-                  />
-                )}
-                {musterApi && catalogue.error && (
-                  <Alert
-                    status="warning"
-                    title="Could not read the gateway's catalogue"
-                    description={catalogue.error}
-                  />
-                )}
-                {isCatalogueLoading && groups.length === 0 && (
-                  <LoadingIndicator label="Reading the catalogue…" />
-                )}
                 {groups.length > 0 && (
                   <>
                     <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-                      <Flex grow basis="240px" direction="column">
-                        <SearchField
-                          aria-label="Search tools"
-                          placeholder="Search servers, tools and workflows…"
-                          value={query}
-                          onChange={setQuery}
-                        />
-                      </Flex>
-                      {trimmed === '' ? (
-                        <Button
-                          variant="secondary"
-                          size="small"
-                          aria-expanded={browsing}
-                          onPress={() => setBrowsing(value => !value)}
-                        >
-                          {browsing
-                            ? 'Hide the catalogue'
-                            : 'Browse the catalogue'}
-                        </Button>
-                      ) : (
+                      {!isShortCatalogue && (
+                        <Flex grow basis="240px" direction="column">
+                          <SearchField
+                            aria-label="Search tools"
+                            placeholder="Search connectors, tools and workflows…"
+                            value={query}
+                            onChange={setQuery}
+                          />
+                        </Flex>
+                      )}
+                      {isNarrowed && (
                         <Button
                           variant="tertiary"
                           size="small"
-                          onPress={() => setQuery('')}
+                          onPress={() => {
+                            setQuery('');
+                            setEffect('all');
+                          }}
                         >
                           Show everything again
                         </Button>
@@ -410,23 +745,51 @@ export function NewAgentToolsPage() {
                         {inventoryLine}
                       </Text>
                     </Flex>
-                    {showCatalogue &&
-                      (visibleGroups.length > 0 ? (
-                        <ToolCatalogue
-                          groups={visibleGroups}
-                          query={trimmed}
-                          installation={installation}
-                          signInAvailable={Boolean(musterApi)}
-                          selected={selected}
-                          onToggle={toggleToolsetSelector}
-                        />
-                      ) : (
-                        <Text color="secondary">
-                          Nothing matches &quot;{trimmed}&quot;.
-                        </Text>
-                      ))}
+                    {effectFilter && (
+                      <CatalogFilterBar
+                        dimensions={[effectFilter]}
+                        onSelect={(facetId, values) => {
+                          if (facetId === EFFECT_FILTER_ID) {
+                            setEffect(effectFromPicks(values));
+                          }
+                        }}
+                      />
+                    )}
+                    {visibleGroups.length > 0 ? (
+                      // Only the search opens every group it matched in: a
+                      // Reads/Changes pick keeps most of the catalogue, and
+                      // opening all of it would mount hundreds of rows.
+                      <ToolCatalogue
+                        groups={visibleGroups}
+                        query={activeQuery}
+                        installation={installation}
+                        signInAvailable={Boolean(musterApi)}
+                        selected={selected}
+                        onToggle={toggleSelected}
+                      />
+                    ) : (
+                      <CatalogNoMatch
+                        plural="tools"
+                        search={activeQuery}
+                        isFiltered={effect !== 'all'}
+                        onClearFilters={() => setEffect('all')}
+                      />
+                    )}
                   </>
                 )}
+
+                <details className={classes.details}>
+                  <summary className={classes.summaryLine}>
+                    Copy another agent's toolset
+                  </summary>
+                  <div className={classes.detailsBody}>
+                    <CopyFromAgent
+                      installation={installation}
+                      current={state.toolset}
+                      onCopy={copyToolset}
+                    />
+                  </div>
+                </details>
 
                 <details className={classes.details}>
                   <summary className={classes.summaryLine}>
@@ -434,22 +797,11 @@ export function NewAgentToolsPage() {
                   </summary>
                   <div className={classes.detailsBody}>
                     <Text variant="body-small" color="secondary">
-                      <span style={{ fontFamily: 'monospace' }}>
-                        preset:&lt;name&gt;
-                      </span>
-                      ,{' '}
-                      <span style={{ fontFamily: 'monospace' }}>
-                        server:&lt;name&gt;
-                      </span>
-                      ,{' '}
-                      <span style={{ fontFamily: 'monospace' }}>
-                        workflow:&lt;name&gt;
-                      </span>{' '}
-                      or{' '}
-                      <span style={{ fontFamily: 'monospace' }}>
-                        tool:&lt;exposed name&gt;
-                      </span>
-                      , with the exact name.
+                      Enter <span className={classes.code}>preset:</span>,{' '}
+                      <span className={classes.code}>server:</span>,{' '}
+                      <span className={classes.code}>workflow:</span> or{' '}
+                      <span className={classes.code}>tool:</span> followed by
+                      the exact name.
                     </Text>
                     <Flex align="end" gap="2" style={{ flexWrap: 'wrap' }}>
                       <Flex grow basis="240px" direction="column">
@@ -476,73 +828,50 @@ export function NewAgentToolsPage() {
                     )}
                   </div>
                 </details>
-              </Flex>
-            </CardBody>
-          </Card>
 
-          <Card>
-            <CardBody>
-              <div ref={resolvedListRef}>
-                <SectionTitle
-                  title="Toolset"
-                  description="What your selection resolves to for you right now, grouped like the catalogue. The review step shows the same list."
-                />
-              </div>
-              <Flex direction="column" gap="3">
-                {toolsetProblems.length > 0 && (
-                  <Alert
-                    status="danger"
-                    title={
-                      state.toolset.length > MAX_INLINE_SELECTORS
-                        ? 'Too many selectors — define a preset'
-                        : 'The toolset cannot be applied as it is'
-                    }
-                    description={toolsetProblems.join(' ')}
-                  />
-                )}
-                {shape === 'none' && (
-                  <Alert
-                    status="info"
-                    title="No tools"
-                    description="Nothing is selected, so this is a chat-only agent: it gets no gateway entry at all and works from its prompt and skills alone. Add a preset or pick from the catalogue to give it tools."
-                  />
-                )}
-                {shape === 'full' && (
-                  <Alert
-                    status="warning"
-                    title="Full gateway access"
-                    description="This agent can discover and call every tool the gateway exposes to whoever invokes it — platform administration included."
-                  />
-                )}
-                {unsigned.length > 0 && (
-                  <Alert
-                    status="info"
-                    title="Selected without a sign-in"
-                    description={`${unsigned.join(
-                      ', ',
-                    )} — these servers are part of the toolset and resolve for people who have access to them. For you, the resolved list below is incomplete until you sign in to them.`}
-                  />
-                )}
-                <ToolsetResolutionList
-                  resolution={resolution}
-                  servers={servers}
-                />
+                <section ref={resolvedListRef} aria-label="Toolset">
+                  <SectionTitle title="Toolset" />
+                  <Flex direction="column" gap="3">
+                    {problems.length > 0 && (
+                      <Alert
+                        status="danger"
+                        title={
+                          overCap
+                            ? 'Too many selectors'
+                            : 'The toolset cannot be applied as it is'
+                        }
+                        description={problems.join(' ')}
+                      />
+                    )}
+                    {unsigned.length > 0 && (
+                      <Alert
+                        status="info"
+                        title="Selected without a sign-in"
+                        description={`${unsigned.join(
+                          ', ',
+                        )}: the list below is incomplete until you sign in to them.`}
+                      />
+                    )}
+                    {!(overCap && resolution.status === 'error') && (
+                      <ToolsetResolutionList
+                        resolution={resolution}
+                        servers={servers}
+                      />
+                    )}
+                  </Flex>
+                </section>
               </Flex>
             </CardBody>
           </Card>
+        )}
 
-          <Card>
-            <CardBody>
-              <Flex direction="column" gap="3">
-                <Text as="p" color="secondary" className={classes.footerNote}>
-                  {footerNote(isToolsetValid, shape)}
-                </Text>
-                {actions}
-              </Flex>
-            </CardBody>
-          </Card>
-        </Flex>
-      </div>
-    </Content>
+        {/* The rail says why too; this sits by Continue, where it is blocked. */}
+        {!isToolsetValid && (
+          <Text as="p" color="danger">
+            Fix the toolset to continue.
+          </Text>
+        )}
+      </Flex>
+    </AgentWizardFrame>
   );
 }

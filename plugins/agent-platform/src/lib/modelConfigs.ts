@@ -76,10 +76,11 @@ export const PROVIDER_SECRET_KEYS: Record<ModelProvider, string | undefined> = {
 };
 
 /**
- * What a keyless endpoint's Secret holds. The Secret still has to exist with
- * the provider's canonical key: the ADK runtime requires the env var at
- * startup, so an agent pod without it crashloops even against an endpoint
- * that never checks the value.
+ * What the Secret holds when no API key is entered: the endpoint needs none
+ * (a local vLLM, say). The Secret still has to exist with the provider's
+ * canonical key: the ADK runtime requires the env var at startup, so an agent
+ * pod without it crashloops even against an endpoint that never checks the
+ * value.
  */
 export const PLACEHOLDER_API_KEY = 'giantswarm-backstage-placeholder';
 
@@ -93,8 +94,9 @@ const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
 const MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
 
 /**
- * The create/edit form's model. `apiKey` is write-only: it is never read back
- * from the cluster, and empty on edit means "leave the existing key alone".
+ * The create/edit form's model. `apiKey` is write-only and optional: it is
+ * never read back from the cluster; empty means "the endpoint needs none" on
+ * create and "leave the existing key alone" on edit (see {@link planKeySecret}).
  */
 export type ModelConfigFormValues = {
   /** ModelConfig CR name; immutable after creation. */
@@ -111,10 +113,8 @@ export type ModelConfigFormValues = {
   endpoint: string;
   /** `spec.tls.disableVerify`, for self-signed lab endpoints. */
   insecureSkipTlsVerify: boolean;
-  /** Write-only. Empty on edit = keep the existing key Secret untouched. */
+  /** Write-only, optional. See {@link planKeySecret} for what empty means. */
   apiKey: string;
-  /** Endpoint requires no key → the Secret gets a placeholder value. */
-  keyless: boolean;
 };
 
 export const INITIAL_MODEL_CONFIG_FORM: ModelConfigFormValues = {
@@ -125,7 +125,6 @@ export const INITIAL_MODEL_CONFIG_FORM: ModelConfigFormValues = {
   endpoint: '',
   insecureSkipTlsVerify: false,
   apiKey: '',
-  keyless: false,
 };
 
 /** Whether the endpoint field applies to this provider at all. */
@@ -137,64 +136,92 @@ export function providerHasEndpoint(provider: ModelProvider): boolean {
 // Secret's name suffix), so it must be a valid k8s object name.
 const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
+/** The model form's fields a validation problem can belong to. */
+export type ModelConfigField = 'displayName' | 'name' | 'model' | 'endpoint';
+
+export type ModelConfigFieldErrors = Partial<Record<ModelConfigField, string>>;
+
+/** The fields in form order: the order {@link validateModelConfigForm} lists. */
+const MODEL_CONFIG_FIELDS: readonly ModelConfigField[] = [
+  'displayName',
+  'name',
+  'model',
+  'endpoint',
+];
+
 /**
- * Validation problems, in form order; empty when the form can be saved.
+ * Validation problems by the field each belongs to; empty when the form can
+ * be saved. The form shows each on its own field.
  *
- * `originalProvider` (edit only) is what decides whether an empty key field is
- * acceptable: the existing Secret holds the old provider's canonical key, and
- * the portal never reads key values back — so switching provider makes the old
- * Secret unusable and a new key (or the keyless toggle) mandatory.
+ * The display name is required on create only: the technical name is filled
+ * in from it, and it is what people see when they choose a model. An existing
+ * model without one (made with kubectl) stays saveable as it is. The API key
+ * is never required — an empty one means the endpoint needs none.
  */
-export function validateModelConfigForm(
+export function modelConfigFieldErrors(
   values: ModelConfigFormValues,
-  options: { isEdit: boolean; originalProvider?: string } = { isEdit: false },
-): string[] {
-  const errors: string[] = [];
+  options: { isEdit: boolean } = { isEdit: false },
+): ModelConfigFieldErrors {
+  const errors: ModelConfigFieldErrors = {};
+
+  if (!options.isEdit && !values.displayName.trim()) {
+    errors.displayName = 'Name is required';
+  }
 
   if (!values.name.trim()) {
-    errors.push('Name is required');
+    errors.name = 'Technical name is required';
   } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
-    errors.push(
-      'Name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm',
-    );
+    errors.name =
+      'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm';
   }
 
   if (!values.model.trim()) {
-    errors.push('Model is required');
+    errors.model = 'Model is required';
   }
 
   if (values.provider === 'Ollama' && !values.endpoint.trim()) {
-    errors.push('Host is required for Ollama');
-  }
-
-  if (values.endpoint.trim() && !/^https?:\/\//.test(values.endpoint.trim())) {
-    errors.push('The endpoint must be an http:// or https:// URL');
-  }
-
-  const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
-  if (needsKey && !values.keyless && !values.apiKey) {
-    if (!options.isEdit) {
-      errors.push(
-        'API key is required (or mark the endpoint as requiring none)',
-      );
-    } else if (options.originalProvider !== values.provider) {
-      errors.push(
-        `Changing the provider needs a new API key (or mark the endpoint as requiring none): the existing key was stored for ${options.originalProvider}`,
-      );
-    }
+    errors.endpoint = 'Host is required for Ollama';
+  } else if (
+    values.endpoint.trim() &&
+    !/^https?:\/\//.test(values.endpoint.trim())
+  ) {
+    errors.endpoint = 'The endpoint must be an http:// or https:// URL';
   }
 
   return errors;
 }
 
 /**
+ * Validation problems, in form order; empty when the form can be saved. The
+ * list form of {@link modelConfigFieldErrors}, for a summary of them all.
+ */
+export function validateModelConfigForm(
+  values: ModelConfigFormValues,
+  options: { isEdit: boolean } = { isEdit: false },
+): string[] {
+  const errors = modelConfigFieldErrors(values, options);
+  return MODEL_CONFIG_FIELDS.map(field => errors[field]).filter(
+    (error): error is string => Boolean(error),
+  );
+}
+
+/**
  * What the save mutation should do about the model's key Secret.
  *
  * - `none` — the provider is keyless (Ollama): no Secret involved.
- * - `keep` — edit with nothing new entered: leave the referenced Secret alone.
+ * - `keep` — edit with nothing new entered and the provider unchanged: leave
+ *   the referenced Secret alone.
  * - `write` — create or replace the conventional Secret with this one key.
  *   Always the portal's own `kagent-<name>`, never a foreign Secret the CR
  *   may currently reference — the portal only ever writes Secrets it owns.
+ *
+ * The key is optional, and an empty one means the endpoint needs none: the
+ * Secret gets {@link PLACEHOLDER_API_KEY} (the ModelConfig spec is the same
+ * either way — it references the Secret and its canonical key). That is what
+ * an empty key does on create, and on an edit that changes the provider: the
+ * existing Secret holds the old provider's canonical key, which the new
+ * provider's runtime does not read, and the portal never reads a key back to
+ * carry it over.
  */
 export type KeySecretPlan =
   | { action: 'none' }
@@ -203,16 +230,22 @@ export type KeySecretPlan =
 
 export function planKeySecret(
   values: ModelConfigFormValues,
-  isEdit: boolean,
+  options: { isEdit: boolean; originalProvider?: string } = { isEdit: false },
 ): KeySecretPlan {
   const canonicalKey = PROVIDER_SECRET_KEYS[values.provider];
   if (!canonicalKey) {
     return { action: 'none' };
   }
 
-  if (isEdit && !values.keyless && !values.apiKey) {
-    // Nothing new entered. Validation has already required a key when the
-    // provider changed, so "keep" here always refers to a usable Secret.
+  // Surrounding whitespace is never part of a key, and a pasted one often
+  // carries a trailing newline or space.
+  const apiKey = values.apiKey.trim();
+  if (
+    options.isEdit &&
+    !apiKey &&
+    options.originalProvider === values.provider
+  ) {
+    // Nothing new entered, and the stored Secret is still the provider's.
     return { action: 'keep' };
   }
 
@@ -220,8 +253,28 @@ export function planKeySecret(
     action: 'write',
     name: keySecretName(values.name),
     key: canonicalKey,
-    value: values.keyless ? PLACEHOLDER_API_KEY : values.apiKey,
+    value: apiKey || PLACEHOLDER_API_KEY,
   };
+}
+
+/**
+ * Whether the edit form holds anything to save: a field differs from what it
+ * started from, or a key was entered (the key field always starts empty).
+ */
+export function modelConfigFormChanged(
+  values: ModelConfigFormValues,
+  initial: ModelConfigFormValues,
+): boolean {
+  if (values.apiKey.trim()) {
+    return true;
+  }
+  return (
+    values.displayName.trim() !== initial.displayName.trim() ||
+    values.provider !== initial.provider ||
+    values.model.trim() !== initial.model.trim() ||
+    values.endpoint.trim() !== initial.endpoint.trim() ||
+    values.insecureSkipTlsVerify !== initial.insecureSkipTlsVerify
+  );
 }
 
 /** The provider-specific endpoint block, or `undefined` when none applies. */
@@ -386,12 +439,11 @@ export function buildModelConfigPatch(
 
 /**
  * Prefill for the edit form. `undefined` when the CR's provider is not one
- * this form speaks — the page then renders read-only.
+ * this form speaks — the model then offers no edit.
  *
- * `apiKey` always seeds empty (write-only), and `keyless` always seeds false:
- * whether the referenced Secret holds a real key or the placeholder is not
- * readable from the CR, and does not need to be — leaving both untouched
- * keeps the Secret as it is.
+ * `apiKey` always seeds empty (write-only): whether the referenced Secret
+ * holds a real key or the placeholder is not readable from the CR, and does
+ * not need to be — leaving the field empty keeps the Secret as it is.
  */
 export function modelConfigFormValues(
   modelConfig: ModelConfig,
@@ -421,7 +473,6 @@ export function modelConfigFormValues(
     endpoint: endpoint ?? '',
     insecureSkipTlsVerify: modelConfig.getTls()?.disableVerify === true,
     apiKey: '',
-    keyless: false,
   };
 }
 

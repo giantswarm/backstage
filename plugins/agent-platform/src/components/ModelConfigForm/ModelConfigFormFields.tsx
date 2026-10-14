@@ -2,15 +2,21 @@ import {
   Card,
   CardBody,
   Flex,
-  Grid,
   Select,
   Switch,
+  Text,
   TextField,
 } from '@backstage/ui';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  fieldErrorProps,
+  MoreOptions,
+  SectionHeader,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  isSupportedProvider,
   MODEL_PROVIDER_OPTIONS,
+  ModelConfigFieldErrors,
   ModelConfigFormValues,
   PROVIDER_SECRET_KEYS,
   providerHasEndpoint,
@@ -21,20 +27,89 @@ export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
   onChange: (patch: Partial<ModelConfigFormValues>) => void;
   mode: 'create' | 'edit';
-  /** Render every field disabled (tool-owned CR, or no write permission). */
-  isReadOnly?: boolean;
+  /**
+   * The problems to show on the fields themselves — the page passes them once
+   * a submit was blocked (`modelConfigFieldErrors`, `useFieldValidation`).
+   */
+  errors?: ModelConfigFieldErrors;
+  /**
+   * Whether "More options" is open. The page owns it, so a blocked submit
+   * can open it on a field inside.
+   */
+  moreOptionsOpen: boolean;
+  onMoreOptionsOpenChange: (open: boolean) => void;
+  /**
+   * Edit only: the provider the model has on the cluster, which decides what
+   * an empty API key field means (see `planKeySecret`).
+   */
+  originalProvider?: string;
 };
 
+function providerLabel(provider: string): string {
+  return (
+    MODEL_PROVIDER_OPTIONS.find(option => option.id === provider)?.label ??
+    provider
+  );
+}
+
 /**
- * The fields shared by the create and edit forms. Pure presentation: values
- * and validation live with the page (validation errors surface as one alert
- * on submit, the same pattern as the agent create form).
+ * What the API key field says about itself. The key is optional throughout:
+ * empty means the endpoint needs none on create, and "keep the stored key" on
+ * an edit — unless the edit changes the provider, whose runtime does not read
+ * the old provider's key, so empty means "none needed" there too.
+ */
+function apiKeyCopy({
+  mode,
+  provider,
+  originalProvider,
+}: {
+  mode: 'create' | 'edit';
+  provider: ModelConfigFormValues['provider'];
+  originalProvider: string | undefined;
+}): { placeholder: string; description: string } {
+  if (mode === 'create') {
+    return {
+      placeholder: '',
+      description:
+        'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
+    };
+  }
+  if (originalProvider === provider) {
+    return {
+      placeholder: 'Leave empty to keep the current key',
+      description: 'Enter a value only to replace the stored key.',
+    };
+  }
+  const hadKey =
+    isSupportedProvider(originalProvider) &&
+    Boolean(PROVIDER_SECRET_KEYS[originalProvider]);
+  return {
+    placeholder: '',
+    description: hadKey
+      ? `The stored key is for ${providerLabel(originalProvider!)}, not ${providerLabel(provider)}. Enter a new one, or leave empty if the endpoint needs none.`
+      : 'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
+  };
+}
+
+/**
+ * The fields shared by the create and edit flows (`NewModelPage`). Pure
+ * presentation: values and validation live with the page, which hands the
+ * problems back as `errors` for each field to show under itself.
+ *
+ * Plain first, like the agent wizard's first step: what the model is called,
+ * which provider and model, and its key. The technical name is said under the
+ * name, with the fact that it cannot be changed (M7, like the agent wizard);
+ * its override (create only) and skipping TLS verification wait under More
+ * options.
  */
 export function ModelConfigFormFields({
   values,
   onChange,
   mode,
-  isReadOnly = false,
+  errors = {},
+  moreOptionsOpen,
+  onMoreOptionsOpenChange,
+  originalProvider,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -42,97 +117,105 @@ export function ModelConfigFormFields({
   const hasEndpoint = providerHasEndpoint(values.provider);
   const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
   const isOllama = values.provider === 'Ollama';
+  const keyCopy = apiKeyCopy({
+    mode,
+    provider: values.provider,
+    originalProvider,
+  });
+
+  // The disclosure's one line of what it holds now.
+  const moreOptionsSummary = [
+    values.name && mode === 'create'
+      ? `technical name ${values.name}`
+      : undefined,
+    hasEndpoint && values.insecureSkipTlsVerify
+      ? 'TLS verification skipped'
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <>
       <Card>
         <CardBody>
           <SectionHeader
-            title="Identity"
-            description="How this model appears to people creating agents."
+            variant="title-x-small"
+            title="Name"
+            description="People creating agents see the model under this name."
           />
-          <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-            <Grid.Item>
-              <TextField
-                label="Name"
-                isRequired
-                isDisabled={isReadOnly || mode === 'edit'}
-                value={values.name}
-                onChange={name => onChange({ name })}
-                placeholder="e.g. qwen3-vllm"
-                description={
-                  mode === 'edit'
-                    ? 'The resource name cannot be changed after creation.'
-                    : 'Lowercase identifier used as the resource name (and in the key Secret’s name).'
-                }
-              />
-            </Grid.Item>
-            <Grid.Item>
-              <TextField
-                label="Display name"
-                secondaryLabel="optional"
-                isDisabled={isReadOnly}
-                value={values.displayName}
-                onChange={displayName => onChange({ displayName })}
-                placeholder="e.g. Qwen 3 (lab vLLM)"
-                description="Friendly name shown in the model picker. Falls back to the name."
-              />
-            </Grid.Item>
-          </Grid.Root>
+          <TextField
+            label="Name"
+            isRequired={mode === 'create'}
+            value={values.displayName}
+            onChange={displayName => onChange({ displayName })}
+            placeholder="e.g. Sonnet 4.5"
+            {...fieldErrorProps(errors.displayName)}
+          />
+          {values.name && (
+            <Text
+              as="p"
+              variant="body-small"
+              color="secondary"
+              style={{
+                marginTop: 'var(--bui-space-1)',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              Its technical name is <code>{values.name}</code>;{' '}
+              {mode === 'edit'
+                ? 'it cannot be changed.'
+                : 'it cannot be changed once the model exists.'}
+            </Text>
+          )}
         </CardBody>
       </Card>
 
       <Card>
         <CardBody>
           <SectionHeader
+            variant="title-x-small"
             title="Provider & model"
-            description="Where the model runs and which model to request there."
+            description="Choose where the model runs and which model to request there."
           />
+          {/* One column, full width: Provider above Model. Side by side, the
+              provider's description (one line or three) set where the Model
+              input started, and the pair never lined up reliably. */}
           <Flex direction="column" gap="4">
-            <Grid.Root columns={{ initial: '1', sm: '2' }} gap="4">
-              <Grid.Item>
-                <Select
-                  label="Provider"
-                  isRequired
-                  isDisabled={isReadOnly}
-                  options={MODEL_PROVIDER_OPTIONS.map(option => ({
-                    id: option.id,
-                    label: option.label,
-                  }))}
-                  selectedKey={values.provider}
-                  onSelectionChange={key => {
-                    if (key) {
-                      onChange({
-                        provider: String(
-                          key,
-                        ) as ModelConfigFormValues['provider'],
-                      });
-                    }
-                  }}
-                  description={providerOption?.description}
-                />
-              </Grid.Item>
-              <Grid.Item>
-                <TextField
-                  label="Model"
-                  isRequired
-                  isDisabled={isReadOnly}
-                  value={values.model}
-                  onChange={model => onChange({ model })}
-                  placeholder={
-                    isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
-                  }
-                  description="The model id, as the provider names it."
-                />
-              </Grid.Item>
-            </Grid.Root>
+            <Select
+              label="Provider"
+              isRequired
+              options={MODEL_PROVIDER_OPTIONS.map(option => ({
+                id: option.id,
+                label: option.label,
+              }))}
+              selectedKey={values.provider}
+              onSelectionChange={key => {
+                if (key) {
+                  onChange({
+                    provider: String(key) as ModelConfigFormValues['provider'],
+                  });
+                }
+              }}
+              description={providerOption?.description}
+            />
+            <TextField
+              label="Model"
+              isRequired
+              value={values.model}
+              onChange={model => onChange({ model })}
+              placeholder={
+                isOllama ? 'e.g. qwen3:8b' : 'e.g. claude-sonnet-4-6'
+              }
+              description="Enter the model id as the provider names it."
+              {...fieldErrorProps(errors.model)}
+            />
 
             {hasEndpoint && (
               <TextField
                 label={isOllama ? 'Host' : 'Base URL'}
                 secondaryLabel={isOllama ? undefined : 'optional'}
                 isRequired={isOllama}
-                isDisabled={isReadOnly}
                 value={values.endpoint}
                 onChange={endpoint => onChange({ endpoint })}
                 placeholder={
@@ -142,20 +225,10 @@ export function ModelConfigFormFields({
                 }
                 description={
                   isOllama
-                    ? 'The Ollama server to talk to.'
-                    : 'Leave empty for the provider’s own endpoint. Set it for a compatible endpoint like vLLM, llama.cpp or OpenRouter.'
+                    ? 'Enter the Ollama server to talk to.'
+                    : 'Leave empty for the provider’s own endpoint, or set a compatible one like vLLM, llama.cpp or OpenRouter.'
                 }
-              />
-            )}
-
-            {hasEndpoint && (
-              <Switch
-                label="Skip TLS certificate verification (for endpoints with self-signed certificates)"
-                isDisabled={isReadOnly}
-                isSelected={values.insecureSkipTlsVerify}
-                onChange={insecureSkipTlsVerify =>
-                  onChange({ insecureSkipTlsVerify })
-                }
+                {...fieldErrorProps(errors.endpoint)}
               />
             )}
           </Flex>
@@ -166,35 +239,55 @@ export function ModelConfigFormFields({
         <Card>
           <CardBody>
             <SectionHeader
+              variant="title-x-small"
               title="API key"
-              description="Stored as a Kubernetes Secret next to the model config and never shown again — this form only ever writes it."
+              description="Stored as a Kubernetes Secret next to the model config; never shown again."
             />
-            <Flex direction="column" gap="4">
-              {!values.keyless && (
-                <SecretTextField
-                  label="API key"
-                  isDisabled={isReadOnly}
-                  value={values.apiKey}
-                  onChange={apiKey => onChange({ apiKey })}
-                  placeholder={
-                    mode === 'edit' ? 'Leave empty to keep the current key' : ''
-                  }
-                  description={
-                    mode === 'edit'
-                      ? 'Enter a value only to replace the stored key.'
-                      : 'The provider API key agents on this model authenticate with.'
-                  }
-                />
-              )}
-              <Switch
-                label="This endpoint requires no API key"
-                isDisabled={isReadOnly}
-                isSelected={values.keyless}
-                onChange={keyless => onChange({ keyless })}
-              />
-            </Flex>
+            <SecretTextField
+              label="API key"
+              secondaryLabel="optional"
+              value={values.apiKey}
+              onChange={apiKey => onChange({ apiKey })}
+              placeholder={keyCopy.placeholder}
+              description={keyCopy.description}
+            />
           </CardBody>
         </Card>
+      )}
+
+      {/* Edit keeps nothing here without an endpoint: the technical name is
+          locked and said under the name. */}
+      {(mode === 'create' || hasEndpoint) && (
+        <MoreOptions
+          open={moreOptionsOpen}
+          onOpenChange={onMoreOptionsOpenChange}
+          summary={moreOptionsSummary || undefined}
+        >
+          <Text variant="body-small" color="secondary">
+            The defaults work for most models.
+          </Text>
+          {mode === 'create' && (
+            <TextField
+              label="Technical name"
+              secondaryLabel="filled in from the name"
+              isRequired
+              value={values.name}
+              onChange={name => onChange({ name })}
+              placeholder="e.g. sonnet-4-5"
+              description="Lowercase letters, numbers and hyphens. Names the resource and its key Secret."
+              {...fieldErrorProps(errors.name)}
+            />
+          )}
+          {hasEndpoint && (
+            <Switch
+              label="Skip TLS certificate verification (for endpoints with self-signed certificates)"
+              isSelected={values.insecureSkipTlsVerify}
+              onChange={insecureSkipTlsVerify =>
+                onChange({ insecureSkipTlsVerify })
+              }
+            />
+          )}
+        </MoreOptions>
       )}
     </>
   );

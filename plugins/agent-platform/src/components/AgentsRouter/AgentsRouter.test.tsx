@@ -1,22 +1,21 @@
 import type { ReactNode } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { screen } from '@testing-library/react';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { AgentsRouter } from './AgentsRouter';
 
 // The pages are irrelevant here — this is about which route claims which URL —
 // and stubbing them keeps the tree free of the kubernetes and muster reads they
 // do.
-jest.mock('../AgentsIndexPage', () => ({
-  AgentsIndexPage: () => <div>agents-index</div>,
-}));
 jest.mock('../AgentDetailPage', () => ({
   AgentDetailPage: () => <div>agent-detail</div>,
 }));
+// The edit wizard is stubbed; the former address's redirect is the real one.
 jest.mock('../EditAgentPage', () => ({
+  ...jest.requireActual('../EditAgentPage'),
   EditAgentPage: () => <div>agent-edit</div>,
 }));
 jest.mock('../NewAgentPage', () => ({
@@ -45,14 +44,23 @@ jest.mock('../NewAgentFormProvider', () => ({
   ),
 }));
 
-function renderTab(path: string) {
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <div>{`at ${pathname}${search}`}</div>;
+}
+
+function renderTab(path: string, { customizeBound = true } = {}) {
   return renderInTestApp(
     <Routes>
       <Route path="/agent-platform/agents/*" element={<AgentsRouter />} />
+      <Route path="/customize/*" element={<LocationProbe />} />
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        ...(customizeBound && { '/customize': customizeExternalRouteRef }),
+      },
     },
   );
 }
@@ -60,10 +68,25 @@ function renderTab(path: string) {
 const AGENT = '/agent-platform/agents/gazelle/agent-platform/pr-reviewer';
 
 describe('AgentsRouter', () => {
-  it('renders the list at the tab index', async () => {
-    renderTab('/agent-platform/agents');
+  it('sends the tab index to the Customize screen', async () => {
+    renderTab('/agent-platform/agents?installation=gazelle');
 
-    expect(await screen.findByText('agents-index')).toBeInTheDocument();
+    expect(
+      await screen.findByText('at /customize/agents?installation=gazelle'),
+    ).toBeInTheDocument();
+  });
+
+  it('says there is no list where the app binds no Customize page', async () => {
+    renderTab('/agent-platform/agents', { customizeBound: false });
+
+    expect(await screen.findByText('Not available')).toBeInTheDocument();
+    expect(screen.queryByText(/^at \/customize/)).toBeNull();
+  });
+
+  it('routes an agent page', async () => {
+    renderTab(AGENT);
+
+    expect(await screen.findByText('agent-detail')).toBeInTheDocument();
   });
 
   // The detail page is mounted at a splat because it is tabbed, so every URL
@@ -78,10 +101,25 @@ describe('AgentsRouter', () => {
     },
   );
 
-  // The one ranking this change puts at risk: `edit` is a static segment beside
-  // the detail page's splat, and react-router scores it higher. If that ever
-  // stopped holding, Edit would silently become the detail page's Overview tab.
-  it('keeps the edit page ahead of the detail page’s splat', async () => {
+  // The edit wizard and its steps start with the static `edit` segment, which
+  // react-router scores above the detail path's dynamic installation — if
+  // that ever stopped holding, `edit/<installation>/<namespace>` would read as
+  // an agent and its name as a tab.
+  it.each(['', '/skills', '/tools', '/review'])(
+    'renders the edit wizard at edit/<agent> + "%s"',
+    async step => {
+      renderTab(
+        `/agent-platform/agents/edit/gazelle/agent-platform/pr-reviewer${step}`,
+      );
+
+      expect(await screen.findByText('agent-edit')).toBeInTheDocument();
+      expect(screen.queryByText('agent-detail')).not.toBeInTheDocument();
+    },
+  );
+
+  // The former address is a static segment beside the detail page's splat,
+  // scored higher; it only redirects to the wizard now.
+  it('redirects the former …/<agent>/edit address to the wizard', async () => {
     renderTab(`${AGENT}/edit`);
 
     expect(await screen.findByText('agent-edit')).toBeInTheDocument();

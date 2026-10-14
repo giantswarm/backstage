@@ -26,6 +26,7 @@ import {
   type NodePoolWriteResult,
   type WriteMode,
   type CreateNodePoolSchema,
+  type PlaceNoun,
 } from '../lib/clusterManager';
 import { gpuNodePoolsRefetchInterval } from '../lib/poolLifecycle';
 import {
@@ -93,9 +94,14 @@ export function useClusterManagerInfo(
 /**
  * `list_clusters` on one installation, with the marks the tool reports —
  * and, where the installation does not serve the Cluster API, the tool's note
- * saying so (the list is empty then, not failed).
+ * saying so (the list is empty then, not failed). `placeNoun` names the place
+ * in that note: main's "installation" by default (the classic Create cluster
+ * dialog), "environment" from the agent platform's GPU node-pool dialog.
  */
-export function useManagedClusters(installation: string | undefined) {
+export function useManagedClusters(
+  installation: string | undefined,
+  placeNoun: PlaceNoun = 'installation',
+) {
   const client = useClusterManagerClient(installation);
   const { data, error, refetch, isPending, fetchStatus } = useQuery({
     queryKey: musterClustersQueryKey(installation ?? ''),
@@ -107,7 +113,7 @@ export function useManagedClusters(installation: string | undefined) {
   const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
     clusters: data?.clusters ?? [],
-    clusterApiNote: clusterApiNote(data?.clusterApi),
+    clusterApiNote: clusterApiNote(data?.clusterApi, placeNoun),
     isLoading: Boolean(client) && isLoading,
     error: (error as Error) ?? null,
     refetch,
@@ -171,6 +177,8 @@ type GpuNodePoolsOfInstallation = {
   caches: ModelCacheRow[];
   /** The tool's note where the installation does not serve the Cluster API. */
   note?: string;
+  /** Whether `list_clusters` named any cluster a pool could be added to. */
+  hasClusters: boolean;
 };
 
 /**
@@ -214,7 +222,13 @@ export function useGpuNodePools(installations: string[]) {
             claim,
           })),
         );
-        return { rows, caches, note: clusterApiNote(clusterApi) };
+        // Agent-platform scope only (the GPU panel, model hosting): its noun.
+        return {
+          rows,
+          caches,
+          note: clusterApiNote(clusterApi, 'environment'),
+          hasClusters: clusters.length > 0,
+        };
       },
       staleTime: 30_000,
       // 10 s while a pool of the installation is unsettled, 60 s otherwise —
@@ -243,6 +257,13 @@ export function useGpuNodePools(installations: string[]) {
         : undefined,
     )
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  // Installations that answered with no cluster at all: Add GPU node pool
+  // has nothing to add to there.
+  const clusterless = queries
+    .map((query, index) =>
+      query.data && !query.data.hasClusters ? installations[index] : undefined,
+    )
+    .filter((entry): entry is string => Boolean(entry));
   const errors = queries
     .map((query, index) =>
       query.error
@@ -255,6 +276,7 @@ export function useGpuNodePools(installations: string[]) {
     rows,
     caches,
     notes,
+    clusterless,
     errors,
     isLoading:
       Boolean(musterApi) && queries.some(query => isAwaitingData(query)),

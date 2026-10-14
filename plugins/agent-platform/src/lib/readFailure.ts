@@ -22,7 +22,7 @@ export type KagentRequestErrorFields = {
 };
 
 const REASONS: Record<string, string> = {
-  token: 'no token for the installation',
+  token: 'no token for the environment',
   timeout: 'timed out',
   unavailable: 'unreachable',
   'server-error': 'server error',

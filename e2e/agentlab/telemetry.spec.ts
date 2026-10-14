@@ -116,12 +116,13 @@ test('an empty app ID skips TelemetryDeck with one warning per page load', async
   admin.on('pageerror', error => errors.push(error.message));
 
   try {
-    await open(admin, '/agent-platform/agents');
+    // Classic pages, whose sidebar links in-app in either portal mode.
+    await open(admin, '/deployments');
     warnings.length = 0;
     errors.length = 0;
 
     // One fresh page load, then an in-app navigation: two page views.
-    await open(admin, '/agent-platform/agents');
+    await open(admin, '/deployments');
     await admin
       .getByRole('navigation', { name: 'sidebar nav' })
       .getByRole('link', { name: 'Catalog' })

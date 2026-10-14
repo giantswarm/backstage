@@ -1,0 +1,5 @@
+---
+'@giantswarm/backstage-plugin-agent-platform': patch
+---
+
+The create-agent wizard fits a phone. The assistant chat ("Let Swarm Operator help") keeps its draft and its conversation when it is closed and opened again, at every width; on a phone, or wherever the form has no room beside it, it is a full-screen dialog with the page behind it inert, closed by Escape or "Back to form", with a one-line header, a composer capped at four lines and room for the home indicator. Beside a wide form the wizard keeps its step and footer clear of the chat instead of sliding under it. The Tools step's "Selected so far" bar is one line on a phone ("3 selected · Resolves to 42 tools for you") that opens to the chips, instead of a sticky block that left the catalogue little room; a long selector wraps inside its chip, and each remove button has a 44px target. On the review step "Propose as pull request instead" moves from the footer into the page at phone width, and an edit's "Propose changes as pull request" shortens to "Propose as pull request", so the footer keeps to one row.

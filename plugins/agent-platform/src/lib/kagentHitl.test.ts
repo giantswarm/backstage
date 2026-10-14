@@ -124,6 +124,41 @@ describe('readPendingConfirmation', () => {
     });
   });
 
+  it('carries the proposed arguments, which are what Allow would run', () => {
+    const pending = readPendingConfirmation([
+      task('task-1', 'input-required', [
+        confirmationPart({ name: 'delete_file', args: { path: '/tmp/x' } }),
+      ]),
+    ]);
+
+    expect(pending?.args).toEqual({ path: '/tmp/x' });
+    expect(pending?.via).toBeUndefined();
+  });
+
+  it('looks through a muster-proxied proposal to the real tool', () => {
+    // Agents reach most MCP tools through muster's `call_tool`; the approval
+    // card must name the tool that would actually run, and keep the proxy as
+    // "via" — the same unwrapping the timeline applies to executed calls.
+    const pending = readPendingConfirmation([
+      task('task-1', 'input-required', [
+        confirmationPart({
+          name: 'call_tool',
+          args: {
+            name: 'slack_post_message',
+            arguments: { channel: '#support-weekly' },
+          },
+        }),
+      ]),
+    ]);
+
+    expect(pending).toMatchObject({
+      asks: 'approval',
+      toolName: 'slack_post_message',
+      via: 'Muster',
+      args: { channel: '#support-weekly' },
+    });
+  });
+
   describe('which task counts as pending', () => {
     it('ignores a stranded older question once a newer task has completed', () => {
       // The case that matters most in practice. Every question answered from Slack

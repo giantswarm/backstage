@@ -62,7 +62,9 @@ describe('AgentDeleteDialog', () => {
     await renderDialog('commit');
 
     expect(
-      screen.getByText(/applied from its GitOps repository/),
+      screen.getByText(
+        /applied from GitOps, so agent-manager opens a pull request/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Delete agent' }),
@@ -82,7 +84,7 @@ describe('AgentDeleteDialog', () => {
     );
 
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/agents/pull/7');
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),

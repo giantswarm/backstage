@@ -39,6 +39,21 @@ describe('useNewSessionHandoff', () => {
     expect(result.current.handoff).toEqual(handoff);
   });
 
+  it('carries a hand-off’s prepared mark, and only a literal true', () => {
+    const prepared = renderWithState({
+      [NEW_SESSION_STATE_KEY]: { ...handoff, prepared: true },
+    });
+    expect(prepared.result.current.handoff).toEqual({
+      ...handoff,
+      prepared: true,
+    });
+
+    const other = renderWithState({
+      [NEW_SESSION_STATE_KEY]: { ...handoff, prepared: 'yes' },
+    });
+    expect(other.result.current.handoff).toEqual(handoff);
+  });
+
   it('clears the router state, so a reload or Back cannot re-send the message', async () => {
     // Router state survives both. Without this, coming back to the session would
     // silently start a second paid turn with the same prompt.

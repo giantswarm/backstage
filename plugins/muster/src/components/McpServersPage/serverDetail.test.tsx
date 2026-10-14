@@ -95,7 +95,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use “Activate” in the server’s actions/),
+      screen.getByText(/Use “Activate” in the connector’s actions/),
     ).toBeInTheDocument();
   });
 
@@ -122,7 +122,7 @@ describe('ServerConfig', () => {
 
     expect(screen.getByText('Deactivated')).toBeInTheDocument();
     expect(
-      screen.getByText(/muster keeps it disconnected until it is activated\./),
+      screen.getByText(/disconnected until activated\./),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Use “Activate”/)).not.toBeInTheDocument();
   });
@@ -147,9 +147,7 @@ describe('AuthChain', () => {
     );
 
     expect(screen.getByText('sigv4')).toBeInTheDocument();
-    expect(
-      screen.getByText(/All users share this identity/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/all users share it/)).toBeInTheDocument();
     expect(screen.getByText('Signing region')).toBeInTheDocument();
     expect(screen.getByText('eu-central-1')).toBeInTheDocument();
     expect(screen.getByText('aws-mcp')).toBeInTheDocument();
@@ -247,9 +245,7 @@ describe('AuthChain', () => {
 
     expect(screen.getByText('Forward token')).toBeInTheDocument();
     expect(screen.queryByText('Signing region')).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/All users share this identity/),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/all users share it/)).not.toBeInTheDocument();
   });
 });
 
@@ -270,7 +266,7 @@ async function renderTools(
     </TestApiProvider>,
     // ServerTools links each tool to its page, so the route the link resolves
     // against has to be mounted.
-    { mountedRoutes: { '/agent-platform/mcp-servers': mcpServersRouteRef } },
+    { mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef } },
   );
 }
 
@@ -286,13 +282,13 @@ describe('ServerTools', () => {
     const link = await screen.findByRole('link', { name: 'list_buckets' });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/mcp-servers/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
+      '/agent-platform/connectors/aws-root/tools/x_aws-root_list_buckets?installation=gazelle',
     );
     expect(
       screen.getByRole('link', { name: 'Open the server’s tools' }),
     ).toHaveAttribute(
       'href',
-      '/agent-platform/mcp-servers/aws-root?installation=gazelle',
+      '/agent-platform/connectors/aws-root?installation=gazelle',
     );
   });
 });
@@ -313,10 +309,10 @@ describe('ServerTools with no tools to show', () => {
     );
 
     expect(
-      await screen.findByText(/the server may be down or unreachable/),
+      await screen.findByText(/the connector may be down or unreachable/),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Use “Sign in” in the server’s actions/),
+      screen.queryByText(/Use “Sign in” in its actions/),
     ).not.toBeInTheDocument();
   });
 
@@ -324,7 +320,7 @@ describe('ServerTools with no tools to show', () => {
     await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
 
     expect(
-      await screen.findByText(/Use “Sign in” in the server’s actions/),
+      await screen.findByText(/Use “Sign in” in its actions/),
     ).toBeInTheDocument();
   });
 
@@ -336,7 +332,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        /connects per session with your own identity; its tools appear here once your muster session has connected to it/,
+        /connects per session with your identity; its tools appear once muster has connected it for you/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
@@ -373,7 +369,7 @@ describe('ServerTools with no tools to show', () => {
 
     expect(
       await screen.findByText(
-        'No tools exposed — this server is deactivated. Use “Activate” in the server’s actions.',
+        'No tools exposed — this connector is deactivated. Use “Activate” in the connector’s actions.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();

@@ -29,6 +29,16 @@ describe('ToolResultViewer', () => {
     expect(screen.getByText('Pending')).toBeInTheDocument();
   });
 
+  it('gives every column a least width, so a wide result scrolls inside its table instead of squeezing', async () => {
+    // bui squeezes columns without widths into the table's width: an
+    // eight-column list had ~37px a column at 375px. With a minimum it
+    // renders its resizable container, which scrolls sideways itself.
+    await renderInTestApp(<ToolResultViewer result={listResult} />);
+
+    const table = screen.getByRole('grid');
+    expect(table.closest('.bui-TableResizableContainer')).not.toBeNull();
+  });
+
   it('switches to the Raw view', async () => {
     await renderInTestApp(<ToolResultViewer result={listResult} />);
 
@@ -63,5 +73,56 @@ describe('ToolResultViewer', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /run again/i }));
     expect(onRerun).toHaveBeenCalled();
+  });
+
+  describe('table at scale', () => {
+    const podList = (count: number) => ({
+      kind: 'PodList',
+      items: Array.from({ length: count }, (_, i) => ({
+        metadata: { name: `pod-${i}`, namespace: 'default' },
+        status: i % 2 === 0 ? 'Running' : 'Pending',
+      })),
+    });
+    const renderedPods = () => screen.queryAllByText(/^pod-\d+$/);
+
+    it('shows a three-row result whole, with no reveal control and no filter', async () => {
+      await renderInTestApp(<ToolResultViewer result={podList(3)} />);
+
+      expect(renderedPods()).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+      expect(screen.queryByRole('searchbox')).toBeNull();
+      expect(screen.queryByText(/rows? shown/)).toBeNull();
+    });
+
+    it('renders the first 50 of 300 rows, reveals more a page at a time, and filters', async () => {
+      await renderInTestApp(<ToolResultViewer result={podList(300)} />);
+
+      expect(renderedPods()).toHaveLength(50);
+      expect(screen.getByText('50 rows shown, 250 more')).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 50 more rows' }),
+      );
+      expect(renderedPods()).toHaveLength(100);
+
+      // The filter matches any cell's text, case-insensitively, and starts
+      // the filtered list at its first page again.
+      const filter = screen.getByRole('searchbox', { name: 'Filter rows' });
+      await userEvent.type(filter, 'POD-29');
+      // pod-29 and pod-290 … pod-299.
+      expect(renderedPods()).toHaveLength(11);
+      expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+
+      await userEvent.clear(filter);
+      await userEvent.type(filter, 'pending');
+      expect(renderedPods()).toHaveLength(50);
+      expect(screen.getByText('50 rows shown, 100 more')).toBeInTheDocument();
+
+      await userEvent.clear(filter);
+      await userEvent.type(filter, 'nothing-like-this');
+      expect(renderedPods()).toHaveLength(0);
+      expect(
+        screen.getByText('No row matches “nothing-like-this”.'),
+      ).toBeInTheDocument();
+    });
   });
 });

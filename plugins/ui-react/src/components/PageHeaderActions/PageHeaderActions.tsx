@@ -1,8 +1,10 @@
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
 } from 'react';
 
@@ -22,17 +24,32 @@ const PageHeaderActionsSetContext = createContext<(actions: ReactNode) => void>(
   () => {},
 );
 
+// Whether routed content renders its own page header (its h1 and this slot),
+// so a header the surrounding layout would draw has to stand aside. Split the
+// same way: frames only consume the stable claim function.
+const PageHeaderOwnedContext = createContext(false);
+const PageHeaderClaimContext = createContext<() => () => void>(() => () => {});
+
 export function PageHeaderActionsProvider({
   children,
 }: {
   children: ReactNode;
 }) {
   const [actions, setActions] = useState<ReactNode>(null);
+  const [owners, setOwners] = useState(0);
+  const claim = useCallback(() => {
+    setOwners(count => count + 1);
+    return () => setOwners(count => count - 1);
+  }, []);
   return (
     <PageHeaderActionsSetContext.Provider value={setActions}>
-      <PageHeaderActionsValueContext.Provider value={actions}>
-        {children}
-      </PageHeaderActionsValueContext.Provider>
+      <PageHeaderClaimContext.Provider value={claim}>
+        <PageHeaderOwnedContext.Provider value={owners > 0}>
+          <PageHeaderActionsValueContext.Provider value={actions}>
+            {children}
+          </PageHeaderActionsValueContext.Provider>
+        </PageHeaderOwnedContext.Provider>
+      </PageHeaderClaimContext.Provider>
     </PageHeaderActionsSetContext.Provider>
   );
 }
@@ -55,4 +72,19 @@ export function useProvidePageHeaderActions(actions: ReactNode): void {
     setActions(actions);
     return () => setActions(null);
   }, [actions, setActions]);
+}
+
+// Declare, for as long as the calling frame is mounted, that routed content
+// renders the page header itself: its own h1 and the actions slot. A layout
+// that would otherwise draw a header reads `usePageHeaderOwned()` and draws
+// none, so the page has one h1 and each action once. Claimed in a layout
+// effect, so the layout's header is gone before the first paint.
+export function useOwnPageHeader(): void {
+  const claim = useContext(PageHeaderClaimContext);
+  useLayoutEffect(() => claim(), [claim]);
+}
+
+// Whether routed content below the provider renders its own page header.
+export function usePageHeaderOwned(): boolean {
+  return useContext(PageHeaderOwnedContext);
 }

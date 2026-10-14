@@ -1,6 +1,12 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { sendKeyCaption } from '../../lib/sendKey';
 import { MESSAGE_TEXT_MAX_LENGTH, SessionComposer } from './SessionComposer';
 
 const onSubmit = jest.fn();
@@ -26,6 +32,27 @@ beforeEach(() => {
 });
 
 describe('SessionComposer', () => {
+  it('carries an attached card directly above the box, under its notices', () => {
+    // T40: the agent's pending question docks with the box as one control.
+    renderComposer({
+      attachment: <div data-testid="attached-card">Which cluster?</div>,
+      disabledReason: 'Answer the question above to continue.',
+      error: 'boom',
+    });
+
+    const card = screen.getByTestId('attached-card');
+    const box = screen.getByTestId('composer-card');
+    const notice = screen.getByText('Message not sent');
+    // eslint-disable-next-line no-bitwise
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(notice, card)).toBe(true);
+    expect(follows(card, box)).toBe(true);
+    // Outside the box's own form: the real card is a form, and forms do not nest.
+    expect(card.closest('form')).toBeNull();
+    expect(field()).toBeDisabled();
+  });
+
   it('submits the trimmed message', async () => {
     renderComposer();
 
@@ -230,26 +257,38 @@ describe('SessionComposer', () => {
     });
   });
 
-  it('says that sending resumes a finished session', () => {
-    renderComposer({ isFinished: true });
+  it('invites a reply to the agent once its turn ended, never to "resume"', () => {
+    renderComposer({ isFinished: true, agentName: 'Lab Helper' });
 
     expect(
-      screen.getByPlaceholderText('Send a message to resume this session…'),
+      screen.getByPlaceholderText('Reply to Lab Helper…'),
     ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/resume/)).not.toBeInTheDocument();
+    // Between turns is the usual state of a session, so the caption is the
+    // prototype's disclaimer there too; the placeholder says what Send does.
     expect(
-      screen.getByText('Sending a message resumes this finished session.'),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
   });
 
-  it('describes an ongoing session as a conversation to add to', () => {
+  it('carries the prototype’s disclaimer under an idle box', () => {
     renderComposer();
 
     expect(
       screen.getByPlaceholderText('Send a message to this session…'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Your reply is added to the conversation/),
+      screen.getByText('Agents can make mistakes. Check important results.'),
     ).toBeInTheDocument();
+  });
+
+  it('gives the disclaimer way to what is happening while the agent works', () => {
+    renderComposer({ isAgentWorking: true });
+
+    expect(
+      screen.queryByText('Agents can make mistakes. Check important results.'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/The agent is working/)).toBeInTheDocument();
   });
 
   it('refuses an over-long message and says how long it is', async () => {
@@ -338,6 +377,34 @@ describe('SessionComposer', () => {
     expect(field()).toHaveValue('something else entirely');
   });
 
+  it('renders the details slot inside the box, next to the action', async () => {
+    // The cost/context chip docks here so it stays on screen with the composer.
+    // It must survive every trailing state: beside Send, beside Stop, and when
+    // a lost runtime removes Send entirely.
+    renderComposer({ details: <span data-testid="details-chip" /> });
+
+    const box = screen.getByTestId('composer-card');
+    expect(box).toContainElement(screen.getByTestId('details-chip'));
+    expect(sendButton()).toBeInTheDocument();
+  });
+
+  it('keeps the details slot when a new session replaces Send', () => {
+    renderComposer({
+      details: <span data-testid="details-chip" />,
+      newSession: {
+        label: 'Start a new session with this agent',
+        onStart: jest.fn(),
+        replacesSend: true,
+        caption: 'This session cannot continue.',
+      },
+    });
+
+    expect(screen.getByTestId('details-chip')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Send' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows why a send failed', () => {
     renderComposer({ error: 'kagent said no' });
 
@@ -347,7 +414,8 @@ describe('SessionComposer', () => {
 });
 
 describe('SessionComposer — Stop', () => {
-  const stopButton = () => screen.getByRole('button', { name: 'Stop' });
+  const stopButton = () =>
+    screen.getByRole('button', { name: 'Stop the turn' });
 
   it('offers Stop in place of Send while the agent works and the turn is known', async () => {
     const onStop = jest.fn();
@@ -358,7 +426,7 @@ describe('SessionComposer — Stop', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /The agent is working\. Stop it, or reply once this turn finishes\./,
+        /The agent is working\. Stop the turn, or reply once it finishes\./,
       ),
     ).toBeInTheDocument();
 
@@ -375,7 +443,7 @@ describe('SessionComposer — Stop', () => {
     renderComposer({ isAgentWorking: true });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     expect(
@@ -394,7 +462,7 @@ describe('SessionComposer — Stop', () => {
     });
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -410,7 +478,7 @@ describe('SessionComposer — Stop', () => {
       'aria-disabled',
       'true',
     );
-    expect(screen.getByText('Stopping the agent…')).toBeInTheDocument();
+    expect(screen.getByText('Stopping the turn…')).toBeInTheDocument();
   });
 
   it('goes back to Send once the turn has ended', () => {
@@ -418,14 +486,16 @@ describe('SessionComposer — Stop', () => {
       isAgentWorking: true,
       onStop: jest.fn(),
     });
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
 
     rerender(
       <SessionComposer isAgentWorking={false} isFinished onSubmit={onSubmit} />,
     );
 
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
@@ -440,7 +510,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(
       screen.getByText(
-        'The agent has stopped reporting progress. Cancel the turn to send again.',
+        'The agent has stopped reporting progress. Stop the turn to send again.',
       ),
     ).toBeInTheDocument();
     expect(
@@ -448,7 +518,9 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/reply is added/)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    );
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
@@ -461,7 +533,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Stop' }),
+      screen.queryByRole('button', { name: 'Stop the turn' }),
     ).not.toBeInTheDocument();
   });
 
@@ -472,13 +544,15 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
       stopError: 'Failed user token verification',
     });
 
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(
       screen.getByText('Failed user token verification'),
     ).toBeInTheDocument();
     expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
     // The turn is still running: Stop stays offered for another try.
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Stop the turn' }),
+    ).toBeInTheDocument();
   });
 
   it('keeps a failed send and a failed Stop apart', () => {
@@ -489,7 +563,7 @@ describe('SessionComposer — a stalled turn and a failed Stop', () => {
 
     expect(screen.getByText('Message not sent')).toBeInTheDocument();
     expect(screen.getByText('kagent said no')).toBeInTheDocument();
-    expect(screen.getByText('Stop failed')).toBeInTheDocument();
+    expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
     expect(screen.getByText('the cancel was refused')).toBeInTheDocument();
   });
 });
@@ -598,5 +672,155 @@ describe('SessionComposer — the way out of a lost runtime', () => {
     expect(
       screen.queryByRole('button', { name: /Start a new session/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('SessionComposer on a phone (T22)', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const waiting = {
+    attachment: <div data-testid="attached-card">Which cluster?</div>,
+    disabledReason:
+      'Issue tracker is waiting for your answer. Answer the question above to continue.',
+    details: <button type="button">Session cost</button>,
+  };
+
+  it('folds the disabled box to its caption while a card is attached', () => {
+    layout = mockPhoneLayout();
+    renderComposer(waiting);
+
+    expect(screen.getByTestId('attached-card')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: 'Message' }),
+    ).not.toBeInTheDocument();
+    const folded = screen.getByTestId('composer-folded');
+    expect(folded).toHaveTextContent(waiting.disabledReason);
+    // The cost chip stays in reach while the box is folded.
+    expect(
+      screen.getByRole('button', { name: 'Session cost' }),
+    ).toBeInTheDocument();
+  });
+
+  it('brings the box back, with its draft and the focus, when the card goes', async () => {
+    layout = mockPhoneLayout();
+    const { rerender } = renderComposer();
+    await userEvent.type(field(), 'half a thought');
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+        {...waiting}
+      />,
+    );
+    expect(
+      screen.queryByRole('textbox', { name: 'Message' }),
+    ).not.toBeInTheDocument();
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+
+    rerender(
+      <SessionComposer
+        isAgentWorking={false}
+        isFinished={false}
+        onSubmit={onSubmit}
+      />,
+    );
+    expect(field()).toHaveValue('half a thought');
+    expect(field()).toHaveFocus();
+  });
+
+  it('keeps the disabled box under the card on a desktop', () => {
+    layout = mockDesktopLayout();
+    renderComposer(waiting);
+
+    expect(field()).toBeDisabled();
+    expect(screen.queryByTestId('composer-folded')).not.toBeInTheDocument();
+  });
+
+  it('breaks the line on Enter with touch input, and sends from the button', async () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    await userEvent.type(field(), 'first line{Enter}second line');
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(field()).toHaveValue('first line\nsecond line');
+    // The soft keyboard's Enter key says it breaks the line.
+    expect(field()).toHaveAttribute('enterkeyhint', 'enter');
+
+    await userEvent.click(sendButton());
+    expect(onSubmit).toHaveBeenCalledWith('first line\nsecond line');
+  });
+
+  it('labels the Enter key "send" with a keyboard', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    expect(field()).toHaveAttribute('enterkeyhint', 'send');
+  });
+});
+
+describe('SessionComposer send-key hint', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const hint = () => screen.queryByTestId('send-key-hint');
+
+  it('says how the box sends beside the disclaimer, with key caps', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    expect(
+      screen.getByText('Agents can make mistakes. Check important results.'),
+    ).toBeInTheDocument();
+    // The same words as the other composers' caption.
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe(sendKeyCaption({}, false));
+    expect(hint()?.querySelectorAll('kbd')).toHaveLength(3);
+  });
+
+  it('says to tap Send on touch input', () => {
+    layout = mockPhoneLayout();
+    renderComposer();
+
+    expect(hint()).toBeVisible();
+    expect(hint()?.textContent).toBe('Tap Send to send.');
+    expect(hint()?.querySelector('kbd')).toBeNull();
+  });
+
+  it.each([
+    ['the agent works', { isAgentWorking: true }],
+    ['a confirmation is open', { disabledReason: 'Answer the question.' }],
+    [
+      'the runtime is lost',
+      {
+        newSession: {
+          label: 'Start a new session',
+          onStart: jest.fn(),
+          caption: 'This session cannot continue.',
+        },
+      },
+    ],
+  ])('hides the keys while %s, keeping their room', (_, props) => {
+    layout = mockDesktopLayout();
+    renderComposer(props);
+
+    // Hidden rather than removed, so the docked composer keeps its height
+    // from turn to turn.
+    expect(hint()).toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
+  });
+
+  it('gives way to the length error', () => {
+    layout = mockDesktopLayout();
+    renderComposer();
+
+    fireEvent.change(field(), {
+      target: { value: 'x'.repeat(MESSAGE_TEXT_MAX_LENGTH + 1) },
+    });
+
+    expect(screen.getByText(/the limit is/)).toBeInTheDocument();
+    expect(hint()).not.toBeVisible();
   });
 });

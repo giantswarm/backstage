@@ -2,33 +2,35 @@ import { connectToMuster, expect, open, test } from './fixtures';
 import { lab } from './lab';
 
 /**
- * An MCP server's auth mode has one name wherever the portal shows it: the
- * servers table's Auth column and the server page's Authentication card name
- * the lab's OAuth fixture (`auth.type: oauth`, its own authorization server)
- * the same way.
+ * A connector's sign-in mode, as the shell names it: Customize's Connectors
+ * table by its short label, the connector's page by the words the Add
+ * connector wizard offers the mode under — the lab's OAuth fixture
+ * (`auth.type: oauth`, its own authorization server) is the own-account mode
+ * in both.
  */
 
-const OWN_ACCOUNT = 'Own account (OAuth sign-in)';
-
-test('MCP servers: the servers table and the server page name the auth mode alike', async ({
+test('Connectors: the table and the connector page name the fixture’s sign-in mode', async ({
   admin,
 }) => {
   await open(
     admin,
-    `/agent-platform/mcp-servers?installation=${lab.installation}`,
+    `/agent-platform/connectors?installation=${lab.installation}`,
   );
   await connectToMuster(admin, admin.getByRole('grid'));
 
-  const fixture = admin.getByRole('link', { name: /^lab-oauth-fixture/ });
+  const row = admin.getByRole('row', { name: /^lab-oauth-fixture/ });
   await expect(
-    admin.getByRole('row').filter({ has: fixture }),
-    'the Auth column names the fixture by its mode',
-  ).toContainText(OWN_ACCOUNT);
+    row.getByRole('gridcell', { name: 'Your own account' }),
+    'the Sign-in column names the fixture by its mode',
+  ).toBeVisible();
 
-  await fixture.click();
-  await admin.getByRole('tab', { name: 'Details' }).click();
+  await row.getByRole('rowheader').click();
   await expect(
-    admin.getByText(OWN_ACCOUNT, { exact: true }),
-    'the Authentication card names the same mode',
+    admin
+      .getByRole('complementary', { name: 'Connector details' })
+      .getByText('Each person signs in with their own account', {
+        exact: true,
+      }),
+    'the page names the same mode as the wizard offers it',
   ).toBeVisible({ timeout: 60_000 });
 });

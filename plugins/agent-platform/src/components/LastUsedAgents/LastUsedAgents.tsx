@@ -1,0 +1,146 @@
+import { useId, useMemo } from 'react';
+import { Link, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core/styles';
+import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+
+import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
+import type { AvatarSize } from '../../lib/agentAvatar';
+import { newSessionHref } from '../../lib/newSessionLink';
+import { recentAgentUses } from '../../lib/recentAgents';
+import { AgentAvatar } from '../AgentAvatar';
+import { useAgents } from '../AgentsDataProvider';
+import { useSessions } from '../SessionsDataProvider';
+
+/** Twice the rendered 32px, for sharp 2x displays. */
+const CARD_AVATAR_SIZE: AvatarSize = 96;
+
+const useStyles = makeStyles({
+  head: {
+    display: 'flex',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    columnGap: 'var(--bui-space-3)',
+    rowGap: 2,
+    marginBottom: 'var(--bui-space-3)',
+  },
+  // The artboard's three cards side by side; one per line at phone width.
+  grid: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gap: 'var(--bui-space-4)',
+    '@media (max-width: 599px)': {
+      gridTemplateColumns: 'minmax(0, 1fr)',
+      gap: 'var(--bui-space-2)',
+    },
+  },
+  card: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--bui-space-3)',
+    height: '100%',
+    boxSizing: 'border-box',
+    padding: 'var(--bui-space-3) var(--bui-space-4)',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 12,
+    background: 'var(--bui-bg-neutral-1)',
+    color: 'var(--bui-fg-primary)',
+    textDecoration: 'none',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+    '&:hover': {
+      borderColor: 'var(--bui-border-2)',
+      boxShadow: '0 4px 16px rgba(0, 38, 69, 0.06)',
+      textDecoration: 'none',
+    },
+  },
+  text: {
+    flex: '1 1 auto',
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  action: {
+    flex: 'none',
+    whiteSpace: 'nowrap',
+    color: 'var(--bui-fg-link, #00609c)',
+  },
+});
+
+/**
+ * Customize → Agents' "Last used by you" strip, the artboard's only agent
+ * cards: the agents of the person's latest sessions (at most three, so the
+ * strip is the same size at 3 agents and at 300), each one press from a new
+ * session with it on the home screen. Hidden when the person has no session
+ * with a startable agent yet.
+ *
+ * Reads `useAgents` and `useSessions`, so it renders under an
+ * `AgentsDataProvider` and a `SessionsDataProvider`. Sessions from an
+ * installation whose session list is not scoped to the signed-in user (kagent
+ * in `unsecure` mode) are left out: they would not be "by you".
+ */
+export function LastUsedAgents() {
+  const classes = useStyles();
+  const headingId = useId();
+  const buildAvatarUrl = useAgentAvatarUrl();
+  const { rows: agents } = useAgents();
+  const { rows: sessions, notUserScopedInstallations } = useSessions();
+
+  const recent = useMemo(() => {
+    const notMine = new Set(notUserScopedInstallations);
+    return recentAgentUses(
+      sessions.filter(session => !notMine.has(session.installation)),
+      agents,
+    );
+  }, [agents, sessions, notUserScopedInstallations]);
+
+  if (recent.length === 0) {
+    return null;
+  }
+
+  return (
+    <section aria-labelledby={headingId}>
+      <div className={classes.head}>
+        <Text as="h2" id={headingId} variant="title-x-small">
+          Last used by you
+        </Text>
+        <Text as="span" variant="body-small" color="secondary">
+          Your most recent agents
+        </Text>
+      </div>
+      <ul className={classes.grid}>
+        {recent.map(({ agent, lastUsedAt }) => (
+          <li key={agent.id}>
+            <Link href={newSessionHref(agent)} className={classes.card}>
+              <AgentAvatar
+                size="medium"
+                purpose="decoration"
+                name={agent.name}
+                src={
+                  buildAvatarUrl(agent.installation, agent.technicalName, {
+                    size: CARD_AVATAR_SIZE,
+                  }) ?? ''
+                }
+              />
+              <span className={classes.text}>
+                <Text as="span" variant="body-medium" weight="bold" truncate>
+                  {agent.name}
+                </Text>
+                {lastUsedAt && (
+                  <Text as="span" variant="body-small" color="secondary">
+                    <DateComponent value={lastUsedAt} relative />
+                  </Text>
+                )}
+              </span>
+              <Text as="span" variant="body-small" className={classes.action}>
+                Start a session
+              </Text>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

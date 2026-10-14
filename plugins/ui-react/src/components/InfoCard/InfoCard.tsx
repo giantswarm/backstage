@@ -34,6 +34,8 @@ const useStyles = makeStyles({
 
 export interface InfoCardProps {
   title?: ReactNode;
+  /** The title's heading level, by where the card sits in the page outline. */
+  titleAs?: 'h2' | 'h3' | 'h4';
   headerActions?: ReactNode;
   footerActions?: ReactNode;
   children?: ReactNode;
@@ -41,7 +43,14 @@ export interface InfoCardProps {
 }
 
 export function InfoCard(props: InfoCardProps) {
-  const { title, headerActions, footerActions, children, className } = props;
+  const {
+    title,
+    titleAs = 'h3',
+    headerActions,
+    footerActions,
+    children,
+    className,
+  } = props;
   const classes = useStyles();
 
   return (
@@ -50,7 +59,7 @@ export function InfoCard(props: InfoCardProps) {
         <CardHeader>
           <Flex justify="between" align="center">
             <Text
-              as="h3"
+              as={titleAs}
               variant="title-x-small"
               weight="bold"
               className={classes.title}

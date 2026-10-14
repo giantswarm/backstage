@@ -25,7 +25,7 @@ import {
  */
 export function HarnessPicker() {
   const classes = useSelectableCardStyles();
-  const { state, selectHarness } = useNewAgentForm();
+  const { state, edit, selectHarness } = useNewAgentForm();
   const {
     installation,
     modelConfigNamespace: namespace,
@@ -38,57 +38,6 @@ export function HarnessPicker() {
     return null;
   }
 
-  const hasChoice = choices.length > 1;
-  const couldNotRead = !isLoading && choices.length === 0 && errors.length > 0;
-
-  const dropNotice = droppedHarness ? (
-    <div role="status">
-      <Alert
-        status="info"
-        title="Runtime reset to the platform default"
-        description={`The Harness ${droppedHarness} you picked doesn't serve this model's namespace, so the agent runs on the platform Harness${
-          hasChoice ? '. Pick another runtime below to change that' : ''
-        }.`}
-      />
-    </div>
-  ) : null;
-
-  if (isLoading && choices.length === 0) {
-    return (
-      <Flex direction="column" gap="2">
-        <FieldLabel
-          label="Runtime"
-          secondaryLabel="Harness"
-          description="What runs the agent."
-        />
-        {dropNotice}
-        <Text color="secondary">Loading runtimes…</Text>
-      </Flex>
-    );
-  }
-
-  if (choices.length === 0) {
-    if (!couldNotRead && !dropNotice) {
-      return null;
-    }
-    return (
-      <Flex direction="column" gap="2">
-        {dropNotice}
-        {couldNotRead && (
-          <Alert
-            status="warning"
-            title="Couldn't read the runtimes"
-            description={`The Harnesses in ${namespace} on ${installation} couldn't be read, so the agent will run on the platform Harness. You may not have permission to list Harnesses there.`}
-          />
-        )}
-      </Flex>
-    );
-  }
-
-  // Picking the platform Harness sends no `harness`; any other card is sent
-  // by its name.
-  const selected = state.harness?.name ?? platformChoice?.name;
-  const selectedChoice = choices.find(choice => choice.name === selected);
   const content = (choice: HarnessChoice) => {
     return (
       <>
@@ -111,6 +60,81 @@ export function HarnessPicker() {
     );
   };
 
+  // An existing agent keeps the Harness it was created on (an update cannot
+  // move it): shown, not offered.
+  if (edit) {
+    const currentName = edit.agent.harness ?? platformHarness;
+    // Until (or unless) the namespace's Harnesses are read, it is known by
+    // its name alone.
+    const current = choices.find(choice => choice.name === currentName) ?? {
+      name: currentName,
+      displayName: currentName,
+    };
+    return (
+      <Flex direction="column" gap="2">
+        <FieldLabel
+          label="Runtime"
+          secondaryLabel="Harness"
+          description="Choose what runs the agent. It cannot be changed once the agent exists."
+        />
+        <SelectableCardGrid role="list" ariaLabel="Runtime" minWidth={220}>
+          <StaticCard>{content(current)}</StaticCard>
+        </SelectableCardGrid>
+      </Flex>
+    );
+  }
+
+  const hasChoice = choices.length > 1;
+  const couldNotRead = !isLoading && choices.length === 0 && errors.length > 0;
+
+  const dropNotice = droppedHarness ? (
+    <div role="status">
+      <Alert
+        status="info"
+        title="Runtime reset to the platform default"
+        description={`The Harness ${droppedHarness} does not serve this model's namespace, so the agent runs on the platform Harness${
+          hasChoice ? '. Pick another runtime below to change that' : ''
+        }.`}
+      />
+    </div>
+  ) : null;
+
+  if (isLoading && choices.length === 0) {
+    return (
+      <Flex direction="column" gap="2">
+        <FieldLabel
+          label="Runtime"
+          secondaryLabel="Harness"
+          description="Choose what runs the agent."
+        />
+        {dropNotice}
+        <Text color="secondary">Loading runtimes…</Text>
+      </Flex>
+    );
+  }
+
+  if (choices.length === 0) {
+    if (!couldNotRead && !dropNotice) {
+      return null;
+    }
+    return (
+      <Flex direction="column" gap="2">
+        {dropNotice}
+        {couldNotRead && (
+          <Alert
+            status="warning"
+            title="Could not read the runtimes"
+            description={`The Harnesses in ${namespace} on ${installation} could not be read — you may lack permission — so the agent runs on the platform Harness.`}
+          />
+        )}
+      </Flex>
+    );
+  }
+
+  // Picking the platform Harness sends no `harness`; any other card is sent
+  // by its name.
+  const selected = state.harness?.name ?? platformChoice?.name;
+  const selectedChoice = choices.find(choice => choice.name === selected);
   return (
     <Flex direction="column" gap="2">
       <FieldLabel
@@ -118,15 +142,15 @@ export function HarnessPicker() {
         secondaryLabel="Harness"
         description={
           hasChoice
-            ? "What runs the agent. It can't be changed once the agent exists."
-            : `What runs the agent: the only Harness in ${namespace} on ${installation}.`
+            ? 'Choose what runs the agent. It cannot be changed once the agent exists.'
+            : `The only Harness in ${namespace} on ${installation} runs the agent.`
         }
       />
       {dropNotice}
       {errors.length > 0 && (
         <Alert
           status="warning"
-          title="Some runtimes couldn't be loaded; the list may be incomplete."
+          title="Could not read some runtimes, so the list may be incomplete."
         />
       )}
       {hasChoice ? (

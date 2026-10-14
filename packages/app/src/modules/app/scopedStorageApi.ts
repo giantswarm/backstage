@@ -1,0 +1,80 @@
+import { WebStorage } from '@backstage/core-app-api';
+import type {
+  DiscoveryApi,
+  ErrorApi,
+  FetchApi,
+  IdentityApi,
+  StorageApi,
+  StorageValueSnapshot,
+} from '@backstage/core-plugin-api';
+import { UserSettingsStorage } from '@backstage/plugin-user-settings';
+import type { JsonValue, Observable } from '@backstage/types';
+
+/**
+ * The buckets kept per user in the backend
+ * (`@backstage/plugin-user-settings-backend`), so they roam across browsers
+ * and devices: the agent platform's own state (pinned sessions, favorite
+ * agents, dismissed hints — `plugins/agent-platform/src/hooks`).
+ */
+export const USER_SETTINGS_BUCKETS: readonly string[] = ['agent-platform'];
+
+/**
+ * The app's StorageApi: the agent platform's bucket goes to the user-settings
+ * backend, everything else (the classic portal's starred entities, home-page
+ * visits, table columns, …) stays in WebStorage (localStorage) exactly as the
+ * upstream default — so the classic portal keeps its behaviour and its data.
+ * Nothing is migrated between the two.
+ *
+ * The user-settings side degrades on its own: while the person is not signed
+ * in it reads and writes WebStorage, and when the `user-settings` backend
+ * route is unreachable reads resolve as "absent" (reported once through the
+ * errorApi) — writes to an unreachable backend reject, which callers surface
+ * like any other failed write.
+ */
+export class ScopedStorageApi implements StorageApi {
+  static create(options: {
+    discoveryApi: DiscoveryApi;
+    errorApi: ErrorApi;
+    fetchApi: FetchApi;
+    identityApi: IdentityApi;
+    /** Overridable for tests; the agent platform's bucket by default. */
+    userSettingsBuckets?: readonly string[];
+  }): ScopedStorageApi {
+    const { userSettingsBuckets = USER_SETTINGS_BUCKETS, ...deps } = options;
+    return new ScopedStorageApi(
+      WebStorage.create({ errorApi: deps.errorApi }),
+      UserSettingsStorage.create(deps),
+      new Set(userSettingsBuckets),
+    );
+  }
+
+  private constructor(
+    private readonly webStorage: StorageApi,
+    private readonly userSettingsStorage: StorageApi,
+    private readonly userSettingsBuckets: ReadonlySet<string>,
+  ) {}
+
+  forBucket(name: string): StorageApi {
+    return this.userSettingsBuckets.has(name)
+      ? this.userSettingsStorage.forBucket(name)
+      : this.webStorage.forBucket(name);
+  }
+
+  snapshot<T extends JsonValue>(key: string): StorageValueSnapshot<T> {
+    return this.webStorage.snapshot<T>(key);
+  }
+
+  set<T extends JsonValue>(key: string, data: T): Promise<void> {
+    return this.webStorage.set<T>(key, data);
+  }
+
+  remove(key: string): Promise<void> {
+    return this.webStorage.remove(key);
+  }
+
+  observe$<T extends JsonValue>(
+    key: string,
+  ): Observable<StorageValueSnapshot<T>> {
+    return this.webStorage.observe$<T>(key);
+  }
+}

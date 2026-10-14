@@ -2,11 +2,12 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 
 /**
- * The Serve dialog and the Serving list against the lab's KServe backend
+ * Serve model (a page of its own, `/agent-platform/models/serving/serve`)
+ * and the Serving list against the lab's KServe backend
  * (`platform.serving`: the CPU preset `qwen2-5-0-5b-cpu`), as the admin:
  *
- * - a preset that serves already is offered as "Serving on <node>" and
- *   cannot be chosen, and model-manager is never asked to serve it again;
+ * - a preset that serves already is offered with its Running models state
+ *   ("In Running models: Ready on <node>") and cannot be chosen, and model-manager is never asked to serve it again;
  * - Stop serving takes the row off the list without a reload;
  * - Serve ends in a toast naming the node, and the row reads Starting (never
  *   a red Not ready) until the model answers.
@@ -44,28 +45,49 @@ function presetRow(page: Page) {
   return kserveCard(page).getByRole('row').filter({ hasText: PRESET });
 }
 
-async function openServeDialog(page: Page) {
+/** Running models: where Serve model returns after a Serve or a Cancel. */
+const SERVING_VIEW = /\/agent-platform\/models\/serving\/?$/;
+
+/** Serve model's page, opened from the view's header button. */
+async function openServePage(page: Page) {
   await page.getByRole('button', { name: 'Serve model' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Serve model' });
-  await expect(dialog).toBeVisible();
-  await dialog
-    .getByRole('button', { name: /Installation and backend/ })
-    .click();
-  await page.getByRole('option', { name: TARGET }).click();
-  return dialog;
+  await expect(page).toHaveURL(/\/agent-platform\/models\/serving\/serve/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Serve model' }),
+  ).toBeVisible();
 }
 
-/** Picks the lab preset in the Serve dialog and serves it; resolves once the dialog closed. */
+/** Picks the KServe target where the page offers a choice of backend. */
+async function openServeOnKServe(page: Page) {
+  await openServePage(page);
+  // One serving backend on the installation is no choice: the page offers
+  // no picker and serves there (the KServe card, `beforeEach`).
+  const picker = page.getByRole('button', {
+    name: /Environment and backend/,
+  });
+  if ((await picker.count()) > 0) {
+    await picker.click();
+    await page.getByRole('option', { name: TARGET }).click();
+  }
+}
+
+/** Cancel is a link in the page's footer, back to Running models. */
+async function cancelServe(page: Page) {
+  await page.getByRole('link', { name: 'Cancel' }).click();
+  await expect(page).toHaveURL(SERVING_VIEW);
+}
+
+/** Picks the lab preset on Serve model and serves it; resolves once back on Running models. */
 async function servePreset(page: Page) {
-  const dialog = await openServeDialog(page);
-  await dialog.getByRole('button', { name: /Preset/ }).click();
+  await openServeOnKServe(page);
+  await page.getByRole('button', { name: /Preset/ }).click();
   await page.getByRole('option', { name: PRESET_LABEL }).click();
-  const serve = dialog.getByRole('button', { name: 'Serve', exact: true });
+  const serve = page.getByRole('button', { name: 'Serve', exact: true });
   await expect(serve, 'enabled once the fit verdict is in').toBeEnabled({
     timeout: 60_000,
   });
   await serve.click();
-  await expect(dialog).toBeHidden({ timeout: 60_000 });
+  await expect(page).toHaveURL(SERVING_VIEW, { timeout: 60_000 });
 }
 
 /** The preset's row once it stops changing: Ready, Not ready, or no row. */
@@ -115,7 +137,7 @@ test.describe.serial('Serve feedback on KServe', () => {
   test.setTimeout(10 * 60_000);
 
   // The KServe card goes with its last model, so without one the backend's
-  // presence is read off the Serve dialog's targets.
+  // presence is read off Serve model's targets.
   test.beforeEach(async ({ admin }) => {
     await open(admin, '/agent-platform/models/serving');
     await expect(admin.getByRole('article').first()).toBeVisible();
@@ -127,19 +149,18 @@ test.describe.serial('Serve feedback on KServe', () => {
     if ((await kserveCard(admin).count()) > 0) {
       return;
     }
-    await admin.getByRole('button', { name: 'Serve model' }).click();
-    const dialog = admin.getByRole('dialog', { name: 'Serve model' });
-    await dialog
-      .getByRole('button', { name: /Installation and backend/ })
+    await openServePage(admin);
+    await admin
+      .getByRole('button', { name: /Environment and backend/ })
       .click();
     const offered =
       (await admin.getByRole('option', { name: TARGET }).count()) > 0;
     await admin.keyboard.press('Escape');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelServe(admin);
     test.skip(!offered, 'the lab has no KServe backend (platform.serving)');
   });
 
-  test('a served preset reads "Serving on <node>" and cannot be served again', async ({
+  test('a served preset reads "Ready on <node>" and cannot be served again', async ({
     admin,
   }) => {
     const row = presetRow(admin);
@@ -155,14 +176,14 @@ test.describe.serial('Serve feedback on KServe', () => {
       await servePreset(admin);
     }
     await expect(row).toContainText('Ready', { timeout: 8 * 60_000 });
-    const dialog = await openServeDialog(admin);
-    await dialog.getByRole('button', { name: /Preset/ }).click();
+    await openServeOnKServe(admin);
+    await admin.getByRole('button', { name: /Preset/ }).click();
     const option = admin.getByRole('option', { name: PRESET_LABEL });
-    await expect(option).toContainText(/Serving on \S+/);
+    await expect(option).toContainText(/In Running models: Ready on \S+/);
     await expect(option).toHaveAttribute('aria-disabled', 'true');
-    await snapshot(admin, 'serve-dialog-served-preset', option);
+    await snapshot(admin, 'serve-page-served-preset', option);
     await admin.keyboard.press('Escape');
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await cancelServe(admin);
   });
 
   test('Stop serving takes the row off the list without a reload', async ({
@@ -187,7 +208,7 @@ test.describe.serial('Serve feedback on KServe', () => {
   }) => {
     await servePreset(admin);
     await expect(
-      admin.getByText(/^Serving ".+" on .+ · \S+ — loading$/),
+      admin.getByText(/^Serving ".+" on .+ · \S+$/),
       'the toast names the node',
     ).toBeVisible();
     await snapshot(admin, 'serve-toast');

@@ -41,8 +41,8 @@ export function ModelDeleteDialog({
       onConfirm={onConfirm}
     >
       <Text variant="body-medium">
-        The model disappears from the picker, so no new agents can be created on
-        it. Its stored API key is removed along with it.
+        It leaves the picker, so no new agents can use it. Its stored API key is
+        removed too.
       </Text>
     </ConfirmDialog>
   );

@@ -1,7 +1,12 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import userEvent from '@testing-library/user-event';
-import { modelsRouteRef } from '../../routes';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { describeGroup } from './ServedModelsGroupHeader';
 import {
   columnsForRows,
@@ -12,17 +17,39 @@ import {
   memoryLine,
   memoryLineTitle,
   NO_SERVED_MODELS,
+  describePlacement,
+  phoneStatusLines,
   ServedModelDownloadRow,
   ServedModelRow,
   ServedModelsTable,
+  servedModelStatusExplanation,
   servedModelStatusLines,
   sortServedModelsBy,
 } from './ServedModelsTable';
 
 const renderTable = (element: React.ReactElement) =>
   renderInTestApp(element, {
-    mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+    mountedRoutes: {
+      '/agent-platform/models': modelsRouteRef,
+      '/customize': customizeExternalRouteRef,
+    },
   });
+
+/**
+ * Hovers a row's status hint and returns its tooltip. The pointer moves over
+ * the page first: react-aria opens a tooltip on hover only once it has seen
+ * a pointer move, and a hover's own move lands after its enter.
+ */
+async function hintTooltip(
+  user: ReturnType<typeof userEvent.setup>,
+  subject: string,
+) {
+  await user.hover(document.body);
+  await user.hover(
+    screen.getByRole('button', { name: `About the state of ${subject}` }),
+  );
+  return screen.findByRole('tooltip');
+}
 
 /** Three InferenceServices on two installations, read as CRs. */
 const rows: ServedModelRow[] = [
@@ -392,6 +419,10 @@ describe('ServedModelStatusCell · GPU share', () => {
 });
 
 describe('ServedModelStatusCell · the reason behind a state', () => {
+  /** The scheduler's whole answer, as kube-scheduler words it on the lab. */
+  const SCHEDULER =
+    '0/3 nodes are available: 3 Insufficient nvidia.com/gpu. preemption: 0/3 nodes are available: 3 No preemption victims found for incoming pod.';
+
   /** model-manager 0.23.4's view of a served model whose predictor pod waits for a GPU node. */
   const stuck: ServedModelRow = {
     ...rows[1],
@@ -400,21 +431,18 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
     namespace: 'model-serving',
     readiness: 'pending',
     readinessReason: 'Unschedulable',
-    readinessMessage: '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    readinessMessage: SCHEDULER,
     node: undefined,
     nodeSource: undefined,
   };
 
-  it('lists the explanation under the label only where the backend named a reason', () => {
-    expect(servedModelStatusLines(stuck)).toEqual([
-      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
-    ]);
+  it('never lists the explanation under the label; the hint carries it', () => {
+    expect(servedModelStatusLines(stuck)).toEqual([]);
+    expect(servedModelStatusExplanation(stuck)).toBe(SCHEDULER);
+    // A neutral state without the backend's word for it needs no look.
     expect(
-      servedModelStatusLines({
-        ...stuck,
-        readinessReason: undefined,
-      }),
-    ).toEqual([]);
+      servedModelStatusExplanation({ ...stuck, readinessReason: undefined }),
+    ).toBeUndefined();
     // A model that is not running has no footprint to report, whatever its
     // inventory entry says: KServe lists the preset's weights as the size of a
     // model it has not started.
@@ -424,39 +452,41 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
         loaded: true,
         memoryBytes: 8_050_000_000,
       }),
-    ).toEqual(['0/3 nodes are available: 3 Insufficient nvidia.com/gpu.']);
-    expect(
-      servedModelStatusLines({
-        ...ollamaRows[1],
-        readiness: 'notReady',
-        readinessReason: 'Faulted',
-        readinessMessage: 'The server answered 500.',
-      }),
-    ).toEqual(['The server answered 500.']);
+    ).toEqual([]);
+    const faulted: ServedModelRow = {
+      ...ollamaRows[1],
+      readiness: 'notReady',
+      readinessReason: 'Faulted',
+      readinessMessage: 'The server answered 500.',
+    };
+    expect(servedModelStatusLines(faulted)).toEqual([]);
+    expect(servedModelStatusExplanation(faulted)).toBe(
+      'The server answered 500.',
+    );
+    // A healthy state keeps its message on hover, not in a hint.
+    expect(servedModelStatusExplanation(ollamaRows[0])).toBeUndefined();
     expect(
       servedModelStatusLines({ ...ollamaRows[0], readiness: 'terminating' }),
     ).toEqual([]);
   });
 
-  it('reads Pending · Unschedulable with the scheduler’s text under it and on hover', async () => {
+  it('reads Pending · Unschedulable, the scheduler’s text in a hint, not in the cell', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={[stuck]} />);
 
     expect(screen.getByText('Pending')).toBeInTheDocument();
     expect(screen.getByTestId('served-readiness-reason')).toHaveTextContent(
       '· Unschedulable',
     );
-    expect(
-      screen.getByText(
-        '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Pending').closest('[title]')).toHaveAttribute(
-      'title',
-      '0/3 nodes are available: 3 Insufficient nvidia.com/gpu.',
+    // The paragraph used to fill the cell under the label.
+    expect(screen.queryByText(SCHEDULER)).toBeNull();
+    expect(await hintTooltip(user, 'qwen3-4b-instruct')).toHaveTextContent(
+      SCHEDULER,
     );
   });
 
-  it('keeps a row without a reason as it was: the label, the explanation on hover only', async () => {
+  it('puts a Not ready row’s explanation in the hint, not in the cell', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={[rows[1]]} />);
 
     expect(screen.getByText('Not ready')).toBeInTheDocument();
@@ -464,10 +494,21 @@ describe('ServedModelStatusCell · the reason behind a state', () => {
     expect(
       screen.queryByText('Deployment does not have minimum availability.'),
     ).toBeNull();
-    expect(screen.getByText('Not ready').closest('[title]')).toHaveAttribute(
-      'title',
+    expect(await hintTooltip(user, 'devstral')).toHaveTextContent(
       'Deployment does not have minimum availability.',
     );
+  });
+
+  it('keeps a healthy row as it was: the label, its message on hover, no hint', async () => {
+    await renderTable(<ServedModelsTable rows={[ollamaRows[0]]} />);
+
+    expect(screen.getByText('Ready').closest('[title]')).toHaveAttribute(
+      'title',
+      'Loaded in memory until 13:05.',
+    );
+    expect(
+      screen.queryByRole('button', { name: /^About the state of/ }),
+    ).toBeNull();
   });
 
   it('reads a model being deleted as Stopping', async () => {
@@ -524,8 +565,10 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
         wire: false,
       }),
     ).toBe('waiting for a node');
-    expect(downloadLine(failedDownload.download)).toBe(
-      'Download failed: pull model manifest: file does not exist',
+    // The error is the status hint's, never the cell's.
+    expect(downloadLine(failedDownload.download)).toBe('Download failed');
+    expect(servedModelStatusExplanation(failedDownload)).toBe(
+      'pull model manifest: file does not exist',
     );
     expect(downloadLine({ jobId: 'x', phase: 'failed', wire: false })).toBe(
       'Download failed',
@@ -543,9 +586,7 @@ describe('downloadLine, downloadPercent and servedModelStatusLines on a download
     expect(servedModelStatusLines(downloading)).toEqual([
       'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
     ]);
-    expect(servedModelStatusLines(failedDownload)).toEqual([
-      'Download failed: pull model manifest: file does not exist',
-    ]);
+    expect(servedModelStatusLines(failedDownload)).toEqual(['Download failed']);
     expect(servedModelStatusLines({ ...downloading, loaded: false })).toEqual([
       'pulling 6f7f… · 30 % · 114 MiB / 381 MiB',
     ]);
@@ -662,7 +703,7 @@ describe('ServedModelsTable', () => {
       'Model',
       'Node',
       'GPUs',
-      'Used by',
+      'Model config',
     ]) {
       expect(
         within(first).getByRole('columnheader', { name: header }),
@@ -704,11 +745,6 @@ describe('ServedModelsTable', () => {
     ).toBeNull();
     const copies = screen.getAllByRole('button', { name: 'Copy endpoint' });
     expect(copies).toHaveLength(2);
-    expect(
-      screen.getByTitle(
-        'Copy http://qwen3-14b-predictor.kserve.svc.cluster.local',
-      ),
-    ).toBeInTheDocument();
     // A node only pinned by the spec says so; an observed one does not.
     expect(screen.getAllByText('gpu-node-1')).toHaveLength(2);
     expect(screen.getByText('pinned')).toBeInTheDocument();
@@ -716,26 +752,30 @@ describe('ServedModelsTable', () => {
   });
 
   it('copies an endpoint to the clipboard', async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    // The shared CopyButton copies through react-use's useCopyToClipboard,
+    // which uses document.execCommand under the hood.
+    const original = document.execCommand;
+    document.execCommand = jest.fn(() => true);
 
     await renderTable(<ServedModelsTable rows={ollamaRows} />);
     await userEvent.click(
       screen.getByRole('button', { name: 'Copy endpoint' }),
     );
 
-    expect(writeText).toHaveBeenCalledWith('http://172.21.0.1:11434');
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    document.execCommand = original;
     expect(
-      await screen.findByRole('button', { name: 'Endpoint copied' }),
+      await screen.findByRole('button', { name: 'Copied' }),
     ).toBeInTheDocument();
   });
 
-  it('explains a not-ready model in the status tooltip', async () => {
+  it('explains a not-ready model in the status hint', async () => {
+    const user = userEvent.setup();
     await renderTable(<ServedModelsTable rows={rows} />);
 
-    expect(
-      screen.getByTitle('Deployment does not have minimum availability.'),
-    ).toBeInTheDocument();
+    expect(await hintTooltip(user, 'devstral')).toHaveTextContent(
+      'Deployment does not have minimum availability.',
+    );
   });
 
   it('shows a fresh LLMInferenceService with nothing but its name and status', async () => {
@@ -752,7 +792,7 @@ describe('ServedModelsTable', () => {
     const link = screen.getByRole('link', { name: /Qwen3 14B \(lab vLLM\)/ });
     expect(link).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.getAllByText('No model config')).toHaveLength(2);
   });
@@ -798,7 +838,12 @@ describe('ServedModelsTable', () => {
     it('shows name, status, features, used by — and no placement, model, runtime or dash', async () => {
       await renderTable(<ServedModelsTable rows={ollamaRows} />);
 
-      for (const header of ['Served model', 'Status', 'Features', 'Used by']) {
+      for (const header of [
+        'Served model',
+        'Status',
+        'Features',
+        'Model config',
+      ]) {
         expect(
           screen.getByRole('columnheader', { name: header }),
         ).toBeInTheDocument();
@@ -865,7 +910,7 @@ describe('ServedModelsTable', () => {
 
       expect(screen.getByRole('link', { name: 'qwen3-5-9b' })).toHaveAttribute(
         'href',
-        '/agent-platform/models/lab/kagent/qwen3-5-9b',
+        '/customize/models/lab/kagent/qwen3-5-9b',
       );
       expect(screen.getByText('No model config')).toBeInTheDocument();
     });
@@ -968,21 +1013,19 @@ describe('ServedModelsTable', () => {
     });
 
     it('keeps a failed pull as a Not ready row with the failure in the status cell and no bar', async () => {
+      const user = userEvent.setup();
       await renderTable(
         <ServedModelsTable rows={[...ollamaRows, failedDownload]} />,
       );
 
       expect(screen.getByText('Not ready')).toBeInTheDocument();
+      expect(screen.getByText('Download failed')).toBeInTheDocument();
       expect(
-        screen.getByText(
-          'Download failed: pull model manifest: file does not exist',
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByTitle(
-          'The pull failed: pull model manifest: file does not exist',
-        ),
-      ).toBeInTheDocument();
+        screen.queryByText(/pull model manifest: file does not exist/),
+      ).toBeNull();
+      expect(await hintTooltip(user, 'nope:latest')).toHaveTextContent(
+        'pull model manifest: file does not exist',
+      );
       expect(screen.queryByRole('progressbar')).toBeNull();
     });
 
@@ -1195,5 +1238,249 @@ describe('several backends: the Lemonade group and its rows', () => {
       'In memory · on the GPU NPU',
     );
     expect(memoryLine({ loaded: true, pinned: false })).toBeUndefined();
+  });
+});
+
+describe('ServedModelsTable · at scale', () => {
+  /** A pulled Ollama-style model, `available`, on the given backend. */
+  const pulled = (
+    installation: string,
+    backend: 'ollama' | 'lemonade',
+    name: string,
+  ): ServedModelRow => ({
+    id: `${installation}/${backend}//${name}`,
+    installation,
+    backend,
+    name,
+    modelSource: name,
+    readiness: 'available',
+    internalUrl: `http://${backend}.lab.test`,
+    endpointHosts: [],
+    usedBy: [],
+  });
+
+  /** 300 rows: 280 pulled into one Ollama, 20 into a Lemonade, same installation. */
+  const many: ServedModelRow[] = [
+    ...Array.from({ length: 280 }, (_, i) =>
+      pulled('lab', 'ollama', `llama-${i}`),
+    ),
+    ...Array.from({ length: 20 }, (_, i) =>
+      pulled('lab', 'lemonade', `phi-${i}`),
+    ),
+  ];
+
+  /** The body rows of one group's table (the header row left out). */
+  const bodyRows = (key: string) =>
+    within(screen.getByTestId(`served-models-group-${key}`)).getAllByRole('row')
+      .length - 1;
+
+  it('shows three models with no search and no reveal control', async () => {
+    await renderTable(<ServedModelsTable rows={rows} />);
+
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Show/ })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('caps each group at 20 rows and offers a model search at 300', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    expect(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+    ).toBeVisible();
+    expect(bodyRows('lab/ollama')).toBe(20);
+    expect(bodyRows('lab/lemonade')).toBe(20);
+    // Only the group with more than a page carries the reveal control.
+    expect(
+      within(screen.getByTestId('served-models-group-lab/ollama')).getByRole(
+        'button',
+        { name: 'Show 20 more models' },
+      ),
+    ).toBeVisible();
+    expect(
+      within(
+        screen.getByTestId('served-models-group-lab/lemonade'),
+      ).queryByRole('button', { name: /^Show/ }),
+    ).toBeNull();
+  });
+
+  it('filters before grouping, so a group with no match disappears', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      'phi',
+    );
+
+    expect(screen.queryByTestId('served-models-group-lab/ollama')).toBeNull();
+    expect(bodyRows('lab/lemonade')).toBe(20);
+    // The search stays while it narrows the page below the threshold, so it
+    // can still be cleared.
+    expect(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+    ).toBeVisible();
+  });
+
+  it('says so when no model matches', async () => {
+    await renderTable(<ServedModelsTable rows={many} />);
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      'nothing-like-it',
+    );
+
+    expect(
+      screen.getByText('No models match “nothing-like-it”.'),
+    ).toBeVisible();
+    expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+});
+
+// T22 B13: up to ten columns squeezed every cell to a sliver and clipped the
+// row's actions menu; the readiness explanation lived only in `title=`.
+describe('ServedModelsTable at phone width', () => {
+  let layout: MockedLayout;
+  afterEach(() => layout.restore());
+
+  const actions = (row: ServedModelRow) => (
+    <button type="button">Actions for {row.name}</button>
+  );
+
+  it('lists each model as a stacked row: name and status, its facts, the actions at the end', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    expect(screen.queryByRole('grid')).toBeNull();
+    const list = screen.getByRole('list', {
+      name: 'Models on inst-1, KServe · kserve-vllm',
+    });
+    const items = within(list).getAllByRole('listitem');
+    // The table's order: the running model first.
+    expect(items).toHaveLength(2);
+    const qwen = items[0];
+    expect(within(qwen).getByText('qwen3-14b')).toBeVisible();
+    expect(within(qwen).getByText('hf://Qwen/Qwen3-14B')).toBeVisible();
+    expect(within(qwen).getByText('on gpu-node-1')).toBeVisible();
+    expect(within(qwen).getByText('1 GPU')).toBeVisible();
+    // The actions never leave the row.
+    expect(
+      within(qwen).getByRole('button', { name: 'Actions for qwen3-14b' }),
+    ).toBeVisible();
+    // What uses it, with the link onward.
+    expect(
+      within(qwen).getByRole('link', { name: 'Qwen3 14B (lab vLLM)' }),
+    ).toBeVisible();
+
+    const devstral = items[1];
+    // A troubled state keeps to its words; the explanation is the hint a
+    // press opens. The pin is said as one.
+    expect(
+      within(devstral).queryByText(
+        'Deployment does not have minimum availability.',
+      ),
+    ).toBeNull();
+    expect(
+      within(devstral).getByRole('button', {
+        name: 'About the state of devstral',
+      }),
+    ).toBeVisible();
+    expect(
+      within(devstral).getByText('pinned to gpu-node-1, no pod yet'),
+    ).toBeVisible();
+    expect(
+      within(devstral).getByRole('button', { name: 'Actions for devstral' }),
+    ).toBeVisible();
+  });
+
+  it('says in words what the table kept in tooltips: no tool calling, the APIs', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable
+        rows={[
+          ollamaRows[0],
+          {
+            ...ollamaRows[1],
+            interfaces: [{ type: 'Completions', path: '/v1/chat/completions' }],
+          },
+        ]}
+      />,
+    );
+
+    const gemma = screen
+      .getAllByRole('listitem')
+      .find(item => within(item).queryByText('gemma3:270m'))!;
+    expect(
+      within(gemma).getByText(
+        'Agents cannot use this model: it does not support tool calling.',
+      ),
+    ).toBeVisible();
+    expect(
+      within(gemma).getByText('API: Chat completions (/v1/chat/completions)'),
+    ).toBeVisible();
+  });
+
+  it('keeps a pull’s progress bar on its row', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(
+      <ServedModelsTable rows={[...ollamaRows, downloading]} />,
+    );
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Downloading qwen2.5:0.5b' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/pulling 6f7f… · 30 %/)).toBeVisible();
+  });
+
+  it('keeps the table on a desktop', async () => {
+    layout = mockDesktopLayout();
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    expect(screen.getAllByRole('grid')).toHaveLength(2);
+    expect(screen.queryByRole('list', { name: /^Models on/ })).toBeNull();
+  });
+
+  it('lets a long shared endpoint truncate in the group header instead of widening the card (C21)', async () => {
+    layout = mockPhoneLayout();
+    await renderTable(<ServedModelsTable rows={ollamaRows} />);
+
+    const endpoint = screen.getByTestId('served-models-group-endpoint');
+    expect(endpoint).toHaveStyle({ minWidth: '0', maxWidth: '100%' });
+    expect(within(endpoint).getByText('http://172.21.0.1:11434')).toHaveStyle({
+      minWidth: '0',
+    });
+  });
+});
+
+describe('phoneStatusLines and describePlacement', () => {
+  it('brings a healthy state’s explanation inline, a troubled one’s never', () => {
+    expect(phoneStatusLines(ollamaRows[1])).toEqual([
+      'Downloaded; not loaded in memory.',
+      'Not loaded',
+    ]);
+    // Not ready, or a state the backend named a reason for: the hint's.
+    expect(phoneStatusLines(rows[1])).toEqual([]);
+    expect(
+      phoneStatusLines({
+        ...rows[2],
+        readinessReason: 'Unschedulable',
+        readinessMessage: '0/3 nodes are available.',
+      }),
+    ).toEqual([]);
+  });
+
+  it('says where a model runs', () => {
+    expect(describePlacement(rows[0])).toBe('on gpu-node-1');
+    expect(describePlacement(rows[1])).toBe('pinned to gpu-node-1, no pod yet');
+    expect(describePlacement({ ...rows[0], splitNodes: ['a', 'b'] })).toBe(
+      'split over a, b',
+    );
+    expect(describePlacement({ ...rows[0], copyNodes: ['a', 'b'] })).toBe(
+      '2 copies on a, b',
+    );
+    expect(describePlacement(rows[2])).toBeUndefined();
   });
 });

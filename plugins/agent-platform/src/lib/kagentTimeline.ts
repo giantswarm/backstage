@@ -158,6 +158,15 @@ export type SessionTimeline = {
   /** Total usage across the session, message-level plus delegated agents. */
   tokens: TokenUsage;
   /**
+   * The newest turn's own usage — the closest measurement of the model's
+   * current context that exists, since its `prompt` count is what the turn's
+   * model calls were sent. Summed over the turn's calls (kagent records no
+   * per-call usage) and **excluding** delegated agents' nested usage, which
+   * belongs to their own context. Undefined when no turn reported any usage —
+   * a session that never ran, or whose newest turns are still working.
+   */
+  lastTurnTokens?: TokenUsage;
+  /**
    * History entries that failed to parse at all — genuine data loss, safe for the
    * UI to report as "N messages could not be read".
    *
@@ -301,6 +310,7 @@ function readTurnEnding(
 export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   const items: TimelineItem[] = [];
   let tokens = EMPTY_USAGE;
+  let lastTurnTokens: TokenUsage | undefined;
   let skippedMessages = 0;
 
   // kagent repeats a message under the same `messageId` — reliably for the user's
@@ -332,6 +342,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
     // and letting them match across tasks would attach a result to the wrong call
     // when a tool is used repeatedly.
     const openCalls: OpenCall[] = [];
+
+    // This turn's own usage, for `lastTurnTokens`. Message-level bags and the
+    // ended-turn claim only — a delegated agent's nested usage is another
+    // session's context, so it counts toward the session total but not here.
+    let taskUsage = EMPTY_USAGE;
 
     entries.forEach((entry, entryIndex) => {
       const parsed = parseHistoryEntry(entry);
@@ -367,7 +382,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       // tokens to the agent's reply, and a user message carrying a usage bag
       // (some do) would double count the same turn.
       if (!isUser) {
-        tokens = addTokenUsage(tokens, readTokenUsage(message.metadata));
+        const usage = readTokenUsage(message.metadata);
+        tokens = addTokenUsage(tokens, usage);
+        taskUsage = addTokenUsage(taskUsage, usage);
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
@@ -663,10 +680,23 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       });
     }
     // After the ending: it reads the reason against the ids rendered so far.
-    tokens = addTokenUsage(tokens, claimEndedTurnUsage(status, seenMessageIds));
+    const endedUsage = claimEndedTurnUsage(status, seenMessageIds);
+    tokens = addTokenUsage(tokens, endedUsage);
+    taskUsage = addTokenUsage(taskUsage, endedUsage);
+
+    // The newest turn with a prompt count wins: a turn still working has not
+    // reported usage yet, and must not zero out the last real measurement.
+    if (taskUsage.prompt > 0) {
+      lastTurnTokens = taskUsage;
+    }
   });
 
-  return { items, tokens, skippedMessages };
+  return {
+    items,
+    tokens,
+    skippedMessages,
+    ...(lastTurnTokens && { lastTurnTokens }),
+  };
 }
 
 /** Build a `tool-call` or `agent-call` item depending on the tool name. */

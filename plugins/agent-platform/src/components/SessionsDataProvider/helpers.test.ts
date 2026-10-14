@@ -7,7 +7,6 @@ import {
   sessionSearchFn,
   SessionRow,
   sortSessionRows,
-  sortSessionsBy,
   toAgentIdentifier,
   toSessionRow,
 } from './helpers';
@@ -190,60 +189,6 @@ describe('sortSessionRows', () => {
     sortSessionRows(input);
 
     expect(input.map(r => r.id)).toEqual(['a', 'b']);
-  });
-});
-
-describe('sortSessionsBy', () => {
-  function row(overrides: Partial<SessionRow>): SessionRow {
-    return {
-      id: 'gazelle/x',
-      sessionId: 'x',
-      installation: 'gazelle',
-      title: 'x',
-      agentName: '',
-      ...overrides,
-    };
-  }
-
-  const rows = [
-    row({ id: 'old', createdAt: '2026-07-20T10:00:00Z', title: 'b' }),
-    row({ id: 'new', createdAt: '2026-07-23T10:00:00Z', title: 'a' }),
-    row({ id: 'unknown', title: 'c' }),
-  ];
-
-  it('sorts a timestamp column ascending', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'createdAt',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => r.id)).toEqual(['old', 'new', 'unknown']);
-  });
-
-  it('sorts a timestamp column descending', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'createdAt',
-      direction: 'descending',
-    });
-
-    expect(sorted.map(r => r.id)).toEqual(['new', 'old', 'unknown']);
-  });
-
-  it('keeps unknown timestamps last in both directions', () => {
-    // "Unknown" is not "oldest", so it must not lead the ascending sort.
-    for (const direction of ['ascending', 'descending'] as const) {
-      const sorted = sortSessionsBy(rows, { column: 'createdAt', direction });
-      expect(sorted[sorted.length - 1].id).toBe('unknown');
-    }
-  });
-
-  it('sorts a text column', () => {
-    const sorted = sortSessionsBy(rows, {
-      column: 'title',
-      direction: 'ascending',
-    });
-
-    expect(sorted.map(r => r.title)).toEqual(['a', 'b', 'c']);
   });
 });
 

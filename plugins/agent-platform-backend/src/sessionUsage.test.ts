@@ -28,16 +28,17 @@ function wireTasks(
     timestamp?: string;
     prompt?: number;
     completion?: number;
-    costUsd?: number;
     tools?: string[];
+    /** Runtime-reported cost on the turn's usage bag (claude harness). */
+    costUsd?: number;
   } = {},
 ) {
   const {
     timestamp = '2026-09-04T11:00:00Z',
     prompt = 100,
     completion = 10,
-    costUsd,
     tools = [],
+    costUsd,
   } = opts;
   return {
     error: false,
@@ -119,6 +120,39 @@ describe('SessionUsageReader', () => {
     expect(result.evaluatedAt).toBe(NOW);
     expect(result.unreadable).toEqual([]);
     expect(result.skipped).toBe(0);
+  });
+
+  it('sums the runtime-reported cost, overall and per agent, only where reported', async () => {
+    // Session `a` runs on a runtime that reports its own cost (the claude
+    // harness does); `b`'s reports none. The totals carry the sum of what was
+    // reported; `b`'s agent carries no figure at all — "not reported" must
+    // stay distinct from "$0".
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [
+        wireSession('a', { agent_id: 'kagent__NS__claude_agent' }),
+        wireSession('b', { agent_id: 'kagent__NS__adk_agent' }),
+      ],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      id === 'a' ? wireTasks({ costUsd: 0.25 }) : wireTasks({}),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.totals.costUsd).toBeCloseTo(0.25);
+    const byId = new Map(result.byAgent.map(entry => [entry.agentId, entry]));
+    expect(byId.get('kagent__NS__claude_agent')?.costUsd).toBeCloseTo(0.25);
+    expect(byId.get('kagent__NS__adk_agent')).not.toHaveProperty('costUsd');
+  });
+
+  it('carries no reported cost when no runtime reported one', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(wireTasks({}));
+
+    const result = await reader().read('tok');
+
+    expect(result.totals).not.toHaveProperty('costUsd');
   });
 
   it('never reads tasks for an A2A subagent session', async () => {
@@ -229,6 +263,50 @@ describe('SessionUsageReader', () => {
     expect(busy[0]).toMatchObject({ day: '2026-09-04', inputTokens: 100 });
   });
 
+  it("files each day's tool calls, and each session under its newest day", async () => {
+    // What a narrower window needs to total sessions and tool calls honestly:
+    // the window ends now, so a trailing sum of `lastActiveSessions` counts
+    // the sessions with a turn in it.
+    const early = wireTasks({
+      timestamp: '2026-09-01T09:00:00Z',
+      tools: ['x_kubernetes_get', 'x_kubernetes_list'],
+    });
+    const late = wireTasks({
+      timestamp: '2026-09-04T09:00:00Z',
+      tools: ['x_kubernetes_get'],
+    });
+    listSessions.mockResolvedValue({
+      error: false,
+      data: [wireSession('a'), wireSession('b')],
+    });
+    listSessionTasks.mockImplementation(async (id: string) =>
+      id === 'a'
+        ? {
+            error: false,
+            data: [
+              early.data[0],
+              { ...late.data[0], id: 't2', contextId: 'c1' },
+            ],
+          }
+        : early,
+    );
+
+    const result = await reader().read('tok');
+    const day = (key: string) => result.daily.find(d => d.day === key);
+
+    expect(day('2026-09-01')).toMatchObject({
+      toolCalls: 4,
+      lastActiveSessions: 1,
+    });
+    expect(day('2026-09-04')).toMatchObject({
+      toolCalls: 1,
+      lastActiveSessions: 1,
+    });
+    expect(
+      result.daily.reduce((sum, d) => sum + (d.lastActiveSessions ?? 0), 0),
+    ).toBe(result.totals.sessions);
+  });
+
   it('ranks tools and their muster servers, deterministically', async () => {
     listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
     listSessionTasks.mockResolvedValue(
@@ -267,6 +345,46 @@ describe('SessionUsageReader', () => {
 
     expect(result.topTools).toHaveLength(10);
     expect(result.totals.toolCalls).toBe(25);
+  });
+
+  it('reports what the cap left out, tools and servers alike', async () => {
+    // 25 tools on 12 servers: `x_srv<n>_tool` puts tools on 12 servers, and
+    // the first two servers carry two extra calls each so the ranking is not
+    // a tie broken by name alone.
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(
+      wireTasks({
+        tools: [
+          ...Array.from({ length: 25 }, (_, i) => `x_srv${i % 12}_tool${i}`),
+          'x_srv0_tool0',
+          'x_srv1_tool1',
+        ],
+      }),
+    );
+
+    const result = await reader().read('tok');
+
+    // 25 distinct tools, 27 calls: the top ten hold 12 calls (two tools
+    // called twice), so 15 tools with one call each are left out.
+    expect(result.topTools).toHaveLength(10);
+    expect(result.otherTools).toEqual({ count: 15, calls: 15 });
+    // 12 servers, ten listed: the two left out are the quietest.
+    expect(result.topMcpServers).toHaveLength(10);
+    expect(result.otherMcpServers.count).toBe(2);
+    const listed = result.topMcpServers.reduce((n, s) => n + s.calls, 0);
+    expect(listed + result.otherMcpServers.calls).toBe(27);
+  });
+
+  it('reports nothing left out when the lists are short', async () => {
+    listSessions.mockResolvedValue({ error: false, data: [wireSession('a')] });
+    listSessionTasks.mockResolvedValue(
+      wireTasks({ tools: ['x_kubernetes_get', 'x_kubernetes_list'] }),
+    );
+
+    const result = await reader().read('tok');
+
+    expect(result.otherTools).toEqual({ count: 0, calls: 0 });
+    expect(result.otherMcpServers).toEqual({ count: 0, calls: 0 });
   });
 
   it('counts sessions past the cap as skipped', async () => {

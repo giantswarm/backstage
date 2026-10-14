@@ -4,6 +4,7 @@ import {
   cheapestPriced,
   classifyClusterManagerError,
   classifyNodePoolWriteFailure,
+  clusterApiNote,
   isNothingLeft,
   clusterManagerToolName,
   describeComponent,
@@ -24,7 +25,32 @@ import {
   mountedClaimOf,
   offersTool,
   type CacheClaim,
+  type ClusterApiStatus,
 } from './clusterManager';
+
+describe('clusterApiNote', () => {
+  const notServed: ClusterApiStatus = {
+    state: 'absent',
+    group: 'cluster.x-k8s.io',
+    version: 'v1beta1',
+  };
+
+  it('says "installation" by default, as the classic Clusters page does on main', () => {
+    expect(clusterApiNote(notServed)).toBe(
+      'the Cluster API (cluster.x-k8s.io) is not served on this installation',
+    );
+  });
+
+  it('says "environment" where the agent platform asks for it', () => {
+    expect(clusterApiNote(notServed, 'environment')).toBe(
+      'the Cluster API (cluster.x-k8s.io) is not served on this environment',
+    );
+  });
+
+  it('is undefined where the Cluster API is served', () => {
+    expect(clusterApiNote({ ...notServed, state: 'served' })).toBeUndefined();
+  });
+});
 
 describe('clusterManagerToolName', () => {
   it('prefixes every tool with the muster server prefix', () => {

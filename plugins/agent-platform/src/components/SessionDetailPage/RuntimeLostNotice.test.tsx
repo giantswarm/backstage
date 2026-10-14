@@ -18,14 +18,14 @@ describe('RuntimeLostNotice', () => {
       screen.getByText('The agent’s runtime could not be brought back'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/could not restart the runtime that held this session/),
+      screen.getByText(/could not restart the runtime holding this session/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/nothing is missing from the transcript/),
+      screen.getByText(/The transcript above is complete/),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /You can send again to retry.*start a new session with Grill master/,
+        /Send again to retry.*start a new session with Grill master/,
       ),
     ).toBeInTheDocument();
   });
@@ -75,13 +75,13 @@ describe('RuntimeLostNotice', () => {
       screen.getByText('This session cannot continue'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/kagent has marked this session’s runtime as lost/),
+      screen.getByText(/kagent marked this session’s runtime as lost/),
     ).toBeInTheDocument();
     // No retry on offer: a send fails the same way every time.
     expect(screen.queryByText(/send again/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        /start a new session with Grill master — the button under the message box/,
+        /Start a new session with Grill master to carry on — the button under the message box/,
       ),
     ).toBeInTheDocument();
   });
@@ -96,7 +96,7 @@ describe('RuntimeLostNotice', () => {
 
     expect(
       screen.getByText(
-        /continued in a new session with the same agent from the Sessions list/,
+        /Continue in a new session with the same agent from the Sessions list/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/kagent reported:/)).not.toBeInTheDocument();

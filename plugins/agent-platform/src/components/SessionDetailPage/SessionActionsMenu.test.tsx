@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -96,6 +97,47 @@ describe('SessionActionsMenu', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers no pin unless the page hands one over', async () => {
+    await renderMenu();
+
+    expect(
+      screen.queryByRole('button', { name: /Pin session/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('puts the pin before the menu and says whether the session is pinned', async () => {
+    const onToggle = jest.fn();
+    function Harness() {
+      const [isPinned, setPinned] = useState(false);
+      return (
+        <SessionActionsMenu
+          title="What issues are assigned to me?"
+          deletion={deletion}
+          onRename={onRename}
+          pin={{
+            isPinned,
+            onToggle: () => {
+              onToggle();
+              setPinned(pinned => !pinned);
+            },
+          }}
+        />
+      );
+    }
+    await renderInTestApp(<Harness />, {
+      mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+    });
+
+    const pin = screen.getByRole('button', { name: 'Pin session' });
+    expect(pin).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(pin);
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole('button', { name: 'Unpin session' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('gives the menu a definite width', async () => {
     // Not cosmetic, and the reason is invisible from here: bui leaves the menu's
     // width to its content above a 150px minimum, and this menu's one item wants
@@ -126,9 +168,11 @@ describe('SessionActionsMenu', () => {
     });
     // Both halves of the truth: gone as far as anyone here is concerned, and not
     // restorable from this UI, but not erased from kagent either.
-    expect(screen.getByText(/cannot be opened again/)).toBeInTheDocument();
     expect(
-      screen.getByText(/no way to restore it from here/),
+      screen.getByText(/can no longer be listed or opened/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot be restored\s+from here/),
     ).toBeInTheDocument();
     // Opening the dialog does not delete anything.
     expect(deleteSession).not.toHaveBeenCalled();
@@ -143,7 +187,7 @@ describe('SessionActionsMenu', () => {
     await openDeleteDialog();
 
     expect(
-      await screen.findByText(/may have been started by somebody else/),
+      await screen.findByText(/someone else may\s+have started this session/),
     ).toBeInTheDocument();
   });
 
@@ -155,10 +199,12 @@ describe('SessionActionsMenu', () => {
     await openDeleteDialog();
 
     await waitFor(() => {
-      expect(screen.getByText(/cannot be opened again/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/can no longer be listed or opened/),
+      ).toBeInTheDocument();
     });
     expect(
-      screen.queryByText(/may have been started by somebody else/),
+      screen.queryByText(/someone else may\s+have started this session/),
     ).not.toBeInTheDocument();
   });
 
@@ -192,6 +238,37 @@ describe('SessionActionsMenu', () => {
         screen.queryByText('Delete session "What issues are assigned to me?"?'),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it('stays on the list when deleting from a row of it', async () => {
+    await renderInTestApp(
+      <SessionActionsMenu
+        title="What issues are assigned to me?"
+        deletion={deletion}
+        onRename={onRename}
+        triggerLabel="More actions for “What issues are assigned to me?”"
+      />,
+      {
+        mountedRoutes: { '/agent-platform/sessions': sessionsRouteRef },
+        initialRouteEntries: ['/agent-platform/sessions'],
+      },
+    );
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'More actions for “What issues are assigned to me?”',
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /Delete session/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete session' }),
+    );
+
+    await waitFor(() => {
+      expect(mockToastPost).toHaveBeenCalledTimes(1);
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('keeps the dialog open and says nothing succeeded when the delete fails', async () => {
@@ -280,9 +357,9 @@ describe('SessionActionsMenu — deleting a session whose runtime is lost', () =
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveTextContent(
-      /suspends a session’s runtime before removing it, and this runtime cannot be reached/,
+      /it suspends the runtime first, and this runtime was lost/,
     );
-    expect(dialog).toHaveTextContent(/A kagent update that skips that step/);
+    expect(dialog).toHaveTextContent(/A kagent fix is coming/);
     expect(dialog).toHaveTextContent(unavailable.message);
   });
 

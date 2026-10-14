@@ -1,14 +1,21 @@
 import {
+  createExternalRouteRef,
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
 
 /**
- * The Agent Platform's "MCP Servers" tab (`/agent-platform/mcp-servers`): the
+ * The Agent Platform's "Connectors" tab (`/agent-platform/connectors`): the
  * servers table. A tab's sub-page takes a plain route ref, so this is a root
  * of its own rather than a sub-route of a muster section.
  */
 export const mcpServersRouteRef = createRouteRef();
+
+/**
+ * The tab's old address (`/agent-platform/mcp-servers`), kept as a nav-less
+ * redirect so every shared link resolves — the `/plans` → `/hive` pattern.
+ */
+export const legacyMcpServersRouteRef = createRouteRef();
 
 // The MCP server registration wizard, sub-routes of the servers tab — the
 // same shape as agent creation's `/new` + `/new/skills` + `/new/review` under
@@ -20,11 +27,6 @@ export const newMcpServerRouteRef = createSubRouteRef({
 
 export const newMcpServerAuthRouteRef = createSubRouteRef({
   path: '/new/auth',
-  parent: mcpServersRouteRef,
-});
-
-export const newMcpServerReviewRouteRef = createSubRouteRef({
-  path: '/new/review',
   parent: mcpServersRouteRef,
 });
 
@@ -54,3 +56,10 @@ export const workflowDetailRouteRef = createSubRouteRef({
   path: '/:name',
   parent: workflowsRouteRef,
 });
+
+/**
+ * The agent-platform shell's Customize page (`/customize`), whose Connectors
+ * tab a connector's page sits under. A page of the app, bound there; unbound,
+ * a connector's page links nowhere above itself.
+ */
+export const customizeExternalRouteRef = createExternalRouteRef();

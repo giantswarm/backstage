@@ -10,6 +10,7 @@ import {
   SessionUsageResponse,
   UsageAgentEntry,
   UsageDayEntry,
+  UsageRemainder,
   UsageServerEntry,
   UsageTally,
   UsageToolEntry,
@@ -96,16 +97,29 @@ export type SessionUsageOptions = {
   cacheTtlMs?: number;
 };
 
-/** Descending by count, then by name, so the answer is not Map order. */
+/**
+ * The top entries by count, and what the cap left out.
+ *
+ * Descending by count, then by name, so the answer is not Map order. The
+ * remainder travels with the list so the UI can say "and 14 more, 230 calls"
+ * rather than dropping the long tail silently.
+ */
 function topBy<T>(
   counts: Map<string | null, number>,
   make: (key: string | null, calls: number) => T,
   limit = USAGE_TOP_N,
-): T[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''))
-    .slice(0, limit)
-    .map(([key, calls]) => make(key, calls));
+): { top: T[]; other: UsageRemainder } {
+  const ranked = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''),
+  );
+  const rest = ranked.slice(limit);
+  return {
+    top: ranked.slice(0, limit).map(([key, calls]) => make(key, calls)),
+    other: {
+      count: rest.length,
+      calls: rest.reduce((sum, [, calls]) => sum + calls, 0),
+    },
+  };
 }
 
 /**
@@ -194,6 +208,9 @@ export class SessionUsageReader {
     let undatedTurns = 0;
     let unparseableMessages = 0;
     const days = new Map<string, UsageTally>();
+    // Sessions by the UTC day of their newest turn in the window: a narrower
+    // window's session count is a trailing sum of these (see UsageDayEntry).
+    const lastActive = new Map<string, number>();
     const tools = new Map<string | null, number>();
     const servers = new Map<string | null, number>();
     const agents = new Map<string | null, UsageTally & { sessions: number }>();
@@ -226,10 +243,17 @@ export class SessionUsageReader {
           undatedTurns += usage.undatedTurns;
           unparseableMessages += usage.unparseableMessages;
 
+          let newestDay: string | undefined;
           for (const [day, tally] of usage.days) {
             const existing = days.get(day) ?? emptyTally();
             addTally(existing, tally);
             days.set(day, existing);
+            if (tally.turns > 0 && (!newestDay || day > newestDay)) {
+              newestDay = day;
+            }
+          }
+          if (newestDay) {
+            lastActive.set(newestDay, (lastActive.get(newestDay) ?? 0) + 1);
           }
           for (const [tool, calls] of usage.tools) {
             tools.set(tool, (tools.get(tool) ?? 0) + calls);
@@ -267,21 +291,26 @@ export class SessionUsageReader {
       );
     }
 
+    const rankedTools = topBy<UsageToolEntry>(tools, (tool, calls) => ({
+      tool: tool ?? 'unknown tool',
+      calls,
+    }));
+    const rankedServers = topBy<UsageServerEntry>(servers, (server, calls) => ({
+      server,
+      calls,
+    }));
+
     return {
       evaluatedAt: endMs,
       windowStart: startMs,
       windowDays: this.windowDays,
       totals: { ...totals, sessions: sessionsWithActivity },
-      daily: this.denseDaily(days, startMs, endMs),
+      daily: this.denseDaily(days, lastActive, startMs, endMs),
       byAgent: this.rankAgents(agents),
-      topTools: topBy<UsageToolEntry>(tools, (tool, calls) => ({
-        tool: tool ?? 'unknown tool',
-        calls,
-      })),
-      topMcpServers: topBy<UsageServerEntry>(servers, (server, calls) => ({
-        server,
-        calls,
-      })),
+      topTools: rankedTools.top,
+      otherTools: rankedTools.other,
+      topMcpServers: rankedServers.top,
+      otherMcpServers: rankedServers.other,
       undatedTurns,
       unreadable,
       // The cap and the budget cutoff. Deliberately not the activity-window
@@ -302,6 +331,7 @@ export class SessionUsageReader {
    */
   private denseDaily(
     days: Map<string, UsageTally>,
+    lastActive: Map<string, number>,
     startMs: number,
     endMs: number,
   ): UsageDayEntry[] {
@@ -319,6 +349,8 @@ export class SessionUsageReader {
         inputTokens: tally?.inputTokens ?? 0,
         outputTokens: tally?.outputTokens ?? 0,
         turns: tally?.turns ?? 0,
+        toolCalls: tally?.toolCalls ?? 0,
+        lastActiveSessions: lastActive.get(day) ?? 0,
       });
     }
     return daily;

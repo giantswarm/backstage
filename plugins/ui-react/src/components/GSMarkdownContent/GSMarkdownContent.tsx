@@ -25,6 +25,27 @@ const useStyles = makeStyles(theme => ({
   // variant so every caller gets the same, correct rendering instead of
   // re-implementing this fix locally.
   root: {
+    // A long URL, an inline-code token or a snake_case name breaks rather
+    // than pushing the page sideways — at 343px on a phone, the common case.
+    overflowWrap: 'anywhere',
+    // A GFM table scrolls inside itself instead of widening the page (or,
+    // collapsed in `CollapsibleMarkdown`, being cut off at the right edge).
+    // `display: block` makes the table its own scroll container; its rows
+    // still lay out as a table. The session timeline's `MessageMarkdown` is
+    // the reference for both.
+    '& table': {
+      display: 'block',
+      maxWidth: '100%',
+      overflowX: 'auto',
+    },
+    // `overflow-wrap: anywhere` inherits and shrinks a cell's min-content
+    // width, so a wide table would break words mid-word instead of scrolling.
+    '& th, & td': {
+      overflowWrap: 'normal',
+    },
+    '& img': {
+      maxWidth: '100%',
+    },
     '& p, & li': {
       ...theme.typography.body1,
     },

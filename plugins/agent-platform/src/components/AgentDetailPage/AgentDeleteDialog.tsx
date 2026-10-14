@@ -90,15 +90,14 @@ export function AgentDeleteDialog({
       <Flex direction="column" gap="3">
         {viaPullRequest && (
           <Text variant="body-medium">
-            This agent is applied from its GitOps repository, so agent-manager
-            opens a pull request as you that removes its files. The agent is
-            deleted once the pull request is merged.
+            This agent is applied from GitOps, so agent-manager opens a pull
+            request as you that removes its files. The agent is deleted once it
+            is merged.
           </Text>
         )}
         <Text variant="body-medium">
-          {viaPullRequest ? 'That ends' : 'This ends'} any session currently
-          running with this agent — including sessions started by other people,
-          which are not shown to you.
+          {viaPullRequest ? 'That ends' : 'This ends'} every running session
+          with this agent, including other people's.
         </Text>
         {notConnected && (
           <ConnectAgentManagerAlert

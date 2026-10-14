@@ -55,3 +55,24 @@ export const SubTabSelected: Story = {
     router: { initialEntries: ['/mcp-servers/kubernetes/overview'] },
   },
 };
+
+/**
+ * Customize's six tabs with counts. At phone width (≤ 599.95px — pick a
+ * mobile viewport) the strip scrolls sideways in one row: the selected tab
+ * scrolled into view, a fade at each edge with more tabs beyond it.
+ */
+export const ManyTabs: Story = {
+  args: {
+    tabs: [
+      { id: 'agents', path: '', title: 'Agents', count: 6 },
+      { id: 'skills', path: 'skills', title: 'Skills', count: 12 },
+      { id: 'connectors', path: 'connectors', title: 'Connectors', count: 4 },
+      { id: 'models', path: 'models', title: 'Models', count: 1 },
+      { id: 'workflows', path: 'workflows', title: 'Workflows', count: 9 },
+      { id: 'tools', path: 'tools', title: 'Tools', count: 128 },
+    ],
+  },
+  parameters: {
+    router: { initialEntries: ['/mcp-servers/kubernetes/workflows'] },
+  },
+};

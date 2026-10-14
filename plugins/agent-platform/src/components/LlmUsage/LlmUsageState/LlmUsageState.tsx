@@ -21,7 +21,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
     case 'no-installations':
       return (
         <Text variant="body-medium" color="secondary">
-          This portal knows no installations, so there is no usage to read.
+          This portal knows no environments, so there is no usage to read.
         </Text>
       );
 
@@ -36,7 +36,7 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
         <>
           <InstallationScopeNote component="kagent" />
           <Text variant="body-medium" color="secondary">
-            None of the installations this portal knows run kagent.
+            None of the environments this portal knows run kagent.
           </Text>
         </>
       );
@@ -48,11 +48,13 @@ export function LlmUsageState({ view }: { view: LlmUsageViewModel }) {
       // `mimirEnabled: false`. Not an error: a standalone installation has no
       // Mimir at all, and the sessions tab still works — which is worth saying,
       // because "no metrics" otherwise reads as the whole page being broken.
+      // "Fleet-wide", because the Overview and Cost views render the reader's
+      // own kagent-derived figures right under this where kagent answered.
       return (
         <Text variant="body-medium" color="secondary">
           {installation} has no observability stack this portal can query, so
-          there are no token or cost figures for it. Your sessions still have
-          their own counts.
+          there are no fleet-wide token or cost figures. Your sessions still
+          have their own counts.
         </Text>
       );
 

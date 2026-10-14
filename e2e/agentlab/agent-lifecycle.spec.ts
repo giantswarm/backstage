@@ -2,6 +2,7 @@ import {
   createAgentInWizard,
   deleteAgentInPortal,
   expect,
+  expectWizardStep,
   open,
   startSessionOnReadyAgent,
   test,
@@ -31,20 +32,17 @@ const agentName = `E2E Lifecycle ${stamp}`;
 const agentSlug = `e2e-lifecycle-${stamp}`;
 const prompt = 'Reply with exactly the single word PONG and nothing else.';
 
-test('agent lifecycle: a system prompt past the limit stays on Details', async ({
+test('agent lifecycle: instructions past the limit stay on Details', async ({
   admin,
 }) => {
   await open(admin, '/agent-platform/agents/new');
-  await expect(admin.getByText('Step 1 of 4: Details')).toBeVisible();
-  const field = admin.getByRole('textbox', { name: 'System prompt' });
+  await expectWizardStep(admin, 'Details');
+  const field = admin.getByRole('textbox', { name: 'Instructions' });
   await field.fill('a'.repeat(20001));
   await expect(admin.getByText('20,001 / 20,000 characters')).toBeVisible();
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await admin.getByRole('button', { name: 'Continue' }).first().click();
-  await expect(
-    admin.getByText('Step 1 of 4: Details'),
-    'a prompt past the limit never reaches the dry run',
-  ).toBeVisible();
+  await expectWizardStep(admin, 'Details');
   await expect(
     admin
       .getByText(/System prompt is 20,001 characters; the limit is 20,000/)

@@ -124,9 +124,7 @@ test.describe('Usage → Cost, by agent', () => {
       await expect(unattributed.getByRole('link')).toHaveCount(0);
 
       await expect(
-        admin.getByText(
-          /An agent marked as removed matches none this portal knows/,
-        ),
+        admin.getByText(/Removed marks an agent this portal no longer knows/),
         'the note under the table explains the mark',
       ).toBeVisible();
     } finally {

@@ -56,7 +56,7 @@ All routes are under `/api/agent-platform` and require `?installation=<name>`.
 | ------------------------------------------------ | -------- | ------------------------------ | ------------------------------------------------------------------ |
 | `GET /health`                                    | —        | —                              | `{ status, configured }` — how many installations resolved         |
 | `GET /kagent/installations`                      | —        | `GetVersion` (unauthenticated) | Installations kagent is configured for, with reachability          |
-| `GET /kagent/session-states`                     | required | `ListSessions`, `ListTasks`    | Derived state per session for the switcher rail                    |
+| `GET /kagent/session-states`                     | required | `ListSessions`, `ListTasks`    | Derived state per session for the session lists and the shell rail |
 | `GET /kagent/session-usage`                      | required | `ListSessions`, `ListTasks`    | The caller's token/turn/tool usage for the Usage tab               |
 | `GET /kagent/sessions`                           | required | `ListSessions`                 | The caller's sessions, proto3 JSON (`{sessions: […]}`)             |
 | `POST /kagent/sessions`                          | required | `CreateSession`                | Start a session: `{agentNamespace, agentName, name, requestId?}`   |

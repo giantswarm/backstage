@@ -1,5 +1,6 @@
 import {
   SessionUsageResponse,
+  SessionUsageTotals,
   UsageDayEntry,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentRow } from '../AgentsDataProvider';
@@ -14,6 +15,10 @@ export type ByAgentRow = {
   turns: number;
   inputTokens: number;
   outputTokens: number;
+  /**
+   * The cost this agent's runtime reported for these turns, in USD, when any
+   * turn reported one. `undefined` means "not reported", not "free".
+   */
   costUsd?: number;
 };
 
@@ -40,6 +45,8 @@ export function toByAgentRows(
   const index = buildAgentIndex(agents);
 
   return byAgent.map((entry, position) => {
+    const reported =
+      entry.costUsd !== undefined ? { costUsd: entry.costUsd } : {};
     if (entry.agentId === null) {
       return {
         id: `unknown-${position}`,
@@ -48,7 +55,7 @@ export function toByAgentRows(
         turns: entry.turns,
         inputTokens: entry.inputTokens,
         outputTokens: entry.outputTokens,
-        ...(entry.costUsd !== undefined && { costUsd: entry.costUsd }),
+        ...reported,
       };
     }
     const matched =
@@ -63,7 +70,7 @@ export function toByAgentRows(
       turns: entry.turns,
       inputTokens: entry.inputTokens,
       outputTokens: entry.outputTokens,
-      ...(entry.costUsd !== undefined && { costUsd: entry.costUsd }),
+      ...reported,
     };
   });
 }
@@ -100,14 +107,20 @@ export function couldNotTell(usage: SessionUsageResponse): boolean {
  * belt to that braces: a bar chart handed a sparse series silently compresses
  * the timeline, showing N bars that do not mean N days, and that failure is
  * invisible rather than loud.
+ *
+ * Never past today (UTC): a window of N days cut client-side holds N day
+ * keys, today's included, so filling N + 1 from its first drew a bar for
+ * tomorrow (QA round 1).
  */
 export function fillMissingDays(
   daily: UsageDayEntry[],
   windowDays: number,
+  now: number = Date.now(),
 ): UsageDayEntry[] {
   if (daily.length === 0 || windowDays <= 0) {
     return daily;
   }
+  const today = new Date(now).toISOString().slice(0, 10);
   const byDay = new Map(daily.map(entry => [entry.day, entry]));
   const start = Date.parse(`${daily[0].day}T00:00:00Z`);
   if (Number.isNaN(start)) {
@@ -118,11 +131,98 @@ export function fillMissingDays(
   const DAY_MS = 24 * 60 * 60 * 1000;
   for (let i = 0; i <= windowDays; i += 1) {
     const day = new Date(start + i * DAY_MS).toISOString().slice(0, 10);
+    if (day > today && !byDay.has(day)) {
+      break;
+    }
     filled.push(
       byDay.get(day) ?? { day, inputTokens: 0, outputTokens: 0, turns: 0 },
     );
   }
   return filled;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The UTC day key (`YYYY-MM-DD`) of an epoch-ms instant. */
+function dayKey(epochMs: number): string {
+  return new Date(epochMs).toISOString().slice(0, 10);
+}
+
+/**
+ * The day entries of the last `days` UTC days (today included), for the
+ * screen's time-window control.
+ *
+ * The kagent fan-out's window is fixed — a backend caching contract — so a
+ * narrower selection is cut **client-side** from the daily buckets, which are
+ * the finest-grained time axis the response carries. Day keys compare
+ * lexicographically, so no entry is parsed.
+ */
+export function narrowDaily(
+  daily: UsageDayEntry[],
+  days: number,
+  now: number = Date.now(),
+): UsageDayEntry[] {
+  if (days <= 0) {
+    return [];
+  }
+  const cutoff = dayKey(now - (days - 1) * DAY_MS);
+  return daily.filter(entry => entry.day >= cutoff);
+}
+
+/**
+ * What a narrowed window can honestly total: the figures the daily buckets
+ * carry. Sessions and tool calls are among them when every day reports them
+ * (`lastActiveSessions`, `toolCalls`); a backend that predates those leaves
+ * them undefined, which renders as unknown rather than as a full-window
+ * number under a narrower label. The reported cost is never among them.
+ */
+export type NarrowedTotals = Pick<
+  SessionUsageTotals,
+  'turns' | 'inputTokens' | 'outputTokens'
+> & {
+  sessions?: number;
+  toolCalls?: number;
+};
+
+/** A running sum that turns unknown once one part is. */
+function addKnown(sum: number | undefined, part: number | undefined) {
+  return sum === undefined || part === undefined ? undefined : sum + part;
+}
+
+/** Sum the day entries into the totals a narrowed window can claim. */
+export function sumDaily(daily: UsageDayEntry[]): NarrowedTotals {
+  return daily.reduce<NarrowedTotals>(
+    (acc, entry) => ({
+      turns: acc.turns + entry.turns,
+      inputTokens: acc.inputTokens + entry.inputTokens,
+      outputTokens: acc.outputTokens + entry.outputTokens,
+      sessions: addKnown(acc.sessions, entry.lastActiveSessions),
+      toolCalls: addKnown(acc.toolCalls, entry.toolCalls),
+    }),
+    { turns: 0, inputTokens: 0, outputTokens: 0, sessions: 0, toolCalls: 0 },
+  );
+}
+
+/**
+ * The reader's session count over the selected window: the backend's total
+ * when the selection covers its whole window, else the trailing days' sum.
+ * `days` is the window the count covers — never more than the backend's, so
+ * a wider selection is labelled with what kagent keeps. `count` is undefined
+ * when the backend does not report sessions per day.
+ */
+export function sessionCountForWindow(
+  usage: SessionUsageResponse,
+  selectedDays: number,
+  now: number = Date.now(),
+): { days: number; count: number | undefined } {
+  const backendDays = usage.windowDays || selectedDays;
+  if (selectedDays >= backendDays) {
+    return { days: backendDays, count: usage.totals.sessions };
+  }
+  return {
+    days: selectedDays,
+    count: sumDaily(narrowDaily(usage.daily, selectedDays, now)).sessions,
+  };
 }
 
 /**

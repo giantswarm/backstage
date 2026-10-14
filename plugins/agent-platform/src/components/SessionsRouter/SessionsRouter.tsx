@@ -33,9 +33,9 @@ export const SessionsRouter = () => {
           <AgentsDataProvider>
             <Routes>
               <Route index element={<SessionsIndexPage />} />
-              {/* Both parameters are needed to resolve a session: kagent ids are
-                  only unique within an installation. One page instance per
-                  session, see `SessionDetailRoute`. */}
+              {/* Both parameters are needed to resolve a session: kagent ids
+                  are only unique within an installation. One page instance
+                  per session, see `SessionDetailRoute`. */}
               <Route
                 path=":installation/:sessionId"
                 element={<SessionDetailRoute />}

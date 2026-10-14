@@ -60,19 +60,19 @@ export function RuntimeLostNotice({
     : 'The agent’s runtime could not be brought back';
 
   const what = loss.reported
-    ? `kagent has marked this session’s runtime as lost: the agent’s working state was on a platform node that went away, most likely while the session waited for your answer, and nothing can restore it.`
-    : `kagent could not restart the runtime that held this session’s working state. That happens when the platform node holding a paused session goes away — a spot interruption, a node roll — most likely while the session waited for your answer.`;
+    ? `kagent marked this session’s runtime as lost: its working state was on a platform node that went away, likely while waiting for your answer. Nothing can restore it.`
+    : `kagent could not restart the runtime holding this session’s state — its platform node likely went away (spot interruption, node roll) while the session waited for your answer.`;
 
   const attempts =
     !loss.reported && loss.attempts > 1
       ? ` It has failed ${loss.attempts} times in a row.`
       : '';
 
-  let wayOut = `The conversation can be continued in a new session with ${agent} from the Sessions list.`;
+  let wayOut = `Continue in a new session with ${agent} from the Sessions list.`;
   if (offersNewSession && loss.reported) {
-    wayOut = `To carry on, start a new session with ${agent} — the button under the message box takes your message with it.`;
+    wayOut = `Start a new session with ${agent} to carry on — the button under the message box takes your message with it.`;
   } else if (offersNewSession) {
-    wayOut = `You can send again to retry. If it fails the same way, start a new session with ${agent} — the button under the message box takes your message with it.`;
+    wayOut = `Send again to retry. If it fails again, start a new session with ${agent} — the button under the message box takes your message with it.`;
   }
 
   return (
@@ -83,8 +83,7 @@ export function RuntimeLostNotice({
         <span className={classes.description}>
           <span>
             {what}
-            {attempts} The conversation above is complete and stays readable;
-            nothing is missing from the transcript. {wayOut}
+            {attempts} The transcript above is complete. {wayOut}
           </span>
           {loss.cause && (
             <span className={classes.cause}>kagent reported: {loss.cause}</span>

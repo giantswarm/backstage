@@ -92,8 +92,8 @@ export interface KagentApi {
   ): Promise<A2aTaskWire[]>;
 
   /**
-   * Derived state for this installation's sessions — what the switcher rail
-   * groups by. Computed by the backend, because a session's state lives in its
+   * Derived state for this installation's sessions — what the session lists
+   * group by. Computed by the backend, because a session's state lives in its
    * whole conversation and reading every one of them in the browser is not
    * affordable.
    */
@@ -163,14 +163,14 @@ export interface KagentApi {
   /**
    * Delete one session.
    *
-   * kagent scopes this by the forwarded token's user id and deletes **softly**:
-   * the row keeps its events and tasks, but every read filters it out, so the
+   * kagent scopes this to the caller and deletes **softly**: it tears the
+   * session's runtime down and marks it deleted, but its record, tasks and events
+   * stay in kagent's database. Every read answers 404 for it from then on, so the
    * session is gone as far as this plugin can tell.
    *
-   * Resolves for anything kagent accepts, which includes deleting a session that
-   * was already deleted or belongs to somebody else — its statement simply matches
-   * no rows and still answers 200. So a resolved promise means "kagent accepted
-   * this", not "a session was definitely removed".
+   * A session kagent does not find for the caller — never existed, somebody
+   * else's, already deleted — rejects with a `NotFoundError` (a gRPC `NotFound`,
+   * a 404 from the backend), not a silent success.
    */
   deleteSession(installation: string, sessionId: string): Promise<void>;
 

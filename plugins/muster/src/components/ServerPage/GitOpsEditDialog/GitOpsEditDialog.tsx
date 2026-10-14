@@ -1,22 +1,12 @@
 import { ReactNode, useMemo } from 'react';
-import {
-  Box,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  Flex,
-  Skeleton,
-  Text,
-} from '@backstage/ui';
+import { Flex, Skeleton, Text } from '@backstage/ui';
 import {
   GitOpsSource,
   useGitOpsSource,
 } from '@giantswarm/backstage-plugin-flux-react';
 import {
   ExternalLink,
-  YamlEditorFormField,
+  ManifestDialog,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServer } from '../../../lib/k8s';
 import {
@@ -80,7 +70,9 @@ function SourceStep({
  * read-only in the app, since the reconciler would revert a live change. The
  * steps depend on what is in Git — the MCPServer manifest itself, or the
  * values of the HelmRelease that renders it. Render it for a managed server
- * only: it looks the server's GitOps source up.
+ * only: it looks the server's GitOps source up. The shared `ManifestDialog`
+ * with the steps above the manifest (none for a chart-rendered server, whose
+ * rendered manifest is not what anyone edits).
  */
 export function GitOpsEditDialog({
   server,
@@ -106,10 +98,6 @@ export function GitOpsEditDialog({
   // Named the way the Git host names it; unknown until the GitRepository is.
   const changeRequest =
     source.changeRequestTerm ?? 'pull request (merge request on GitLab)';
-
-  const copy = () => {
-    navigator.clipboard?.writeText(manifest).catch(() => undefined);
-  };
 
   let steps: ReactNode;
   if (source.isLoading) {
@@ -213,46 +201,23 @@ export function GitOpsEditDialog({
   }
 
   return (
-    <Dialog
+    <ManifestDialog
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      width="min(90vw, 860px)"
+      title={
+        <>
+          Edit or remove <code>{name}</code>
+        </>
+      }
+      label="Current manifest"
+      manifest={chartRendered ? undefined : manifest}
     >
-      <DialogHeader>
-        Edit or remove <code>{name}</code>
-      </DialogHeader>
-      <DialogBody>
-        <Flex direction="column" gap="3">
-          <Text as="p" variant="body-medium">
-            This server is managed through GitOps. Flux would revert a change
-            made here, so make it in Git.
-          </Text>
-          <Text as="div" variant="body-medium">
-            {steps}
-          </Text>
-          {!chartRendered && (
-            <Box>
-              <YamlEditorFormField
-                label="Current manifest"
-                value={manifest}
-                readOnly
-                height={360}
-                maxHeight={360}
-              />
-            </Box>
-          )}
-        </Flex>
-      </DialogBody>
-      <DialogFooter>
-        {!chartRendered && (
-          <Button variant="secondary" onPress={copy}>
-            Copy manifest
-          </Button>
-        )}
-        <Button variant="primary" onPress={() => onOpenChange(false)}>
-          Close
-        </Button>
-      </DialogFooter>
-    </Dialog>
+      <Text as="p" variant="body-medium">
+        Managed through GitOps: make the change in Git, or Flux reverts it.
+      </Text>
+      <Text as="div" variant="body-medium">
+        {steps}
+      </Text>
+    </ManifestDialog>
   );
 }

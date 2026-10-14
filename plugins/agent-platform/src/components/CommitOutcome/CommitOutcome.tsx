@@ -20,5 +20,10 @@ export function CommitOutcome({ result }: { result: CommitAgentResult }) {
       />
     );
   }
-  return <ClusterManagerCommitOutcome commit={result.commit} />;
+  return (
+    <ClusterManagerCommitOutcome
+      commit={result.commit}
+      placeNoun="environment"
+    />
+  );
 }

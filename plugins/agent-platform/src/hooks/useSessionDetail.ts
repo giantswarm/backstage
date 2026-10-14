@@ -1,6 +1,10 @@
 import { useMemo, useRef } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQuery } from '@tanstack/react-query';
+import {
+  useIsRestoring,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
@@ -45,14 +49,6 @@ export type SessionDetailView = {
    * carries no id.
    */
   currentTaskId?: string;
-  /**
-   * Epoch ms {@link state} last moved, when anything in the conversation says.
-   *
-   * Exposed so the switcher rail can prefer this page's reading of its *own*
-   * session over the backend's cached summary — this poll is always the fresher
-   * of the two.
-   */
-  stateChangedAt?: number;
   /**
    * Whether the agent is working on a reply, as of the last successful read.
    *
@@ -107,6 +103,62 @@ export type SessionDetailView = {
   error?: Error;
 };
 
+/**
+ * How often a just-created session's first reads are retried, whatever they
+ * failed with, before the failure is believed: under 6 s in all (see
+ * {@link settleRetryDelay}).
+ *
+ * A session read the moment `CreateSession` answers can miss it (404) or fail
+ * for a beat while the controller's read side catches up, and the query
+ * client retries neither a 404 nor a 503. Shown as is, the page said "Session
+ * not found" or "Could not load this session" until the first turn's re-read
+ * took it back (T86). Inside the window the page keeps loading; a session
+ * that stays unreadable past it is reported as before.
+ */
+export const SETTLE_RETRIES = 5;
+
+/** 250 ms doubling to a 2 s cap: 250, 500, 1000, 2000, 2000. */
+export function settleRetryDelay(failureCount: number): number {
+  return Math.min(250 * 2 ** failureCount, 2000);
+}
+
+/** Stands in for an empty 200 on a session that was just created. */
+function notYetReadable(): Error {
+  const error = new Error('kagent does not serve the new session yet.');
+  error.name = 'NotFoundError';
+  return error;
+}
+
+type RetryOption =
+  boolean | number | ((count: number, error: Error) => boolean);
+type RetryDelayOption = number | ((count: number, error: Error) => number);
+
+function defaultShouldRetry(
+  retry: RetryOption | undefined,
+  failureCount: number,
+  error: Error,
+): boolean {
+  if (typeof retry === 'function') {
+    return retry(failureCount, error);
+  }
+  if (typeof retry === 'number') {
+    return failureCount < retry;
+  }
+  // react-query's own default is three retries.
+  return retry ?? failureCount < 3;
+}
+
+function defaultDelay(
+  retryDelay: RetryDelayOption | undefined,
+  failureCount: number,
+  error: Error,
+): number {
+  if (typeof retryDelay === 'function') {
+    return retryDelay(failureCount, error);
+  }
+  return retryDelay ?? Math.min(1000 * 2 ** failureCount, 30_000);
+}
+
 const EMPTY_TIMELINE: SessionTimeline = {
   items: [],
   tokens: { total: 0, prompt: 0, completion: 0 },
@@ -142,12 +194,54 @@ const UNREADABLE_SESSION_ERROR = new Error(
 export function useSessionDetail(
   installation: string,
   sessionId: string,
-  options: { enabled?: boolean } = {},
+  options: {
+    enabled?: boolean;
+    /**
+     * The session was created a moment ago, by the composer that led here:
+     * its first reads are retried through {@link SETTLE_RETRIES} whatever
+     * they fail with, so the page shows its loading state until the real
+     * outcome is known instead of an error the next read would take back.
+     */
+    justCreated?: boolean;
+  } = {},
 ): SessionDetailView {
   // `enabled: false` stops the intervals dead, which is the only thing that
   // actually holds off a poll landing mid-delete — see `useDeleteSession`.
-  const { enabled = true } = options;
+  const { enabled = true, justCreated = false } = options;
   const kagentApi = useApi(kagentApiRef);
+  const queryClient = useQueryClient();
+  // While the plugin's provider restores the persisted cache — on every mount,
+  // so on every navigation into the Sessions tab from another section, the
+  // new-session screen included — react-query reports every query as idle with
+  // no data: neither loading nor failed. Read as "not loading", that rendered
+  // "Could not load this session" until the restore finished (T86). The same
+  // reading `useResource` makes in kubernetes-react.
+  const isRestoring = useIsRestoring();
+
+  // Whether each read has succeeded once. The settle window covers the *first*
+  // read only: once a conversation is on screen, a failed poll is the
+  // staleness notice's, exactly as on any other session.
+  const sessionRead = useRef(false);
+  const tasksRead = useRef(false);
+  const { retry: clientRetry, retryDelay: clientRetryDelay } =
+    queryClient.getDefaultOptions().queries ?? {};
+  const settleOptions = (read: { current: boolean }) => ({
+    retry: (failureCount: number, error: Error) =>
+      (justCreated && !read.current && failureCount < SETTLE_RETRIES) ||
+      defaultShouldRetry(
+        clientRetry as RetryOption | undefined,
+        failureCount,
+        error,
+      ),
+    retryDelay: (failureCount: number, error: Error) =>
+      justCreated && !read.current
+        ? settleRetryDelay(failureCount)
+        : defaultDelay(
+            clientRetryDelay as RetryDelayOption | undefined,
+            failureCount,
+            error,
+          ),
+  });
 
   const sessionQuery = useQuery({
     queryKey: sessionQueryKey(installation, sessionId),
@@ -158,13 +252,23 @@ export function useSessionDetail(
     // raw query key shown to a user and a classification we cannot act on. It also
     // made the `isSuccess && !data` branch below unreachable. `null` is a value
     // react-query stores, so an empty read stays an expected outcome.
-    queryFn: async () =>
-      (await kagentApi.getSessionDetail(installation, sessionId)) ?? null,
+    //
+    // Except on a session created a moment ago, where an empty read is the
+    // same lag as a 404 and is retried like one; once the window is spent it
+    // still lands as "not found".
+    queryFn: async () => {
+      const detail = await kagentApi.getSessionDetail(installation, sessionId);
+      if (!detail && justCreated && !sessionRead.current) {
+        throw notYetReadable();
+      }
+      return detail ?? null;
+    },
     enabled,
     // A flat baseline, not the tasks' two tiers: this object is the title, the
     // agent and the timestamps, none of which move while an agent works. It polls
     // at all so a session renamed or deleted elsewhere stops looking current.
     refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+    ...settleOptions(sessionRead),
   });
 
   const tasksQuery = useQuery({
@@ -172,7 +276,15 @@ export function useSessionDetail(
     queryFn: () => kagentApi.listSessionTasks(installation, sessionId),
     enabled,
     refetchInterval: getSessionTasksRefetchInterval,
+    ...settleOptions(tasksRead),
   });
+
+  if (sessionQuery.data) {
+    sessionRead.current = true;
+  }
+  if (tasksQuery.data) {
+    tasksRead.current = true;
+  }
 
   const tasks = tasksQuery.data;
 
@@ -273,7 +385,6 @@ export function useSessionDetail(
     timeline,
     state,
     currentTaskId,
-    stateChangedAt: newest?.changedAt,
     isAgentWorking: turnProgress?.kind === 'working',
     turnProgress,
     pendingConfirmation,
@@ -290,9 +401,16 @@ export function useSessionDetail(
     //
     // `isLoading`, deliberately, not `isFetching`: it is false during a refetch,
     // which is what keeps a poll from flashing the spinner over a rendered page.
+    //
+    // The persisted cache's restore counts only while a read has nothing yet:
+    // a session both reads already hold in memory renders at once rather than
+    // swapping to the loading page for the restore and back (T95).
     isLoading:
       !isNotFound &&
-      (isAwaitingData(sessionQuery) || isAwaitingData(tasksQuery)),
+      ((isRestoring &&
+        (sessionQuery.data === undefined || tasksQuery.data === undefined)) ||
+        isAwaitingData(sessionQuery) ||
+        isAwaitingData(tasksQuery)),
     isNotFound,
     error,
   };

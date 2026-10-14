@@ -78,6 +78,21 @@ export type LlmModelRow = {
   sharePct: number | undefined;
 };
 
+/** One agent's traffic on one model: the finest split the gateway reports. */
+export type LlmAgentModelRow = {
+  id: string;
+  /** The raw `agent_namespace` label: the agent's organization. */
+  namespace: string;
+  /** The raw `agent` label. */
+  agent: string;
+  /** The raw `gen_ai_response_model` label, empty when the gateway had none. */
+  model: string;
+  tokens: number;
+  calls: number;
+  /** As {@link LlmAgentRow.costUsd}: `undefined` when nothing was priced. */
+  costUsd: number | undefined;
+};
+
 export type UnpricedModelRow = {
   id: string;
   requestModel: string;
@@ -108,6 +123,9 @@ export type LlmDailySeries = {
   series: string[];
 };
 
+/** The one series key of {@link LlmUsage.callsPerDay}. */
+export const CALLS_SERIES = 'calls';
+
 export type LlmReliability = {
   totalRequests: number;
   errorRequests: number;
@@ -137,6 +155,11 @@ export type LlmUsageTotals = {
   avgTokensPerCall: number | undefined;
   /** Cache reads over all cache-eligible input tokens, as a percentage. */
   cacheReadSharePct: number | undefined;
+  /**
+   * The spend over the window before this one, when it was asked for:
+   * `undefined` when nothing was priced then.
+   */
+  previousCostUsd?: number | undefined;
 };
 
 export type LlmUsage = {
@@ -145,8 +168,17 @@ export type LlmUsage = {
   tokenTypes: TokenTypeTotals;
   byAgent: LlmAgentRow[];
   byModel: LlmModelRow[];
+  /** Every agent and model pair, for a breakdown of one agent or one model. */
+  byAgentModel: LlmAgentModelRow[];
   costPerDay: LlmDailySeries;
   tokensPerDay: LlmDailySeries;
+  /**
+   * Model calls per day — one series, keyed {@link CALLS_SERIES} — for the
+   * Overview's activity heatmap. Absent unless the view asked for it
+   * (`dailyCalls`); `null` when its query failed, so the heatmap can say so
+   * rather than draw a calendar of empty days under a non-zero call total.
+   */
+  callsPerDay?: LlmDailySeries | null;
   reliability: LlmReliability;
   unpricedModels: UnpricedModelRow[];
   rates: TokenRates;
@@ -443,6 +475,53 @@ export function reduceByModel(options: {
   );
 }
 
+/** `agent_namespace|agent|gen_ai_response_model`. */
+function agentModelKey(labels: Record<string, string>): string {
+  return `${agentKey(labels)}|${modelKey(labels)}`;
+}
+
+/**
+ * Roll the three vectors up by agent **and** model, unjoined: the raw labels,
+ * for a page about one agent (its models) or one model (its agents) to filter.
+ * Sorted by spend, then tokens.
+ */
+export function reduceByAgentModel(options: {
+  cost: MimirMetricSample[] | undefined;
+  tokens: MimirMetricSample[] | undefined;
+  calls: MimirMetricSample[] | undefined;
+}): LlmAgentModelRow[] {
+  const costByPair = sumBy(options.cost, agentModelKey);
+  const tokensByPair = sumBy(options.tokens, agentModelKey);
+  const callsByPair = sumBy(options.calls, agentModelKey);
+
+  const keys = new Set([
+    ...costByPair.keys(),
+    ...tokensByPair.keys(),
+    ...callsByPair.keys(),
+  ]);
+
+  const rows: LlmAgentModelRow[] = [];
+  for (const key of keys) {
+    const [namespace = '', agent = '', model = ''] = key.split('|');
+    rows.push({
+      id: key,
+      namespace,
+      agent,
+      model,
+      tokens: tokensByPair.get(key) ?? 0,
+      calls: callsByPair.get(key) ?? 0,
+      costUsd: optionalTotal(costByPair, key),
+    });
+  }
+
+  return rows.sort(
+    (a, b) =>
+      (b.costUsd ?? 0) - (a.costUsd ?? 0) ||
+      b.tokens - a.tokens ||
+      a.id.localeCompare(b.id),
+  );
+}
+
 export function reduceUnpricedModels(
   samples: MimirMetricSample[] | undefined,
 ): UnpricedModelRow[] {
@@ -642,6 +721,20 @@ export function buildLlmUsage(options: {
   today: string;
   costToday: MimirMetricSample[] | undefined;
   tokensToday: MimirMetricSample[] | undefined;
+  /**
+   * Model calls per day, from `callsPerDay`, when the view asked for them:
+   * `null` when that query failed, absent when it was not asked for.
+   */
+  callsPerDay?: MimirMatrixSample[] | null;
+  /** Today's partial call count, for the last row of {@link callsPerDay}. */
+  callsToday?: MimirMetricSample[];
+  /** The window the vectors cover. Defaults to {@link WINDOW_DAYS}. */
+  windowDays?: number;
+  /**
+   * The spend over the window before, from `previousCost`. Absent when the
+   * comparison was not asked for, which leaves `previousCostUsd` out.
+   */
+  previousCost?: MimirMetricSample[];
 }): LlmUsage {
   const { cost, tokens, calls } = options;
 
@@ -688,9 +781,25 @@ export function buildLlmUsage(options: {
     }),
     { day: options.today, samples: options.tokensToday, label: typeLabel },
   );
+  const callsLabel = () => CALLS_SERIES;
+  const callsPerDay =
+    options.callsPerDay === null
+      ? null
+      : options.callsPerDay &&
+        applyTodayPartial(
+          reduceDaily(options.callsPerDay, {
+            label: callsLabel,
+            days: options.days,
+          }),
+          {
+            day: options.today,
+            samples: options.callsToday,
+            label: callsLabel,
+          },
+        );
 
   return {
-    windowDays: WINDOW_DAYS,
+    windowDays: options.windowDays ?? WINDOW_DAYS,
     totals: {
       costUsd: totalCost,
       tokens: totalTokens,
@@ -703,12 +812,17 @@ export function buildLlmUsage(options: {
       usdPerMillion: perMillion(totalCost, totalTokens),
       avgTokensPerCall: ratePerCall(totalTokens, totalCalls),
       cacheReadSharePct: cacheReadShare(tokenTypes),
+      ...(options.previousCost && {
+        previousCostUsd: optionalSum(sumBy(options.previousCost, () => 'all')),
+      }),
     },
     tokenTypes,
     byAgent,
     byModel,
+    byAgentModel: reduceByAgentModel({ cost, tokens, calls }),
     costPerDay,
     tokensPerDay,
+    ...(callsPerDay !== undefined && { callsPerDay }),
     reliability: reduceReliability({
       requestsByStatus: options.requestsByStatus,
       p50: options.p50,

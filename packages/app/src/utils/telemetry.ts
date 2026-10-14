@@ -1,4 +1,27 @@
 import sha256 from 'crypto-js/sha256';
+import { CONNECTOR_GROUPS } from '@giantswarm/backstage-plugin-muster';
+import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
+
+/** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
+const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
+
+/**
+ * The Connectors tab's sub-tabs below its own address (muster's
+ * `CONNECTOR_GROUPS`, the default at the tab's own address left out), a fixed
+ * set too.
+ */
+const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
+  CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
+);
+
+/** Model hosting's create flows by their last path segment, as page names. */
+const HOSTING_FLOW_PAGES: Record<string, string> = {
+  serve: 'Serve model',
+  import: 'Import model',
+  pull: 'Pull model',
+  'add-backend': 'Add model backend',
+  'add-pool': 'Add GPU node pool',
+};
 
 export function getTelemetryPageViewPayload(pathname: string): {
   [key: string]: string;
@@ -62,6 +85,41 @@ export function getTelemetryPageViewPayload(pathname: string): {
     case pathname.startsWith('/settings'):
       payload = { page: 'Settings' };
       break;
+
+    case pathname === '/customize':
+      payload = { page: 'Customize' };
+      break;
+
+    // One model: `/customize/models/<installation>/<namespace>/<name>`. One
+    // page, the model in neither `page` nor `view` (it is in `path`, as on
+    // every page): `page` and `view` are the dimensions TelemetryDeck
+    // aggregates on, and path segments there would make a signal per model.
+    // The former `/agent-platform/models/…` path redirects here. A trailing
+    // slash is the same page, as the router has it. Above the tab case, which
+    // would report it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail' };
+      break;
+
+    // A Customize tab, with the tab as the view. Only the known tabs: the
+    // segment comes from the URL, and an unknown one redirects to the Agents tab.
+    // The Connectors tab's sub-tabs below its own address add a `subview`; the
+    // tab's own address is its default sub-tab, the customer's connectors.
+    case pathname.startsWith('/customize/'): {
+      const [, , tab, sub, ...deeper] = pathname.split('/');
+      if (!CUSTOMIZE_TABS.has(tab)) {
+        payload = { page: 'Customize' };
+      } else if (
+        tab === 'connectors' &&
+        CONNECTOR_SUBTABS.has(sub) &&
+        deeper.length === 0
+      ) {
+        payload = { page: 'Customize', view: tab, subview: sub };
+      } else {
+        payload = { page: 'Customize', view: tab };
+      }
+      break;
+    }
 
     case pathname === '/installations':
       payload = { page: 'Installations index' };
@@ -128,35 +186,45 @@ export function getTelemetryPageViewPayload(pathname: string): {
 
     // muster's two Agent Platform tabs, above the generic agent-platform cases
     // below, which would report them as the Agents page.
-    case pathname === '/agent-platform/mcp-servers':
-      payload = { page: 'MCP Servers' };
+    case pathname === '/agent-platform/connectors':
+      payload = { page: 'Connectors' };
       break;
 
-    case /^\/agent-platform\/mcp-servers\/new(\/|$)/.test(pathname): {
+    case /^\/agent-platform\/connectors\/new(\/|$)/.test(pathname): {
       const parts = pathname.split('/');
       payload = {
-        page: 'MCP server registration',
+        page: 'Connector registration',
         // The wizard's first step is its index.
         view: parts[4] || 'server',
       };
       break;
     }
 
-    // A tool's page beneath its server, and a server's page with its tab as
-    // the view.
-    case /^\/agent-platform\/mcp-servers\/[^/]+\/tools\/[^/]+/.test(pathname):
-      payload = { page: 'MCP tool' };
+    // A tool's page beneath its connector, and a connector's page with its tab
+    // as the view.
+    case /^\/agent-platform\/connectors\/[^/]+\/tools\/[^/]+/.test(pathname):
+      payload = { page: 'Connector tool' };
       break;
 
-    case pathname.startsWith('/agent-platform/mcp-servers/'): {
+    case pathname.startsWith('/agent-platform/connectors/'): {
       const parts = pathname.split('/');
       payload = {
-        page: 'MCP server',
-        // Tools is the server page's index.
+        page: 'Connector',
+        // Tools is the connector page's index.
         view: parts[4] || 'tools',
       };
       break;
     }
+
+    // The tab's old address: every `/agent-platform/mcp-servers…` path only
+    // redirects to its `/agent-platform/connectors…` counterpart now
+    // (`ConnectorsRedirect`), so the momentary view counts as the target page
+    // rather than opening a dimension or merging into the Agents page's
+    // numbers.
+    case pathname === '/agent-platform/mcp-servers' ||
+      pathname.startsWith('/agent-platform/mcp-servers/'):
+      payload = { page: 'Connectors', view: 'redirect' };
+      break;
 
     case pathname === '/agent-platform/workflows':
       payload = { page: 'Workflows' };
@@ -189,27 +257,80 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Models index' };
       break;
 
-    // One model: `…/models/<installation>/<namespace>/<name>`. No `view`, for
-    // the same reason as Session detail and Agent detail: `page` and `view` are
-    // the dimensions TelemetryDeck aggregates on, and putting path segments
-    // there yields a distinct signal name per model rather than a countable
-    // page. (It is not a privacy measure — every payload below carries
-    // `path: pathname` verbatim.) Placed above the views case so the three
-    // identifying segments cannot reach a `view`.
-    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
-      payload = { page: 'Model detail' };
+    // One model's former path, `…/models/<installation>/<namespace>/<name>`,
+    // which only redirects to `/customize/models/…` (above); the page the
+    // visit lands on reports itself as Model detail right after, so this one
+    // must not, or each old link counts twice. Its own page, like the Agents
+    // redirect, with no `view`: the segments name a model. Placed above the
+    // views case so the three identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail redirect' };
       break;
 
-    // What hangs off the Models tab: the serving views (`serving`, `capacity`),
-    // `new`, and the `configs` paths an older release's links still carry. Only
-    // the first segment, so anything deeper collapses to what it belongs to
-    // instead of opening the dimension up.
+    // Editing one model: the Connect-a-model flow prefilled, at
+    // `…/models/edit/<installation>/<namespace>/<name>`. One page, the model in
+    // neither `page` nor `view` (it is in `path`, as on every page), like
+    // Agent edit. Four segments, so the detail case above never takes it; it
+    // must stay above the views case, which would report `view: 'edit'`.
+    case /^\/agent-platform\/models\/edit\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
+      payload = { page: 'Model edit' };
+      break;
+
+    // Model hosting's create flows, each a page of its own under the view it
+    // adds to: `…/models/serving/{serve,import,pull,add-backend}` and
+    // `…/models/capacity/add-pool`. One page each, so a flow is counted apart
+    // from the view it was opened on; must stay above the views case, which
+    // would report it as that view.
+    case /^\/agent-platform\/models\/(serving\/(serve|import|pull|add-backend)|capacity\/add-pool)\/?$/.test(
+      pathname,
+    ):
+      payload = {
+        page: HOSTING_FLOW_PAGES[pathname.replace(/\/$/, '').split('/')[4]],
+      };
+      break;
+
+    // What hangs off the Models tab: the serving views (`serving`, `capacity`,
+    // the agent-platform shell's `hosting`), `new`, and the `configs` paths an
+    // older release's links still carry. Only the first segment, so anything
+    // deeper collapses to what it belongs to instead of opening the dimension
+    // up.
     case pathname.startsWith('/agent-platform/models'): {
       const parts = pathname.split('/');
       payload = {
         page: 'Models',
         view: parts[3],
       };
+      break;
+    }
+
+    // The add-skill form. Must stay above the skill-detail case below, whose
+    // prefix match would otherwise swallow it.
+    case pathname === '/agent-platform/skills/new':
+      payload = { page: 'Add skill' };
+      break;
+
+    // Editing a skill: `/agent-platform/skills/edit/<owner>/<repo>[/<dir>]`.
+    // No `view`, like the skill page itself. Must stay above the skill-detail
+    // case below for the same reason as the add-skill form.
+    case pathname.startsWith('/agent-platform/skills/edit/'):
+      payload = { page: 'Edit skill' };
+      break;
+
+    // One skill: `/agent-platform/skills/<owner>/<repo>[/<skill dir>]`, or
+    // `/agent-platform/skills/-/<host>/<repo path>[/-/<skill dir>]` for a
+    // skill outside github.com. The varying segments name a repository and a
+    // skill directory, which would open the dimension up per skill, so the
+    // only `view` is the tab — a closed set, the trailing `instructions` or
+    // `used-by` (the Overview, the skill's own path, has none). The bare path
+    // only redirects to Customize → Skills and is folded in like the
+    // mcp-servers redirect above. Must stay above the generic '/agent-platform'
+    // cases below for the reason the Sessions cases give.
+    case pathname === '/agent-platform/skills' ||
+      pathname.startsWith('/agent-platform/skills/'): {
+      const tab = /\/(instructions|used-by)\/?$/.exec(pathname)?.[1];
+      payload = tab
+        ? { page: 'Skill detail', view: tab }
+        : { page: 'Skill detail' };
       break;
     }
 
@@ -228,6 +349,24 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Session detail' };
       break;
 
+    // The edit wizard for one agent:
+    // `/agent-platform/agents/edit/<installation>/<namespace>/<name>`, then its
+    // `skills`, `tools` and `review` steps. One page, like the former edit
+    // form below; the step goes in `view` — a fixed, public set like the
+    // detail page's tabs — and the identifying segments stay out of both
+    // dimensions (they are still in `path`, as on every page). Must stay above
+    // the agent-detail case, whose three dynamic segments would otherwise read
+    // `edit/<installation>/<namespace>` as an agent.
+    case /^\/agent-platform\/agents\/edit\/[^/]+\/[^/]+\/[^/]+(\/(skills|tools|review))?$/.test(
+      pathname,
+    ): {
+      const step = pathname.split('/')[7];
+      payload = step
+        ? { page: 'Agent edit', view: step }
+        : { page: 'Agent edit' };
+      break;
+    }
+
     // One agent: `/agent-platform/agents/<installation>/<namespace>/<name>`,
     // optionally followed by one of its tabs. The three identifying segments
     // are kept out of `page` and `view`, for the same reason as Session detail:
@@ -237,8 +376,8 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // `path: pathname` verbatim, so the names are transmitted for this page as
     // for every other one; it is about keeping the dimension bounded.
     //
-    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` is a
-    // fixed, public set, so it stays bounded — the same argument the Usage
+    // The tab, by contrast, belongs in `view`: `tools`/`skills`/`sessions` (and
+    // the agent shell's `usage`) is a fixed, public set, so it stays bounded — the same argument the Usage
     // views case makes. Overview is the index and keeps carrying no `view`, so
     // the existing `Agent detail` numbers stay continuous across this split.
     //
@@ -247,7 +386,7 @@ export function getTelemetryPageViewPayload(pathname: string): {
     // required so it cannot swallow the create flow's `agents/new`,
     // `agents/new/skills` or `agents/new/review` — all of which keep reporting
     // through the generic case below.
-    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions))?$/.test(
+    case /^\/agent-platform\/agents\/[^/]+\/[^/]+\/[^/]+(\/(tools|skills|sessions|usage))?$/.test(
       pathname,
     ): {
       // Absent for Overview, and left out of the payload entirely rather than
@@ -259,10 +398,10 @@ export function getTelemetryPageViewPayload(pathname: string): {
       break;
     }
 
-    // The edit form for one agent: `…/<installation>/<namespace>/<name>/edit`.
-    // A page of its own rather than a view of the detail page — it is a
-    // different form with its own funnel — and, like the detail case, it
-    // carries no `view`.
+    // The edit wizard's former address, `…/<installation>/<namespace>/<name>/edit`,
+    // which now only redirects to the wizard above. A page of its own rather
+    // than a view of the detail page — and, like the detail case, it carries
+    // no `view`.
     //
     // What that buys is a bounded dimension, not privacy. Every payload this
     // function returns carries `path: pathname` verbatim, so the installation,
@@ -287,14 +426,15 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Usage' };
       break;
 
-    // The Usage tab's second-level views (`overview`, `cost`, `conversations`,
-    // `mcp`), with the view as its one segment. The bare path
-    // above keeps its existing name rather than becoming 'Usage index': it now
-    // only ever redirects here, and renaming it would break continuity in
-    // TelemetryDeck for nothing.
+    // The Usage tab's second-level views (`overview`, `cost`, `connectors`,
+    // `conversations`, and the retired `mcp` and `technical` addresses, which
+    // now only redirect to `connectors` and `overview`), with the view as its
+    // one segment. The bare path above keeps its existing name rather than
+    // becoming 'Usage index': it now only ever redirects here, and renaming it
+    // would break continuity in TelemetryDeck for nothing.
     //
     // `view` is safe to include where a session or agent path's segments were
-    // not: these four are a fixed, public set, so they identify a view rather
+    // not: these views are a fixed, public set, so they identify a view rather
     // than a customer's installation or an agent's name.
     case pathname.startsWith('/agent-platform/usage/'): {
       const parts = pathname.split('/');
@@ -304,6 +444,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       };
       break;
     }
+
+    // The shell's minimal "Profile and settings" page: who is signed in, with
+    // sign out — the rail's profile menu links here instead of the classic
+    // `/settings`. Must stay above the generic '/agent-platform' cases below,
+    // or it would report as `page: 'Agents', view: 'profile'`.
+    case pathname === '/agent-platform/profile':
+      payload = { page: 'Profile' };
+      break;
 
     // The section root renders its first tab, which is Sessions — so this is the
     // same page as '/agent-platform/sessions' above and carries the same name.

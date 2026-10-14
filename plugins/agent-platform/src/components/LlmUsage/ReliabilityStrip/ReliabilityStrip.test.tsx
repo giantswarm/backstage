@@ -18,8 +18,8 @@ describe('ReliabilityStrip', () => {
 
     expect(screen.getByText('Tokens per second')).toBeInTheDocument();
     expect(screen.getByText('200/s')).toBeInTheDocument();
-    expect(screen.getByText('1.5s')).toBeInTheDocument();
-    expect(screen.getByText('12s')).toBeInTheDocument();
+    expect(screen.getByText('1.5 s')).toBeInTheDocument();
+    expect(screen.getByText('12 s')).toBeInTheDocument();
   });
 
   it('shows an em dash for the speed when nothing streamed', () => {
@@ -32,6 +32,6 @@ describe('ReliabilityStrip', () => {
     );
 
     expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.getByText('1.5s')).toBeInTheDocument();
+    expect(screen.getByText('1.5 s')).toBeInTheDocument();
   });
 });

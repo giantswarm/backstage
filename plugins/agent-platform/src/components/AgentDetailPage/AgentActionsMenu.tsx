@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
-import EditOutlinedIcon from '@material-ui/icons/EditOutlined';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import UpdateIcon from '@material-ui/icons/Update';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -28,8 +27,9 @@ import { AgentManifestDialog } from './AgentManifestDialog';
  * a pull request as the person in the repository that owns a release. Only a
  * release applied from git has such a repository, so it is what makes Edit and
  * Delete available for a GitOps-owned agent — through a pull request instead of
- * a live write: the Edit agent page dry-runs and commits such an agent. Update
- * skills has no commit mode.
+ * a live write: the Edit agent page dry-runs and commits such an agent, and Update
+ * skills dry-runs and commits `refreshSkills` (agent-manager's `update_agent`
+ * honours it in both modes).
  *
  * `isVerdictPending` is either read still being in flight, which is not the
  * same thing: offering the actions then would show them to everyone for a
@@ -46,8 +46,8 @@ export type AgentManagerGate = {
 
 /**
  * How a write to an agent is offered: live, as a pull request in the GitOps
- * repository that owns it, or not at all. Delete and the Edit agent page
- * support `commit`.
+ * repository that owns it, or not at all. Delete, Update skills and the Edit
+ * agent page support `commit`.
  */
 export type AgentWriteMode = WriteMode | undefined;
 
@@ -83,13 +83,13 @@ export function agentManagerAbsenceReason(
     return undefined;
   }
   if (gate.isGitOpsOwned) {
-    return 'This agent is applied from git, so agent-manager refuses live writes. Edit it, update its skills or remove it in the GitOps repository instead.';
+    return 'It is applied from Git, so edit it, update its skills or remove it in the GitOps repository.';
   }
   if (gate.isUnavailable) {
-    return 'Editing, updating skills and deleting go through agent-manager over muster, and this portal has no muster plugin.';
+    return 'Editing, updating skills and deleting need agent-manager via muster, and this portal has no muster plugin.';
   }
   if (gate.presence === 'missing') {
-    return `Editing, updating skills and deleting go through agent-manager, and muster on ${installation} lists no agent-manager.`;
+    return `Editing, updating skills and deleting need agent-manager, which muster on ${installation} does not list.`;
   }
   return undefined;
 }
@@ -120,13 +120,11 @@ export function agentManagerAbsenceReason(
 export function AgentActionsMenu({
   agent,
   agentManager,
-  onEdit,
   onUpdateSkills,
   onDelete,
 }: {
   agent: Agent;
   agentManager: AgentManagerGate;
-  onEdit: () => void;
   onUpdateSkills: () => void;
   onDelete: () => void;
 }) {
@@ -145,16 +143,12 @@ export function AgentActionsMenu({
           <MenuItem onAction={() => setManifestOpen(true)}>
             View manifest
           </MenuItem>
-          {/* Three separate conditionals rather than one fragment: react-aria
-              builds the menu's collection from its direct children. */}
+          {/* Separate conditionals rather than one fragment: react-aria
+              builds the menu's collection from its direct children. Edit is
+              the page header's own button, so it is not listed here. */}
           {writeMode !== undefined ? (
-            <MenuItem iconStart={<EditOutlinedIcon />} onAction={onEdit}>
-              Edit agent…
-            </MenuItem>
-          ) : null}
-          {writeMode === 'apply' ? (
             <MenuItem iconStart={<UpdateIcon />} onAction={onUpdateSkills}>
-              Update skills…
+              Update all skills to latest…
             </MenuItem>
           ) : null}
           {writeMode !== undefined ? (
