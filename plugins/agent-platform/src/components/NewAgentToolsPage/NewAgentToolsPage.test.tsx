@@ -1432,7 +1432,7 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('resolves the selection in the Toolset list, with the destructive marker', async () => {
+    it('resolves the selection in the Toolset list, saying it changes things', async () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
@@ -1464,7 +1464,7 @@ describe('NewAgentToolsPage', () => {
         ).toBeInTheDocument(),
       );
       expect(
-        within(toolsetCard()).getByText('destructive'),
+        within(toolsetCard()).getByText('Changes things'),
       ).toBeInTheDocument();
       expect(
         await within(summaryBar()).findByText('Resolves to 3 tools for you'),

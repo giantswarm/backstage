@@ -1,22 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Box,
-  Button,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
+  SectionHeader,
+  TechnicalDetailsFoldOut,
   YamlEditorFormField,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
-import { hasMarkers, ToolMarkers, useToolDescription } from '../shared';
+import { useToolDescription } from '../shared';
 import {
   buildArgs,
   enumDefaults,
@@ -25,7 +18,7 @@ import {
   schemaFields,
 } from '../../lib/schemaForm';
 import { ToolArgField } from './ToolArgField';
-import { ToolResultViewer } from './ToolResultViewer';
+import { RESULT_MAX_HEIGHT, ToolResultViewer } from './ToolResultViewer';
 import { ExplorerError } from './ExplorerError';
 import { DetailSkeleton } from './states';
 
@@ -51,21 +44,38 @@ function storeArgs(key: string, values: Record<string, FormValue>) {
   }
 }
 
+/** A section of the tool's page: an `h2` that names its region, then the content. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={headingId}>
+      <SectionHeader
+        as="h2"
+        variant="title-x-small"
+        title={title}
+        id={headingId}
+      />
+      <Box mt="2">{children}</Box>
+    </section>
+  );
+}
+
+/** A call's outcome as the Result section shows it. */
+type CallResult = { result: unknown; durationMs: number };
+
 export interface ToolDetailPanelProps {
   name: string;
   installation?: string;
-  /**
-   * Show the read-only / destructive markers above the description. Off where
-   * the page already shows them, as the tool page does beside the tool's name.
-   */
-  showMarkers?: boolean;
   /** One line beside the run button, e.g. what running the tool does. */
   note?: string;
-  /** The run button's label. */
-  runLabel?: string;
 }
 
 /**
+ * The body of a tool's page, in sections down its single column: the
+ * tool's description, its input schema folded away, "Try it" (the argument
+ * form and the run button) and the result. The page's header carries the
+ * name and the markers.
+ *
  * Describes one tool (`describe_tool`), renders a JSON-schema-driven argument
  * form (typed widgets, inline validation, remembered last-used args), and
  * executes it via the `call_tool` proxy. The UI executes whatever tools muster
@@ -75,11 +85,13 @@ export interface ToolDetailPanelProps {
 export function ToolDetailPanel({
   name,
   installation,
-  showMarkers = true,
   note,
-  runLabel = 'Execute',
 }: ToolDetailPanelProps) {
   const musterApi = useApi(musterApiRef);
+  // The last call that returned, kept on screen while a re-run is pending:
+  // the result is most of the page, and dropping it would collapse the page
+  // under the reader until the call returns.
+  const [lastResult, setLastResult] = useState<CallResult | undefined>();
 
   const storageKey = argsKey(installation, name);
   const [values, setValues] = useState<Record<string, FormValue>>(() =>
@@ -132,6 +144,9 @@ export function ToolDetailPanel({
       const result = await musterApi.callTool(name, args, installation);
       return { result, durationMs: Math.round(performance.now() - startedAt) };
     },
+    onSuccess: setLastResult,
+    // A failed call says so above; an older result below would read as its.
+    onError: () => setLastResult(undefined),
   });
 
   const setValue = (key: string, value: FormValue) =>
@@ -183,7 +198,7 @@ export function ToolDetailPanel({
 
   const executeButton = (
     <Button variant="primary" isPending={mutation.isPending} onClick={run}>
-      {mutation.isPending ? 'Running…' : runLabel}
+      {mutation.isPending ? 'Running…' : 'Run'}
     </Button>
   );
 
@@ -195,50 +210,45 @@ export function ToolDetailPanel({
   }
 
   return (
-    <Box>
-      {showMarkers && hasMarkers(data?.annotations) && (
-        <Box mt="1">
-          <ToolMarkers annotations={data?.annotations} />
-        </Box>
-      )}
-
-      {data?.description && (
-        <Box mt="1">
+    <Flex direction="column" gap="5">
+      {/* Headed as the agent, skill and workflow pages head theirs. */}
+      <Section title="What it’s for">
+        {data?.description ? (
           <Text
             as="p"
             variant="body-medium"
-            color="secondary"
-            style={{ whiteSpace: 'pre-wrap' }}
+            style={{
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
+            }}
           >
             {data.description}
           </Text>
-        </Box>
-      )}
+        ) : (
+          <Text as="p" variant="body-medium" color="secondary">
+            Its connector gives no description.
+          </Text>
+        )}
+      </Section>
 
       {data?.inputSchema && (
-        <Box mt="3">
-          <Accordion>
-            <AccordionTrigger title="Input schema" />
-            <AccordionPanel>
-              <YamlEditorFormField
-                value={JSON.stringify(data.inputSchema, null, 2)}
-                language="json"
-                readOnly
-                maxHeight={360}
-              />
-            </AccordionPanel>
-          </Accordion>
-        </Box>
+        // Technical detail, folded in place and boxed as the other pages'
+        // Technical details: the form below is the schema drawn for people.
+        // Opened, it is as tall as a result may be.
+        <TechnicalDetailsFoldOut title="Input schema" defaultExpanded={false}>
+          <YamlEditorFormField
+            value={JSON.stringify(data.inputSchema, null, 2)}
+            language="json"
+            readOnly
+            maxHeight={RESULT_MAX_HEIGHT}
+          />
+        </TechnicalDetailsFoldOut>
       )}
 
-      <Box mt="3">
-        <Box mb="1">
-          <Text as="p" variant="body-large" weight="bold">
-            Arguments
-          </Text>
-        </Box>
+      <Section title="Try it">
         {fields.length === 0 ? (
-          <Text variant="body-medium" color="secondary">
+          <Text as="p" variant="body-medium" color="secondary">
             This tool takes no arguments.
           </Text>
         ) : (
@@ -256,45 +266,39 @@ export function ToolDetailPanel({
             />
           ))
         )}
-      </Box>
-
-      <Box mt="2">
-        {note ? (
-          <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
-            {executeButton}
-            <Text variant="body-small" color="secondary">
-              {note}
-            </Text>
-          </Flex>
-        ) : (
-          executeButton
-        )}
-      </Box>
-
-      {mutation.isError && (
-        <Box mt="3">
-          <Alert
-            status="danger"
-            title="Could not run the tool"
-            description={(mutation.error as Error).message}
-          />
+        <Box mt="2">
+          {note ? (
+            <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+              {executeButton}
+              <Text variant="body-small" color="secondary">
+                {note}
+              </Text>
+            </Flex>
+          ) : (
+            executeButton
+          )}
         </Box>
-      )}
-      {mutation.isSuccess && (
-        <Box mt="3">
-          <Box mb="1">
-            <Text as="p" variant="body-large" weight="bold">
-              Result
-            </Text>
+        {mutation.isError && (
+          <Box mt="3">
+            <Alert
+              status="danger"
+              title="Could not run the tool"
+              description={(mutation.error as Error).message}
+            />
           </Box>
+        )}
+      </Section>
+
+      {lastResult && (
+        <Section title="Result">
           <ToolResultViewer
-            result={mutation.data.result}
-            durationMs={mutation.data.durationMs}
+            result={lastResult.result}
+            durationMs={lastResult.durationMs}
             onRerun={() => execute(lastArgs)}
             rerunDisabled={mutation.isPending}
           />
-        </Box>
+        </Section>
       )}
-    </Box>
+    </Flex>
   );
 }

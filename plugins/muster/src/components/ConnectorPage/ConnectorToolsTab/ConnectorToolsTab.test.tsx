@@ -1,8 +1,15 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useLocation } from 'react-router-dom';
+import {
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ToolSummary } from '../../../apis';
+import { mcpServersRouteRef } from '../../../routes';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 
 /** Every third tool reads; the rest change things. */
@@ -24,6 +31,7 @@ function renderTab(tools: ToolSummary[], path = '/connector') {
   return renderInTestApp(
     <>
       <ConnectorToolsTab
+        server="jira"
         installation="gazelle"
         tools={{
           tools,
@@ -31,20 +39,152 @@ function renderTab(tools: ToolSummary[], path = '/connector') {
           isLoading: false,
           shortName: name => name.replace(/^x_jira_/, ''),
         }}
-        runsAsCaller
         emptyExplanation="No tools."
       />
       <LocationProbe />
     </>,
-    { initialRouteEntries: [path] },
+    {
+      initialRouteEntries: [path],
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+    },
   );
 }
 
 const location = () => screen.getByRole('status', { name: 'Location' });
 
-const toolRows = () => screen.getAllByRole('button', { name: /^tool_\d+/ });
+/** A tool's page as far as these tests go: its name and the browser's Back. */
+function ToolPageProbe() {
+  const { tool } = useParams();
+  const navigate = useNavigate();
+  return (
+    <>
+      <p>Page of {tool}</p>
+      <button type="button" onClick={() => navigate(-1)}>
+        Browser back
+      </button>
+    </>
+  );
+}
+
+/** The tab on the connector's address, with a tool's page beneath it. */
+function renderRoundTrip(tools: ToolSummary[]) {
+  return renderInTestApp(
+    <Routes>
+      <Route
+        path="/agent-platform/connectors/jira"
+        element={
+          <ConnectorToolsTab
+            server="jira"
+            installation="gazelle"
+            tools={{
+              tools,
+              truncated: false,
+              isLoading: false,
+              shortName: name => name.replace(/^x_jira_/, ''),
+            }}
+            emptyExplanation="No tools."
+          />
+        }
+      />
+      <Route
+        path="/agent-platform/connectors/jira/tools/:tool"
+        element={<ToolPageProbe />}
+      />
+    </Routes>,
+    {
+      initialRouteEntries: [
+        '/agent-platform/connectors/jira?installation=gazelle',
+      ],
+      mountedRoutes: { '/agent-platform/connectors': mcpServersRouteRef },
+    },
+  );
+}
+
+const toolRows = () => screen.getAllByRole('link', { name: /^tool_\d+/ });
 
 describe('ConnectorToolsTab', () => {
+  it('links each tool to its page, with its description and what it does', async () => {
+    await renderTab(makeTools(3));
+
+    const list = screen.getByRole('list', { name: 'Tools' });
+    const [first] = within(list).getAllByRole('listitem');
+    expect(
+      within(first).getByRole('link', { name: 'tool_000' }),
+    ).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors/jira/tools/x_jira_tool_000?installation=gazelle',
+    );
+    expect(within(first).getByText('Tool number 0')).toBeInTheDocument();
+    expect(within(first).getByText('Reads')).toBeInTheDocument();
+    // The form and the result live on the tool's page, not in the list.
+    expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
+  });
+
+  it("carries the search in force into a tool's link, for the way back", async () => {
+    await renderTab(makeTools(300));
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+      'tool_299',
+    );
+    expect(toolRows()[0]).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors/jira/tools/x_jira_tool_299?installation=gazelle&q=tool_299',
+    );
+  });
+
+  it("carries the effect filter into a tool's link, and opens on the filter the address names", async () => {
+    await renderTab(
+      makeTools(300),
+      '/connector?installation=gazelle&effect=changes',
+    );
+
+    // Every third tool reads: 200 change things, a page of them shown.
+    expect(toolRows()).toHaveLength(20);
+    expect(screen.getByText('20 tools shown, 180 more')).toBeInTheDocument();
+    expect(toolRows()[0]).toHaveAttribute(
+      'href',
+      '/agent-platform/connectors/jira/tools/x_jira_tool_001?installation=gazelle&effect=changes',
+    );
+  });
+
+  it("lands Back from a tool's page on the search, filter and page it was opened from", async () => {
+    await renderRoundTrip(makeTools(300));
+
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+      'tool_',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by what it does/ }),
+    );
+    await userEvent.click(
+      screen.getByRole('option', { name: 'Changes things 200' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more tools' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Show 20 more tools' }),
+    );
+    // The 55th tool that changes things.
+    await userEvent.click(screen.getByRole('link', { name: 'tool_082' }));
+    expect(
+      await screen.findByText('Page of x_jira_tool_082'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    expect(
+      await screen.findByRole('searchbox', { name: 'Search tools' }),
+    ).toHaveValue('tool_');
+    expect(
+      screen.getByRole('button', { name: /Filter by what it does/ }),
+    ).toHaveTextContent(/Changes things/);
+    expect(toolRows()).toHaveLength(60);
+    expect(screen.getByRole('link', { name: 'tool_082' })).toBeInTheDocument();
+  });
+
   it('lists three tools plainly: no search, no filter, no reveal control', async () => {
     await renderTab(makeTools(3));
 
@@ -86,7 +226,7 @@ describe('ConnectorToolsTab', () => {
     await userEvent.keyboard('{Escape}');
     expect(toolRows()).toHaveLength(20);
     expect(screen.getByText('20 tools shown, 80 more')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^tool_001/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^tool_001/ })).toBeNull();
   });
 
   it('has no effect dropdown when every tool does the same', async () => {

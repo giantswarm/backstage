@@ -16,6 +16,8 @@ export type UseCatalogFiltersOptions<T> = {
   searched: readonly T[];
   /** Keep the array stable (`useMemo`); a new one recomputes every count. */
   facets: readonly CatalogFacet<T>[];
+  /** The picks to start with, e.g. read from the address; read once. */
+  initialSelection?: CatalogFilterSelection;
 };
 
 export type CatalogFilters<T> = {
@@ -41,8 +43,11 @@ export function useCatalogFilters<T>({
   items,
   searched,
   facets,
+  initialSelection,
 }: UseCatalogFiltersOptions<T>): CatalogFilters<T> {
-  const [selection, setSelection] = useState<CatalogFilterSelection>({});
+  const [selection, setSelection] = useState<CatalogFilterSelection>(
+    () => initialSelection ?? {},
+  );
   const filtered = useMemo(
     () => applyCatalogFilters(searched, facets, selection),
     [searched, facets, selection],

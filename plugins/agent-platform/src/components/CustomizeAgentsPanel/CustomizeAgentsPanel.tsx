@@ -6,11 +6,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
-  ALL_INSTALLATIONS,
-  classifyInventoryFailure,
-  installationsWithoutComponent,
   InventoryFailureGate,
-  selectInventoryFailure,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -18,7 +14,6 @@ import {
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
-  joinNames,
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
@@ -39,7 +34,11 @@ import {
 import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
-import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import {
+  type AgentRow,
+  describeKagentSwitchedOff,
+  useAgents,
+} from '../AgentsDataProvider';
 import { FirstAgentCard } from '../FirstAgentCard';
 import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
@@ -464,12 +463,15 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
   const classes = useStyles();
   const {
     rows,
-    scope,
     installations,
     isLoading,
     isLoadingMore,
     hasInstallations,
     unreachableInstallations,
+    kagentMissing,
+    kagentSwitchedOff,
+    unknownPin,
+    inventoryFailure,
   } = useAgents();
   const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -535,65 +537,21 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
-  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
-  // A pin the portal does not know (a stale `?installation=` deep link): no
-  // inventory to ask, and nothing else on the panel can say why it is empty.
-  const unknownPin =
-    pinned !== null &&
-    !inventory.isLoading &&
-    inventory.entries.length > 0 &&
-    !inventory.entries.some(entry => entry.installation === pinned);
-  // The environments in scope, when each answered without kagent: nothing
-  // can be listed or created there, whatever else is still loading.
-  const kagentMissing = installationsWithoutComponent(
-    inventory.entries,
-    scope,
-    'kagent',
-  );
-  const isEmpty = !isLoading && rows.length === 0;
-  // The environment this tab reads could not be asked whether it runs kagent:
-  // the pinned one, or the home one under "All environments" -- or, when
-  // the list is empty with nowhere to read agents from, any environment in
-  // scope, since that failure is then the only explanation there is.
-  const inventoryFailure = unknownPin
-    ? undefined
-    : (selectInventoryFailure(inventory, pinned) ??
-      (isEmpty && installations.length === 0 && pinned === null
-        ? inventory.entries
-            .filter(entry => !entry.muted)
-            .map(classifyInventoryFailure)
-            .find(failure => failure !== undefined)
-        : undefined));
-  // Under "All environments", environments switched off in the sidebar's
-  // Cluster access that run kagent: the way to their agents.
-  const switchedOff =
-    pinned === null
-      ? inventory.entries
-          .filter(
-            entry =>
-              entry.muted &&
-              entry.probe === 'answered' &&
-              entry.components.kagent,
-          )
-          .map(entry => entry.installation)
-      : [];
-
   let body;
   if (rows.length === 0 && unknownPin) {
+    // A pin the portal does not know (a stale `?installation=` deep link): no
+    // inventory to ask, and nothing else on the panel can say why it is empty.
     body = (
       <EmptyStateCard
         title="Unknown environment"
-        description={`This portal knows no environment named “${pinned}”. Choose another environment.`}
+        description={`This portal knows no environment named “${unknownPin}”. Choose another environment.`}
       />
     );
-  } else if (rows.length === 0 && kagentMissing) {
+  } else if (kagentMissing) {
     body = (
-      <KagentMissingCard
-        installations={kagentMissing}
-        canChooseAnother={inventory
-          .installationsWith('kagent')
-          .some(installation => !kagentMissing.includes(installation))}
-      />
+      // Every environment in scope answered without kagent: nothing can be
+      // listed or created there, whatever else is still loading.
+      <KagentMissingCard {...kagentMissing} />
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading your agents…" />;
@@ -620,17 +578,11 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       body = null;
     } else if (installations.length > 0) {
       body = <FirstAgentCard />;
-    } else if (switchedOff.length > 0) {
+    } else if (kagentSwitchedOff.length > 0) {
       body = (
         <EmptyStateCard
           title="No agents to list"
-          description={
-            switchedOff.length === 1
-              ? `${switchedOff[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
-              : `${joinNames(
-                  switchedOff,
-                )} run kagent but are switched off in Cluster access, so their agents are not read.`
-          }
+          description={describeKagentSwitchedOff(kagentSwitchedOff)}
         />
       );
     } else {

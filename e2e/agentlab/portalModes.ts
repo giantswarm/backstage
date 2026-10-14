@@ -53,7 +53,7 @@ export const SHELL_SPECS = [
  * The phone's specs (mobile overhaul wave 4, `mobile-overhaul-plan.md` §4):
  * the Agent Platform at 375×812 with touch, in the `agentlab-mobile` project
  * only — the bottom bar's navigation, the scrolling tab strips, sessions, one
- * wizard pass, a workflow's step list, the hosting rows' ⋯ menus, and no
+ * wizard pass, a workflow's step list, a tool's page, the hosting rows' ⋯ menus, and no
  * sideways page scroll on the pages a person reads on a phone. Like
  * {@link SHELL_SPECS}, they need a lab in `shell` mode.
  */
@@ -61,6 +61,7 @@ export const MOBILE_SPECS = [
   'mobile-hosting.spec.ts',
   'mobile-navigation.spec.ts',
   'mobile-sessions.spec.ts',
+  'mobile-tool-page.spec.ts',
   'mobile-wizard.spec.ts',
   'mobile-workflow.spec.ts',
 ] as const;

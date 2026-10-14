@@ -15,7 +15,7 @@ import { lab } from './lab';
  * platform's internal servers with muster itself) — its search over connector
  * and tool names, the muster
  * session behind **Connect to muster**, a connector's page with its tabs, a
- * tool tried in place, and the per-connector **Sign in** the lab's
+ * tool's own page where it is tried, and the per-connector **Sign in** the lab's
  * `Auth Required` fixture exists for — an OAuth-protected server whose
  * authorization server is muster itself, so the challenge chain (proxy start →
  * muster → Dex) is real.
@@ -167,9 +167,21 @@ test('searching a tool name narrows the table to the connectors offering it', as
   await expect(
     admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
   ).toHaveValue('cluster_health');
+  const tool = admin.getByRole('link', { name: /^cluster_health/ }).first();
+  await expect(tool).toBeVisible({ timeout: 60_000 });
+
+  // A tool opens on its page; the browser's Back lands on the same search.
+  await tool.click();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/connectors/${KUBERNETES_FAMILY}/tools/[^?]+\\?.*q=cluster_health`,
+    ),
+  );
+  await admin.goBack();
   await expect(
-    admin.getByRole('button', { name: /^cluster_health/ }),
-  ).toBeVisible({ timeout: 60_000 });
+    admin.getByRole('searchbox', { name: 'Search tools', exact: true }),
+  ).toHaveValue('cluster_health');
+  await expect(tool).toBeVisible({ timeout: 60_000 });
 });
 
 test('Connect to muster opens the session, and the OAuth fixture signs in per connector through Dex', async ({
@@ -264,7 +276,7 @@ test("a family's row opens its connector page, with the family's tabs", async ({
     'true',
   );
   await expect(
-    admin.getByRole('button', { name: /^list List Kubernetes resources/ }),
+    admin.getByRole('link', { name: 'list', exact: true }),
     'the Tools tab lists the connector’s tools',
   ).toBeVisible({ timeout: 60_000 });
   // A family's members are its Instances: the lab's own cluster among them.
@@ -281,7 +293,7 @@ test("a family's row opens its connector page, with the family's tabs", async ({
   await expect(admin.getByRole('tab', { name: 'Used by' })).toBeVisible();
 });
 
-test("muster's own connector page lists its core tools, and one is tried in place", async ({
+test("muster's own connector page lists its core tools, and one opens on its page and runs there", async ({
   admin,
 }) => {
   test.setTimeout(120_000);
@@ -298,17 +310,58 @@ test("muster's own connector page lists its core tools, and one is tried in plac
   ).toBeVisible();
 
   // Read-only, and there on every muster: the aggregator's own server list.
-  const tool = admin.getByRole('button', { name: /^mcpserver_list/ });
+  // The row is a link to the tool's page; nothing runs from the list.
+  const tool = admin.getByRole('link', { name: 'mcpserver_list', exact: true });
   await expect(tool).toBeVisible({ timeout: 60_000 });
   await tool.click();
-  await expect(admin.getByText('Try it', { exact: true })).toBeVisible();
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/connectors/muster/tools/core_mcpserver_list\\${scope}$`,
+    ),
+  );
+  await expect(
+    admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
+  ).toBeVisible();
+  await expect(
+    admin.getByRole('heading', { level: 2, name: 'Try it', exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
   await expect(admin.getByText(/Nothing is changed\./).first()).toBeVisible();
 
   await admin.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(
-    admin.getByText('Result', { exact: true }),
+    admin.getByRole('heading', { level: 2, name: 'Result', exact: true }),
     'the tool ran through the call proxy',
   ).toBeVisible({ timeout: 60_000 });
+
+  // The way back is the connector's Tools tab.
+  await admin
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: 'muster', exact: true })
+    .click();
+  await expect(admin).toHaveURL(
+    new RegExp(`/agent-platform/connectors/muster\\${scope}$`),
+  );
+  await expect(admin.getByRole('tab', { name: /^Tools/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test("an old MCP servers address of a tool lands on the tool's page", async ({
+  admin,
+}) => {
+  await open(
+    admin,
+    `/agent-platform/mcp-servers/muster/tools/core_mcpserver_list${scope}`,
+  );
+  await expect(admin).toHaveURL(
+    new RegExp(
+      `/agent-platform/connectors/muster/tools/core_mcpserver_list\\${scope}$`,
+    ),
+  );
+  await expect(
+    admin.getByRole('heading', { level: 1, name: 'mcpserver_list' }),
+  ).toBeVisible();
 });
 
 test("a connector's Details tab folds its resource and auth chain, read from the CR", async ({
