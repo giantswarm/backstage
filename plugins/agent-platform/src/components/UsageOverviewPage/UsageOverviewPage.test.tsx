@@ -315,19 +315,11 @@ describe('UsageOverviewPage', () => {
     expect(screen.queryByText(/Technical details/)).toBeNull();
     expect(screen.queryByText(/counts model calls only/)).toBeNull();
 
-    // The token trend is a section of its own, open from the start.
-    expect(
-      screen.getByRole('heading', {
-        level: 2,
-        name: 'Token breakdown by type',
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('region', { name: 'Token breakdown by type' }),
-    ).toHaveTextContent('Tokens per day, by type');
-    expect(
-      screen.queryByRole('button', { name: 'Token breakdown by type' }),
-    ).toBeNull();
+    // The token trend is a card like the others, open from the start, under
+    // its own title only.
+    expect(screen.getByText('Tokens per day, by type')).toBeInTheDocument();
+    expect(screen.queryByText('Token breakdown by type')).toBeNull();
+    expect(screen.queryByRole('heading', { level: 2 })).toBeNull();
   });
 
   it('draws model calls per day as an activity heatmap', async () => {

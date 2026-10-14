@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usageCostRouteRef } from '../../routes';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
@@ -36,22 +35,12 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing(2),
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: theme.spacing(1.5),
-    // SectionHeader carries a bottom margin meant for a description under
-    // it; this section puts its card there instead.
-    '& h2': { marginBottom: 0 },
-  },
 }));
 
 /** How many agents the Overview ranks before "and N more". */
 const TOP_AGENTS_SHOWN = 4;
 
 const HEATMAP_TITLE = 'Model calls per day';
-
-const TOKEN_BREAKDOWN_ID = 'usage-overview-token-breakdown';
 
 /** The daily-calls series as the heatmap's days, oldest first. */
 function heatmapDays(daily: LlmDailySeries): HeatmapDay[] {
@@ -93,12 +82,13 @@ function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
  *    own sessions, active agents;
  * 2. model calls per day as an activity heatmap, beside the busiest agents;
  * 3. the gateway's health;
- * 4. the token-type trend, under its own section heading. It used to sit in
- *    a collapsed fold-out to keep the view to one desktop viewport (T52); the
- *    product owner asked for it always visible, so the view now scrolls.
+ * 4. the token-type trend, always shown like the other cards. It used to sit
+ *    in a collapsed fold-out to keep the view to one desktop viewport (T52);
+ *    the product owner asked for it always visible, so the view now scrolls.
  *
  * Connector tool calls (the muster-contributed section) are not here: they
- * have their own Connectors view, so this one fits the screen.
+ * have their own Connectors view, because "how are my connectors doing" is a
+ * question of its own.
  *
  * **One home per metric** (`design-context/implementation/usage-metrics-ia.md`):
  * money lives on the Cost tab, so this view carries exactly one spend number —
@@ -178,7 +168,7 @@ export function UsageOverviewPage() {
       <Flex direction="column" gap="4">
         {/* One short caption, not a heading: the tab above already names
             the view, and the screen's title is the page's h1. The
-            resolved-from-all hint shares its line, for the same budget. */}
+            resolved-from-all hint shares its line, to keep it short. */}
         <Text as="p" variant="body-medium" color="secondary">
           {installation ? (
             <>
@@ -251,26 +241,13 @@ export function UsageOverviewPage() {
 
             {/* Each figure explains its own arithmetic in its hint. */}
             <UsageCard title="Gateway health" wide>
-              <ReliabilityStrip reliability={usage.reliability} />
+              <ReliabilityStrip
+                reliability={usage.reliability}
+                windowDays={usage.windowDays}
+              />
             </UsageCard>
 
-            <section
-              className={classes.section}
-              aria-labelledby={TOKEN_BREAKDOWN_ID}
-            >
-              <SectionHeader
-                as="h2"
-                variant="title-x-small"
-                id={TOKEN_BREAKDOWN_ID}
-                title="Token breakdown by type"
-              />
-              <div className={classes.row}>
-                <TokensByTypeCard
-                  daily={usage.tokensPerDay}
-                  note={windowNote}
-                />
-              </div>
-            </section>
+            <TokensByTypeCard daily={usage.tokensPerDay} note={windowNote} />
           </>
         )}
       </Flex>
