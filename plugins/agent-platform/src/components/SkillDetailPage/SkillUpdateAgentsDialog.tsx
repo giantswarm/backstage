@@ -21,7 +21,7 @@ import {
   type UpdateAgentState,
 } from '../../hooks/useUpdateAgent';
 import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
-import type { AgentUpdate } from '../../lib/agentManager';
+import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
 import { shortCommit } from '../../lib/skills';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
@@ -94,11 +94,9 @@ export function updateVerdictOf({
         'Updates go through agent-manager over muster, and this portal has no muster plugin.',
     };
   }
-  if (presence === 'missing') {
-    return {
-      kind: 'blocked',
-      reason: `Muster on ${installation} lists no agent-manager.`,
-    };
+  const blocker = agentManagerBlocker(presence, installation);
+  if (blocker) {
+    return { kind: 'blocked', reason: blocker };
   }
   if (presence === 'unknown') {
     return isPresenceLoading

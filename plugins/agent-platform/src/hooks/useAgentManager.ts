@@ -68,11 +68,16 @@ export type AgentManagerPresence = MusterServerPresence;
 export type AgentManagerAvailability = MusterServerAvailability;
 
 /**
- * The installations on which agents can be created: the ones whose muster
- * registers agent-manager as an MCPServer (see `useMusterServerAvailability`).
+ * The installations on which agents can be created, changed and talked to:
+ * the ones whose muster registers agent-manager as an MCPServer (see
+ * `useMusterServerAvailability`) and reaches it as the person. An
+ * installation whose muster has no per-user sign-in is `sharedIdentity`:
+ * muster-backend refuses agent-manager's tools there.
  */
 export function useAgentManagerAvailability(
   installations: string[],
 ): AgentManagerAvailability {
-  return useMusterServerAvailability(AGENT_MANAGER_SERVER, installations);
+  return useMusterServerAvailability(AGENT_MANAGER_SERVER, installations, {
+    asPerson: true,
+  });
 }

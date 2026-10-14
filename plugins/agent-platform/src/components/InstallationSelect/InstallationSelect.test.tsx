@@ -42,7 +42,7 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => mockModelConfigs,
 }));
 
-type Presence = 'available' | 'missing' | 'unknown';
+type Presence = 'available' | 'missing' | 'unknown' | 'sharedIdentity';
 let mockPresence: Record<string, Presence>;
 let mockAgentManagerLoading: boolean;
 let mockMusterPluginMissing: boolean;
@@ -53,6 +53,9 @@ jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: (installations: string[]) => ({
     available: installations.filter(name => mockPresence[name] === 'available'),
     missing: installations.filter(name => mockPresence[name] === 'missing'),
+    sharedIdentity: installations.filter(
+      name => mockPresence[name] === 'sharedIdentity',
+    ),
     presenceOf: (name: string) => mockPresence[name] ?? 'unknown',
     isLoading: mockAgentManagerLoading,
     isUnavailable: mockMusterPluginMissing,
@@ -89,6 +92,43 @@ describe('InstallationSelect', () => {
       expect(
         getByText(/muster on beta lists no agent-manager,/),
       ).toBeInTheDocument();
+    });
+
+    it('offers no installation whose muster runs under its shared identity, and says why', () => {
+      mockPresence = { alpha: 'available', beta: 'sharedIdentity' };
+
+      const { getByText, queryByText } = render(<InstallationSelect />);
+
+      expect(getByText('alpha')).toBeInTheDocument();
+      expect(queryByText('beta')).not.toBeInTheDocument();
+      expect(
+        getByText('Agents cannot be created on beta from this portal'),
+      ).toBeInTheDocument();
+      expect(
+        getByText(/muster on beta has no per-user sign-in in this portal/),
+      ).toBeInTheDocument();
+    });
+
+    it('withdraws a pick whose muster turns out to run under its shared identity', () => {
+      mockInstallations = [
+        { name: 'alpha' },
+        { name: 'beta' },
+        { name: 'gamma' },
+      ];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['alpha', 'beta', 'gamma'],
+      };
+      mockState = { installation: 'beta' };
+      mockPresence = {
+        alpha: 'available',
+        beta: 'sharedIdentity',
+        gamma: 'available',
+      };
+
+      render(<InstallationSelect />);
+
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
     });
 
     it('withdraws a pick whose muster turns out to lack agent-manager', () => {
@@ -156,6 +196,24 @@ describe('InstallationSelect', () => {
 
       expect(getByText('The muster plugin is required')).toBeInTheDocument();
       expect(queryByLabelText('Environment')).not.toBeInTheDocument();
+    });
+
+    it('never picks the sole installation when its muster runs under its shared identity', () => {
+      mockInstallations = [{ name: 'solo' }];
+      mockModelConfigs = {
+        ...mockModelConfigs,
+        availableInstallations: ['solo'],
+      };
+      mockState = { installation: 'solo' };
+      mockPresence = { solo: 'sharedIdentity' };
+
+      const { getByText } = render(<InstallationSelect />);
+
+      expect(mockSetInstallation).not.toHaveBeenCalledWith('solo');
+      expect(mockSetInstallation).toHaveBeenCalledWith(undefined);
+      expect(
+        getByText('Agents cannot be created on solo from this portal'),
+      ).toBeInTheDocument();
     });
 
     it('does not hide the sole installation when its muster lacks agent-manager', () => {
