@@ -25,7 +25,6 @@ import {
   MESSAGE_TEXT_MAX_LENGTH,
   readKagentInstallationsFromConfig,
   REQUEST_ID_HEADER,
-  REQUEST_ID_MAX_LENGTH,
   SESSION_NAME_MAX_LENGTH,
   SESSION_SHARE_MAX_TTL_SECONDS,
   type SessionSharePermissionInput,
@@ -103,11 +102,7 @@ function readRequiredString(
   return trimmed;
 }
 
-/**
- * A session title, bounded. Shared by the create and rename routes so the two
- * cannot drift apart — a title accepted by one and refused by the other would be
- * a create the user could not undo by renaming.
- */
+/** A session title, bounded as the controller bounds it. */
 function readSessionName(body: Record<string, unknown>): string {
   const name = readRequiredString(body, 'name');
   if (name.length > SESSION_NAME_MAX_LENGTH) {
@@ -116,29 +111,6 @@ function readSessionName(body: Record<string, unknown>): string {
     );
   }
   return name;
-}
-
-/**
- * The idempotency key of a create, when the caller supplied one.
- *
- * The browser generates one per submission and reuses it on a retry, so a
- * create whose answer was lost does not make a second session: the controller
- * keys idempotency on `(creator, request_id)`. A caller that sends none gets a
- * fresh one, which makes *its* retry a second create — the honest behaviour
- * for a caller that did not ask for idempotency, and what keeps the body an
- * addition rather than a new requirement.
- */
-function readRequestId(body: Record<string, unknown>): string {
-  if (body.requestId === undefined) {
-    return randomUUID();
-  }
-  const requestId = readRequiredString(body, 'requestId');
-  if (requestId.length > REQUEST_ID_MAX_LENGTH) {
-    throw new InputError(
-      `requestId must be at most ${REQUEST_ID_MAX_LENGTH} characters`,
-    );
-  }
-  return requestId;
 }
 
 /**
@@ -775,47 +747,6 @@ export async function createRouter(
   });
 
   /**
-   * Start a session for one agent: create its Session record.
-   *
-   * The agent's namespace and name are the Agent object's, as the caller read
-   * them from the resource; the platform Harness is picked in the client from
-   * the template's own status. `name` is required because the controller does
-   * not auto-title — a session created without one has no title at all; the
-   * frontend derives it from the first prompt (see "Starting a session" in
-   * docs/agent-platform.md). `requestId` is the browser's idempotency key; see
-   * {@link readRequestId}.
-   *
-   * The token is **required**, for the same reason the other writes require it:
-   * the controller decides whose session this is from the identity the gateway
-   * derived from the token alone.
-   *
-   * Nothing expected reaches a 5xx. A malformed body is a 400, a template no
-   * Harness admits or a `request_id` reused with other parameters is a 409 —
-   * `MiddlewareFactory.error()` forwards anything `>= 500` to Sentry.
-   */
-  router.post('/kagent/sessions', async (req, res) => {
-    const { client } = resolveInstallation(req);
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const agentNamespace = readRequiredString(body, 'agentNamespace');
-    const agentName = readRequiredString(body, 'agentName');
-    const name = readSessionName(body);
-    const requestId = readRequestId(body);
-
-    const result = await client.createSession(
-      { namespace: agentNamespace, name: agentName },
-      name,
-      requestId,
-      { userToken: readUserToken(req, { required: true }) },
-    );
-
-    // 201 for a create. The body is the controller's `CreateSessionResponse`
-    // as JSON: the frontend needs the generated session id out of it, and this
-    // proxy stays transport.
-    res.status(201).json(result);
-  });
-
-  /**
    * One session's metadata and stored events. Express matches these paths
    * exactly, so this and the list route above do not shadow each other.
    *
@@ -876,7 +807,7 @@ export async function createRouter(
    *
    * The name is all this takes: it goes to `SessionService/UpdateSessionName`,
    * which changes the name and nothing else. It is trimmed and bounded here
-   * ({@link readSessionName}, the same check as the create) and validated again
+   * ({@link readSessionName}) and validated again
    * by the controller (200 characters, no control characters, no surrounding
    * whitespace).
    *

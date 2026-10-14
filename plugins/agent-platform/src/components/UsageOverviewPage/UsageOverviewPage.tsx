@@ -1,13 +1,6 @@
-import { ReactNode, useMemo, useState } from 'react';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { useMemo } from 'react';
+import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { useSimpleAccordionStyles } from '@giantswarm/backstage-plugin-ui-react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { usageCostRouteRef } from '../../routes';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
@@ -42,14 +35,6 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexWrap: 'wrap',
     gap: theme.spacing(2),
   },
-  // The fold-out sits flush with the cards: no border of its own, and the
-  // trigger's text lines up with the cards' edge rather than indenting.
-  foldOut: {
-    '& .bui-AccordionTriggerButton': {
-      paddingLeft: 0,
-      paddingRight: 0,
-    },
-  },
 }));
 
 /** How many agents the Overview ranks before "and N more". */
@@ -63,28 +48,6 @@ function heatmapDays(daily: LlmDailySeries): HeatmapDay[] {
     const value = row[CALLS_SERIES];
     return { day: row.day, value: typeof value === 'number' ? value : 0 };
   });
-}
-
-/**
- * The token-type trend, folded away: a detail behind the headline trend (the
- * heatmap), kept on this view — its one home — but out of the first viewport.
- * Controlled so the chart mounts only while open: bui's panel otherwise stays
- * mounted, merely hidden, and a hidden chart measures a zero-width container.
- */
-function TokenBreakdownFoldOut({ children }: { children: ReactNode }) {
-  const classes = useStyles();
-  const spacing = useSimpleAccordionStyles();
-  const [isExpanded, setExpanded] = useState(false);
-  return (
-    <Accordion
-      className={`${classes.foldOut} ${spacing.group}`}
-      isExpanded={isExpanded}
-      onExpandedChange={setExpanded}
-    >
-      <AccordionTrigger level={2}>Token breakdown by type</AccordionTrigger>
-      <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
-    </Accordion>
-  );
 }
 
 /**
@@ -113,16 +76,19 @@ function topAgentRows(usage: LlmUsage): TopAgentsRow[] {
 
 /**
  * The Usage screen's at-a-glance view: is the platform healthy, and what are
- * the headline trends — on **one desktop viewport**, no scrolling (T52):
+ * the headline trends:
  *
  * 1. the KPI tiles — the spend teaser, tokens and model calls, the reader's
  *    own sessions, active agents;
  * 2. model calls per day as an activity heatmap, beside the busiest agents;
  * 3. the gateway's health;
- * 4. the token-type trend, folded away in place (a detail, not a headline).
+ * 4. the token-type trend, always shown like the other cards. It used to sit
+ *    in a collapsed fold-out to keep the view to one desktop viewport (T52);
+ *    the product owner asked for it always visible, so the view now scrolls.
  *
  * Connector tool calls (the muster-contributed section) are not here: they
- * have their own Connectors view, so this one fits the screen.
+ * have their own Connectors view, because "how are my connectors doing" is a
+ * question of its own.
  *
  * **One home per metric** (`design-context/implementation/usage-metrics-ia.md`):
  * money lives on the Cost tab, so this view carries exactly one spend number —
@@ -197,12 +163,12 @@ export function UsageOverviewPage() {
 
   return (
     <UsageColumn>
-      {/* gap 4, not the 6 the other views use: the whole view is budgeted
-          to one desktop viewport (~800px tall with the page header). */}
+      {/* gap 4, not the 6 the other views use: the view is dense, and
+          keeps as much as it can in the first desktop viewport. */}
       <Flex direction="column" gap="4">
         {/* One short caption, not a heading: the tab above already names
             the view, and the screen's title is the page's h1. The
-            resolved-from-all hint shares its line, for the same budget. */}
+            resolved-from-all hint shares its line, to keep it short. */}
         <Text as="p" variant="body-medium" color="secondary">
           {installation ? (
             <>
@@ -273,25 +239,15 @@ export function UsageOverviewPage() {
               />
             </div>
 
-            <UsageCard
-              title="Gateway health"
-              wide
-              // Each figure explains its own arithmetic in its hint, so the
-              // note carries only what none of them says: these are the model
-              // calls, not the turns that made them.
-              note="This counts model calls only, not the agent turns around them, which spend most of their time in tool calls."
-            >
-              <ReliabilityStrip reliability={usage.reliability} />
+            {/* Each figure explains its own arithmetic in its hint. */}
+            <UsageCard title="Gateway health" wide>
+              <ReliabilityStrip
+                reliability={usage.reliability}
+                windowDays={usage.windowDays}
+              />
             </UsageCard>
 
-            <TokenBreakdownFoldOut>
-              <div className={classes.row}>
-                <TokensByTypeCard
-                  daily={usage.tokensPerDay}
-                  note={windowNote}
-                />
-              </div>
-            </TokenBreakdownFoldOut>
+            <TokensByTypeCard daily={usage.tokensPerDay} note={windowNote} />
           </>
         )}
       </Flex>

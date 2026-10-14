@@ -110,3 +110,41 @@ export function describeInstallationScopeOption(
   }
   return undefined;
 }
+
+/**
+ * The installations in scope when every one of them answered its inventory
+ * probe without `component`: the pinned one, or under "All installations"
+ * every one not switched off in the sidebar. `undefined` while any of them is
+ * still pending, failed or runs the component -- an installation that could
+ * not be asked is not one without the component -- and under "All
+ * installations" while a switched-off one runs it, since switching that one
+ * back on is the remedy, not installing the component. Also `undefined` for a
+ * pin the inventory does not know.
+ *
+ * The one rule behind "<component> is not installed on <installation>",
+ * wherever a tab says it.
+ */
+export function installationsWithoutComponent(
+  entries: InstallationInventoryEntry[],
+  scope: InstallationScope,
+  component: PlatformComponent,
+): string[] | undefined {
+  const runsIt = (entry: InstallationInventoryEntry) =>
+    entry.probe === 'answered' && entry.components[component];
+  let inScope: InstallationInventoryEntry[];
+  if (scope === ALL_INSTALLATIONS) {
+    if (entries.some(entry => entry.muted && runsIt(entry))) {
+      return undefined;
+    }
+    inScope = entries.filter(entry => !entry.muted);
+  } else {
+    inScope = entries.filter(entry => entry.installation === scope);
+  }
+  if (
+    inScope.length === 0 ||
+    !inScope.every(entry => entry.probe === 'answered' && !runsIt(entry))
+  ) {
+    return undefined;
+  }
+  return inScope.map(entry => entry.installation);
+}

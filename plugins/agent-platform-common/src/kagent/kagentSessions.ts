@@ -1,14 +1,11 @@
 import {
-  isSessionRecordEnvelope,
   isSessionRecordList,
   normalizeSessionRecord,
   parseSessionRecordWire,
-  sessionRecordEnvelopeWireSchema,
   sessionRecordListWireSchema,
 } from './kagentSessionRecord';
 import {
   KagentSessionWire,
-  kagentCreatedSessionSchema,
   kagentSessionListSchema,
   kagentSessionWireSchema,
 } from './kagentSchema';
@@ -253,34 +250,6 @@ function normalizeSessionRecordList(
 export function parseSessionWire(raw: unknown): KagentSessionWire | undefined {
   const parsed = kagentSessionWireSchema.safeParse(raw);
   return parsed.success ? parsed.data : undefined;
-}
-
-/**
- * The id of a session kagent has just created.
- *
- * Unlike the list, this cannot degrade gracefully: without an id there is no
- * session to open, so every unreadable shape has to become a message the user
- * can act on rather than an `undefined` that would navigate nowhere. The caller
- * turns `undefined` into that message.
- *
- * The envelope's `error` flag is checked as well as the body, because kagent
- * reports a refusal with a 200 and `{error: true}` on some paths — a shape the
- * status code alone would let through.
- */
-export function parseCreatedSessionId(raw: unknown): string | undefined {
-  if (isSessionRecordEnvelope(raw)) {
-    const parsed = sessionRecordEnvelopeWireSchema.safeParse(raw);
-    return parsed.success
-      ? parseSessionRecordWire(parsed.data.session)?.id
-      : undefined;
-  }
-
-  const parsed = kagentCreatedSessionSchema.safeParse(raw);
-  if (!parsed.success || parsed.data.isError) {
-    return undefined;
-  }
-
-  return parseSessionWire(parsed.data.session)?.id;
 }
 
 /**

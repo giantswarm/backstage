@@ -15,6 +15,9 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
     kserve: 'KServe',
     capi: 'Cluster API',
   },
+  installationsWithoutComponent: jest.requireActual(
+    '@giantswarm/backstage-plugin-gs',
+  ).installationsWithoutComponent,
   useInstallationScope: () => ({ scope: mockScope, isLoading: false }),
   useInstallationInventory: () => ({ entries: mockEntries }),
 }));

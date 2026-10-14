@@ -24,6 +24,7 @@ export const AGENT_MANAGER_TOOLS = {
   updateAgent: 'update_agent',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
+  startSession: 'start_session',
 } as const;
 
 export type AgentManagerTool =
@@ -198,6 +199,33 @@ export type CreateAgentResult = {
   status?: AgentStatus;
   /** The authenticated caller the write ran as. */
   requestedBy?: string;
+};
+
+/**
+ * `start_session`'s input: the Agent by namespace and technical name and the
+ * idempotency key of the submission. Without `message` agent-manager only
+ * creates the session, and the caller sends the first message itself; with
+ * one, agent-manager sends it as the first turn. `workspaceGrant` starts the
+ * session in a workspace; absent, it is the plain session.
+ */
+export type StartSessionRequest = {
+  namespace: string;
+  name: string;
+  message?: string;
+  requestId: string;
+  sessionName?: string;
+  workspaceGrant?: string;
+};
+
+/**
+ * `start_session`'s answer: the new session (proto3 JSON of kagent's
+ * `Session`), the first event of its first turn when a message was sent (A2A's
+ * `StreamResponse`), and the workspace when it was started with a grant.
+ */
+export type StartSessionResult = {
+  session: { id?: string; contextId?: string; name?: string };
+  turn?: unknown;
+  workspace?: string;
 };
 
 /**

@@ -41,6 +41,8 @@ import {
 } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
 import { AgentAvatar } from '../AgentAvatar';
+import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
 
 /** Rows the textarea shows before and after it expands. */
@@ -253,7 +255,12 @@ export type NewSessionComposerProps = {
   collapsible?: boolean;
   autoFocus?: boolean;
   isStarting: boolean;
-  error?: string;
+  /**
+   * Why the last start failed. An `AgentManagerNotConnectedError` (sessions
+   * start through agent-manager over muster) shows muster's sign-in for the
+   * server instead of a dead-end message.
+   */
+  error?: string | Error;
   /** Receives the chosen agent and the trimmed prompt. */
   onStart: (agent: AgentRow, prompt: string) => void;
 };
@@ -817,12 +824,20 @@ export function NewSessionComposer({
   return (
     <form onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
-        {error && (
-          <Alert
-            status="danger"
-            title="Session not started"
-            description={error}
+        {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
+          <ConnectAgentManagerAlert
+            installation={selectedAgent.installation}
+            message={error.message}
+            action="Sessions are started"
           />
+        ) : (
+          error && (
+            <Alert
+              status="danger"
+              title="Session not started"
+              description={typeof error === 'string' ? error : error.message}
+            />
+          )
         )}
         {modelWarning && selectedAgent && (
           <Alert

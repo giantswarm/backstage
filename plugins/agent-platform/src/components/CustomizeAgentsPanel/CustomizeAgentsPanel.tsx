@@ -1,14 +1,24 @@
 import { ReactNode, useEffect, useId, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Progress } from '@backstage/core-components';
 import { ButtonIcon, Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import StarIcon from '@material-ui/icons/Star';
 import StarBorderIcon from '@material-ui/icons/StarBorder';
 import {
+  ALL_INSTALLATIONS,
+  classifyInventoryFailure,
+  installationsWithoutComponent,
+  InventoryFailureGate,
+  selectInventoryFailure,
+  useInstallationInventory,
+} from '@giantswarm/backstage-plugin-gs';
+import {
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
   EmptyStateCard,
+  joinNames,
   LoadingIndicator,
   PHONE_MEDIA,
   StatusDot,
@@ -30,6 +40,8 @@ import { agentDetailRouteRef } from '../../routes';
 import { AgentAvatar } from '../AgentAvatar';
 import { AgentsHelperBanner } from '../AgentsHelperBanner';
 import { type AgentRow, useAgents } from '../AgentsDataProvider';
+import { FirstAgentCard } from '../FirstAgentCard';
+import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
@@ -55,6 +67,19 @@ const TWO_LINES = {
 } as const;
 
 const useStyles = makeStyles({
+  // The list and the "loading more" bar over the gap above it.
+  listFrame: {
+    position: 'relative',
+  },
+  // Laid over the middle of the panel's gap above the list rather than in a
+  // slot of its own: the list neither moves when it comes and goes nor sits
+  // lower on a settled fleet. 4px is the bar's own height.
+  loadingMore: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 'calc(var(--bui-space-5) / -2 - 2px)',
+  },
   // The prototype's agent list: one rounded, bordered surface, an avatar row
   // per agent — no column headers.
   list: {
@@ -436,8 +461,17 @@ function AgentGroup({
  * a `CustomizeDataProvider`.
  */
 export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
-  const { rows, isLoading, hasInstallations, unreachableInstallations } =
-    useAgents();
+  const classes = useStyles();
+  const {
+    rows,
+    scope,
+    installations,
+    isLoading,
+    isLoadingMore,
+    hasInstallations,
+    unreachableInstallations,
+  } = useAgents();
+  const inventory = useInstallationInventory();
   const buildAvatarUrl = useAgentAvatarUrl();
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const isPhone = usePhoneLayout();
@@ -501,8 +535,67 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
     />
   );
 
+  const pinned = scope === ALL_INSTALLATIONS ? null : scope;
+  // A pin the portal does not know (a stale `?installation=` deep link): no
+  // inventory to ask, and nothing else on the panel can say why it is empty.
+  const unknownPin =
+    pinned !== null &&
+    !inventory.isLoading &&
+    inventory.entries.length > 0 &&
+    !inventory.entries.some(entry => entry.installation === pinned);
+  // The environments in scope, when each answered without kagent: nothing
+  // can be listed or created there, whatever else is still loading.
+  const kagentMissing = installationsWithoutComponent(
+    inventory.entries,
+    scope,
+    'kagent',
+  );
+  const isEmpty = !isLoading && rows.length === 0;
+  // The environment this tab reads could not be asked whether it runs kagent:
+  // the pinned one, or the home one under "All environments" -- or, when
+  // the list is empty with nowhere to read agents from, any environment in
+  // scope, since that failure is then the only explanation there is.
+  const inventoryFailure = unknownPin
+    ? undefined
+    : (selectInventoryFailure(inventory, pinned) ??
+      (isEmpty && installations.length === 0 && pinned === null
+        ? inventory.entries
+            .filter(entry => !entry.muted)
+            .map(classifyInventoryFailure)
+            .find(failure => failure !== undefined)
+        : undefined));
+  // Under "All environments", environments switched off in the sidebar's
+  // Cluster access that run kagent: the way to their agents.
+  const switchedOff =
+    pinned === null
+      ? inventory.entries
+          .filter(
+            entry =>
+              entry.muted &&
+              entry.probe === 'answered' &&
+              entry.components.kagent,
+          )
+          .map(entry => entry.installation)
+      : [];
+
   let body;
-  if (isLoading) {
+  if (rows.length === 0 && unknownPin) {
+    body = (
+      <EmptyStateCard
+        title="Unknown environment"
+        description={`This portal knows no environment named “${pinned}”. Choose another environment.`}
+      />
+    );
+  } else if (rows.length === 0 && kagentMissing) {
+    body = (
+      <KagentMissingCard
+        installations={kagentMissing}
+        canChooseAnother={inventory
+          .installationsWith('kagent')
+          .some(installation => !kagentMissing.includes(installation))}
+      />
+    );
+  } else if (isLoading) {
     body = <LoadingIndicator label="Reading your agents…" />;
   } else if (!hasInstallations) {
     body = (
@@ -512,13 +605,44 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
       />
     );
   } else if (rows.length === 0) {
-    body =
-      unreachableInstallations.length > 0 ? null : (
+    // The fleet has settled with nothing: `isLoading` holds only while no
+    // row exists yet. Only a fleet that answered, holds no agent and has
+    // somewhere to deploy to (`installations`, the environments in scope that
+    // run kagent and are reachable) is invited to create one; anywhere else
+    // the invitation would dead-end in the create form.
+    if (
+      unreachableInstallations.length > 0 ||
+      (installations.length === 0 && inventoryFailure)
+    ) {
+      // Nothing could be read, or the environment could not be asked whether
+      // it runs kagent, which is not nothing there: the read warning or the
+      // inventory gate is the whole answer.
+      body = null;
+    } else if (installations.length > 0) {
+      body = <FirstAgentCard />;
+    } else if (switchedOff.length > 0) {
+      body = (
         <EmptyStateCard
-          title="No agents yet"
-          description="Create an agent to start sessions with it."
+          title="No agents to list"
+          description={
+            switchedOff.length === 1
+              ? `${switchedOff[0]} runs kagent but is switched off in Cluster access, so its agents are not read.`
+              : `${joinNames(
+                  switchedOff,
+                )} run kagent but are switched off in Cluster access, so their agents are not read.`
+          }
         />
       );
+    } else {
+      // Environments in scope that run kagent exist only out of reach (their
+      // access is not healthy), next to ones that answered without it.
+      body = (
+        <EmptyStateCard
+          title="No agents to list"
+          description="No environment this portal can reach runs kagent."
+        />
+      );
+    }
   } else if (visible.length === 0) {
     body = (
       <CatalogNoMatch
@@ -573,6 +697,16 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
           onClear={filters.clear}
         />
       )}
+      {/* The environment this tab reads could not be asked whether it runs
+          kagent: said once, with the remedy, as `InstallationInventoryGate`
+          says it on the Sessions list. */}
+      {inventoryFailure && (
+        <InventoryFailureGate
+          failure={inventoryFailure}
+          onRetry={inventory.refresh}
+          context="Which environments run kagent is read through their Kubernetes API."
+        />
+      )}
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
         resourceName="agents"
@@ -586,7 +720,20 @@ export function CustomizeAgentsPanel({ search }: CustomizeAgentsPanelProps) {
           <LastUsedAgents />
         </SessionsDataProvider>
       )}
-      {body}
+      {rows.length > 0 ? (
+        <Flex direction="column" gap="5" className={classes.listFrame}>
+          {/* Rows are in, but more environments are still being read: a thin
+              bar rather than a skeleton. */}
+          {isLoadingMore && (
+            <div className={classes.loadingMore}>
+              <Progress aria-label="Loading more agents" />
+            </div>
+          )}
+          {body}
+        </Flex>
+      ) : (
+        body
+      )}
     </Flex>
   );
 }

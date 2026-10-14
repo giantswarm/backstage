@@ -17,7 +17,7 @@ import { UsageScopeBar } from './UsageScopeBar';
 // The Usage screen's views: Overview · Cost · Your sessions · Connectors.
 // Each answers one question and every metric has one home among them (see
 // `design-context/implementation/usage-metrics-ia.md`): Overview is the
-// platform's health and headline trends on one screen, Cost is the only place
+// platform's health and headline trends at a glance, Cost is the only place
 // with money breakdowns, Connectors is how the connectors and their tools are
 // used (the muster plugin's contributed section), and Your sessions is the
 // reader's own slice. The prototype's fourth view, Technical details, was
