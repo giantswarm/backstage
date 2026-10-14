@@ -26,7 +26,10 @@ export type WorkspaceManagerFake = {
   calls: FakeCall[];
   callsOf: (tool: string) => Array<Record<string, any>>;
   /** Replaces the answer of a write: throw to refuse it. */
-  onWrite: (tool: 'create_workspace' | 'update_workspace', handler: (args: any) => unknown) => void;
+  onWrite: (
+    tool: 'create_workspace' | 'update_workspace',
+    handler: (args: any) => unknown,
+  ) => void;
   providers: WorkspaceProvider[];
 };
 
@@ -36,7 +39,10 @@ function pageOf<T>(items: T[], page = 1, pageSize = 50) {
   return items.slice((page - 1) * pageSize, page * pageSize);
 }
 
-function selects(source: WorkspaceSource, repository: FakeRepository): string[] {
+function selects(
+  source: WorkspaceSource,
+  repository: FakeRepository,
+): string[] {
   if (
     repository.provider !== source.provider ||
     repository.owner !== source.owner ||
@@ -109,8 +115,7 @@ export function createWorkspaceManagerFake({
       const matching = ofOwner.filter(
         r =>
           (!search || r.name.toLowerCase().includes(search)) &&
-          (!args.languages?.length ||
-            args.languages.includes(r.language)) &&
+          (!args.languages?.length || args.languages.includes(r.language)) &&
           (!args.topics?.length ||
             args.topics.some((t: string) => r.topics.includes(t))) &&
           (args.archived === undefined ||

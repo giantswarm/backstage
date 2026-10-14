@@ -1,7 +1,13 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import {
   musterApiRef,
   type MusterApi,
@@ -23,8 +29,18 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
 }));
 
-const GITHUB = { name: 'github', kind: 'github', connected: true, connectURL: '' };
-const GITLAB = { name: 'gitlab-lab', kind: 'gitlab', connected: true, connectURL: '' };
+const GITHUB = {
+  name: 'github',
+  kind: 'github',
+  connected: true,
+  connectURL: '',
+};
+const GITLAB = {
+  name: 'gitlab-lab',
+  kind: 'gitlab',
+  connected: true,
+  connectURL: '',
+};
 
 function repo(
   provider: string,
@@ -129,11 +145,15 @@ describe('WorkspaceEditorPage', () => {
     );
     await settlePreview();
     await waitFor(() =>
-      expect(preview.queryByText('acme/mcp-prometheus')).not.toBeInTheDocument(),
+      expect(
+        preview.queryByText('acme/mcp-prometheus'),
+      ).not.toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
-    await waitFor(() => expect(fake.callsOf('create_workspace')).toHaveLength(1));
+    await waitFor(() =>
+      expect(fake.callsOf('create_workspace')).toHaveLength(1),
+    );
     expect(fake.callsOf('create_workspace')[0]).toEqual({
       name: 'platform-mcp',
       organization: 'acme',
@@ -141,7 +161,10 @@ describe('WorkspaceEditorPage', () => {
         {
           provider: 'github',
           owner: 'acme',
-          filters: { languages: ['Go'], topics: { match: 'any', names: ['mcp'] } },
+          filters: {
+            languages: ['Go'],
+            topics: { match: 'any', names: ['mcp'] },
+          },
           exclude: ['mcp-prometheus'],
         },
       ],
@@ -194,7 +217,9 @@ describe('WorkspaceEditorPage', () => {
     fireEvent.change(ownerField, { target: { value: 'acme!' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
 
-    await waitFor(() => expect(fake.callsOf('create_workspace')).toHaveLength(1));
+    await waitFor(() =>
+      expect(fake.callsOf('create_workspace')).toHaveLength(1),
+    );
     const owner = source(0).getByRole('textbox', { name: /^Owner/ });
     await waitFor(() =>
       expect(owner).toHaveAccessibleDescription(
@@ -217,7 +242,9 @@ describe('WorkspaceEditorPage', () => {
     });
     // Source 1: github / acme, Go repositories.
     fireEvent.click(source(0).getByRole('button', { name: /Provider/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'github (github)' }));
+    fireEvent.click(
+      await screen.findByRole('option', { name: 'github (github)' }),
+    );
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
@@ -256,8 +283,12 @@ describe('WorkspaceEditorPage', () => {
     await render(fake);
 
     await screen.findByRole('textbox', { name: /^Name/ });
-    expect(screen.queryByText(/nightly|weekly|weekday/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: /hour/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/nightly|weekly|weekday/i),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: /hour/i }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/There is no schedule/)).toBeInTheDocument();
   });
 
@@ -285,7 +316,10 @@ describe('WorkspaceEditorPage', () => {
         {
           provider: 'github',
           owner: 'acme',
-          filters: { languages: ['Go'], topics: { match: 'all', names: ['mcp'] } },
+          filters: {
+            languages: ['Go'],
+            topics: { match: 'all', names: ['mcp'] },
+          },
           exclude: ['mcp-prometheus'],
         },
       ],
@@ -301,6 +335,7 @@ describe('WorkspaceEditorPage', () => {
       workspaces: [stored],
     });
     await render(fake, { name: 'platform-mcp' });
+    await screen.findByTestId('workspace-source-0');
 
     expect(
       await source(0).findByRole('button', { name: 'Go', pressed: true }),
@@ -314,7 +349,9 @@ describe('WorkspaceEditorPage', () => {
 
     fireEvent.click(source(0).getByRole('radio', { name: 'Any of' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(fake.callsOf('update_workspace')).toHaveLength(1));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
     expect(fake.callsOf('update_workspace')[0]).toEqual({
       name: 'platform-mcp',
       resourceVersion: '7',
@@ -323,7 +360,10 @@ describe('WorkspaceEditorPage', () => {
         {
           provider: 'github',
           owner: 'acme',
-          filters: { languages: ['Go'], topics: { match: 'any', names: ['mcp'] } },
+          filters: {
+            languages: ['Go'],
+            topics: { match: 'any', names: ['mcp'] },
+          },
           exclude: ['mcp-prometheus'],
         },
       ],
@@ -364,10 +404,14 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     ).toBeInTheDocument();
 
     // Filter: Go only, through the source's filter and "matching only".
-    fireEvent.change(picker().getByRole('searchbox'), { target: { value: '' } });
+    fireEvent.change(picker().getByRole('searchbox'), {
+      target: { value: '' },
+    });
     fireEvent.click(source(0).getByRole('button', { name: 'Go' }));
     fireEvent.click(
-      await picker().findByRole('switch', { name: 'Matching the filters only' }),
+      await picker().findByRole('switch', {
+        name: 'Matching the filters only',
+      }),
     );
     expect(
       await picker().findByText('167 of 500 repositories match'),
