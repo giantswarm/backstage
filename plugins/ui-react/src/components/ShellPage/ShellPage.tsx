@@ -32,13 +32,21 @@ const PHONE_GUTTER = 16;
 
 /**
  * The width, in px, the title's column claims beside the header's actions
- * before they move under it. A long title wraps beside the actions instead of
- * pushing them down, so a session's pin and menu stay at the top right even
- * on a phone (192 + 20 + two 32px icon buttons fit a 288px content column).
- * A wider group — the Environment select and a button — cannot leave a phone
- * title that much, and wraps under the title as a whole.
+ * before they move under it; `leading` comes on top. A long title wraps
+ * beside the actions instead of pushing them down, so a session's pin and
+ * menu stay at the top right even on a phone (192 + 16 + two 32px icon
+ * buttons fit a 288px content column). A wider group — the Environment
+ * select and a button — cannot leave a phone title that much, and wraps
+ * under the title as a whole.
  */
 const TITLE_MIN_WIDTH = 192;
+
+/**
+ * As {@link TITLE_MIN_WIDTH}, for a column that carries a description: a
+ * sentence needs about 45 characters a line to read, where a title reads in
+ * a few words. Narrower than this, the actions move under the description.
+ */
+const DESCRIPTION_MIN_WIDTH = 320;
 
 const useStyles = makeStyles({
   root: {
@@ -54,30 +62,33 @@ const useStyles = makeStyles({
       padding: `20px ${PHONE_GUTTER}px var(${SHELL_PAGE_PADDING_BOTTOM_VAR})`,
     },
   },
-  // Top-aligned: the actions sit beside the title's first line, however many
-  // lines the title and the rows under it take.
+  // Top-aligned: the leading avatar and the actions sit beside the title's
+  // first line, however many lines the title and the rows under it take.
+  // `leading`, the titles and the actions are one row of items, so the
+  // titles' basis is the title's own room and `leading` comes on top of it.
   header: {
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: 20,
+    columnGap: 16,
+    rowGap: 20,
   },
   headerWithBreadcrumbs: {
     marginTop: 20,
   },
-  identity: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 16,
-    flex: `1 1 ${TITLE_MIN_WIDTH}px`,
-    minWidth: 0,
+  leading: {
+    flex: 'none',
   },
   titles: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
+    flex: `1 1 ${TITLE_MIN_WIDTH}px`,
     minWidth: 0,
+  },
+  titlesWithDescription: {
+    flexBasis: DESCRIPTION_MIN_WIDTH,
   },
   title: {
     margin: 0,
@@ -97,14 +108,19 @@ const useStyles = makeStyles({
   description: {
     margin: 0,
   },
-  // Bottom-aligned: a field with its label above it (the Environment select)
-  // lines its box up with the buttons beside it, not its label. One gap
-  // between every control, as across a wrapped row.
+  // Top-aligned, so a multi-line item (an inline error) leaves the buttons
+  // beside the title. A row with a labelled field (the Environment select)
+  // aligns on the bottom edge instead, so the field's box, not its label,
+  // lines up with the buttons beside it. One gap between every control, as
+  // across a wrapped row.
   actions: {
     display: 'flex',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     flexWrap: 'wrap',
     gap: 8,
+    '&:has(.bui-FieldLabelWrapper)': {
+      alignItems: 'flex-end',
+    },
   },
   tabs: {
     marginTop: 24,
@@ -348,31 +364,33 @@ export function ShellPage({
           hasBreadcrumbs ? classes.headerWithBreadcrumbs : ''
         }`}
       >
-        <div className={classes.identity}>
-          {leading}
-          <div className={classes.titles}>
-            <h1 className={classes.title}>{title}</h1>
-            {(badges || meta) && (
-              <div className={classes.badges}>
-                {badges}
-                {meta && (
-                  <Text variant="body-small" color="secondary">
-                    {meta}
-                  </Text>
-                )}
-              </div>
-            )}
-            {description && (
-              <Text
-                as="p"
-                variant="body-medium"
-                color="secondary"
-                className={classes.description}
-              >
-                {description}
-              </Text>
-            )}
-          </div>
+        {leading && <div className={classes.leading}>{leading}</div>}
+        <div
+          className={`${classes.titles} ${
+            description ? classes.titlesWithDescription : ''
+          }`}
+        >
+          <h1 className={classes.title}>{title}</h1>
+          {(badges || meta) && (
+            <div className={classes.badges}>
+              {badges}
+              {meta && (
+                <Text variant="body-small" color="secondary">
+                  {meta}
+                </Text>
+              )}
+            </div>
+          )}
+          {description && (
+            <Text
+              as="p"
+              variant="body-medium"
+              color="secondary"
+              className={classes.description}
+            >
+              {description}
+            </Text>
+          )}
         </div>
         {hasActions && (
           <div className={classes.actions}>

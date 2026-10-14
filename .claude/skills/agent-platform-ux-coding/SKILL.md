@@ -61,11 +61,13 @@ them and never invent a palette.
 - Every page is a `ShellPage` (`ui-react`): breadcrumbs, title row, badges,
   header actions, routed tabs (`RouteTabs`) and an optional facts column that
   folds above the content at phone width.
-- `ShellPage` owns the header's geometry: actions sit top right beside the
-  title's first line, a long title wraps beside them, and only a group too
-  wide to leave the title 192px moves under it. Actions align on their bottom
-  edge 8px apart, so a labelled field (the Environment select) lines its box
-  up with the buttons. Do not wrap or align header actions per page.
+- `ShellPage` owns the header's geometry: the actions and any `leading`
+  mark sit beside the title's first line, a long title wraps beside them, and
+  only a group too wide to leave the title 192px (320px with a description)
+  moves under it. Actions are top-aligned 8px apart; a row with a labelled
+  field (the Environment select) aligns on the bottom edge, so the field's
+  box lines up with the buttons. Pass header controls as the row's own items
+  (a fragment), and do not wrap, align or space them per page.
 - `Breadcrumbs` leads with a back arrow to the nearest linked parent crumb.
   Navigate to the parent, never to browser history.
 - `ShellPage` and `WizardFrame` set the document title through
