@@ -7,6 +7,7 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
+import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import {
   agentOptionLabel,
@@ -82,6 +83,11 @@ const agentPicker = () => screen.getByRole('button', { name: /Agent/ });
 beforeEach(() => {
   onStart.mockReset();
 });
+
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
+  ServerSignIn: () => <div data-testid="server-sign-in" />,
+}));
 
 describe('NewSessionComposer', () => {
   describe('collapsing', () => {
@@ -546,6 +552,17 @@ describe('NewSessionComposer', () => {
     expect(
       screen.getByText('kagent did not accept the agent'),
     ).toBeInTheDocument();
+  });
+
+  it("offers muster's sign-in when agent-manager is not connected", () => {
+    renderComposer({
+      defaultAgent: sre,
+      error: new AgentManagerNotConnectedError('tool not found'),
+    });
+
+    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
+    expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
+    expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
   });
 });
 

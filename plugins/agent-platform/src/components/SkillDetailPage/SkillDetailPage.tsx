@@ -10,26 +10,21 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
-  ButtonIcon,
   ButtonLink,
   Flex,
   Link,
   List,
   ListRow,
-  Menu,
-  MenuItem,
-  MenuTrigger,
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
   type Fact,
   FactsColumn,
   LoadingIndicator,
-  MENU_WIDTH,
+  MoreActionsMenu,
   type RouteTabSpec,
   SectionHeader,
   ShellPage,
@@ -412,32 +407,14 @@ function PhoneSkillActions({
           {button.label}
         </Button>
       )}
-      {rest.length > 0 && (
-        <MenuTrigger>
-          <ButtonIcon
-            icon={<MoreVertIcon />}
-            aria-label="More actions"
-            variant="tertiary"
-          />
-          <Menu maxWidth={MENU_WIDTH}>
-            {rest.map(action => (
-              <MenuItem
-                key={action.id}
-                id={action.id}
-                href={action.href}
-                // A link here leaves the portal (View source), so it opens a
-                // new tab as the same action does as a button.
-                target={action.href ? '_blank' : undefined}
-                rel={action.href ? 'noopener noreferrer' : undefined}
-                onAction={action.onAction}
-                isDisabled={action.isDisabled}
-              >
-                {action.label}
-              </MenuItem>
-            ))}
-          </Menu>
-        </MenuTrigger>
-      )}
+      <MoreActionsMenu
+        items={rest.map(action => ({
+          ...action,
+          // A link here leaves the portal (View source), so it opens a new
+          // tab as the same action does as a button.
+          newTab: Boolean(action.href),
+        }))}
+      />
     </Flex>
   );
 }

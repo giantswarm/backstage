@@ -34,10 +34,10 @@ jest.mock('../UsageConversationsPage', () => ({
   UsageConversationsPage: () => <div>conversations-view</div>,
 }));
 
-// The scope bar's two inputs: the Environment control collapses on a
-// single-installation portal (decision O5), which this state drives, and the
-// selector itself is the gs scope select under another name — its own
-// behaviour is tested with it, so a marker stands in.
+// The Environment control is the gs scope select under another name, and it
+// collapses on a single-installation portal (decision O5) by itself — both
+// tested with it — so a marker stands in. The scope state stays mocked for
+// anything else in the tree that reads it.
 const scopeState = { isSingleInstallation: false, isLoading: false };
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
@@ -286,18 +286,6 @@ describe('UsageRouter', () => {
       );
     });
 
-    it('hides the Environment control on a single-installation portal', async () => {
-      // Decision O5: agentlab-style setups have nothing to select between.
-      scopeState.isSingleInstallation = true;
-
-      renderTab('/agent-platform/usage/overview');
-
-      expect(await screen.findByText('overview-view')).toBeInTheDocument();
-      expect(
-        screen.queryByTestId('environment-select'),
-      ).not.toBeInTheDocument();
-    });
-
     it('offers the time window on the gateway views and sets it in the URL', async () => {
       const user = userEvent.setup();
       renderTab('/agent-platform/usage/overview');
@@ -477,6 +465,23 @@ describe('UsageScopeBar · the window limit on a phone', () => {
 
     expect(await screen.findByText('conversations-view')).toBeInTheDocument();
     expect(screen.queryByText(REASON)).toBeNull();
+  });
+
+  it('bottom-aligns the time range with the Environment control, not with the reason', async () => {
+    // The Environment select carries its label above the field, so only the
+    // two controls share an end-aligned row; layout itself is not measured
+    // in jsdom, so this pins the grouping that gives it.
+    layout = mockPhoneLayout();
+    renderTab('/agent-platform/usage/conversations');
+
+    const timeRange = await screen.findByRole('radiogroup', {
+      name: 'Time range',
+    });
+    const controls = timeRange.parentElement!;
+    expect(controls).toHaveClass('bui-align-end');
+    expect(controls).toContainElement(screen.getByTestId('environment-select'));
+    expect(controls).not.toContainElement(screen.getByText(REASON));
+    expect(controls.parentElement).toHaveClass('bui-align-center');
   });
 
   it('says nothing where no window is off', async () => {

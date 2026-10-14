@@ -2,13 +2,12 @@
 '@giantswarm/backstage-plugin-agent-platform': minor
 ---
 
-Usage: the Overview fits one desktop screen and gains an activity heatmap,
-and connector tool calls get their own **Connectors** view.
+Usage: the Overview gains an activity heatmap, and connector tool calls get
+their own **Connectors** view.
 
 - **Overview** now shows the headline tiles, model calls per day as a
   GitHub-style heatmap (with the busiest day, active days and daily average)
-  beside the top agents, and the gateway's health. The token breakdown by type
-  moved into a collapsed fold-out on the same view.
+  beside the top agents, the gateway's health, and the tokens per day by type.
 - **Connectors** (`/agent-platform/usage/connectors`) carries the connectors'
   tool calls that used to sit at the foot of Overview. It is offered only where
   the muster plugin contributes it, and the old `/agent-platform/usage/mcp`

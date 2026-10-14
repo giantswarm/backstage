@@ -756,7 +756,7 @@ function AgentDetailPageContent() {
         agents={composerAgents}
         defaultAgent={agentRow}
         isStarting={creation.isCreating}
-        error={creation.error?.message}
+        error={creation.error ?? undefined}
         onStart={onStartSession}
       />
 

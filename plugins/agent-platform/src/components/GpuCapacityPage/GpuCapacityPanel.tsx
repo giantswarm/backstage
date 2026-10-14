@@ -34,6 +34,7 @@ import {
   type GpuCapacityUnavailableReason,
   type GpuNode,
 } from '../../lib/serving';
+import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import { backendServerName } from '../../lib/modelManagerServing';
 
 /** The default order, and the one while the Installation column is hidden. */
@@ -776,6 +777,12 @@ export function GpuCapacityPanel({
   const readableInstallations = installations.filter(
     installation => !(installation in unavailable),
   );
+  // One pinned environment, or every one in view, failed: the alert below is
+  // all the panel knows.
+  const noneRead = nothingCouldBeRead({
+    installations,
+    unreadable: unavailableEntries.map(([installation]) => installation),
+  });
 
   let body: ReactNode;
   if (nodes.length > 0) {
@@ -798,7 +805,7 @@ export function GpuCapacityPanel({
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading nodes…" />;
-  } else {
+  } else if (!noneRead) {
     body = (
       <Text variant="body-medium" color="secondary">
         {readableInstallations.length > 0
@@ -828,7 +835,11 @@ export function GpuCapacityPanel({
         {unavailableEntries.length > 0 && (
           <Alert
             status="info"
-            title="GPU capacity is unavailable for some environments"
+            title={
+              noneRead
+                ? 'GPU capacity is unavailable'
+                : 'GPU capacity is unavailable for some environments'
+            }
             description={
               <UnavailableDescription entries={unavailableEntries} />
             }
