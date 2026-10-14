@@ -1,6 +1,7 @@
 import { Text } from '@backstage/ui';
 import {
   ALL_INSTALLATIONS,
+  installationsWithoutComponent,
   PLATFORM_COMPONENT_LABELS,
   useInstallationInventory,
   useInstallationScope,
@@ -37,7 +38,7 @@ export function InstallationScopeNote({
       </Text>
     );
   }
-  if (entry.probe === 'answered' && !entry.components[component]) {
+  if (installationsWithoutComponent(entries, scope, component)) {
     return (
       <Text variant="body-small" color="secondary">
         {PLATFORM_COMPONENT_LABELS[component]} is not installed on {scope}.

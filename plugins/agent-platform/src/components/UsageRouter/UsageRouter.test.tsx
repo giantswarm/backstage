@@ -479,6 +479,23 @@ describe('UsageScopeBar · the window limit on a phone', () => {
     expect(screen.queryByText(REASON)).toBeNull();
   });
 
+  it('bottom-aligns the time range with the Environment control, not with the reason', async () => {
+    // The Environment select carries its label above the field, so only the
+    // two controls share an end-aligned row; layout itself is not measured
+    // in jsdom, so this pins the grouping that gives it.
+    layout = mockPhoneLayout();
+    renderTab('/agent-platform/usage/conversations');
+
+    const timeRange = await screen.findByRole('radiogroup', {
+      name: 'Time range',
+    });
+    const controls = timeRange.parentElement!;
+    expect(controls).toHaveClass('bui-align-end');
+    expect(controls).toContainElement(screen.getByTestId('environment-select'));
+    expect(controls).not.toContainElement(screen.getByText(REASON));
+    expect(controls.parentElement).toHaveClass('bui-align-center');
+  });
+
   it('says nothing where no window is off', async () => {
     layout = mockPhoneLayout();
     renderTab('/agent-platform/usage/overview');

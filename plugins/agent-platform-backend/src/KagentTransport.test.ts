@@ -53,17 +53,16 @@ describe('KagentClient over native gRPC (h2c)', () => {
     );
   }
 
-  it('creates, streams, cancels and lists over one HTTP/2 origin', async () => {
+  it('streams, cancels and lists over one HTTP/2 origin', async () => {
     const c = client();
     const options = { userToken: 'user-token' };
 
-    const createdBody = (await c.createSession(
+    // Started as agent-manager starts it; the portal never creates one.
+    const { id } = fake.startSession(
+      options.userToken,
       { namespace: 'kagent', name: 'sre-agent' },
-      'Over the wire',
-      'req-h2c',
-      options,
-    )) as { session: { id: string } };
-    const id = createdBody.session.id;
+      { requestId: 'req-h2c', name: 'Over the wire' },
+    );
 
     const stream = await c.streamMessage(
       id,

@@ -15,6 +15,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
+  applyCatalogFilters,
   type CatalogFacet,
   CatalogFilterBar,
   CatalogNoMatch,
@@ -61,6 +62,7 @@ import {
 } from '../shared';
 import {
   authLabel,
+  catalogueState,
   CONNECTOR_REACH_LABELS,
   CONNECTOR_REACH_ORDER,
   type ConnectorReach,
@@ -72,6 +74,7 @@ import {
   musterStatus,
   rowServer,
   toolsLabel,
+  unsearchedToolsNotes,
 } from './connectorRows';
 
 const useStyles = makeStyles({
@@ -407,6 +410,13 @@ function ConnectorsTable({
   const sessionFailed = session.failure !== undefined;
   const answered = catalogue.data !== undefined;
   const catalogueFailed = Boolean(catalogue.error);
+  // What the search's tool names came from, for an empty result to say.
+  const searchedTools = catalogueState({
+    answered,
+    truncated: Boolean(catalogue.data?.truncated),
+    loading: (!hasSession && session.pending) || isAwaitingData(catalogue),
+    failed: catalogueFailed,
+  });
   const musterSession = useMemo<MusterSessionState>(
     () => ({
       requiresAuth: activeInstallationInfo?.requiresAuth,
@@ -549,14 +559,31 @@ function ConnectorsTable({
       </Flex>
     );
   } else if (rows.length === 0) {
+    // A search that found nothing says what it could not look at, where the
+    // tool may still be: among the connectors the filters keep.
+    const unsearched =
+      search.trim() === ''
+        ? []
+        : unsearchedToolsNotes(
+            searchedTools,
+            applyCatalogFilters(allRows, CONNECTOR_FACETS, filters.selection),
+            authStatus.data !== undefined,
+          );
+    const toolsSearched =
+      searchedTools === 'loaded' || searchedTools === 'partial';
     list = (
       <Flex direction="column" gap="2">
         <CatalogNoMatch
-          plural="connectors or tools"
+          plural={toolsSearched ? 'connectors or tools' : 'connectors'}
           search={search}
           isFiltered={filters.isFiltered}
           onClearFilters={filters.clear}
         />
+        {unsearched.length > 0 && (
+          <Text as="p" variant="body-medium" color="secondary">
+            {unsearched.join(' ')}
+          </Text>
+        )}
         {otherMatches}
       </Flex>
     );

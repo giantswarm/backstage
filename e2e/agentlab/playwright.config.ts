@@ -11,6 +11,11 @@ import { mobileSpecGlobs, shellSpecGlobs } from './portalModes';
  * `agentlab platform` after a dev-image swap), and the suite only drives its
  * Backstage. `yarn test:e2e:agentlab` runs it.
  */
+// One id per run, which the workers inherit: the workspace fixtures name what
+// they create with it, and remove what an aborted earlier run left (any other
+// id) before they create anything.
+process.env.AGENTLAB_E2E_RUN ??= Date.now().toString(36);
+
 export default defineConfig<{}, { variant: Variant }>({
   testDir: '.',
   // A page load in the lab can take a few seconds while the backend probes the

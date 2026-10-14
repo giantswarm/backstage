@@ -742,9 +742,10 @@ kagent-dev/kagent#2397 exposes it.
 
 #### Session ids come in two shapes, and neither is ours
 
-The controller assigns ids in `SessionService/CreateSession`; sessions started
-from Slack by klaus-gateway have another shape. An id is **opaque**: never
-parse it or assume hex or a UUID. The code only `encodeURIComponent`s it.
+The controller assigns ids when agent-manager's `start_session` creates the
+Session; sessions started from Slack by klaus-gateway have another shape. An id
+is **opaque**: never parse it or assume hex or a UUID. The code only
+`encodeURIComponent`s it.
 
 Creates carry a browser `request_id`, and the controller is idempotent on
 (creator, request id), so a lost create answer returns the existing session on
@@ -1518,11 +1519,29 @@ The composer grows with its content and never shrinks back. Enter starts.
 
 #### Create, navigate, then send — in that order
 
-1. `POST /kagent/sessions` with the agent, the title and a **`requestId`**: one
-   `CreateSession` on the Agent, which names its Harness, so the backend
-   depends on nothing the browser read.
+1. **agent-manager's `start_session`**, through muster as the person
+   (`AgentManagerClient.startSession`, `musterApi.callTool(…, installation)`),
+   with the agent's namespace and technical name, the title as `sessionName`
+   and a **`requestId`**, and **no message**: agent-manager creates the
+   Session (`CreateSession` on the Agent, which names its Harness) and sends
+   nothing.
 2. Navigate to the session's page with the prompt in the router state.
 3. The **detail page** sends the prompt as the first message.
+
+**One way to start a session.** Every surface (the portal, Slack, any MCP
+client) starts sessions through `start_session`, the one place where an agent
+and, optionally, a workspace grant meet, so no surface can skip a workspace's
+access check. The portal sends no grant yet: an absent grant is the plain
+session. The backend has no create route; reads, sends, rename and delete stay
+on the kagent proxy. Refusals are agent-manager's, classified as its other
+tools' are (`AgentManagerError` with its code); a portal without the muster
+plugin cannot start a session.
+
+**Why without a message.** `start_session` can send the first message
+itself, but then the first turn is neither streamed to the person nor sent
+with the human-in-the-loop extension, so an approval-gated tool call in it
+could not pause the way the page shows it. Creating only and sending from the
+detail page keeps the first turn exactly like every reply.
 
 **The create is idempotent.** `useCreateSession` mints one `requestId` per
 submission and reuses it when the same prompt to the same agent is retried; the
@@ -1558,8 +1577,9 @@ most 200 characters).
 #### The agent implies the installation
 
 An agent's identity is installation/namespace/name, so picking one picks the
-installation. The create sends the namespace and the **technical** name (the
-`Agent` resource name) as `CreateSession.agent`, never the display name.
+installation. The start sends the namespace and the **technical** name (the
+`Agent` resource name) as `start_session`'s `namespace` and `name`, never the
+display name.
 
 The picker offers **ready agents only**, grouped by installation when there is
 more than one, with search past eight agents. Non-ready agents are omitted,
