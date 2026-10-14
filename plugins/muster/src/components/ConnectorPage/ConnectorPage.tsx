@@ -86,7 +86,6 @@ import {
   addedLine,
   callsLine,
   healthLine,
-  runsAsCaller,
   signInLabel,
 } from './connectorFacts';
 import {
@@ -586,11 +585,9 @@ function ConnectorPageContent({
               index
               element={
                 <ConnectorToolsTab
+                  server={name}
                   installation={installation}
                   tools={tools}
-                  runsAsCaller={
-                    representative ? runsAsCaller(representative) : false
-                  }
                   emptyExplanation={emptyExplanation}
                   sessionGate={sessionGate}
                   signInGate={signInGate}

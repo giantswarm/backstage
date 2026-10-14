@@ -1,8 +1,7 @@
 import { ReactNode, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApi, useRouteRef } from '@backstage/frontend-plugin-api';
-import { Cell, CellText, ColumnConfig, Flex, Table, Text } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core';
+import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -40,17 +39,6 @@ import {
   type LastRunState,
   lastRunStates,
 } from './lastRuns';
-
-const useStyles = makeStyles({
-  // A phone row's description: two lines, then the workflow's page.
-  description: {
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    overflow: 'hidden',
-    overflowWrap: 'anywhere',
-  },
-});
 
 export type CustomizeWorkflowsPanelProps = {
   search: string;
@@ -108,7 +96,6 @@ function WorkflowRows({
   hasSession: boolean;
   tools: ToolSummary[] | undefined;
 }) {
-  const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const detailRoute = useRouteRef(workflowDetailRouteRef);
   const isPhone = usePhoneLayout();
@@ -229,19 +216,7 @@ function WorkflowRows({
           ? { status: <EffectBadge effect={row.effect} subject="workflow" /> }
           : {}),
         facts: [row.category, row.steps, row.runs, row.source],
-        ...(row.description
-          ? {
-              details: (
-                <Text
-                  variant="body-small"
-                  color="secondary"
-                  className={classes.description}
-                >
-                  {row.description}
-                </Text>
-              ),
-            }
-          : {}),
+        ...(row.description ? { description: row.description } : {}),
       };
     });
     return <StackedRowList rows={items} aria-label="Workflows" />;

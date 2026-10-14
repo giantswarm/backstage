@@ -43,4 +43,15 @@ describe('ConnectorsRedirect', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("sends an old tool page's address to the tool's page under its connector", async () => {
+    await renderAt(
+      '/agent-platform/mcp-servers/kubernetes/tools/x_kubernetes_list?installation=gazelle',
+    );
+    expect(
+      await screen.findByText(
+        'landed: /agent-platform/connectors/kubernetes/tools/x_kubernetes_list?installation=gazelle',
+      ),
+    ).toBeInTheDocument();
+  });
 });

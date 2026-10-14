@@ -86,7 +86,7 @@ describe('ToolsetResolutionList', () => {
 
     expect(screen.getByText('x_kubernetes_get_pods')).toBeInTheDocument();
     expect(screen.getByText('workflow_incident-triage')).toBeInTheDocument();
-    expect(screen.getByText('read-only')).toBeInTheDocument();
+    expect(screen.getByText('Reads')).toBeInTheDocument();
     expect(
       screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
     ).not.toBeInTheDocument();

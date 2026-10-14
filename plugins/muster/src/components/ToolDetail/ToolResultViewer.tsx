@@ -32,7 +32,7 @@ type ViewMode = 'parsed' | 'raw' | 'table';
 // with a usable minimum on short windows. The dynamic viewport and the
 // shell's phone bar (0 elsewhere) count, so on a phone the box ends above the
 // bar instead of under it, and a swipe past its end reaches the page.
-const RESULT_MAX_HEIGHT =
+export const RESULT_MAX_HEIGHT =
   'max(240px, calc(100dvh - var(--agent-shell-mobile-bar-height, 0px) - 200px))';
 
 /**

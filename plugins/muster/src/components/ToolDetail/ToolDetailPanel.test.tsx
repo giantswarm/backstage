@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
@@ -44,12 +44,40 @@ describe('ToolDetailPanel', () => {
     const api = makeApi();
     await renderPanel(api);
 
+    // Headed as the agent, skill and workflow pages head theirs.
     expect(
-      await screen.findByText('Echoes a message back.'),
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('Echoes a message back.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Arguments')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Try it' }),
+    ).toBeInTheDocument();
+    // Folded: the form is the schema drawn for people. Mounted only once
+    // opened, as the other pages' Technical details are.
+    expect(
+      screen.getByRole('button', { name: 'Input schema' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(/"What to echo"/)).not.toBeInTheDocument();
     expect(
       screen.getByRole('textbox', { name: /message/i }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Input schema' }));
+    expect(await screen.findByText(/"What to echo"/)).toBeInTheDocument();
+  });
+
+  it('says so when the connector gives the tool no description', async () => {
+    const api = makeApi();
+    api.describeTool = jest.fn(() =>
+      Promise.resolve({ ...detail, description: undefined }),
+    );
+    await renderPanel(api);
+
+    expect(
+      within(
+        await screen.findByRole('region', { name: 'What it’s for' }),
+      ).getByText('Its connector gives no description.'),
     ).toBeInTheDocument();
   });
 
@@ -62,7 +90,7 @@ describe('ToolDetailPanel', () => {
       screen.getByRole('textbox', { name: /message/i }),
       'hi',
     );
-    await userEvent.click(screen.getByRole('button', { name: 'Execute' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     await waitFor(() =>
       expect(api.callTool).toHaveBeenCalledWith(
@@ -71,10 +99,50 @@ describe('ToolDetailPanel', () => {
         undefined,
       ),
     );
-    expect(await screen.findByText('Result')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
   });
 
-  it('shows a note beside the Execute button when given one', async () => {
+  it('keeps the last result on screen while a re-run is pending', async () => {
+    const api = makeApi();
+    await renderPanel(api);
+
+    await screen.findByText('Echoes a message back.');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+
+    (api.callTool as jest.Mock).mockImplementation(() => new Promise(() => {}));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByRole('button', { name: /Running/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeInTheDocument();
+  });
+
+  it('drops the last result when a call fails', async () => {
+    const api = makeApi();
+    await renderPanel(api);
+
+    await screen.findByText('Echoes a message back.');
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    await screen.findByRole('heading', { level: 2, name: 'Result' });
+
+    (api.callTool as jest.Mock).mockRejectedValue(new Error('boom'));
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(
+      await screen.findByText('Could not run the tool'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'Result' }),
+    ).toBeNull();
+  });
+
+  it('shows a note beside the Run button when given one', async () => {
     await renderPanel(makeApi(), 'Nothing is changed.');
 
     await screen.findByText('Echoes a message back.');

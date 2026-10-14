@@ -1,8 +1,4 @@
-export {
-  ConnectorToolsTab,
-  tryItNote,
-  useToolSearchState,
-} from './ConnectorToolsTab';
+export { ConnectorToolsTab, useToolSearchState } from './ConnectorToolsTab';
 export type {
   ConnectorToolsTabProps,
   ToolSearchState,

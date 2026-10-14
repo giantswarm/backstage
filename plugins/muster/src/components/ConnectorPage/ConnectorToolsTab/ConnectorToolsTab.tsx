@@ -1,25 +1,17 @@
-import { ReactNode, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import {
-  Accordion,
-  AccordionGroup,
-  AccordionPanel,
-  AccordionTrigger,
-  Alert,
-  Box,
-  Flex,
-  SearchField,
-  Text,
-} from '@backstage/ui';
+import { MouseEvent, ReactNode, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
   type CatalogFacet,
+  type CatalogFilterSelection,
   CatalogNoMatch,
   INITIAL_ROWS,
   LoadingIndicator,
   SEARCH_MIN,
   ShowMore,
+  StackedRowList,
   useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
@@ -29,8 +21,12 @@ import {
   ToolEffect,
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
-import { EffectBadge, TruncatedListNote } from '../../shared';
-import { ToolDetailPanel } from '../../ToolDetail';
+import {
+  EffectBadge,
+  TruncatedListNote,
+  type ToolsListView,
+  useServerPageLinks,
+} from '../../shared';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({
@@ -46,30 +42,6 @@ const useStyles = makeStyles({
   search: {
     maxWidth: 360,
   },
-  trigger: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 14,
-    flex: '1 1 auto',
-    minWidth: 0,
-    textAlign: 'left',
-  },
-  rowText: {
-    flex: '1 1 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    minWidth: 0,
-    // A tool's label is one snake_case token: it breaks rather than run
-    // under the effect badge on a phone.
-    overflowWrap: 'anywhere',
-  },
-  tryIt: {
-    margin: '4px 0 12px',
-    padding: 18,
-    borderRadius: 12,
-    background: 'var(--bui-bg-neutral-1)',
-  },
 });
 
 /** The "What it does" dropdown, as the wizard's catalogue draws it (T81). */
@@ -83,7 +55,29 @@ const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
   },
 ];
 
-/** The Tools tab's search: what is typed, and whether the page opened with one. */
+/**
+ * Where the connector page's history entry keeps the Tools view a tool was
+ * opened from (`location.state`), so Back from the tool lands on it again.
+ */
+const TOOLS_VIEW_STATE = 'toolsView';
+
+/** What the history entry keeps: the search, the filter and the tool opened. */
+type SavedToolsView = { q: string; effect: string[]; opened?: string };
+
+function savedToolsView(state: unknown): SavedToolsView | undefined {
+  const saved = (state as Record<string, unknown> | null)?.[TOOLS_VIEW_STATE];
+  if (!saved || typeof saved !== 'object') {
+    return undefined;
+  }
+  const { q, effect, opened } = saved as Partial<SavedToolsView>;
+  return {
+    q: typeof q === 'string' ? q : '',
+    effect: Array.isArray(effect) ? effect.map(String) : [],
+    ...(typeof opened === 'string' ? { opened } : {}),
+  };
+}
+
+/** The Tools tab's search: what is typed, and how the tab opened. */
 export type ToolSearchState = {
   query: string;
   setQuery: (query: string) => void;
@@ -92,28 +86,49 @@ export type ToolSearchState = {
    * can be read and cleared; clearing it does not take the field away.
    */
   openedSearched: boolean;
+  /** The "What it does" picks the tab opened with. */
+  initialSelection: CatalogFilterSelection;
+  /** The tool last opened from this list, which the list shows again. */
+  opened?: string;
 };
 
 /**
- * The Tools tab's search, seeded once from the page's `?q=`, as Customize's
- * search is, and not written back: every change of the address is a page
- * view. The connector page holds it above its tabs, so what was typed is
- * still there after a visit to another tab.
+ * The Tools tab's search and filter, seeded once and not written back to the
+ * address: every change of the address is a page view. Back from a tool's
+ * page seeds them from the history entry (`location.state`), which the tab
+ * writes when a tool is opened; otherwise the page's `?q=` and `?effect=`
+ * seed them, as a link from Customize's search or a tool page's way back
+ * carries them. The connector page holds the search above its tabs, so what
+ * was typed is still there after a visit to another tab.
  */
 export function useToolSearchState(): ToolSearchState {
-  const { search } = useLocation();
-  const [initialQuery] = useState(
-    () => new URLSearchParams(search).get('q') ?? '',
-  );
-  const [query, setQuery] = useState(initialQuery);
-  return { query, setQuery, openedSearched: initialQuery.trim() !== '' };
+  const { search, state } = useLocation();
+  const [seed] = useState<SavedToolsView>(() => {
+    const saved = savedToolsView(state);
+    if (saved) {
+      return saved;
+    }
+    const params = new URLSearchParams(search);
+    return {
+      q: params.get('q') ?? '',
+      effect: (params.get('effect') ?? '').split(',').filter(Boolean),
+    };
+  });
+  const [query, setQuery] = useState(seed.q);
+  return {
+    query,
+    setQuery,
+    openedSearched: seed.q.trim() !== '',
+    initialSelection: seed.effect.length > 0 ? { effect: seed.effect } : {},
+    ...(seed.opened ? { opened: seed.opened } : {}),
+  };
 }
 
 export interface ConnectorToolsTabProps {
+  /** The connector's key in the address, which its tools' pages sit under. */
+  server: string;
   installation: string;
   tools: ServerTools;
-  /** Whether a call reaches the server with the caller's own identity. */
-  runsAsCaller: boolean;
   /** Why the connector lists no tools, when it lists none. */
   emptyExplanation: string;
   /** Shown instead of the list while the muster session is missing. */
@@ -130,86 +145,25 @@ export interface ConnectorToolsTabProps {
   searchState?: ToolSearchState;
 }
 
-/** What the Try it panel says beside its button for a tool. */
-export function tryItNote(
-  effect: ToolEffect,
-  runsAsCaller: boolean,
-): string | undefined {
-  const parts = [
-    runsAsCaller ? 'Runs as you.' : undefined,
-    effect === 'reads' ? 'Nothing is changed.' : undefined,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' ') : undefined;
-}
-
-function ToolRow({
-  tool,
-  label,
-  open,
-  installation,
-  runsAsCaller,
-}: {
-  tool: ToolSummary;
-  label: string;
-  open: boolean;
-  installation: string;
-  runsAsCaller: boolean;
-}) {
-  const classes = useStyles();
-  const effect = toolEffect(tool);
-  const description = tool.description ?? tool.summary;
-  return (
-    <Accordion id={tool.name}>
-      <AccordionTrigger>
-        <span className={classes.trigger}>
-          <span className={classes.rowText}>
-            <Text variant="body-medium" weight="bold">
-              {label}
-            </Text>
-            {description && (
-              <Text variant="body-small" color="secondary" truncate>
-                {description}
-              </Text>
-            )}
-          </span>
-          <EffectBadge effect={effect} />
-        </span>
-      </AccordionTrigger>
-      <AccordionPanel>
-        {open && (
-          <div className={classes.tryIt}>
-            <Text as="h4" variant="body-medium" weight="bold">
-              Try it
-            </Text>
-            <ToolDetailPanel
-              name={tool.name}
-              installation={installation}
-              showMarkers={false}
-              note={tryItNote(effect, runsAsCaller)}
-              runLabel="Run"
-            />
-          </div>
-        )}
-      </AccordionPanel>
-    </Accordion>
-  );
-}
-
 /**
- * The connector's tools as an expandable list: a search, a "What it does"
- * dropdown (only when the tools both read and change things) with a count per
- * choice, and per tool its effect and an inline
- * Try it that runs the tool through muster. A short list (`SEARCH_MIN` or
- * fewer) is read, not searched, so it shows neither, unless the tab opened
- * with a search; a long one renders a page of tools at a time. The search is
- * seeded once from the page's `?q=` (`useToolSearchState`): the Customize
- * list's search links a connector it matched by its tools here with it, so
- * the tab opens on the matching tools.
+ * The connector's tools as a list of links, one row per tool: its name, its
+ * description cut to two lines and what it does. Each row opens the tool's own
+ * page, which holds its schema, the form that runs it and the result. A search
+ * and a "What it does" dropdown (only when the tools both read and change
+ * things) with a count per choice sit above a long list. A short list
+ * (`SEARCH_MIN` or fewer) is read, not searched, so it shows neither, unless
+ * the tab opened with a search; a long one renders a page of tools at a time.
+ * The search and filter are seeded once (`useToolSearchState`): from the
+ * page's `?q=`, as the Customize list's search links a connector it matched by
+ * its tools, so the tab opens on the matching tools. A tool's link carries the
+ * search and filter in force for its page's way back, and opening a tool
+ * keeps them and the tool in this page's history entry, so Back lands on the
+ * same tools with the opened one shown.
  */
 export function ConnectorToolsTab({
+  server,
   installation,
   tools,
-  runsAsCaller,
   emptyExplanation,
   sessionGate,
   signInGate,
@@ -217,8 +171,11 @@ export function ConnectorToolsTab({
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
   const ownSearch = useToolSearchState();
-  const { query, setQuery, openedSearched } = searchState ?? ownSearch;
-  const [openTool, setOpenTool] = useState<string | undefined>();
+  const { query, setQuery, openedSearched, initialSelection, opened } =
+    searchState ?? ownSearch;
+  const links = useServerPageLinks();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const { tools: listed, shortName } = tools;
   const all = useMemo(() => listed ?? [], [listed]);
@@ -231,8 +188,60 @@ export function ConnectorToolsTab({
     items: all,
     searched,
     facets: EFFECT_FACETS,
+    initialSelection,
   });
   const shown = filters.filtered;
+  const view: ToolsListView = {
+    q: query.trim() || undefined,
+    effect: filters.selection.effect?.length
+      ? filters.selection.effect
+      : undefined,
+  };
+  const hrefOf = (tool: ToolSummary) =>
+    links.tool(server, tool.name, installation, view);
+  // The list as the tab opened on it: it pages far enough to show the tool
+  // last opened from it again, until the search or filter changes.
+  const [openedKey] = useState(() => `${filters.key}|${query}`);
+  const listKey = `${filters.key}|${query}`;
+  const openedIndex =
+    opened && listKey === openedKey
+      ? shown.findIndex(tool => tool.name === opened)
+      : -1;
+  const initialShown =
+    openedIndex >= 0
+      ? Math.ceil((openedIndex + 1) / INITIAL_ROWS) * INITIAL_ROWS
+      : undefined;
+
+  // Before a row's link navigates (capture runs first), the view and the
+  // tool go into this entry's state: no page view, as the address stays.
+  const rememberOpened = (event: MouseEvent<HTMLElement>) => {
+    const href = (event.target as Element)
+      .closest('a[href]')
+      ?.getAttribute('href');
+    const tool = href ? shown.find(t => hrefOf(t) === href) : undefined;
+    if (!tool) {
+      return;
+    }
+    const saved: SavedToolsView = {
+      q: query,
+      effect: [...(filters.selection.effect ?? [])],
+      opened: tool.name,
+    };
+    navigate(
+      {
+        pathname: location.pathname,
+        search: location.search,
+        hash: location.hash,
+      },
+      {
+        replace: true,
+        state: {
+          ...((location.state as object | null) ?? {}),
+          [TOOLS_VIEW_STATE]: saved,
+        },
+      },
+    );
+  };
   // A list of one kind has nothing to tell apart; a pick still standing stays
   // drawn so it can be undone.
   const effectDimensions = filters.dimensions.filter(
@@ -298,35 +307,30 @@ export function ConnectorToolsTab({
           onClearFilters={filters.clear}
         />
       ) : (
-        // A server can list hundreds of tools, each an accordion; a page of
-        // them at a time, starting over when the search or filter changes.
-        <ShowMore
-          key={`${filters.key}|${query}`}
-          items={shown}
-          initial={INITIAL_ROWS}
-          noun="tool"
-        >
-          {page => (
-            <AccordionGroup
-              expandedKeys={openTool ? [openTool] : []}
-              onExpandedChange={keys => {
-                const [next] = [...keys];
-                setOpenTool(next === undefined ? undefined : String(next));
-              }}
-            >
-              {page.map(tool => (
-                <ToolRow
-                  key={tool.name}
-                  tool={tool}
-                  label={shortName(tool.name)}
-                  open={openTool === tool.name}
-                  installation={installation}
-                  runsAsCaller={runsAsCaller}
-                />
-              ))}
-            </AccordionGroup>
-          )}
-        </ShowMore>
+        // A server can list hundreds of tools; a page of them at a time,
+        // starting over when the search or filter changes.
+        <div onClickCapture={rememberOpened}>
+          <ShowMore
+            key={listKey}
+            items={shown}
+            initial={INITIAL_ROWS}
+            initialShown={initialShown}
+            noun="tool"
+          >
+            {page => (
+              <StackedRowList
+                aria-label="Tools"
+                rows={page.map(tool => ({
+                  id: tool.name,
+                  title: shortName(tool.name),
+                  href: hrefOf(tool),
+                  status: <EffectBadge effect={toolEffect(tool)} />,
+                  description: tool.description ?? tool.summary,
+                }))}
+              />
+            )}
+          </ShowMore>
+        </div>
       )}
     </Flex>
   );

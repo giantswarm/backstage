@@ -38,6 +38,12 @@ export type ShowMoreProps<T> = {
   items: T[];
   /** How many to render before asking for a click, and how many each click adds. */
   initial?: number;
+  /**
+   * How many to render at first, when that is more than `initial`: enough to
+   * show again the row a person left the list from. Clicks still add
+   * `initial`, and *Show fewer* goes back to `initial`.
+   */
+  initialShown?: number;
   /** What the items are called in the button: `Show 20 more tools`. */
   noun: string;
   plural?: string;
@@ -64,12 +70,15 @@ export type ShowMoreProps<T> = {
 export function ShowMore<T>({
   items,
   initial = INITIAL_ROWS,
+  initialShown,
   noun,
   plural,
   revealAll = false,
   children,
 }: ShowMoreProps<T>) {
-  const [shown, setShown] = useState(initial);
+  const [shown, setShown] = useState(() =>
+    Math.max(initial, initialShown ?? 0),
+  );
   const slack = showMoreSlack(initial);
   // How many a page of `count` actually renders: all of them once no more
   // than the slack would stay hidden.

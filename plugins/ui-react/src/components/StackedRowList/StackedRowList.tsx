@@ -81,6 +81,15 @@ const useStyles = makeStyles({
     minWidth: 0,
     overflowWrap: 'anywhere',
   },
+  // Two lines, then the item's page. Not lifted above the stretched link:
+  // nothing in it is pressable, so a press on it opens the item.
+  description: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+  },
   details: {
     position: 'relative',
     zIndex: 1,
@@ -125,7 +134,13 @@ export type StackedRowItem = {
    */
   facts?: ReactNode[];
   /**
-   * Under line 2, for what a table hid in `title=` or a tooltip — a reason,
+   * Under line 2: what the item is, cut to two lines. Plain text only: a
+   * press on it opens the row's link like the rest of the row, so it holds
+   * nothing pressable (that goes in `details`).
+   */
+  description?: ReactNode;
+  /**
+   * Under the description, for what a table hid in `title=` or a tooltip — a reason,
    * a readiness message — and for a row's expanded content. Pressable.
    */
   details?: ReactNode;
@@ -164,6 +179,7 @@ export function StackedRow({
   leading,
   status,
   facts,
+  description,
   details,
   actions,
 }: Omit<StackedRowItem, 'id'>) {
@@ -206,6 +222,16 @@ export function StackedRow({
                 <span>{fact}</span>
               </Fragment>
             ))}
+          </Text>
+        )}
+        {description && (
+          <Text
+            as="p"
+            variant="body-small"
+            color="secondary"
+            className={classes.description}
+          >
+            {description}
           </Text>
         )}
         {details && <div className={classes.details}>{details}</div>}
