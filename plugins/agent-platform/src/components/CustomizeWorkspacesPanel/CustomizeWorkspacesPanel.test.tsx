@@ -116,10 +116,15 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(within(failed).getByText('Failed')).toBeInTheDocument();
   });
 
-  it("takes what the volume stores from the list where the manager answers it, ↑ when the last sync grew the share", async () => {
+  it('takes what the volume stores from the list where the manager answers it, ↑ when the last sync grew the share', async () => {
     mockData = data({
       rows: [
-        { ...docs, storedBytes: 9 * 1024 ** 3, volumeSize: '16Gi', grewFrom: '8Gi' },
+        {
+          ...docs,
+          storedBytes: 9 * 1024 ** 3,
+          volumeSize: '16Gi',
+          grewFrom: '8Gi',
+        },
       ],
     });
     await renderPanel();

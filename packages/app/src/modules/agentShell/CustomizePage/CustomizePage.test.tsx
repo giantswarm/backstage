@@ -540,9 +540,9 @@ describe('CustomizePage', () => {
       mockCustomizeData = { ...mockCustomizeData, hasWorkspaces: false };
       await renderCustomize('/customize/agents');
 
-      expect(
-        tabs().some(([title]) => title?.startsWith('Workspaces')),
-      ).toBe(false);
+      expect(tabs().some(([title]) => title?.startsWith('Workspaces'))).toBe(
+        false,
+      );
     });
 
     it('renders at its address whatever is known, its panel saying what there is', async () => {

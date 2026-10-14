@@ -140,9 +140,7 @@ describe('WorkspacesDataProvider', () => {
     mockProbing = true;
     await renderWorkspaces();
 
-    expect(
-      await screen.findByText('available: undefined'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('available: undefined')).toBeInTheDocument();
   });
 
   it('offers no Organization scope to a person in one Organization', async () => {
