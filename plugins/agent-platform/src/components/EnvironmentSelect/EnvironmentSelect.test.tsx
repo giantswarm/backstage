@@ -11,23 +11,27 @@ type ScopeSelectProps = {
 };
 
 let mockScopeSelectProps: ScopeSelectProps | undefined;
+const mockScope = { isSingleInstallation: false, isLoading: false };
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   InstallationScopeSelect: (props: ScopeSelectProps) => {
     mockScopeSelectProps = props;
     return <div data-testid="scope-select">{props.label}</div>;
   },
+  useInstallationScope: () => mockScope,
 }));
 
+const mockUseKagentInstallations = jest.fn(() => ({
+  isNotReachable: (installation: string) => installation === 'golem',
+}));
 jest.mock('../../hooks/useKagentInstallations', () => ({
-  useKagentInstallations: () => ({
-    isNotReachable: (installation: string) => installation === 'golem',
-  }),
+  useKagentInstallations: () => mockUseKagentInstallations(),
 }));
 
+const mockUseMusterInstallations = jest.fn(() => ({
+  isNotReachable: (installation: string) => installation === 'grizzly',
+}));
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
-  useMusterInstallations: () => ({
-    isNotReachable: (installation: string) => installation === 'grizzly',
-  }),
+  useMusterInstallations: () => mockUseMusterInstallations(),
 }));
 
 const entry = (installation: string): Entry => ({ installation });
@@ -35,6 +39,10 @@ const entry = (installation: string): Entry => ({ installation });
 describe('EnvironmentSelect', () => {
   beforeEach(() => {
     mockScopeSelectProps = undefined;
+    mockScope.isSingleInstallation = false;
+    mockScope.isLoading = false;
+    mockUseKagentInstallations.mockClear();
+    mockUseMusterInstallations.mockClear();
   });
 
   it('is the installation scope under the name Environment', () => {
@@ -65,11 +73,29 @@ describe('EnvironmentSelect', () => {
     expect(mockScopeSelectProps?.describe?.(entry('golem'))).toBeUndefined();
   });
 
-  it('marks nothing on a view that reads no component', () => {
+  it('marks nothing on a view that reads no component, and asks neither backend', () => {
     render(<EnvironmentSelect />);
 
     expect(mockScopeSelectProps?.component).toBeUndefined();
-    expect(mockScopeSelectProps?.describe?.(entry('golem'))).toBeUndefined();
-    expect(mockScopeSelectProps?.describe?.(entry('grizzly'))).toBeUndefined();
+    expect(mockScopeSelectProps?.describe).toBeUndefined();
+    expect(mockUseKagentInstallations).not.toHaveBeenCalled();
+    expect(mockUseMusterInstallations).not.toHaveBeenCalled();
+  });
+
+  it('asks only the backend of the component the view reads', () => {
+    render(<EnvironmentSelect component="kagent" />);
+    expect(mockUseKagentInstallations).toHaveBeenCalled();
+    expect(mockUseMusterInstallations).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['on a single-installation portal', { isSingleInstallation: true }],
+    ['while the installations are read', { isLoading: true }],
+  ])('renders nothing, not even its slot, %s', (_case, state) => {
+    Object.assign(mockScope, state);
+    const { container } = render(<EnvironmentSelect component="kagent" />);
+
+    expect(container).toBeEmptyDOMElement();
+    expect(mockUseKagentInstallations).not.toHaveBeenCalled();
   });
 });
