@@ -1,6 +1,6 @@
 import { HomePageCompanyLogo } from '@backstage/plugin-home';
 import { makeStyles, useTheme } from '@material-ui/core';
-import { useBranding } from '../branding';
+import { homeLogoCandidates, useLogoAsset } from '../branding';
 import { GiantSwarmLogoFull } from '../../assets/logo';
 
 const useStyles = makeStyles(theme => ({
@@ -26,29 +26,14 @@ const useStyles = makeStyles(theme => ({
 export const HomeLogo = () => {
   const classes = useStyles();
   const theme = useTheme();
-  const { hasAsset, getAssetUrl } = useBranding();
-
   // Prefer a theme-specific asset; fall back to the theme-agnostic filename.
-  const variant = theme.palette.type === 'dark' ? 'dark' : 'light';
-  const candidates = [
-    `home-logo-${variant}.svg`,
-    `home-logo-${variant}.png`,
-    'home-logo.svg',
-    'home-logo.png',
-  ];
-  const customAsset = candidates.find(name => hasAsset(name));
+  const customAsset = useLogoAsset(homeLogoCandidates(theme.palette.type));
 
-  if (customAsset) {
+  if (customAsset.url) {
     return (
       <HomePageCompanyLogo
         className={classes.container}
-        logo={
-          <img
-            className={classes.img}
-            src={getAssetUrl(customAsset)}
-            alt="Logo"
-          />
-        }
+        logo={<img className={classes.img} src={customAsset.url} alt="Logo" />}
       />
     );
   }

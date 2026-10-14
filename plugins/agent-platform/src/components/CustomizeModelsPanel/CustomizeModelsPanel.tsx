@@ -263,7 +263,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       />
       <UnreachableInstallationsAlert
         installations={unreachableInstallations}
-        resourceName="Models"
+        resourceName="models"
         isLoading={isReading}
       />
       {body}
