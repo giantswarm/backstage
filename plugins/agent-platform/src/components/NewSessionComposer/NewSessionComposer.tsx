@@ -110,7 +110,9 @@ const useStyles = makeStyles(theme => ({
 }));
 
 /**
- * Whether a session can be started with this agent.
+ * Whether a session can be started with this agent: it is ready, and its
+ * installation's agent-manager can start one as the person
+ * (`AgentRow.sessionBlocker`).
  *
  * Exported so the picker and the callers that decide whether to *offer* a picker
  * at all share one predicate — a page withholding the composer on a different rule
@@ -118,7 +120,7 @@ const useStyles = makeStyles(theme => ({
  * one.
  */
 export function isStartableAgent(agent: AgentRow): boolean {
-  return agent.readiness === 'ready';
+  return agent.readiness === 'ready' && !agent.sessionBlocker;
 }
 
 /**
@@ -318,9 +320,8 @@ function describeAgent(
   shorten: (text: string) => string = oneShortLine,
 ): string | undefined {
   if (!isStartableAgent(agent)) {
-    return agent.readinessMessage
-      ? `Unavailable: ${shorten(agent.readinessMessage)}`
-      : 'Unavailable right now';
+    const reason = agent.sessionBlocker ?? agent.readinessMessage;
+    return reason ? `Unavailable: ${shorten(reason)}` : 'Unavailable right now';
   }
   return agent.description ? shorten(agent.description) : undefined;
 }

@@ -16,6 +16,8 @@ import {
   type ClientServingSummary,
 } from '../../lib/serving';
 import { canonicalSkillId } from '../../lib/skills';
+import { agentManagerBlocker } from '../../lib/agentManager';
+import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
@@ -226,7 +228,40 @@ export type AgentRow = {
    * provider, or no serving layer is in view.
    */
   modelServing?: ClientServingSummary;
+  /**
+   * Why no session can start with the agent from this portal, whatever its
+   * readiness: sessions start through agent-manager as the person, and the
+   * installation's muster lists none, runs calls under its shared identity,
+   * or could not be asked ({@link agentManagerSessionBlocker}). `undefined`
+   * when nothing stands in the way, or while that is still being read.
+   */
+  sessionBlocker?: string;
 };
+
+/**
+ * Why sessions cannot start on an installation through agent-manager, from
+ * its availability. Nothing while the server lists are being read, and
+ * nothing on a portal without the muster plugin, where starting reports that
+ * itself.
+ */
+export function agentManagerSessionBlocker(
+  availability: Pick<
+    AgentManagerAvailability,
+    'presenceOf' | 'isLoading' | 'isUnavailable'
+  >,
+  installation: string,
+): string | undefined {
+  if (availability.isUnavailable) {
+    return undefined;
+  }
+  const presence = availability.presenceOf(installation);
+  if (presence === 'unknown') {
+    return availability.isLoading
+      ? undefined
+      : `Could not check ${installation} for agent-manager.`;
+  }
+  return agentManagerBlocker(presence, installation);
+}
 
 /**
  * The ModelConfig an agent's `spec.modelConfig` references, among

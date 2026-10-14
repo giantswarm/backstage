@@ -176,6 +176,8 @@ type Scenario = {
   agent?: AgentManagerAgent;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
+  /** What `/installations` reports for gazelle; true unless said otherwise. */
+  requiresAuth?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -229,8 +231,18 @@ function makeMusterApi(scenario: Scenario = {}) {
     tools: [],
     presets: [],
   }));
+  const listInstallations = jest.fn(async () => ({
+    installations: [
+      { name: 'gazelle', requiresAuth: scenario.requiresAuth ?? true },
+    ],
+  }));
   return {
-    api: { callTool, listServers, filterTools } as unknown as MusterApi,
+    api: {
+      callTool,
+      listServers,
+      filterTools,
+      listInstallations,
+    } as unknown as MusterApi,
     callTool,
   };
 }
@@ -626,5 +638,21 @@ describe('EditAgentPage', () => {
       await screen.findByText('This agent cannot be edited from here'),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+  });
+
+  it('has no form, and says why, where muster runs under its shared identity', async () => {
+    const { callTool } = await renderEdit(BASE, { requiresAuth: false });
+
+    expect(
+      await screen.findByText('This agent cannot be edited from here'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /muster on gazelle has no per-user sign-in in this portal/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+    // Nothing is asked of agent-manager: muster-backend would refuse it.
+    expect(callTool).not.toHaveBeenCalled();
   });
 });

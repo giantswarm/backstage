@@ -162,6 +162,18 @@ export function StartNewSession({
     // scope that runs no kagent), or something is deployed but none of it is
     // ready (look at the Agents tab, where the reason is). Standalone, the
     // Agents tab is a link rather than a neighbouring tab.
+    // A fourth: agents are ready, but their installations' agent-manager
+    // cannot start a session as the person; the reasons say why, and the
+    // Agents tab would not.
+    const blockers = [
+      ...new Set(
+        agents.flatMap(agent =>
+          agent.readiness === 'ready' && agent.sessionBlocker
+            ? [agent.sessionBlocker]
+            : [],
+        ),
+      ),
+    ];
     let reason: string;
     let pointer: 'warning' | 'agentsTab' | undefined;
     if (unreachableInstallations.length > 0 && agents.length === 0) {
@@ -169,6 +181,8 @@ export function StartNewSession({
       pointer = 'warning';
     } else if (agents.length === 0) {
       reason = 'No agents are deployed on the reachable environments.';
+    } else if (blockers.length > 0) {
+      reason = `Sessions cannot start from this portal. ${blockers.join(' ')}`;
     } else {
       reason =
         agents.length === 1

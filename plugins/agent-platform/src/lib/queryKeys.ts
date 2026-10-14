@@ -176,6 +176,11 @@ export function musterServersQueryKey(installation: string) {
   return ['muster', 'agent-platform', 'mcp-servers', installation] as const;
 }
 
+/** The muster backend's `/installations`: which ones need the person's token. */
+export function musterInstallationsQueryKey() {
+  return ['muster', 'agent-platform', 'installations'] as const;
+}
+
 export function musterAgentManagerInfoQueryKey(installation: string) {
   return [
     'muster',

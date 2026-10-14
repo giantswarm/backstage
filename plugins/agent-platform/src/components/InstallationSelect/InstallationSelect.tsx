@@ -67,6 +67,29 @@ function NoAgentManagerNote({ installations }: { installations: string[] }) {
 }
 
 /**
+ * Why an installation with agent-manager is still not offered: its muster has
+ * no per-user sign-in in this portal, so agent-manager's tools are refused
+ * there rather than run under muster's shared identity.
+ */
+function SharedIdentityNote({ installations }: { installations: string[] }) {
+  if (installations.length === 0) {
+    return null;
+  }
+  const list = joinNames(installations);
+  return (
+    <Alert
+      status="info"
+      title={
+        installations.length === 1
+          ? `Agents cannot be created on ${list} from this portal`
+          : 'Agents cannot be created on some environments from this portal'
+      }
+      description={`Agents are created through agent-manager as you, and muster on ${list} has no per-user sign-in in this portal, so it would act under muster's shared identity instead. A platform admin can give the muster entry an authProvider.`}
+    />
+  );
+}
+
+/**
  * Why an installation with models is not offered although it may have
  * agent-manager: its muster's server list couldn't be read (no muster session
  * there, or the read failed), so there is no answer either way. Links to
@@ -193,6 +216,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     [availableInstallations, agentManager],
   );
   const withoutAgentManager = agentManager.missing;
+  const withSharedIdentity = agentManager.sharedIdentity;
   // Installations whose server list read failed: no answer either way, so they
   // are neither offered nor covered by the no-agent-manager note. Only known
   // once the reads have settled (a read in flight is `unknown` too).
@@ -229,7 +253,9 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   const singleUsable =
     hasSettled.current &&
     usableInstallations.length === 1 &&
-    usableInstallations.length + withoutAgentManager.length ===
+    usableInstallations.length +
+      withoutAgentManager.length +
+      withSharedIdentity.length ===
       availableInstallations.length
       ? usableInstallations[0]
       : undefined;
@@ -241,13 +267,17 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
     }
   }, [singleInstallation, state.installation, setInstallation]);
 
-  // A pick that turned out not to have agent-manager (the server list answered
-  // after the selection) is withdrawn: the review page could not deploy it.
+  // A pick that turned out not to be usable (the server list or the
+  // installations answered after the selection) is withdrawn: the review page
+  // could not deploy it.
   useEffect(() => {
+    const presence = state.installation
+      ? agentManager.presenceOf(state.installation)
+      : undefined;
     if (
       state.installation &&
       !singleInstallation &&
-      agentManager.presenceOf(state.installation) === 'missing'
+      (presence === 'missing' || presence === 'sharedIdentity')
     ) {
       setInstallation(undefined);
     }
@@ -264,6 +294,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
   const hasNotes =
     unreachableInstallations.length > 0 ||
     withoutAgentManager.length > 0 ||
+    withSharedIdentity.length > 0 ||
     agentManagerUnknown.length > 0 ||
     inaccessibleInstallations.length > 0;
 
@@ -295,6 +326,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
         installations={inaccessibleInstallations}
       />
       <NoAgentManagerNote installations={withoutAgentManager} />
+      <SharedIdentityNote installations={withSharedIdentity} />
       <AgentManagerUnknownNote installations={agentManagerUnknown} />
     </>
   );
@@ -330,6 +362,7 @@ export function InstallationSelect({ error }: InstallationSelectProps = {}) {
             />
             {selectError.message}
             <NoAgentManagerNote installations={withoutAgentManager} />
+            <SharedIdentityNote installations={withSharedIdentity} />
           </Flex>
         </InstallationCard>
       );

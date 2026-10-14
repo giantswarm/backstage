@@ -11,6 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ServedModel } from '../../lib/serving';
 import {
+  agentManagerSessionBlocker,
   getAgentsRefetchInterval,
   resolveModelConfig,
   resolveModelLabel,
@@ -732,5 +733,49 @@ describe('toAgentRow model fields', () => {
 
     expect(row.model).toBe('somewhere-else');
     expect(row.modelName).toBeUndefined();
+  });
+});
+
+describe('agentManagerSessionBlocker', () => {
+  const availability = (
+    presence: string,
+    { isLoading = false, isUnavailable = false } = {},
+  ) => ({
+    presenceOf: () => presence as never,
+    isLoading,
+    isUnavailable,
+  });
+
+  it('blocks where muster runs under its shared identity or lists no agent-manager', () => {
+    expect(
+      agentManagerSessionBlocker(availability('sharedIdentity'), 'golem'),
+    ).toMatch(/^Muster on golem has no per-user sign-in in this portal/);
+    expect(agentManagerSessionBlocker(availability('missing'), 'golem')).toBe(
+      'Muster on golem lists no agent-manager.',
+    );
+  });
+
+  it('blocks where the server list could not be read, once the reads settled', () => {
+    expect(agentManagerSessionBlocker(availability('unknown'), 'golem')).toBe(
+      'Could not check golem for agent-manager.',
+    );
+    expect(
+      agentManagerSessionBlocker(
+        availability('unknown', { isLoading: true }),
+        'golem',
+      ),
+    ).toBeUndefined();
+  });
+
+  it('leaves the agent offered where agent-manager is available, or without the muster plugin', () => {
+    expect(
+      agentManagerSessionBlocker(availability('available'), 'golem'),
+    ).toBeUndefined();
+    expect(
+      agentManagerSessionBlocker(
+        availability('unknown', { isUnavailable: true }),
+        'golem',
+      ),
+    ).toBeUndefined();
   });
 });

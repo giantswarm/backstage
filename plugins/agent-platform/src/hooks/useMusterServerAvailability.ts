@@ -1,17 +1,25 @@
 import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { McpServerRuntime } from '@giantswarm/backstage-plugin-muster';
 
-import { musterServersQueryKey } from '../lib/queryKeys';
+import {
+  musterInstallationsQueryKey,
+  musterServersQueryKey,
+} from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 /**
  * Whether an installation's muster lists a server (`core_mcpserver_list`).
  * `unknown` while the read is in flight or failed; `missing` when muster
- * answered without it.
+ * answered without it. `sharedIdentity`, only when the caller asks for a
+ * server reached as the person: the portal's muster entry for the
+ * installation has no per-user sign-in (`requiresAuth: false` on
+ * `/installations`), so muster-backend refuses the server's tools rather than
+ * run them under muster's own identity, shared by every portal user.
  */
-export type MusterServerPresence = 'available' | 'missing' | 'unknown';
+export type MusterServerPresence =
+  'available' | 'missing' | 'unknown' | 'sharedIdentity';
 
 /**
  * The segment muster puts in a server's exposed names, which is what a caller
@@ -41,11 +49,26 @@ export type MusterServerAvailability = {
   available: string[];
   /** The installations whose muster answered without the server. */
   missing: string[];
+  /**
+   * The installations whose muster runs calls under its shared identity, so
+   * the server's tools are refused there (only with `asPerson`).
+   */
+  sharedIdentity: string[];
   presenceOf: (installation: string) => MusterServerPresence;
   /** True while any installation's server list is still being read. */
   isLoading: boolean;
   /** The muster plugin is not installed: the server is reachable nowhere. */
   isUnavailable: boolean;
+};
+
+export type MusterServerAvailabilityOptions = {
+  /**
+   * The server's tools act for the person, so an installation whose muster
+   * has no per-user sign-in is `sharedIdentity`, never `available`. A failed
+   * `/installations` read leaves the server lists to decide: muster-backend
+   * still refuses such a call, in its own words.
+   */
+  asPerson?: boolean;
 };
 
 /**
@@ -58,8 +81,22 @@ export type MusterServerAvailability = {
 export function useMusterServerAvailability(
   serverName: string,
   installations: string[],
+  { asPerson = false }: MusterServerAvailabilityOptions = {},
 ): MusterServerAvailability {
   const musterApi = useMusterPluginApi();
+  const installationInfo = useQuery({
+    queryKey: musterInstallationsQueryKey(),
+    enabled: Boolean(musterApi) && asPerson && installations.length > 0,
+    queryFn: () => musterApi!.listInstallations(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const shared = new Set(
+    (installationInfo.data?.installations ?? [])
+      .filter(info => info.requiresAuth === false)
+      .map(info => info.name),
+  );
+  const isReadingInstallations = asPerson && isAwaitingData(installationInfo);
   const queries = useQueries({
     queries: installations.map(installation => ({
       queryKey: musterServersQueryKey(installation),
@@ -75,8 +112,11 @@ export function useMusterServerAvailability(
   const signature = installations
     .map((installation, index) => {
       const query = queries[index];
-      const presence = presenceIn(query.data?.mcpServers, serverName);
-      return `${installation}:${presence}:${isAwaitingData(query) ? 'l' : ''}`;
+      const presence = shared.has(installation)
+        ? 'sharedIdentity'
+        : presenceIn(query.data?.mcpServers, serverName);
+      const loading = isAwaitingData(query) || isReadingInstallations;
+      return `${installation}:${presence}:${loading ? 'l' : ''}`;
     })
     .join('|');
 
@@ -93,6 +133,9 @@ export function useMusterServerAvailability(
     return {
       available: installations.filter(name => of(name) === 'available'),
       missing: installations.filter(name => of(name) === 'missing'),
+      sharedIdentity: installations.filter(
+        name => of(name) === 'sharedIdentity',
+      ),
       presenceOf: of,
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,

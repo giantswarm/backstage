@@ -62,6 +62,7 @@ import {
   sessionDetailRouteRef,
 } from '../../routes';
 import {
+  agentManagerSessionBlocker,
   AgentRow,
   getAgentRefetchInterval,
   ResolveModelServing,
@@ -566,7 +567,11 @@ function AgentDetailPageContent() {
       ) : null,
     [agent, agentManagerGate, openUpdateSkills, openDelete],
   );
-  const isReady = agentRow?.readiness === 'ready';
+  // Sessions start through agent-manager as the person, like every write: an
+  // installation where that cannot happen withholds "Use this agent" too, and
+  // the note above the tabs says why.
+  const sessionBlocker = agentManagerSessionBlocker(availability, installation);
+  const isReady = agentRow?.readiness === 'ready' && !sessionBlocker;
   // The shell header's actions, per the prototype: Edit beside the primary
   // "Use this agent", the rest in the menu. The header is the one place it
   // reads so (PO decision); everywhere else starting from an agent is
@@ -742,6 +747,15 @@ function AgentDetailPageContent() {
         onEdit={canEditAgent ? openEdit : undefined}
         isGitOpsOwned={agentManagerGate.isGitOpsOwned}
       />
+
+      {sessionBlocker && (
+        <Alert
+          status="info"
+          icon
+          title="Sessions and changes are not available from this portal"
+          description={`Starting a session, editing, updating skills and deleting go through agent-manager as you. ${sessionBlocker}`}
+        />
+      )}
     </>
   );
 
