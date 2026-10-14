@@ -8,7 +8,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const onAnswer = jest.fn();
 
@@ -974,11 +974,13 @@ describe('PendingConfirmationPanel on a phone (T22 B2, B21)', () => {
     layout = mockDesktopLayout();
     renderPanel(freeText);
 
+    // The keys are key caps; the words read as the caption does.
     expect(
-      screen.getByText(
-        'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.',
-      ),
-    ).toBeInTheDocument();
+      screen.getByText(/^Answering resumes the agent where it stopped/)
+        .textContent,
+    ).toBe(
+      'Answering resumes the agent where it stopped. Enter sends, Shift+Enter for a new line.',
+    );
     expect(screen.getByRole('textbox', { name: 'Answer' })).toHaveAttribute(
       'enterkeyhint',
       'send',

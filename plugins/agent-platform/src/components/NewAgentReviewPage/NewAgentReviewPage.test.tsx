@@ -12,10 +12,8 @@ import {
   musterApiRef,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import {
-  mockPhoneLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
@@ -747,7 +745,7 @@ describe('NewAgentReviewPage', () => {
       await screen.findByText(/Pull request #7 opened/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Open the pull request ↗' }),
+      screen.getByRole('link', { name: 'Review pull request ↗' }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
   });

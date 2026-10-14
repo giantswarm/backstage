@@ -3,10 +3,8 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import {
-  mockPhoneLayout,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
 import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
@@ -191,6 +189,18 @@ describe('ToolPage at phone width', () => {
     layout = mockPhoneLayout();
   });
   afterEach(() => layout.restore());
+
+  it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
+    await renderAt(
+      `${BASE}/muster/tools/core_service_list?installation=gazelle`,
+    );
+    expect(
+      within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
+        'link',
+        { name: 'Connectors' },
+      ),
+    ).toHaveAttribute('href', '/customize/connectors/internal');
+  });
 
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
     await renderAt(

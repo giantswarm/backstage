@@ -4,7 +4,10 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GiantSwarmMark } from '../../../assets/logo';
 import { ShellSignInPage } from './ShellSignInPage';
-import { PROVIDER_STORAGE_KEY } from './useProviderSignIn';
+import {
+  PROVIDER_STORAGE_KEY,
+  type ShellSignInProvider,
+} from './useProviderSignIn';
 
 const stubLogo = () => <span data-testid="logo" />;
 const mockLogoIcon = jest.fn(stubLogo);
@@ -58,6 +61,7 @@ function renderPage({
   onSignInSuccess = jest.fn(),
   analytics = mockApis.analytics(),
   only,
+  options = only === undefined ? providers : [providers[only]],
 }: {
   path?: string;
   main?: ReturnType<typeof mockAuthApi>;
@@ -65,12 +69,10 @@ function renderPage({
   onSignInSuccess?: jest.Mock;
   analytics?: ReturnType<typeof mockApis.analytics>;
   only?: number;
+  options?: ShellSignInProvider[];
 } = {}) {
   const result = renderInTestApp(
-    <ShellSignInPage
-      onSignInSuccess={onSignInSuccess}
-      providers={only === undefined ? providers : [providers[only]]}
-    />,
+    <ShellSignInPage onSignInSuccess={onSignInSuccess} providers={options} />,
     {
       initialRouteEntries: [path],
       config: { app: { portals: { agentPlatform: true } } },
@@ -118,13 +120,24 @@ describe('ShellSignInPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Agent Platform' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Sign in to continue.')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Sign in with GitHub' }),
     ).toHaveAccessibleDescription('Giant Swarm SSO');
     expect(
       screen.getByRole('button', { name: 'Sign in with Microsoft' }),
     ).toHaveAccessibleDescription('Entra ID account');
+  });
+
+  it('shows a bare button for an option without a message', async () => {
+    renderPage({
+      options: [{ id: 'dex-auth-provider', title: 'Dex', apiRef: mainRef }],
+    });
+
+    const button = await screen.findByRole('button', {
+      name: 'Sign in with Dex',
+    });
+    expect(button).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByText(/Sign in using/)).not.toBeInTheDocument();
   });
 
   it('offers a single option alone', async () => {

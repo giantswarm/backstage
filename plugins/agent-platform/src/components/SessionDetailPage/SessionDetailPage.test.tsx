@@ -22,7 +22,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import {
   sessionDetailV099 as detailV099,
@@ -388,17 +388,17 @@ describe('SessionDetailPage', () => {
   });
 
   it('puts the session totals behind the composer’s chip', async () => {
-    // The prototype's cost + memory popover: tokens, turns and costs live
+    // The prototype's cost + context popover: tokens, turns and costs live
     // behind one chip in the composer's controls — always on screen with the
     // docked box — rather than in the page header, which scrolls away.
     await render();
 
     const chip = screen.getByRole('button', {
-      name: /Session cost and memory/,
+      name: /Session cost and context/,
     });
     expect(
       within(screen.getByTestId('composer-card')).getByRole('button', {
-        name: /Session cost and memory/,
+        name: /Session cost and context/,
       }),
     ).toBe(chip);
     await userEvent.click(chip);
@@ -406,7 +406,7 @@ describe('SessionDetailPage', () => {
     expect(screen.getByText('Tokens in / out')).toBeInTheDocument();
     expect(screen.getByText('Turns')).toBeInTheDocument();
     expect(screen.getByText('Est. cost')).toBeInTheDocument();
-    expect(screen.getByText('Memory used')).toBeInTheDocument();
+    expect(screen.getByText('Context used')).toBeInTheDocument();
   });
 
   it('keeps the chip in reach when the composer is withheld', async () => {
@@ -419,7 +419,7 @@ describe('SessionDetailPage', () => {
     await render();
 
     expect(
-      screen.getByRole('button', { name: /Session cost and memory/ }),
+      screen.getByRole('button', { name: /Session cost and context/ }),
     ).toBeInTheDocument();
   });
 
@@ -433,7 +433,7 @@ describe('SessionDetailPage', () => {
     await render();
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Session cost and memory/ }),
+      screen.getByRole('button', { name: /Session cost and context/ }),
     );
 
     expect(screen.getByText('Est. cost')).toBeInTheDocument();
@@ -447,7 +447,7 @@ describe('SessionDetailPage', () => {
     await render();
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Session cost and memory/ }),
+      screen.getByRole('button', { name: /Session cost and context/ }),
     );
 
     expect(screen.getByText('Est. cost')).toBeInTheDocument();
@@ -2267,7 +2267,7 @@ describe('SessionDetailPage', () => {
 
       expect(
         within(screen.getByTestId('composer-card')).getByRole('button', {
-          name: /Session cost and memory/,
+          name: /Session cost and context/,
         }),
       ).toBeInTheDocument();
     });
@@ -2333,7 +2333,7 @@ describe('SessionDetailPage', () => {
       );
       // The cost chip stays reachable beside the caption.
       expect(
-        within(dock).getByRole('button', { name: /Session cost and memory/ }),
+        within(dock).getByRole('button', { name: /Session cost and context/ }),
       ).toBeInTheDocument();
     });
 

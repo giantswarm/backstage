@@ -43,6 +43,7 @@ import { useCreateSession } from '../../hooks/useCreateSession';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentDeletion } from '../../hooks/useAgentDeletion';
 import { useAgentStatus } from '../../hooks/useAgentStatus';
+import { useAgentToolset } from '../../hooks/useAgentToolset';
 import {
   useAgentManagerAvailability,
   useAgentManagerInfo,
@@ -54,6 +55,7 @@ import { useLastUsedAgent } from '../../hooks/useLastUsedAgent';
 import { NEW_SESSION_STATE_KEY } from '../../hooks/useNewSessionHandoff';
 import { AvatarSize } from '../../lib/agentAvatar';
 import { clientLookupOf } from '../../lib/serving';
+import { toolsetHasTools } from '../../lib/toolset';
 import {
   agentEditRouteRef,
   agentsRouteRef,
@@ -77,7 +79,7 @@ import { SHELL_CUSTOMIZE_PATH } from '../ShellCustomizeRedirect';
 import { AgentCreationProgress } from '../AgentCreationProgress';
 import { AgentActionsMenu, agentWriteMode } from './AgentActionsMenu';
 import { AgentDeleteDialog, isCommitSettled } from './AgentDeleteDialog';
-import { SHELL_AGENT_TABS } from './AgentDetailTabs';
+import { agentTabs } from './AgentDetailTabs';
 import { agentFacts, AgentPlainOverview } from './AgentPlainOverview';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
 import { AgentSessionsCard } from './AgentSessionsCard';
@@ -121,23 +123,14 @@ function BackToAgents({ children }: { children: ReactNode }) {
 
 /**
  * Where an agent's page sits inside the shell: "Customize / Agents / <agent>",
- * and one level deeper for a view below the agent (its tools).
+ * on every tab, as on the connector and skill pages.
  */
-function agentBreadcrumbs(
-  title: string,
-  subPage?: { label: string; agentHref: string },
-): BreadcrumbItem[] {
-  const ancestors: BreadcrumbItem[] = [
+function agentBreadcrumbs(title: string): BreadcrumbItem[] {
+  return [
     { label: 'Customize', href: SHELL_CUSTOMIZE_PATH },
     { label: 'Agents', href: `${SHELL_CUSTOMIZE_PATH}/agents` },
+    { label: title },
   ];
-  return subPage
-    ? [
-        ...ancestors,
-        { label: title, href: subPage.agentHref },
-        { label: subPage.label },
-      ]
-    : [...ancestors, { label: title }];
 }
 
 /**
@@ -152,7 +145,6 @@ function agentBreadcrumbs(
 function AgentFrame({
   title,
   heading,
-  subPage,
   children,
   ...shellProps
 }: Omit<ShellPageProps, 'title' | 'breadcrumbs'> & {
@@ -160,13 +152,11 @@ function AgentFrame({
   title: string;
   /** The h1 instead of `title`, e.g. its skeleton while the agent is read. */
   heading?: ReactNode;
-  /** A view below the agent, named in the breadcrumbs after it. */
-  subPage?: { label: string; agentHref: string };
 }) {
   return (
     <ShellPage
       title={heading ?? title}
-      breadcrumbs={agentBreadcrumbs(title, subPage)}
+      breadcrumbs={agentBreadcrumbs(title)}
       {...shellProps}
     >
       {children}
@@ -426,6 +416,10 @@ function AgentDetailPageContent() {
   // the tab segment removed — what the tab strip builds its hrefs from and
   // where an unknown sub-path is sent.
   const basePath = useSplatBasePath();
+  // Whether the agent has tools decides the Tools tab, on every tab. The
+  // carrier read is shared with the Overview's Connectors section and the
+  // toolset card, so it runs once.
+  const toolset = useAgentToolset(agent);
 
   const openEdit = useCallback(() => {
     const href = agentEditRoute?.({ installation, namespace, name });
@@ -574,7 +568,9 @@ function AgentDetailPageContent() {
   );
   const isReady = agentRow?.readiness === 'ready';
   // The shell header's actions, per the prototype: Edit beside the primary
-  // "Start a session" (one verb for it everywhere, T98), the rest in the menu.
+  // "Use this agent", the rest in the menu. The header is the one place it
+  // reads so (PO decision); everywhere else starting from an agent is
+  // "Start a session" (T98).
   const shellActions =
     agent && (canEditAgent || isReady) ? (
       <>
@@ -585,7 +581,7 @@ function AgentDetailPageContent() {
         )}
         {isReady && (
           <Button variant="primary" onPress={openNewSession}>
-            Start a session
+            Use this agent
           </Button>
         )}
       </>
@@ -613,9 +609,6 @@ function AgentDetailPageContent() {
   const path = location.pathname.replace(/\/$/, '');
   const onOverview = path === basePath;
   const onTools = path === `${basePath}/tools`;
-  const subPage = onTools
-    ? { label: 'Tools', agentHref: `${basePath}${location.search}` }
-    : undefined;
 
   // Loading only while there is no agent to show. An agent already in the
   // query cache renders at once, even while the persisted cache restores on
@@ -631,7 +624,6 @@ function AgentDetailPageContent() {
       <AgentFrame
         title={name || 'Agent'}
         heading={<ShellPageTitleSkeleton label="Loading agent" />}
-        subPage={subPage}
         leading={
           <AgentAvatar
             size="large"
@@ -641,7 +633,10 @@ function AgentDetailPageContent() {
           />
         }
         badges={<ShellPageBadgeSkeleton />}
-        tabs={SHELL_AGENT_TABS}
+        // Whether the agent has tools is not known yet: the Tools tab is drawn
+        // only where it is the tab asked for, so a deep link keeps its tab
+        // selected. Elsewhere it joins the strip once the agent is read.
+        tabs={agentTabs({ hasTools: onTools })}
         tabsSearch={location.search}
         aside={onOverview ? <ShellPageFactsSkeleton /> : undefined}
       >
@@ -658,7 +653,7 @@ function AgentDetailPageContent() {
     // created under and its avatar — and agent-manager's own summary of where
     // the release stands, until the Agent read finds it (polled at the fast
     // tier, see `refetchInterval`) and the page switches to the rendered agent
-    // in place. No "Start a session": there is nothing to start one on yet.
+    // in place. No "Use this agent": there is nothing to start one on yet.
     if (isDeploying) {
       const failed = release.status?.verdict === 'failed';
       return (
@@ -727,7 +722,10 @@ function AgentDetailPageContent() {
     );
   }
 
-  const toolsHref = `${basePath}/tools${location.search}`;
+  const hasTools = toolset ? toolsetHasTools(toolset.declared) : false;
+  const toolsHref = hasTools
+    ? `${basePath}/tools${location.search}`
+    : undefined;
 
   /* What a write just made to the agent is doing, and why sessions cannot
      start: true on every tab, so above the routed content. */
@@ -783,6 +781,7 @@ function AgentDetailPageContent() {
         displayName={agent.getDisplayName()}
         isOpen={isUpdateSkillsOpen}
         onOpenChange={setUpdateSkillsOpen}
+        skillCount={agent.getSkills().length}
         mode={updateSkillsMode}
         updating={updating}
         onUpdated={onSkillsUpdated}
@@ -796,9 +795,6 @@ function AgentDetailPageContent() {
   return (
     <AgentFrame
       title={displayName}
-      // The tools view is reached from the Overview's Connectors section
-      // rather than a tab, so the breadcrumbs are its way back.
-      subPage={subPage}
       leading={
         <AgentAvatar
           size="large"
@@ -821,10 +817,10 @@ function AgentDetailPageContent() {
       }
       actions={shellActions}
       menu={menu}
-      tabs={SHELL_AGENT_TABS}
+      tabs={agentTabs({ hasTools })}
       tabsSearch={location.search}
-      // The facts belong to the Overview; Sessions and Usage take the
-      // whole width.
+      // The facts belong to the Overview; the other tabs take the whole
+      // width.
       aside={
         onOverview ? (
           <FactsColumn
@@ -842,9 +838,10 @@ function AgentDetailPageContent() {
       <Flex direction="column" gap="4">
         {status}
 
-        {/* Routed, so each tab is its own URL. Tools and Skills are folded
-              into the Overview, per the prototype; the exact tools stay one link away, and a bookmarked
-              `skills` tab lands on the Overview that now shows them. */}
+        {/* Routed, so each tab is its own URL. Skills are folded into the
+              Overview, per the prototype, and a bookmarked `skills` tab lands
+              on the Overview that now shows them; so does `tools` for an
+              agent without tools. */}
         <Routes>
           <Route
             index
@@ -861,7 +858,16 @@ function AgentDetailPageContent() {
               />
             }
           />
-          <Route path="tools" element={<AgentToolsetCard agent={agent} />} />
+          <Route
+            path="tools"
+            element={
+              hasTools ? (
+                <AgentToolsetCard agent={agent} />
+              ) : (
+                <Navigate to={`${basePath}${location.search}`} replace />
+              )
+            }
+          />
           <Route
             path="sessions"
             element={
@@ -882,7 +888,10 @@ function AgentDetailPageContent() {
               />
             }
           />
-          <Route path="*" element={<Navigate to={basePath} replace />} />
+          <Route
+            path="*"
+            element={<Navigate to={`${basePath}${location.search}`} replace />}
+          />
         </Routes>
       </Flex>
       {dialogs}
@@ -893,9 +902,10 @@ function AgentDetailPageContent() {
 /**
  * One kagent agent: what it is, whether it works, and what it has been used for.
  *
- * The prototype's plain-language page: three routed tabs — Overview (what it
- * is for, its instructions, skills and connectors, with the Kubernetes detail
- * in a "Technical details" fold-out), Sessions and Usage — under the
+ * The prototype's plain-language page: routed tabs — Overview (what it is
+ * for, its instructions, skills and connectors, with the Kubernetes detail in
+ * a "Technical details" fold-out), Sessions, Tools (for an agent bound to the
+ * gateway: its toolset resolved to exact tools) and Usage — under the
  * platform-standard `ShellPage` header, with the model and environment as
  * facts beside the Overview. Overview is the index, so the three-segment URL
  * the rest of the portal links to still opens the agent. The creation

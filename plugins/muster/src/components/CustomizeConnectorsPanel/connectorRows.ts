@@ -10,6 +10,7 @@ import { selectRepresentative } from '../../lib/serverGrouping';
 import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
+import type { StatusText } from '../shared';
 
 /** How a person gets into a server, in the shell's words. */
 export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
@@ -20,9 +21,6 @@ export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
   sigv4: 'Shared AWS identity',
   unknown: 'Other sign-in',
 };
-
-/** A state as the shell's Customize screen shows it: a dot and a few words. */
-export type ConnectorStatus = { label: string; tone: StatusDotTone };
 
 const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
   ok: 'success',
@@ -68,7 +66,7 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): ConnectorStatus {
+): StatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
@@ -162,4 +160,79 @@ export function connectorReach(
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'
     : 'not-connected';
+}
+
+/**
+ * How a person gets into muster itself: the portal's login where it asks for
+ * one; nothing while the installation's muster is not described yet.
+ */
+export function musterAuthLabel(requiresAuth: boolean | undefined): string {
+  if (requiresAuth === undefined) {
+    return '';
+  }
+  return requiresAuth
+    ? SHELL_AUTH_LABELS['platform-sso']
+    : SHELL_AUTH_LABELS.anonymous;
+}
+
+/** What muster's own row knows of whether muster answers this person. */
+export type MusterSessionState = {
+  /** From the installation's description; undefined while it is unread. */
+  requiresAuth?: boolean;
+  /** The backend's unauthenticated probe (`MusterInstallationInfo.reachable`). */
+  reachable?: boolean | 'unknown';
+  authenticated: boolean;
+  pending: boolean;
+  /** The session probe failed. */
+  failed: boolean;
+  /** muster listed its tools for this person. */
+  answered: boolean;
+  /** Listing its tools failed. */
+  catalogueFailed: boolean;
+};
+
+/**
+ * muster's own state, only from what was observed: not connected when the
+ * probe could not reach it, when the session failed, or when listing its
+ * tools failed; connected once a session opened (or, for a muster that asks
+ * no sign-in, once it answered or the probe reached it); nothing while none
+ * of that is known yet. A session muster still waiting for this person reads
+ * not connected, as a warning: the session gate above the list connects.
+ */
+export function musterStatus(state: MusterSessionState): StatusText {
+  const reach = musterReach(state);
+  if (reach === 'connected') {
+    return { label: CONNECTOR_REACH_LABELS.connected, tone: 'success' };
+  }
+  if (reach === 'not-connected') {
+    const waiting =
+      state.requiresAuth &&
+      state.reachable !== false &&
+      !state.failed &&
+      !state.catalogueFailed;
+    return {
+      label: CONNECTOR_REACH_LABELS['not-connected'],
+      tone: waiting ? 'warning' : 'danger',
+    };
+  }
+  return { label: '', tone: 'neutral' };
+}
+
+/** muster's own state as a Connection filter bucket; see {@link musterStatus}. */
+export function musterReach(
+  state: MusterSessionState,
+): ConnectorReach | undefined {
+  if (state.requiresAuth === undefined) {
+    return undefined;
+  }
+  if (state.reachable === false || state.failed || state.catalogueFailed) {
+    return 'not-connected';
+  }
+  if (state.requiresAuth) {
+    if (state.authenticated) {
+      return 'connected';
+    }
+    return state.pending ? undefined : 'not-connected';
+  }
+  return state.answered || state.reachable === true ? 'connected' : undefined;
 }

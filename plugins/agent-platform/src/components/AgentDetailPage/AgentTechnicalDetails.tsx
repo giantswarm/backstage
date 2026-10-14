@@ -16,23 +16,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ClientServingSummary } from '../../lib/serving';
+import { Mono, MONO } from '../Mono';
 import { AgentConfigurationCard } from './AgentConfigurationCard';
 import { AgentStatusCard } from './AgentStatusCard';
 import { shortPin, skillLabel } from './helpers';
-
-/** Identifiers someone may retype into `kubectl`. */
-const MONO: React.CSSProperties = {
-  fontFamily: 'monospace',
-  overflowWrap: 'anywhere',
-};
-
-function Mono({ children }: { children: string }) {
-  return (
-    <Text variant="body-small" style={MONO}>
-      {children}
-    </Text>
-  );
-}
 
 /**
  * A commit, short where a pointer can hover for the whole of it, whole where
@@ -162,6 +149,7 @@ export function AgentTechnicalDetails({
           beside the facts, where there is no width to divide. */}
       <AgentConfigurationCard
         agent={agent}
+        installation={installation}
         modelConfig={modelConfig}
         modelServing={modelServing}
         failure={failure}

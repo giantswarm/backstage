@@ -36,6 +36,14 @@ export type UnreachableInstallationsAlertProps = {
    * reason and request id per installation instead of guessing at both.
    */
   failures?: Record<string, ReadFailure>;
+  /**
+   * The list the warning is about is still being read and has nothing to show
+   * yet — pass the condition of the list's own loading indicator. The warning
+   * waits for it: one environment failing while the others are still being
+   * read is not yet the list's answer. It stays mounted meanwhile, so a close
+   * outlasts the list going back to loading.
+   */
+  isLoading?: boolean;
 };
 
 /**
@@ -60,10 +68,17 @@ export function UnreachableInstallationsAlert({
   installations,
   resourceName = 'kagent resources',
   failures,
+  isLoading = false,
 }: UnreachableInstallationsAlertProps) {
-  if (installations.length === 0) {
+  // Above every early return: hiding the card while the list loads, or while
+  // nothing failed, must not forget that it was closed.
+  const [closedKey, setClosedKey] = useState<string | null>(null);
+  const key = installations.join('\n');
+
+  if (isLoading || installations.length === 0 || closedKey === key) {
     return null;
   }
+  const onClose = () => setClosedKey(key);
 
   const count = installations.length;
   const title = `Could not read ${countNoun(count, 'environment')}`;
@@ -71,8 +86,8 @@ export function UnreachableInstallationsAlert({
   if (count <= NAMED_IN_SENTENCE) {
     return (
       <ClosableWarning
-        installations={installations}
         title={title}
+        onClose={onClose}
         description={
           failures
             ? `Skipped because their ${resourceName} could not be read: ${installations
@@ -104,8 +119,8 @@ export function UnreachableInstallationsAlert({
 
   return (
     <ClosableWarning
-      installations={installations}
       title={title}
+      onClose={onClose}
       description={
         <Flex direction="column" gap="2">
           <span>{sentence}</span>
@@ -126,26 +141,17 @@ export function UnreachableInstallationsAlert({
   );
 }
 
-/**
- * The warning card with its close button. Announced as an alert; closing it
- * hides this set of installations' warning until the set changes.
- */
+/** The warning card with its close button, announced as an alert. */
 function ClosableWarning({
-  installations,
   title,
   description,
+  onClose,
 }: {
-  installations: string[];
   title: string;
   description: ReactNode;
+  onClose: () => void;
 }) {
   const classes = useStyles();
-  const key = installations.join('\n');
-  const [closedKey, setClosedKey] = useState<string | null>(null);
-
-  if (closedKey === key) {
-    return null;
-  }
 
   return (
     <Alert
@@ -160,7 +166,7 @@ function ClosableWarning({
           size="small"
           icon={<CloseIcon fontSize="small" />}
           aria-label="Close"
-          onPress={() => setClosedKey(key)}
+          onPress={onClose}
         />
       }
     />

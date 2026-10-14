@@ -98,10 +98,24 @@ remote images, and only when the portal can read the file.
 
 ### Connectors
 
-Connectors are muster's MCP servers. **Add connector** probes the address,
-sets the sign-in mode (company login, each person's own account, none, or AWS
-request signing) and registers the server. Connectors managed through GitOps
-point to their source instead of being editable.
+Connectors are muster's MCP servers, on three sub-tabs by the
+`agent-platform.giantswarm.io/tool-group` label the shipping chart sets on the
+MCPServer, a family (`spec.family`, one row) and a single server alike:
+
+- **Your connectors** (`/customize/connectors`): servers and families without
+  the label, everything the installation or its users registered.
+- **Infrastructure** (`/customize/connectors/infrastructure`): servers and
+  families labelled `infrastructure`, those for the management clusters the
+  platform runs on. `/customize/connectors/families` redirects here.
+- **Internal** (`/customize/connectors/internal`): servers labelled
+  `agent-platform` (agent-manager, model-manager, cluster-manager) and muster
+  itself where it runs. muster's page shows its endpoint to copy for MCP
+  clients.
+
+**Add connector** probes the address, sets the sign-in mode (company login,
+each person's own account, none, or AWS request signing) and registers the
+server. Connectors managed through GitOps point to their source instead of
+being editable.
 
 ### Models
 
@@ -198,6 +212,14 @@ Customize → Models) lists the fleet's ModelConfigs through
 `ModelConfigsProvider` and lets an admin create, edit and delete them. Status
 combines the `Accepted` and `ResolvedRefs` conditions into Accepted, Not
 accepted or Pending; a ModelConfig has no workload, so there is no `Ready`.
+The controller's message for Not accepted or Pending sits in a hint beside
+the status.
+
+One model's page (`ModelDetailPage`) is at
+`/customize/models/<installation>/<namespace>/<name>`, routed by the app's
+Customize page; `/agent-platform/models/<installation>/<namespace>/<name>`
+redirects there. Its Technical details fold-out lists the conditions with
+their reason and message, and opens on arrival unless the model is accepted.
 
 The form (`NewModelPage`, `ModelConfigFormFields`; edit through
 `EditModelPage` at `/agent-platform/models/edit/<installation>/<namespace>/<name>`)
@@ -429,13 +451,16 @@ Skills change only through pull requests. `AddSkillPage`
 (`useProposeSkill`). The route accepts github.com repositories only, and
 `canProposeSkillTo` (`lib/skills.ts`) mirrors that check in the UI.
 
-- **Add** creates the branch `add-skill/<name>` and puts `<name>/SKILL.md`. It
-  answers 409 when the skill name exists.
+- **Add** creates the branch `add-skill/<name>` and puts `<name>/SKILL.md`. The
+  commit and the pull request are both `feat: add skill <name>`, so a squash
+  merge follows conventional commits either way. It answers 409 when the skill
+  name exists.
 - **Edit** (`kind: 'update'`) creates `update-skill/<directory as a slug>` (the
   repository name for a root-level skill) and rewrites `<dir>/SKILL.md` with the
-  file's blob sha, keeping frontmatter keys the form does not show. It answers
-  409 when the default branch's file changed since the pinned commit, 404 when
-  the file is gone, and 422 when nothing changed.
+  file's blob sha, keeping frontmatter keys the form does not show. The commit
+  and the pull request are both `fix: update skill <name>`. It answers 409 when
+  the default branch's file changed since the pinned commit, 404 when the file
+  is gone, and 422 when nothing changed.
 
 Either way, 409 also means the branch exists. The edit form is prefilled from
 `GET /agent-skills/content` at the pinned commit: through the contents API for
@@ -537,10 +562,16 @@ No scaffolder task, `kube:apply` or portal-minted token is involved.
 
 On success the agent's page takes over (`useAgentCreatedHandoff`), and
 `AgentCreationProgress` polls `get_agent_status` every 3 s until the agent's
-Harness (`status.agent.harness`) reports `ready` or `failed`. The status card
-derives the same verdict from `status.harnesses[]`. A `not_found` right after
-the create is polled through. The installation's cached `kagent.dev` lists are
-invalidated after the write.
+Harness (`status.agent.harness`) has a verdict. The status card derives the
+same verdict from `status.harnesses[]`. A `not_found` right after the create is
+polled through. `ready` ends the poll. A `failed` verdict is shown but still
+re-read every 5 s, the pace the page reads a converging Agent at, because right
+after a create kagent can briefly report the agent's own tool server as an
+unresolved reference, and that clears to Ready without a reload. A read error
+ends the poll as before, and so does a `not_found` after a `failed` verdict:
+the agent is gone. agent-manager reporting the transient state as `progressing`
+is the proper fix (giantswarm/agent-manager#145). The installation's cached
+`kagent.dev` lists are invalidated after the write.
 
 A refused write stays on the review page with agent-manager's message:
 `forbidden` (RBAC), `conflict` (existing name, or a GitOps-owned namespace),
@@ -684,8 +715,9 @@ probe reports (see "User scoping").
 
 ### Earlier conversations are not here
 
-Conversations were **not migrated** to the API v2 line (plan decision D9).
-`SessionsMigrationNotice` says so above the list until dismissed (per browser).
+Conversations were **not migrated** to the API v2 line (plan decision D9), and
+the Sessions tab does not say so: a person whose sessions predate the migration
+sees only newer ones, or the empty state.
 
 ### What the list can and cannot show
 
@@ -1055,7 +1087,7 @@ item**, **results** or **evaluation**; do not re-add them speculatively.
 Delegation entries are inert, because the child session id is unreliable and
 subagent sessions are filtered out.
 
-### The cost + memory popover (`SessionCostPopover`)
+### The cost + context popover (`SessionCostPopover`)
 
 Costs use `gs.installations.<name>.currency`, USD otherwise.
 
@@ -1063,7 +1095,7 @@ Costs use `gs.installations.<name>.currency`, USD otherwise.
 context, so a 4-turn session reached 1.4M prompt tokens across 14 calls. There
 is no combined total, because input and output are priced differently.
 
-**Memory is the newest turn's prompt tokens against a configured window.** No
+**Context used is the newest turn's prompt tokens against a configured window.** No
 platform component reports a hosted model's context window, so the denominator
 is `agentPlatform.models.contextWindows` (model-name patterns with `*`, the most
 specific match wins, served through the signed-in config). An unmatched model
@@ -1551,9 +1583,14 @@ display name.
 The picker offers **ready agents only**, grouped by installation when there is
 more than one, with search past eight agents. Non-ready agents are omitted,
 except on the home screen (`AgentPlatformHome`), which shows them disabled with
-the reason, groups by namespace, puts a "Recent" group first and is always
-searchable. `isStartableAgent` is shared, so the picker and the decision to
-offer one agree.
+the reason, groups by namespace and is always searchable. It puts a "Recent"
+group first and a "Favorites" group second: every agent starred on Customize →
+Agents, uncapped, in display order. An agent that is both is listed in both, so
+the favorites do not change with what was used last. Both groups keep what they
+held when the picker opened, so a late read of the favorites never moves rows
+under the pointer, and both give way to a flat list of matches while a search
+is typed. `isStartableAgent` is shared, so the picker and the decision to offer
+one agree.
 
 A single offered agent is preselected and the control disabled, but still named
 to confirm the target. `InstallationSelect` does the same for one installation.
@@ -1579,7 +1616,7 @@ after a hasty Enter.
 The prototype's visibility/team selector has no kagent equivalent: a session
 has one owner, and kagent's shares (read-only and read-write, behind the
 backend's `/shares` routes) are not offered in the composer. The home picker
-offers "Recent" instead of favourites first.
+offers "Recent" first and favorites second.
 
 ## The agents list
 
@@ -1654,14 +1691,24 @@ Each tab is its own URL, in a `ShellPage`:
 | -------- | -------------------- | ----------------------------------------------------------------------------- |
 | Overview | the agent URL itself | what it's for, instructions, skills, connectors; model and environment beside |
 | Sessions | `…/<name>/sessions`  | your sessions with this agent                                                 |
+| Tools    | `…/<name>/tools`     | the declared toolset and the exact tools it resolves to for you               |
 | Usage    | `…/<name>/usage`     | its spend, tokens and model calls; your sessions with it                      |
 
-Tools and Skills fold into the Overview (`…/<name>/tools` shows the toolset;
-`…/skills` lands on the Overview), and the GitOps, configuration and status
-cards sit in a Technical details fold-out that starts open for an agent that is not
-ready. The Usage tab reads the Usage screen's sources for 30 days: the
-gateway's by-agent figures (everyone's calls) and kagent's session summary
-(yours, with any runtime-reported cost).
+The Tools tab is there only for an agent with tools (`toolsetHasTools` in
+`lib/toolset.ts`): it binds the muster gateway (`gatewayBindings`: its carrier
+`RemoteMCPServer` or the shared gateway server), which is how an agent reaches
+connectors and Platform tools, and its carrier does not declare `preset:none`.
+The wizard renders a chat-only agent without the binding. Servers bound
+directly are listed in the Overview's Connectors section. For an agent without
+tools, `…/tools` lands on the Overview. While the agent is read, the strip
+draws the Tools tab only on `…/tools`, so a deep link keeps its tab selected;
+elsewhere the tab joins once the agent is read.
+
+Skills fold into the Overview (`…/skills` lands on it), and the GitOps,
+configuration and status cards sit in a Technical details fold-out that starts
+open for an agent that is not ready. The Usage tab reads the Usage screen's
+sources for 30 days: the gateway's by-agent figures (everyone's calls) and
+kagent's session summary (yours, with any runtime-reported cost).
 
 **Overview is the index**, not a redirecting `/overview`, because the create
 flow and Update skills hand their write over in `location.state` for
@@ -1688,9 +1735,9 @@ switching tabs refetches nothing; the toolset's muster queries run only on
 ### Sections
 
 - **Creation progress** (`AgentCreationProgress`) appears only after a write
-  (consumed once) and polls `get_agent_status` until the Harness reports ready
-  or failed.
-- **Header** — Edit and Start a session are buttons; the actions menu offers
+  (consumed once) and polls `get_agent_status` until the Harness reports
+  ready, re-reading a failed verdict every 5 s.
+- **Header** — Edit and Use this agent are buttons; the actions menu offers
   `Update all skills to latest…` and `Delete agent…` where agent-manager is
   available, and always the **manifest dialog**: the `Agent` as YAML without `metadata.managedFields` and the
   `last-applied-configuration` annotation. It shows what the page does not
@@ -1814,8 +1861,8 @@ The review lists the changes and asks **`validate_agent` with `update: true`**.
 **Save changes** calls **`x_agent-manager_update_agent`** with the changed
 fields (`useUpdateAgent`, reported as `AgentPlatform.agentUpdated`) and returns
 with `action: 'updated'`, so the progress element polls `get_agent_status`
-until the new revision is ready or failed. agent-manager stamps the person into
-the HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
+until the new revision is ready. agent-manager stamps the person into the
+HelmRelease's `requestedBy` annotation. A suspended agent's dry run returns
 `conflict:` and locks Save; a viewer gets `forbidden:`. A git-applied agent,
 behind the commit capability, gets **Propose changes as pull request**
 (`update_agent` with `mode: commit`), locked once its pull request is open.
@@ -2225,8 +2272,6 @@ The portal does not carry the values shape.
 - **The agent version is not pinned to the session.** The prototype's
   `model-session.md` requires it, but kagent's record has only `agent_ref`, so
   upgrading an agent changes every existing session. Raise upstream.
-- **No favourites in the agent picker**; it offers recent agents and search
-  past eight.
 - **The composer cannot offer to create an agent** when the fleet has none. A
   link would help.
 - **Batch decisions are not supported.** Answers send the uniform

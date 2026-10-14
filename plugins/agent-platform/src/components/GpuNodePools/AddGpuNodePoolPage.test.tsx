@@ -757,7 +757,7 @@ describe('AddGpuNodePoolPage', () => {
       ),
     );
     expect(
-      await screen.findByRole('link', { name: /Open the pull request/ }),
+      await screen.findByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/3');
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({

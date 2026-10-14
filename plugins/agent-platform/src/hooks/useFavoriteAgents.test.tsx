@@ -6,7 +6,7 @@ import {
   storageApiRef,
   StorageApi,
 } from '@backstage/core-plugin-api';
-import { useFavoriteAgents } from './useFavoriteAgents';
+import { useFavoriteAgentIds, useFavoriteAgents } from './useFavoriteAgents';
 
 const BUCKET = 'agent-platform';
 const KEY = 'favoriteAgents';
@@ -259,5 +259,28 @@ describe('useFavoriteAgents', () => {
         attributes: { change: 'removed' },
       }),
     );
+  });
+});
+
+describe('useFavoriteAgentIds', () => {
+  it('reads the stored favorites, oldest star first', async () => {
+    const storage = mockApis.storage();
+    await storage.forBucket(BUCKET).set(KEY, [
+      { installation: 'gazelle', name: 'triager', namespace: 'sre-team' },
+      { installation: 'goat', name: 'helper', namespace: 'default' },
+    ]);
+
+    const { result } = renderHook(() => useFavoriteAgentIds(), {
+      wrapper: ({ children }: PropsWithChildren<{}>) => (
+        <TestApiProvider apis={[[storageApiRef, storage]]}>
+          {children}
+        </TestApiProvider>
+      ),
+    });
+
+    expect(result.current).toEqual([
+      'gazelle/sre-team/triager',
+      'goat/default/helper',
+    ]);
   });
 });

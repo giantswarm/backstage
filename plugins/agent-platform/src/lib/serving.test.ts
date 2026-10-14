@@ -779,9 +779,31 @@ describe('mergeServingSnapshots', () => {
     });
   });
 
+  it('waits for the served models of every source, falling back to its isLoading', () => {
+    // A source that reports no `isLoadingServedModels` of its own.
+    const { isLoadingServedModels: _, ...settled } = mergeServingSnapshots([]);
+    const merged = (
+      ...flags: { isLoading: boolean; isLoadingServedModels?: boolean }[]
+    ) => mergeServingSnapshots(flags.map(flag => ({ ...settled, ...flag })));
+
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: false, isLoadingServedModels: false },
+      ).isLoadingServedModels,
+    ).toBe(false);
+    expect(
+      merged(
+        { isLoading: true, isLoadingServedModels: false },
+        { isLoading: true },
+      ).isLoadingServedModels,
+    ).toBe(true);
+  });
+
   it('is empty and settled with no sources', () => {
     expect(mergeServingSnapshots([])).toEqual({
       isLoading: false,
+      isLoadingServedModels: false,
       installations: [],
       backends: {},
       backendCapabilities: {},

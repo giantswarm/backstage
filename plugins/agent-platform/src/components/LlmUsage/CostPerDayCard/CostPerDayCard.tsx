@@ -26,9 +26,15 @@ export function CostPerDayCard({
   daily,
   note,
   currency = USD,
+  showLegend = true,
 }: {
   daily: LlmDailySeries;
   note?: string;
+  /**
+   * The key naming each model's colour. Off where the page already names the
+   * one model the chart shows (a model's own page).
+   */
+  showLegend?: boolean;
   /**
    * The installation's display currency. The series stay USD — a linear
    * conversion preserves every bar's proportion — and only the labels convert.
@@ -65,7 +71,7 @@ export function CostPerDayCard({
         xAxisKey="day"
         series={series}
         height={200}
-        showLegend
+        showLegend={showLegend}
         // Money, not counts: a series topping out under a dollar collapses to a
         // single `0` tick with whole-number ticks.
         allowDecimalTicks

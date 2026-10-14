@@ -25,11 +25,25 @@ export type { GateProps } from '@giantswarm/backstage-plugin-ui-react';
 export { SessionGate } from './SessionGate';
 export type { SessionGateProps } from './SessionGate';
 export {
+  authActionParts,
   deactivatedSignInGate,
   ServerAuthActions,
   ServerSignIn,
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
+export {
+  ServerSignInStatus,
+  SignInStatusActions,
+  SignInStatusText,
+} from './ServerSignInStatus';
+export type { ServerSignInStatusProps } from './ServerSignInStatus';
+export { useConnectorGroupPaths, useServerSignInStatus } from './hooks';
+export type { ConnectorGroupPaths } from './hooks';
+export type {
+  ServerSignInStatusState,
+  StatusText,
+  UseServerSignInStatusOptions,
+} from './hooks';
 export {
   authStatusQueryKey,
   needsSignIn,
@@ -49,3 +63,5 @@ export type {
   DefinitionEditorDialogProps,
   DefinitionEditorProps,
 } from './DefinitionEditorDialog';
+export { TruncatedListNote } from './TruncatedListNote';
+export type { TruncatedListNoteProps } from './TruncatedListNote';

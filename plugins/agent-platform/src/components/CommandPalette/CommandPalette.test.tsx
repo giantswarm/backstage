@@ -1,8 +1,15 @@
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  customizeExternalRouteRef,
   agentsRouteRef,
   modelsRouteRef,
   musterServersExternalRouteRef,
@@ -17,7 +24,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -70,8 +77,17 @@ let mockSessions: {
   isLoading: boolean;
   isLoadingMore: boolean;
 };
+// Subscribed, so a test can have sessions arrive while the palette is open.
+const mockSessionsListeners = new Set<() => void>();
 jest.mock('../SessionsDataProvider', () => ({
-  useSessions: () => mockSessions,
+  useSessions: () =>
+    jest.requireActual('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockSessionsListeners.add(listener);
+        return () => mockSessionsListeners.delete(listener);
+      },
+      () => mockSessions,
+    ),
 }));
 
 let mockCatalog: {
@@ -182,6 +198,7 @@ function renderPalette() {
         '/agent-platform/skills': skillsRouteRef,
         '/agent-platform/connectors': musterServersExternalRouteRef,
         '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
         '/agent-platform/workflows/:name': musterWorkflowDetailExternalRouteRef,
       },
     },
@@ -392,6 +409,173 @@ describe('CommandPalette', () => {
     );
   });
 
+  describe('scrolling', () => {
+    // jsdom does no layout. Stack the results as 10px headings and 40px rows
+    // under 4px of list padding, in a list 110px high that scrolls by its
+    // real `scrollTop`.
+    const PADDING = 4;
+    const HEADING = 10;
+    const ROW = 40;
+    const LIST_HEIGHT = 110;
+    let rectSpy: jest.SpyInstance;
+    let heightSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      rectSpy = jest
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function rect(this: Element) {
+          const listbox = this.closest<HTMLElement>('[role="listbox"]');
+          if (!listbox || listbox === this) {
+            return { top: 0, bottom: LIST_HEIGHT } as DOMRect;
+          }
+          let y = PADDING - listbox.scrollTop;
+          for (const each of Array.from(
+            listbox.querySelectorAll(':scope > li > div, [role="option"]'),
+          )) {
+            const height =
+              each.getAttribute('role') === 'option' ? ROW : HEADING;
+            if (each === this) {
+              return { top: y, bottom: y + height } as DOMRect;
+            }
+            y += height;
+          }
+          return { top: 0, bottom: 0 } as DOMRect;
+        });
+      heightSpy = jest
+        .spyOn(Element.prototype, 'clientHeight', 'get')
+        .mockImplementation(function height(this: Element) {
+          return this.getAttribute('role') === 'listbox' ? LIST_HEIGHT : 0;
+        });
+    });
+
+    afterEach(() => {
+      rectSpy.mockRestore();
+      heightSpy.mockRestore();
+    });
+
+    const results = () => screen.getByRole('listbox', { name: 'Results' });
+    const activeOption = (input: HTMLElement) =>
+      document.getElementById(input.getAttribute('aria-activedescendant')!)!;
+    const expectActiveInView = (input: HTMLElement) => {
+      const { top, bottom } = activeOption(input).getBoundingClientRect();
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(bottom).toBeLessThanOrEqual(LIST_HEIGHT);
+    };
+
+    // "sso" lists one row in each of three groups:
+    //   Sessions 4–14, the session 14–54,
+    //   Agents 54–64, Support Triage 64–104,
+    //   Skills 104–114, Ticket triage 114–154.
+
+    it('keeps the row the arrow keys move to in view, moving the list as little as it can', async () => {
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+
+      // In view already: the list stays put.
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+      expect(results().scrollTop).toBe(0);
+
+      // Below the fold: scrolled just far enough to show its bottom edge.
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      expect(activeOption(input)).toHaveTextContent('Ticket triage');
+      expect(results().scrollTop).toBe(154 - LIST_HEIGHT);
+      expectActiveInView(input);
+
+      fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(results().scrollTop).toBe(154 - LIST_HEIGHT);
+
+      // Up to a group's first row: its heading comes back with it, so the
+      // list stops at the heading's top (4), not the row's (14).
+      fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(activeOption(input)).toHaveTextContent(
+        'Which customers asked about SSO this month?',
+      );
+      expect(results().scrollTop).toBe(4);
+    });
+
+    it('keeps the highlight in view when results arrive late', async () => {
+      mockAgents.rows = ['Billing', 'Login', 'Upgrades'].map(topic => ({
+        ...agent,
+        id: `gazelle/kagent/${topic.toLowerCase()}`,
+        name: `${topic} helper`,
+        description: `Answers SSO and ${topic} questions`,
+      }));
+      mockSessions = { rows: [], isLoading: true, isLoadingMore: false };
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      fireEvent.keyDown(input, { key: 'ArrowDown' });
+      expect(activeOption(input)).toHaveTextContent('Upgrades helper');
+      expectActiveInView(input);
+
+      // A Sessions group lands above the agents, and the highlight's row
+      // with it moves below the fold.
+      act(() => {
+        mockSessions = {
+          rows: [
+            session('s-sso', 'Which customers asked about SSO this month?'),
+          ],
+          isLoading: false,
+          isLoadingMore: false,
+        };
+        mockSessionsListeners.forEach(listener => listener());
+      });
+      expect(
+        within(results()).getByText(
+          'Which customers asked about SSO this month?',
+        ),
+      ).toBeInTheDocument();
+      expectActiveInView(input);
+    });
+
+    it('does not scroll to a row the pointer selects, nor select a row scrolled under a resting pointer', async () => {
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+
+      fireEvent.mouseMove(screen.getByText('Ticket triage'), {
+        clientX: 20,
+        clientY: 105,
+      });
+      expect(activeOption(input)).toHaveTextContent('Ticket triage');
+      expect(results().scrollTop).toBe(0);
+
+      fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+
+      // A mousemove where the pointer already was: content moved under it.
+      fireEvent.mouseMove(screen.getByText('Ticket triage'), {
+        clientX: 20,
+        clientY: 105,
+      });
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+
+      fireEvent.mouseMove(screen.getByText('Ticket triage'), {
+        clientX: 20,
+        clientY: 110,
+      });
+      expect(activeOption(input)).toHaveTextContent('Ticket triage');
+    });
+
+    it('scrolls the list back to the top on a new query', async () => {
+      const input = await openPalette();
+      results().scrollTop = 120;
+
+      await userEvent.type(input, 's');
+      expect(results().scrollTop).toBe(0);
+    });
+
+    it('scrolls the list back to the top on another type chip', async () => {
+      const input = await openPalette();
+      await userEvent.type(input, 'sso');
+      results().scrollTop = 120;
+
+      await userEvent.click(screen.getByRole('button', { name: 'Agents' }));
+      expect(activeOption(input)).toHaveTextContent('Support Triage');
+      expect(results().scrollTop).toBe(0);
+    });
+  });
+
   it('opens a clicked result', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'confluence');
@@ -456,7 +640,7 @@ describe('CommandPalette', () => {
     expect(within(listbox).getByText('Models')).toBeVisible();
     await userEvent.click(within(listbox).getByText('Default model'));
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/agent-platform/models/gazelle/kagent/default-model',
+      '/customize/models/gazelle/kagent/default-model',
     );
   });
 

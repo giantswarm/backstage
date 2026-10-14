@@ -15,6 +15,7 @@ import {
   type CommitAgentResult,
   type CreateAgentResult,
   type DeleteAgentResult,
+  type UpdateAgentCommitDryRun,
   type StartSessionRequest,
   type StartSessionResult,
   type UpdateAgentResult,
@@ -156,6 +157,23 @@ export class AgentManagerClient {
     return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
       ...update,
       mode: 'commit',
+    });
+  }
+
+  /**
+   * The dry run of `commitUpdateAgent`: the merged values and the pull request
+   * it would open, nothing opened. Unlike `validateUpdate` it reads the
+   * repository's base branch as the person, so it refuses up front what the
+   * commit would, such as a release whose file is not in agent-manager's
+   * directory.
+   */
+  dryRunCommitUpdateAgent(
+    update: AgentUpdate,
+  ): Promise<UpdateAgentCommitDryRun> {
+    return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
+      ...update,
+      mode: 'commit',
+      dryRun: true,
     });
   }
 

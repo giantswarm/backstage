@@ -1,15 +1,7 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Accordion,
-  AccordionPanel,
-  AccordionTrigger,
-  Badge,
-  Button,
-  Flex,
-  Text,
-} from '@backstage/ui';
+import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   Agent,
@@ -22,10 +14,10 @@ import {
   type Fact,
   SectionHeader,
   ShowMore,
-  useSimpleAccordionStyles,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import type { ClientServingSummary } from '../../lib/serving';
@@ -36,10 +28,13 @@ import {
   skillDetailPath,
   type DiscoveredSkill,
 } from '../../lib/skills';
-import { modelDetailRouteRef, skillsRouteRef } from '../../routes';
-import { describeReach } from '../AgentReachLine';
+import { bindsGateway } from '../../lib/toolset';
+import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { skillsRouteRef } from '../../routes';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { ModelServingStatus } from '../ModelServingStatus';
+import { TechnicalDetailsFoldOut } from '../TechnicalDetailsFoldOut';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
 import {
@@ -102,41 +97,7 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
   },
-  // Outlined like the create flow's review step "Technical details".
-  foldOut: {
-    border: '1px solid var(--bui-border-1)',
-    borderRadius: 12,
-  },
 }));
-
-/**
- * "Technical details", folded in place — the shell's one way to offer
- * technical detail, never a page-wide switch. Controlled, so the cards inside
- * (which read the HelmRelease, GitOps source and conditions) mount only while
- * open: bui's panel otherwise stays mounted, merely hidden.
- */
-function TechnicalDetailsFoldOut({
-  defaultExpanded,
-  children,
-}: {
-  defaultExpanded: boolean;
-  children: ReactNode;
-}) {
-  const classes = useStyles();
-  const spacing = useSimpleAccordionStyles();
-  const [isExpanded, setExpanded] = useState(defaultExpanded);
-  return (
-    <Accordion
-      className={`${classes.foldOut} ${spacing.group}`}
-      isExpanded={isExpanded}
-      onExpandedChange={setExpanded}
-    >
-      {/* h2: a section of the overview beside Skills and Connectors. */}
-      <AccordionTrigger level={2}>Technical details</AccordionTrigger>
-      <AccordionPanel>{isExpanded ? children : null}</AccordionPanel>
-    </Accordion>
-  );
-}
 
 /** A section of the plain overview: a small heading, then what it says. */
 function Section({
@@ -316,26 +277,27 @@ function SkillsSection({
 
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares — with the exact tools one link away.
+ * read from the toolset it declares; the exact tools are the Tools tab.
  * Servers bound directly rather than through the gateway, and agents it calls
  * as tools, follow by name.
  */
 function ConnectorsSection({
   agent,
-  toolsHref,
   isFailing,
 }: {
   agent: Agent;
-  toolsHref?: string;
   isFailing: boolean;
 }) {
   const classes = useStyles();
   const { declared, isReading, isUnreadable } = useAgentToolset(agent);
-  const bindings = agent.getMcpBindings();
-  const direct = bindings.filter(
-    binding => !isGatewayServerBinding(agent, binding),
+  const groups = useReachCatalogue(
+    agent.cluster,
+    reachNeedsCatalogue(declared),
   );
-  const hasGateway = direct.length < bindings.length;
+  const direct = agent
+    .getMcpBindings()
+    .filter(binding => !isGatewayServerBinding(agent, binding));
+  const hasGateway = bindsGateway(agent);
   const subAgents = agent.getSubAgentBindings();
 
   let reach: string;
@@ -348,21 +310,14 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared) ??
+      describeReach(declared, groups) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
   }
 
   return (
-    <Section
-      title="Connectors"
-      action={
-        hasGateway && toolsHref ? (
-          <Link to={toolsHref}>See which tools</Link>
-        ) : undefined
-      }
-    >
+    <Section title="Connectors">
       <Text variant="body-medium">{reach}</Text>
       {(direct.length > 0 || subAgents.length > 0) && (
         <div className={classes.rows}>
@@ -446,7 +401,7 @@ export type AgentPlainOverviewProps = {
   installation: string;
   modelConfig: ModelConfig | undefined;
   modelServing: ClientServingSummary | undefined;
-  /** The agent's tools view, which resolves the toolset to exact tools. */
+  /** The Tools tab, which resolves the toolset to exact tools. */
   toolsHref?: string;
   /** Opens Update all skills to latest. Absent when the page cannot write the agent. */
   onUpdateSkills?: () => void;
@@ -506,11 +461,7 @@ export function AgentPlainOverview({
         isGitOpsOwned={isGitOpsOwned}
       />
 
-      <ConnectorsSection
-        agent={agent}
-        toolsHref={toolsHref}
-        isFailing={failure?.field === 'tools'}
-      />
+      <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
 
       <TechnicalDetailsFoldOut
         defaultExpanded={agent.getReadiness() !== 'ready'}
@@ -545,7 +496,7 @@ function ModelFact({
   modelServing?: ClientServingSummary;
   isFailing: boolean;
 }) {
-  const modelDetailRoute = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailRoute } = useCustomizePaths();
   const modelConfigName = agent.getModelConfigName();
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
@@ -560,11 +511,15 @@ function ModelFact({
     modelConfig && modelConfig.getModel() !== label
       ? underlyingModelLine(modelConfig)
       : undefined;
-  const href = modelDetailRoute?.({
-    installation,
-    namespace: agent.getNamespace() ?? '',
-    name: modelConfigName,
-  });
+  // The model's page, where the ModelConfig could be read: for a reader who
+  // cannot read it (normal for a non-admin), the page could only say so. The
+  // ModelConfig sits in the agent's namespace; without one there is no page
+  // to resolve either. Plain text in both cases.
+  const namespace = agent.getNamespace();
+  const href =
+    modelConfig && namespace
+      ? modelDetailRoute?.({ installation, namespace, name: modelConfigName })
+      : undefined;
 
   return (
     <Flex direction="column" gap="1">

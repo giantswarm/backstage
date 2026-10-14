@@ -274,7 +274,7 @@ describe('CreateClusterDialog', () => {
       await screen.findByText('Pull request #7 opened as jane'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open the pull request/ }),
+      screen.getByRole('link', { name: /Review pull request/ }),
     ).toHaveAttribute('href', 'https://github.com/acme/fleet/pull/7');
     expect(writesOf(callTool)).toEqual([
       [

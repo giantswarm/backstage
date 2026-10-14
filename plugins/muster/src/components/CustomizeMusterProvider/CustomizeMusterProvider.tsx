@@ -1,27 +1,41 @@
-import type { ReactNode } from 'react';
-import { partitionServers } from '../../lib/serverGrouping';
+import { type ReactNode, useMemo } from 'react';
+import {
+  type ConnectorGroup,
+  connectorGroupCounts,
+} from '../../lib/connectorGroups';
 import { MusterProviders } from '../MusterProviders';
 import { useMusterInstance } from '../MusterInstanceProvider';
 
 /** What the Customize screen's tab strip counts; absent while still loading. */
 export type MusterCustomizeCounts = {
   connectors?: number;
+  /** The Connectors tab's sub-tabs, by `ConnectorGroup`. */
+  connectorGroups?: Record<ConnectorGroup, number>;
   workflows?: number;
 };
 
 /**
- * The connectors (one per server family or singular server, muster's own
- * tools left out) and workflows of the active muster. Must be called inside a
- * `CustomizeMusterProvider`.
+ * The connectors (one per server family, singular server and muster itself,
+ * where muster runs), per Connectors sub-tab and in all, and the workflows of
+ * the active muster. Must be called inside a `CustomizeMusterProvider`.
  */
 export function useMusterCustomizeCounts(): MusterCustomizeCounts {
-  const { mcpServers, workflows, isLoading } = useMusterInstance();
+  const { mcpServers, workflows, isLoading, activeInstallation } =
+    useMusterInstance();
+  const withMuster = activeInstallation !== undefined;
+  const connectorGroups = useMemo(
+    () => connectorGroupCounts(mcpServers, withMuster),
+    [mcpServers, withMuster],
+  );
   if (isLoading) {
     return {};
   }
   return {
-    connectors: partitionServers(mcpServers).flatMap(group => group.rows)
-      .length,
+    connectors:
+      connectorGroups.yours +
+      connectorGroups.infrastructure +
+      connectorGroups.internal,
+    connectorGroups,
     workflows: workflows.length,
   };
 }

@@ -66,7 +66,7 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   'agentPlatform.integrations.slack',
   // Where the Slack banner's "How it works" points: a public docs URL.
   'agentPlatform.integrations.slackDocsUrl',
-  // Context-window sizes per model pattern, for the chat's memory indicator.
+  // Context-window sizes per model pattern, for the chat's context indicator.
   'agentPlatform.models.contextWindows',
   // Link templates for the Flux sources' Git hosts.
   'flux.gitRepositoryPatterns',

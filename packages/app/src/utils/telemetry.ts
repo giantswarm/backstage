@@ -1,8 +1,18 @@
 import sha256 from 'crypto-js/sha256';
+import { CONNECTOR_GROUPS } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
+
+/**
+ * The Connectors tab's sub-tabs below its own address (muster's
+ * `CONNECTOR_GROUPS`, the default at the tab's own address left out), a fixed
+ * set too.
+ */
+const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
+  CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
+);
 
 /** Model hosting's create flows by their last path segment, as page names. */
 const HOSTING_FLOW_PAGES: Record<string, string> = {
@@ -80,13 +90,34 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Customize' };
       break;
 
+    // One model: `/customize/models/<installation>/<namespace>/<name>`. One
+    // page, the model in neither `page` nor `view` (it is in `path`, as on
+    // every page): `page` and `view` are the dimensions TelemetryDeck
+    // aggregates on, and path segments there would make a signal per model.
+    // The former `/agent-platform/models/…` path redirects here. A trailing
+    // slash is the same page, as the router has it. Above the tab case, which
+    // would report it as the Models tab.
+    case /^\/customize\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail' };
+      break;
+
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
+    // The Connectors tab's sub-tabs below its own address add a `subview`; the
+    // tab's own address is its default sub-tab, the customer's connectors.
     case pathname.startsWith('/customize/'): {
-      const tab = pathname.split('/')[2];
-      payload = CUSTOMIZE_TABS.has(tab)
-        ? { page: 'Customize', view: tab }
-        : { page: 'Customize' };
+      const [, , tab, sub, ...deeper] = pathname.split('/');
+      if (!CUSTOMIZE_TABS.has(tab)) {
+        payload = { page: 'Customize' };
+      } else if (
+        tab === 'connectors' &&
+        CONNECTOR_SUBTABS.has(sub) &&
+        deeper.length === 0
+      ) {
+        payload = { page: 'Customize', view: tab, subview: sub };
+      } else {
+        payload = { page: 'Customize', view: tab };
+      }
       break;
     }
 
@@ -226,15 +257,14 @@ export function getTelemetryPageViewPayload(pathname: string): {
       payload = { page: 'Models index' };
       break;
 
-    // One model: `…/models/<installation>/<namespace>/<name>`. No `view`, for
-    // the same reason as Session detail and Agent detail: `page` and `view` are
-    // the dimensions TelemetryDeck aggregates on, and putting path segments
-    // there yields a distinct signal name per model rather than a countable
-    // page. (It is not a privacy measure — every payload below carries
-    // `path: pathname` verbatim.) Placed above the views case so the three
-    // identifying segments cannot reach a `view`.
-    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+$/.test(pathname):
-      payload = { page: 'Model detail' };
+    // One model's former path, `…/models/<installation>/<namespace>/<name>`,
+    // which only redirects to `/customize/models/…` (above); the page the
+    // visit lands on reports itself as Model detail right after, so this one
+    // must not, or each old link counts twice. Its own page, like the Agents
+    // redirect, with no `view`: the segments name a model. Placed above the
+    // views case so the three identifying segments cannot reach a `view`.
+    case /^\/agent-platform\/models\/[^/]+\/[^/]+\/[^/]+\/?$/.test(pathname):
+      payload = { page: 'Model detail redirect' };
       break;
 
     // Editing one model: the Connect-a-model flow prefilled, at

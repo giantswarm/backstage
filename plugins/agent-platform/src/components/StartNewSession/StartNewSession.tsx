@@ -36,6 +36,7 @@ export type StartNewSessionComposerProps = Pick<
   | 'showUnavailable'
   | 'groupByNamespace'
   | 'recentAgentIds'
+  | 'favoriteAgentIds'
   | 'searchable'
   | 'pickerPlaceholder'
   | 'pickerPlacement'

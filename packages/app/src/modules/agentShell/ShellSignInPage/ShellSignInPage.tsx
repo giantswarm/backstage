@@ -80,8 +80,8 @@ export interface ShellSignInPageProps {
  * The sign-in window of a deployment that serves the Agent Platform
  * (`app.portals.agentPlatform`): one centered card in the shell's look — the
  * rail's logo beside the name, as one title, then a button per sign-in option
- * with its message
- * beneath. The first option is the primary action. Behaves like upstream's
+ * with its message, if it has one, beneath. The first option is the primary
+ * action. Behaves like upstream's
  * `SignInPage` (see {@link useProviderSignIn}); classic-only deployments keep
  * that page unchanged.
  */
@@ -104,23 +104,18 @@ export function ShellSignInPage({
     <main className={classes.page}>
       <section className={classes.card} aria-labelledby="shell-sign-in-title">
         <Flex direction="column" gap="6">
-          <Flex direction="column" align="center" gap="1">
-            {/* The mark joins the title, beside it as in the rail, so the
-                card reads as the Giant Swarm Agent Platform (T71): the ant's
-                label is "Giant Swarm", which makes the heading's name too.
-                Beside, not above — the brand allows the horizontal form only.
-                The space keeps the two words apart in that name; the flex row
-                does not draw it. */}
-            <h1 id="shell-sign-in-title" className={classes.title}>
-              <LogoIcon />{' '}
-              <Text as="span" variant="title-small">
-                Agent Platform
-              </Text>
-            </h1>
-            <Text variant="body-medium" color="secondary">
-              Sign in to continue.
+          {/* The mark joins the title, beside it as in the rail, so the
+              card reads as the Giant Swarm Agent Platform (T71): the ant's
+              label is "Giant Swarm", which makes the heading's name too.
+              Beside, not above — the brand allows the horizontal form only.
+              The space keeps the two words apart in that name; the flex row
+              does not draw it. */}
+          <h1 id="shell-sign-in-title" className={classes.title}>
+            <LogoIcon />{' '}
+            <Text as="span" variant="title-small">
+              Agent Platform
             </Text>
-          </Flex>
+          </h1>
           {error && error.name !== 'PopupRejectedError' && (
             <Alert
               status="danger"
@@ -143,20 +138,26 @@ export function ShellSignInPage({
                 <Button
                   className={classes.fullWidth}
                   variant={index === 0 ? 'primary' : 'secondary'}
-                  aria-describedby={`shell-sign-in-${provider.id}`}
+                  aria-describedby={
+                    provider.message
+                      ? `shell-sign-in-${provider.id}`
+                      : undefined
+                  }
                   loading={pendingId === provider.id}
                   isDisabled={pendingId !== undefined}
                   onPress={() => signIn(provider)}
                 >
                   {`Sign in with ${provider.title}`}
                 </Button>
-                <Text
-                  id={`shell-sign-in-${provider.id}`}
-                  variant="body-small"
-                  color="secondary"
-                >
-                  {provider.message}
-                </Text>
+                {provider.message && (
+                  <Text
+                    id={`shell-sign-in-${provider.id}`}
+                    variant="body-small"
+                    color="secondary"
+                  >
+                    {provider.message}
+                  </Text>
+                )}
               </Flex>
             ))}
           </Flex>

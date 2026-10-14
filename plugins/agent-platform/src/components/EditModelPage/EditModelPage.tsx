@@ -1,5 +1,4 @@
 import { useParams } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link } from '@backstage/core-components';
 import { Alert, Flex } from '@backstage/ui';
 import {
@@ -17,7 +16,7 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
-import { modelDetailRouteRef } from '../../routes';
+import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { NewModelPage } from '../NewModelPage';
 
 /**
@@ -53,7 +52,7 @@ function editBlocker(
  */
 export function EditModelPage() {
   const { installation = '', namespace = '', name = '' } = useParams();
-  const modelDetailLink = useRouteRef(modelDetailRouteRef);
+  const { modelDetail: modelDetailLink } = useCustomizePaths();
   const detailHref = modelDetailLink?.({ installation, namespace, name });
 
   const {

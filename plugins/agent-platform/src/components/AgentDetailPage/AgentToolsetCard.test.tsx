@@ -292,7 +292,9 @@ describe('AgentToolsetCard', () => {
     expect(screen.queryByText('Toolset not readable')).not.toBeInTheDocument();
   });
 
-  it('says No tools at once for a chat-only agent, without waiting for the read', async () => {
+  // The page shows the card for an agent with tools only (`toolsetHasTools`);
+  // for one without, it draws nothing rather than a second "No tools".
+  it('draws nothing for an agent without a gateway entry, without waiting for the read', async () => {
     await renderCard(
       makeAgent([{ mcpServer: { name: 'grafana' } }]),
       undefined,
@@ -303,11 +305,7 @@ describe('AgentToolsetCard', () => {
       },
     );
 
-    // No gateway binding: decided by the agent alone, so the carrier read has
-    // no bearing on it. The indicator is pinned by its bar and not by its
-    // label — `Progress` renders the testid hidden from the first paint, while
-    // the label is held back 250ms and would be absent either way.
-    expect(screen.getByText('No tools')).toBeInTheDocument();
+    expect(screen.queryByText('Toolset')).not.toBeInTheDocument();
     expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
   });
 
@@ -321,25 +319,11 @@ describe('AgentToolsetCard', () => {
     expect(filterTools).not.toHaveBeenCalled();
   });
 
-  it('labels an agent with no gateway entry as No tools', async () => {
-    const { api } = makeApi(resolvedAnswer());
-    await renderCard(makeAgent([{ mcpServer: { name: 'grafana' } }]), api);
-
-    expect(screen.getByText('No tools')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /a chat-only agent with nothing beyond its own reasoning/,
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('labels the none preset as No tools without asking muster', async () => {
+  it('draws nothing for the none preset, without asking muster', async () => {
     const { api, filterTools } = makeApi(resolvedAnswer());
     await renderCard(withToolset('preset:none'), api);
 
-    // The chip and the alert both say so; the chip keeps the selector.
-    expect(screen.getAllByText('No tools')).toHaveLength(2);
-    expect(screen.getByTitle('preset:none')).toHaveTextContent('No tools');
+    expect(screen.queryByText('Toolset')).not.toBeInTheDocument();
     expect(filterTools).not.toHaveBeenCalled();
   });
 

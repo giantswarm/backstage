@@ -16,13 +16,15 @@ import {
   type ServedModelGroup,
 } from './ServedModelsTable';
 import {
-  mockDesktopLayout,
-  mockPhoneLayout,
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
-  type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { modelsRouteRef } from '../../routes';
+import {
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { KSERVE_CR_CAPABILITIES } from '../ServingProvider/useKServeServingSource';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { ServingPage } from './ServingPage';
@@ -326,7 +328,10 @@ const renderSection = (initialRouteEntries?: string[]) =>
       <Route path="*" element={<Section />} />
     </Routes>,
     {
-      mountedRoutes: { '/agent-platform/models': modelsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/models': modelsRouteRef,
+        '/customize': customizeExternalRouteRef,
+      },
       initialRouteEntries,
     },
   );
@@ -888,7 +893,7 @@ describe('ServingPage', () => {
 
     expect(screen.getByRole('link', { name: 'qwen3-14b' })).toHaveAttribute(
       'href',
-      '/agent-platform/models/inst-1/kagent/qwen3-14b',
+      '/customize/models/inst-1/kagent/qwen3-14b',
     );
     expect(screen.queryByText('claude')).not.toBeInTheDocument();
     expect(screen.queryByText('other-vllm')).not.toBeInTheDocument();
@@ -974,6 +979,52 @@ describe('ServingPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(NO_SERVED_MODELS)).not.toBeInTheDocument();
+  });
+
+  it('holds the read warnings while the served models are read, not while the GPU nodes are', async () => {
+    mockUsePullJobs.mockReturnValue({
+      ...noJobs,
+      errors: [
+        { installation: 'inst-1', error: new Error('502 from the gateway') },
+      ],
+    });
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: true,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(
+      await screen.findByRole('progressbar', {
+        name: 'Reading the served models…',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+
+    // The served-model reads have settled; the GPU node and pod reads, which
+    // the warning is not about, are still going.
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      isLoading: true,
+      isLoadingServedModels: false,
+      servedModels: [],
+      unreachableInstallations: ['inst-3'],
+    });
+    act(() => rerenderSection());
+
+    expect(
+      await screen.findByText('Could not read 1 environment'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read the downloads'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('progressbar', { name: 'Reading the served models…' }),
+    ).not.toBeInTheDocument();
   });
 
   it('surfaces installations whose LLMInferenceServices could not be read', async () => {
@@ -1203,11 +1254,7 @@ describe('ServingPage', () => {
         const grid = screen.getByRole('grid');
         expect(within(grid).getByText('nope:latest')).toBeInTheDocument();
         expect(within(grid).getByText('Not ready')).toBeInTheDocument();
-        expect(
-          within(grid).getByText(
-            'Download failed: pull model manifest: file does not exist',
-          ),
-        ).toBeInTheDocument();
+        expect(within(grid).getByText('Download failed')).toBeInTheDocument();
         expect(
           screen.getByRole('button', { name: 'Retry download nope:latest' }),
         ).toBeInTheDocument();

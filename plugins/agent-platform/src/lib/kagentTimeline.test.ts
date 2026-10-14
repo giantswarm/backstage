@@ -138,7 +138,7 @@ describe('buildTimeline', () => {
   });
 
   it("reports the newest turn's own usage, without delegated usage", () => {
-    // The memory indicator's numerator: what this turn's model calls were sent.
+    // The context indicator's numerator: what this turn's model calls were sent.
     // The fixture's newest task is still working and has reported nothing, so
     // the last *measured* turn is the first — and the subagent's 3100 tokens
     // are its own session's context, so they are not in it.

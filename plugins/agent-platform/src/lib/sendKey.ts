@@ -40,7 +40,8 @@ export function isTouchInput(): boolean {
  *
  * Shared by every box in a session that takes typed words — the reply composer, the
  * new-session composer and the answer panel — so the rule is stated once and cannot
- * drift between them. {@link sendKeyCaption} words it for the caption under a box.
+ * drift between them. {@link sendKeyCaption} words it for the caption under a box,
+ * and `SendKeyHint` draws those words with key caps.
  */
 export function isSendKey(
   event: KeyboardEvent,
@@ -67,6 +68,14 @@ export function sendEnterKeyHint(
   return touch ? 'enter' : 'send';
 }
 
+/** What a box's send key and Send button do, for {@link sendKeyCaption}. */
+export type SendKeyCaptionOptions = {
+  /** What Enter does, as a phrase that starts with "Enter". */
+  key?: string;
+  /** What the button does on touch, as a phrase that starts with "Tap". */
+  tap?: string;
+};
+
 /**
  * The caption under a message box that says how it sends, following
  * {@link isSendKey}: "Enter sends, Shift+Enter for a new line." with a
@@ -78,11 +87,33 @@ export function sendEnterKeyHint(
  * ("Tap Send to start a session"). Both without the full stop.
  */
 export function sendKeyCaption(
-  {
-    key = 'Enter sends',
-    tap = 'Tap Send to send',
-  }: { key?: string; tap?: string } = {},
+  { key = 'Enter sends', tap = 'Tap Send to send' }: SendKeyCaptionOptions = {},
   touch: boolean = isTouchInput(),
 ): string {
   return touch ? `${tap}.` : `${key}, Shift+Enter for a new line.`;
 }
+
+/**
+ * The boxes' own wording for {@link sendKeyCaption}, beyond the default
+ * ("Enter sends"). Kept here, not with each box, so `SendKeyHint`'s test
+ * checks every caption in use.
+ */
+export const SEND_KEY_CAPTIONS = {
+  /** The new-session composer. */
+  newSession: {
+    key: 'Enter starts the session with this message',
+    tap: 'Tap the arrow to start the session with this message',
+  },
+  /** The answer panel, on a question before the last. */
+  nextQuestion: {
+    key: 'Enter goes to the next question',
+    tap: 'Tap Next to go on',
+  },
+  /** The answer panel, on the last question. */
+  answer: { key: 'Enter sends', tap: 'Tap Send answer to send it' },
+  /** The session composer, once kagent has reported the runtime lost. */
+  runtimeLost: {
+    key: 'Enter starts it',
+    tap: 'Tap the button below to start it',
+  },
+} satisfies Record<string, SendKeyCaptionOptions>;

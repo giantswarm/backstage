@@ -1,11 +1,13 @@
 import { renderHook } from '@testing-library/react';
 import {
-  llmUsageQueries,
   llmUsageQueriesFor,
-  llmUsageRangeQueries,
   llmUsageRangeQueriesFor,
 } from '../lib/llmUsageQueries';
 import { useLlmUsage } from './useLlmUsage';
+
+/** The installation-wide queries the hook runs by default. */
+const llmUsageQueries = llmUsageQueriesFor();
+const llmUsageRangeQueries = llmUsageRangeQueriesFor();
 
 /** Queries reported as still pending, by query string. */
 const pending = new Set<string>();

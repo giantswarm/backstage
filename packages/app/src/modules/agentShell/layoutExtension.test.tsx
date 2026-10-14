@@ -5,8 +5,11 @@ import {
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 import { mockApis, renderTestApp } from '@backstage/frontend-test-utils';
-import { useShellScope } from '@giantswarm/backstage-plugin-ui-react';
-import { screen } from '@testing-library/react';
+import {
+  ShellDocumentTitle,
+  useShellScope,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { screen, waitFor } from '@testing-library/react';
 import { navModule } from '../nav';
 import { AGENT_SHELL_FLAG } from './predicates';
 import { agentShellModule } from './index';
@@ -54,10 +57,14 @@ jest.mock('@backstage/plugin-user-settings', () => ({
   Settings: () => null,
 }));
 
-/** A page that reports whether shared components see the shell's scope. */
+/**
+ * A page that reports whether shared components see the shell's scope, and
+ * titles the document as a shell page does.
+ */
 function StubPage({ testId, children }: { testId: string; children: string }) {
   return (
     <div data-testid={testId} data-in-shell={String(useShellScope())}>
+      <ShellDocumentTitle title={children} />
       {children}
     </div>
   );
@@ -88,7 +95,16 @@ const stubPagePlugin = createFrontendPlugin({
 
 // Generated class-name counters and React ids differ between two renders.
 function normalized(html: string): string {
-  return html.replace(/-\d+\b/g, '-N').replace(/\br\d+\b/g, 'rN');
+  return (
+    html
+      .replace(/-\d+\b/g, '-N')
+      .replace(/\br\d+\b/g, 'rN')
+      // React's useId counts in base 32 (`ra`, `r1f`): an id derived from
+      // one (the logo's gradient, `gs-logo-ant-ra`) ends in letters once a
+      // run has handed out ten ids, which follows from the tests before and
+      // not from the chrome.
+      .replace(/-r[0-9a-v]+(?=[")])/g, '-rN')
+  );
 }
 
 function renderApp(
@@ -158,6 +174,13 @@ describe('the app layout', () => {
     ).toBeInTheDocument();
     expect(screen.queryByTestId('cluster-access-item')).not.toBeInTheDocument();
     expect(document.documentElement).toHaveAttribute('data-agent-shell', '');
+  });
+
+  it('ends a shell page’s document title with the product', async () => {
+    renderApp(FeatureFlagState.Active, { route: '/agent-platform' });
+
+    await screen.findByTestId('agent-stub-page');
+    await waitFor(() => expect(document.title).toBe('Agent · Agent Platform'));
   });
 
   it('keeps the classic sidebar and theme on routes outside the agent area while the flag is on', async () => {

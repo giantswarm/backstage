@@ -1,4 +1,5 @@
 import { Flex, Text } from '@backstage/ui';
+import { Stat } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles, Theme } from '@material-ui/core';
 import { useLlmUsageView } from '../../hooks/useLlmUsageView';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
@@ -11,7 +12,6 @@ import {
 import {
   CostKpiTiles,
   CostPerDayCard,
-  KpiTile,
   LlmByAgentTable,
   LlmByModelTable,
   LlmUsageState,
@@ -100,7 +100,8 @@ export function UsageCostPage() {
         {view.state === 'unavailable' && costUsd !== undefined && (
           <>
             <div className={classes.row}>
-              <KpiTile
+              <Stat
+                variant="tile"
                 label="Reported cost"
                 hint="Shows what your agents' runtimes reported for your turns, over kagent's window. Only some runtimes report a cost, and there is never a fleet total."
                 value={formatUsd(costUsd)}

@@ -4,7 +4,7 @@ import { screen } from '@testing-library/react';
 // The NFS test app: `useRouteRef` from `@backstage/frontend-plugin-api` resolves
 // against the new route-resolution API, which the classic test app lacks.
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { agentsRouteRef } from '../../routes';
+import { agentsRouteRef, customizeExternalRouteRef } from '../../routes';
 import { AgentsRouter } from './AgentsRouter';
 
 // The pages are irrelevant here — this is about which route claims which URL —
@@ -49,7 +49,7 @@ function LocationProbe() {
   return <div>{`at ${pathname}${search}`}</div>;
 }
 
-function renderTab(path: string) {
+function renderTab(path: string, { customizeBound = true } = {}) {
   return renderInTestApp(
     <Routes>
       <Route path="/agent-platform/agents/*" element={<AgentsRouter />} />
@@ -57,7 +57,10 @@ function renderTab(path: string) {
     </Routes>,
     {
       initialRouteEntries: [path],
-      mountedRoutes: { '/agent-platform/agents': agentsRouteRef },
+      mountedRoutes: {
+        '/agent-platform/agents': agentsRouteRef,
+        ...(customizeBound && { '/customize': customizeExternalRouteRef }),
+      },
     },
   );
 }
@@ -71,6 +74,13 @@ describe('AgentsRouter', () => {
     expect(
       await screen.findByText('at /customize/agents?installation=gazelle'),
     ).toBeInTheDocument();
+  });
+
+  it('says there is no list where the app binds no Customize page', async () => {
+    renderTab('/agent-platform/agents', { customizeBound: false });
+
+    expect(await screen.findByText('Not available')).toBeInTheDocument();
+    expect(screen.queryByText(/^at \/customize/)).toBeNull();
   });
 
   it('routes an agent page', async () => {

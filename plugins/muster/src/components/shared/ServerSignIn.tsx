@@ -79,19 +79,70 @@ function Messages({ state }: { state: ServerSignInState }) {
 }
 
 /**
+ * Why an SSO-managed server (token forwarding/exchange) has no sign-in: its
+ * connection comes from muster's own session, so there is nothing for the
+ * user to sign in to (and muster refuses a manual logout).
+ */
+function ssoExplanationText(
+  serverName: string,
+  state: ServerSignInState,
+  noun: SignInNoun,
+): string {
+  return `${serverName} authenticates through SSO from muster's own session, so there is nothing to sign in to here.${
+    state.status?.sso_attempt_failed
+      ? ` muster tried and failed to establish it for your session — check the ${noun}'s trusted audiences with an administrator.`
+      : ''
+  }`;
+}
+
+/** What a row says while the sign-in page is open somewhere. */
+export const WAITING_FOR_SIGN_IN = 'Waiting for you to finish signing in…';
+
+/** A word on how muster identifies itself to the authorization server. */
+export type ClientIdNote = { text: string; color: 'warning' | 'secondary' };
+
+/**
+ * What the challenge's client identity means for the sign-in (muster#1083),
+ * where it deserves a word. Only the fallbacks are warnings -- they are the
+ * cases where the AS may reject the sign-in as an unregistered client. DCR
+ * gets a quiet note because the consent screen will show an auto-registered
+ * client rather than a pre-provisioned one, which can otherwise look
+ * suspicious.
+ */
+function clientIdMethodNote(
+  clientIdMethod: ServerSignInState['clientIdMethod'],
+  noun: SignInNoun,
+): ClientIdNote | undefined {
+  switch (clientIdMethod) {
+    case 'cimd-fallback':
+      return {
+        color: 'warning',
+        text: `This ${noun}'s authorization server advertises neither support for muster's client identity (CIMD) nor automatic client registration — the sign-in may be rejected as an unregistered client.`,
+      };
+    // muster#1086: distinct from cimd-fallback — the AS does offer client
+    // registration but rejected muster's request (its actual rejection is in
+    // muster's challenge message and logs).
+    case 'dcr-failed':
+      return {
+        color: 'warning',
+        text: `This ${noun}'s authorization server rejected muster's automatic client registration — the sign-in may be rejected as an unregistered client.`,
+      };
+    case 'dcr':
+      return {
+        color: 'secondary',
+        text: `muster registered itself with this ${noun}'s authorization server automatically (Dynamic Client Registration).`,
+      };
+    default:
+      return undefined;
+  }
+}
+
+/**
  * SSO-managed servers (token forwarding/exchange) get an explanation instead
  * of a button: their connection comes from muster's own session, so there is
  * nothing for the user to sign in to (and muster refuses a manual logout).
  */
-function SsoExplanation({
-  serverName,
-  state,
-  noun,
-}: {
-  serverName: string;
-  state: ServerSignInState;
-  noun: SignInNoun;
-}) {
+function SsoExplanation({ text }: { text: string }) {
   const classes = useStyles();
   return (
     <Text
@@ -100,13 +151,89 @@ function SsoExplanation({
       color="secondary"
       className={classes.fullRow}
     >
-      {serverName} authenticates through SSO from muster's own session, so there
-      is nothing to sign in to here.
-      {state.status?.sso_attempt_failed
-        ? ` muster tried and failed to establish it for your session — check the ${noun}'s trusted audiences with an administrator.`
-        : ''}
+      {text}
     </Text>
   );
+}
+
+/**
+ * The wait of a sign-in this tab started, or `undefined` when there is none:
+ * what the flow says beside its way back into the sign-in page.
+ */
+export type SignInWait = { clientIdNote?: ClientIdNote };
+
+function signInWait(
+  state: ServerSignInState,
+  noun: SignInNoun,
+): SignInWait | undefined {
+  if (!state.isWaiting) {
+    return undefined;
+  }
+  const clientIdNote = clientIdMethodNote(state.clientIdMethod, noun);
+  return clientIdNote ? { clientIdNote } : {};
+}
+
+/**
+ * What {@link ServerAuthActions} shows for a server, decided once, so every
+ * layout of it (inline sentences, or a status with a tooltip) follows the
+ * same rules:
+ *
+ * - `sso`: an SSO-managed server (token forwarding/exchange) muster asks to
+ *   act on, or whose automatic connection failed: an explanation, no button.
+ *   It never waits on a sign-in, since there is nothing to sign in to.
+ * - `sign-in`: muster reports a sign-in is needed, or one this tab started is
+ *   outstanding. `gate` withholds it with a reason; `wait` is the outstanding
+ *   flow.
+ * - `sign-out`: a per-user OAuth server that is connected.
+ * - `none`: nothing asks anything of the person.
+ */
+export type AuthActionParts =
+  | { kind: 'none' }
+  | { kind: 'sso'; explanation: string }
+  | { kind: 'sign-in'; gate?: string; wait?: SignInWait }
+  | { kind: 'sign-out' };
+
+export function authActionParts(
+  serverName: string,
+  state: ServerSignInState,
+  options: {
+    noun: SignInNoun;
+    oauthConfigured?: boolean;
+    signInGate?: string;
+    /**
+     * Offer the sign-in (or the SSO explanation) whatever muster reports, for
+     * a surface that already knows the server is auth-gated
+     * ({@link ServerSignIn}).
+     */
+    alwaysOffer?: boolean;
+  },
+): AuthActionParts {
+  const { noun, oauthConfigured, signInGate, alwaysOffer } = options;
+  if (state.isSsoManaged) {
+    // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
+    // merely pending) SSO server explains itself only when muster asks the
+    // user to act, which for SSO it normally never does.
+    return alwaysOffer || state.needsLogin || state.status?.sso_attempt_failed
+      ? {
+          kind: 'sso',
+          explanation: ssoExplanationText(serverName, state, noun),
+        }
+      : { kind: 'none' };
+  }
+  // `isWaiting` keeps the row alive while a sign-in this tab started is
+  // outstanding, whatever the polled status currently claims -- and whether or
+  // not the URL muster issued for it is still on offer.
+  if (alwaysOffer || state.needsLogin || state.isWaiting) {
+    if (signInGate) {
+      return { kind: 'sign-in', gate: signInGate };
+    }
+    const wait = signInWait(state, noun);
+    return wait ? { kind: 'sign-in', wait } : { kind: 'sign-in' };
+  }
+  if (oauthConfigured && state.isConnected) {
+    return { kind: 'sign-out' };
+  }
+  return { kind: 'none' };
 }
 
 /**
@@ -126,31 +253,31 @@ function SsoExplanation({
  *   link gives way to a button requesting a fresh URL (which, with popups
  *   still blocked, renders as a fresh link).
  */
-function SignInFlow({
+export function SignInFlow({
   state,
+  wait,
   prominent,
-  noun,
+  compact,
 }: {
   state: ServerSignInState;
-  noun: SignInNoun;
+  /** The outstanding sign-in, as {@link authActionParts} decided it. */
+  wait?: SignInWait;
   /**
    * Primary styling. On the MCP servers page the sign-in is the single action
    * an auth-gated server needs, so it outranks the secondary lifecycle
    * buttons sharing its row.
    */
   prominent?: boolean;
+  /**
+   * The buttons alone, for a status cell: the wait and the notes are said by
+   * the status beside them (`ServerSignInStatus`).
+   */
+  compact?: boolean;
 }) {
   const classes = useStyles();
-  const {
-    authUrl,
-    clientIdMethod,
-    isPending,
-    isWaiting,
-    signIn,
-    signInTabOpened,
-  } = state;
+  const { authUrl, isPending, signIn, signInTabOpened } = state;
 
-  if (!isWaiting) {
+  if (!wait) {
     return (
       <Button
         variant={prominent ? 'primary' : 'secondary'}
@@ -163,9 +290,9 @@ function SignInFlow({
     );
   }
 
-  const waiting = (
+  const waiting = compact ? null : (
     <Text variant="body-small" color="secondary">
-      Waiting for you to finish signing in…
+      {WAITING_FOR_SIGN_IN}
     </Text>
   );
 
@@ -215,39 +342,17 @@ function SignInFlow({
     );
   }
 
+  const clientIdNote = compact ? undefined : wait.clientIdNote;
   return (
     <>
       {wayIn}
-      {/* muster#1083: the challenge says how muster identifies itself to
-          the authorization server. Only the fallbacks deserve a warning —
-          they are the cases where the AS may reject the sign-in as an
-          unregistered client. DCR gets a quiet note because the consent
-          screen will show an auto-registered client rather than a
-          pre-provisioned one, which can otherwise look suspicious. */}
-      {clientIdMethod === 'cimd-fallback' ? (
-        <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This {noun}'s authorization server advertises neither support for
-          muster's client identity (CIMD) nor automatic client registration —
-          the sign-in may be rejected as an unregistered client.
-        </Text>
-      ) : null}
-      {/* muster#1086: distinct from cimd-fallback — the AS does offer
-          client registration but rejected muster's request (its actual
-          rejection is in muster's challenge message and logs). */}
-      {clientIdMethod === 'dcr-failed' ? (
-        <Text variant="body-small" color="warning" className={classes.fullRow}>
-          This {noun}'s authorization server rejected muster's automatic client
-          registration — the sign-in may be rejected as an unregistered client.
-        </Text>
-      ) : null}
-      {clientIdMethod === 'dcr' ? (
+      {clientIdNote ? (
         <Text
           variant="body-small"
-          color="secondary"
+          color={clientIdNote.color}
           className={classes.fullRow}
         >
-          muster registered itself with this {noun}'s authorization server
-          automatically (Dynamic Client Registration).
+          {clientIdNote.text}
         </Text>
       ) : null}
     </>
@@ -260,7 +365,7 @@ function SignInFlow({
  * the row still says where the sign-in went -- the same shape as the gated
  * Reconnect in the lifecycle row.
  */
-function GatedSignIn({ reason }: { reason: string }) {
+export function GatedSignIn({ reason }: { reason: string }) {
   return (
     <DisabledAction reason={reason}>
       {describedBy => (
@@ -309,11 +414,15 @@ export function ServerSignIn({
 }: ServerSignInProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
+  const parts = authActionParts(serverName, state, {
+    noun,
+    alwaysOffer: true,
+  });
 
-  if (state.isSsoManaged) {
+  if (parts.kind === 'sso') {
     return (
       <div className={classes.root}>
-        <SsoExplanation serverName={serverName} state={state} noun={noun} />
+        <SsoExplanation text={parts.explanation} />
         {/* Rendered under the paragraph, not instead of it: a specific refusal
             (rate limit, issuer discovery) must not be swapped for the generic
             SSO explanation. */}
@@ -325,7 +434,10 @@ export function ServerSignIn({
   return (
     <div className={classes.root}>
       {showName ? <code className={classes.name}>{serverName}</code> : null}
-      <SignInFlow state={state} noun={noun} />
+      <SignInFlow
+        state={state}
+        wait={parts.kind === 'sign-in' ? parts.wait : undefined}
+      />
       <Messages state={state} />
     </div>
   );
@@ -375,68 +487,55 @@ export function ServerAuthActions({
 }: ServerAuthActionsProps) {
   const classes = useStyles();
   const state = useServerSignIn(serverName, installation, { noun });
-  const {
-    status,
-    isWaiting,
-    isSsoManaged,
-    needsLogin,
-    isConnected,
-    isSigningOut,
-    signOut,
-  } = state;
+  const parts = authActionParts(serverName, state, {
+    noun,
+    oauthConfigured,
+    signInGate,
+  });
+  const name = showName ? (
+    <code className={classes.name}>{serverName}</code>
+  ) : null;
 
-  if (isSsoManaged) {
-    // `sso_attempt_failed` names a concrete misconfiguration; a healthy (or
-    // merely pending) SSO server explains itself only when muster asks the
-    // user to act, which for SSO it normally never does.
-    if (!needsLogin && !status?.sso_attempt_failed) {
+  switch (parts.kind) {
+    case 'sso':
+      return (
+        <div className={classes.inActionRow}>
+          <SsoExplanation text={parts.explanation} />
+          <Messages state={state} />
+        </div>
+      );
+    case 'sign-in':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          {parts.gate ? (
+            <GatedSignIn reason={parts.gate} />
+          ) : (
+            <SignInFlow state={state} wait={parts.wait} prominent />
+          )}
+          <Messages state={state} />
+        </div>
+      );
+    case 'sign-out':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          <Button
+            variant="secondary"
+            size="small"
+            isPending={state.isSigningOut}
+            onClick={state.signOut}
+          >
+            {state.isSigningOut ? 'Signing out…' : 'Sign out'}
+          </Button>
+          <Messages state={state} />
+        </div>
+      );
+    default:
+      // Idle deliberately ignores `error`/`note`: they are the answer to a
+      // click, which by definition happened on a row that was already
+      // visible, so letting them defeat the gate would pin an unrelated row
+      // open (they also do not survive a remount, unlike the pending entry).
       return null;
-    }
-    return (
-      <div className={classes.inActionRow}>
-        <SsoExplanation serverName={serverName} state={state} noun={noun} />
-        <Messages state={state} />
-      </div>
-    );
   }
-
-  // `isWaiting` keeps the row alive while a sign-in this tab started is
-  // outstanding, whatever the polled status currently claims -- and whether or
-  // not the URL muster issued for it is still on offer.
-  if (needsLogin || isWaiting) {
-    return (
-      <div className={classes.inActionRow}>
-        {showName ? <code className={classes.name}>{serverName}</code> : null}
-        {signInGate ? (
-          <GatedSignIn reason={signInGate} />
-        ) : (
-          <SignInFlow state={state} prominent noun={noun} />
-        )}
-        <Messages state={state} />
-      </div>
-    );
-  }
-
-  if (oauthConfigured && isConnected) {
-    return (
-      <div className={classes.inActionRow}>
-        {showName ? <code className={classes.name}>{serverName}</code> : null}
-        <Button
-          variant="secondary"
-          size="small"
-          isPending={isSigningOut}
-          onClick={signOut}
-        >
-          {isSigningOut ? 'Signing out…' : 'Sign out'}
-        </Button>
-        <Messages state={state} />
-      </div>
-    );
-  }
-
-  // Idle deliberately ignores `error`/`note`: they are the answer to a click,
-  // which by definition happened on a row that was already visible, so letting
-  // them defeat the gate would pin an unrelated row open (they also do not
-  // survive a remount, unlike the pending entry).
-  return null;
 }

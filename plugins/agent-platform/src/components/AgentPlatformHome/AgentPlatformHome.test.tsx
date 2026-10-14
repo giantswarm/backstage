@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react';
-import { storageApiRef } from '@backstage/core-plugin-api';
+import { type ReactNode, useState } from 'react';
+import { StorageApi, storageApiRef } from '@backstage/core-plugin-api';
 import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { agentsRouteRef, sessionsRouteRef } from '../../routes';
@@ -13,7 +13,7 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
-} from '@giantswarm/backstage-plugin-ui-react';
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -74,6 +74,12 @@ const mockSessions = jest.fn<SessionRow[], []>(() => []);
 jest.mock('../SessionsDataProvider', () => ({
   SessionsDataProvider: mockPassThrough,
   useSessions: () => ({ rows: mockSessions() }),
+}));
+
+// The catalogue that names individually picked tools by connector; the reach
+// line's own suite covers the coverage words (T103).
+jest.mock('../../hooks/useReachCatalogue', () => ({
+  useReachCatalogue: () => undefined,
 }));
 
 const mockUseCreateSession = jest.fn();
@@ -137,20 +143,40 @@ const loadedAgents: AgentsContextValue = {
   unreachableInstallations: [],
 };
 
+// Re-render the home from inside the test app (its own `rerender` would drop
+// the app around it), so a test can change what `useAgents` answers and watch
+// one mounted page follow.
+let rerenderHome: () => void = () => {};
+function RerenderableHome(props: { manageAgentsHref?: string }) {
+  const [, setTick] = useState(0);
+  rerenderHome = () => setTick(tick => tick + 1);
+  return <AgentPlatformHome {...props} />;
+}
+
 function render({
   bound = true,
   displayName = 'Jane Doe',
   manageAgentsHref,
   url,
+  rerenderable = false,
+  storage = mockApis.storage(),
 }: {
   bound?: boolean;
   displayName?: string;
   manageAgentsHref?: string;
   /** The URL the home opens at, e.g. with `?agent=`. */
   url?: string;
+  /** Mount it so `rerenderHome` can re-render it in place. */
+  rerenderable?: boolean;
+  /** What the person has stored, e.g. their favorite agents. */
+  storage?: StorageApi;
 } = {}) {
   return renderInTestApp(
-    <AgentPlatformHome manageAgentsHref={manageAgentsHref} />,
+    rerenderable ? (
+      <RerenderableHome manageAgentsHref={manageAgentsHref} />
+    ) : (
+      <AgentPlatformHome manageAgentsHref={manageAgentsHref} />
+    ),
     {
       ...(url && { initialRouteEntries: [url] }),
       apis: [
@@ -160,7 +186,7 @@ function render({
             getProfileInfo: async () => ({ displayName }),
           }),
         ],
-        [storageApiRef, mockApis.storage()],
+        [storageApiRef, storage],
       ],
       ...(bound && {
         mountedRoutes: {
@@ -215,9 +241,7 @@ describe('AgentPlatformHome', () => {
     // kept that page's.
     await render();
 
-    await waitFor(() =>
-      expect(document.title).toBe('New session · Agent Platform'),
-    );
+    await waitFor(() => expect(document.title).toBe('New session'));
   });
 
   it('greets without a name when the profile has none', async () => {
@@ -286,6 +310,30 @@ describe('AgentPlatformHome', () => {
         .getByTestId('installation-scope-note')
         .compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('holds the read warning until the agents are read', async () => {
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      isLoading: true,
+      unreachableInstallations: ['gazelle'],
+    });
+    await render({ rerenderable: true });
+    expect(
+      await screen.findByLabelText('Reading your agents…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    mockUseAgents.mockReturnValue({
+      ...loadedAgents,
+      rows: [],
+      unreachableInstallations: ['gazelle'],
+    });
+    act(() => rerenderHome());
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read 1 environment',
+    );
   });
 
   it('says why no session can be started when the agents could not be read', async () => {
@@ -363,13 +411,56 @@ describe('AgentPlatformHome', () => {
       // detail page's information, not part of starting a session.
       expect(screen.queryByText('Sonnet 4.5')).not.toBeInTheDocument();
       expect(
-        screen.getByText('Can use confluence and slack'),
+        screen.getByText('Can use confluence and slack.', { exact: false }),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('group', {
           name: 'Or pick one of your recent agents',
         }),
       ).not.toBeInTheDocument();
+    });
+
+    it('links the chosen agent to its tools, and nothing before a choice', async () => {
+      await render();
+
+      expect(
+        screen.queryByRole('link', { name: 'See which tools' }),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Research Agent' }),
+      );
+      expect(
+        screen.getByRole('link', { name: 'See which tools' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/agents/gazelle/research/research-agent/tools',
+      );
+    });
+
+    it('links whichever agent is chosen to its own tools', async () => {
+      mockUseAgents.mockReturnValue({
+        ...loadedAgents,
+        rows: [
+          {
+            ...sre,
+            toolset: {
+              state: 'declared',
+              carrier: 'sre-agent',
+              selectors: ['server:github'],
+            },
+          },
+          research,
+        ],
+      });
+      await render({ url: `/?agent=${encodeURIComponent(sre.id)}` });
+
+      expect(
+        screen.getByRole('link', { name: 'See which tools' }),
+      ).toHaveAttribute(
+        'href',
+        '/agent-platform/agents/gazelle/kagent/sre-agent/tools',
+      );
     });
 
     it('keeps the prompt and Start disabled until an agent is chosen', async () => {
@@ -400,6 +491,27 @@ describe('AgentPlatformHome', () => {
       expect(
         screen.getByRole('group', { name: 'research' }),
       ).toBeInTheDocument();
+    });
+
+    it('lists the favorite agents second, after the recent ones', async () => {
+      const storage = mockApis.storage();
+      await storage
+        .forBucket('agent-platform')
+        .set('favoriteAgents', [
+          { installation: 'gazelle', namespace: 'kagent', name: 'docs-agent' },
+        ]);
+      await render({ storage });
+
+      await userEvent.click(agentPicker());
+      const groups = screen.getAllByRole('group');
+
+      expect(groups[0]).toHaveAccessibleName('Recent');
+      expect(groups[1]).toHaveAccessibleName('Favorites');
+      expect(
+        within(groups[1])
+          .getAllByRole('option')
+          .map(option => option.textContent),
+      ).toEqual([expect.stringContaining('Docs Agent')]);
     });
 
     it('asks for an agent in the picker until one is chosen', async () => {
@@ -550,10 +662,11 @@ describe('AgentPlatformHome on a phone (T22)', () => {
     // Preselected, as a "New session" link from elsewhere does it.
     await render({ url: `/?agent=${encodeURIComponent(sre.id)}` });
 
+    // The keys are key caps; the words read as the caption does.
     expect(
-      screen.getByText(
-        'Enter starts the session with this message, Shift+Enter for a new line.',
-      ),
-    ).toBeInTheDocument();
+      screen.getByText(/starts the session with this message/).textContent,
+    ).toBe(
+      'Enter starts the session with this message, Shift+Enter for a new line.',
+    );
   });
 });
